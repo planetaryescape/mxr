@@ -11,11 +11,37 @@ mod tests {
     use mxr_core::types::*;
     use mxr_core::{MailSyncProvider, MxrError, SyncCapabilities};
     use mxr_search::{SearchIndex, SearchServiceHandle};
-    use mxr_store::Store;
+    use mxr_store::{ScreenerDecision, ScreenerDisposition, Store};
+    use std::collections::HashSet;
     use std::sync::Arc;
 
     fn in_memory_search() -> SearchServiceHandle {
         SearchServiceHandle::start(SearchIndex::in_memory().unwrap()).0
+    }
+
+    struct LoadedAddressLookup {
+        emails: HashSet<String>,
+    }
+
+    impl LoadedAddressLookup {
+        fn new(emails: impl IntoIterator<Item = impl Into<String>>) -> Self {
+            Self {
+                emails: emails
+                    .into_iter()
+                    .map(|email| email.into().to_lowercase())
+                    .collect(),
+            }
+        }
+    }
+
+    impl AccountAddressLookup for LoadedAddressLookup {
+        fn is_account_address(&self, email: &str) -> bool {
+            self.emails.contains(&email.to_lowercase())
+        }
+
+        fn is_loaded(&self) -> bool {
+            true
+        }
     }
 
     /// A provider that always returns errors from sync_messages, for testing error handling.
@@ -392,6 +418,97 @@ mod tests {
             unsubscribe: UnsubscribeMethod::None,
             label_provider_ids,
         }
+    }
+
+    #[tokio::test]
+    async fn sync_ingest_applies_deny_screener_decision() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::with_address_lookup(
+            store.clone(),
+            search,
+            Arc::new(LoadedAddressLookup::new(["user@example.com"])),
+        );
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        let inbox = make_test_label(&account_id, "Inbox", "INBOX");
+        let trash = make_test_label(&account_id, "Trash", "TRASH");
+        let labels = vec![inbox.clone(), trash.clone()];
+        store
+            .set_screener_decision(&ScreenerDecision {
+                account_id: account_id.clone(),
+                sender_email: "test@example.com".into(),
+                disposition: ScreenerDisposition::Deny,
+                route_label: None,
+                decided_at: chrono::Utc::now(),
+            })
+            .await
+            .unwrap();
+
+        let mut msg = make_test_envelope(&account_id, "denied-msg", vec!["INBOX".to_string()]);
+        msg.flags.remove(MessageFlags::READ);
+        let provider = DeltaLabelProvider::new(account_id.clone(), vec![msg], labels, vec![]);
+
+        engine.sync_account(&provider).await.unwrap();
+
+        let msg_id = store
+            .get_message_id_by_provider_id(&account_id, "denied-msg")
+            .await
+            .unwrap()
+            .unwrap();
+        let envelope = store.get_envelope(&msg_id).await.unwrap().unwrap();
+        let label_ids = store.get_message_label_ids(&msg_id).await.unwrap();
+        assert!(envelope.flags.contains(MessageFlags::READ));
+        assert!(!label_ids.contains(&inbox.id));
+        assert!(label_ids.contains(&trash.id));
+    }
+
+    #[tokio::test]
+    async fn sync_ingest_routes_feed_screener_decision() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::with_address_lookup(
+            store.clone(),
+            search,
+            Arc::new(LoadedAddressLookup::new(["user@example.com"])),
+        );
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        let inbox = make_test_label(&account_id, "Inbox", "INBOX");
+        let feed = make_test_label(&account_id, "Feed", "mxr/feed");
+        let labels = vec![inbox.clone(), feed.clone()];
+        store
+            .set_screener_decision(&ScreenerDecision {
+                account_id: account_id.clone(),
+                sender_email: "test@example.com".into(),
+                disposition: ScreenerDisposition::Feed,
+                route_label: Some("mxr/feed".into()),
+                decided_at: chrono::Utc::now(),
+            })
+            .await
+            .unwrap();
+
+        let msg = make_test_envelope(&account_id, "feed-msg", vec!["INBOX".to_string()]);
+        let provider = DeltaLabelProvider::new(account_id.clone(), vec![msg], labels, vec![]);
+
+        engine.sync_account(&provider).await.unwrap();
+
+        let msg_id = store
+            .get_message_id_by_provider_id(&account_id, "feed-msg")
+            .await
+            .unwrap()
+            .unwrap();
+        let label_ids = store.get_message_label_ids(&msg_id).await.unwrap();
+        assert!(!label_ids.contains(&inbox.id));
+        assert!(label_ids.contains(&feed.id));
     }
 
     #[tokio::test]

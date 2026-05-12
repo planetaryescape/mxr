@@ -49,6 +49,36 @@ pub struct LlmConfigData {
     pub api_key_env: String,
     pub context_window: u32,
     pub request_timeout_secs: u64,
+    #[serde(default)]
+    pub allow_cloud_relationship_data: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overrides: Option<LlmOverridesData>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(default)]
+pub struct LlmOverridesData {
+    pub summarize: Option<LlmOverrideData>,
+    pub relationship_summary: Option<LlmOverrideData>,
+    pub commitments: Option<LlmOverrideData>,
+    pub draft_assist: Option<LlmOverrideData>,
+    pub draft_new: Option<LlmOverrideData>,
+    pub draft_refine: Option<LlmOverrideData>,
+    pub voice_match: Option<LlmOverrideData>,
+    pub humanize_rewrite: Option<LlmOverrideData>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(default)]
+pub struct LlmOverrideData {
+    pub enabled: Option<bool>,
+    pub base_url: Option<String>,
+    pub model: Option<String>,
+    pub api_key_env: Option<String>,
+    pub context_window: Option<u32>,
+    pub request_timeout_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -338,7 +368,12 @@ pub enum Request {
         rule: Option<String>,
         limit: u32,
     },
-    Mutation(MutationCommand),
+    Mutation {
+        #[serde(flatten)]
+        mutation: MutationCommand,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        client_correlation_id: Option<String>,
+    },
     /// Reverse a recent undoable mutation by id. Available within ~60s of
     /// the mutation landing; daemon refuses with an `Error` response
     /// past that window.
@@ -441,6 +476,10 @@ pub enum Request {
         account_id: AccountId,
         email: String,
     },
+    ListSenders {
+        #[serde(default = "default_sender_limit")]
+        limit: u32,
+    },
     GetRelationshipProfile {
         account_id: AccountId,
         email: String,
@@ -498,8 +537,9 @@ pub enum Request {
         account_id: AccountId,
         sender_email: String,
     },
-    /// Generate a 2-3 sentence summary of a thread using the configured
-    /// LLM. Returns `LlmDisabled` error when LLM is not configured.
+    /// Summarize a thread using the configured LLM (structured prompt in
+    /// `handler/summarize.rs`; no fixed sentence-count contract). Returns
+    /// `LlmDisabled` when LLM is not configured.
     SummarizeThread {
         thread_id: ThreadId,
     },
@@ -575,6 +615,14 @@ pub enum Request {
 }
 
 impl Request {
+    /// Convenience constructor — correlation id omitted (clients add when tracking optimism).
+    pub fn mutation(command: MutationCommand) -> Self {
+        Self::Mutation {
+            mutation: command,
+            client_correlation_id: None,
+        }
+    }
+
     pub const fn category(&self) -> IpcCategory {
         match self {
             Self::ListEnvelopes { .. }
@@ -597,7 +645,7 @@ impl Request {
             | Self::Count { .. }
             | Self::GetHeaders { .. }
             | Self::ListRuleHistory { .. }
-            | Self::Mutation(_)
+            | Self::Mutation { .. }
             | Self::UndoMutation { .. }
             | Self::Unsubscribe { .. }
             | Self::Snooze { .. }
@@ -620,6 +668,7 @@ impl Request {
             | Self::ClearSignatureDefault { .. }
             | Self::ResolveSignature { .. }
             | Self::GetSenderProfile { .. }
+            | Self::ListSenders { .. }
             | Self::GetRelationshipProfile { .. }
             | Self::RebuildRelationshipProfile { .. }
             | Self::ListCommitments { .. }
@@ -1012,6 +1061,9 @@ pub enum ResponseData {
     SenderProfile {
         profile: Option<SenderProfileData>,
     },
+    Senders {
+        senders: Vec<SenderSummaryData>,
+    },
     RelationshipProfile {
         profile: Option<RelationshipProfileData>,
     },
@@ -1212,6 +1264,7 @@ impl ResponseData {
             | Self::SignatureDefaults { .. }
             | Self::ResolvedSignature { .. }
             | Self::SenderProfile { .. }
+            | Self::Senders { .. }
             | Self::RelationshipProfile { .. }
             | Self::CommitmentList { .. }
             | Self::UserVoice { .. }
@@ -1398,6 +1451,11 @@ const fn default_screener_limit() -> u32 {
     100
 }
 
+/// Default limit for `ListSenders`.
+const fn default_sender_limit() -> u32 {
+    50
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -1493,6 +1551,19 @@ pub struct SenderEmailReferenceData {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SenderSummaryData {
+    pub account_id: AccountId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    pub sender_email: String,
+    pub message_count: u32,
+    pub unread_count: u32,
+    pub latest_subject: String,
+    pub latest_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SenderProfileData {
     pub account_id: AccountId,
     pub email: String,
@@ -1521,10 +1592,34 @@ pub struct SenderProfileData {
     pub attachment_count: u32,
     #[serde(default)]
     pub attachment_bytes: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unanswered_question: Option<SenderUnansweredQuestionData>,
+    #[serde(default)]
+    pub response_histogram: Vec<ResponseTimeBucket>,
+    #[serde(default)]
+    pub weekly_activity: Vec<SenderWeeklyActivityData>,
     #[serde(default)]
     pub recent_messages: Vec<SenderEmailReferenceData>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub relationship: Option<RelationshipProfileData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SenderUnansweredQuestionData {
+    pub message_id: MessageId,
+    pub thread_id: ThreadId,
+    pub subject: String,
+    pub received_at: chrono::DateTime<chrono::Utc>,
+    pub days_waiting: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SenderWeeklyActivityData {
+    pub week_start: chrono::DateTime<chrono::Utc>,
+    pub inbound_count: u32,
+    pub outbound_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -2165,6 +2260,12 @@ pub enum DaemonEvent {
         account_id: Option<AccountId>,
         message: String,
     },
+    /// Optimistic UI rollback hint: provider/store rejected some or all of a
+    /// tracked mutation (see `Request::Mutation.client_correlation_id`).
+    MutationReconciliationFailed {
+        client_correlation_id: String,
+        error_summary: String,
+    },
 }
 
 impl DaemonEvent {
@@ -2181,6 +2282,7 @@ impl DaemonEvent {
             | Self::OperationCompleted { .. }
             | Self::OperationFailed { .. }
             | Self::OperationCancelled { .. } => IpcCategory::AdminMaintenance,
+            Self::MutationReconciliationFailed { .. } => IpcCategory::CoreMail,
         }
     }
 }

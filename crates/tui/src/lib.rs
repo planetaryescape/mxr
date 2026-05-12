@@ -14,13 +14,14 @@ pub mod keybindings;
 mod local_io;
 pub mod local_state;
 mod runtime;
+mod search_ipc;
 pub mod terminal_images;
 #[cfg(test)]
 mod test_fixtures;
 pub mod theme;
 pub mod ui;
 
-use app::{App, AttachmentOperation};
+use app::{App, AttachmentOperation, MutationId};
 use client::Client;
 use crossterm::event::EventStream;
 use futures::StreamExt;
@@ -144,6 +145,44 @@ async fn spawn_outlook_auth_session(
             }
         }
     }
+}
+
+async fn load_open_commitment_counts(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    envelopes: Vec<mxr_core::Envelope>,
+) -> std::collections::HashMap<(mxr_core::AccountId, mxr_core::ThreadId), u32> {
+    let account_ids = envelopes
+        .iter()
+        .map(|envelope| envelope.account_id.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let mut counts = std::collections::HashMap::new();
+
+    for account_id in account_ids {
+        let response = ipc_call(
+            bg,
+            Request::ListCommitments {
+                account_id,
+                email: None,
+                status: Some(mxr_protocol::CommitmentStatusData::Open),
+            },
+        )
+        .await;
+
+        let Ok(Response::Ok {
+            data: ResponseData::CommitmentList { commitments },
+        }) = response
+        else {
+            continue;
+        };
+
+        for commitment in commitments {
+            *counts
+                .entry((commitment.account_id, commitment.thread_id))
+                .or_insert(0) += 1;
+        }
+    }
+
+    counts
 }
 
 fn format_platform_response(data: &ResponseData) -> String {
@@ -463,7 +502,7 @@ pub async fn run() -> anyhow::Result<()> {
                         let archived_count = pending.archive_message_ids.len();
                         let archive_resp = ipc_call(
                             &bg,
-                            Request::Mutation(mxr_protocol::MutationCommand::Archive {
+                            Request::mutation(mxr_protocol::MutationCommand::Archive {
                                 message_ids: pending.archive_message_ids.clone(),
                             }),
                         )
@@ -848,6 +887,23 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let title = pending.title.clone();
             let _ = submit_task(&queued, async move {
+                for request in pending.prelude {
+                    match ipc_call(&bg, request).await {
+                        Ok(Response::Ok { .. }) => {}
+                        Ok(Response::Error { message, .. }) => {
+                            return AsyncResult::PlatformModalLoaded {
+                                title,
+                                result: Err(MxrError::Ipc(message)),
+                            };
+                        }
+                        Err(e) => {
+                            return AsyncResult::PlatformModalLoaded {
+                                title,
+                                result: Err(e),
+                            };
+                        }
+                    }
+                }
                 let resp = ipc_call(&bg, pending.request).await;
                 let result: Result<String, MxrError> = match resp {
                     Ok(Response::Ok { data }) => Ok(format_platform_response(&data)),
@@ -977,6 +1033,22 @@ pub async fn run() -> anyhow::Result<()> {
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
                 AsyncResult::Subscriptions(result)
+            });
+        }
+
+        if app.mailbox.pending_commitment_counts_refresh {
+            app.mailbox.pending_commitment_counts_refresh = false;
+            let bg = bg.clone();
+            let envelopes = app
+                .mailbox
+                .all_envelopes
+                .iter()
+                .chain(app.mailbox.envelopes.iter())
+                .chain(app.search.page.results.iter())
+                .cloned()
+                .collect::<Vec<_>>();
+            let _ = submit_task(&queued, async move {
+                AsyncResult::CommitmentCounts(load_open_commitment_counts(&bg, envelopes).await)
             });
         }
 
@@ -1362,6 +1434,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 app.mailbox.envelopes = results.envelopes;
                                 app.mailbox.selected_index = 0;
                                 app.mailbox.scroll_offset = 0;
+                                app.mailbox.pending_commitment_counts_refresh = true;
                             }
                         },
                         AsyncResult::Search {
@@ -1445,6 +1518,8 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::ReplyQueueList(Ok(messages)) => {
                             let count = messages.len();
+                            app.mailbox.reply_later_message_ids =
+                                messages.iter().map(|message| message.id.clone()).collect();
                             app.modals.reply_queue.set_messages(messages);
                             app.status_message = Some(if count == 0 {
                                 "Reply queue is empty".into()
@@ -1850,6 +1925,7 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                             restore_mail_list_selection(&mut app, selected_id);
                             app.queue_body_window();
+                            app.mailbox.pending_commitment_counts_refresh = true;
                         }
                         AsyncResult::LabelEnvelopes(Err(e)) => {
                             app.mailbox.pending_active_label = None;
@@ -1985,6 +2061,9 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::Subscriptions(Err(e)) => {
                             app.status_message = Some(format!("Subscriptions error: {e}"));
+                        }
+                        AsyncResult::CommitmentCounts(counts) => {
+                            app.mailbox.open_commitment_counts = counts;
                         }
                         AsyncResult::ConnectionState(state) => {
                             app.set_connection_state(state);
@@ -2148,7 +2227,7 @@ pub async fn run() -> anyhow::Result<()> {
 /// sensibly even when an unexpected response carries a mutation_id.
 fn mutation_verb_past(req: &Request) -> &'static str {
     use mxr_protocol::MutationCommand;
-    if let Request::Mutation(cmd) = req {
+    if let Request::Mutation { mutation: cmd, .. } = req {
         match cmd {
             MutationCommand::Archive { .. } => "Archived",
             MutationCommand::ReadAndArchive { .. } => "Marked read & archived",
@@ -2253,6 +2332,17 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
         } => {
             app.status_message = Some(format!("{operation} failed: {error}"));
         }
+        DaemonEvent::MutationReconciliationFailed {
+            client_correlation_id,
+            error_summary,
+        } => {
+            if let Ok(raw) = client_correlation_id.parse::<u64>() {
+                let mid = MutationId::from_raw(raw);
+                app.handle_mutation_reconciliation_failed(mid);
+                app.refresh_mailbox_after_mutation_failure();
+                app.status_message = Some(format!("Mutation failed: {error_summary}"));
+            }
+        }
         _ => {}
     }
 }
@@ -2266,6 +2356,7 @@ fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>
         .then(|| app.selected_mail_row().map(|row| row.representative.id))
         .flatten();
     app.mailbox.all_envelopes = envelopes;
+    app.mailbox.pending_commitment_counts_refresh = true;
     if app.mailbox.active_label.is_none()
         && app.mailbox.pending_active_label.is_none()
         && !app.search.active
@@ -3604,6 +3695,43 @@ mod tests {
     }
 
     #[test]
+    fn mutation_reconciliation_failed_event_replays_optimistic_snapshot() {
+        let mut app = App::new();
+        let envelopes = make_test_envelopes(1);
+        app.mailbox.envelopes = envelopes.clone();
+        app.mailbox.all_envelopes = envelopes;
+        app.mailbox.selected_index = 0;
+
+        app.apply(Action::Star);
+        assert!(
+            app.mailbox.envelopes[0]
+                .flags
+                .contains(MessageFlags::STARRED),
+            "star applies optimistically"
+        );
+        let mid = app.pending_mutation_queue[0].id;
+
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::MutationReconciliationFailed {
+                client_correlation_id: mid.raw().to_string(),
+                error_summary: "provider rejected".into(),
+            },
+        );
+
+        assert!(
+            !app.mailbox.envelopes[0]
+                .flags
+                .contains(MessageFlags::STARRED),
+            "daemon failure event rolls back starred state"
+        );
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Mutation failed: provider rejected")
+        );
+    }
+
+    #[test]
     fn status_bar_uses_label_counts_instead_of_loaded_window() {
         let mut app = App::new();
         let mut envelopes = make_test_envelopes(5);
@@ -3757,6 +3885,20 @@ mod tests {
         assert_eq!(app.mailbox.envelopes.len(), 10, "Should restore full list");
     }
 
+    #[test]
+    fn mail_list_rows_include_open_commitment_counts() {
+        let mut app = App::new();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        let envelope = app.mailbox.envelopes[0].clone();
+        app.mailbox
+            .open_commitment_counts
+            .insert((envelope.account_id.clone(), envelope.thread_id.clone()), 2);
+
+        let rows = app.mail_list_rows();
+
+        assert_eq!(rows[0].open_commitment_count, 2);
+    }
+
     // --- Mutation effect tests ---
 
     #[test]
@@ -3802,7 +3944,10 @@ mod tests {
             .as_ref()
             .expect("expected bulk confirm for multi-target archive");
         match &pending.request {
-            Request::Mutation(MutationCommand::Archive { message_ids }) => {
+            Request::Mutation {
+                mutation: MutationCommand::Archive { message_ids },
+                ..
+            } => {
                 assert_eq!(message_ids.len(), 3, "all thread members archived");
             }
             other => panic!("expected Archive mutation, got {other:?}"),
@@ -3869,7 +4014,10 @@ mod tests {
         assert!(app.pending_mutation_queue.is_empty());
         match app.modals.pending_bulk_confirm.as_ref() {
             Some(confirm) => match &confirm.request {
-                Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
+                Request::Mutation {
+                    mutation: MutationCommand::SetRead { message_ids, read },
+                    ..
+                } => {
                     assert!(*read);
                     assert_eq!(message_ids.len(), 3);
                 }
@@ -3936,7 +4084,10 @@ mod tests {
         assert!(app.mailbox.all_envelopes.is_empty());
         assert_eq!(app.pending_mutation_queue.len(), 1);
         match &app.pending_mutation_queue[0].request {
-            Request::Mutation(MutationCommand::ReadAndArchive { message_ids }) => {
+            Request::Mutation {
+                mutation: MutationCommand::ReadAndArchive { message_ids },
+                ..
+            } => {
                 assert_eq!(message_ids, &vec![message_id]);
             }
             other => panic!("expected read-and-archive mutation, got {other:?}"),
@@ -3961,7 +4112,10 @@ mod tests {
         app.apply(Action::MarkReadAndArchive);
         match app.modals.pending_bulk_confirm.as_ref() {
             Some(confirm) => match &confirm.request {
-                Request::Mutation(MutationCommand::ReadAndArchive { message_ids }) => {
+                Request::Mutation {
+                    mutation: MutationCommand::ReadAndArchive { message_ids },
+                    ..
+                } => {
                     assert_eq!(message_ids.len(), 3);
                 }
                 other => panic!("Expected ReadAndArchive bulk request, got {other:?}"),
@@ -4364,7 +4518,10 @@ mod tests {
             .contains(MessageFlags::READ));
         assert_eq!(app.pending_mutation_queue.len(), 1);
         match &app.pending_mutation_queue[0].request {
-            Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
+            Request::Mutation {
+                mutation: MutationCommand::SetRead { message_ids, read },
+                ..
+            } => {
                 assert!(*read);
                 assert_eq!(message_ids, &vec![app.mailbox.envelopes[0].id.clone()]);
             }
@@ -4507,7 +4664,10 @@ mod tests {
             .contains(MessageFlags::READ));
         assert_eq!(app.pending_mutation_queue.len(), 1);
         match &app.pending_mutation_queue[0].request {
-            Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
+            Request::Mutation {
+                mutation: MutationCommand::SetRead { message_ids, read },
+                ..
+            } => {
                 assert!(*read);
                 assert_eq!(message_ids, &vec![app.mailbox.envelopes[0].id.clone()]);
             }
@@ -4541,7 +4701,10 @@ mod tests {
         assert!(app.mailbox.envelopes[1].flags.contains(MessageFlags::READ));
         assert_eq!(app.pending_mutation_queue.len(), 1);
         match &app.pending_mutation_queue[0].request {
-            Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
+            Request::Mutation {
+                mutation: MutationCommand::SetRead { message_ids, read },
+                ..
+            } => {
                 assert!(*read);
                 assert_eq!(message_ids, &vec![app.mailbox.envelopes[1].id.clone()]);
             }
@@ -5134,10 +5297,14 @@ mod tests {
             .contains(MessageFlags::STARRED));
         assert_eq!(app.pending_mutation_queue.len(), 1);
         match &app.pending_mutation_queue[0].request {
-            Request::Mutation(MutationCommand::Star {
-                message_ids,
-                starred,
-            }) => {
+            Request::Mutation {
+                mutation:
+                    MutationCommand::Star {
+                        message_ids,
+                        starred,
+                    },
+                ..
+            } => {
                 assert_eq!(message_ids, &vec![results[1].id.clone()]);
                 assert!(*starred);
             }
@@ -6192,6 +6359,83 @@ mod tests {
     }
 
     #[test]
+    fn send_at_prompt_saves_draft_then_schedules_send() {
+        let mut app = App::new();
+        let pending_account_id = AccountId::new();
+        app.compose.pending_send_confirm = Some(PendingSend {
+            account_id: pending_account_id.clone(),
+            fm: mxr_compose::frontmatter::ComposeFrontmatter {
+                to: "a@example.com".into(),
+                cc: String::new(),
+                bcc: String::new(),
+                subject: "Scheduled hello".into(),
+                from: "me@example.com".into(),
+                in_reply_to: None,
+                references: vec![],
+                thread_id: None,
+                attach: vec![],
+                signature: None,
+            },
+            body: "Body".into(),
+            draft_path: std::path::PathBuf::from("/tmp/scheduled-draft.md"),
+            mode: PendingSendMode::SendOrSave,
+        });
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+        for c in "in 2h".chars() {
+            let _ = app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert!(app.compose.pending_send_confirm.is_none());
+        assert!(app.compose.pending_send_at_input.is_none());
+        let queue = app.take_pending_platform_dispatch();
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].prelude.len(), 1);
+        let draft_id = match &queue[0].prelude[0] {
+            Request::SaveDraft { draft } => {
+                assert_eq!(draft.account_id, pending_account_id);
+                assert_eq!(draft.subject, "Scheduled hello");
+                draft.id.clone()
+            }
+            other => panic!("Expected SaveDraft prelude, got {other:?}"),
+        };
+        match &queue[0].request {
+            Request::ScheduleSend {
+                draft_id: scheduled_id,
+                send_at,
+            } => {
+                assert_eq!(scheduled_id, &draft_id);
+                assert!(*send_at > chrono::Utc::now());
+            }
+            other => panic!("Expected ScheduleSend request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn reply_queue_enter_starts_reply_compose_for_selected_message() {
+        let mut app = App::new();
+        let messages = make_test_envelopes(2);
+        let selected = messages[1].clone();
+        app.modals.reply_queue.open_loading();
+        app.modals.reply_queue.set_messages(messages);
+        app.modals.reply_queue.select_next();
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(action, Some(Action::ReplyQueueModalReply));
+        app.apply(action.unwrap());
+
+        assert!(!app.modals.reply_queue.visible);
+        assert_eq!(
+            app.compose.pending_compose,
+            Some(super::app::ComposeAction::Reply {
+                message_id: selected.id,
+                account_id: selected.account_id,
+            })
+        );
+    }
+
+    #[test]
     fn compose_blank_recipient_advances_to_subject_modal() {
         let mut app = App::new();
         app.mailbox.all_envelopes = make_test_envelopes(1);
@@ -6597,7 +6841,10 @@ mod tests {
         assert!(app.pending_mutation_queue.is_empty());
         match app.modals.pending_bulk_confirm.as_ref() {
             Some(confirm) => match &confirm.request {
-                Request::Mutation(MutationCommand::Archive { message_ids }) => {
+                Request::Mutation {
+                    mutation: MutationCommand::Archive { message_ids },
+                    ..
+                } => {
                     assert_eq!(message_ids.len(), 3);
                 }
                 other => panic!("Expected Archive bulk request, got {other:?}"),
@@ -7729,6 +7976,22 @@ mod tests {
     }
 
     #[test]
+    fn use_semantic_profile_action_queues_use_request() {
+        use crate::action::Action;
+        let mut app = App::new();
+        let profile = mxr_core::types::SemanticProfile::BgeM3;
+        app.apply(Action::UseSemanticProfile(profile));
+        let queue = app.take_pending_semantic_dispatch();
+        assert_eq!(queue.len(), 1);
+        match &queue[0] {
+            mxr_protocol::Request::UseSemanticProfile { profile: p } => {
+                assert_eq!(p.as_str(), profile.as_str());
+            }
+            other => panic!("expected UseSemanticProfile, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn draft_assist_action_queues_selected_thread_request() {
         use crate::action::Action;
         let mut app = App::new();
@@ -7787,6 +8050,55 @@ mod tests {
                 assert!(length_hint.is_none());
             }
             other => panic!("expected DraftNew, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn refine_pending_draft_saves_then_queues_refine_request() {
+        let mut app = App::new();
+        let account_id = AccountId::new();
+        app.compose.pending_send_confirm = Some(PendingSend {
+            account_id: account_id.clone(),
+            fm: mxr_compose::frontmatter::ComposeFrontmatter {
+                to: "sender@example.com".into(),
+                cc: String::new(),
+                bcc: String::new(),
+                subject: "Quarterly plan".into(),
+                from: "me@example.com".into(),
+                in_reply_to: None,
+                references: Vec::new(),
+                thread_id: None,
+                attach: Vec::new(),
+                signature: None,
+            },
+            body: "Could you review the plan?".into(),
+            draft_path: std::path::PathBuf::from("/tmp/mxr-draft.md"),
+            mode: PendingSendMode::SendOrSave,
+        });
+
+        app.apply(Action::RefinePendingDraft);
+
+        let queue = app.take_pending_platform_dispatch();
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].prelude.len(), 1);
+        let draft_id = match &queue[0].prelude[0] {
+            Request::SaveDraft { draft } => {
+                assert_eq!(draft.account_id, account_id);
+                assert_eq!(draft.subject, "Quarterly plan");
+                assert_eq!(draft.body_markdown, "Could you review the plan?");
+                draft.id.clone()
+            }
+            other => panic!("expected SaveDraft prelude, got {other:?}"),
+        };
+        match &queue[0].request {
+            Request::DraftRefine {
+                draft_id: queued,
+                knobs,
+            } => {
+                assert_eq!(queued, &draft_id);
+                assert_eq!(knobs, &mxr_protocol::DraftRefineKnobsData::default());
+            }
+            other => panic!("expected DraftRefine, got {other:?}"),
         }
     }
 

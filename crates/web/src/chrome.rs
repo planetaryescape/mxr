@@ -30,6 +30,7 @@ pub(crate) struct MessageLabelView {
 pub(crate) struct MessageRowView {
     pub(crate) id: String,
     pub(crate) kind: &'static str,
+    pub(crate) account_id: String,
     pub(crate) thread_id: String,
     pub(crate) provider_id: String,
     pub(crate) sender: String,
@@ -59,6 +60,8 @@ pub(crate) struct MessageRowView {
     pub(crate) attachment_filename: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) attachment_size_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) open_commitment_count: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -154,7 +157,7 @@ pub(crate) async fn ack_mutation(
     socket_path: &Path,
     mutation: mxr_protocol::MutationCommand,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
-    match ipc_request(socket_path, Request::Mutation(mutation)).await? {
+    match ipc_request(socket_path, Request::mutation(mutation)).await? {
         ResponseData::Ack => Ok(Json(serde_json::json!({ "ok": true }))),
         ResponseData::MutationResult { result } => Ok(Json(serde_json::json!({
             "ok": result.failed == 0,

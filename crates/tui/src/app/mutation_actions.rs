@@ -26,7 +26,7 @@ impl App {
                     self.queue_or_confirm_bulk_action(
                         "Archive messages",
                         bulk_message_detail("archive", ids.len()),
-                        Request::Mutation(MutationCommand::Archive {
+                        Request::mutation(MutationCommand::Archive {
                             message_ids: ids.clone(),
                         }),
                         completion_effect,
@@ -54,7 +54,7 @@ impl App {
                     self.queue_or_confirm_bulk_action(
                         "Mark messages as read and archive",
                         bulk_message_detail("mark as read and archive", ids.len()),
-                        Request::Mutation(MutationCommand::ReadAndArchive {
+                        Request::mutation(MutationCommand::ReadAndArchive {
                             message_ids: ids.clone(),
                         }),
                         completion_effect,
@@ -75,7 +75,7 @@ impl App {
                     self.queue_or_confirm_bulk_action(
                         "Delete messages",
                         bulk_message_detail("delete", ids.len()),
-                        Request::Mutation(MutationCommand::Trash {
+                        Request::mutation(MutationCommand::Trash {
                             message_ids: ids.clone(),
                         }),
                         effect.clone(),
@@ -92,7 +92,7 @@ impl App {
                     self.queue_or_confirm_bulk_action(
                         "Mark as spam",
                         bulk_message_detail("mark as spam", ids.len()),
-                        Request::Mutation(MutationCommand::Spam {
+                        Request::mutation(MutationCommand::Spam {
                             message_ids: ids.clone(),
                         }),
                         effect.clone(),
@@ -168,7 +168,7 @@ impl App {
                             "Unstar messages"
                         },
                         bulk_message_detail(verb, ids.len()),
-                        Request::Mutation(MutationCommand::Star {
+                        Request::mutation(MutationCommand::Star {
                             message_ids: ids.clone(),
                             starred,
                         }),
@@ -193,7 +193,7 @@ impl App {
                     self.queue_or_confirm_bulk_action(
                         "Mark messages as read",
                         bulk_message_detail("mark as read", ids.len()),
-                        Request::Mutation(MutationCommand::SetRead {
+                        Request::mutation(MutationCommand::SetRead {
                             message_ids: ids.clone(),
                             read: true,
                         }),
@@ -223,7 +223,7 @@ impl App {
                     self.queue_or_confirm_bulk_action(
                         "Mark messages as unread",
                         bulk_message_detail("mark as unread", ids.len()),
-                        Request::Mutation(MutationCommand::SetRead {
+                        Request::mutation(MutationCommand::SetRead {
                             message_ids: ids.clone(),
                             read: false,
                         }),
@@ -262,7 +262,7 @@ impl App {
                                 ids.len(),
                                 pluralize_messages(ids.len())
                             ),
-                            Request::Mutation(MutationCommand::ModifyLabels {
+                            Request::mutation(MutationCommand::ModifyLabels {
                                 message_ids: ids.clone(),
                                 add: vec![label_name.clone()],
                                 remove: vec![],
@@ -299,7 +299,7 @@ impl App {
                                 pluralize_messages(ids.len()),
                                 label_name
                             ),
-                            Request::Mutation(MutationCommand::Move {
+                            Request::mutation(MutationCommand::Move {
                                 message_ids: ids.clone(),
                                 target_label: label_name.clone(),
                             }),

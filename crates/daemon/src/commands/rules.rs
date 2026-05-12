@@ -105,6 +105,7 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
         }),
         QueryNode::Filter(
             FilterKind::Answered
+            | FilterKind::ReplyLater
             | FilterKind::Anywhere
             | FilterKind::HasUserLabels
             | FilterKind::NoUserLabels

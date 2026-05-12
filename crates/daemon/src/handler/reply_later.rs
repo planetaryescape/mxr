@@ -31,7 +31,40 @@ pub(super) async fn set_reply_later(
             .await
             .map_err(|e| e.to_string())?;
     }
+    refresh_reply_later_search_marker(state, message_id, flag).await?;
     Ok(ResponseData::Ack)
+}
+
+async fn refresh_reply_later_search_marker(
+    state: &AppState,
+    message_id: &MessageId,
+    reply_later: bool,
+) -> Result<(), String> {
+    let Some(envelope) = state
+        .store
+        .get_envelope(message_id)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(());
+    };
+    let body = state
+        .store
+        .get_body(message_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    state
+        .search
+        .apply_batch(mxr_search::SearchUpdateBatch {
+            entries: vec![mxr_search::SearchIndexEntry {
+                envelope,
+                body,
+                reply_later,
+            }],
+            removed_message_ids: Vec::new(),
+        })
+        .await
+        .map_err(|e| e.to_string())
 }
 
 pub(super) async fn list_reply_queue(state: &AppState) -> HandlerResult {

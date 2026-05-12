@@ -25,9 +25,12 @@ pub fn event_matches_type(event: &DaemonEvent, event_type: Option<&str>) -> bool
                 | DaemonEvent::OperationFailed { .. }
                 | DaemonEvent::OperationCancelled { .. }
         ),
+        "mutation" => matches!(event, DaemonEvent::MutationReconciliationFailed { .. }),
         "error" => matches!(
             event,
-            DaemonEvent::SyncError { .. } | DaemonEvent::OperationFailed { .. }
+            DaemonEvent::SyncError { .. }
+                | DaemonEvent::OperationFailed { .. }
+                | DaemonEvent::MutationReconciliationFailed { .. }
         ),
         _ => false,
     }
@@ -101,6 +104,12 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
                 message,
                 ..
             } => format!("operation cancelled id={operation_id} operation={operation} {message}"),
+            DaemonEvent::MutationReconciliationFailed {
+                client_correlation_id,
+                error_summary,
+            } => format!(
+                "mutation reconciliation_failed correlation_id={client_correlation_id} {error_summary}"
+            ),
         },
     })
 }
@@ -121,6 +130,17 @@ pub async fn run(event_type: Option<String>, format: Option<OutputFormat>) -> an
 mod tests {
     use super::*;
     use mxr_core::{id::AccountId, MessageId};
+
+    #[test]
+    fn mutation_filter_matches_reconciliation_failed() {
+        let event = DaemonEvent::MutationReconciliationFailed {
+            client_correlation_id: "9".into(),
+            error_summary: "skipped".into(),
+        };
+        assert!(event_matches_type(&event, Some("mutation")));
+        assert!(event_matches_type(&event, Some("error")));
+        assert!(!event_matches_type(&event, Some("sync")));
+    }
 
     #[test]
     fn sync_filter_matches_sync_events() {

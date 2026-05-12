@@ -31,6 +31,15 @@ pub(crate) async fn rewrite_to_threshold(
     text: String,
     max_iterations: Option<u8>,
 ) -> Result<(String, HumanizerReportSummaryData, u8), String> {
+    rewrite_to_threshold_with_context(state, text, max_iterations, None).await
+}
+
+pub(crate) async fn rewrite_to_threshold_with_context(
+    state: &AppState,
+    text: String,
+    max_iterations: Option<u8>,
+    voice_context: Option<&str>,
+) -> Result<(String, HumanizerReportSummaryData, u8), String> {
     let config = state.config_snapshot().humanizer;
     let opts = HumanizerOpts {
         score_threshold: config.score_threshold,
@@ -55,7 +64,7 @@ pub(crate) async fn rewrite_to_threshold(
     let mut iterations = 0;
 
     for _ in 0..max_iterations {
-        let prompt = rewrite_prompt(&current_text, &current_report);
+        let prompt = rewrite_prompt(&current_text, &current_report, voice_context);
         let response = match state
             .llm
             .for_feature(LlmFeature::HumanizeRewrite)
@@ -94,7 +103,11 @@ pub(crate) async fn rewrite_to_threshold(
     }
 }
 
-fn rewrite_prompt(text: &str, report: &mxr_humanizer::HumanizerReport) -> String {
+fn rewrite_prompt(
+    text: &str,
+    report: &mxr_humanizer::HumanizerReport,
+    voice_context: Option<&str>,
+) -> String {
     let mut prompt = String::from(
         "Rewrite the draft below to remove the flagged AI-writing patterns while preserving meaning, tone, and the recipient-specific voice match. Return only the rewritten draft.\n\n[FLAGGED PATTERNS]\n",
     );
@@ -108,6 +121,11 @@ fn rewrite_prompt(text: &str, report: &mxr_humanizer::HumanizerReport) -> String
                 .map(|suggestion| format!(" ({suggestion})"))
                 .unwrap_or_default()
         ));
+    }
+    if let Some(voice_context) = voice_context.filter(|value| !value.trim().is_empty()) {
+        prompt.push_str("\n[ORIGINAL VOICE CONTEXT]\n");
+        prompt.push_str(voice_context.trim());
+        prompt.push('\n');
     }
     prompt.push_str("\n[DRAFT]\n");
     prompt.push_str(text);

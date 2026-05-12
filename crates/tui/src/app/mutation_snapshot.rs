@@ -16,6 +16,7 @@ use std::collections::VecDeque;
 
 use mxr_core::id::MessageId;
 use mxr_core::types::MessageFlags;
+use mxr_core::Envelope;
 use mxr_protocol::Request;
 
 use super::MutationEffect;
@@ -34,6 +35,11 @@ pub struct MutationId(u64);
 impl MutationId {
     pub fn raw(self) -> u64 {
         self.0
+    }
+
+    /// Reconstruct from the numeric half of `client_correlation_id` echoed by the daemon.
+    pub fn from_raw(raw: u64) -> Self {
+        Self(raw)
     }
 }
 
@@ -71,6 +77,12 @@ pub enum MutationSnapshot {
     /// Prior label-provider-id sets for messages whose labels were
     /// optimistically modified.
     Labels(Vec<(MessageId, Vec<String>)>),
+    /// Full envelopes removed optimistically from mail/search/thread lists.
+    /// Restored on reconciliation failure by merging back (date-desc sort).
+    RemovedFromLists(Vec<Envelope>),
+    /// Prior process-local reply-later row markers for messages whose
+    /// reply-later state was optimistically changed.
+    ReplyLater(Vec<(MessageId, bool)>),
     /// Effect doesn't carry rollback state (e.g. `RefreshList`,
     /// `StatusOnly`, `SentSuccess`). Failure routing surfaces the error
     /// but no inverse application runs.

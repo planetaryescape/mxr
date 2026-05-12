@@ -32,6 +32,7 @@ pub struct MxrSchema {
     pub is_trash: Field,
     pub is_spam: Field,
     pub is_answered: Field,
+    pub is_reply_later: Field,
 }
 
 impl MxrSchema {
@@ -70,6 +71,7 @@ impl MxrSchema {
         let is_trash = builder.add_bool_field("is_trash", INDEXED);
         let is_spam = builder.add_bool_field("is_spam", INDEXED);
         let is_answered = builder.add_bool_field("is_answered", INDEXED);
+        let is_reply_later = builder.add_bool_field("is_reply_later", INDEXED);
 
         let schema = builder.build();
 
@@ -105,6 +107,7 @@ impl MxrSchema {
             is_trash,
             is_spam,
             is_answered,
+            is_reply_later,
         }
     }
 }

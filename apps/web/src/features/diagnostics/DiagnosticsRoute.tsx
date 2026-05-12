@@ -12,6 +12,14 @@ import {
   fetchLogs,
   fetchSemanticStatus,
   fetchSyncStatus,
+  installSemanticProfile,
+  reindexSemantic,
+  semanticProfiles,
+  semanticSnapshot,
+  setSemanticEnabled,
+  useSemanticProfile,
+  type SemanticProfile,
+  type SemanticStatusSnapshot,
 } from "./api";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -47,6 +55,7 @@ export function DiagnosticsRoute() {
     queryFn: fetchSemanticStatus,
     refetchInterval: 15_000,
   });
+  const semanticStatus = semanticSnapshot(semantic.data);
   const bug = useMutation({
     mutationFn: fetchBugReport,
     onSuccess: async (result) => {
@@ -59,12 +68,50 @@ export function DiagnosticsRoute() {
     mutationFn: backfillSemantic,
     onSuccess: () => {
       toast.success("Semantic backfill queued");
-      void semantic.refetch();
-      void doctor.refetch();
-      void status.refetch();
+      refreshSemanticHealth();
     },
     onError: (error) => toast.error("Semantic backfill failed", { description: error.message }),
   });
+  const semanticEnable = useMutation({
+    mutationFn: setSemanticEnabled,
+    onSuccess: (_, enabled) => {
+      toast.success(enabled ? "Semantic search enabled" : "Semantic search disabled");
+      refreshSemanticHealth();
+    },
+    onError: (error) => toast.error("Semantic update failed", { description: error.message }),
+  });
+  const semanticReindex = useMutation({
+    mutationFn: reindexSemantic,
+    onSuccess: () => {
+      toast.success("Semantic reindex queued");
+      refreshSemanticHealth();
+    },
+    onError: (error) => toast.error("Semantic reindex failed", { description: error.message }),
+  });
+  const semanticInstall = useMutation({
+    mutationFn: installSemanticProfile,
+    onSuccess: (_, profile) => {
+      toast.success(`${profile} install queued`);
+      refreshSemanticHealth();
+    },
+    onError: (error) =>
+      toast.error("Semantic profile install failed", { description: error.message }),
+  });
+  const semanticUse = useMutation({
+    mutationFn: useSemanticProfile,
+    onSuccess: (_, profile) => {
+      toast.success(`${profile} selected`);
+      refreshSemanticHealth();
+    },
+    onError: (error) =>
+      toast.error("Semantic profile switch failed", { description: error.message }),
+  });
+
+  function refreshSemanticHealth() {
+    void semantic.refetch();
+    void doctor.refetch();
+    void status.refetch();
+  }
 
   if (status.isError && doctor.isError)
     return (
@@ -94,20 +141,23 @@ export function DiagnosticsRoute() {
           title="Feature health"
           icon={Activity}
           value={status.data?.feature_health ?? doctor.data?.report?.feature_health}
-          action={
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => semanticBackfill.mutate()}
-              disabled={semanticBackfill.isPending}
-            >
-              Backfill semantic
-            </Button>
-          }
         />
         <Panel title="Doctor report" icon={Clipboard} value={doctor.data?.report} />
         <Panel title="Sync status" icon={RefreshCw} value={sync.data} />
-        <Panel title="Semantic status" icon={Activity} value={semantic.data} />
+        <SemanticPanel
+          status={semanticStatus}
+          loading={semantic.isLoading}
+          enablePending={semanticEnable.isPending}
+          backfillPending={semanticBackfill.isPending}
+          reindexPending={semanticReindex.isPending}
+          installPending={semanticInstall.isPending}
+          usePending={semanticUse.isPending}
+          onSetEnabled={(enabled) => semanticEnable.mutate(enabled)}
+          onBackfill={() => semanticBackfill.mutate()}
+          onReindex={() => semanticReindex.mutate()}
+          onInstall={(profile) => semanticInstall.mutate(profile)}
+          onUse={(profile) => semanticUse.mutate(profile)}
+        />
         <Panel title="Recent logs" icon={Clipboard} value={logs.data?.lines ?? logs.data} wide />
         <Panel
           title="Recent events"
@@ -116,6 +166,133 @@ export function DiagnosticsRoute() {
           wide
         />
       </main>
+    </div>
+  );
+}
+
+function SemanticPanel({
+  status,
+  loading,
+  enablePending,
+  backfillPending,
+  reindexPending,
+  installPending,
+  usePending,
+  onSetEnabled,
+  onBackfill,
+  onReindex,
+  onInstall,
+  onUse,
+}: {
+  status: SemanticStatusSnapshot | null;
+  loading: boolean;
+  enablePending: boolean;
+  backfillPending: boolean;
+  reindexPending: boolean;
+  installPending: boolean;
+  usePending: boolean;
+  onSetEnabled: (enabled: boolean) => void;
+  onBackfill: () => void;
+  onReindex: () => void;
+  onInstall: (profile: SemanticProfile) => void;
+  onUse: (profile: SemanticProfile) => void;
+}) {
+  const profiles = new Map((status?.profiles ?? []).map((record) => [record.profile, record]));
+  const busy = enablePending || backfillPending || reindexPending || installPending || usePending;
+  return (
+    <section className="rounded-xl border border-border bg-surface p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <Activity className="size-3.5 text-primary" />
+          Semantic controls
+        </h2>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onSetEnabled(!(status?.enabled ?? false))}
+            disabled={!status || enablePending}
+          >
+            {status?.enabled ? "Disable semantic" : "Enable semantic"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={onBackfill} disabled={backfillPending}>
+            Backfill semantic
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onReindex}
+            disabled={!status || reindexPending}
+          >
+            Reindex active profile
+          </Button>
+        </div>
+      </div>
+      {!status ? (
+        <div className="rounded-lg bg-muted p-3 text-2xs text-muted-foreground">
+          {loading ? "Loading semantic status..." : "No semantic status."}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid gap-2 rounded-lg bg-muted p-3 text-2xs md:grid-cols-4">
+            <Metric label="Enabled" value={status.enabled ? "yes" : "no"} />
+            <Metric label="Active profile" value={status.active_profile} />
+            <Metric label="Queue" value={String(status.runtime?.queue_depth ?? 0)} />
+            <Metric label="In flight" value={String(status.runtime?.in_flight ?? 0)} />
+          </div>
+          <div className="space-y-2">
+            {semanticProfiles.map((profile) => {
+              const record = profiles.get(profile);
+              const active = status.active_profile === profile;
+              return (
+                <div
+                  key={profile}
+                  className="grid gap-2 rounded-lg border border-border bg-background p-3 md:grid-cols-[1fr_auto] md:items-center"
+                >
+                  <div>
+                    <div className="font-mono text-xs text-foreground">{profile}</div>
+                    <div className="mt-1 text-2xs text-muted-foreground">
+                      {record
+                        ? `${record.status} · ${record.backend} · ${record.dimensions} dims · ${record.progress_completed}/${record.progress_total}`
+                        : "Not installed"}
+                    </div>
+                    {record?.last_error ? (
+                      <div className="mt-1 text-2xs text-destructive">{record.last_error}</div>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onInstall(profile)}
+                      disabled={busy}
+                    >
+                      Install
+                    </Button>
+                    <Button
+                      variant={active ? "secondary" : "outline"}
+                      size="sm"
+                      onClick={() => onUse(profile)}
+                      disabled={busy || active || !record}
+                    >
+                      {active ? "Active" : "Use"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="font-mono uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mt-1 font-mono text-foreground">{value}</div>
     </div>
   );
 }

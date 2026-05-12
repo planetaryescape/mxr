@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+assertion_line: 14
+expression: stdout
+---
+List top inbound senders by message volume
+
+Usage: mxr senders [OPTIONS]
+
+Options:
+      --top <TOP>        [default: 20]
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

@@ -10,6 +10,14 @@ use crate::output::resolve_format;
 use mxr_core::id::ThreadId;
 use mxr_protocol::*;
 
+struct DraftAssistSuggestion {
+    body: String,
+    model: String,
+    voice_match: Option<VoiceMatchData>,
+    humanizer: Option<HumanizerReportSummaryData>,
+    rewrite_iterations: u8,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     thread_id: Option<String>,
@@ -35,8 +43,8 @@ pub async fn run(
     let mut payloads: Vec<serde_json::Value> = Vec::with_capacity(ids.len());
 
     for (index, id) in ids.iter().enumerate() {
-        let (body, model) = match draft_one(&mut client, id, instruction.clone()).await {
-            Ok(pair) => pair,
+        let suggestion = match draft_one(&mut client, id, instruction.clone()).await {
+            Ok(suggestion) => suggestion,
             Err(error) => {
                 if matches!(fmt, OutputFormat::Json | OutputFormat::Jsonl) {
                     payloads.push(serde_json::json!({
@@ -54,8 +62,11 @@ pub async fn run(
             OutputFormat::Json | OutputFormat::Jsonl => {
                 payloads.push(serde_json::json!({
                     "thread_id": id.to_string(),
-                    "model": model,
-                    "body": body,
+                    "model": suggestion.model,
+                    "body": suggestion.body,
+                    "voice_match": suggestion.voice_match,
+                    "humanizer": suggestion.humanizer,
+                    "rewrite_iterations": suggestion.rewrite_iterations,
                 }));
             }
             OutputFormat::Csv => {
@@ -63,7 +74,11 @@ pub async fn run(
                 if index == 0 {
                     writer.write_record(["thread_id", "model", "body"])?;
                 }
-                writer.write_record(&[id.to_string(), model.clone(), body.clone()])?;
+                writer.write_record(&[
+                    id.to_string(),
+                    suggestion.model.clone(),
+                    suggestion.body.clone(),
+                ])?;
                 let bytes = writer.into_inner()?;
                 let line = String::from_utf8(bytes)?;
                 print!("{line}");
@@ -78,8 +93,8 @@ pub async fn run(
                     }
                     println!("--- {} ---", id);
                 }
-                println!("{body}");
-                eprintln!("\n[via {model} — review before sending]");
+                println!("{}", suggestion.body);
+                eprintln!("\n[via {} — review before sending]", suggestion.model);
             }
         }
     }
@@ -107,7 +122,7 @@ async fn draft_one(
     client: &mut IpcClient,
     thread_id: &ThreadId,
     instruction: String,
-) -> anyhow::Result<(String, String)> {
+) -> anyhow::Result<DraftAssistSuggestion> {
     let resp = client
         .request(Request::DraftAssist {
             thread_id: thread_id.clone(),
@@ -116,8 +131,21 @@ async fn draft_one(
         .await?;
     match resp {
         Response::Ok {
-            data: ResponseData::DraftSuggestion { body, model, .. },
-        } => Ok((body, model)),
+            data:
+                ResponseData::DraftSuggestion {
+                    body,
+                    model,
+                    voice_match,
+                    humanizer,
+                    rewrite_iterations,
+                },
+        } => Ok(DraftAssistSuggestion {
+            body,
+            model,
+            voice_match,
+            humanizer,
+            rewrite_iterations,
+        }),
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }

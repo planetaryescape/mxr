@@ -38,6 +38,7 @@ import { toast } from "sonner";
 import {
   fetchSenderProfile,
   fetchThread,
+  listCommitments,
   modifyLabels,
   shellKey,
   summarizeThread,
@@ -91,6 +92,14 @@ interface ThreadSummaryView {
   generatedAt?: string;
   text: string;
   bullets: string[];
+}
+
+interface ThreadCommitmentView {
+  id: string;
+  direction: string;
+  whoOwes: string;
+  what: string;
+  byWhen?: string | null;
 }
 
 export function ThreadRoute() {
@@ -233,6 +242,21 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
     [shell.data, threadLabels],
   );
   const primarySenderEmail = extractEmail(primaryMessage?.sender_detail ?? primaryMessage?.sender);
+  const commitments = useQuery({
+    queryKey: ["commitments", data.thread.account_id, primarySenderEmail],
+    queryFn: () =>
+      listCommitments({
+        accountId: data.thread.account_id,
+        email: primarySenderEmail ?? undefined,
+        status: "open",
+      }),
+    enabled: Boolean(primarySenderEmail),
+    staleTime: 30_000,
+  });
+  const openCommitments = useMemo(
+    () => extractThreadCommitments(commitments.data),
+    [commitments.data],
+  );
   const readerFull = readerLayout === "full";
   const toggleReaderLayout = useCallback(() => {
     setReaderLayout(readerFull ? "split" : "full");
@@ -619,6 +643,9 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
           ) : summary.isPending ? (
             <ThreadSummaryLoading />
           ) : null}
+          {openCommitments.length > 0 ? (
+            <ThreadCommitmentChips commitments={openCommitments} />
+          ) : null}
           {data.messages.map((message) => (
             <ThreadMessage
               key={message.id}
@@ -695,6 +722,37 @@ function ThreadSummaryLoading() {
         <RefreshCw className="size-3.5 animate-spin" />
         Summarizing thread…
       </span>
+    </section>
+  );
+}
+
+function ThreadCommitmentChips({ commitments }: { commitments: ThreadCommitmentView[] }) {
+  return (
+    <section
+      aria-label="Open commitments"
+      className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3"
+    >
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-foreground">
+        <FileText className="size-3.5 text-amber-500" />
+        Open commitments
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {commitments.slice(0, 4).map((commitment) => (
+          <Badge
+            key={commitment.id}
+            variant="outline"
+            className="max-w-full gap-1.5 border-amber-500/40 bg-background/70 py-1 text-2xs"
+            title={commitment.what}
+          >
+            <span className="font-medium">{commitment.whoOwes}</span>
+            <span className="text-muted-foreground">{commitment.direction}</span>
+            <span className="max-w-[320px] truncate">{commitment.what}</span>
+            {commitment.byWhen ? (
+              <span className="text-muted-foreground">due {shortDate(commitment.byWhen)}</span>
+            ) : null}
+          </Badge>
+        ))}
+      </div>
     </section>
   );
 }
@@ -1002,6 +1060,34 @@ function normalizeThreadSummary(payload: unknown): ThreadSummaryView | null {
   const model = typeof source?.model === "string" ? source.model : undefined;
   const generatedAt = typeof source?.generated_at === "string" ? source.generated_at : undefined;
   return { generatedAt, model, text, bullets: summaryBullets(text) };
+}
+
+function extractThreadCommitments(payload: unknown): ThreadCommitmentView[] {
+  const commitments =
+    isRecord(payload) && Array.isArray(payload.commitments) ? payload.commitments : [];
+  return commitments.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const id = typeof item.id === "string" ? item.id : "";
+    const what = typeof item.what === "string" ? item.what.trim() : "";
+    const whoOwes = typeof item.who_owes === "string" ? item.who_owes.trim() : "";
+    const direction = typeof item.direction === "string" ? item.direction : "";
+    if (!id || !what || !whoOwes || !direction) return [];
+    return [
+      {
+        id,
+        what,
+        whoOwes,
+        direction,
+        byWhen: typeof item.by_when === "string" ? item.by_when : null,
+      },
+    ];
+  });
+}
+
+function shortDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function summaryBullets(text: string): string[] {

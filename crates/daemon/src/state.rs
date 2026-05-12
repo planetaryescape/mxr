@@ -245,20 +245,20 @@ fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_
     let mut blocked = HashMap::<mxr_llm::LlmFeature, String>::new();
     for (feature, override_config) in llm_override_entries(&config.overrides) {
         let effective = config.effective_override(override_config);
-        if relationship_data_feature(feature)
-            && !config.allow_cloud_relationship_data
-            && !is_local_llm_url(&effective.base_url)
-        {
-            blocked.insert(
-                feature,
-                format!(
-                    "{feature:?} override points at non-local endpoint {}; set llm.allow_cloud_relationship_data=true to permit this",
-                    effective.base_url
-                ),
-            );
+        if let Some(reason) = relationship_data_block_reason(feature, config, &effective) {
+            blocked.insert(feature, reason);
             continue;
         }
         providers.insert(feature, build_llm_provider(&effective));
+    }
+    for feature in relationship_data_features() {
+        if providers.contains_key(&feature) || blocked.contains_key(&feature) {
+            continue;
+        }
+        let effective = base_llm_config(config);
+        if let Some(reason) = relationship_data_block_reason(feature, config, &effective) {
+            blocked.insert(feature, reason);
+        }
     }
     runtime.replace_feature_providers(providers, blocked);
 }
@@ -295,6 +295,32 @@ fn relationship_data_feature(feature: mxr_llm::LlmFeature) -> bool {
             | mxr_llm::LlmFeature::Commitments
             | mxr_llm::LlmFeature::VoiceMatch
     )
+}
+
+fn relationship_data_features() -> [mxr_llm::LlmFeature; 3] {
+    [
+        mxr_llm::LlmFeature::RelationshipSummary,
+        mxr_llm::LlmFeature::Commitments,
+        mxr_llm::LlmFeature::VoiceMatch,
+    ]
+}
+
+fn relationship_data_block_reason(
+    feature: mxr_llm::LlmFeature,
+    config: &mxr_config::LlmConfig,
+    effective: &mxr_config::EffectiveLlmConfig,
+) -> Option<String> {
+    if relationship_data_feature(feature)
+        && effective.enabled
+        && !config.allow_cloud_relationship_data
+        && !is_local_llm_url(&effective.base_url)
+    {
+        return Some(format!(
+            "{feature:?} points at non-local endpoint {}; set llm.allow_cloud_relationship_data=true to permit relationship data",
+            effective.base_url
+        ));
+    }
+    None
 }
 
 fn is_local_llm_url(base_url: &str) -> bool {
@@ -1717,5 +1743,61 @@ use_tls = true
         assert!(state.get_provider(None).is_ok());
         assert!(state.get_provider(Some(&other_account_id)).is_err());
         assert!(state.sync_provider_for_account(&other_account_id).is_none());
+    }
+
+    #[test]
+    fn relationship_llm_features_block_nonlocal_base_without_privacy_opt_in() {
+        let mut llm = mxr_config::LlmConfig {
+            enabled: true,
+            base_url: "https://api.openai.com/v1".to_string(),
+            ..mxr_config::LlmConfig::default()
+        };
+
+        let runtime = build_llm_runtime(&llm);
+
+        assert!(runtime
+            .feature_block_reason(mxr_llm::LlmFeature::RelationshipSummary)
+            .is_some());
+        assert!(runtime
+            .feature_block_reason(mxr_llm::LlmFeature::Commitments)
+            .is_some());
+        assert!(runtime
+            .feature_block_reason(mxr_llm::LlmFeature::VoiceMatch)
+            .is_some());
+        assert!(runtime
+            .feature_block_reason(mxr_llm::LlmFeature::DraftAssist)
+            .is_none());
+
+        llm.allow_cloud_relationship_data = true;
+        let runtime = build_llm_runtime(&llm);
+
+        assert!(runtime
+            .feature_block_reason(mxr_llm::LlmFeature::RelationshipSummary)
+            .is_none());
+    }
+
+    #[test]
+    fn local_relationship_override_is_not_blocked_by_nonlocal_base() {
+        let llm = mxr_config::LlmConfig {
+            enabled: true,
+            base_url: "https://api.openai.com/v1".to_string(),
+            overrides: mxr_config::LlmOverrides {
+                relationship_summary: Some(mxr_config::LlmOverrideConfig {
+                    base_url: Some("http://localhost:11434/v1".to_string()),
+                    ..mxr_config::LlmOverrideConfig::default()
+                }),
+                ..mxr_config::LlmOverrides::default()
+            },
+            ..mxr_config::LlmConfig::default()
+        };
+
+        let runtime = build_llm_runtime(&llm);
+
+        assert!(runtime
+            .feature_block_reason(mxr_llm::LlmFeature::RelationshipSummary)
+            .is_none());
+        assert!(runtime
+            .feature_block_reason(mxr_llm::LlmFeature::Commitments)
+            .is_some());
     }
 }

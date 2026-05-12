@@ -273,6 +273,15 @@ fn validate_draft_with_mode(
     if body.trim().is_empty() {
         issues.push(ComposeValidation::Warning("Message body is empty".into()));
     }
+    if matches!(mode, ComposeValidationMode::Send) {
+        let vars = unresolved_template_vars(body);
+        if !vars.is_empty() {
+            issues.push(ComposeValidation::Warning(format!(
+                "Unresolved snippet variable(s): {}",
+                vars.join(", ")
+            )));
+        }
+    }
 
     // Validate email addresses
     for addr in frontmatter
@@ -290,6 +299,28 @@ fn validate_draft_with_mode(
     }
 
     issues
+}
+
+fn unresolved_template_vars(body: &str) -> Vec<String> {
+    let mut vars = Vec::new();
+    let mut rest = body;
+    while let Some(start) = rest.find('{') {
+        rest = &rest[start + 1..];
+        let Some(end) = rest.find('}') else {
+            break;
+        };
+        let name = rest[..end].trim();
+        if !name.is_empty()
+            && name
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+            && !vars.iter().any(|existing| existing == name)
+        {
+            vars.push(name.to_string());
+        }
+        rest = &rest[end + 1..];
+    }
+    vars
 }
 
 #[derive(Debug)]
@@ -586,6 +617,28 @@ mod tests {
                 "Warning: Subject is empty",
                 "Error: Invalid email address: not-an-email",
             ]
+        );
+    }
+
+    #[test]
+    fn send_validation_warns_about_unresolved_snippet_vars() {
+        let fm = ComposeFrontmatter {
+            to: "alice@example.com".into(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: "Hello".into(),
+            from: "me@example.com".into(),
+            in_reply_to: None,
+            references: Vec::new(),
+            thread_id: None,
+            attach: Vec::new(),
+            signature: None,
+        };
+        let issues = validate_draft(&fm, "Hi {first_name}, see {date} and {first_name}.");
+
+        assert_eq!(
+            issue_messages(&issues),
+            vec!["Warning: Unresolved snippet variable(s): first_name, date"]
         );
     }
 

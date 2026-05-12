@@ -26,12 +26,83 @@ export function fetchSyncStatus(accountId: string) {
   );
 }
 
+export const semanticProfiles = ["bge-small-en-v1.5", "multilingual-e5-small", "bge-m3"] as const;
+
+export type SemanticProfile = (typeof semanticProfiles)[number];
+
+export interface SemanticProfileRecord {
+  profile: SemanticProfile;
+  backend: string;
+  model_revision: string;
+  dimensions: number;
+  status: "pending" | "ready" | "indexing" | "error";
+  installed_at?: string | null;
+  activated_at?: string | null;
+  last_indexed_at?: string | null;
+  progress_completed: number;
+  progress_total: number;
+  last_error?: string | null;
+}
+
+export interface SemanticStatusSnapshot {
+  enabled: boolean;
+  active_profile: SemanticProfile;
+  profiles: SemanticProfileRecord[];
+  runtime?: {
+    queue_depth?: number;
+    in_flight?: number;
+    last_queue_wait_ms?: number | null;
+    last_extract_ms?: number | null;
+    last_embedding_prep_ms?: number | null;
+    last_ingest_ms?: number | null;
+  };
+}
+
+type SemanticStatusResponse =
+  | { status: SemanticStatusSnapshot }
+  | { snapshot: SemanticStatusSnapshot }
+  | SemanticStatusSnapshot;
+
 export function fetchSemanticStatus() {
-  return apiFetch<Record<string, unknown>>("/api/v1/platform/semantic/status");
+  return apiFetch<SemanticStatusResponse>("/api/v1/platform/semantic/status");
+}
+
+export function semanticSnapshot(response: SemanticStatusResponse | undefined) {
+  if (!response) return null;
+  if ("status" in response) return response.status;
+  if ("snapshot" in response) return response.snapshot;
+  return response;
+}
+
+export function setSemanticEnabled(enabled: boolean) {
+  return apiFetch<SemanticStatusResponse>("/api/v1/platform/semantic/enable", {
+    method: "POST",
+    body: { enabled },
+  });
+}
+
+export function reindexSemantic() {
+  return apiFetch<Record<string, unknown>>("/api/v1/platform/semantic/reindex", {
+    method: "POST",
+  });
+}
+
+export function installSemanticProfile(profile: SemanticProfile) {
+  return apiFetch<SemanticStatusResponse>("/api/v1/platform/semantic/profiles/install", {
+    method: "POST",
+    body: { profile },
+  });
+}
+
+export function useSemanticProfile(profile: SemanticProfile) {
+  return apiFetch<SemanticStatusResponse>("/api/v1/platform/semantic/profiles/use", {
+    method: "POST",
+    body: { profile },
+  });
 }
 
 export function backfillSemantic() {
-  return apiFetch<Record<string, unknown>>("/api/v1/platform/semantic/backfill", {
+  return apiFetch<SemanticStatusResponse>("/api/v1/platform/semantic/backfill", {
     method: "POST",
   });
 }

@@ -297,6 +297,7 @@ impl App {
             frame,
             area,
             self.compose.pending_send_confirm.as_ref(),
+            self.compose.pending_send_at_input.as_deref(),
             theme,
         );
 

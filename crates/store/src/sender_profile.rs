@@ -13,8 +13,9 @@
 //!     sender and has no outbound reply yet.
 
 use crate::{decode_id, decode_optional_timestamp, decode_timestamp, trace_lookup, trace_query};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveTime, TimeZone, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
+use mxr_core::types::{ResponseTimeBucket, RESPONSE_TIME_HISTOGRAM_EDGES};
 use sqlx::Row;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,6 +38,9 @@ pub struct SenderProfile {
     pub outbound_storage_bytes: u64,
     pub attachment_count: u32,
     pub attachment_bytes: u64,
+    pub unanswered_question: Option<SenderUnansweredQuestion>,
+    pub response_histogram: Vec<ResponseTimeBucket>,
+    pub weekly_activity: Vec<SenderWeeklyActivity>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -50,6 +54,33 @@ pub struct SenderEmailReference {
     pub date: DateTime<Utc>,
     pub direction: String,
     pub has_attachments: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SenderSummary {
+    pub account_id: AccountId,
+    pub display_name: Option<String>,
+    pub sender_email: String,
+    pub message_count: u32,
+    pub unread_count: u32,
+    pub latest_subject: String,
+    pub latest_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SenderUnansweredQuestion {
+    pub message_id: MessageId,
+    pub thread_id: ThreadId,
+    pub subject: String,
+    pub received_at: DateTime<Utc>,
+    pub days_waiting: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SenderWeeklyActivity {
+    pub week_start: DateTime<Utc>,
+    pub inbound_count: u32,
+    pub outbound_count: u32,
 }
 
 impl super::Store {
@@ -175,6 +206,12 @@ impl super::Store {
         .fetch_one(self.reader())
         .await?;
 
+        let unanswered_question = self
+            .sender_unanswered_question(account_id, email, r.cadence_days_p50)
+            .await?;
+        let response_histogram = self.sender_response_histogram(account_id, email).await?;
+        let weekly_activity = self.sender_weekly_activity(account_id, email).await?;
+
         Ok(Some(SenderProfile {
             account_id: decode_id(&r.account_id)?,
             email: r.email,
@@ -194,7 +231,172 @@ impl super::Store {
             outbound_storage_bytes: outbound_storage_bytes.max(0) as u64,
             attachment_count: attachment_count.max(0) as u32,
             attachment_bytes: attachment_bytes.max(0) as u64,
+            unanswered_question,
+            response_histogram,
+            weekly_activity,
         }))
+    }
+
+    async fn sender_unanswered_question(
+        &self,
+        account_id: &AccountId,
+        email: &str,
+        cadence_days_p50: Option<f64>,
+    ) -> Result<Option<SenderUnansweredQuestion>, sqlx::Error> {
+        let row = sqlx::query(
+            r#"SELECT id, thread_id, subject, snippet, date
+               FROM messages inbound
+               WHERE inbound.account_id = ?1
+                 AND inbound.direction = 'inbound'
+                 AND LOWER(inbound.from_email) = LOWER(?2)
+               ORDER BY inbound.date DESC, inbound.id DESC
+               LIMIT 1"#,
+        )
+        .bind(account_id.as_str())
+        .bind(email)
+        .fetch_optional(self.reader())
+        .await?;
+
+        let Some(row) = row else { return Ok(None) };
+        let subject: String = row.get("subject");
+        let snippet: String = row.get("snippet");
+        if !subject.contains('?') && !snippet.contains('?') {
+            return Ok(None);
+        }
+
+        let thread_id: String = row.get("thread_id");
+        let date: i64 = row.get("date");
+        let replied: Option<i64> = sqlx::query_scalar(
+            r#"SELECT 1
+               FROM messages outbound
+               WHERE outbound.account_id = ?1
+                 AND outbound.thread_id = ?2
+                 AND outbound.direction = 'outbound'
+                 AND outbound.date > ?3
+                 AND (
+                   EXISTS (
+                     SELECT 1 FROM json_each(outbound.to_addrs)
+                     WHERE LOWER(json_extract(value, '$.email')) = LOWER(?4)
+                   )
+                   OR EXISTS (
+                     SELECT 1 FROM json_each(outbound.cc_addrs)
+                     WHERE LOWER(json_extract(value, '$.email')) = LOWER(?4)
+                   )
+                   OR EXISTS (
+                     SELECT 1 FROM json_each(outbound.bcc_addrs)
+                     WHERE LOWER(json_extract(value, '$.email')) = LOWER(?4)
+                   )
+                 )
+               LIMIT 1"#,
+        )
+        .bind(account_id.as_str())
+        .bind(&thread_id)
+        .bind(date)
+        .bind(email)
+        .fetch_optional(self.reader())
+        .await?;
+        if replied.is_some() {
+            return Ok(None);
+        }
+
+        let received_at = decode_timestamp(date)?;
+        let days_waiting = ((Utc::now().timestamp() - date).max(0) / 86_400) as u32;
+        let cadence_days = cadence_days_p50.unwrap_or(1.0).max(1.0);
+        if f64::from(days_waiting) < cadence_days {
+            return Ok(None);
+        }
+
+        Ok(Some(SenderUnansweredQuestion {
+            message_id: decode_id(row.get::<String, _>("id").as_str())?,
+            thread_id: decode_id(&thread_id)?,
+            subject,
+            received_at,
+            days_waiting,
+        }))
+    }
+
+    async fn sender_response_histogram(
+        &self,
+        account_id: &AccountId,
+        email: &str,
+    ) -> Result<Vec<ResponseTimeBucket>, sqlx::Error> {
+        let rows: Vec<i64> = sqlx::query_scalar(
+            r#"SELECT latency_seconds
+               FROM reply_pairs
+               WHERE account_id = ?1
+                 AND direction = 'i_replied'
+                 AND LOWER(counterparty_email) = LOWER(?2)"#,
+        )
+        .bind(account_id.as_str())
+        .bind(email)
+        .fetch_all(self.reader())
+        .await?;
+        Ok(build_sender_response_histogram(&rows))
+    }
+
+    async fn sender_weekly_activity(
+        &self,
+        account_id: &AccountId,
+        email: &str,
+    ) -> Result<Vec<SenderWeeklyActivity>, sqlx::Error> {
+        let current_week = week_start_unix(Utc::now().timestamp());
+        let first_week = current_week - Duration::weeks(11).num_seconds();
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            r#"SELECT direction, date
+               FROM messages m
+               WHERE m.account_id = ?1
+                 AND m.date >= ?2
+                 AND (
+                   (m.direction = 'inbound' AND LOWER(m.from_email) = LOWER(?3))
+                   OR (
+                     m.direction = 'outbound'
+                     AND (
+                       EXISTS (
+                         SELECT 1 FROM json_each(m.to_addrs)
+                         WHERE LOWER(json_extract(value, '$.email')) = LOWER(?3)
+                       )
+                       OR EXISTS (
+                         SELECT 1 FROM json_each(m.cc_addrs)
+                         WHERE LOWER(json_extract(value, '$.email')) = LOWER(?3)
+                       )
+                       OR EXISTS (
+                         SELECT 1 FROM json_each(m.bcc_addrs)
+                         WHERE LOWER(json_extract(value, '$.email')) = LOWER(?3)
+                       )
+                     )
+                   )
+                 )"#,
+        )
+        .bind(account_id.as_str())
+        .bind(first_week)
+        .bind(email)
+        .fetch_all(self.reader())
+        .await?;
+
+        let mut weeks: Vec<SenderWeeklyActivity> = (0..12)
+            .map(|index| {
+                let week_unix = first_week + Duration::weeks(index).num_seconds();
+                SenderWeeklyActivity {
+                    week_start: Utc.timestamp_opt(week_unix, 0).single().unwrap(),
+                    inbound_count: 0,
+                    outbound_count: 0,
+                }
+            })
+            .collect();
+
+        for (direction, date) in rows {
+            let week = week_start_unix(date);
+            let offset = ((week - first_week) / Duration::weeks(1).num_seconds()) as usize;
+            if let Some(bucket) = weeks.get_mut(offset) {
+                match direction.as_str() {
+                    "inbound" => bucket.inbound_count += 1,
+                    "outbound" => bucket.outbound_count += 1,
+                    _ => {}
+                }
+            }
+        }
+
+        Ok(weeks)
     }
 
     pub async fn list_recent_sender_messages(
@@ -237,6 +439,84 @@ impl super::Store {
             })
             .collect()
     }
+
+    pub async fn list_top_senders(&self, limit: u32) -> Result<Vec<SenderSummary>, sqlx::Error> {
+        let started_at = std::time::Instant::now();
+        let limit = i64::from(limit.clamp(1, 500));
+        let rows = sqlx::query(
+            r#"WITH grouped AS (
+                   SELECT account_id, LOWER(from_email) AS sender_key,
+                          MAX(date) AS latest_at,
+                          COUNT(*) AS message_count,
+                          SUM(CASE WHEN (flags & 1) = 0 THEN 1 ELSE 0 END) AS unread_count
+                   FROM messages
+                   WHERE direction = 'inbound' AND from_email != ''
+                   GROUP BY account_id, LOWER(from_email)
+               )
+               SELECT g.account_id, latest.from_name AS display_name,
+                      latest.from_email AS sender_email,
+                      g.message_count, g.unread_count,
+                      latest.subject AS latest_subject,
+                      g.latest_at
+               FROM grouped g
+               JOIN messages latest
+                 ON latest.account_id = g.account_id
+                AND LOWER(latest.from_email) = g.sender_key
+                AND latest.date = g.latest_at
+               ORDER BY g.message_count DESC, g.latest_at DESC
+               LIMIT ?"#,
+        )
+        .bind(limit)
+        .fetch_all(self.reader())
+        .await?;
+        trace_query("sender_profile.list_top_senders", started_at, rows.len());
+
+        rows.into_iter()
+            .map(|row| {
+                Ok(SenderSummary {
+                    account_id: decode_id(row.get::<String, _>("account_id").as_str())?,
+                    display_name: row.get::<Option<String>, _>("display_name"),
+                    sender_email: row.get::<String, _>("sender_email"),
+                    message_count: row.get::<i64, _>("message_count") as u32,
+                    unread_count: row.get::<i64, _>("unread_count") as u32,
+                    latest_subject: row.get::<String, _>("latest_subject"),
+                    latest_at: decode_timestamp(row.get::<i64, _>("latest_at"))?,
+                })
+            })
+            .collect()
+    }
+}
+
+fn build_sender_response_histogram(clock_seconds: &[i64]) -> Vec<ResponseTimeBucket> {
+    let mut counts = [0u32; RESPONSE_TIME_HISTOGRAM_EDGES.len()];
+    for &latency in clock_seconds {
+        if latency < 0 {
+            continue;
+        }
+        let latency = u32::try_from(latency).unwrap_or(u32::MAX);
+        for (index, edge) in RESPONSE_TIME_HISTOGRAM_EDGES.iter().enumerate() {
+            if latency < *edge {
+                counts[index] += 1;
+                break;
+            }
+        }
+    }
+
+    RESPONSE_TIME_HISTOGRAM_EDGES
+        .iter()
+        .zip(counts)
+        .map(|(&upper_bound_seconds, count)| ResponseTimeBucket {
+            upper_bound_seconds,
+            count,
+        })
+        .collect()
+}
+
+fn week_start_unix(timestamp: i64) -> i64 {
+    let dt = Utc.timestamp_opt(timestamp, 0).single().unwrap();
+    let date = dt.date_naive() - Duration::days(i64::from(dt.weekday().num_days_from_monday()));
+    Utc.from_utc_datetime(&date.and_time(NaiveTime::MIN))
+        .timestamp()
 }
 
 #[cfg(test)]
@@ -321,5 +601,111 @@ mod tests {
         assert_eq!(messages[0].subject, "Newer note");
         assert_eq!(messages[1].subject, "Older note");
         assert!(messages[1].has_attachments);
+    }
+
+    #[tokio::test]
+    async fn get_sender_profile_includes_question_latency_and_weekly_activity() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let question_thread = mxr_core::id::ThreadId::new();
+        let mut question = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        question.provider_id = "question".into();
+        question.thread_id = question_thread;
+        question.message_id_header = Some("<question@example.com>".into());
+        question.from = Address {
+            name: Some("Alice".into()),
+            email: "alice@example.com".into(),
+        };
+        question.to = vec![Address {
+            name: None,
+            email: account.email.clone(),
+        }];
+        question.subject = "Can you review this?".into();
+        question.snippet = "Need your call by Friday".into();
+        question.date = Utc::now() - chrono::Duration::days(14);
+        store
+            .upsert_envelope_with_direction(&question, MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let reply_thread = mxr_core::id::ThreadId::new();
+        let mut parent = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        parent.provider_id = "parent".into();
+        parent.thread_id = reply_thread.clone();
+        parent.message_id_header = Some("<parent@example.com>".into());
+        parent.from = Address {
+            name: Some("Alice".into()),
+            email: "alice@example.com".into(),
+        };
+        parent.to = vec![Address {
+            name: None,
+            email: account.email.clone(),
+        }];
+        parent.subject = "Earlier request".into();
+        parent.date = Utc::now() - chrono::Duration::days(20);
+        store
+            .upsert_envelope_with_direction(&parent, MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let mut reply = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        reply.provider_id = "reply".into();
+        reply.thread_id = reply_thread;
+        reply.message_id_header = Some("<reply@example.com>".into());
+        reply.in_reply_to = Some("<parent@example.com>".into());
+        reply.from = Address {
+            name: Some("Me".into()),
+            email: account.email.clone(),
+        };
+        reply.to = vec![Address {
+            name: Some("Alice".into()),
+            email: "alice@example.com".into(),
+        }];
+        reply.subject = "Re: Earlier request".into();
+        reply.date = parent.date + chrono::Duration::hours(3);
+        store
+            .upsert_envelope_with_direction(&reply, MessageDirection::Outbound)
+            .await
+            .unwrap();
+        assert!(store
+            .try_create_reply_pair(&reply, MessageDirection::Outbound)
+            .await
+            .unwrap());
+
+        store.refresh_contacts().await.unwrap();
+
+        let profile = store
+            .get_sender_profile(&account.id, "alice@example.com")
+            .await
+            .unwrap()
+            .expect("sender profile");
+
+        let question = profile.unanswered_question.expect("question signal");
+        assert_eq!(question.subject, "Can you review this?");
+        assert!(question.days_waiting >= 14);
+        assert_eq!(
+            profile
+                .response_histogram
+                .iter()
+                .find(|bucket| bucket.upper_bound_seconds == 21_600)
+                .map(|bucket| bucket.count),
+            Some(1)
+        );
+        assert_eq!(
+            profile
+                .weekly_activity
+                .iter()
+                .map(|week| week.inbound_count + week.outbound_count)
+                .sum::<u32>(),
+            3
+        );
     }
 }

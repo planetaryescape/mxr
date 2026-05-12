@@ -32,6 +32,7 @@ impl App {
         self.search.page.has_more = has_more;
         self.search.page.loading_more = false;
         self.search.page.ui_status = SearchUiStatus::Loaded;
+        self.mailbox.pending_commitment_counts_refresh = true;
         self.search.page.session_active =
             !self.search.page.query.is_empty() || !self.search.page.results.is_empty();
 

@@ -30,6 +30,7 @@ pub struct QueryBuilder {
     is_trash: Field,
     is_spam: Field,
     is_answered: Field,
+    is_reply_later: Field,
     has_attachments: Field,
     has_user_labels: Field,
 }
@@ -58,6 +59,7 @@ impl QueryBuilder {
             is_trash: schema.is_trash,
             is_spam: schema.is_spam,
             is_answered: schema.is_answered,
+            is_reply_later: schema.is_reply_later,
             has_attachments: schema.has_attachments,
             has_user_labels: schema.has_user_labels,
         }
@@ -223,6 +225,10 @@ impl QueryBuilder {
             }
             FilterKind::Answered => {
                 let term = Term::from_field_bool(self.is_answered, true);
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic))
+            }
+            FilterKind::ReplyLater => {
+                let term = Term::from_field_bool(self.is_reply_later, true);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
             FilterKind::Inbox => self.build_label_query("INBOX"),

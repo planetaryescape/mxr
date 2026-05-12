@@ -1,6 +1,7 @@
 use super::draft_new::{finish_draft_suggestion, voice_context_for_recipient};
 use super::HandlerResult;
 use crate::state::AppState;
+use mxr_humanizer::writing_constraints;
 use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
 use mxr_protocol::DraftRefineKnobsData;
 
@@ -35,6 +36,9 @@ pub(super) async fn draft_refine(
         prompt.push_str(&context.prompt);
         prompt.push_str("\n\n");
     }
+    prompt.push_str("[WRITING CONSTRAINTS]\n");
+    prompt.push_str(writing_constraints());
+    prompt.push_str("\n\n");
     prompt.push_str("[REFINEMENT]\n");
     let mut any = false;
     if knobs.shorter {
@@ -91,6 +95,7 @@ pub(super) async fn draft_refine(
         response.content.trim().to_string(),
         response.model,
         context.baseline,
+        Some(context.prompt.as_str()),
     )
     .await
 }

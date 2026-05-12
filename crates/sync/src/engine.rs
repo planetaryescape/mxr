@@ -2,7 +2,7 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::{MailSyncProvider, MxrError};
 use mxr_search::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};
-use mxr_store::Store;
+use mxr_store::{ScreenerDisposition, Store};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -66,13 +66,68 @@ impl SyncEngine {
         }
     }
 
+    async fn apply_screener_decision(
+        &self,
+        envelope: &Envelope,
+        direction: MessageDirection,
+    ) -> Result<Envelope, MxrError> {
+        if direction != MessageDirection::Inbound {
+            return Ok(envelope.clone());
+        }
+
+        let Some(decision) = self
+            .store
+            .get_screener_decision(&envelope.account_id, &envelope.from.email)
+            .await
+            .map_err(|e| MxrError::Store(e.to_string()))?
+        else {
+            return Ok(envelope.clone());
+        };
+
+        let mut routed = envelope.clone();
+        match decision.disposition {
+            ScreenerDisposition::Allow => {
+                add_route_label(
+                    &mut routed.label_provider_ids,
+                    decision.route_label.as_deref(),
+                );
+            }
+            ScreenerDisposition::Deny => {
+                routed.flags.insert(MessageFlags::READ);
+                routed
+                    .label_provider_ids
+                    .retain(|label| !label.eq_ignore_ascii_case(system_labels::INBOX));
+                add_unique_label(&mut routed.label_provider_ids, system_labels::TRASH);
+                add_route_label(
+                    &mut routed.label_provider_ids,
+                    decision.route_label.as_deref(),
+                );
+            }
+            ScreenerDisposition::Feed | ScreenerDisposition::PaperTrail => {
+                routed
+                    .label_provider_ids
+                    .retain(|label| !label.eq_ignore_ascii_case(system_labels::INBOX));
+                add_route_label(
+                    &mut routed.label_provider_ids,
+                    decision.route_label.as_deref(),
+                );
+            }
+            ScreenerDisposition::Unknown => {}
+        }
+        Ok(routed)
+    }
+
     pub async fn persist_synced_message(&self, synced: &SyncedMessage) -> Result<(), MxrError> {
         let mut body = synced.body.clone();
         body.ensure_best_effort_readable();
 
         let direction = self.classify_direction(&synced.envelope.from.email);
+        let envelope = self
+            .apply_screener_decision(&synced.envelope, direction)
+            .await?;
+
         self.store
-            .upsert_envelope_with_direction(&synced.envelope, direction)
+            .upsert_envelope_with_direction(&envelope, direction)
             .await
             .map_err(|e| MxrError::Store(e.to_string()))?;
 
@@ -82,12 +137,12 @@ impl SyncEngine {
         if synced.envelope.in_reply_to.is_some() {
             let resolved = self
                 .store
-                .try_create_reply_pair(&synced.envelope, direction)
+                .try_create_reply_pair(&envelope, direction)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
             if !resolved {
                 self.store
-                    .enqueue_reply_pair_pending(&synced.envelope)
+                    .enqueue_reply_pair_pending(&envelope)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
             }
@@ -98,27 +153,25 @@ impl SyncEngine {
             .await
             .map_err(|e| MxrError::Store(e.to_string()))?;
 
-        let label_ids = if synced.envelope.label_provider_ids.is_empty() {
+        let label_ids = if envelope.label_provider_ids.is_empty() {
             Vec::new()
         } else {
             self.store
-                .find_labels_by_provider_ids(
-                    &synced.envelope.account_id,
-                    &synced.envelope.label_provider_ids,
-                )
+                .find_labels_by_provider_ids(&envelope.account_id, &envelope.label_provider_ids)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?
         };
         self.store
-            .set_message_labels(&synced.envelope.id, &label_ids, EventSource::Sync)
+            .set_message_labels(&envelope.id, &label_ids, EventSource::Sync)
             .await
             .map_err(|e| MxrError::Store(e.to_string()))?;
 
         self.search
             .apply_batch(SearchUpdateBatch {
                 entries: vec![SearchIndexEntry {
-                    envelope: synced.envelope.clone(),
+                    envelope: envelope.clone(),
                     body: Some(body),
+                    reply_later: false,
                 }],
                 removed_message_ids: Vec::new(),
             })
@@ -145,6 +198,7 @@ impl SyncEngine {
                 entries: vec![SearchIndexEntry {
                     envelope: envelope.clone(),
                     body: Some(normalized.clone()),
+                    reply_later: false,
                 }],
                 removed_message_ids: Vec::new(),
             })
@@ -238,19 +292,22 @@ impl SyncEngine {
                 normalized_body.ensure_best_effort_readable();
 
                 let direction = self.classify_direction(&synced.envelope.from.email);
+                let envelope = self
+                    .apply_screener_decision(&synced.envelope, direction)
+                    .await?;
                 self.store
-                    .upsert_envelope_with_direction(&synced.envelope, direction)
+                    .upsert_envelope_with_direction(&envelope, direction)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
                 if synced.envelope.in_reply_to.is_some() {
                     let resolved = self
                         .store
-                        .try_create_reply_pair(&synced.envelope, direction)
+                        .try_create_reply_pair(&envelope, direction)
                         .await
                         .map_err(|e| MxrError::Store(e.to_string()))?;
                     if !resolved {
                         self.store
-                            .enqueue_reply_pair_pending(&synced.envelope)
+                            .enqueue_reply_pair_pending(&envelope)
                             .await
                             .map_err(|e| MxrError::Store(e.to_string()))?;
                     }
@@ -259,24 +316,27 @@ impl SyncEngine {
                     .insert_body(&normalized_body)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
-                let label_ids = if synced.envelope.label_provider_ids.is_empty() {
+                let label_ids = if envelope.label_provider_ids.is_empty() {
                     Vec::new()
                 } else {
                     self.store
-                        .find_labels_by_provider_ids(
-                            account_id,
-                            &synced.envelope.label_provider_ids,
-                        )
+                        .find_labels_by_provider_ids(account_id, &envelope.label_provider_ids)
                         .await
                         .map_err(|e| MxrError::Store(e.to_string()))?
                 };
                 self.store
-                    .set_message_labels(&synced.envelope.id, &label_ids, EventSource::Sync)
+                    .set_message_labels(&envelope.id, &label_ids, EventSource::Sync)
+                    .await
+                    .map_err(|e| MxrError::Store(e.to_string()))?;
+                let reply_later = self
+                    .store
+                    .is_reply_later(&envelope.id)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
                 lexical_batch.entries.push(SearchIndexEntry {
-                    envelope: synced.envelope.clone(),
+                    envelope,
                     body: Some(normalized_body),
+                    reply_later,
                 });
             }
 
@@ -347,9 +407,16 @@ impl SyncEngine {
                             .get_body(&message_id)
                             .await
                             .map_err(|e| MxrError::Store(e.to_string()))?;
-                        lexical_batch
-                            .entries
-                            .push(SearchIndexEntry { envelope, body });
+                        let reply_later = self
+                            .store
+                            .is_reply_later(&message_id)
+                            .await
+                            .map_err(|e| MxrError::Store(e.to_string()))?;
+                        lexical_batch.entries.push(SearchIndexEntry {
+                            envelope,
+                            body,
+                            reply_later,
+                        });
                     }
                 }
             }
@@ -551,5 +618,20 @@ impl SyncEngine {
         }
 
         Ok(woken)
+    }
+}
+
+fn add_route_label(labels: &mut Vec<String>, route_label: Option<&str>) {
+    if let Some(route_label) = route_label.filter(|label| !label.trim().is_empty()) {
+        add_unique_label(labels, route_label);
+    }
+}
+
+fn add_unique_label(labels: &mut Vec<String>, label: &str) {
+    if !labels
+        .iter()
+        .any(|existing| existing.eq_ignore_ascii_case(label))
+    {
+        labels.push(label.to_string());
     }
 }

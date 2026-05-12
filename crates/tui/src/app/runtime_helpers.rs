@@ -5,6 +5,7 @@ impl App {
         self.mailbox.labels = client.list_labels().await?;
         self.mailbox.all_envelopes = client.list_envelopes(5000, 0).await?;
         self.load_initial_mailbox(client).await?;
+        self.mailbox.pending_commitment_counts_refresh = true;
         self.mailbox.saved_searches = client.list_saved_searches().await.unwrap_or_default();
         self.set_subscriptions(client.list_subscriptions(500).await.unwrap_or_default());
         if let Ok(Response::Ok {

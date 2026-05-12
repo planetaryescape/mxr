@@ -21,6 +21,14 @@ const api = vi.hoisted(() => ({
   fetchShell: vi.fn<() => Promise<unknown>>(),
   fetchThread: vi.fn<(threadId: string) => Promise<ThreadResponse>>(),
   fetchSenderProfile: vi.fn<(input: { accountId: string; email: string }) => Promise<unknown>>(),
+  listCommitments:
+    vi.fn<
+      (input: {
+        accountId: string;
+        email?: string;
+        status?: "open" | "resolved" | "expired";
+      }) => Promise<unknown>
+    >(),
   modifyLabels:
     vi.fn<(messageIds: string[], add: string[], remove: string[]) => Promise<unknown>>(),
   summarizeThread: vi.fn<() => Promise<unknown>>(),
@@ -52,6 +60,7 @@ vi.mock("@/features/mailbox/api", () => ({
   fetchSenderProfile: api.fetchSenderProfile,
   fetchShell: api.fetchShell,
   fetchThread: api.fetchThread,
+  listCommitments: api.listCommitments,
   markReadMessages: vi.fn<(messageIds: string[], read: boolean) => Promise<unknown>>(),
   modifyLabels: api.modifyLabels,
   shellKey: ["shell"],
@@ -175,6 +184,7 @@ describe("ThreadRoute", () => {
       model: "auto-model",
       text: "- Auto summary",
     });
+    api.listCommitments.mockResolvedValue({ commitments: [] });
   });
 
   afterEach(() => {
@@ -385,6 +395,31 @@ describe("ThreadRoute", () => {
       fireEvent.click(cachedSummaryToggle);
     }
     expect(api.summarizeThread).not.toHaveBeenCalled();
+  });
+
+  test("renders open commitment chips for the primary sender", async () => {
+    api.listCommitments.mockResolvedValueOnce({
+      commitments: [
+        {
+          id: "commitment-1",
+          direction: "theirs",
+          who_owes: "Sender",
+          what: "Send launch dates",
+          by_when: "2026-05-20T00:00:00Z",
+        },
+      ],
+    });
+
+    renderWithQueryClient(<ThreadRoute />);
+
+    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+    expect(await screen.findByLabelText("Open commitments")).toBeVisible();
+    expect(screen.getByText("Send launch dates")).toBeVisible();
+    expect(api.listCommitments).toHaveBeenCalledWith({
+      accountId: "account-1",
+      email: "sender@example.com",
+      status: "open",
+    });
   });
 
   test("auto-generates thread summaries inline above the email instead of the right rail", async () => {

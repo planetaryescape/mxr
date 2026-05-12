@@ -370,6 +370,13 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// List top inbound senders by message volume.
+    Senders {
+        #[arg(long, default_value = "20")]
+        top: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Roll up disk consumption by sender, mimetype, or label.
     Storage {
         /// Group by which dimension. One of: sender, mimetype, label.

@@ -17,6 +17,26 @@ pub(super) async fn list_subscriptions(
     diagnostics_impl::list_subscriptions(state, account_id, limit).await
 }
 
+pub(super) async fn list_senders(state: &AppState, limit: u32) -> HandlerResult {
+    let senders = state
+        .store
+        .list_top_senders(limit)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|row| mxr_protocol::SenderSummaryData {
+            account_id: row.account_id,
+            display_name: row.display_name,
+            sender_email: row.sender_email,
+            message_count: row.message_count,
+            unread_count: row.unread_count,
+            latest_subject: row.latest_subject,
+            latest_at: row.latest_at,
+        })
+        .collect();
+    Ok(mxr_protocol::ResponseData::Senders { senders })
+}
+
 pub(super) async fn list_storage_breakdown(
     state: &AppState,
     account_id: Option<&AccountId>,

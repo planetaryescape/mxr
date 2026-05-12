@@ -837,7 +837,7 @@ fn expand_snippet_keywords(body: &str, snippets: &[SnippetData]) -> String {
 
         let name = &body[name_start..name_end];
         if let Some(replacement) = by_name.get(name) {
-            output.push_str(replacement);
+            output.push_str(&expand_builtin_snippet_vars(replacement));
             index = name_end;
         } else {
             output.push_str(&body[index..name_end]);
@@ -846,6 +846,14 @@ fn expand_snippet_keywords(body: &str, snippets: &[SnippetData]) -> String {
     }
 
     output
+}
+
+fn expand_builtin_snippet_vars(template: &str) -> String {
+    let now = chrono::Local::now();
+    template
+        .replace("{today}", &now.format("%Y-%m-%d").to_string())
+        .replace("{date}", &now.format("%Y-%m-%d").to_string())
+        .replace("{year}", &now.format("%Y").to_string())
 }
 
 fn is_snippet_boundary(body: &str, semicolon_index: usize) -> bool {
@@ -1201,6 +1209,17 @@ mod tests {
         let expanded = expand_snippet_keywords(&body, &snippets);
 
         assert_eq!(expanded, "Hi thanks for reaching out\n\nBest,\nmxr");
+    }
+
+    #[test]
+    fn snippet_keywords_expand_builtin_vars() {
+        let body = ";today".to_string();
+        let snippets = vec![snippet("today", "Today is {today}")];
+
+        let expanded = expand_snippet_keywords(&body, &snippets);
+
+        assert!(expanded.starts_with("Today is 20"));
+        assert!(!expanded.contains("{today}"));
     }
 
     #[test]

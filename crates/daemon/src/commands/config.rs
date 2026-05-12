@@ -84,6 +84,9 @@ fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result
         "llm.api_key_env" => Ok(config.llm.api_key_env.clone()),
         "llm.context_window" => Ok(config.llm.context_window.to_string()),
         "llm.request_timeout_secs" => Ok(config.llm.request_timeout_secs.to_string()),
+        "llm.allow_cloud_relationship_data" => {
+            Ok(config.llm.allow_cloud_relationship_data.to_string())
+        }
         // snooze
         "snooze.morning_hour" => Ok(config.snooze.morning_hour.to_string()),
         "snooze.evening_hour" => Ok(config.snooze.evening_hour.to_string()),
@@ -101,7 +104,7 @@ fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result
         "appearance.date_format" => Ok(config.appearance.date_format.clone()),
         "appearance.date_format_full" => Ok(config.appearance.date_format_full.clone()),
         "appearance.subject_max_width" => Ok(config.appearance.subject_max_width.to_string()),
-        _ => anyhow::bail!("Unknown config key: {key}\n\nAvailable keys:\n  general.editor, general.default_account, general.sync_interval, general.hook_timeout, general.attachment_dir\n  render.html_command, render.reader_mode, render.show_reader_stats, render.html_remote_content\n  search.default_sort, search.max_results, search.semantic.enabled\n  llm.enabled, llm.base_url, llm.model, llm.api_key_env, llm.context_window, llm.request_timeout_secs\n  snooze.morning_hour, snooze.evening_hour, snooze.weekend_day, snooze.weekend_hour\n  logging.level, logging.max_size_mb, logging.max_files, logging.stderr, logging.event_retention_days\n  appearance.theme, appearance.sidebar, appearance.date_format, appearance.date_format_full, appearance.subject_max_width"),
+        _ => anyhow::bail!("Unknown config key: {key}\n\nAvailable keys:\n  general.editor, general.default_account, general.sync_interval, general.hook_timeout, general.attachment_dir\n  render.html_command, render.reader_mode, render.show_reader_stats, render.html_remote_content\n  search.default_sort, search.max_results, search.semantic.enabled\n  llm.enabled, llm.base_url, llm.model, llm.api_key_env, llm.context_window, llm.request_timeout_secs, llm.allow_cloud_relationship_data\n  snooze.morning_hour, snooze.evening_hour, snooze.weekend_day, snooze.weekend_hour\n  logging.level, logging.max_size_mb, logging.max_files, logging.stderr, logging.event_retention_days\n  appearance.theme, appearance.sidebar, appearance.date_format, appearance.date_format_full, appearance.subject_max_width"),
     }
 }
 
@@ -163,6 +166,9 @@ fn set_config_value(
             config.llm.request_timeout_secs = value
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid integer: {value}"))?;
+        }
+        "llm.allow_cloud_relationship_data" => {
+            config.llm.allow_cloud_relationship_data = parse_bool(value)?;
         }
         // snooze
         "snooze.morning_hour" => {
@@ -237,6 +243,7 @@ mod tests {
         config.llm.base_url = "http://127.0.0.1:8000/v1".into();
         config.llm.model = "Qwen3.6-35B-A3B-MLX-8bit".into();
         config.llm.context_window = 80_000;
+        config.llm.allow_cloud_relationship_data = true;
 
         assert_eq!(
             get_config_value(&config, "llm.enabled").expect("llm.enabled value"),
@@ -254,6 +261,11 @@ mod tests {
             get_config_value(&config, "llm.context_window").expect("llm.context_window value"),
             "80000"
         );
+        assert_eq!(
+            get_config_value(&config, "llm.allow_cloud_relationship_data")
+                .expect("llm.allow_cloud_relationship_data value"),
+            "true"
+        );
     }
 
     #[test]
@@ -269,11 +281,14 @@ mod tests {
             .expect("set llm.context_window");
         set_config_value(&mut config, "llm.request_timeout_secs", "30")
             .expect("set llm.request_timeout_secs");
+        set_config_value(&mut config, "llm.allow_cloud_relationship_data", "true")
+            .expect("set llm.allow_cloud_relationship_data");
 
         assert!(config.llm.enabled);
         assert_eq!(config.llm.base_url, "http://127.0.0.1:8000/v1");
         assert_eq!(config.llm.model, "Qwen3.6-35B-A3B-MLX-8bit");
         assert_eq!(config.llm.context_window, 80_000);
         assert_eq!(config.llm.request_timeout_secs, 30);
+        assert!(config.llm.allow_cloud_relationship_data);
     }
 }

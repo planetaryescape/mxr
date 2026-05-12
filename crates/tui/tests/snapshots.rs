@@ -83,6 +83,9 @@ fn sample_mail_row() -> MailListRow {
         representative: sample_envelope(),
         message_count: 3,
         unread_count: 1,
+        other_participant_count: 1,
+        open_commitment_count: 0,
+        reply_later: false,
         pending_mutation: false,
     }
 }
@@ -252,12 +255,13 @@ fn send_confirm_snapshot() {
             frame,
             Rect::new(0, 0, 70, 20),
             Some(&pending),
+            None,
             &mxr_tui::theme::Theme::default(),
         );
     });
     assert!(snapshot.contains("Send this draft?"));
     assert!(snapshot.contains("Subject: Snapshot draft"));
-    assert!(snapshot.contains("[s] send   [d] save draft   [e] edit again   [Esc] discard"));
+    assert!(snapshot.contains("[r] refine"));
     insta::assert_snapshot!("send_confirm_snapshot", snapshot);
 }
 
@@ -794,7 +798,7 @@ fn bulk_confirm_snapshot() {
     let pending = PendingBulkConfirm {
         title: "Archive messages".into(),
         detail: "Archive 3 selected messages?".into(),
-        request: Request::Mutation(MutationCommand::Archive {
+        request: Request::mutation(MutationCommand::Archive {
             message_ids: vec![MessageId::new()],
         }),
         effect: MutationEffect::RefreshList,

@@ -1,5 +1,7 @@
 use crate::cli::OutputFormat;
-use crate::handler::{dir_size_sync, doctor_data_stats, file_size_sync, recent_log_lines_sync};
+use crate::handler::{
+    build_doctor_findings, dir_size_sync, doctor_data_stats, file_size_sync, recent_log_lines_sync,
+};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::{
@@ -406,7 +408,18 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         && !index_lock_held
         && matches!(health_class, DaemonHealthClass::Healthy);
 
-    let findings = semantic_findings(semantic_enabled, &data_stats);
+    let findings = build_doctor_findings(
+        &sync_statuses,
+        &recent_error_logs,
+        data_dir_exists,
+        database_exists,
+        index_exists,
+        socket_exists && socket_reachable,
+        repair_required,
+        restart_required,
+        semantic_enabled,
+        &data_stats,
+    );
 
     Ok(DoctorReport {
         healthy,
@@ -691,40 +704,6 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
     }
 
     Ok(())
-}
-
-fn semantic_findings(
-    semantic_enabled: bool,
-    data_stats: &DoctorDataStats,
-) -> Vec<mxr_protocol::DoctorFinding> {
-    let mut findings = Vec::new();
-    if semantic_enabled
-        && (data_stats.messages_missing_semantic_chunks > 0
-            || data_stats.semantic_chunks_missing_embeddings > 0)
-    {
-        findings.push(mxr_protocol::DoctorFinding {
-            category: mxr_protocol::DoctorFindingCategory::Semantic,
-            severity: mxr_protocol::DoctorFindingSeverity::Warning,
-            message: format!(
-                "Semantic backfill pending: {} message(s) need chunks, {} chunk(s) need embeddings",
-                data_stats.messages_missing_semantic_chunks,
-                data_stats.semantic_chunks_missing_embeddings
-            ),
-            remediation: vec!["mxr doctor --backfill-semantic".into()],
-        });
-    }
-    if data_stats.relationship_drifts > 0 {
-        findings.push(mxr_protocol::DoctorFinding {
-            category: mxr_protocol::DoctorFindingCategory::Generic,
-            severity: mxr_protocol::DoctorFindingSeverity::Info,
-            message: format!(
-                "Relationship voice drift detected for {} contact(s)",
-                data_stats.relationship_drifts
-            ),
-            remediation: vec!["mxr profile <email> --rebuild".into()],
-        });
-    }
-    findings
 }
 
 fn print_feature_health(report: &FeatureHealthReport) {

@@ -97,6 +97,8 @@ pub enum Action {
     ReplyQueueModalNext,
     /// Move cursor to the previous message in the reply queue.
     ReplyQueueModalPrev,
+    /// Start the normal reply compose flow for the selected queued message.
+    ReplyQueueModalReply,
     /// Open the screener queue — senders waiting for a classification.
     OpenScreenerQueue,
     /// Close the screener triage modal (Esc).
@@ -154,8 +156,10 @@ pub enum Action {
     ReindexSemantic,
     BackfillSemantic,
     InstallSemanticProfile(mxr_core::types::SemanticProfile),
+    UseSemanticProfile(mxr_core::types::SemanticProfile),
     DraftAssistCurrentThread,
     DraftNewForSender,
+    RefinePendingDraft,
     OpenVoiceProfile,
     RebuildUserVoice,
     OpenCommitments,
@@ -387,6 +391,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ReindexSemantic
                 | BackfillSemantic
                 | InstallSemanticProfile(_)
+                | UseSemanticProfile(_)
                 | OpenVoiceProfile
                 | RebuildUserVoice
                 | OpenCommitments
@@ -447,6 +452,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ReindexSemantic
                 | BackfillSemantic
                 | InstallSemanticProfile(_)
+                | UseSemanticProfile(_)
                 | OpenVoiceProfile
                 | RebuildUserVoice
                 | OpenCommitments
@@ -472,6 +478,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ReindexSemantic
                 | BackfillSemantic
                 | InstallSemanticProfile(_)
+                | UseSemanticProfile(_)
                 | OpenVoiceProfile
                 | RebuildUserVoice
                 | OpenCommitments
@@ -513,6 +520,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ReindexSemantic
                 | BackfillSemantic
                 | InstallSemanticProfile(_)
+                | UseSemanticProfile(_)
                 | OpenVoiceProfile
                 | RebuildUserVoice
                 | OpenCommitments

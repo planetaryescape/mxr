@@ -3,7 +3,10 @@
 use super::{relationship_profile, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::AccountId;
-use mxr_protocol::{ResponseData, SenderEmailReferenceData, SenderProfileData};
+use mxr_protocol::{
+    ResponseData, SenderEmailReferenceData, SenderProfileData, SenderUnansweredQuestionData,
+    SenderWeeklyActivityData,
+};
 
 pub(super) async fn get_sender_profile(
     state: &AppState,
@@ -56,6 +59,25 @@ pub(super) async fn get_sender_profile(
                 outbound_storage_bytes: p.outbound_storage_bytes,
                 attachment_count: p.attachment_count,
                 attachment_bytes: p.attachment_bytes,
+                unanswered_question: p.unanswered_question.map(|question| {
+                    SenderUnansweredQuestionData {
+                        message_id: question.message_id,
+                        thread_id: question.thread_id,
+                        subject: question.subject,
+                        received_at: question.received_at,
+                        days_waiting: question.days_waiting,
+                    }
+                }),
+                response_histogram: p.response_histogram,
+                weekly_activity: p
+                    .weekly_activity
+                    .into_iter()
+                    .map(|week| SenderWeeklyActivityData {
+                        week_start: week.week_start,
+                        inbound_count: week.inbound_count,
+                        outbound_count: week.outbound_count,
+                    })
+                    .collect(),
                 recent_messages,
                 relationship,
             })

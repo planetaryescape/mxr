@@ -46,5 +46,6 @@ pub struct ComposeState {
     pub pending_draft_cleanup: Vec<std::path::PathBuf>,
     pub pending_compose: Option<ComposeAction>,
     pub pending_send_confirm: Option<PendingSend>,
+    pub pending_send_at_input: Option<String>,
     pub compose_picker: ComposePicker,
 }

@@ -29,7 +29,17 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { fetchAccounts } from "@/features/accounts/api";
-import { backfillSemantic } from "@/features/diagnostics/api";
+import {
+  backfillSemantic,
+  fetchSemanticStatus,
+  installSemanticProfile,
+  reindexSemantic,
+  semanticProfiles,
+  semanticSnapshot,
+  setSemanticEnabled,
+  useSemanticProfile,
+  type SemanticProfile,
+} from "@/features/diagnostics/api";
 import { fetchShell, listCommitments } from "@/features/mailbox/api";
 import type { SidebarItem } from "@/features/mailbox/types";
 import { useModals } from "@/state/modalStore";
@@ -71,10 +81,40 @@ export function CommandPaletteMount() {
     staleTime: 60_000,
     enabled: open,
   });
+  const semantic = useQuery({
+    queryKey: ["diagnostics", "semantic"],
+    queryFn: fetchSemanticStatus,
+    staleTime: 30_000,
+    enabled: open,
+  });
+  const semanticStatus = semanticSnapshot(semantic.data);
   const semanticBackfill = useMutation({
     mutationFn: backfillSemantic,
     onSuccess: () => toast.success("Semantic backfill queued"),
     onError: (error) => toast.error("Semantic backfill failed", { description: error.message }),
+  });
+  const semanticEnable = useMutation({
+    mutationFn: setSemanticEnabled,
+    onSuccess: (_, enabled) =>
+      toast.success(enabled ? "Semantic search enabled" : "Semantic search disabled"),
+    onError: (error) => toast.error("Semantic update failed", { description: error.message }),
+  });
+  const semanticReindex = useMutation({
+    mutationFn: reindexSemantic,
+    onSuccess: () => toast.success("Semantic reindex queued"),
+    onError: (error) => toast.error("Semantic reindex failed", { description: error.message }),
+  });
+  const semanticInstall = useMutation({
+    mutationFn: installSemanticProfile,
+    onSuccess: (_, profile) => toast.success(`${profile} install queued`),
+    onError: (error) =>
+      toast.error("Semantic profile install failed", { description: error.message }),
+  });
+  const semanticUse = useMutation({
+    mutationFn: useSemanticProfile,
+    onSuccess: (_, profile) => toast.success(`${profile} selected`),
+    onError: (error) =>
+      toast.error("Semantic profile switch failed", { description: error.message }),
   });
   const commitments = useMutation({
     mutationFn: (accountId: string) => listCommitments({ accountId, status: "open" }),
@@ -131,6 +171,24 @@ export function CommandPaletteMount() {
         run: () => {
           setOpen(false);
           semanticBackfill.mutate();
+        },
+      },
+      {
+        id: semanticStatus?.enabled ? "semantic-disable" : "semantic-enable",
+        label: semanticStatus?.enabled ? "Disable semantic search" : "Enable semantic search",
+        description: "Toggle hybrid and semantic retrieval locally",
+        run: () => {
+          setOpen(false);
+          semanticEnable.mutate(!(semanticStatus?.enabled ?? false));
+        },
+      },
+      {
+        id: "semantic-reindex",
+        label: "Reindex semantic now",
+        description: "Rebuild embeddings for the active semantic profile",
+        run: () => {
+          setOpen(false);
+          semanticReindex.mutate();
         },
       },
       {
@@ -226,6 +284,19 @@ export function CommandPaletteMount() {
         run: go("/m/inbox"),
       });
     }
+    for (const profile of semanticProfiles) {
+      const installed =
+        semanticStatus?.profiles.some((record) => record.profile === profile) ?? false;
+      items.push(
+        semanticProfileAction(
+          profile,
+          installed,
+          semanticInstall.mutate,
+          semanticUse.mutate,
+          setOpen,
+        ),
+      );
+    }
     return items;
   }, [
     commitments,
@@ -233,14 +304,20 @@ export function CommandPaletteMount() {
     navigate,
     path,
     semanticBackfill,
+    semanticEnable,
+    semanticInstall,
+    semanticReindex,
+    semanticStatus?.enabled,
+    semanticStatus?.profiles,
+    semanticUse,
     setComposeOpen,
     setOpen,
     setSearchOpen,
   ]);
 
   const sidebarItems = shell.data?.sidebar?.sections?.flatMap((section) => section.items) ?? [];
-  const commandActions = actions.filter((action) => commandActionIds.has(action.id));
-  const navigationActions = actions.filter((action) => !commandActionIds.has(action.id));
+  const commandActions = actions.filter(isCommandAction);
+  const navigationActions = actions.filter((action) => !isCommandAction(action));
   const settings = settingsActions((to) => () => {
     setOpen(false);
     void navigate({ to });
@@ -317,6 +394,34 @@ export function CommandPaletteMount() {
       </CommandList>
     </CommandDialog>
   );
+}
+
+function isCommandAction(action: ActionItem): boolean {
+  return commandActionIds.has(action.id) || action.id.startsWith("semantic-");
+}
+
+function semanticProfileAction(
+  profile: SemanticProfile,
+  installed: boolean,
+  install: (profile: SemanticProfile) => void,
+  use: (profile: SemanticProfile) => void,
+  setOpen: (open: boolean) => void,
+): ActionItem {
+  return {
+    id: installed ? `semantic-profile-use-${profile}` : `semantic-profile-install-${profile}`,
+    label: installed ? `Use semantic profile: ${profile}` : `Install semantic profile: ${profile}`,
+    description: installed
+      ? "Switch the active local embedding profile"
+      : "Install a local embedding profile",
+    run: () => {
+      setOpen(false);
+      if (installed) {
+        use(profile);
+      } else {
+        install(profile);
+      }
+    },
+  };
 }
 
 function iconForAction(id: string) {

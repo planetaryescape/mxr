@@ -48,9 +48,11 @@ use mxr_mail_parse::parse_address_list;
 use mxr_protocol::{IpcCodec, IpcMessage, IpcPayload, LlmConfigData, Request, ResponseData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::net::UnixStream;
 use tokio_util::codec::Framed;
@@ -802,6 +804,10 @@ struct LlmConfigRequest {
     api_key_env: String,
     context_window: u32,
     request_timeout_secs: u64,
+    #[serde(default)]
+    allow_cloud_relationship_data: bool,
+    #[serde(default)]
+    overrides: Option<mxr_protocol::LlmOverridesData>,
 }
 
 impl From<LlmConfigRequest> for LlmConfigData {
@@ -813,6 +819,8 @@ impl From<LlmConfigRequest> for LlmConfigData {
             api_key_env: value.api_key_env,
             context_window: value.context_window,
             request_timeout_secs: value.request_timeout_secs,
+            allow_cloud_relationship_data: value.allow_cloud_relationship_data,
+            overrides: value.overrides,
         }
     }
 }
@@ -841,10 +849,14 @@ async fn mailbox(
     .await?;
     let envelope_page_size = mailbox.envelopes.len() as u32;
     let view = query.view;
-    let groups = match view {
-        MailboxView::Threads => group_row_views(mailbox_thread_rows(mailbox.envelopes)),
-        MailboxView::Messages => group_row_views(mailbox_message_rows(mailbox.envelopes)),
+    let commitment_counts =
+        open_commitment_counts(&state.config.socket_path, &mailbox.envelopes).await;
+    let mut rows = match view {
+        MailboxView::Threads => mailbox_thread_rows(mailbox.envelopes),
+        MailboxView::Messages => mailbox_message_rows(mailbox.envelopes),
     };
+    annotate_open_commitment_counts(&mut rows, &commitment_counts);
+    let groups = group_row_views(rows);
     let supports_pagination = matches!(
         lens.kind,
         MailboxLensKind::Inbox | MailboxLensKind::AllMail | MailboxLensKind::Label
@@ -863,6 +875,62 @@ async fn mailbox(
             "groups": groups,
         }
     })))
+}
+
+async fn open_commitment_counts(
+    socket_path: &Path,
+    envelopes: &[Envelope],
+) -> HashMap<(String, String), u32> {
+    const ANNOTATION_TIMEOUT: Duration = Duration::from_millis(250);
+
+    let account_ids = envelopes
+        .iter()
+        .map(|envelope| envelope.account_id.clone())
+        .collect::<HashSet<_>>();
+    let mut counts = HashMap::new();
+
+    for account_id in account_ids {
+        let response = tokio::time::timeout(
+            ANNOTATION_TIMEOUT,
+            ipc_request(
+                socket_path,
+                Request::ListCommitments {
+                    account_id,
+                    email: None,
+                    status: Some(mxr_protocol::CommitmentStatusData::Open),
+                },
+            ),
+        )
+        .await;
+        let Ok(Ok(ResponseData::CommitmentList { commitments })) = response else {
+            continue;
+        };
+        for commitment in commitments {
+            *counts
+                .entry((
+                    commitment.account_id.to_string(),
+                    commitment.thread_id.to_string(),
+                ))
+                .or_insert(0) += 1;
+        }
+    }
+
+    counts
+}
+
+fn annotate_open_commitment_counts(
+    rows: &mut [(DateTime<Utc>, chrome::MessageRowView)],
+    counts: &HashMap<(String, String), u32>,
+) {
+    for (_, row) in rows {
+        let count = counts
+            .get(&(row.account_id.clone(), row.thread_id.clone()))
+            .copied()
+            .unwrap_or(0);
+        if count > 0 {
+            row.open_commitment_count = Some(count);
+        }
+    }
 }
 
 async fn thread(
@@ -2998,8 +3066,9 @@ mod tests {
         },
     };
     use mxr_protocol::{
-        DaemonEvent, IpcCodec, IpcMessage, IpcPayload, Request, Response, ResponseData,
-        SearchResultItem, IPC_PROTOCOL_VERSION,
+        CommitmentData, CommitmentDirectionData, CommitmentStatusData, DaemonEvent, IpcCodec,
+        IpcMessage, IpcPayload, Request, Response, ResponseData, SearchResultItem,
+        IPC_PROTOCOL_VERSION,
     };
     use tempfile::TempDir;
     use tokio::net::UnixListener;
@@ -3271,6 +3340,8 @@ mod tests {
                             api_key_env: String::new(),
                             context_window: 8192,
                             request_timeout_secs: 120,
+                            allow_cloud_relationship_data: false,
+                            overrides: None,
                         },
                     },
                 }),
@@ -3303,7 +3374,8 @@ mod tests {
                 "model": "gpt-5-mini",
                 "api_key_env": "OPENAI_API_KEY",
                 "context_window": 16384,
-                "request_timeout_secs": 45
+                "request_timeout_secs": 45,
+                "allow_cloud_relationship_data": true
             }))
             .send()
             .await
@@ -3320,6 +3392,7 @@ mod tests {
         assert!(forwarded.enabled);
         assert_eq!(forwarded.base_url, "https://api.openai.com/v1");
         assert_eq!(forwarded.api_key_env, "OPENAI_API_KEY");
+        assert!(forwarded.allow_cloud_relationship_data);
     }
 
     /// Slice 6 — bad query params surface a 4xx error rather than a
@@ -4244,10 +4317,24 @@ mod tests {
         let first = sample_envelope();
         let mut second = sample_envelope();
         second.id = MessageId::new();
+        second.account_id = first.account_id.clone();
         second.thread_id = first.thread_id.clone();
         second.subject = "Mailroom follow-up".into();
         second.snippet = "Same thread, newer message".into();
         second.has_attachments = true;
+        let commitment = CommitmentData {
+            id: "commitment-1".into(),
+            account_id: first.account_id.clone(),
+            email: first.from.email.clone(),
+            thread_id: first.thread_id.clone(),
+            direction: CommitmentDirectionData::Theirs,
+            status: CommitmentStatusData::Open,
+            who_owes: "sender".into(),
+            what: "Send launch dates".into(),
+            by_when: None,
+            evidence_msg_id: first.id.clone(),
+            extracted_at: Utc::now(),
+        };
 
         let labels = sample_labels(&first.account_id);
         let saved_search = sample_saved_search(first.account_id.clone());
@@ -4300,6 +4387,15 @@ mod tests {
                         envelopes: vec![first.clone(), second.clone()],
                     },
                 }),
+                Request::ListCommitments {
+                    account_id,
+                    email: None,
+                    status: Some(CommitmentStatusData::Open),
+                } if account_id == first.account_id => Some(Response::Ok {
+                    data: ResponseData::CommitmentList {
+                        commitments: vec![commitment.clone()],
+                    },
+                }),
                 _ => None,
             },
             None,
@@ -4344,6 +4440,10 @@ mod tests {
             threads_json["mailbox"]["groups"][0]["rows"][0]["has_attachments"],
             true
         );
+        assert_eq!(
+            threads_json["mailbox"]["groups"][0]["rows"][0]["open_commitment_count"],
+            1
+        );
 
         let messages_response = client
             .get(format!("http://{addr}/mailbox?view=messages"))
@@ -4373,6 +4473,10 @@ mod tests {
         assert_eq!(
             messages_json["mailbox"]["groups"][0]["rows"][1]["has_attachments"],
             true
+        );
+        assert_eq!(
+            messages_json["mailbox"]["groups"][0]["rows"][1]["open_commitment_count"],
+            1
         );
     }
 
@@ -5468,7 +5572,10 @@ mod tests {
         let _ipc = spawn_fake_ipc_server(
             &socket_path,
             move |request| match request {
-                Request::Mutation(mxr_protocol::MutationCommand::Archive { message_ids }) => {
+                Request::Mutation {
+                    mutation: mxr_protocol::MutationCommand::Archive { message_ids },
+                    ..
+                } => {
                     *captured_ids.lock().unwrap() =
                         message_ids.iter().map(ToString::to_string).collect();
                     Some(Response::Ok {
@@ -5515,10 +5622,14 @@ mod tests {
         let _ipc = spawn_fake_ipc_server(
             &socket_path,
             move |request| match request {
-                Request::Mutation(mxr_protocol::MutationCommand::Star {
-                    message_ids,
-                    starred,
-                }) => {
+                Request::Mutation {
+                    mutation:
+                        mxr_protocol::MutationCommand::Star {
+                            message_ids,
+                            starred,
+                        },
+                    ..
+                } => {
                     *captured_state.lock().unwrap() = (
                         message_ids.iter().map(ToString::to_string).collect(),
                         starred,
@@ -5653,9 +5764,10 @@ mod tests {
         let _ipc = spawn_fake_ipc_server(
             &socket_path,
             move |request| match request {
-                Request::Mutation(mxr_protocol::MutationCommand::ReadAndArchive {
-                    message_ids,
-                }) => {
+                Request::Mutation {
+                    mutation: mxr_protocol::MutationCommand::ReadAndArchive { message_ids },
+                    ..
+                } => {
                     assert_eq!(message_ids, vec![expected_message_id.clone()]);
                     Some(Response::Ok {
                         data: ResponseData::Ack,

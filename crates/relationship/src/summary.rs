@@ -25,6 +25,7 @@ pub async fn generate_relationship_summary(
     let Some(style) = store.get_contact_style(account_id, email).await? else {
         return Ok(false);
     };
+    let samples = store.recent_contact_messages(account_id, email, 40).await?;
     if let Some(existing) = store
         .get_contact_relationship_summary(account_id, email)
         .await?
@@ -32,9 +33,15 @@ pub async fn generate_relationship_summary(
         if existing.source_hash == style.source_hash {
             return Ok(false);
         }
+        let unsummarized = samples
+            .iter()
+            .filter(|sample| !sample.is_list_sender && sample.date > existing.computed_at)
+            .count();
+        if unsummarized < 3 {
+            return Ok(false);
+        }
     }
 
-    let samples = store.recent_contact_messages(account_id, email, 40).await?;
     let reader_config = ReaderConfig::default();
     let mut prompt = String::from(
         "Build an inspectable relationship profile from these email excerpts. Ground only in the excerpts. Do not infer facts, familiarity, meetings, or topics not present. Return strict JSON: {\"text\":\"<=200 token summary using tends-to phrasing\",\"known_topics\":[\"topic\"]}.\n\n",
@@ -118,4 +125,146 @@ fn strip_json_fence(content: &str) -> &str {
         .and_then(|content| content.strip_suffix("```"))
         .map(str::trim)
         .unwrap_or(content)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use mxr_core::id::{AccountId, MessageId, ThreadId};
+    use mxr_core::types::{
+        Account, Address, BackendRef, MessageBody, MessageDirection, MessageFlags, MessageMetadata,
+        ProviderKind, UnsubscribeMethod,
+    };
+    use mxr_llm::{LlmRuntime, NoopProvider};
+    use mxr_store::{ContactStyleRecord, Store};
+
+    #[tokio::test]
+    async fn summary_regeneration_waits_for_three_unsummarized_messages() {
+        let store = Store::in_memory().await.expect("store");
+        let account = test_account();
+        store.insert_account(&account).await.expect("account");
+        let computed_at = Utc::now();
+        store
+            .upsert_contact_style(&ContactStyleRecord {
+                account_id: account.id.clone(),
+                email: "alice@example.com".to_string(),
+                formality_score: 0.4,
+                formality_score_theirs: 0.5,
+                avg_sentence_len: 8.0,
+                avg_sentence_len_theirs: 10.0,
+                msg_count_used: 5,
+                msg_count_used_theirs: 2,
+                metrics_json: "{}".to_string(),
+                metrics_json_theirs: "{}".to_string(),
+                computed_at,
+                source_hash: "style-v2".to_string(),
+                drift_detected: false,
+                drift_reason: None,
+                drift_detected_at: None,
+            })
+            .await
+            .expect("style");
+        store
+            .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
+                account_id: account.id.clone(),
+                email: "alice@example.com".to_string(),
+                text: "Existing summary".to_string(),
+                model: "test".to_string(),
+                known_topics: vec!["pricing".to_string()],
+                computed_at,
+                source_hash: "style-v1".to_string(),
+                last_error: None,
+            })
+            .await
+            .expect("summary");
+        for index in 0..2 {
+            insert_message(
+                &store,
+                &account,
+                &format!("new-{index}"),
+                computed_at + chrono::Duration::minutes(index + 1),
+            )
+            .await;
+        }
+        let llm = std::sync::Arc::new(LlmRuntime::new(std::sync::Arc::new(NoopProvider)));
+
+        let generated =
+            generate_relationship_summary(&store, &llm, &account.id, "alice@example.com")
+                .await
+                .expect("generate");
+
+        assert!(!generated);
+        let summary = store
+            .get_contact_relationship_summary(&account.id, "alice@example.com")
+            .await
+            .expect("load summary")
+            .expect("summary exists");
+        assert_eq!(summary.source_hash, "style-v1");
+    }
+
+    fn test_account() -> Account {
+        Account {
+            id: AccountId::new(),
+            name: "Test".to_string(),
+            email: "me@example.com".to_string(),
+            sync_backend: Some(BackendRef {
+                provider_kind: ProviderKind::Fake,
+                config_key: "fake".to_string(),
+            }),
+            send_backend: None,
+            enabled: true,
+        }
+    }
+
+    async fn insert_message(
+        store: &Store,
+        account: &Account,
+        provider_id: &str,
+        date: chrono::DateTime<Utc>,
+    ) {
+        let message_id = MessageId::new();
+        let envelope = mxr_core::types::Envelope {
+            id: message_id.clone(),
+            account_id: account.id.clone(),
+            provider_id: provider_id.to_string(),
+            thread_id: ThreadId::new(),
+            message_id_header: None,
+            in_reply_to: None,
+            references: Vec::new(),
+            from: Address {
+                name: Some("Alice".to_string()),
+                email: "alice@example.com".to_string(),
+            },
+            to: vec![Address {
+                name: None,
+                email: account.email.clone(),
+            }],
+            cc: Vec::new(),
+            bcc: Vec::new(),
+            subject: "Follow-up".to_string(),
+            date,
+            flags: MessageFlags::empty(),
+            snippet: "Can you send the update?".to_string(),
+            has_attachments: false,
+            size_bytes: 10,
+            unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: Vec::new(),
+        };
+        store
+            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+            .await
+            .expect("envelope");
+        store
+            .insert_body(&MessageBody {
+                message_id,
+                text_plain: Some("Can you send the update?".to_string()),
+                text_html: None,
+                attachments: Vec::new(),
+                fetched_at: date,
+                metadata: MessageMetadata::default(),
+            })
+            .await
+            .expect("body");
+    }
 }

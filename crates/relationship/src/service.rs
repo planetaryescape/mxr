@@ -23,6 +23,10 @@ enum RelationshipCommand {
         message_ids: Vec<MessageId>,
         resp: oneshot::Sender<Result<()>>,
     },
+    EnqueueContacts {
+        contacts: Vec<(AccountId, String)>,
+        resp: oneshot::Sender<Result<()>>,
+    },
     RebuildContact {
         account_id: AccountId,
         email: String,
@@ -70,18 +74,17 @@ impl RelationshipServiceHandle {
                     RelationshipCommand::EnqueueMessages { message_ids, resp } => {
                         match store.relationship_contacts_for_messages(&message_ids).await {
                             Ok(contacts) => {
-                                for (account_id, email) in contacts {
-                                    let key = (account_id.as_str(), email.clone());
-                                    if pending_keys.insert(key) {
-                                        pending.push_back((account_id, email));
-                                    }
-                                }
+                                enqueue_contacts(&mut pending, &mut pending_keys, contacts);
                                 let _ = resp.send(Ok(()));
                             }
                             Err(error) => {
                                 let _ = resp.send(Err(error.into()));
                             }
                         }
+                    }
+                    RelationshipCommand::EnqueueContacts { contacts, resp } => {
+                        enqueue_contacts(&mut pending, &mut pending_keys, contacts);
+                        let _ = resp.send(Ok(()));
                     }
                     RelationshipCommand::RebuildContact {
                         account_id,
@@ -139,6 +142,20 @@ impl RelationshipServiceHandle {
             .map_err(|_| anyhow::anyhow!("relationship service stopped"))?
     }
 
+    pub async fn enqueue_contacts(&self, contacts: Vec<(AccountId, String)>) -> Result<()> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.tx
+            .send(RelationshipCommand::EnqueueContacts {
+                contacts,
+                resp: resp_tx,
+            })
+            .await
+            .map_err(|_| anyhow::anyhow!("relationship service unavailable"))?;
+        resp_rx
+            .await
+            .map_err(|_| anyhow::anyhow!("relationship service stopped"))?
+    }
+
     pub async fn rebuild_contact(&self, account_id: AccountId, email: String) -> Result<()> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx
@@ -164,6 +181,19 @@ impl RelationshipServiceHandle {
             .await
             .map_err(|_| anyhow::anyhow!("relationship service stopped"))?;
         Ok(())
+    }
+}
+
+fn enqueue_contacts(
+    pending: &mut VecDeque<(AccountId, String)>,
+    pending_keys: &mut HashSet<(String, String)>,
+    contacts: Vec<(AccountId, String)>,
+) {
+    for (account_id, email) in contacts {
+        let key = (account_id.as_str(), email.clone());
+        if pending_keys.insert(key) {
+            pending.push_back((account_id, email));
+        }
     }
 }
 
@@ -253,7 +283,7 @@ async fn rebuild_contact_style_with_options(
     if let Some(reason) = drift_reason {
         store
             .insert_event(
-                "warning",
+                "warn",
                 "relationship",
                 "Relationship voice drift detected",
                 Some(account_id),
@@ -405,7 +435,14 @@ pub async fn rebuild_user_voice_profile(store: &Store, account_id: &AccountId) -
 
 #[cfg(test)]
 mod tests {
-    use super::metric_shift;
+    use super::*;
+    use chrono::TimeZone;
+    use mxr_core::id::{MessageId, ThreadId};
+    use mxr_core::types::{
+        Account, Address, BackendRef, MessageBody, MessageDirection, MessageFlags, MessageMetadata,
+        ProviderKind, UnsubscribeMethod,
+    };
+    use mxr_store::Store;
 
     #[test]
     fn metric_shift_requires_three_recent_outliers() {
@@ -420,5 +457,238 @@ mod tests {
             Some(true),
             "three consecutive outliers should report drift"
         );
+    }
+
+    #[tokio::test]
+    async fn rebuild_contact_style_uses_clean_non_list_messages_and_skips_unchanged_rebuild() {
+        let store = Store::in_memory().await.expect("store");
+        let account = test_account();
+        store.insert_account(&account).await.expect("account");
+        let thread_id = ThreadId::new();
+        let base = Utc.with_ymd_and_hms(2026, 5, 1, 12, 0, 0).unwrap();
+        for index in 0..5 {
+            insert_relationship_message(
+                &store,
+                &account,
+                &thread_id,
+                MessageDirection::Outbound,
+                "alice@example.com",
+                "Hi Alice. I will send it today.\n> This quoted inbound paragraph has many extra words that should not shape my outbound voice metrics.",
+                base + chrono::Duration::minutes(index),
+                None,
+            )
+            .await;
+        }
+        insert_relationship_message(
+            &store,
+            &account,
+            &thread_id,
+            MessageDirection::Outbound,
+            "alice@example.com",
+            "Newsletter list content should not count as direct relationship voice.",
+            base + chrono::Duration::minutes(6),
+            Some("list.example"),
+        )
+        .await;
+        insert_relationship_message(
+            &store,
+            &account,
+            &thread_id,
+            MessageDirection::Inbound,
+            "alice@example.com",
+            "Can you send it today?",
+            base + chrono::Duration::minutes(7),
+            None,
+        )
+        .await;
+
+        rebuild_contact_style(&store, &account.id, "alice@example.com")
+            .await
+            .expect("first rebuild");
+        let first = store
+            .get_contact_style(&account.id, "alice@example.com")
+            .await
+            .expect("style query")
+            .expect("style");
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        rebuild_contact_style(&store, &account.id, "alice@example.com")
+            .await
+            .expect("second rebuild");
+        let second = store
+            .get_contact_style(&account.id, "alice@example.com")
+            .await
+            .expect("style query")
+            .expect("style");
+
+        assert_eq!(first.msg_count_used, 5);
+        assert!(
+            first.avg_sentence_len < 8.0,
+            "quoted text should be stripped before stylometry; got avg sentence length {}",
+            first.avg_sentence_len
+        );
+        assert_eq!(
+            second.computed_at, first.computed_at,
+            "unchanged source hash should skip rewriting the style record"
+        );
+    }
+
+    #[tokio::test]
+    async fn rebuild_contact_style_flags_three_recent_voice_outliers_as_drift() {
+        let store = Store::in_memory().await.expect("store");
+        let account = test_account();
+        store.insert_account(&account).await.expect("account");
+        let thread_id = ThreadId::new();
+        let base = Utc.with_ymd_and_hms(2026, 5, 1, 12, 0, 0).unwrap();
+        for index in 0..8 {
+            insert_relationship_message(
+                &store,
+                &account,
+                &thread_id,
+                MessageDirection::Outbound,
+                "alice@example.com",
+                "ok.",
+                base + chrono::Duration::minutes(index),
+                None,
+            )
+            .await;
+        }
+        insert_relationship_message(
+            &store,
+            &account,
+            &thread_id,
+            MessageDirection::Inbound,
+            "alice@example.com",
+            "Thanks.",
+            base + chrono::Duration::minutes(9),
+            None,
+        )
+        .await;
+        rebuild_contact_style(&store, &account.id, "alice@example.com")
+            .await
+            .expect("baseline rebuild");
+
+        for index in 0..3 {
+            insert_relationship_message(
+                &store,
+                &account,
+                &thread_id,
+                MessageDirection::Outbound,
+                "alice@example.com",
+                "I can prepare the deployment update, summarize the dashboard results, confirm the owner, and send the final note before the deadline.",
+                base + chrono::Duration::minutes(20 + index),
+                None,
+            )
+            .await;
+        }
+        rebuild_contact_style(&store, &account.id, "alice@example.com")
+            .await
+            .expect("drift rebuild");
+
+        let style = store
+            .get_contact_style(&account.id, "alice@example.com")
+            .await
+            .expect("style query")
+            .expect("style");
+        assert!(
+            style.drift_detected,
+            "three recent outliers should flag drift"
+        );
+        assert!(
+            style
+                .drift_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("sentence length")),
+            "drift reason should explain the observable voice shift: {:?}",
+            style.drift_reason
+        );
+    }
+
+    fn test_account() -> Account {
+        Account {
+            id: AccountId::new(),
+            name: "Test".to_string(),
+            email: "me@example.com".to_string(),
+            sync_backend: Some(BackendRef {
+                provider_kind: ProviderKind::Fake,
+                config_key: "fake".to_string(),
+            }),
+            send_backend: None,
+            enabled: true,
+        }
+    }
+
+    async fn insert_relationship_message(
+        store: &Store,
+        account: &Account,
+        thread_id: &ThreadId,
+        direction: MessageDirection,
+        contact_email: &str,
+        body: &str,
+        date: chrono::DateTime<Utc>,
+        list_id: Option<&str>,
+    ) -> MessageId {
+        let message_id = MessageId::new();
+        let (from, to) = match direction {
+            MessageDirection::Outbound => (
+                Address {
+                    name: Some("Me".to_string()),
+                    email: account.email.clone(),
+                },
+                Address {
+                    name: Some("Alice".to_string()),
+                    email: contact_email.to_string(),
+                },
+            ),
+            _ => (
+                Address {
+                    name: Some("Alice".to_string()),
+                    email: contact_email.to_string(),
+                },
+                Address {
+                    name: Some("Me".to_string()),
+                    email: account.email.clone(),
+                },
+            ),
+        };
+        let envelope = mxr_core::types::Envelope {
+            id: message_id.clone(),
+            account_id: account.id.clone(),
+            provider_id: format!("provider-{}", message_id.as_str()),
+            thread_id: thread_id.clone(),
+            message_id_header: None,
+            in_reply_to: None,
+            references: Vec::new(),
+            from,
+            to: vec![to],
+            cc: Vec::new(),
+            bcc: Vec::new(),
+            subject: "Relationship".to_string(),
+            date,
+            flags: MessageFlags::READ,
+            snippet: body.to_string(),
+            has_attachments: false,
+            size_bytes: body.len() as u64,
+            unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: Vec::new(),
+        };
+        store
+            .upsert_envelope_with_direction(&envelope, direction)
+            .await
+            .expect("envelope");
+        store
+            .insert_body(&MessageBody {
+                message_id: message_id.clone(),
+                text_plain: Some(body.to_string()),
+                text_html: None,
+                attachments: Vec::new(),
+                fetched_at: date,
+                metadata: MessageMetadata {
+                    list_id: list_id.map(str::to_string),
+                    ..Default::default()
+                },
+            })
+            .await
+            .expect("body");
+        message_id
     }
 }

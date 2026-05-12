@@ -34,6 +34,13 @@ pub async fn extract_commitments(
     account_id: &AccountId,
     email: &str,
 ) -> Result<usize> {
+    store
+        .expire_stale_contact_commitments(
+            account_id,
+            email,
+            Utc::now() - chrono::Duration::days(180),
+        )
+        .await?;
     let samples = store.recent_contact_messages(account_id, email, 40).await?;
     if samples.is_empty() {
         return Ok(0);
@@ -91,6 +98,19 @@ pub async fn extract_commitments(
         else {
             continue;
         };
+        let normalized_what = normalize_what(&commitment.what);
+        if store
+            .contact_commitment_exists(
+                account_id,
+                email,
+                &sample.thread_id,
+                commitment.direction,
+                &normalized_what,
+            )
+            .await?
+        {
+            continue;
+        }
         let record = ContactCommitmentRecord {
             id: commitment_id(
                 account_id,
@@ -106,7 +126,7 @@ pub async fn extract_commitments(
             direction: commitment.direction,
             status: CommitmentStatus::Open,
             who_owes: commitment.who_owes.trim().to_string(),
-            what: normalize_what(&commitment.what),
+            what: normalized_what,
             by_when: commitment.by_when.as_deref().and_then(parse_datetime),
             evidence_msg_id,
             extracted_at: Utc::now(),
@@ -165,4 +185,152 @@ fn commitment_id(
     hasher.update(normalize_what(what).to_ascii_lowercase());
     hasher.update(evidence_msg_id.as_str());
     format!("commitment-{:x}", hasher.finalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mxr_core::id::{AccountId, MessageId, ThreadId};
+    use mxr_core::types::{
+        Account, Address, BackendRef, MessageBody, MessageDirection, MessageFlags, MessageMetadata,
+        ProviderKind, UnsubscribeMethod,
+    };
+    use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
+    use std::sync::{Arc, Mutex};
+
+    struct SequenceLlm {
+        responses: Mutex<Vec<String>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmProvider for SequenceLlm {
+        async fn complete(
+            &self,
+            _req: CompletionRequest,
+        ) -> std::result::Result<CompletionResponse, LlmError> {
+            let content = self.responses.lock().expect("responses lock").remove(0);
+            Ok(CompletionResponse {
+                content,
+                model: "test-llm".to_string(),
+                finish_reason: Some("stop".to_string()),
+            })
+        }
+
+        fn capabilities(&self) -> LlmCapabilities {
+            LlmCapabilities {
+                context_window: 8192,
+                supports_streaming: false,
+            }
+        }
+
+        fn model_name(&self) -> &str {
+            "test-llm"
+        }
+    }
+
+    #[tokio::test]
+    async fn extraction_dedups_commitments_across_evidence_messages() {
+        let store = Store::in_memory().await.expect("store");
+        let account = test_account();
+        store.insert_account(&account).await.expect("account");
+        let thread_id = ThreadId::new();
+        let first = insert_message(&store, &account, &thread_id, "first", 0).await;
+        let second = insert_message(&store, &account, &thread_id, "second", 1).await;
+        let llm = Arc::new(LlmRuntime::new(Arc::new(SequenceLlm {
+            responses: Mutex::new(vec![
+                format!(
+                    r#"{{"commitments":[{{"who_owes":"Alice","what":"Send launch date","by_when":null,"evidence_msg_id":"{}","direction":"theirs"}}]}}"#,
+                    first.as_str()
+                ),
+                format!(
+                    r#"{{"commitments":[{{"who_owes":"Alice","what":"  send launch date  ","by_when":null,"evidence_msg_id":"{}","direction":"theirs"}}]}}"#,
+                    second.as_str()
+                ),
+            ]),
+        })));
+
+        let inserted = extract_commitments(&store, &llm, &account.id, "alice@example.com")
+            .await
+            .expect("first extract");
+        let deduped = extract_commitments(&store, &llm, &account.id, "alice@example.com")
+            .await
+            .expect("second extract");
+
+        assert_eq!(inserted, 1);
+        assert_eq!(deduped, 0);
+        let commitments = store
+            .list_contact_commitments(&account.id, Some("alice@example.com"), None)
+            .await
+            .expect("commitments");
+        assert_eq!(commitments.len(), 1);
+        assert_eq!(commitments[0].what, "Send launch date");
+    }
+
+    fn test_account() -> Account {
+        Account {
+            id: AccountId::new(),
+            name: "Test".to_string(),
+            email: "me@example.com".to_string(),
+            sync_backend: Some(BackendRef {
+                provider_kind: ProviderKind::Fake,
+                config_key: "fake".to_string(),
+            }),
+            send_backend: None,
+            enabled: true,
+        }
+    }
+
+    async fn insert_message(
+        store: &Store,
+        account: &Account,
+        thread_id: &ThreadId,
+        provider_id: &str,
+        offset_minutes: i64,
+    ) -> MessageId {
+        let message_id = MessageId::new();
+        let date = Utc::now() + chrono::Duration::minutes(offset_minutes);
+        let envelope = mxr_core::types::Envelope {
+            id: message_id.clone(),
+            account_id: account.id.clone(),
+            provider_id: provider_id.to_string(),
+            thread_id: thread_id.clone(),
+            message_id_header: None,
+            in_reply_to: None,
+            references: Vec::new(),
+            from: Address {
+                name: Some("Alice".to_string()),
+                email: "alice@example.com".to_string(),
+            },
+            to: vec![Address {
+                name: None,
+                email: account.email.clone(),
+            }],
+            cc: Vec::new(),
+            bcc: Vec::new(),
+            subject: "Launch".to_string(),
+            date,
+            flags: MessageFlags::empty(),
+            snippet: "I will send the launch date.".to_string(),
+            has_attachments: false,
+            size_bytes: 10,
+            unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: Vec::new(),
+        };
+        store
+            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+            .await
+            .expect("envelope");
+        store
+            .insert_body(&MessageBody {
+                message_id: message_id.clone(),
+                text_plain: Some("I will send the launch date.".to_string()),
+                text_html: None,
+                attachments: Vec::new(),
+                fetched_at: date,
+                metadata: MessageMetadata::default(),
+            })
+            .await
+            .expect("body");
+        message_id
+    }
 }

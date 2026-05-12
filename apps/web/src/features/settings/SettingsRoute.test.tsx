@@ -41,6 +41,7 @@ describe("LlmSettingsSection", () => {
             api_key_env: "",
             context_window: 8192,
             request_timeout_secs: 120,
+            allow_cloud_relationship_data: false,
           },
         });
       }
@@ -69,6 +70,7 @@ describe("LlmSettingsSection", () => {
             api_key_env: "OPENAI_API_KEY",
             context_window: 16384,
             request_timeout_secs: 45,
+            allow_cloud_relationship_data: true,
           },
         });
       }
@@ -87,7 +89,7 @@ describe("LlmSettingsSection", () => {
     expect(screen.getByText(/provider: noop/i)).toBeVisible();
 
     fireEvent.click(screen.getByRole("switch", { name: /enable llm features/i }));
-    fireEvent.change(screen.getByLabelText(/base url/i), {
+    fireEvent.change(screen.getByLabelText(/^base url$/i), {
       target: { value: "https://api.openai.com/v1" },
     });
     fireEvent.change(screen.getByLabelText(/^model$/i), { target: { value: "gpt-5-mini" } });
@@ -96,6 +98,7 @@ describe("LlmSettingsSection", () => {
     });
     fireEvent.change(screen.getByLabelText(/context window/i), { target: { value: "16384" } });
     fireEvent.change(screen.getByLabelText(/request timeout/i), { target: { value: "45" } });
+    fireEvent.click(screen.getByRole("switch", { name: /allow relationship data/i }));
     fireEvent.click(screen.getByRole("button", { name: /save llm config/i }));
 
     await waitFor(() => {
@@ -108,10 +111,40 @@ describe("LlmSettingsSection", () => {
           api_key_env: "OPENAI_API_KEY",
           context_window: 16384,
           request_timeout_secs: 45,
+          allow_cloud_relationship_data: true,
+          overrides: {},
         },
       });
     });
     expect(screen.queryByLabelText(/^api key$/i)).not.toBeInTheDocument();
+  });
+
+  test("saves per-feature LLM override fields", async () => {
+    renderWithQueryClient(<LlmSettingsSection />);
+
+    expect(await screen.findByText(/feature overrides/i)).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText(/draft assist model/i), {
+      target: { value: "qwen2.5:7b-instruct" },
+    });
+    fireEvent.change(screen.getByLabelText(/draft assist base url/i), {
+      target: { value: "http://localhost:1234/v1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save llm config/i }));
+
+    await waitFor(() => {
+      expect(api.fetch).toHaveBeenCalledWith("/api/v1/platform/llm/config", {
+        method: "POST",
+        body: expect.objectContaining({
+          overrides: expect.objectContaining({
+            draft_assist: expect.objectContaining({
+              model: "qwen2.5:7b-instruct",
+              base_url: "http://localhost:1234/v1",
+            }),
+          }),
+        }),
+      });
+    });
   });
 
   test("falls back to LLM status when older daemons lack config endpoint", async () => {

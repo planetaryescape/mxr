@@ -10,6 +10,7 @@ use tokio::task::JoinHandle;
 pub struct SearchIndexEntry {
     pub envelope: Envelope,
     pub body: Option<MessageBody>,
+    pub reply_later: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -203,9 +204,9 @@ fn apply_batch(index: &mut SearchIndex, batch: SearchUpdateBatch) -> Result<(), 
 
     for entry in batch.entries {
         if let Some(body) = entry.body.as_ref() {
-            index.index_body(&entry.envelope, body)?;
+            index.index_body_with_reply_later(&entry.envelope, body, entry.reply_later)?;
         } else {
-            index.index_envelope(&entry.envelope)?;
+            index.index_envelope_with_reply_later(&entry.envelope, entry.reply_later)?;
         }
     }
 

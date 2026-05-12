@@ -62,7 +62,7 @@ mod tests {
         let pending = PendingBulkConfirm {
             title: "Archive messages".into(),
             detail: "You are about to archive these 15 messages.".into(),
-            request: Request::Mutation(MutationCommand::Archive {
+            request: Request::mutation(MutationCommand::Archive {
                 message_ids: vec![],
             }),
             effect: MutationEffect::RefreshList,

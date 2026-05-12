@@ -90,6 +90,7 @@ fn matches_filter(filter: &FilterKind, envelope: &mxr_core::Envelope) -> bool {
         }
         FilterKind::HasAttachment => envelope.has_attachments,
         FilterKind::Anywhere => true,
+        FilterKind::ReplyLater => true,
         FilterKind::HasUserLabels => envelope
             .label_provider_ids
             .iter()

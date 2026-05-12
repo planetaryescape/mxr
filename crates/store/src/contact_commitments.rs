@@ -98,6 +98,68 @@ impl super::Store {
         Ok(())
     }
 
+    pub async fn contact_commitment_exists(
+        &self,
+        account_id: &AccountId,
+        email: &str,
+        thread_id: &ThreadId,
+        direction: CommitmentDirection,
+        what: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let row: Option<i64> = sqlx::query_scalar(
+            r#"SELECT 1 FROM contact_commitments
+               WHERE account_id = ?
+                 AND email = ? COLLATE NOCASE
+                 AND thread_id = ?
+                 AND direction = ?
+                 AND LOWER(what) = LOWER(?)
+               LIMIT 1"#,
+        )
+        .bind(account_id.as_str())
+        .bind(email)
+        .bind(thread_id.as_str())
+        .bind(direction.as_str())
+        .bind(what)
+        .fetch_optional(self.reader())
+        .await?;
+        Ok(row.is_some())
+    }
+
+    pub async fn expire_stale_contact_commitments(
+        &self,
+        account_id: &AccountId,
+        email: &str,
+        cutoff: DateTime<Utc>,
+    ) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            r#"UPDATE contact_commitments
+               SET status = 'expired'
+               WHERE account_id = ?
+                 AND email = ? COLLATE NOCASE
+                 AND status = 'open'
+                 AND EXISTS (
+                   SELECT 1 FROM messages evidence
+                   WHERE evidence.id = contact_commitments.evidence_msg_id
+                     AND evidence.date < ?
+                 )
+                 AND NOT EXISTS (
+                   SELECT 1
+                   FROM messages evidence
+                   JOIN messages reply
+                     ON reply.account_id = contact_commitments.account_id
+                    AND reply.thread_id = contact_commitments.thread_id
+                    AND reply.date > evidence.date
+                   WHERE evidence.id = contact_commitments.evidence_msg_id
+                 )"#,
+        )
+        .bind(account_id.as_str())
+        .bind(email)
+        .bind(cutoff.timestamp())
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected())
+    }
+
     pub async fn list_contact_commitments(
         &self,
         account_id: &AccountId,

@@ -318,6 +318,8 @@ mod tests {
                         api_key_env: String::new(),
                         context_window: 8192,
                         request_timeout_secs: 120,
+                        allow_cloud_relationship_data: false,
+                        overrides: Some(LlmOverridesData::default()),
                     },
                 },
                 IpcCategory::MxrPlatform,
@@ -432,7 +434,7 @@ mod tests {
                 IpcCategory::CoreMail,
             ),
             (
-                Request::Mutation(MutationCommand::Archive {
+                Request::mutation(MutationCommand::Archive {
                     message_ids: vec![MessageId::new()],
                 }),
                 IpcCategory::CoreMail,
@@ -656,6 +658,8 @@ mod tests {
                         api_key_env: String::new(),
                         context_window: 8192,
                         request_timeout_secs: 120,
+                        allow_cloud_relationship_data: false,
+                        overrides: Some(LlmOverridesData::default()),
                     },
                 },
                 IpcCategory::MxrPlatform,
@@ -1074,17 +1078,18 @@ mod tests {
 
     #[test]
     fn daemon_event_categories_cover_every_variant() {
+        let aid = AccountId::new();
         let event_categories = vec![
             (
                 DaemonEvent::SyncCompleted {
-                    account_id: AccountId::new(),
+                    account_id: aid.clone(),
                     messages_synced: 1,
                 },
                 IpcCategory::CoreMail,
             ),
             (
                 DaemonEvent::SyncError {
-                    account_id: AccountId::new(),
+                    account_id: aid.clone(),
                     error: "boom".into(),
                 },
                 IpcCategory::CoreMail,
@@ -1102,8 +1107,69 @@ mod tests {
                 IpcCategory::CoreMail,
             ),
             (
+                DaemonEvent::ReminderTriggered {
+                    sent_message_id: MessageId::new(),
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
                 DaemonEvent::LabelCountsUpdated { counts: Vec::new() },
                 IpcCategory::CoreMail,
+            ),
+            (
+                DaemonEvent::MutationReconciliationFailed {
+                    client_correlation_id: "1".into(),
+                    error_summary: "x".into(),
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
+                DaemonEvent::OperationStarted {
+                    operation_id: "op".into(),
+                    operation: "task".into(),
+                    account_id: Some(aid.clone()),
+                    message: "m".into(),
+                },
+                IpcCategory::AdminMaintenance,
+            ),
+            (
+                DaemonEvent::OperationProgress {
+                    operation_id: "op".into(),
+                    operation: "task".into(),
+                    account_id: Some(aid.clone()),
+                    current: 1,
+                    total: Some(2),
+                    message: "m".into(),
+                },
+                IpcCategory::AdminMaintenance,
+            ),
+            (
+                DaemonEvent::OperationCompleted {
+                    operation_id: "op".into(),
+                    operation: "task".into(),
+                    account_id: Some(aid.clone()),
+                    message: "m".into(),
+                },
+                IpcCategory::AdminMaintenance,
+            ),
+            (
+                DaemonEvent::OperationFailed {
+                    operation_id: "op".into(),
+                    operation: "task".into(),
+                    account_id: Some(aid.clone()),
+                    error: "e".into(),
+                    retryable: false,
+                },
+                IpcCategory::AdminMaintenance,
+            ),
+            (
+                DaemonEvent::OperationCancelled {
+                    operation_id: "op".into(),
+                    operation: "task".into(),
+                    account_id: Some(aid),
+                    message: "m".into(),
+                },
+                IpcCategory::AdminMaintenance,
             ),
         ];
 

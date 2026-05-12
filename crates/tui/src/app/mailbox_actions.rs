@@ -348,14 +348,22 @@ impl App {
                     return;
                 };
                 let id = env.id.clone();
-                self.queue_mutation(
+                let effect = MutationEffect::ReplyLater {
+                    message_id: id.clone(),
+                    flag: true,
+                    status: "Marked for reply later".into(),
+                };
+                let snapshot = self.snapshot_for_effect(&effect);
+                self.apply_local_mutation_effect(&effect);
+                let mutation_id = self.queue_mutation(
                     Request::SetReplyLater {
                         message_id: id,
                         flag: true,
                     },
-                    MutationEffect::StatusOnly("Marked for reply later".into()),
+                    effect,
                     "Marking for reply later...".into(),
                 );
+                self.mutation_snapshots.insert(mutation_id, snapshot);
             }
             Action::OpenReplyQueue => {
                 self.modals.reply_queue.open_loading();
@@ -370,6 +378,18 @@ impl App {
             }
             Action::ReplyQueueModalPrev => {
                 self.modals.reply_queue.select_prev();
+            }
+            Action::ReplyQueueModalReply => {
+                let Some(env) = self.modals.reply_queue.selected().cloned() else {
+                    self.status_message = Some("Reply queue is empty".into());
+                    return;
+                };
+                self.modals.reply_queue.close();
+                self.compose.pending_compose = Some(ComposeAction::Reply {
+                    message_id: env.id,
+                    account_id: env.account_id,
+                });
+                self.status_message = Some("Opening reply from reply queue...".into());
             }
             Action::OpenScreenerQueue => {
                 // Reach for an account_id from any visible envelope so

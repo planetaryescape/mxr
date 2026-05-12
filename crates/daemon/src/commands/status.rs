@@ -5,7 +5,8 @@ use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_core::types::SemanticRuntimeMetrics;
 use mxr_protocol::{
-    AccountSyncStatus, DaemonHealthClass, Request, Response, ResponseData, IPC_PROTOCOL_VERSION,
+    AccountSyncStatus, DaemonHealthClass, FeatureHealthReport, Request, Response, ResponseData,
+    IPC_PROTOCOL_VERSION,
 };
 
 struct StatusRender<'a> {
@@ -19,6 +20,7 @@ struct StatusRender<'a> {
     protocol_version: u32,
     repair_required: bool,
     semantic_runtime: Option<&'a SemanticRuntimeMetrics>,
+    feature_health: Option<&'a FeatureHealthReport>,
     restart_required: bool,
     health_class: DaemonHealthClass,
 }
@@ -35,6 +37,7 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
         "protocol_version": view.protocol_version,
         "repair_required": view.repair_required,
         "semantic_runtime": view.semantic_runtime,
+        "feature_health": view.feature_health,
         "restart_required": view.restart_required,
         "health_class": view.health_class,
     });
@@ -119,7 +122,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                         daemon_build_id,
                         repair_required,
                         semantic_runtime,
-                        feature_health: _,
+                        feature_health,
                     },
             } => {
                 let restart_required = crate::server::daemon_requires_restart(
@@ -146,6 +149,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                             protocol_version,
                             repair_required,
                             semantic_runtime: semantic_runtime.as_ref(),
+                            feature_health: feature_health.as_ref(),
                             restart_required,
                             health_class,
                         },
@@ -209,6 +213,7 @@ mod tests {
                     last_embedding_prep_ms: Some(56),
                     last_ingest_ms: Some(78),
                 }),
+                feature_health: None,
                 restart_required: false,
                 health_class: DaemonHealthClass::Healthy,
             },
@@ -235,6 +240,7 @@ mod tests {
                 protocol_version: IPC_PROTOCOL_VERSION,
                 repair_required: true,
                 semantic_runtime: None,
+                feature_health: None,
                 restart_required: false,
                 health_class: DaemonHealthClass::RepairRequired,
             },

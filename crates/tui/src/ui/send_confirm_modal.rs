@@ -6,13 +6,14 @@ pub fn draw(
     frame: &mut Frame,
     area: Rect,
     pending: Option<&PendingSend>,
+    send_at_input: Option<&str>,
     theme: &crate::theme::Theme,
 ) {
     let Some(pending) = pending else {
         return;
     };
 
-    let popup = centered_rect(86, 30, area);
+    let popup = centered_rect(86, 42, area);
     frame.render_widget(Clear, popup);
 
     let block = Block::bordered()
@@ -23,14 +24,14 @@ pub fn draw(
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 
-    let lines = modal_lines(pending)
+    let lines = modal_lines(pending, send_at_input)
         .into_iter()
         .map(Line::from)
         .collect::<Vec<_>>();
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
-fn modal_lines(pending: &PendingSend) -> Vec<String> {
+fn modal_lines(pending: &PendingSend, send_at_input: Option<&str>) -> Vec<String> {
     let mut lines = vec![match pending.mode {
         PendingSendMode::SendOrSave => "Send this draft?".to_string(),
         PendingSendMode::DraftOnlyNoRecipients => "No recipients yet. Save as draft?".to_string(),
@@ -38,10 +39,19 @@ fn modal_lines(pending: &PendingSend) -> Vec<String> {
     }];
 
     lines.push(format!("Subject: {}", pending.fm.subject));
+    lines.push("Voice match: not scored for manual edits".to_string());
+    lines.push("Humanizer: scored on AI draft outputs".to_string());
+    if let Some(input) = send_at_input {
+        lines.push(format!("Send at: {input}"));
+        lines.push("Enter to schedule. Esc to cancel prompt.".to_string());
+    }
     lines.push(String::new());
     match pending.mode {
         PendingSendMode::SendOrSave => {
-            lines.push("[s] send   [d] save draft   [e] edit again   [Esc] discard".to_string());
+            lines.push(
+                "[s] send   [a] send at   [d] save draft   [r] refine   [e] edit again   [Esc] discard"
+                    .to_string(),
+            );
         }
         PendingSendMode::DraftOnlyNoRecipients => {
             lines.push("[d] save draft   [e] edit again   [Esc] discard".to_string());
@@ -103,18 +113,39 @@ mod tests {
 
     #[test]
     fn send_or_save_modal_renders_full_action_row() {
-        let rendered = render_to_string(90, 20, |frame| {
+        let rendered = render_to_string(120, 20, |frame| {
             draw(
                 frame,
-                Rect::new(0, 0, 90, 20),
+                Rect::new(0, 0, 120, 20),
                 Some(&pending(PendingSendMode::SendOrSave)),
+                None,
                 &crate::theme::Theme::default(),
             );
         });
 
         assert!(rendered.contains("Send this draft?"));
         assert!(rendered.contains("Subject: Hello"));
-        assert!(rendered.contains("[s] send   [d] save draft   [e] edit again   [Esc] discard"));
+        assert!(rendered.contains("Voice match: not scored for manual edits"));
+        assert!(rendered.contains("Humanizer: scored on AI draft outputs"));
+        assert!(rendered.contains(
+            "[s] send   [a] send at   [d] save draft   [r] refine   [e] edit again   [Esc] discard"
+        ));
+    }
+
+    #[test]
+    fn send_at_prompt_renders_inline_input() {
+        let rendered = render_to_string(90, 20, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 90, 20),
+                Some(&pending(PendingSendMode::SendOrSave)),
+                Some("in 2h"),
+                &crate::theme::Theme::default(),
+            );
+        });
+
+        assert!(rendered.contains("Send at: in 2h"));
+        assert!(rendered.contains("Enter to schedule"));
     }
 
     #[test]
@@ -124,6 +155,7 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 90, 20),
                 Some(&pending(PendingSendMode::DraftOnlyNoRecipients)),
+                None,
                 &crate::theme::Theme::default(),
             );
         });
@@ -140,6 +172,7 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 90, 20),
                 Some(&pending(PendingSendMode::Unchanged)),
+                None,
                 &crate::theme::Theme::default(),
             );
         });

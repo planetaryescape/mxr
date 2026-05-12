@@ -263,6 +263,7 @@ pub(crate) fn message_row_view(envelope: &Envelope) -> MessageRowView {
     MessageRowView {
         id: envelope.id.to_string(),
         kind: "message",
+        account_id: envelope.account_id.to_string(),
         thread_id: envelope.thread_id.to_string(),
         provider_id: envelope.provider_id.clone(),
         sender: envelope
@@ -288,6 +289,7 @@ pub(crate) fn message_row_view(envelope: &Envelope) -> MessageRowView {
         attachment_id: None,
         attachment_filename: None,
         attachment_size_bytes: None,
+        open_commitment_count: None,
     }
 }
 

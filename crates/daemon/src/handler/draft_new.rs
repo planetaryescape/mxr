@@ -2,7 +2,7 @@ use super::{relationship_profile, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_core::types::Address;
-use mxr_humanizer::{score as humanizer_score, HumanizerOpts};
+use mxr_humanizer::{score as humanizer_score, writing_constraints, HumanizerOpts};
 use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
 use mxr_protocol::{
     DraftLengthHintData, HumanizerReportSummaryData, ResponseData, VoiceMatchConfidenceData,
@@ -29,6 +29,9 @@ pub(super) async fn draft_new(
         prompt.push_str(&context.prompt);
         prompt.push_str("\n\n");
     }
+    prompt.push_str("[WRITING CONSTRAINTS]\n");
+    prompt.push_str(writing_constraints());
+    prompt.push_str("\n\n");
     prompt.push_str("[TASK]\nWrite a new email");
     if let Some(name) = to.name.as_deref().filter(|name| !name.trim().is_empty()) {
         prompt.push_str(&format!(" to {name} <{}>", to.email));
@@ -67,6 +70,7 @@ pub(super) async fn draft_new(
         response.content.trim().to_string(),
         response.model,
         context.baseline,
+        Some(context.prompt.as_str()),
     )
     .await
 }
@@ -86,19 +90,18 @@ pub(crate) async fn voice_context_for_recipient(
     if let Some(profile) =
         relationship_profile::load_relationship_profile(state, account_id, email).await?
     {
-        let mut prompt = String::from("This is weak background guidance. The task overrides it. Anything not in known topics is unknown; do not invent familiarity.\n");
-        if let Some(summary) = profile.summary {
-            prompt.push_str(&format!("- Relationship: {}\n", summary.text.trim()));
-            if !summary.known_topics.is_empty() {
-                prompt.push_str(&format!(
-                    "- Known topics: {}\n",
-                    summary.known_topics.join(", ")
-                ));
-            }
-        }
-        let mut baseline = None;
         if let Some(style) = profile.style {
             if style.msg_count_used >= 5 && style.msg_count_used_theirs >= 1 {
+                let mut prompt = String::from("This is weak background guidance. The task overrides it. Anything not in known topics is unknown; do not invent familiarity.\n");
+                if let Some(summary) = profile.summary {
+                    prompt.push_str(&format!("- Relationship: {}\n", summary.text.trim()));
+                    if !summary.known_topics.is_empty() {
+                        prompt.push_str(&format!(
+                            "- Known topics: {}\n",
+                            summary.known_topics.join(", ")
+                        ));
+                    }
+                }
                 prompt.push_str(&format!(
                     "- Your style to them: formality {:.2}, avg sentence {:.1} words, based on {} messages\n",
                     style.formality_score, style.avg_sentence_len, style.msg_count_used
@@ -107,7 +110,7 @@ pub(crate) async fn voice_context_for_recipient(
                     "- Their style to you: formality {:.2}, avg sentence {:.1} words\n",
                     style.formality_score_theirs, style.avg_sentence_len_theirs
                 ));
-                baseline = Some((
+                let baseline = Some((
                     StylometryMetrics {
                         formality_score: style.formality_score,
                         avg_sentence_len: style.avg_sentence_len,
@@ -115,18 +118,18 @@ pub(crate) async fn voice_context_for_recipient(
                     },
                     style.msg_count_used,
                 ));
+                if !profile.open_commitments.is_empty() {
+                    prompt.push_str("- Outstanding commitments:\n");
+                    for commitment in profile.open_commitments.iter().take(5) {
+                        prompt.push_str(&format!(
+                            "  - {:?}: {}\n",
+                            commitment.direction, commitment.what
+                        ));
+                    }
+                }
+                return Ok(DraftVoiceContext { prompt, baseline });
             }
         }
-        if !profile.open_commitments.is_empty() {
-            prompt.push_str("- Outstanding commitments:\n");
-            for commitment in profile.open_commitments.iter().take(5) {
-                prompt.push_str(&format!(
-                    "  - {:?}: {}\n",
-                    commitment.direction, commitment.what
-                ));
-            }
-        }
-        return Ok(DraftVoiceContext { prompt, baseline });
     }
 
     let desired_register =
@@ -174,10 +177,12 @@ pub(crate) async fn finish_draft_suggestion(
     body: String,
     model: String,
     baseline: Option<(StylometryMetrics, u32)>,
+    voice_context: Option<&str>,
 ) -> HandlerResult {
     let (body, humanizer, rewrite_iterations) = if state.config_snapshot().humanizer.apply_to_drafts
     {
-        super::humanizer::rewrite_to_threshold(state, body, None).await?
+        super::humanizer::rewrite_to_threshold_with_context(state, body, None, voice_context)
+            .await?
     } else {
         let humanizer = humanizer_summary(humanizer_score(&body, &HumanizerOpts::default()));
         (body, humanizer, 0)
@@ -220,5 +225,125 @@ fn register_label(register: VoiceRegisterData) -> &'static str {
         VoiceRegisterData::Casual => "casual",
         VoiceRegisterData::Neutral => "neutral",
         VoiceRegisterData::Formal => "formal",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::AppState;
+    use mxr_llm::{CompletionResponse, LlmCapabilities, LlmProvider};
+    use mxr_store::{ContactRelationshipSummaryRecord, ContactStyleRecord};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct CapturingLlm {
+        last_request: Mutex<Option<CompletionRequest>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmProvider for CapturingLlm {
+        async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+            *self.last_request.lock().expect("request lock") = Some(req);
+            Ok(CompletionResponse {
+                content: "Plain reply".to_string(),
+                model: "test-llm".to_string(),
+                finish_reason: Some("stop".to_string()),
+            })
+        }
+
+        fn capabilities(&self) -> LlmCapabilities {
+            LlmCapabilities {
+                context_window: 8192,
+                supports_streaming: false,
+            }
+        }
+
+        fn model_name(&self) -> &str {
+            "test-llm"
+        }
+    }
+
+    #[tokio::test]
+    async fn draft_new_uses_user_voice_fallback_when_profile_below_threshold() {
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+
+        let account_id = state.default_account_id();
+        let computed_at = chrono::Utc::now();
+        state
+            .store
+            .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
+                account_id: account_id.clone(),
+                email: "customer@example.com".to_string(),
+                text: "Customer prefers short pricing updates.".to_string(),
+                model: "test-model".to_string(),
+                known_topics: vec!["pricing".to_string()],
+                computed_at,
+                source_hash: "relationship-v1".to_string(),
+                last_error: None,
+            })
+            .await
+            .unwrap();
+        state
+            .store
+            .upsert_contact_style(&ContactStyleRecord {
+                account_id: account_id.clone(),
+                email: "customer@example.com".to_string(),
+                formality_score: 0.2,
+                formality_score_theirs: 0.4,
+                avg_sentence_len: 8.0,
+                avg_sentence_len_theirs: 10.0,
+                msg_count_used: 4,
+                msg_count_used_theirs: 3,
+                metrics_json: "{}".to_string(),
+                metrics_json_theirs: "{}".to_string(),
+                computed_at,
+                source_hash: "style-v1".to_string(),
+                drift_detected: false,
+                drift_reason: None,
+                drift_detected_at: None,
+            })
+            .await
+            .unwrap();
+
+        let response = draft_new(
+            &state,
+            &account_id,
+            Address {
+                name: None,
+                email: "customer@example.com".to_string(),
+            },
+            "follow up on pricing",
+            Some(VoiceRegisterData::Neutral),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            response,
+            ResponseData::DraftSuggestion {
+                voice_match: None,
+                ..
+            }
+        ));
+
+        let request = llm
+            .last_request
+            .lock()
+            .expect("request lock")
+            .clone()
+            .expect("captured request");
+        let prompt = request
+            .messages
+            .iter()
+            .map(|message| message.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(prompt.contains("[WRITING CONSTRAINTS]"));
+        assert!(prompt.contains("recipient has no prior relationship profile"));
+        assert!(!prompt.contains("Customer prefers short pricing updates."));
+        assert!(!prompt.contains("Known topics: pricing"));
     }
 }

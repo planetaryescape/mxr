@@ -1,6 +1,7 @@
 export interface MessageRowView {
   id: string;
   kind: "message" | "thread" | string;
+  account_id?: string;
   thread_id: string;
   provider_id: string;
   sender: string;
@@ -22,6 +23,7 @@ export interface MessageRowView {
   attachment_id?: string | null;
   attachment_filename?: string | null;
   attachment_size_bytes?: number | null;
+  open_commitment_count?: number | null;
 }
 
 export interface MessageLabelView {

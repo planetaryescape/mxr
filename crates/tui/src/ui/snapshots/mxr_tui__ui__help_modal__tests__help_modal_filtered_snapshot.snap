@@ -1,19 +1,19 @@
 ---
 source: crates/tui/src/ui/help_modal.rs
-assertion_line: 721
+assertion_line: 848
 expression: snapshot
 ---
 "                                                                                                    "
 "                                                                                                    "
 "      ╭ Help ────────────────────────────────────────────────────────────────────────────────╮      "
-"      │╭ Query  2 matches  Mailbox / List ──────────────────────────────────────────────────╮│      "
+"      │╭ Query  4 matches  Mailbox / List ──────────────────────────────────────────────────╮│      "
 "      ││> gc                                                                                ││      "
 "      │╰────────────────────────────────────────────────────────────────────────────────────╯│      "
 "      │╭ Matches ───────────────────────────────────────────────────────────────────────────╮│      "
 "      ││gc                   Edit config in $EDITOR                 Start Here              ││      "
+"      ││gC                   Open Commitments                       Mailbox List            ││      "
 "      ││gc                   Edit Config                            Mailbox List            ││      "
-"      ││                                                                                    ││      "
-"      ││                                                                                    ││      "
+"      ││gC                   Commitments: Show Open                 Commands: AI            ││      "
 "      ││                                                                                    ││      "
 "      ││                                                                                    ││      "
 "      ││                                                                                    ││      "

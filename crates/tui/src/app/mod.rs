@@ -58,7 +58,7 @@ pub use state::*;
 
 const PREVIEW_MARK_READ_DELAY: Duration = Duration::from_secs(5);
 pub const SEARCH_PAGE_SIZE: u32 = 200;
-const SEARCH_DEBOUNCE_DELAY: Duration = Duration::from_millis(250);
+const SEARCH_DEBOUNCE_DELAY: Duration = Duration::from_millis(120);
 const SEARCH_SPINNER_TICK: Duration = Duration::from_millis(120);
 
 fn sane_mail_sort_timestamp(date: &chrono::DateTime<chrono::Utc>) -> i64 {
@@ -86,6 +86,11 @@ pub enum MutationEffect {
         message_ids: Vec<MessageId>,
         add: Vec<String>,
         remove: Vec<String>,
+        status: String,
+    },
+    ReplyLater {
+        message_id: MessageId,
+        flag: bool,
         status: String,
     },
     RefreshList,
@@ -1071,7 +1076,7 @@ pub fn resolve_snooze_preset(
 mod tests {
     use super::*;
     use crate::test_fixtures::TestEnvelopeBuilder;
-    use chrono::TimeZone;
+    use chrono::{Duration, TimeZone};
 
     fn test_envelope(
         thread_id: mxr_core::ThreadId,
@@ -1130,6 +1135,47 @@ mod tests {
 
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].representative.subject, recent.subject);
+    }
+
+    #[test]
+    fn build_mail_list_rows_counts_other_thread_participants_excluding_representative_from() {
+        let thread_id = mxr_core::ThreadId::new();
+        let t0 = chrono::Utc::now();
+        let alice_first = TestEnvelopeBuilder::new()
+            .thread_id(thread_id.clone())
+            .subject("first")
+            .provider_id("m1")
+            .date(t0)
+            .with_from_address("Alice", "alice@example.com")
+            .to(vec![Address {
+                name: None,
+                email: "bob@example.com".into(),
+            }])
+            .message_id_header(None)
+            .snippet("")
+            .size_bytes(0)
+            .build();
+        let bob_reply = TestEnvelopeBuilder::new()
+            .thread_id(thread_id.clone())
+            .subject("re")
+            .provider_id("m2")
+            .date(t0 + Duration::seconds(1))
+            .with_from_address("Bob", "bob@example.com")
+            .to(vec![Address {
+                name: None,
+                email: "alice@example.com".into(),
+            }])
+            .message_id_header(None)
+            .snippet("")
+            .size_bytes(0)
+            .build();
+
+        let rows = App::build_mail_list_rows(&[alice_first, bob_reply], MailListMode::Threads);
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].message_count, 2);
+        assert_eq!(rows[0].representative.from.email, "bob@example.com");
+        assert_eq!(rows[0].other_participant_count, 1);
     }
 
     #[test]

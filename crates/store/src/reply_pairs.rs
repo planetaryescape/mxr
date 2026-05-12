@@ -78,6 +78,11 @@ impl super::Store {
         .execute(self.writer())
         .await?;
 
+        if pair_direction == "they_replied" {
+            self.cancel_auto_reminder_for_parent_id(&parent.id, replied_at)
+                .await?;
+        }
+
         // Pair resolved — drop any pending row that was waiting for this reply.
         sqlx::query!(
             "DELETE FROM reply_pair_pending WHERE reply_message_id = ?",
@@ -131,6 +136,8 @@ impl super::Store {
         )
         .execute(self.writer())
         .await?;
+        self.cancel_auto_reminders_for_replied_parents(Utc::now().timestamp())
+            .await?;
         Ok(result.rows_affected() as u32)
     }
 
@@ -283,6 +290,10 @@ impl super::Store {
         )
         .execute(self.writer())
         .await?;
+        if pair_direction == "they_replied" {
+            self.cancel_auto_reminder_for_parent_id(&parent.id, replied_at)
+                .await?;
+        }
         sqlx::query!(
             "DELETE FROM reply_pair_pending WHERE reply_message_id = ?",
             stub.id,
@@ -290,6 +301,46 @@ impl super::Store {
         .execute(self.writer())
         .await?;
         Ok(true)
+    }
+
+    async fn cancel_auto_reminder_for_parent_id(
+        &self,
+        parent_message_id: &str,
+        cancelled_at: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"UPDATE auto_reminders
+               SET cancelled_at = ?
+               WHERE sent_message_id = ?
+                 AND triggered_at IS NULL
+                 AND cancelled_at IS NULL"#,
+        )
+        .bind(cancelled_at)
+        .bind(parent_message_id)
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
+    async fn cancel_auto_reminders_for_replied_parents(
+        &self,
+        cancelled_at: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"UPDATE auto_reminders
+               SET cancelled_at = ?
+               WHERE triggered_at IS NULL
+                 AND cancelled_at IS NULL
+                 AND sent_message_id IN (
+                    SELECT parent_message_id
+                    FROM reply_pairs
+                    WHERE direction = 'they_replied'
+                 )"#,
+        )
+        .bind(cancelled_at)
+        .execute(self.writer())
+        .await?;
+        Ok(())
     }
 }
 

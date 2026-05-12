@@ -93,4 +93,36 @@ mod tests {
             other => panic!("Expected Success, got: {:?}", other),
         }
     }
+
+    #[tokio::test]
+    async fn one_click_posts_rfc_8058_form_body() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::header(
+                "content-type",
+                "application/x-www-form-urlencoded",
+            ))
+            .and(wiremock::matchers::body_string(
+                "List-Unsubscribe=One-Click",
+            ))
+            .respond_with(wiremock::ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = Client::new();
+        let result = execute_unsubscribe(
+            &UnsubscribeMethod::OneClick {
+                url: format!("{}/unsubscribe", server.uri()),
+            },
+            &client,
+        )
+        .await;
+
+        assert!(
+            matches!(result, UnsubscribeResult::Success(_)),
+            "Expected successful one-click unsubscribe, got: {result:?}"
+        );
+        server.verify().await;
+    }
 }

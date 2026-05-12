@@ -1,5 +1,23 @@
 use super::*;
 
+fn normalized_email(addr: &mxr_core::types::Address) -> String {
+    addr.email.trim().to_lowercase()
+}
+
+fn ingest_participants_from_envelope(
+    envelope: &Envelope,
+    into: &mut std::collections::HashSet<String>,
+) {
+    into.insert(normalized_email(&envelope.from));
+    for a in &envelope.to {
+        into.insert(normalized_email(a));
+    }
+    for a in &envelope.cc {
+        into.insert(normalized_email(a));
+    }
+    into.retain(|e| !e.is_empty());
+}
+
 impl App {
     pub(super) fn mail_row_count(&self) -> usize {
         if self.mailbox.mailbox_view == MailboxView::Subscriptions {
@@ -20,13 +38,24 @@ impl App {
                     representative: envelope.clone(),
                     message_count: 1,
                     unread_count: usize::from(!envelope.flags.contains(MessageFlags::READ)),
+                    other_participant_count: 0,
+                    open_commitment_count: 0,
+                    reply_later: false,
                     pending_mutation: false,
                 })
                 .collect(),
             MailListMode::Threads => {
                 let mut order: Vec<mxr_core::ThreadId> = Vec::new();
                 let mut rows: HashMap<mxr_core::ThreadId, MailListRow> = HashMap::new();
+                let mut participants: HashMap<
+                    mxr_core::ThreadId,
+                    std::collections::HashSet<String>,
+                > = HashMap::new();
                 for envelope in envelopes {
+                    ingest_participants_from_envelope(
+                        envelope,
+                        participants.entry(envelope.thread_id.clone()).or_default(),
+                    );
                     let entry = rows.entry(envelope.thread_id.clone()).or_insert_with(|| {
                         order.push(envelope.thread_id.clone());
                         MailListRow {
@@ -34,6 +63,9 @@ impl App {
                             representative: envelope.clone(),
                             message_count: 0,
                             unread_count: 0,
+                            other_participant_count: 0,
+                            open_commitment_count: 0,
+                            reply_later: false,
                             pending_mutation: false,
                         }
                     });
@@ -47,10 +79,18 @@ impl App {
                         entry.representative = envelope.clone();
                     }
                 }
-                order
+                let mut collected: Vec<MailListRow> = order
                     .into_iter()
                     .filter_map(|thread_id| rows.remove(&thread_id))
-                    .collect()
+                    .collect();
+                for row in &mut collected {
+                    let primary = normalized_email(&row.representative.from);
+                    row.other_participant_count = participants
+                        .get(&row.thread_id)
+                        .map(|set| set.iter().filter(|e| *e != &primary).count())
+                        .unwrap_or(0);
+                }
+                collected
             }
         }
     }
@@ -341,10 +381,15 @@ impl App {
         self.pending_mutation_queue.iter().any(|queued| {
             matches!(
                 &queued.request,
-                Request::Mutation(MutationCommand::SetRead { message_ids, read: queued_read })
-                    if *queued_read == read
-                        && message_ids.len() == 1
-                        && message_ids[0] == *message_id
+                Request::Mutation {
+                    mutation: MutationCommand::SetRead {
+                        message_ids,
+                        read: queued_read,
+                    },
+                    ..
+                } if *queued_read == read
+                    && message_ids.len() == 1
+                    && message_ids[0] == *message_id
             )
         })
     }
@@ -377,7 +422,7 @@ impl App {
         flags.insert(MessageFlags::READ);
         self.apply_local_flags(&envelope.id, flags);
         self.queue_mutation(
-            Request::Mutation(MutationCommand::SetRead {
+            Request::mutation(MutationCommand::SetRead {
                 message_ids: vec![envelope.id.clone()],
                 read: true,
             }),

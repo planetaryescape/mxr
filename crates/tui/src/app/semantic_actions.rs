@@ -32,6 +32,11 @@ impl App {
                     profile.as_str()
                 ));
             }
+            Action::UseSemanticProfile(profile) => {
+                self.queue_semantic_request(mxr_protocol::Request::UseSemanticProfile { profile });
+                self.status_message =
+                    Some(format!("Using semantic profile {}...", profile.as_str()));
+            }
             _ => unreachable!("action routed to wrong handler"),
         }
     }

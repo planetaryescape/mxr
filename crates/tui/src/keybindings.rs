@@ -140,6 +140,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         // mxr-specific
         "unsubscribe" => Some(Action::Unsubscribe),
         "snooze" => Some(Action::Snooze),
+        "flag_reply_later" => Some(Action::FlagReplyLater),
         "open_in_browser" => Some(Action::OpenInBrowser),
         "toggle_reader_mode" => Some(Action::ToggleReaderMode),
         "toggle_html_view" => Some(Action::ToggleHtmlView),
@@ -152,6 +153,9 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "attachment_list" => Some(Action::AttachmentList),
         "open_links" => Some(Action::OpenLinks),
         "sync" => Some(Action::SyncNow),
+        "enable_semantic" => Some(Action::EnableSemantic),
+        "disable_semantic" => Some(Action::DisableSemantic),
+        "reindex_semantic" => Some(Action::ReindexSemantic),
         "backfill_semantic" => Some(Action::BackfillSemantic),
         "draft_assist" | "draft_assist_thread" => Some(Action::DraftAssistCurrentThread),
         "draft_new_for_sender" => Some(Action::DraftNewForSender),
@@ -204,6 +208,30 @@ pub fn format_keybinding(kb: &KeyBinding) -> String {
         })
         .collect::<Vec<_>>()
         .join("")
+}
+
+/// Shortest formatted mail-list key chord for [`Action`], sourced from the
+/// default bindings registry (`default_keybindings` mail list map). Used so
+/// the command palette shortcuts stay aligned with canonical keybindings.
+pub(crate) fn primary_mail_list_key_display(action: &Action) -> Option<String> {
+    let cfg = default_keybindings();
+    let mut matches: Vec<String> = cfg
+        .mail_list
+        .iter()
+        .filter_map(|(binding, name)| {
+            let mapped = action_from_name(name)?;
+            if mapped != *action {
+                return None;
+            }
+            Some(format_keybinding(binding))
+        })
+        .collect();
+    if matches.is_empty() {
+        None
+    } else {
+        matches.sort_by(|a, b| a.len().cmp(&b.len()).then_with(|| a.cmp(b)));
+        matches.first().cloned()
+    }
 }
 
 pub fn display_bindings_for_actions(
@@ -387,6 +415,7 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("o", "open"),
         ("q", "quit_view"),
         ("?", "help"),
+        ("Escape", "clear_selection"),
         // Email actions (Gmail-native A005)
         ("c", "compose"),
         ("r", "reply"),
@@ -405,6 +434,7 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("x", "toggle_select"),
         // mxr-specific
         ("D", "unsubscribe"),
+        ("b", "flag_reply_later"),
         ("Z", "snooze"),
         ("O", "open_in_browser"),
         ("R", "toggle_reader_mode"),
@@ -428,6 +458,10 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("gl", "go_label"),
         ("gc", "edit_config"),
         ("gL", "open_logs"),
+        ("gA", "draft_assist"),
+        ("gD", "draft_new_for_sender"),
+        ("gC", "open_commitments"),
+        ("gV", "open_voice_profile"),
     ];
     for (key, action) in ml_defaults {
         if let Ok(kb) = parse_key_string(key) {
@@ -470,6 +504,10 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("5", "open_tab_5"),
         ("gc", "edit_config"),
         ("gL", "open_logs"),
+        ("gA", "draft_assist"),
+        ("gD", "draft_new_for_sender"),
+        ("gC", "open_commitments"),
+        ("gV", "open_voice_profile"),
     ];
     for (key, action) in mv_defaults {
         if let Ok(kb) = parse_key_string(key) {
@@ -513,6 +551,10 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("5", "open_tab_5"),
         ("gc", "edit_config"),
         ("gL", "open_logs"),
+        ("gA", "draft_assist"),
+        ("gD", "draft_new_for_sender"),
+        ("gC", "open_commitments"),
+        ("gV", "open_voice_profile"),
     ];
     for (key, action) in tv_defaults {
         if let Ok(kb) = parse_key_string(key) {
@@ -594,6 +636,10 @@ mod tests {
         assert!(actions.contains(&"unsubscribe"));
         assert!(actions.contains(&"snooze"));
         assert!(actions.contains(&"visual_line_mode"));
+        assert!(actions.contains(&"draft_assist"));
+        assert!(actions.contains(&"draft_new_for_sender"));
+        assert!(actions.contains(&"open_commitments"));
+        assert!(actions.contains(&"open_voice_profile"));
     }
 
     #[test]
@@ -619,6 +665,13 @@ mod tests {
         assert!(action_from_name("go_starred").is_some());
         assert!(action_from_name("edit_config").is_some());
         assert!(action_from_name("open_logs").is_some());
+        assert!(action_from_name("enable_semantic").is_some());
+        assert!(action_from_name("disable_semantic").is_some());
+        assert!(action_from_name("reindex_semantic").is_some());
+        assert!(action_from_name("draft_assist").is_some());
+        assert!(action_from_name("draft_new_for_sender").is_some());
+        assert!(action_from_name("open_commitments").is_some());
+        assert!(action_from_name("open_voice_profile").is_some());
         assert!(action_from_name("nonexistent").is_none());
     }
 

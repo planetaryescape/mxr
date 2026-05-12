@@ -3531,6 +3531,29 @@
                 "type": "string"
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "Optimistic UI rollback hint: provider/store rejected some or all of a\ntracked mutation (see `Request::Mutation.client_correlation_id`).",
+            "required": [
+              "client_correlation_id",
+              "error_summary",
+              "event"
+            ],
+            "properties": {
+              "client_correlation_id": {
+                "type": "string"
+              },
+              "error_summary": {
+                "type": "string"
+              },
+              "event": {
+                "type": "string",
+                "enum": [
+                  "MutationReconciliationFailed"
+                ]
+              }
+            }
           }
         ]
       },
@@ -4567,6 +4590,9 @@
           "request_timeout_secs"
         ],
         "properties": {
+          "allow_cloud_relationship_data": {
+            "type": "boolean"
+          },
           "api_key_env": {
             "type": "string"
           },
@@ -4584,10 +4610,164 @@
           "model": {
             "type": "string"
           },
+          "overrides": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverridesData"
+              }
+            ]
+          },
           "request_timeout_secs": {
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "LlmOverrideData": {
+        "type": "object",
+        "properties": {
+          "api_key_env": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "context_window": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null,
+            "minimum": 0
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "request_timeout_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "default": null,
+            "minimum": 0
+          }
+        }
+      },
+      "LlmOverridesData": {
+        "type": "object",
+        "properties": {
+          "commitments": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
+          },
+          "draft_assist": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
+          },
+          "draft_new": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
+          },
+          "draft_refine": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
+          },
+          "humanize_rewrite": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
+          },
+          "relationship_summary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
+          },
+          "summarize": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
+          },
+          "voice_match": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
           }
         }
       },
@@ -6818,6 +6998,17 @@
               },
               {
                 "type": "object",
+                "properties": {
+                  "client_correlation_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "cmd"
                 ],
@@ -7325,6 +7516,25 @@
           {
             "type": "object",
             "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListSenders"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "account_id",
               "email",
               "cmd"
@@ -7599,7 +7809,7 @@
           },
           {
             "type": "object",
-            "description": "Generate a 2-3 sentence summary of a thread using the configured\nLLM. Returns `LlmDisabled` error when LLM is not configured.",
+            "description": "Summarize a thread using the configured LLM (structured prompt in\n`handler/summarize.rs`; no fixed sentence-count contract). Returns\n`LlmDisabled` when LLM is not configured.",
             "required": [
               "thread_id",
               "cmd"
@@ -8586,6 +8796,27 @@
                     "$ref": "#/components/schemas/SenderProfileData"
                   }
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "senders",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Senders"
+                ]
+              },
+              "senders": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SenderSummaryData"
+                }
               }
             }
           },
@@ -10310,6 +10541,12 @@
             "format": "int32",
             "minimum": 0
           },
+          "response_histogram": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResponseTimeBucket"
+            }
+          },
           "total_inbound": {
             "type": "integer",
             "format": "int32",
@@ -10319,6 +10556,118 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "unanswered_question": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SenderUnansweredQuestionData"
+              }
+            ]
+          },
+          "weekly_activity": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SenderWeeklyActivityData"
+            }
+          }
+        }
+      },
+      "SenderSummaryData": {
+        "type": "object",
+        "required": [
+          "account_id",
+          "sender_email",
+          "message_count",
+          "unread_count",
+          "latest_subject",
+          "latest_at"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latest_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "latest_subject": {
+            "type": "string"
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "unread_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "SenderUnansweredQuestionData": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "thread_id",
+          "subject",
+          "received_at",
+          "days_waiting"
+        ],
+        "properties": {
+          "days_waiting": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
+      "SenderWeeklyActivityData": {
+        "type": "object",
+        "required": [
+          "week_start",
+          "inbound_count",
+          "outbound_count"
+        ],
+        "properties": {
+          "inbound_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "outbound_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "week_start": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },

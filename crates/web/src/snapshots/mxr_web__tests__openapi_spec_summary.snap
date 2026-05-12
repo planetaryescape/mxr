@@ -1,6 +1,6 @@
 ---
 source: crates/web/src/lib.rs
-assertion_line: 3819
+assertion_line: 3893
 expression: summary
 ---
 {
@@ -70,6 +70,8 @@ expression: summary
     "LabelKind",
     "LargestMessageRow",
     "LlmConfigData",
+    "LlmOverrideData",
+    "LlmOverridesData",
     "LlmStatusSnapshot",
     "MessageBody",
     "MessageId",
@@ -104,6 +106,9 @@ expression: summary
     "SemanticStatusSnapshot",
     "SenderEmailReferenceData",
     "SenderProfileData",
+    "SenderSummaryData",
+    "SenderUnansweredQuestionData",
+    "SenderWeeklyActivityData",
     "SignatureContextData",
     "SignatureData",
     "SignatureDefaultData",

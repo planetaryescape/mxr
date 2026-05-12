@@ -46,7 +46,10 @@ pub use event_log::{EventLogEntry, EventLogRefs};
 pub use pool::Store;
 pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput};
 pub use screener::{ScreenerDecision, ScreenerDisposition, ScreenerQueueEntry};
-pub use sender_profile::{SenderEmailReference, SenderProfile};
+pub use sender_profile::{
+    SenderEmailReference, SenderProfile, SenderSummary, SenderUnansweredQuestion,
+    SenderWeeklyActivity,
+};
 pub use signatures::{Signature, SignatureDefault, SignatureKind, SignatureScope};
 pub use snippets::Snippet;
 pub use sync_log::{SyncLogEntry, SyncStatus};
@@ -271,6 +274,113 @@ mod tests {
             .unwrap();
         assert_eq!(updated.text, "Alice now wants weekly rollout updates.");
         assert_eq!(updated.source_hash, "summary-v2");
+    }
+
+    #[tokio::test]
+    async fn contact_commitments_dedup_and_expire_stale_threads_without_replies() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let now = Utc::now();
+        let stale_date = now - chrono::Duration::days(181);
+        let thread_without_reply = ThreadId::new();
+        let thread_with_reply = ThreadId::new();
+
+        let mut evidence_without_reply = test_envelope(&account.id);
+        evidence_without_reply.id = MessageId::new();
+        evidence_without_reply.provider_id = "commitment-evidence-1".to_string();
+        evidence_without_reply.thread_id = thread_without_reply.clone();
+        evidence_without_reply.date = stale_date;
+        evidence_without_reply.from.email = "alice@example.com".to_string();
+        store
+            .upsert_envelope_with_direction(&evidence_without_reply, MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let mut evidence_with_reply = test_envelope(&account.id);
+        evidence_with_reply.id = MessageId::new();
+        evidence_with_reply.provider_id = "commitment-evidence-2".to_string();
+        evidence_with_reply.thread_id = thread_with_reply.clone();
+        evidence_with_reply.date = stale_date;
+        evidence_with_reply.from.email = "alice@example.com".to_string();
+        store
+            .upsert_envelope_with_direction(&evidence_with_reply, MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let mut later_reply = test_envelope(&account.id);
+        later_reply.id = MessageId::new();
+        later_reply.provider_id = "commitment-reply".to_string();
+        later_reply.thread_id = thread_with_reply.clone();
+        later_reply.date = stale_date + chrono::Duration::days(1);
+        later_reply.from.email = account.email.clone();
+        store
+            .upsert_envelope_with_direction(&later_reply, MessageDirection::Outbound)
+            .await
+            .unwrap();
+
+        for (id, thread_id, evidence_msg_id) in [
+            (
+                "stale-no-reply",
+                thread_without_reply,
+                evidence_without_reply.id.clone(),
+            ),
+            (
+                "stale-with-reply",
+                thread_with_reply,
+                evidence_with_reply.id.clone(),
+            ),
+        ] {
+            store
+                .upsert_contact_commitment(&ContactCommitmentRecord {
+                    id: id.to_string(),
+                    account_id: account.id.clone(),
+                    email: "Alice@Example.com".to_string(),
+                    thread_id,
+                    direction: CommitmentDirection::Theirs,
+                    status: CommitmentStatus::Open,
+                    who_owes: "Alice".to_string(),
+                    what: "Send launch date".to_string(),
+                    by_when: None,
+                    evidence_msg_id,
+                    extracted_at: now,
+                    resolved_at: None,
+                })
+                .await
+                .unwrap();
+        }
+
+        assert!(store
+            .contact_commitment_exists(
+                &account.id,
+                "alice@example.com",
+                &evidence_with_reply.thread_id,
+                CommitmentDirection::Theirs,
+                "send launch date",
+            )
+            .await
+            .unwrap());
+
+        let expired = store
+            .expire_stale_contact_commitments(
+                &account.id,
+                "alice@example.com",
+                now - chrono::Duration::days(180),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(expired, 1);
+        let commitments = store
+            .list_contact_commitments(&account.id, Some("alice@example.com"), None)
+            .await
+            .unwrap();
+        assert!(commitments.iter().any(|commitment| {
+            commitment.id == "stale-no-reply" && commitment.status == CommitmentStatus::Expired
+        }));
+        assert!(commitments.iter().any(|commitment| {
+            commitment.id == "stale-with-reply" && commitment.status == CommitmentStatus::Open
+        }));
     }
 
     #[tokio::test]
@@ -2490,6 +2600,78 @@ mod tests {
         assert_eq!(row.1, "alice@example.com");
         assert_eq!(row.2, 3600);
         assert_eq!(row.3, inbound.id.as_str());
+    }
+
+    #[tokio::test]
+    async fn inbound_reply_pair_cancels_pending_auto_reminder_on_sent_parent() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let sent_at: chrono::DateTime<chrono::Utc> =
+            chrono::Utc.with_ymd_and_hms(2026, 5, 1, 9, 0, 0).unwrap();
+        let reply_at = sent_at + chrono::Duration::hours(2);
+
+        let mut sent = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        sent.from = Address {
+            name: None,
+            email: "me@example.com".into(),
+        };
+        sent.to = vec![Address {
+            name: None,
+            email: "alice@example.com".into(),
+        }];
+        sent.message_id_header = Some("<sent@example.com>".to_string());
+        sent.date = sent_at;
+        store
+            .upsert_envelope_with_direction(&sent, MessageDirection::Outbound)
+            .await
+            .unwrap();
+        store
+            .set_auto_reminder(
+                &sent.id,
+                &account.id,
+                sent_at + chrono::Duration::days(2),
+                sent_at,
+            )
+            .await
+            .unwrap();
+
+        let mut inbound_reply = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        inbound_reply.id = MessageId::new();
+        inbound_reply.provider_id = "inbound-reply".into();
+        inbound_reply.from = Address {
+            name: None,
+            email: "alice@example.com".into(),
+        };
+        inbound_reply.to = vec![Address {
+            name: None,
+            email: "me@example.com".into(),
+        }];
+        inbound_reply.in_reply_to = Some("<sent@example.com>".to_string());
+        inbound_reply.date = reply_at;
+        store
+            .upsert_envelope_with_direction(&inbound_reply, MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let created = store
+            .try_create_reply_pair(&inbound_reply, MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        assert!(created);
+        let reminder = store
+            .get_auto_reminder(&sent.id)
+            .await
+            .unwrap()
+            .expect("reminder row remains for analytics");
+        assert_eq!(reminder.cancelled_at, Some(reply_at));
+        assert!(reminder.triggered_at.is_none());
     }
 
     #[tokio::test]

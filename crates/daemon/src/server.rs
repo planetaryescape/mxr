@@ -1136,6 +1136,7 @@ mod tests {
                 entries: vec![mxr_search::SearchIndexEntry {
                     envelope: indexed_envelope.clone(),
                     body: None,
+                    reply_later: false,
                 }],
                 removed_message_ids: Vec::new(),
             })

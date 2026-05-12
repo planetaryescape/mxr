@@ -194,6 +194,7 @@ fn cli_help_snapshots_cover_all_commands() {
             &["snippets", "remove", "--help"],
         ),
         ("cli_help_sender", &["sender", "--help"]),
+        ("cli_help_senders", &["senders", "--help"]),
         ("cli_help_screener", &["screener", "--help"]),
         ("cli_help_screener_queue", &["screener", "queue", "--help"]),
         ("cli_help_screener_list", &["screener", "list", "--help"]),
@@ -236,7 +237,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_wrapped", &["wrapped", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 133);
+    assert_eq!(cases.len(), 134);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

@@ -367,6 +367,10 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::subscriptions::run(limit, rank, format).await?;
         }
+        Some(Command::Senders { top, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::senders::run(top, format).await?;
+        }
         Some(Command::Storage {
             by,
             limit,

@@ -11,13 +11,34 @@
 //! outcome remains the same.
 
 use chrono::{TimeZone, Utc};
-use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::types::{Address, Envelope, MessageFlags, UnsubscribeMethod};
+use mxr_core::id::{AccountId, LabelId, MessageId, ThreadId};
+use mxr_core::types::{Address, Envelope, Label, LabelKind, MessageFlags, UnsubscribeMethod};
 use mxr_protocol::{MutationCommand, Request};
 use mxr_tui::action::Action;
 use mxr_tui::app::mutation_snapshot::MUTATION_SNAPSHOT_CAPACITY;
 use mxr_tui::app::{App, MutationId};
 use mxr_tui::ui::label_picker::LabelPickerMode;
+
+fn set_active_inbox_for_tests(app: &mut App) {
+    let account_id = app
+        .mailbox
+        .envelopes
+        .first()
+        .map(|e| e.account_id.clone())
+        .unwrap_or_else(AccountId::new);
+    let inbox_id = LabelId::from_provider_id("test", "INBOX");
+    app.mailbox.labels = vec![Label {
+        id: inbox_id.clone(),
+        account_id,
+        name: "INBOX".into(),
+        kind: LabelKind::System,
+        color: None,
+        provider_id: "INBOX".into(),
+        unread_count: 1,
+        total_count: 1,
+    }];
+    app.mailbox.active_label = Some(inbox_id);
+}
 
 fn unstarred_inbox_envelope() -> Envelope {
     Envelope {
@@ -90,10 +111,14 @@ fn star_applies_optimistically_before_daemon_response() {
         "exactly one mutation queued"
     );
     match &app.pending_mutation_queue[0].request {
-        Request::Mutation(MutationCommand::Star {
-            message_ids,
-            starred,
-        }) => {
+        Request::Mutation {
+            mutation:
+                MutationCommand::Star {
+                    message_ids,
+                    starred,
+                },
+            ..
+        } => {
             assert_eq!(
                 message_ids,
                 &vec![message_id],
@@ -291,9 +316,8 @@ fn concurrent_mutations_on_same_message_partial_failure() {
 #[test]
 fn flag_reply_later_queues_set_reply_later_request() {
     // Pressing `b` on a message queues a SetReplyLater request to the
-    // daemon. The TUI doesn't track per-message reply-later state
-    // optimistically (yet) — the visible affordance is a status message
-    // and a follow-up sync of the reply-later queue.
+    // daemon and marks the row locally so the user gets immediate
+    // feedback before daemon reconciliation.
     let mut app = App::new();
     let envelope = unstarred_inbox_envelope();
     let message_id = envelope.id.clone();
@@ -317,6 +341,14 @@ fn flag_reply_later_queues_set_reply_later_request() {
         }
         other => panic!("expected SetReplyLater request, got {other:?}"),
     }
+    assert!(
+        app.mailbox.reply_later_message_ids.contains(&message_id),
+        "reply-later flag should be visible optimistically"
+    );
+    assert!(
+        app.mail_list_rows()[0].reply_later,
+        "mail list row should expose the optimistic reply-later marker"
+    );
 }
 
 #[test]
@@ -357,10 +389,14 @@ fn move_to_label_removes_message_optimistically() {
         "exactly one Move mutation queued"
     );
     match &app.pending_mutation_queue[0].request {
-        Request::Mutation(MutationCommand::Move {
-            message_ids,
-            target_label,
-        }) => {
+        Request::Mutation {
+            mutation:
+                MutationCommand::Move {
+                    message_ids,
+                    target_label,
+                },
+            ..
+        } => {
             assert_eq!(message_ids, &vec![message_id]);
             assert_eq!(target_label, "Project X");
         }
@@ -432,4 +468,29 @@ fn bulk_star_reverts_all_messages_when_reconciliation_fails() {
             .contains(MessageFlags::STARRED),
         "second message reverts on bulk failure"
     );
+}
+
+#[test]
+fn archive_inbox_optimistic_removal_restores_row_on_reconciliation_failure() {
+    let mut app = App::new();
+    let envelope = unstarred_inbox_envelope();
+    let eid = envelope.id.clone();
+    app.mailbox.envelopes.push(envelope.clone());
+    app.mailbox.all_envelopes.push(envelope);
+    app.mailbox.selected_index = 0;
+    set_active_inbox_for_tests(&mut app);
+
+    app.apply(Action::Archive);
+
+    assert!(
+        app.mailbox.envelopes.is_empty(),
+        "row removed optimistically while viewing INBOX"
+    );
+
+    let mutation_id = app.pending_mutation_queue[0].id;
+    app.handle_mutation_reconciliation_failed(mutation_id);
+
+    assert_eq!(app.mailbox.envelopes.len(), 1);
+    assert_eq!(app.mailbox.envelopes[0].id, eid);
+    assert_eq!(app.mailbox.all_envelopes.len(), 1);
 }

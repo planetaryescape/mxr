@@ -109,6 +109,12 @@ pub struct MailListRow {
     pub representative: Envelope,
     pub message_count: usize,
     pub unread_count: usize,
+    /// Distinct participant emails in the thread (from/to/cc) besides the
+    /// representative [`Envelope::from`] address — used for the `+N` chip in
+    /// thread list rows. Zero in message-discrete mode or before aggregation fills it.
+    pub other_participant_count: usize,
+    pub open_commitment_count: u32,
+    pub reply_later: bool,
     pub pending_mutation: bool,
 }
 
@@ -211,6 +217,9 @@ pub struct MailboxState {
     pub pending_labels_refresh: bool,
     pub pending_all_envelopes_refresh: bool,
     pub pending_subscriptions_refresh: bool,
+    pub pending_commitment_counts_refresh: bool,
+    pub open_commitment_counts: HashMap<(mxr_core::AccountId, mxr_core::ThreadId), u32>,
+    pub reply_later_message_ids: HashSet<MessageId>,
     pub desired_system_mailbox: Option<String>,
     pub mailbox_loading_message: Option<String>,
     pub mailbox_loading_throbber: ThrobberState,
@@ -277,6 +286,9 @@ impl MailboxState {
             pending_labels_refresh: false,
             pending_all_envelopes_refresh: false,
             pending_subscriptions_refresh: false,
+            pending_commitment_counts_refresh: false,
+            open_commitment_counts: HashMap::new(),
+            reply_later_message_ids: HashSet::new(),
             desired_system_mailbox: None,
             mailbox_loading_message: None,
             mailbox_loading_throbber: ThrobberState::default(),

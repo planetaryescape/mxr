@@ -14,20 +14,6 @@ pub(super) fn parse_message_id(id_str: &str) -> anyhow::Result<MessageId> {
     selection_parse_id(id_str)
 }
 
-pub(super) async fn resolve_message_ids(
-    client: &mut IpcClient,
-    message_ids: Vec<String>,
-    search: Option<String>,
-) -> anyhow::Result<Vec<MessageId>> {
-    crate::commands::selection::resolve_message_ids(
-        client,
-        message_ids,
-        search,
-        SelectionLimit::Unbounded,
-    )
-    .await
-}
-
 pub(super) struct MutationSelection {
     pub(super) ids: Vec<MessageId>,
     pub(super) envelopes: Vec<Envelope>,
@@ -39,8 +25,19 @@ pub(super) async fn resolve_mutation_selection(
     message_ids: Vec<String>,
     search: Option<String>,
 ) -> anyhow::Result<MutationSelection> {
+    resolve_mutation_selection_with_limit(client, message_ids, search, SelectionLimit::Unbounded)
+        .await
+}
+
+pub(super) async fn resolve_mutation_selection_with_limit(
+    client: &mut IpcClient,
+    message_ids: Vec<String>,
+    search: Option<String>,
+    limit: SelectionLimit,
+) -> anyhow::Result<MutationSelection> {
     let used_search = message_ids.is_empty() && search.is_some();
-    let ids = resolve_message_ids(client, message_ids, search).await?;
+    let ids =
+        crate::commands::selection::resolve_message_ids(client, message_ids, search, limit).await?;
     let envelopes = if ids.is_empty() {
         Vec::new()
     } else {

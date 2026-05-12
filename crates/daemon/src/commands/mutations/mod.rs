@@ -45,8 +45,8 @@ use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use helpers::{
     confirm_action, parse_snooze_until, print_batch_mutation_output, print_dry_run_output,
-    requires_confirmation, resolve_mutation_selection, run_simple_mutation, BatchMutationError,
-    MutationRunOptions,
+    requires_confirmation, resolve_mutation_selection, resolve_mutation_selection_with_limit,
+    run_simple_mutation, BatchMutationError, MutationRunOptions,
 };
 use mxr_protocol::*;
 use serde::Serialize;
@@ -116,7 +116,18 @@ pub async fn archive(
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
+    let address = address_positional(&message_ids, search.as_deref())?;
+    let selection = if let Some(address) = address {
+        resolve_mutation_selection_with_limit(
+            &mut client,
+            Vec::new(),
+            Some(format!("from:{address}")),
+            crate::commands::selection::SelectionLimit::First,
+        )
+        .await?
+    } else {
+        resolve_mutation_selection(&mut client, message_ids, search).await?
+    };
     run_simple_mutation(
         &mut client,
         selection,
@@ -128,7 +139,7 @@ pub async fn archive(
             format,
             destructive: false,
         },
-        |ids| Request::Mutation(MutationCommand::Archive { message_ids: ids }),
+        |ids| Request::mutation(MutationCommand::Archive { message_ids: ids }),
     )
     .await
 }
@@ -153,7 +164,7 @@ pub async fn read_archive(
             format,
             destructive: false,
         },
-        |ids| Request::Mutation(MutationCommand::ReadAndArchive { message_ids: ids }),
+        |ids| Request::mutation(MutationCommand::ReadAndArchive { message_ids: ids }),
     )
     .await
 }
@@ -178,7 +189,7 @@ pub async fn trash(
             format,
             destructive: true,
         },
-        |ids| Request::Mutation(MutationCommand::Trash { message_ids: ids }),
+        |ids| Request::mutation(MutationCommand::Trash { message_ids: ids }),
     )
     .await
 }
@@ -203,7 +214,7 @@ pub async fn spam(
             format,
             destructive: true,
         },
-        |ids| Request::Mutation(MutationCommand::Spam { message_ids: ids }),
+        |ids| Request::mutation(MutationCommand::Spam { message_ids: ids }),
     )
     .await
 }
@@ -229,7 +240,7 @@ pub async fn star(
             destructive: false,
         },
         |ids| {
-            Request::Mutation(MutationCommand::Star {
+            Request::mutation(MutationCommand::Star {
                 message_ids: ids,
                 starred: true,
             })
@@ -259,7 +270,7 @@ pub async fn unstar(
             destructive: false,
         },
         |ids| {
-            Request::Mutation(MutationCommand::Star {
+            Request::mutation(MutationCommand::Star {
                 message_ids: ids,
                 starred: false,
             })
@@ -289,7 +300,7 @@ pub async fn mark_read(
             destructive: false,
         },
         |ids| {
-            Request::Mutation(MutationCommand::SetRead {
+            Request::mutation(MutationCommand::SetRead {
                 message_ids: ids,
                 read: true,
             })
@@ -319,7 +330,7 @@ pub async fn unread(
             destructive: false,
         },
         |ids| {
-            Request::Mutation(MutationCommand::SetRead {
+            Request::mutation(MutationCommand::SetRead {
                 message_ids: ids,
                 read: false,
             })
@@ -354,7 +365,7 @@ pub async fn label(
             destructive: false,
         },
         |ids| {
-            Request::Mutation(MutationCommand::ModifyLabels {
+            Request::mutation(MutationCommand::ModifyLabels {
                 message_ids: ids,
                 add: vec![name.clone()],
                 remove: vec![],
@@ -386,7 +397,7 @@ pub async fn unlabel(
             destructive: false,
         },
         |ids| {
-            Request::Mutation(MutationCommand::ModifyLabels {
+            Request::mutation(MutationCommand::ModifyLabels {
                 message_ids: ids,
                 add: vec![],
                 remove: vec![name.clone()],
@@ -418,7 +429,7 @@ pub async fn move_msg(
             destructive: false,
         },
         |ids| {
-            Request::Mutation(MutationCommand::Move {
+            Request::mutation(MutationCommand::Move {
                 message_ids: ids,
                 target_label: target_label.clone(),
             })
@@ -499,6 +510,24 @@ pub async fn snooze(
         anyhow::bail!("No messages snoozed ({} failed)", errors.len());
     }
     Ok(())
+}
+
+fn address_positional<'a>(
+    message_ids: &'a [String],
+    search: Option<&str>,
+) -> anyhow::Result<Option<&'a str>> {
+    if search.is_some() || message_ids.is_empty() {
+        return Ok(None);
+    }
+    if message_ids.len() > 1 {
+        return Ok(None);
+    }
+    let candidate = message_ids[0].trim();
+    if candidate.contains('@') {
+        Ok(Some(candidate))
+    } else {
+        Ok(None)
+    }
 }
 
 pub async fn unsnooze(

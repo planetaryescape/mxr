@@ -751,6 +751,35 @@ mod tests {
     }
 
     #[test]
+    fn e2e_search_reply_later_filter() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let flagged = make_envelope_full(
+            "Needs response",
+            "Reply when focused",
+            "Alice",
+            "alice@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        let unflagged = make_envelope_full(
+            "FYI only",
+            "No reply needed",
+            "Bob",
+            "bob@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        let flagged_id = flagged.id.as_str();
+
+        idx.index_envelope_with_reply_later(&flagged, true).unwrap();
+        idx.index_envelope_with_reply_later(&unflagged, false)
+            .unwrap();
+        idx.commit().unwrap();
+
+        assert_eq!(e2e_search(&idx, "is:reply-later"), vec![flagged_id]);
+    }
+
+    #[test]
     fn e2e_search_size_and_body_and_filename() {
         let mut idx = SearchIndex::in_memory().unwrap();
         let env = make_envelope_full(

@@ -48,10 +48,15 @@ pub async fn reindex(
                 .get_body(&env.id)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
+            let reply_later = store
+                .is_reply_later(&env.id)
+                .await
+                .map_err(|e| MxrError::Store(e.to_string()))?;
 
             batch.entries.push(SearchIndexEntry {
                 envelope: env.clone(),
                 body,
+                reply_later,
             });
 
             indexed += 1;
@@ -166,6 +171,44 @@ mod tests {
 
         assert_eq!(indexed as u64, after);
         assert_eq!(before, after);
+    }
+
+    #[tokio::test]
+    async fn reindex_backfills_reply_later_search_marker() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+        let env = state
+            .store
+            .list_all_envelopes_paginated(1, 0)
+            .await
+            .unwrap()
+            .pop()
+            .expect("seeded message");
+        state
+            .store
+            .set_reply_later(&env.id, chrono::Utc::now())
+            .await
+            .unwrap();
+
+        state.search.clear().await.unwrap();
+        reindex(&state.search, &state.store, |_| {}).await.unwrap();
+
+        let ast = mxr_search::parse_query("is:reply-later").unwrap();
+        let schema = mxr_search::MxrSchema::build();
+        let query = mxr_search::QueryBuilder::new(&schema).build(&ast);
+        let results = state
+            .search
+            .search_ast(query, 10, 0, mxr_core::types::SortOrder::DateDesc)
+            .await
+            .unwrap();
+
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].message_id, env.id.as_str());
     }
 
     #[tokio::test]

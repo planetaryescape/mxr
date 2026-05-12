@@ -15,7 +15,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ReplyQueueModalState, theme: 
     let modal_area = centered_rect(area, MODAL_WIDTH_PERCENT, MODAL_HEIGHT_PERCENT);
     Clear.render(modal_area, frame.buffer_mut());
 
-    let title = " Reply Later — ↑/↓ navigate · Esc close · use `mxr replies walk` to step ";
+    let title = " Reply Later — ↑/↓ navigate · Enter/r reply · Esc close ";
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)

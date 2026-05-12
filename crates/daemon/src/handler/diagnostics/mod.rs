@@ -16,8 +16,8 @@ use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{ExportFormat, SearchMode, SemanticProfile, SortOrder};
 use mxr_protocol::IPC_PROTOCOL_VERSION;
 use mxr_protocol::{
-    DaemonEvent, IpcMessage, IpcPayload, LlmConfigData, ResponseData, SearchExplain,
-    SearchExplainResult, SearchResultItem,
+    DaemonEvent, IpcMessage, IpcPayload, LlmConfigData, LlmOverrideData, LlmOverridesData,
+    ResponseData, SearchExplain, SearchExplainResult, SearchResultItem,
 };
 use mxr_search::{SearchPage, SearchResult};
 use std::collections::HashMap;
@@ -602,7 +602,7 @@ pub(crate) async fn llm_config(state: &AppState) -> HandlerResult {
 }
 
 pub(crate) async fn update_llm_config(state: &AppState, config: LlmConfigData) -> HandlerResult {
-    let config = normalize_llm_config(config)?;
+    let config = normalize_llm_config(config, &state.config_snapshot().llm)?;
     let saved = state
         .mutate_config(|current| {
             current.llm = config;
@@ -621,10 +621,39 @@ fn llm_config_data(config: mxr_config::LlmConfig) -> LlmConfigData {
         api_key_env: config.api_key_env,
         context_window: config.context_window,
         request_timeout_secs: config.request_timeout_secs,
+        allow_cloud_relationship_data: config.allow_cloud_relationship_data,
+        overrides: Some(llm_overrides_data(config.overrides)),
     }
 }
 
-fn normalize_llm_config(config: LlmConfigData) -> Result<mxr_config::LlmConfig, String> {
+fn llm_overrides_data(overrides: mxr_config::LlmOverrides) -> LlmOverridesData {
+    LlmOverridesData {
+        summarize: overrides.summarize.map(llm_override_data),
+        relationship_summary: overrides.relationship_summary.map(llm_override_data),
+        commitments: overrides.commitments.map(llm_override_data),
+        draft_assist: overrides.draft_assist.map(llm_override_data),
+        draft_new: overrides.draft_new.map(llm_override_data),
+        draft_refine: overrides.draft_refine.map(llm_override_data),
+        voice_match: overrides.voice_match.map(llm_override_data),
+        humanize_rewrite: overrides.humanize_rewrite.map(llm_override_data),
+    }
+}
+
+fn llm_override_data(config: mxr_config::LlmOverrideConfig) -> LlmOverrideData {
+    LlmOverrideData {
+        enabled: config.enabled,
+        base_url: config.base_url,
+        model: config.model,
+        api_key_env: config.api_key_env,
+        context_window: config.context_window,
+        request_timeout_secs: config.request_timeout_secs,
+    }
+}
+
+fn normalize_llm_config(
+    config: LlmConfigData,
+    current: &mxr_config::LlmConfig,
+) -> Result<mxr_config::LlmConfig, String> {
     let base_url = config.base_url.trim().trim_end_matches('/').to_string();
     if base_url.is_empty() {
         return Err("llm.base_url must not be empty".to_string());
@@ -652,9 +681,71 @@ fn normalize_llm_config(config: LlmConfigData) -> Result<mxr_config::LlmConfig, 
         api_key_env: config.api_key_env.trim().to_string(),
         context_window: config.context_window,
         request_timeout_secs: config.request_timeout_secs,
-        allow_cloud_relationship_data: false,
-        overrides: mxr_config::LlmOverrides::default(),
+        allow_cloud_relationship_data: config.allow_cloud_relationship_data,
+        overrides: match config.overrides {
+            Some(overrides) => normalize_llm_overrides(overrides)?,
+            None => current.overrides.clone(),
+        },
     })
+}
+
+fn normalize_llm_overrides(config: LlmOverridesData) -> Result<mxr_config::LlmOverrides, String> {
+    Ok(mxr_config::LlmOverrides {
+        summarize: normalize_llm_override(config.summarize)?,
+        relationship_summary: normalize_llm_override(config.relationship_summary)?,
+        commitments: normalize_llm_override(config.commitments)?,
+        draft_assist: normalize_llm_override(config.draft_assist)?,
+        draft_new: normalize_llm_override(config.draft_new)?,
+        draft_refine: normalize_llm_override(config.draft_refine)?,
+        voice_match: normalize_llm_override(config.voice_match)?,
+        humanize_rewrite: normalize_llm_override(config.humanize_rewrite)?,
+    })
+}
+
+fn normalize_llm_override(
+    config: Option<LlmOverrideData>,
+) -> Result<Option<mxr_config::LlmOverrideConfig>, String> {
+    let Some(config) = config else {
+        return Ok(None);
+    };
+    let base_url = normalize_optional_string(config.base_url);
+    if let Some(base_url) = &base_url {
+        let parsed =
+            url::Url::parse(base_url).map_err(|e| format!("invalid llm override base_url: {e}"))?;
+        if !matches!(parsed.scheme(), "http" | "https") {
+            return Err("llm override base_url must use http or https".to_string());
+        }
+    }
+    if config.context_window == Some(0) {
+        return Err("llm override context_window must be greater than 0".to_string());
+    }
+    if config.request_timeout_secs == Some(0) {
+        return Err("llm override request_timeout_secs must be greater than 0".to_string());
+    }
+    let override_config = mxr_config::LlmOverrideConfig {
+        enabled: config.enabled,
+        base_url,
+        model: normalize_optional_string(config.model),
+        api_key_env: normalize_optional_string(config.api_key_env),
+        context_window: config.context_window,
+        request_timeout_secs: config.request_timeout_secs,
+    };
+    if override_config.enabled.is_none()
+        && override_config.base_url.is_none()
+        && override_config.model.is_none()
+        && override_config.api_key_env.is_none()
+        && override_config.context_window.is_none()
+        && override_config.request_timeout_secs.is_none()
+    {
+        return Ok(None);
+    }
+    Ok(Some(override_config))
+}
+
+fn normalize_optional_string(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
 }
 
 pub(crate) async fn enable_semantic(state: &AppState, enabled: bool) -> HandlerResult {

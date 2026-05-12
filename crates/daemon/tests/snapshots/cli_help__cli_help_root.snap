@@ -1,5 +1,6 @@
 ---
 source: crates/daemon/tests/cli_help.rs
+assertion_line: 14
 expression: stdout
 ---
 Terminal email client (pronounced "Mixer")
@@ -34,6 +35,7 @@ Commands:
   semantic       Manage semantic search profiles and indexing
   llm            Inspect local/cloud LLM provider status
   subscriptions  List senders with unsubscribe support
+  senders        List top inbound senders by message volume
   storage        Roll up disk consumption by sender, mimetype, or label
   contacts       Surface relationship analytics from the materialized contacts table
   wrapped        Year-in-review summary: volume, time patterns, top contacts, reply discipline, storage, newsletters, superlatives. Like Spotify Wrapped but for your inbox

@@ -38,17 +38,28 @@ impl App {
 
     fn with_pending_mutation_markers(&self, mut rows: Vec<MailListRow>) -> Vec<MailListRow> {
         let pending_ids = self.pending_mutation_message_ids();
-        if pending_ids.is_empty() {
-            return rows;
-        }
-
         for row in &mut rows {
+            row.open_commitment_count = self
+                .mailbox
+                .open_commitment_counts
+                .get(&(row.representative.account_id.clone(), row.thread_id.clone()))
+                .copied()
+                .unwrap_or(0);
             row.pending_mutation = self
                 .mailbox
                 .envelopes
                 .iter()
                 .chain(self.search.page.results.iter())
                 .any(|env| env.thread_id == row.thread_id && pending_ids.contains(&env.id));
+            row.reply_later = self
+                .mailbox
+                .envelopes
+                .iter()
+                .chain(self.search.page.results.iter())
+                .any(|env| {
+                    env.thread_id == row.thread_id
+                        && self.mailbox.reply_later_message_ids.contains(&env.id)
+                });
         }
         rows
     }
@@ -58,7 +69,8 @@ impl App {
             .iter()
             .flat_map(|queued| match &queued.effect {
                 MutationEffect::RemoveFromList(message_id)
-                | MutationEffect::UpdateFlags { message_id, .. } => vec![message_id.clone()],
+                | MutationEffect::UpdateFlags { message_id, .. }
+                | MutationEffect::ReplyLater { message_id, .. } => vec![message_id.clone()],
                 MutationEffect::RemoveFromListMany(message_ids) => message_ids.clone(),
                 MutationEffect::UpdateFlagsMany { updates } => updates
                     .iter()

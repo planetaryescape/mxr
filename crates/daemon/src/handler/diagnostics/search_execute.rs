@@ -712,6 +712,7 @@ mod tests {
                 entries: vec![mxr_search::SearchIndexEntry {
                     envelope: message.clone(),
                     body: Some(body.clone()),
+                    reply_later: false,
                 }],
                 removed_message_ids: Vec::new(),
             })
@@ -766,6 +767,7 @@ mod tests {
                 entries: vec![mxr_search::SearchIndexEntry {
                     envelope: message.clone(),
                     body: Some(body),
+                    reply_later: false,
                 }],
                 removed_message_ids: Vec::new(),
             })

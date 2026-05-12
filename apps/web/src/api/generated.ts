@@ -276,6 +276,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/mail/commitments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List detected commitments */
+    get: operations["mail_commitments_list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/commitments/{commitment_id}/resolve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resolve a commitment */
+    post: operations["mail_commitments_resolve"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/mail/compose/session": {
     parameters: {
       query?: never;
@@ -446,6 +480,176 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/mail/drafts/new": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Start a new LLM-backed draft */
+    post: operations["mail_draft_new"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/drafts/orphaned": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List orphaned mid-send drafts */
+    get: operations["mail_drafts_orphaned_list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/drafts/refine": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Refine draft text with LLM */
+    post: operations["mail_draft_refine"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/drafts/save-local": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Persist draft locally (SaveDraft) */
+    post: operations["mail_drafts_save_local"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/drafts/{draft_id}/reset-orphan": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reset orphaned sending draft */
+    post: operations["mail_drafts_reset_orphan"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/drafts/{draft_id}/send-stored": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Send stored draft by id */
+    post: operations["mail_drafts_send_stored"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/drafts/{draft_id}/stored": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Delete stored draft */
+    delete: operations["mail_drafts_delete_stored"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/export-search": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Export all threads matching a search */
+    post: operations["mail_export_search"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/humanizer/rewrite": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Rewrite draft toward target voice */
+    post: operations["mail_humanizer_rewrite"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/humanizer/score": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Score draft for human-like voice */
+    post: operations["mail_humanizer_score"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/mail/labels/create": {
     parameters: {
       query?: never;
@@ -506,6 +710,74 @@ export interface paths {
     };
     /** Mailbox view */
     get: operations["mail_mailbox"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/messages/{message_id}/body": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get message body (IPC GetBody) */
+    get: operations["mail_message_body"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/messages/{message_id}/flags": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Set message flags bitmask */
+    post: operations["mail_message_set_flags"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/messages/{message_id}/headers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Raw RFC headers */
+    get: operations["mail_message_raw_headers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/messages/{message_id}/html-images": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List HTML-linked image assets */
+    get: operations["mail_message_html_images"];
     put?: never;
     post?: never;
     delete?: never;
@@ -661,6 +933,40 @@ export interface paths {
     put?: never;
     /** Undo a recent mutation */
     post: operations["mutation_undo"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/relationship": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Relationship profile for a contact */
+    get: operations["mail_relationship_profile"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/relationship/rebuild": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Rebuild relationship analytics */
+    post: operations["mail_relationship_rebuild"];
     delete?: never;
     options?: never;
     head?: never;
@@ -834,6 +1140,109 @@ export interface paths {
     put?: never;
     post?: never;
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/signature-defaults": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List signature defaults */
+    get: operations["mail_signature_defaults_list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/signatures": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List signatures */
+    get: operations["mail_signatures_list"];
+    put?: never;
+    /** Create or update signature */
+    post: operations["mail_signatures_upsert"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/signatures/default": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Set default signature */
+    post: operations["mail_signature_default_set"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/signatures/default/clear": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Clear default signature */
+    post: operations["mail_signature_default_clear"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/signatures/resolve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resolve signature for compose */
+    post: operations["mail_signature_resolve"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/signatures/{name}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Delete signature */
+    delete: operations["mail_signatures_delete"];
     options?: never;
     head?: never;
     patch?: never;
@@ -1044,6 +1453,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/platform/accounts/authorize": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Authorize or re-authorize account config */
+    post: operations["platform_accounts_authorize"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/platform/accounts/config": {
     parameters: {
       query?: never;
@@ -1072,6 +1498,23 @@ export interface paths {
     put?: never;
     /** Set default account */
     post: operations["account_set_default"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/accounts/repair": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Repair account credentials in keychain */
+    post: operations["platform_accounts_repair"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1658,6 +2101,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/platform/semantic/backfill": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Backfill semantic chunks */
+    post: operations["semantic_backfill"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/platform/semantic/enable": {
     parameters: {
       query?: never;
@@ -1754,6 +2214,40 @@ export interface paths {
     get: operations["subscriptions_list"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/voice": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** User voice profile for drafting */
+    get: operations["platform_voice_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/voice/rebuild": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Rebuild user voice profile from sent mail */
+    post: operations["platform_voice_rebuild"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1982,6 +2476,25 @@ export interface components {
       method?: string | null;
       summary?: string | null;
     };
+    CommitmentData: {
+      account_id: components["schemas"]["AccountId"];
+      /** Format: date-time */
+      by_when?: string | null;
+      direction: components["schemas"]["CommitmentDirectionData"];
+      email: string;
+      evidence_msg_id: components["schemas"]["MessageId"];
+      /** Format: date-time */
+      extracted_at: string;
+      id: string;
+      status: components["schemas"]["CommitmentStatusData"];
+      thread_id: components["schemas"]["ThreadId"];
+      what: string;
+      who_owes: string;
+    };
+    /** @enum {string} */
+    CommitmentDirectionData: "yours" | "theirs";
+    /** @enum {string} */
+    CommitmentStatusData: "open" | "resolved" | "expired";
     ContactAsymmetryRow: {
       /**
        * Format: double
@@ -2009,6 +2522,31 @@ export interface components {
       last_inbound_at: string;
       /** Format: date-time */
       last_outbound_at?: string | null;
+    };
+    ContactRelationshipSummaryData: {
+      /** Format: date-time */
+      computed_at: string;
+      known_topics: string[];
+      model: string;
+      source_hash: string;
+      text: string;
+    };
+    ContactStyleData: {
+      /** Format: double */
+      avg_sentence_len: number;
+      /** Format: double */
+      avg_sentence_len_theirs: number;
+      /** Format: date-time */
+      computed_at: string;
+      /** Format: double */
+      formality_score: number;
+      /** Format: double */
+      formality_score_theirs: number;
+      /** Format: int32 */
+      msg_count_used: number;
+      /** Format: int32 */
+      msg_count_used_theirs: number;
+      source_hash: string;
     };
     DaemonEvent:
       | {
@@ -2109,7 +2647,11 @@ export interface components {
       /** Format: int32 */
       messages: number;
       /** Format: int32 */
+      messages_missing_semantic_chunks?: number;
+      /** Format: int32 */
       messages_with_attachments: number;
+      /** Format: int32 */
+      relationship_drifts?: number;
       /** Format: int32 */
       rule_logs: number;
       /** Format: int32 */
@@ -2118,6 +2660,8 @@ export interface components {
       saved_searches: number;
       /** Format: int32 */
       semantic_chunks: number;
+      /** Format: int32 */
+      semantic_chunks_missing_embeddings?: number;
       /** Format: int32 */
       semantic_embeddings: number;
       /** Format: int32 */
@@ -2183,6 +2727,7 @@ export interface components {
       database_path: string;
       /** Format: int64 */
       database_size_bytes: number;
+      feature_health?: null | components["schemas"]["FeatureHealthReport"];
       /**
        * @description Structured findings: per-issue category, severity, and
        *     shell-runnable remediation steps. Replaces the freeform
@@ -2236,6 +2781,15 @@ export interface components {
     };
     /** Format: uuid */
     DraftId: string;
+    /** @enum {string} */
+    DraftLengthHintData: "short" | "medium" | "long";
+    DraftRefineKnobsData: {
+      add_context?: string | null;
+      less_emoji?: boolean;
+      more_formal?: boolean;
+      shorter?: boolean;
+      warmer?: boolean;
+    };
     Envelope: {
       account_id: components["schemas"]["AccountId"];
       bcc: components["schemas"]["Address"][];
@@ -2283,6 +2837,29 @@ export interface components {
     };
     /** @enum {string} */
     ExportFormat: "Markdown" | "Json" | "Mbox" | "LlmContext";
+    FeatureHealth:
+      | {
+          /** @enum {string} */
+          status: "healthy";
+        }
+      | {
+          reason: string;
+          /** @enum {string} */
+          status: "degraded";
+        }
+      | {
+          /** @enum {string} */
+          status: "disabled";
+        };
+    FeatureHealthReport: {
+      commitments: components["schemas"]["FeatureHealth"];
+      draft_assist: components["schemas"]["FeatureHealth"];
+      humanizer: components["schemas"]["FeatureHealth"];
+      relationship_profile: components["schemas"]["FeatureHealth"];
+      semantic: components["schemas"]["FeatureHealth"];
+      summarize: components["schemas"]["FeatureHealth"];
+      voice_match: components["schemas"]["FeatureHealth"];
+    };
     /** @description Forward context returned by PrepareForward. */
     ForwardContext: {
       account_id: components["schemas"]["AccountId"];
@@ -2304,6 +2881,16 @@ export interface components {
     HtmlImageAssetStatus: "ready" | "blocked" | "missing" | "unsupported" | "failed";
     /** @enum {string} */
     HtmlImageSourceKind: "cid" | "data_uri" | "remote" | "content_location" | "file";
+    HumanizerHitData: {
+      category: string;
+      matched: string;
+      suggestion?: string | null;
+    };
+    HumanizerReportSummaryData: {
+      hits: components["schemas"]["HumanizerHitData"][];
+      /** Format: int32 */
+      score: number;
+    };
     /** @enum {string} */
     IndexFreshness:
       | "unknown"
@@ -2363,6 +2950,7 @@ export interface components {
       subject: string;
     };
     LlmConfigData: {
+      allow_cloud_relationship_data?: boolean;
       api_key_env: string;
       base_url: string;
       /** Format: int32 */
@@ -2472,6 +3060,19 @@ export interface components {
       skipped: number;
       /** Format: int32 */
       succeeded: number;
+    };
+    RelationshipDriftData: {
+      /** Format: date-time */
+      detected_at: string;
+      reason: string;
+    };
+    RelationshipProfileData: {
+      account_id: components["schemas"]["AccountId"];
+      drift?: null | components["schemas"]["RelationshipDriftData"];
+      email: string;
+      open_commitments?: components["schemas"]["CommitmentData"][];
+      style?: null | components["schemas"]["ContactStyleData"];
+      summary?: null | components["schemas"]["ContactRelationshipSummaryData"];
     };
     /** @description Reply context returned by PrepareReply. */
     ReplyContext: {
@@ -2834,6 +3435,10 @@ export interface components {
         }
       | {
           /** @enum {string} */
+          cmd: "BackfillSemantic";
+        }
+      | {
+          /** @enum {string} */
           cmd: "CreateSavedSearch";
           name: string;
           query: string;
@@ -3005,10 +3610,98 @@ export interface components {
           name: string;
         }
       | {
+          /** @enum {string} */
+          cmd: "ListSignatures";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ListSignatureDefaults";
+        }
+      | {
+          body: string;
+          /** @enum {string} */
+          cmd: "SetSignature";
+          name: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "DeleteSignature";
+          name: string;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "SetSignatureDefault";
+          from_email?: string | null;
+          kind: components["schemas"]["SignatureContextData"];
+          name: string;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ClearSignatureDefault";
+          from_email?: string | null;
+          kind: components["schemas"]["SignatureContextData"];
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ResolveSignature";
+          from_email?: string | null;
+          kind: components["schemas"]["SignatureContextData"];
+          name?: string | null;
+        }
+      | {
           account_id: components["schemas"]["AccountId"];
           /** @enum {string} */
           cmd: "GetSenderProfile";
           email: string;
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "GetRelationshipProfile";
+          email: string;
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "RebuildRelationshipProfile";
+          email: string;
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ListCommitments";
+          email?: string | null;
+          status?: null | components["schemas"]["CommitmentStatusData"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ResolveCommitment";
+          commitment_id: string;
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "GetUserVoice";
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "RebuildUserVoice";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "HumanizerScore";
+          text: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "HumanizerRewrite";
+          /** Format: int32 */
+          max_iterations?: number | null;
+          text: string;
         }
       | {
           account_id: components["schemas"]["AccountId"];
@@ -3046,6 +3739,21 @@ export interface components {
           cmd: "DraftAssist";
           instruction: string;
           thread_id: components["schemas"]["ThreadId"];
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "DraftNew";
+          length_hint?: null | components["schemas"]["DraftLengthHintData"];
+          purpose: string;
+          register?: null | components["schemas"]["VoiceRegisterData"];
+          to: components["schemas"]["Address"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "DraftRefine";
+          draft_id: components["schemas"]["DraftId"];
+          knobs: components["schemas"]["DraftRefineKnobsData"];
         }
       | {
           /** @enum {string} */
@@ -3172,6 +3880,7 @@ export interface components {
           /** @enum {string} */
           kind: "Thread";
           messages: components["schemas"]["Envelope"][];
+          summary?: null | components["schemas"]["ThreadSummaryData"];
           thread: components["schemas"]["Thread"];
         }
       | {
@@ -3248,8 +3957,56 @@ export interface components {
         }
       | {
           /** @enum {string} */
+          kind: "Signatures";
+          signatures: components["schemas"]["SignatureData"][];
+        }
+      | {
+          /** @enum {string} */
+          kind: "SignatureData";
+          signature: components["schemas"]["SignatureData"];
+        }
+      | {
+          defaults: components["schemas"]["SignatureDefaultData"][];
+          /** @enum {string} */
+          kind: "SignatureDefaults";
+        }
+      | {
+          /** @enum {string} */
+          kind: "ResolvedSignature";
+          signature?: null | components["schemas"]["SignatureData"];
+        }
+      | {
+          /** @enum {string} */
           kind: "SenderProfile";
           profile?: null | components["schemas"]["SenderProfileData"];
+        }
+      | {
+          /** @enum {string} */
+          kind: "RelationshipProfile";
+          profile?: null | components["schemas"]["RelationshipProfileData"];
+        }
+      | {
+          commitments: components["schemas"]["CommitmentData"][];
+          /** @enum {string} */
+          kind: "CommitmentList";
+        }
+      | {
+          /** @enum {string} */
+          kind: "UserVoice";
+          profile?: null | components["schemas"]["UserVoiceProfileData"];
+        }
+      | {
+          /** @enum {string} */
+          kind: "HumanizerReport";
+          report: components["schemas"]["HumanizerReportSummaryData"];
+        }
+      | {
+          /** Format: int32 */
+          iterations: number;
+          /** @enum {string} */
+          kind: "HumanizedText";
+          report: components["schemas"]["HumanizerReportSummaryData"];
+          text: string;
         }
       | {
           entries: components["schemas"]["ScreenerQueueEntryData"][];
@@ -3269,9 +4026,13 @@ export interface components {
         }
       | {
           body: string;
+          humanizer?: null | components["schemas"]["HumanizerReportSummaryData"];
           /** @enum {string} */
           kind: "DraftSuggestion";
           model: string;
+          /** Format: int32 */
+          rewrite_iterations?: number;
+          voice_match?: null | components["schemas"]["VoiceMatchData"];
         }
       | {
           content: string;
@@ -3444,6 +4205,7 @@ export interface components {
           /** Format: int32 */
           daemon_pid?: number | null;
           daemon_version?: string | null;
+          feature_health?: null | components["schemas"]["FeatureHealthReport"];
           /** @enum {string} */
           kind: "Status";
           /** Format: int32 */
@@ -3644,14 +4406,32 @@ export interface components {
       profiles: components["schemas"]["SemanticProfileRecord"][];
       runtime?: components["schemas"]["SemanticRuntimeMetrics"];
     };
+    SenderEmailReferenceData: {
+      /** Format: date-time */
+      date: string;
+      direction: string;
+      from_email: string;
+      from_name?: string | null;
+      has_attachments: boolean;
+      message_id: components["schemas"]["MessageId"];
+      snippet: string;
+      subject: string;
+      thread_id: components["schemas"]["ThreadId"];
+    };
     SenderProfileData: {
       account_id: components["schemas"]["AccountId"];
+      /** Format: int64 */
+      attachment_bytes?: number;
+      /** Format: int32 */
+      attachment_count?: number;
       /** Format: double */
       cadence_days_p50?: number | null;
       display_name?: string | null;
       email: string;
       /** Format: date-time */
       first_seen_at: string;
+      /** Format: int64 */
+      inbound_storage_bytes?: number;
       is_list_sender: boolean;
       /** Format: date-time */
       last_inbound_at?: string | null;
@@ -3662,6 +4442,10 @@ export interface components {
       list_id?: string | null;
       /** Format: int32 */
       open_thread_count: number;
+      /** Format: int64 */
+      outbound_storage_bytes?: number;
+      recent_messages?: components["schemas"]["SenderEmailReferenceData"][];
+      relationship?: null | components["schemas"]["RelationshipProfileData"];
       /** Format: int32 */
       replied_count: number;
       /** Format: int32 */
@@ -3669,6 +4453,29 @@ export interface components {
       /** Format: int32 */
       total_outbound: number;
     };
+    /** @enum {string} */
+    SignatureContextData: "new" | "reply";
+    SignatureData: {
+      body: string;
+      /** Format: date-time */
+      created_at: string;
+      id: components["schemas"]["SignatureId"];
+      name: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    SignatureDefaultData: {
+      account_id?: null | components["schemas"]["AccountId"];
+      /** Format: date-time */
+      created_at: string;
+      from_email?: string | null;
+      kind: components["schemas"]["SignatureContextData"];
+      signature: components["schemas"]["SignatureData"];
+      /** Format: date-time */
+      updated_at: string;
+    };
+    /** Format: uuid */
+    SignatureId: string;
     SnippetData: {
       body: string;
       /** Format: date-time */
@@ -3778,6 +4585,12 @@ export interface components {
     };
     /** Format: uuid */
     ThreadId: string;
+    ThreadSummaryData: {
+      /** Format: date-time */
+      generated_at: string;
+      model: string;
+      text: string;
+    };
     UnsubscribeMethod:
       | {
           OneClick: {
@@ -3801,6 +4614,37 @@ export interface components {
           };
         }
       | "None";
+    UserVoiceProfileData: {
+      account_id: components["schemas"]["AccountId"];
+      /** Format: double */
+      avg_sentence_len: number;
+      /** Format: date-time */
+      computed_at: string;
+      /** Format: double */
+      formality_score: number;
+      /** Format: int32 */
+      msg_count_used: number;
+      register_modes: components["schemas"]["UserVoiceRegisterModeData"][];
+      source_hash: string;
+    };
+    UserVoiceRegisterModeData: {
+      /** Format: double */
+      avg_sentence_len: number;
+      exemplar_message_ids: string[];
+      /** Format: double */
+      formality_score: number;
+      register: components["schemas"]["VoiceRegisterData"];
+    };
+    /** @enum {string} */
+    VoiceMatchConfidenceData: "low" | "medium" | "high";
+    VoiceMatchData: {
+      confidence: components["schemas"]["VoiceMatchConfidenceData"];
+      notable_deltas: string[];
+      /** Format: double */
+      score: number;
+    };
+    /** @enum {string} */
+    VoiceRegisterData: "casual" | "neutral" | "formal";
     WrappedContactRank: {
       /** Format: int32 */
       count: number;
@@ -4350,6 +5194,56 @@ export interface operations {
       };
     };
   };
+  mail_commitments_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_commitments_resolve: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   compose_session_start: {
     parameters: {
       query?: never;
@@ -4600,6 +5494,256 @@ export interface operations {
       };
     };
   };
+  mail_draft_new: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_drafts_orphaned_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_draft_refine: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_drafts_save_local: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_drafts_reset_orphan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_drafts_send_stored: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_drafts_delete_stored: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_export_search: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_humanizer_rewrite: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_humanizer_score: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   label_create: {
     parameters: {
       query?: never;
@@ -4676,6 +5820,106 @@ export interface operations {
     };
   };
   mail_mailbox: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_message_body: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_message_set_flags: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_message_raw_headers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_message_html_images: {
     parameters: {
       query?: never;
       header?: never;
@@ -4901,6 +6145,56 @@ export interface operations {
     };
   };
   mutation_undo: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_relationship_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_relationship_rebuild: {
     parameters: {
       query?: never;
       header?: never;
@@ -5201,6 +6495,181 @@ export interface operations {
     };
   };
   sender_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_signature_defaults_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_signatures_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_signatures_upsert: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_signature_default_set: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_signature_default_clear: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_signature_resolve: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_signatures_delete: {
     parameters: {
       query?: never;
       header?: never;
@@ -5550,6 +7019,31 @@ export interface operations {
       };
     };
   };
+  platform_accounts_authorize: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   accounts_config: {
     parameters: {
       query?: never;
@@ -5576,6 +7070,31 @@ export interface operations {
     };
   };
   account_set_default: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  platform_accounts_repair: {
     parameters: {
       query?: never;
       header?: never;
@@ -6500,6 +8019,31 @@ export interface operations {
       };
     };
   };
+  semantic_backfill: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   semantic_enable: {
     parameters: {
       query?: never;
@@ -6626,6 +8170,56 @@ export interface operations {
     };
   };
   subscriptions_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  platform_voice_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  platform_voice_rebuild: {
     parameters: {
       query?: never;
       header?: never;

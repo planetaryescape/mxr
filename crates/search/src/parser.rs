@@ -425,6 +425,9 @@ impl Parser {
                 "answered" | "replied" => Ok(QueryNode::Filter(FilterKind::Answered)),
                 "inbox" => Ok(QueryNode::Filter(FilterKind::Inbox)),
                 "archived" | "archive" => Ok(QueryNode::Filter(FilterKind::Archived)),
+                "reply-later" | "reply_later" | "replylater" => {
+                    Ok(QueryNode::Filter(FilterKind::ReplyLater))
+                }
                 other => Err(ParseError::UnknownFilter(other.to_string())),
             },
             "in" => match value.to_lowercase().as_str() {
@@ -807,6 +810,10 @@ mod tests {
         assert_eq!(
             parse_query("is:archived").unwrap(),
             QueryNode::Filter(FilterKind::Archived)
+        );
+        assert_eq!(
+            parse_query("is:reply-later").unwrap(),
+            QueryNode::Filter(FilterKind::ReplyLater)
         );
     }
 

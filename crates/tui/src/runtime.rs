@@ -1,6 +1,7 @@
 use crate::app;
-use crate::async_result::{AsyncResult, SearchResultData, StatusSnapshot};
+use crate::async_result::{AsyncResult, StatusSnapshot};
 use crate::ipc::{ipc_call, IpcRequest};
+use crate::search_ipc::{ipc_search_segment, run_streamed_search_page_initial};
 use mxr_core::MxrError;
 use mxr_protocol::{Request, Response, ResponseData};
 use std::collections::VecDeque;
@@ -100,8 +101,9 @@ pub(crate) fn spawn_replaceable_request_worker(
                 continue;
             };
 
-            let result = execute_replaceable_request(&bg, request).await;
-            let _ = result_tx.send(result);
+            if let Some(result) = execute_replaceable_request(&bg, &result_tx, request).await {
+                let _ = result_tx.send(result);
+            }
         }
     });
     tx
@@ -143,8 +145,9 @@ pub(crate) fn enqueue_replaceable_request(
 
 async fn execute_replaceable_request(
     bg: &mpsc::UnboundedSender<IpcRequest>,
+    result_tx: &mpsc::UnboundedSender<AsyncResult>,
     request: ReplaceableRequest,
-) -> AsyncResult {
+) -> Option<AsyncResult> {
     match request {
         ReplaceableRequest::Search(pending) => {
             tracing::trace!(
@@ -152,68 +155,30 @@ async fn execute_replaceable_request(
                 session_id = pending.session_id,
                 "tui replaceable request dequeued"
             );
-            let query = pending.query.clone();
-            let target = pending.target;
-            let append = pending.append;
-            let session_id = pending.session_id;
-            let results = match ipc_call(
-                bg,
-                Request::Search {
-                    query,
-                    limit: pending.limit,
-                    offset: pending.offset,
-                    mode: Some(pending.mode),
-                    sort: Some(pending.sort),
-                    explain: false,
-                },
-            )
-            .await
-            {
-                Ok(Response::Ok {
-                    data:
-                        ResponseData::SearchResults {
-                            results, has_more, ..
-                        },
-                }) => {
-                    let mut scores = std::collections::HashMap::new();
-                    let message_ids = results
-                        .into_iter()
-                        .map(|result| {
-                            scores.insert(result.message_id.clone(), result.score);
-                            result.message_id
-                        })
-                        .collect::<Vec<_>>();
-                    if message_ids.is_empty() {
-                        Ok(SearchResultData {
-                            envelopes: Vec::new(),
-                            scores,
-                            has_more,
-                        })
-                    } else {
-                        match ipc_call(bg, Request::ListEnvelopesByIds { message_ids }).await {
-                            Ok(Response::Ok {
-                                data: ResponseData::Envelopes { envelopes },
-                            }) => Ok(SearchResultData {
-                                envelopes,
-                                scores,
-                                has_more,
-                            }),
-                            Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
-                            Err(error) => Err(error),
-                            _ => Err(MxrError::Ipc("unexpected response".into())),
-                        }
-                    }
-                }
-                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
-                Err(error) => Err(error),
-                _ => Err(MxrError::Ipc("unexpected response".into())),
-            };
-            AsyncResult::Search {
-                target,
-                append,
-                session_id,
-                result: results,
+            let stream_initial = pending.target == app::SearchTarget::SearchPage
+                && !pending.append
+                && pending.offset == 0;
+            if stream_initial {
+                run_streamed_search_page_initial(bg, result_tx, pending).await;
+                return None;
             }
+
+            let result = ipc_search_segment(
+                bg,
+                &pending.query,
+                pending.mode,
+                pending.sort,
+                pending.limit,
+                pending.offset,
+            )
+            .await;
+
+            Some(AsyncResult::Search {
+                target: pending.target,
+                append: pending.append,
+                session_id: pending.session_id,
+                result,
+            })
         }
         ReplaceableRequest::SearchCount(pending) => {
             tracing::trace!(session_id = pending.session_id, "tui search count dequeued");
@@ -234,7 +199,7 @@ async fn execute_replaceable_request(
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),
             };
-            AsyncResult::SearchCount { session_id, result }
+            Some(AsyncResult::SearchCount { session_id, result })
         }
         ReplaceableRequest::Thread {
             thread_id,
@@ -264,11 +229,11 @@ async fn execute_replaceable_request(
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),
             };
-            AsyncResult::Thread {
+            Some(AsyncResult::Thread {
                 thread_id,
                 request_id,
                 result,
-            }
+            })
         }
         ReplaceableRequest::RuleDetail {
             rule,
@@ -288,7 +253,7 @@ async fn execute_replaceable_request(
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),
             };
-            AsyncResult::RuleDetail { request_id, result }
+            Some(AsyncResult::RuleDetail { request_id, result })
         }
         ReplaceableRequest::RuleHistory {
             rule,
@@ -316,7 +281,7 @@ async fn execute_replaceable_request(
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),
             };
-            AsyncResult::RuleHistory { request_id, result }
+            Some(AsyncResult::RuleHistory { request_id, result })
         }
         ReplaceableRequest::RuleForm {
             rule,
@@ -336,7 +301,7 @@ async fn execute_replaceable_request(
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),
             };
-            AsyncResult::RuleForm { request_id, result }
+            Some(AsyncResult::RuleForm { request_id, result })
         }
         ReplaceableRequest::Status {
             request_id,
@@ -369,7 +334,7 @@ async fn execute_replaceable_request(
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),
             };
-            AsyncResult::Status { request_id, result }
+            Some(AsyncResult::Status { request_id, result })
         }
         ReplaceableRequest::Diagnostics {
             request_id,
@@ -383,10 +348,10 @@ async fn execute_replaceable_request(
                 "tui diagnostics refresh dequeued"
             );
             let result = ipc_call(bg, *request).await;
-            AsyncResult::Diagnostics {
+            Some(AsyncResult::Diagnostics {
                 request_id,
                 result: Box::new(result),
-            }
+            })
         }
     }
 }

@@ -9,7 +9,6 @@ const docsRoot = join(repoRoot, 'site', 'src', 'content', 'docs');
 const openapiPath = join(repoRoot, 'site', 'public', 'openapi.json');
 
 const banned = [
-  { re: /mxr senders\b/, message: 'nonexistent command `mxr senders`' },
   { re: /list_id:/, message: 'search field is `list:`, not `list_id:`' },
   { re: /\.from\.email/, message: '`mxr search` emits string `.from`, not `.from.email`' },
   { re: /has_attachments/, message: '`mxr search` does not emit `has_attachments`' },

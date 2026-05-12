@@ -122,6 +122,7 @@ pub struct ModalsState {
 
 #[derive(Debug, Clone)]
 pub struct PendingPlatformDispatch {
+    pub prelude: Vec<Request>,
     pub request: Request,
     pub title: String,
     pub loading: String,
@@ -229,6 +230,14 @@ impl SnippetsModalState {
 /// Read-only state for the sender-profile browser modal. Either holds
 /// a fetched profile, an error, or a "loading" placeholder while the
 /// IPC call is in-flight.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SenderProfileTab {
+    #[default]
+    Overview,
+    Relationship,
+    Messages,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SenderProfileModalState {
     pub visible: bool,
@@ -239,6 +248,7 @@ pub struct SenderProfileModalState {
     pub email: Option<String>,
     pub current_thread_id: Option<mxr_core::ThreadId>,
     pub profile: Option<SenderProfileData>,
+    pub active_tab: SenderProfileTab,
     pub selected_recent_index: usize,
     pub error: Option<String>,
 }
@@ -250,6 +260,7 @@ impl SenderProfileModalState {
         self.email = Some(email);
         self.current_thread_id = current_thread_id;
         self.profile = None;
+        self.active_tab = SenderProfileTab::Overview;
         self.selected_recent_index = 0;
         self.error = None;
     }
@@ -260,6 +271,7 @@ impl SenderProfileModalState {
         self.email = None;
         self.current_thread_id = None;
         self.profile = None;
+        self.active_tab = SenderProfileTab::Overview;
         self.selected_recent_index = 0;
         self.error = None;
     }
@@ -268,12 +280,17 @@ impl SenderProfileModalState {
         self.loading = false;
         self.error = None;
         self.profile = profile;
+        self.active_tab = SenderProfileTab::Overview;
         self.selected_recent_index = 0;
     }
 
     pub fn set_error(&mut self, message: String) {
         self.loading = false;
         self.error = Some(message);
+    }
+
+    pub fn select_tab(&mut self, tab: SenderProfileTab) {
+        self.active_tab = tab;
     }
 
     pub fn recent_messages(&self) -> Vec<&mxr_protocol::SenderEmailReferenceData> {

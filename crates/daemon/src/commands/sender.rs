@@ -3,7 +3,56 @@
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
+use mxr_core::types::ResponseTimeBucket;
 use mxr_protocol::*;
+
+fn activity_sparkline(weeks: &[SenderWeeklyActivityData]) -> String {
+    const STEPS: &[u8] = b" .:-=+*#";
+    let totals: Vec<u32> = weeks
+        .iter()
+        .map(|week| week.inbound_count + week.outbound_count)
+        .collect();
+    let max = totals.iter().copied().max().unwrap_or(0);
+    if max == 0 {
+        return ".".repeat(weeks.len());
+    }
+    totals
+        .into_iter()
+        .map(|count| {
+            let index = ((count as usize) * (STEPS.len() - 1)) / (max as usize);
+            STEPS[index] as char
+        })
+        .collect()
+}
+
+fn histogram_label(upper_bound_seconds: u32) -> &'static str {
+    match upper_bound_seconds {
+        60 => "<1m",
+        300 => "<5m",
+        1_800 => "<30m",
+        3_600 => "<1h",
+        21_600 => "<6h",
+        86_400 => "<1d",
+        259_200 => "<3d",
+        u32::MAX => ">=3d",
+        _ => "?",
+    }
+}
+
+fn histogram_summary(buckets: &[ResponseTimeBucket]) -> String {
+    buckets
+        .iter()
+        .filter(|bucket| bucket.count > 0)
+        .map(|bucket| {
+            format!(
+                "{}:{}",
+                histogram_label(bucket.upper_bound_seconds),
+                bucket.count
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 
 pub async fn run(
     email: String,
@@ -75,6 +124,19 @@ pub async fn run(
                         "  open:     {} thread(s) waiting on you",
                         p.open_thread_count
                     );
+                }
+                if let Some(question) = p.unanswered_question {
+                    println!(
+                        "  question: unanswered for {}d — {}",
+                        question.days_waiting, question.subject
+                    );
+                }
+                let histogram = histogram_summary(&p.response_histogram);
+                if !histogram.is_empty() {
+                    println!("  replies:  {histogram}");
+                }
+                if !p.weekly_activity.is_empty() {
+                    println!("  weeks:    {}", activity_sparkline(&p.weekly_activity));
                 }
             }
         },

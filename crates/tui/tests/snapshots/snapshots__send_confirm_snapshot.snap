@@ -1,9 +1,8 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 256
+assertion_line: 265
 expression: snapshot
 ---
-"                                                                      "
 "                                                                      "
 "                                                                      "
 "                                                                      "
@@ -13,10 +12,11 @@ expression: snapshot
 "     ╭ Draft Ready ─────────────────────────────────────────────╮     "
 "     │Send this draft?                                          │     "
 "     │Subject: Snapshot draft                                   │     "
+"     │Voice match: not scored for manual edits                  │     "
+"     │Humanizer: scored on AI draft outputs                     │     "
 "     │                                                          │     "
-"     │[s] send   [d] save draft   [e] edit again   [Esc] discard│     "
+"     │[s] send   [a] send at   [d] save draft   [r] refine   [e]│     "
 "     ╰──────────────────────────────────────────────────────────╯     "
-"                                                                      "
 "                                                                      "
 "                                                                      "
 "                                                                      "

@@ -71,7 +71,22 @@ interface LlmConfig {
   api_key_env: string;
   context_window: number;
   request_timeout_secs: number;
+  allow_cloud_relationship_data: boolean;
+  overrides?: LlmOverrides | null;
 }
+
+type LlmOverrideKey = (typeof llmOverrideFeatures)[number]["key"];
+
+interface LlmOverrideConfig {
+  enabled?: boolean | null;
+  base_url?: string | null;
+  model?: string | null;
+  api_key_env?: string | null;
+  context_window?: number | null;
+  request_timeout_secs?: number | null;
+}
+
+type LlmOverrides = Partial<Record<LlmOverrideKey, LlmOverrideConfig | null>>;
 
 interface LlmStatus {
   enabled: boolean;
@@ -107,7 +122,20 @@ const defaultLlmConfig: LlmConfig = {
   api_key_env: "",
   context_window: 8192,
   request_timeout_secs: 120,
+  allow_cloud_relationship_data: false,
+  overrides: {},
 };
+
+const llmOverrideFeatures = [
+  { key: "summarize", label: "Summaries" },
+  { key: "relationship_summary", label: "Relationship summaries" },
+  { key: "commitments", label: "Commitments" },
+  { key: "draft_assist", label: "Draft assist" },
+  { key: "draft_new", label: "Draft new" },
+  { key: "draft_refine", label: "Draft refine" },
+  { key: "voice_match", label: "Voice match" },
+  { key: "humanize_rewrite", label: "Humanizer rewrite" },
+] as const;
 
 export function SettingsRoute() {
   const { section } = useParams({ from: "/settings/$section" });
@@ -445,7 +473,7 @@ export function LlmSettingsSection() {
 
   useEffect(() => {
     if (config.data?.config) {
-      setDraft(config.data.config);
+      setDraft(normalizeLlmConfig(config.data.config));
       return;
     }
     if (configUnsupported && currentStatus) {
@@ -526,6 +554,24 @@ export function LlmSettingsSection() {
                 onCheckedChange={(enabled) => setDraft({ ...draft, enabled })}
               />
             </div>
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-background px-3 py-2">
+              <div>
+                <Label htmlFor="llm-allow-cloud-relationship-data">
+                  Allow relationship data with cloud LLMs
+                </Label>
+                <p className="mt-1 text-2xs text-muted-foreground">
+                  Required before relationship summaries, commitments, or voice-match checks use a
+                  non-local endpoint.
+                </p>
+              </div>
+              <Switch
+                id="llm-allow-cloud-relationship-data"
+                checked={draft.allow_cloud_relationship_data}
+                onCheckedChange={(allow_cloud_relationship_data) =>
+                  setDraft({ ...draft, allow_cloud_relationship_data })
+                }
+              />
+            </div>
 
             <div className="grid gap-3 md:grid-cols-2">
               <Field label="Base URL">
@@ -576,6 +622,92 @@ export function LlmSettingsSection() {
               </Field>
             </div>
 
+            <div className="space-y-3 border-t border-border pt-4">
+              <div>
+                <h3 className="text-sm font-semibold">Feature overrides</h3>
+                <p className="mt-1 text-2xs text-muted-foreground">
+                  Leave fields blank to inherit the base provider. Use this for larger summary
+                  models or warmer draft models without changing every LLM feature.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {llmOverrideFeatures.map((feature) => {
+                  const override = draft.overrides?.[feature.key] ?? null;
+                  return (
+                    <div
+                      key={feature.key}
+                      className="grid gap-2 rounded-lg border border-border bg-background p-3 lg:grid-cols-[180px_120px_1fr_1fr] lg:items-end"
+                    >
+                      <div>
+                        <div className="text-xs font-medium">{feature.label}</div>
+                        <div className="font-mono text-2xs text-muted-foreground">
+                          {feature.key}
+                        </div>
+                      </div>
+                      <Field label="Enabled">
+                        <Select
+                          value={
+                            override?.enabled == null
+                              ? "inherit"
+                              : override.enabled
+                                ? "enabled"
+                                : "disabled"
+                          }
+                          onValueChange={(value) =>
+                            setDraft(
+                              updateLlmOverride(draft, feature.key, {
+                                enabled: value === "inherit" ? null : value === "enabled",
+                              }),
+                            )
+                          }
+                        >
+                          <SelectTrigger
+                            className="h-9 bg-background"
+                            aria-label={`${feature.label} enabled`}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="inherit">Inherit</SelectItem>
+                            <SelectItem value="enabled">Enabled</SelectItem>
+                            <SelectItem value="disabled">Disabled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field label="Model">
+                        <Input
+                          aria-label={`${feature.label} model`}
+                          value={override?.model ?? ""}
+                          onChange={(event) =>
+                            setDraft(
+                              updateLlmOverride(draft, feature.key, {
+                                model: emptyToNull(event.target.value),
+                              }),
+                            )
+                          }
+                          placeholder="inherit"
+                        />
+                      </Field>
+                      <Field label="Base URL">
+                        <Input
+                          aria-label={`${feature.label} base URL`}
+                          value={override?.base_url ?? ""}
+                          onChange={(event) =>
+                            setDraft(
+                              updateLlmOverride(draft, feature.key, {
+                                base_url: emptyToNull(event.target.value),
+                              }),
+                            )
+                          }
+                          placeholder="inherit"
+                        />
+                      </Field>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
               <div className="text-2xs text-muted-foreground">
                 {currentStatus?.api_key_env
@@ -613,7 +745,47 @@ function llmConfigFromStatus(status: LlmStatus): LlmConfig {
       status.request_timeout_secs > 0
         ? status.request_timeout_secs
         : defaultLlmConfig.request_timeout_secs,
+    allow_cloud_relationship_data: defaultLlmConfig.allow_cloud_relationship_data,
+    overrides: {},
   };
+}
+
+function normalizeLlmConfig(config: LlmConfig): LlmConfig {
+  return { ...config, overrides: config.overrides ?? {} };
+}
+
+function updateLlmOverride(
+  config: LlmConfig,
+  key: LlmOverrideKey,
+  patch: LlmOverrideConfig,
+): LlmConfig {
+  const current = config.overrides?.[key] ?? {};
+  const next = pruneOverride({ ...current, ...patch });
+  return {
+    ...config,
+    overrides: {
+      ...config.overrides,
+      [key]: next,
+    },
+  };
+}
+
+function pruneOverride(override: LlmOverrideConfig): LlmOverrideConfig | null {
+  const next: LlmOverrideConfig = {
+    enabled: override.enabled ?? null,
+    base_url: emptyToNull(override.base_url),
+    model: emptyToNull(override.model),
+    api_key_env: emptyToNull(override.api_key_env),
+    context_window: override.context_window ?? null,
+    request_timeout_secs: override.request_timeout_secs ?? null,
+  };
+  const hasValue = Object.values(next).some((value) => value !== null && value !== undefined);
+  return hasValue ? next : null;
+}
+
+function emptyToNull(value?: string | null): string | null {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function isNotFoundError(error: unknown): boolean {

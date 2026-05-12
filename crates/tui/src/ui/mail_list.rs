@@ -123,7 +123,7 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
         Constraint::Length(4),  // line number
         Constraint::Length(1),  // unread indicator
         Constraint::Length(2),  // star
-        Constraint::Length(2),  // unsubscribe
+        Constraint::Length(2),  // list markers (unsubscribe/reply-later)
         Constraint::Length(22), // sender
         Constraint::Fill(1),    // subject (+ snippet preview)
         Constraint::Length(8),  // date
@@ -160,6 +160,19 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
             &mut scrollbar_state,
         );
     }
+}
+
+/// In thread aggregate mode with multiple messages, show `+N` beside the
+/// subject where N counts distinct participant addresses (normalized email,
+/// From/To/Cc union) excluding the representative message From address.
+fn thread_participation_chip(row: &MailListRow, mode: MailListMode) -> Option<String> {
+    if mode != MailListMode::Threads {
+        return None;
+    }
+    if row.message_count <= 1 || row.other_participant_count == 0 {
+        return None;
+    }
+    Some(format!("+{}", row.other_participant_count))
 }
 
 fn build_row<'a>(
@@ -224,8 +237,8 @@ fn build_row<'a>(
         Style::default().fg(row_fg),
     ));
 
-    let unsubscribe_cell = Cell::from(Span::styled(
-        unsubscribe_marker(&env.unsubscribe),
+    let list_markers_cell = Cell::from(Span::styled(
+        list_markers(row),
         Style::default().fg(row_muted_fg),
     ));
 
@@ -247,21 +260,36 @@ fn build_row<'a>(
     };
     let sender_cell = Cell::from(Line::from(sender_spans));
 
-    // Subject + inline snippet preview. format_subject_line drops the
-    // snippet automatically when the column is too narrow.
-    let (subject_text, snippet_preview) =
-        format_subject_line(&env.subject, &env.snippet, subject_max_width);
+    // Subject + participation chip (`+N` other participants per delight plan).
+    let participation_chip = thread_participation_chip(row, view.mode);
+    let chip_budget = participation_chip
+        .as_ref()
+        .map_or(0, |s| s.chars().count() + 1);
+    // Remaining width goes to trailing snippet after " · "; format_subject_line
+    // allocates subject first, then snippet when there's room.
+    let (subject_text, snippet_preview) = format_subject_line(
+        &env.subject,
+        &env.snippet,
+        subject_max_width.saturating_sub(chip_budget),
+    );
+    let mut subject_chunks: Vec<Span> = vec![Span::styled(
+        subject_text,
+        Style::default().fg(row_secondary_fg),
+    )];
+    if let Some(chip) = participation_chip {
+        subject_chunks.push(Span::styled(
+            format!(" {chip}"),
+            Style::default().fg(theme.accent_dim),
+        ));
+    }
     let subject_cell = if let Some(snippet) = snippet_preview {
-        Cell::from(Line::from(vec![
-            Span::styled(subject_text, Style::default().fg(row_secondary_fg)),
+        subject_chunks.extend([
             Span::styled(" · ", Style::default().fg(row_muted_fg)),
             Span::styled(snippet, Style::default().fg(row_muted_fg)),
-        ]))
+        ]);
+        Cell::from(Line::from(subject_chunks))
     } else {
-        Cell::from(Span::styled(
-            subject_text,
-            Style::default().fg(row_secondary_fg),
-        ))
+        Cell::from(Line::from(subject_chunks))
     };
 
     // Date
@@ -283,7 +311,7 @@ fn build_row<'a>(
         line_num_cell,
         unread_cell,
         star_cell,
-        unsubscribe_cell,
+        list_markers_cell,
         sender_cell,
         subject_cell,
         date_cell,
@@ -567,12 +595,29 @@ pub fn format_date_relative(date: &chrono::DateTime<Utc>, now: &chrono::DateTime
     }
 }
 
-fn unsubscribe_marker(unsubscribe: &mxr_core::types::UnsubscribeMethod) -> &'static str {
-    if matches!(unsubscribe, mxr_core::types::UnsubscribeMethod::None) {
-        " "
-    } else {
-        "U"
+fn list_markers(row: &MailListRow) -> String {
+    let mut marker = String::with_capacity(2);
+    if !matches!(
+        row.representative.unsubscribe,
+        mxr_core::types::UnsubscribeMethod::None
+    ) {
+        marker.push('U');
     }
+    if row.reply_later {
+        marker.push('R');
+    }
+    if row.open_commitment_count > 0 {
+        marker.push(commitment_marker(row.open_commitment_count));
+    }
+    if marker.is_empty() {
+        " ".to_string()
+    } else {
+        marker
+    }
+}
+
+fn commitment_marker(count: u32) -> char {
+    char::from_digit(count.min(9), 10).unwrap_or('C')
 }
 
 #[cfg(test)]
@@ -614,6 +659,14 @@ mod tests {
     use mxr_core::types::{Address, Envelope, UnsubscribeMethod};
 
     fn row(message_count: usize, has_attachments: bool) -> MailListRow {
+        row_with_participants(message_count, 0, has_attachments)
+    }
+
+    fn row_with_participants(
+        message_count: usize,
+        other_participant_count: usize,
+        has_attachments: bool,
+    ) -> MailListRow {
         MailListRow {
             thread_id: ThreadId::new(),
             representative: Envelope {
@@ -642,6 +695,9 @@ mod tests {
             },
             message_count,
             unread_count: message_count,
+            other_participant_count,
+            open_commitment_count: 0,
+            reply_later: false,
             pending_mutation: false,
         }
     }
@@ -658,6 +714,125 @@ mod tests {
         );
         assert_eq!(format_thread_count_badge(4), "↔4");
         assert_eq!(format_thread_count_badge(1), "");
+    }
+
+    #[test]
+    fn row_shows_thread_participation_chip_only_when_multi_message() {
+        use mxr_test_support::render_to_string;
+        use std::collections::HashSet;
+
+        let wide = |row: MailListRow| {
+            render_to_string(120, 6, |frame| {
+                draw_view(
+                    frame,
+                    Rect::new(0, 0, 120, 6),
+                    &MailListView {
+                        rows: &[row],
+                        selected_index: 0,
+                        scroll_offset: 0,
+                        active_pane: &ActivePane::MailList,
+                        title: "Inbox",
+                        selected_set: &HashSet::new(),
+                        mode: MailListMode::Threads,
+                        loading_message: None,
+                        loading_throbber: None,
+                    },
+                    &Theme::default(),
+                );
+            })
+        };
+
+        let mut one = row_with_participants(1, 5, false);
+        one.representative.subject = "solo".into();
+        assert!(
+            !wide(one).contains("+"),
+            "single-message thread omits +N chip even if other_participant_count leftover"
+        );
+
+        let mut none_other = row_with_participants(4, 0, false);
+        none_other.representative.subject = "monologue".into();
+        assert!(
+            !wide(none_other).contains("+"),
+            "multi-message thread with no other participants omits chip"
+        );
+
+        let mut with_chip = row_with_participants(3, 2, false);
+        with_chip.representative.subject = "Planning".into();
+        let rendered = wide(with_chip);
+        assert!(
+            rendered.contains("+2"),
+            "multi-message thread shows +N for distinct other participants"
+        );
+    }
+
+    #[test]
+    fn row_renders_reply_later_marker() {
+        use mxr_test_support::render_to_string;
+        use std::collections::HashSet;
+
+        let mut row = row(1, false);
+        row.reply_later = true;
+        row.representative.subject = "Needs response".into();
+        let rows = vec![row];
+
+        let rendered = render_to_string(100, 6, |frame| {
+            draw_view(
+                frame,
+                Rect::new(0, 0, 100, 6),
+                &MailListView {
+                    rows: &rows,
+                    selected_index: 0,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MailList,
+                    title: "Inbox",
+                    selected_set: &HashSet::new(),
+                    mode: MailListMode::Messages,
+                    loading_message: None,
+                    loading_throbber: None,
+                },
+                &Theme::default(),
+            );
+        });
+
+        assert!(
+            rendered.contains(" R "),
+            "reply-later rows should render an R marker in the list marker column"
+        );
+    }
+
+    #[test]
+    fn row_renders_open_commitment_marker() {
+        use mxr_test_support::render_to_string;
+        use std::collections::HashSet;
+
+        let mut row = row(1, false);
+        row.open_commitment_count = 2;
+        row.representative.subject = "Follow-up".into();
+        let rows = vec![row];
+
+        let rendered = render_to_string(100, 6, |frame| {
+            draw_view(
+                frame,
+                Rect::new(0, 0, 100, 6),
+                &MailListView {
+                    rows: &rows,
+                    selected_index: 0,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MailList,
+                    title: "Inbox",
+                    selected_set: &HashSet::new(),
+                    mode: MailListMode::Messages,
+                    loading_message: None,
+                    loading_throbber: None,
+                },
+                &Theme::default(),
+            );
+        });
+
+        assert!(
+            rendered.contains(" 2 "),
+            "rows with open commitments should render a count marker; got:\n{rendered}"
+        );
     }
 
     #[test]

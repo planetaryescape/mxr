@@ -40,6 +40,53 @@ impl App {
                     "Generating new draft from relationship profile...",
                 );
             }
+            Action::RefinePendingDraft => {
+                let Some(pending) = self.compose.pending_send_confirm.as_ref() else {
+                    self.status_message = Some("No draft to refine".into());
+                    return;
+                };
+                if pending.mode != PendingSendMode::SendOrSave {
+                    self.status_message = Some("Add a recipient before refining".into());
+                    return;
+                }
+                let draft_id = mxr_core::DraftId::new();
+                let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
+                let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
+                    mxr_core::types::ReplyHeaders {
+                        in_reply_to: in_reply_to.clone(),
+                        references: pending.fm.references.clone(),
+                        thread_id: pending.fm.thread_id.clone(),
+                    }
+                });
+                let now = chrono::Utc::now();
+                let draft = mxr_core::Draft {
+                    id: draft_id.clone(),
+                    account_id: pending.account_id.clone(),
+                    reply_headers,
+                    to: parse_addrs(&pending.fm.to),
+                    cc: parse_addrs(&pending.fm.cc),
+                    bcc: parse_addrs(&pending.fm.bcc),
+                    subject: pending.fm.subject.clone(),
+                    body_markdown: pending.body.clone(),
+                    attachments: pending
+                        .fm
+                        .attach
+                        .iter()
+                        .map(std::path::PathBuf::from)
+                        .collect(),
+                    created_at: now,
+                    updated_at: now,
+                };
+                self.queue_platform_request_after(
+                    vec![Request::SaveDraft { draft }],
+                    Request::DraftRefine {
+                        draft_id,
+                        knobs: mxr_protocol::DraftRefineKnobsData::default(),
+                    },
+                    "Refined draft",
+                    "Saving and refining current draft...",
+                );
+            }
             Action::OpenVoiceProfile => {
                 let Some(account_id) = self.platform_account_id() else {
                     self.status_message = Some("No account available".into());
@@ -96,6 +143,29 @@ impl App {
         self.modals
             .pending_platform_dispatch
             .push(PendingPlatformDispatch {
+                prelude: Vec::new(),
+                request,
+                title,
+                loading,
+            });
+    }
+
+    pub(crate) fn queue_platform_request_after(
+        &mut self,
+        prelude: Vec<Request>,
+        request: Request,
+        title: impl Into<String>,
+        loading: impl Into<String>,
+    ) {
+        let title = title.into();
+        let loading = loading.into();
+        self.modals
+            .platform
+            .open_loading(title.clone(), loading.clone());
+        self.modals
+            .pending_platform_dispatch
+            .push(PendingPlatformDispatch {
+                prelude,
                 request,
                 title,
                 loading,

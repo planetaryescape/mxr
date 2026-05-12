@@ -54,6 +54,7 @@ pub enum FilterKind {
     Answered,
     Inbox,
     Archived,
+    ReplyLater,
     Anywhere,
     HasAttachment,
     HasUserLabels,

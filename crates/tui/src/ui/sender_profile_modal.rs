@@ -1,4 +1,4 @@
-use crate::app::SenderProfileModalState;
+use crate::app::{SenderProfileModalState, SenderProfileTab};
 use crate::theme::Theme;
 use ratatui::layout::Margin;
 use ratatui::prelude::*;
@@ -16,8 +16,10 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &SenderProfileModalState, them
     Clear.render(modal_area, frame.buffer_mut());
 
     let title = match &state.email {
-        Some(email) => format!(" Sender · {email} · j/k select · Enter open · Esc close "),
-        None => " Sender · j/k select · Enter open · Esc close ".to_string(),
+        Some(email) => {
+            format!(" Sender · {email} · 1/2/3 tabs · j/k select · Enter open · Esc close ")
+        }
+        None => " Sender · 1/2/3 tabs · j/k select · Enter open · Esc close ".to_string(),
     };
     let block = Block::default()
         .title(title)
@@ -66,6 +68,53 @@ fn profile_lines<'a>(
     let label_style = Style::default().fg(theme.text_muted);
     let mut lines = Vec::new();
 
+    lines.push(tab_line(state.active_tab, theme));
+    lines.push(Line::from(""));
+
+    match state.active_tab {
+        SenderProfileTab::Overview => push_overview_lines(&mut lines, profile, theme, label_style),
+        SenderProfileTab::Relationship => {
+            push_relationship_lines(&mut lines, profile, theme, label_style);
+        }
+        SenderProfileTab::Messages => push_message_lines(&mut lines, state, theme, label_style),
+    }
+
+    lines
+}
+
+fn tab_line<'a>(active: SenderProfileTab, theme: &Theme) -> Line<'a> {
+    let tab = |tab: SenderProfileTab, label: &'static str| {
+        let style = if active == tab {
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.text_muted)
+        };
+        Span::styled(label, style)
+    };
+    Line::from(vec![
+        tab(SenderProfileTab::Overview, "[1 Overview]"),
+        Span::raw("  "),
+        tab(SenderProfileTab::Relationship, "[2 Relationship]"),
+        Span::raw("  "),
+        tab(SenderProfileTab::Messages, "[3 Messages]"),
+    ])
+}
+
+fn push_overview_lines<'a>(
+    lines: &mut Vec<Line<'a>>,
+    profile: &'a mxr_protocol::SenderProfileData,
+    theme: &Theme,
+    label_style: Style,
+) {
+    lines.push(Line::from(Span::styled(
+        "Overview",
+        Style::default()
+            .fg(theme.text_primary)
+            .add_modifier(Modifier::BOLD),
+    )));
+
     if let Some(name) = &profile.display_name {
         lines.push(Line::from(vec![
             Span::styled("Name: ", label_style),
@@ -92,6 +141,28 @@ fn profile_lines<'a>(
         Span::styled("Open threads: ", label_style),
         Span::raw(profile.open_thread_count.to_string()),
     ]));
+    if let Some(question) = &profile.unanswered_question {
+        lines.push(Line::from(vec![
+            Span::styled("Unanswered Q: ", label_style),
+            Span::styled(
+                format!("{}d · {}", question.days_waiting, question.subject),
+                Style::default().fg(theme.warning),
+            ),
+        ]));
+    }
+    let reply_histogram = reply_histogram_summary(&profile.response_histogram);
+    if !reply_histogram.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("Reply latency: ", label_style),
+            Span::raw(reply_histogram),
+        ]));
+    }
+    if !profile.weekly_activity.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("Weekly trend: ", label_style),
+            Span::raw(activity_sparkline(&profile.weekly_activity)),
+        ]));
+    }
     lines.push(Line::from(vec![
         Span::styled("Storage: ", label_style),
         Span::raw(format!(
@@ -132,14 +203,75 @@ fn profile_lines<'a>(
         )));
     }
 
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Press 2 for relationship identity; 3 for recent sender messages.",
+        label_style,
+    )));
+}
+
+fn activity_sparkline(weeks: &[mxr_protocol::SenderWeeklyActivityData]) -> String {
+    const STEPS: &[u8] = b" .:-=+*#";
+    let totals: Vec<u32> = weeks
+        .iter()
+        .map(|week| week.inbound_count + week.outbound_count)
+        .collect();
+    let max = totals.iter().copied().max().unwrap_or(0);
+    if max == 0 {
+        return ".".repeat(weeks.len());
+    }
+    totals
+        .into_iter()
+        .map(|count| {
+            let index = ((count as usize) * (STEPS.len() - 1)) / (max as usize);
+            STEPS[index] as char
+        })
+        .collect()
+}
+
+fn reply_histogram_summary(buckets: &[mxr_core::types::ResponseTimeBucket]) -> String {
+    buckets
+        .iter()
+        .filter(|bucket| bucket.count > 0)
+        .map(|bucket| {
+            format!(
+                "{}:{}",
+                reply_histogram_label(bucket.upper_bound_seconds),
+                bucket.count
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn reply_histogram_label(upper_bound_seconds: u32) -> &'static str {
+    match upper_bound_seconds {
+        60 => "<1m",
+        300 => "<5m",
+        1_800 => "<30m",
+        3_600 => "<1h",
+        21_600 => "<6h",
+        86_400 => "<1d",
+        259_200 => "<3d",
+        u32::MAX => ">=3d",
+        _ => "?",
+    }
+}
+
+fn push_relationship_lines<'a>(
+    lines: &mut Vec<Line<'a>>,
+    profile: &'a mxr_protocol::SenderProfileData,
+    theme: &Theme,
+    label_style: Style,
+) {
+    lines.push(Line::from(Span::styled(
+        "Relationship",
+        Style::default()
+            .fg(theme.text_primary)
+            .add_modifier(Modifier::BOLD),
+    )));
+
     if let Some(relationship) = &profile.relationship {
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "Relationship",
-            Style::default()
-                .fg(theme.text_primary)
-                .add_modifier(Modifier::BOLD),
-        )));
         if let Some(drift) = &relationship.drift {
             lines.push(Line::from(Span::styled(
                 format!("Voice drift: {}", drift.reason),
@@ -190,15 +322,38 @@ fn profile_lines<'a>(
                 ]));
             }
         }
+    } else if profile.is_list_sender {
+        lines.push(Line::from(Span::styled(
+            "List sender: relationship identity is intentionally skipped.",
+            Style::default().fg(theme.warning),
+        )));
+    } else {
+        lines.push(Line::from(Span::styled(
+            "No relationship profile yet. Rebuild after more local messages.",
+            label_style,
+        )));
     }
 
     lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Press 1 for volume/cadence; 3 for local message history.",
+        label_style,
+    )));
+}
+
+fn push_message_lines<'a>(
+    lines: &mut Vec<Line<'a>>,
+    state: &'a SenderProfileModalState,
+    theme: &Theme,
+    label_style: Style,
+) {
     lines.push(Line::from(Span::styled(
         "Other emails from sender",
         Style::default()
             .fg(theme.text_primary)
             .add_modifier(Modifier::BOLD),
     )));
+
     let recent_messages = state.recent_messages();
     if recent_messages.is_empty() {
         lines.push(Line::from(Span::styled(
@@ -246,8 +401,6 @@ fn profile_lines<'a>(
             }
         }
     }
-
-    lines
 }
 
 fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
@@ -274,11 +427,12 @@ fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
 mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
-    use mxr_core::{AccountId, MessageId, ThreadId};
+    use mxr_core::{types::ResponseTimeBucket, AccountId, MessageId, ThreadId};
     use mxr_protocol::{
         CommitmentData, CommitmentDirectionData, CommitmentStatusData,
         ContactRelationshipSummaryData, ContactStyleData, RelationshipDriftData,
         RelationshipProfileData, SenderEmailReferenceData, SenderProfileData,
+        SenderUnansweredQuestionData, SenderWeeklyActivityData,
     };
     use mxr_test_support::render_to_string;
 
@@ -302,6 +456,35 @@ mod tests {
             outbound_storage_bytes: 262_144,
             attachment_count: 3,
             attachment_bytes: 512_000,
+            unanswered_question: Some(SenderUnansweredQuestionData {
+                message_id: MessageId::new(),
+                thread_id: ThreadId::new(),
+                subject: "Can you send the signed copy?".into(),
+                received_at: Utc.with_ymd_and_hms(2026, 4, 30, 9, 0, 0).unwrap(),
+                days_waiting: 2,
+            }),
+            response_histogram: vec![
+                ResponseTimeBucket {
+                    upper_bound_seconds: 86_400,
+                    count: 2,
+                },
+                ResponseTimeBucket {
+                    upper_bound_seconds: u32::MAX,
+                    count: 1,
+                },
+            ],
+            weekly_activity: vec![
+                SenderWeeklyActivityData {
+                    week_start: Utc.with_ymd_and_hms(2026, 4, 20, 0, 0, 0).unwrap(),
+                    inbound_count: 1,
+                    outbound_count: 0,
+                },
+                SenderWeeklyActivityData {
+                    week_start: Utc.with_ymd_and_hms(2026, 4, 27, 0, 0, 0).unwrap(),
+                    inbound_count: 2,
+                    outbound_count: 1,
+                },
+            ],
             recent_messages: vec![SenderEmailReferenceData {
                 message_id: MessageId::new(),
                 thread_id: ThreadId::new(),
@@ -355,6 +538,39 @@ mod tests {
             "open thread count must surface; got:\n{snapshot}",
         );
         assert!(
+            snapshot.contains("Unanswered Q"),
+            "question signal must surface; got:\n{snapshot}",
+        );
+        assert!(
+            snapshot.contains("Reply latency"),
+            "reply histogram must surface; got:\n{snapshot}",
+        );
+        assert!(
+            snapshot.contains("Weekly trend"),
+            "weekly activity sparkline must surface; got:\n{snapshot}",
+        );
+        assert!(
+            snapshot.contains("[1 Overview]"),
+            "overview tab label must surface; got:\n{snapshot}",
+        );
+    }
+
+    #[test]
+    fn renders_recent_messages_on_messages_tab() {
+        let mut state = SenderProfileModalState::default();
+        state.open_loading("alice@example.com".into(), None);
+        state.set_profile(Some(sample_profile()));
+        state.select_tab(SenderProfileTab::Messages);
+
+        let snapshot = render_to_string(100, 30, |frame| {
+            draw(frame, Rect::new(0, 0, 100, 30), &state, &Theme::default());
+        });
+
+        assert!(
+            snapshot.contains("Other emails from sender"),
+            "messages tab heading must surface; got:\n{snapshot}",
+        );
+        assert!(
             snapshot.contains("Previous contract note"),
             "recent sender emails must surface; got:\n{snapshot}",
         );
@@ -405,6 +621,7 @@ mod tests {
         let mut state = SenderProfileModalState::default();
         state.open_loading("alice@example.com".into(), None);
         state.set_profile(Some(profile));
+        state.select_tab(SenderProfileTab::Relationship);
 
         let snapshot = render_to_string(100, 36, |frame| {
             draw(frame, Rect::new(0, 0, 100, 36), &state, &Theme::default());

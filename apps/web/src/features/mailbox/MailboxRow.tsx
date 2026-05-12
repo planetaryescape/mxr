@@ -4,6 +4,7 @@ import {
   MailOpen,
   MessagesSquare,
   Paperclip,
+  ClipboardList,
   ShieldAlert,
   Star,
   Trash2,
@@ -37,6 +38,10 @@ export function MailboxRow({
   const read = useOptimisticMailMutation(row.unread ? "read" : "unread");
   const conversationCount =
     typeof row.message_count === "number" && row.message_count > 1 ? row.message_count : null;
+  const openCommitmentCount =
+    typeof row.open_commitment_count === "number" && row.open_commitment_count > 0
+      ? row.open_commitment_count
+      : null;
 
   function toggleSelection(event: MouseEvent) {
     event.stopPropagation();
@@ -47,7 +52,7 @@ export function MailboxRow({
     <div
       role="article"
       tabIndex={0}
-      aria-label={`${row.sender} ${row.subject || "(no subject)"} ${conversationCount ? `conversation thread with ${conversationCount} messages` : ""} ${row.has_attachments ? "has attachments" : ""} ${row.snippet}`}
+      aria-label={`${row.sender} ${row.subject || "(no subject)"} ${conversationCount ? `conversation thread with ${conversationCount} messages` : ""} ${openCommitmentCount ? `${openCommitmentCount} open ${openCommitmentCount === 1 ? "commitment" : "commitments"}` : ""} ${row.has_attachments ? "has attachments" : ""} ${row.snippet}`}
       onClick={onOpen}
       onFocus={onFocusPane}
       onKeyDown={(event) => {
@@ -114,6 +119,7 @@ export function MailboxRow({
               <title>{row.attachment_filename ?? "Has attachments"}</title>
             </Paperclip>
           ) : null}
+          {openCommitmentCount ? <CommitmentBadge count={openCommitmentCount} /> : null}
         </div>
         <div className="mailbox-row-snippet truncate text-[length:var(--mail-row-meta-size)] font-normal leading-5 text-muted-foreground">
           {row.snippet}
@@ -134,6 +140,20 @@ export function MailboxRow({
         </div>
       </div>
     </div>
+  );
+}
+
+function CommitmentBadge({ count }: { count: number }) {
+  return (
+    <Badge
+      variant="outline"
+      aria-label={`${count} open ${count === 1 ? "commitment" : "commitments"}`}
+      title={`${count} unresolved relationship ${count === 1 ? "commitment" : "commitments"}`}
+      className="h-5 shrink-0 gap-1 rounded border-amber-500/45 bg-amber-500/15 px-1.5 font-mono text-[10px] text-amber-600 dark:text-amber-300"
+    >
+      <ClipboardList className="size-3" aria-hidden="true" />
+      {count}
+    </Badge>
   );
 }
 

@@ -164,6 +164,17 @@ impl App {
             } => {
                 self.apply_local_label_refs(message_ids, add, remove);
             }
+            MutationEffect::ReplyLater {
+                message_id, flag, ..
+            } => {
+                if *flag {
+                    self.mailbox
+                        .reply_later_message_ids
+                        .insert(message_id.clone());
+                } else {
+                    self.mailbox.reply_later_message_ids.remove(message_id);
+                }
+            }
             MutationEffect::RefreshList
             | MutationEffect::StatusOnly(_)
             | MutationEffect::SentSuccess { .. } => {}
@@ -228,6 +239,20 @@ impl App {
                     self.status_message = Some(status);
                 }
             }
+            MutationEffect::ReplyLater {
+                message_id,
+                flag,
+                status,
+            } => {
+                if flag {
+                    self.mailbox.reply_later_message_ids.insert(message_id);
+                } else {
+                    self.mailbox.reply_later_message_ids.remove(&message_id);
+                }
+                if show_completion_status {
+                    self.status_message = Some(status);
+                }
+            }
             MutationEffect::StatusOnly(msg) => {
                 if show_completion_status {
                     self.status_message = Some(msg);
@@ -255,6 +280,16 @@ impl App {
         status_message: String,
     ) -> MutationId {
         let id = self.mutation_id_generator.next_id();
+        let request = match request {
+            Request::Mutation {
+                mutation,
+                client_correlation_id: _,
+            } => Request::Mutation {
+                mutation,
+                client_correlation_id: Some(id.raw().to_string()),
+            },
+            other => other,
+        };
         self.pending_mutation_queue.push(QueuedMutation {
             id,
             request,
@@ -299,9 +334,32 @@ impl App {
                     .collect();
                 MutationSnapshot::Labels(prior)
             }
-            MutationEffect::RemoveFromList(_)
-            | MutationEffect::RemoveFromListMany(_)
-            | MutationEffect::RefreshList
+            MutationEffect::RemoveFromList(mid) => self
+                .envelope_snapshot_clone(mid)
+                .map(|env| MutationSnapshot::RemovedFromLists(vec![env]))
+                .unwrap_or(MutationSnapshot::None),
+            MutationEffect::RemoveFromListMany(ids) => {
+                let mut seen = std::collections::HashSet::new();
+                let mut captured = Vec::new();
+                for id in ids {
+                    if !seen.insert(id.clone()) {
+                        continue;
+                    }
+                    if let Some(env) = self.envelope_snapshot_clone(id) {
+                        captured.push(env);
+                    }
+                }
+                if captured.is_empty() {
+                    MutationSnapshot::None
+                } else {
+                    MutationSnapshot::RemovedFromLists(captured)
+                }
+            }
+            MutationEffect::ReplyLater { message_id, .. } => MutationSnapshot::ReplyLater(vec![(
+                message_id.clone(),
+                self.mailbox.reply_later_message_ids.contains(message_id),
+            )]),
+            MutationEffect::RefreshList
             | MutationEffect::StatusOnly(_)
             | MutationEffect::SentSuccess { .. } => MutationSnapshot::None,
         }
@@ -325,6 +383,18 @@ impl App {
             MutationSnapshot::Labels(prior) => {
                 for (message_id, label_provider_ids) in prior {
                     self.set_local_label_provider_ids(&message_id, &label_provider_ids);
+                }
+            }
+            MutationSnapshot::RemovedFromLists(envelopes) => {
+                self.restore_removed_from_lists(envelopes);
+            }
+            MutationSnapshot::ReplyLater(prior) => {
+                for (message_id, was_flagged) in prior {
+                    if was_flagged {
+                        self.mailbox.reply_later_message_ids.insert(message_id);
+                    } else {
+                        self.mailbox.reply_later_message_ids.remove(&message_id);
+                    }
                 }
             }
             MutationSnapshot::None => {}
@@ -480,6 +550,65 @@ impl App {
             } else if self.screen == Screen::Search && self.search_row_count() > 0 {
                 self.ensure_search_visible();
             }
+        }
+    }
+
+    /// Full envelope clone for optimistic list-removal rollback (same lookup
+    /// order as [`Self::message_flags`]).
+    fn envelope_snapshot_clone(&self, message_id: &MessageId) -> Option<Envelope> {
+        self.mailbox
+            .envelopes
+            .iter()
+            .chain(self.mailbox.all_envelopes.iter())
+            .chain(self.search.page.results.iter())
+            .chain(self.mailbox.viewed_thread_messages.iter())
+            .find(|envelope| &envelope.id == message_id)
+            .cloned()
+            .or_else(|| {
+                self.mailbox
+                    .viewing_envelope
+                    .as_ref()
+                    .filter(|envelope| &envelope.id == message_id)
+                    .cloned()
+            })
+    }
+
+    /// Undo optimistic [`MutationEffect::RemoveFromList*`] by merging rows
+    /// back into every live list and re-establishing date-desc order.
+    fn restore_removed_from_lists(&mut self, envelopes: Vec<Envelope>) {
+        if envelopes.is_empty() {
+            return;
+        }
+
+        let merge = |list: &mut Vec<Envelope>| {
+            for env in &envelopes {
+                if list.iter().any(|e| e.id == env.id) {
+                    continue;
+                }
+                list.push(env.clone());
+            }
+            list.sort_unstable_by(|a, b| b.date.cmp(&a.date));
+        };
+
+        merge(&mut self.mailbox.all_envelopes);
+        merge(&mut self.mailbox.envelopes);
+        merge(&mut self.search.page.results);
+        merge(&mut self.mailbox.viewed_thread_messages);
+
+        self.mailbox.selected_index = self
+            .mailbox
+            .selected_index
+            .min(self.mail_row_count().saturating_sub(1));
+        self.search.page.selected_index = self
+            .search
+            .page
+            .selected_index
+            .min(self.search_row_count().saturating_sub(1));
+
+        if self.screen == Screen::Mailbox && self.mail_row_count() > 0 {
+            self.ensure_visible();
+        } else if self.screen == Screen::Search && self.search_row_count() > 0 {
+            self.ensure_search_visible();
         }
     }
 

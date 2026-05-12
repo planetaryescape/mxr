@@ -93,7 +93,13 @@ pub(super) async fn draft_assist(
             let body = response.content.trim().to_string();
             let (body, humanizer, rewrite_iterations) =
                 if state.config_snapshot().humanizer.apply_to_drafts {
-                    super::humanizer::rewrite_to_threshold(state, body, None).await?
+                    super::humanizer::rewrite_to_threshold_with_context(
+                        state,
+                        body,
+                        None,
+                        Some(relationship_context.prompt.as_str()),
+                    )
+                    .await?
                 } else {
                     let humanizer =
                         humanizer_summary(humanizer_score(&body, &HumanizerOpts::default()));
@@ -186,6 +192,12 @@ async fn relationship_context_for_thread(
         else {
             continue;
         };
+        let Some(style) = profile.style else {
+            continue;
+        };
+        if style.msg_count_used < 5 || style.msg_count_used_theirs < 1 {
+            continue;
+        }
         prompt.push_str(&format!("Recipient/contact: {email}\n"));
         if let Some(summary) = profile.summary {
             prompt.push_str(&format!("- Relationship: {}\n", summary.text.trim()));
@@ -196,28 +208,23 @@ async fn relationship_context_for_thread(
                 ));
             }
         }
-        if let Some(style) = profile.style {
-            if style.msg_count_used < 5 || style.msg_count_used_theirs < 1 {
-                continue;
-            }
-            prompt.push_str(&format!(
-                "- Your style to them: formality {:.2}, avg sentence {:.1} words, based on {} messages\n",
-                style.formality_score, style.avg_sentence_len, style.msg_count_used
+        prompt.push_str(&format!(
+            "- Your style to them: formality {:.2}, avg sentence {:.1} words, based on {} messages\n",
+            style.formality_score, style.avg_sentence_len, style.msg_count_used
+        ));
+        prompt.push_str(&format!(
+            "- Their style to you: formality {:.2}, avg sentence {:.1} words, based on {} messages\n",
+            style.formality_score_theirs, style.avg_sentence_len_theirs, style.msg_count_used_theirs
+        ));
+        if baseline.is_none() {
+            baseline = Some((
+                StylometryMetrics {
+                    formality_score: style.formality_score,
+                    avg_sentence_len: style.avg_sentence_len,
+                    ..StylometryMetrics::default()
+                },
+                style.msg_count_used,
             ));
-            prompt.push_str(&format!(
-                "- Their style to you: formality {:.2}, avg sentence {:.1} words, based on {} messages\n",
-                style.formality_score_theirs, style.avg_sentence_len_theirs, style.msg_count_used_theirs
-            ));
-            if baseline.is_none() {
-                baseline = Some((
-                    StylometryMetrics {
-                        formality_score: style.formality_score,
-                        avg_sentence_len: style.avg_sentence_len,
-                        ..StylometryMetrics::default()
-                    },
-                    style.msg_count_used,
-                ));
-            }
         }
         if !profile.open_commitments.is_empty() {
             prompt.push_str("- Outstanding commitments:\n");
@@ -577,6 +584,98 @@ mod tests {
         assert!(prompt.contains("Relationship: Customer prefers short pricing updates."));
         assert!(prompt.contains("Known topics: pricing, rollout"));
         assert!(prompt.contains("Your style to them: formality 0.20"));
+    }
+
+    #[tokio::test]
+    async fn draft_assist_omits_below_threshold_relationship_context() {
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+
+        let account_id = state.default_account_id();
+        let computed_at = chrono::Utc::now();
+        state
+            .store
+            .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
+                account_id: account_id.clone(),
+                email: "customer@example.com".to_string(),
+                text: "Customer prefers short pricing updates.".to_string(),
+                model: "test-model".to_string(),
+                known_topics: vec!["pricing".to_string(), "rollout".to_string()],
+                computed_at,
+                source_hash: "relationship-v1".to_string(),
+                last_error: None,
+            })
+            .await
+            .unwrap();
+        state
+            .store
+            .upsert_contact_style(&ContactStyleRecord {
+                account_id: account_id.clone(),
+                email: "customer@example.com".to_string(),
+                formality_score: 0.2,
+                formality_score_theirs: 0.4,
+                avg_sentence_len: 8.0,
+                avg_sentence_len_theirs: 10.0,
+                msg_count_used: 4,
+                msg_count_used_theirs: 3,
+                metrics_json: "{}".to_string(),
+                metrics_json_theirs: "{}".to_string(),
+                computed_at,
+                source_hash: "style-v1".to_string(),
+                drift_detected: false,
+                drift_reason: None,
+                drift_detected_at: None,
+            })
+            .await
+            .unwrap();
+
+        let thread_id = mxr_core::ThreadId::new();
+        let current = TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .thread_id(thread_id.clone())
+            .provider_id("current-inbound")
+            .subject("Pricing rollout")
+            .from_address("Customer", "customer@example.com")
+            .snippet("Can you clarify pricing rollout timing?")
+            .build();
+        state
+            .store
+            .upsert_envelope_with_direction(&current, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        state
+            .store
+            .insert_body(&body(current.id.clone(), "Can you clarify pricing timing?"))
+            .await
+            .unwrap();
+
+        let response = draft_assist(&state, &thread_id, "reply briefly")
+            .await
+            .unwrap();
+        assert!(matches!(
+            response,
+            ResponseData::DraftSuggestion {
+                voice_match: None,
+                ..
+            }
+        ));
+
+        let request = llm
+            .last_request
+            .lock()
+            .expect("request lock")
+            .clone()
+            .expect("captured request");
+        let prompt = request
+            .messages
+            .iter()
+            .map(|message| message.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(!prompt.contains("[VOICE CONTEXT]"));
+        assert!(!prompt.contains("Customer prefers short pricing updates."));
+        assert!(!prompt.contains("Known topics: pricing, rollout"));
     }
 
     #[cfg(feature = "local")]

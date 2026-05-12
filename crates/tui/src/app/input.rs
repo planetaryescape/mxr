@@ -5,6 +5,42 @@ fn plain_or_shift(modifiers: KeyModifiers) -> bool {
     modifiers.is_empty() || modifiers == KeyModifiers::SHIFT
 }
 
+fn draft_from_pending(
+    pending: &PendingSend,
+    draft_id: mxr_core::id::DraftId,
+    now: chrono::DateTime<chrono::Utc>,
+) -> mxr_core::Draft {
+    let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
+    let reply_headers =
+        pending
+            .fm
+            .in_reply_to
+            .as_ref()
+            .map(|in_reply_to| mxr_core::types::ReplyHeaders {
+                in_reply_to: in_reply_to.clone(),
+                references: pending.fm.references.clone(),
+                thread_id: pending.fm.thread_id.clone(),
+            });
+    mxr_core::Draft {
+        id: draft_id,
+        account_id: pending.account_id.clone(),
+        reply_headers,
+        to: parse_addrs(&pending.fm.to),
+        cc: parse_addrs(&pending.fm.cc),
+        bcc: parse_addrs(&pending.fm.bcc),
+        subject: pending.fm.subject.clone(),
+        body_markdown: pending.body.clone(),
+        attachments: pending
+            .fm
+            .attach
+            .iter()
+            .map(std::path::PathBuf::from)
+            .collect(),
+        created_at: now,
+        updated_at: now,
+    }
+}
+
 impl App {
     fn help_modal_state(&self) -> crate::ui::help_modal::HelpModalState<'_> {
         crate::ui::help_modal::HelpModalState {
@@ -271,6 +307,24 @@ impl App {
         if self.modals.sender_profile.visible {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseSenderViewModal),
+                (KeyCode::Char('1'), _) => {
+                    self.modals
+                        .sender_profile
+                        .select_tab(SenderProfileTab::Overview);
+                    None
+                }
+                (KeyCode::Char('2'), _) => {
+                    self.modals
+                        .sender_profile
+                        .select_tab(SenderProfileTab::Relationship);
+                    None
+                }
+                (KeyCode::Char('3'), _) => {
+                    self.modals
+                        .sender_profile
+                        .select_tab(SenderProfileTab::Messages);
+                    None
+                }
                 (KeyCode::Down | KeyCode::Char('j'), _) => Some(Action::SenderProfileNextMessage),
                 (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::SenderProfilePrevMessage),
                 (KeyCode::Enter | KeyCode::Char('o'), _) => Some(Action::OpenSenderProfileMessage),
@@ -283,6 +337,7 @@ impl App {
                 (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseReplyQueueModal),
                 (KeyCode::Down | KeyCode::Char('j'), _) => Some(Action::ReplyQueueModalNext),
                 (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::ReplyQueueModalPrev),
+                (KeyCode::Enter | KeyCode::Char('r'), _) => Some(Action::ReplyQueueModalReply),
                 _ => None,
             };
         }
@@ -399,10 +454,62 @@ impl App {
 
         // Route keys to send confirmation prompt
         if self.compose.pending_send_confirm.is_some() {
+            if self.compose.pending_send_at_input.is_some() {
+                match (key.code, key.modifiers) {
+                    (KeyCode::Enter, _) => {
+                        let input = self
+                            .compose
+                            .pending_send_at_input
+                            .take()
+                            .unwrap_or_default();
+                        if let Some(pending) = self.compose.pending_send_confirm.take() {
+                            let now = chrono::Utc::now();
+                            let send_at = match mxr_core::parse_relative_time(&input, now) {
+                                Ok(send_at) => send_at,
+                                Err(error) => {
+                                    self.status_message =
+                                        Some(format!("Cannot parse send-at time: {error}"));
+                                    self.compose.pending_send_confirm = Some(pending);
+                                    self.compose.pending_send_at_input = Some(input);
+                                    return None;
+                                }
+                            };
+                            let draft_id = mxr_core::id::DraftId::new();
+                            let draft = draft_from_pending(&pending, draft_id.clone(), now);
+                            self.queue_platform_request_after(
+                                vec![Request::SaveDraft { draft }],
+                                Request::ScheduleSend { draft_id, send_at },
+                                "Scheduled send",
+                                "Saving draft and scheduling send...",
+                            );
+                            self.schedule_draft_cleanup(pending.draft_path);
+                        }
+                        return None;
+                    }
+                    (KeyCode::Esc, _) => {
+                        self.compose.pending_send_at_input = None;
+                        return None;
+                    }
+                    (KeyCode::Backspace, _) => {
+                        if let Some(input) = &mut self.compose.pending_send_at_input {
+                            input.pop();
+                        }
+                        return None;
+                    }
+                    (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                        if let Some(input) = &mut self.compose.pending_send_at_input {
+                            input.push(c);
+                        }
+                        return None;
+                    }
+                    _ => return None,
+                }
+            }
             match (key.code, key.modifiers) {
                 (KeyCode::Char('s'), KeyModifiers::NONE) => {
                     // Send
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
+                        self.compose.pending_send_at_input = None;
                         if pending.mode != PendingSendMode::SendOrSave {
                             self.compose.pending_send_confirm = Some(pending);
                             return None;
@@ -445,9 +552,18 @@ impl App {
                     }
                     return None;
                 }
+                (KeyCode::Char('a'), KeyModifiers::NONE) => {
+                    if let Some(pending) = self.compose.pending_send_confirm.as_ref() {
+                        if pending.mode == PendingSendMode::SendOrSave {
+                            self.compose.pending_send_at_input = Some(String::new());
+                        }
+                    }
+                    return None;
+                }
                 (KeyCode::Char('d'), KeyModifiers::NONE) => {
                     // Save as draft to mail server
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
+                        self.compose.pending_send_at_input = None;
                         if pending.mode == PendingSendMode::Unchanged {
                             self.compose.pending_send_confirm = Some(pending);
                             return None;
@@ -491,6 +607,7 @@ impl App {
                 (KeyCode::Char('e'), KeyModifiers::NONE) => {
                     // Edit again — reopen editor
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
+                        self.compose.pending_send_at_input = None;
                         self.compose.pending_compose = Some(ComposeAction::EditDraft {
                             path: pending.draft_path,
                             account_id: pending.account_id,
@@ -498,9 +615,13 @@ impl App {
                     }
                     return None;
                 }
+                (KeyCode::Char('r'), KeyModifiers::NONE) => {
+                    return Some(Action::RefinePendingDraft);
+                }
                 (KeyCode::Esc, _) => {
                     // Discard
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
+                        self.compose.pending_send_at_input = None;
                         self.schedule_draft_cleanup(pending.draft_path);
                         self.status_message = Some("Discarded".into());
                     }

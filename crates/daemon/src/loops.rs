@@ -7,6 +7,7 @@ use mxr_core::MailSyncProvider;
 use mxr_protocol::*;
 use mxr_rules::{Rule, RuleAction, RuleEngine, RuleExecutionLog};
 use mxr_store::{SyncRuntimeStatusUpdate, SyncStatus as StoreSyncStatus};
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use tokio::sync::watch;
 use tokio::time::{interval, Duration};
@@ -125,6 +126,7 @@ async fn sync_loop_for_account(
     let mut backoff_secs: u64 = 0;
     let mut skip_sleep = true;
     let mut last_message_sync_at = chrono::Utc::now();
+    let mut deferred_relationship_contacts = BTreeSet::<String>::new();
     // Phase 3.1: wake the sleep early when an IDLE watcher signals.
     let idle_notify = state.idle_notify_for_account(&account_id);
 
@@ -254,6 +256,10 @@ async fn sync_loop_for_account(
                     )
                     .await;
                 if count > 0 {
+                    let was_initial_backfill = matches!(
+                        pre_sync_cursor.as_ref(),
+                        Some(SyncCursor::GmailBackfill { .. })
+                    );
                     let initial_backfill_in_progress = matches!(
                         post_sync_cursor.as_ref(),
                         Some(SyncCursor::GmailBackfill { .. })
@@ -273,7 +279,43 @@ async fn sync_loop_for_account(
                         tracing::warn!(account = %account_id, "Contacts refresh enqueue failed: {error}");
                     }
                     if initial_backfill_in_progress {
+                        match state
+                            .store
+                            .relationship_contacts_for_messages(&outcome.upserted_message_ids)
+                            .await
+                        {
+                            Ok(contacts) => {
+                                deferred_relationship_contacts
+                                    .extend(contacts.into_iter().map(|(_, email)| email));
+                            }
+                            Err(error) => {
+                                tracing::warn!(account = %account_id, "Relationship backfill deferral failed: {error}");
+                            }
+                        }
                         tracing::debug!(account = %account_id, "relationship profile refresh deferred during initial backfill");
+                    } else if was_initial_backfill || !deferred_relationship_contacts.is_empty() {
+                        match state
+                            .store
+                            .relationship_contacts_for_messages(&outcome.upserted_message_ids)
+                            .await
+                        {
+                            Ok(contacts) => {
+                                deferred_relationship_contacts
+                                    .extend(contacts.into_iter().map(|(_, email)| email));
+                            }
+                            Err(error) => {
+                                tracing::warn!(account = %account_id, "Relationship backfill completion contact lookup failed: {error}");
+                            }
+                        }
+                        let contacts = deferred_relationship_contacts
+                            .iter()
+                            .cloned()
+                            .map(|email| (account_id.clone(), email))
+                            .collect::<Vec<_>>();
+                        deferred_relationship_contacts.clear();
+                        if let Err(error) = state.relationship.enqueue_contacts(contacts).await {
+                            tracing::warn!(account = %account_id, "Relationship profile enqueue after backfill failed: {error}");
+                        }
                     } else if let Err(error) = state
                         .relationship
                         .enqueue_contacts_from_messages(&outcome.upserted_message_ids)
@@ -476,6 +518,24 @@ fn classify_sync_error(error: &str) -> &'static str {
         "protocol"
     } else {
         "unknown"
+    }
+}
+
+#[cfg(test)]
+mod classify_sync_error_tests {
+    use super::classify_sync_error;
+
+    #[test]
+    fn maps_common_sync_error_classes_for_event_payloads() {
+        assert_eq!(
+            classify_sync_error("rate limit: retry after 60s"),
+            "rate_limit"
+        );
+        assert_eq!(classify_sync_error("oauth login failed"), "auth");
+        assert_eq!(classify_sync_error("TLS connection timeout"), "network");
+        assert_eq!(classify_sync_error("sqlite index lockbusy"), "store_index");
+        assert_eq!(classify_sync_error("imap protocol violation"), "protocol");
+        assert_eq!(classify_sync_error("unexpected sync failure"), "unknown");
     }
 }
 

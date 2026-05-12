@@ -158,6 +158,9 @@ async fn websocket_relays_every_daemon_event_variant() {
         DaemonEvent::MessageUnsnoozed {
             message_id: message_id.clone(),
         },
+        DaemonEvent::ReminderTriggered {
+            sent_message_id: message_id.clone(),
+        },
         DaemonEvent::LabelCountsUpdated { counts: vec![] },
         DaemonEvent::OperationStarted {
             operation_id: "op-1".into(),
@@ -189,8 +192,12 @@ async fn websocket_relays_every_daemon_event_variant() {
         DaemonEvent::OperationCancelled {
             operation_id: "op-3".into(),
             operation: "sync".into(),
-            account_id: Some(account_id),
+            account_id: Some(account_id.clone()),
             message: "user cancelled".into(),
+        },
+        DaemonEvent::MutationReconciliationFailed {
+            client_correlation_id: "7".into(),
+            error_summary: "incomplete".into(),
         },
     ];
     let _server = spawn_fake(&socket, |_| None, events.clone());
@@ -206,12 +213,14 @@ async fn websocket_relays_every_daemon_event_variant() {
         "SyncError",
         "NewMessages",
         "MessageUnsnoozed",
+        "ReminderTriggered",
         "LabelCountsUpdated",
         "OperationStarted",
         "OperationProgress",
         "OperationCompleted",
         "OperationFailed",
         "OperationCancelled",
+        "MutationReconciliationFailed",
     ];
     assert_eq!(
         events.len(),

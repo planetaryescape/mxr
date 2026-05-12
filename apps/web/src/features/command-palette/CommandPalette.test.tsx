@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -19,6 +19,11 @@ const accountsApi = vi.hoisted(() => ({
 
 const diagnosticsApi = vi.hoisted(() => ({
   backfillSemantic: vi.fn<() => Promise<unknown>>(),
+  fetchSemanticStatus: vi.fn<() => Promise<unknown>>(),
+  installSemanticProfile: vi.fn<(profile: string) => Promise<unknown>>(),
+  reindexSemantic: vi.fn<() => Promise<unknown>>(),
+  setSemanticEnabled: vi.fn<(enabled: boolean) => Promise<unknown>>(),
+  useSemanticProfile: vi.fn<(profile: string) => Promise<unknown>>(),
 }));
 
 const mailboxApi = vi.hoisted(() => ({
@@ -52,6 +57,14 @@ vi.mock("@/features/accounts/api", () => ({
 
 vi.mock("@/features/diagnostics/api", () => ({
   backfillSemantic: diagnosticsApi.backfillSemantic,
+  fetchSemanticStatus: diagnosticsApi.fetchSemanticStatus,
+  installSemanticProfile: diagnosticsApi.installSemanticProfile,
+  reindexSemantic: diagnosticsApi.reindexSemantic,
+  semanticProfiles: ["bge-small-en-v1.5", "multilingual-e5-small", "bge-m3"],
+  semanticSnapshot: (response: { status?: unknown; snapshot?: unknown } | undefined) =>
+    response?.status ?? response?.snapshot ?? response ?? null,
+  setSemanticEnabled: diagnosticsApi.setSemanticEnabled,
+  useSemanticProfile: diagnosticsApi.useSemanticProfile,
 }));
 
 vi.mock("@/features/mailbox/api", () => ({
@@ -101,6 +114,27 @@ describe("CommandPaletteMount", () => {
       ],
     });
     diagnosticsApi.backfillSemantic.mockResolvedValue({ ok: true });
+    diagnosticsApi.fetchSemanticStatus.mockResolvedValue({
+      status: {
+        enabled: false,
+        active_profile: "bge-small-en-v1.5",
+        profiles: [
+          {
+            profile: "bge-small-en-v1.5",
+            backend: "fastembed",
+            model_revision: "v1",
+            dimensions: 384,
+            status: "ready",
+            progress_completed: 1,
+            progress_total: 1,
+          },
+        ],
+      },
+    });
+    diagnosticsApi.installSemanticProfile.mockResolvedValue({ ok: true });
+    diagnosticsApi.reindexSemantic.mockResolvedValue({ ok: true });
+    diagnosticsApi.setSemanticEnabled.mockResolvedValue({ ok: true });
+    diagnosticsApi.useSemanticProfile.mockResolvedValue({ ok: true });
     mailboxApi.fetchShell.mockResolvedValue({ sidebar: { sections: [] } });
     mailboxApi.listCommitments.mockResolvedValue({ commitments: [] });
   });
@@ -111,12 +145,18 @@ describe("CommandPaletteMount", () => {
     vi.unstubAllGlobals();
   });
 
-  test("surfaces platform quick actions and settings routes", () => {
+  test("surfaces platform quick actions and settings routes", async () => {
     renderWithQueryClient(<CommandPaletteMount />);
 
     expect(screen.getByText("Draft to...")).toBeVisible();
     expect(screen.getByText("Show commitments...")).toBeVisible();
     expect(screen.getByText("Backfill semantic now")).toBeVisible();
+    expect(screen.getByText("Enable semantic search")).toBeVisible();
+    expect(screen.getByText("Reindex semantic now")).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByText("Use semantic profile: bge-small-en-v1.5")).toBeVisible(),
+    );
+    expect(screen.getByText("Install semantic profile: bge-m3")).toBeVisible();
     expect(screen.getByText("Voice settings")).toBeVisible();
     expect(screen.getByText("LLM settings")).toBeVisible();
   });

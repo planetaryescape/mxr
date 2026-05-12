@@ -52,7 +52,9 @@ pub(crate) use helpers::{
     dir_size_sync, file_size_sync, recent_log_lines_sync, should_fallback_to_tantivy,
 };
 pub(crate) use mutations::send_stored_draft;
-pub(crate) use status_helpers::{doctor_data_stats, latest_successful_sync_at};
+pub(crate) use status_helpers::{
+    build_doctor_findings, doctor_data_stats, latest_successful_sync_at,
+};
 
 type HandlerResult = Result<ResponseData, String>;
 
@@ -382,7 +384,10 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::ExportSearch { query, format } => {
             runtime::export_search(state, query, format).await
         }
-        Request::Mutation(cmd) => mutations::mutation(state, cmd).await,
+        Request::Mutation {
+            mutation: cmd,
+            client_correlation_id,
+        } => mutations::mutation(state, cmd, client_correlation_id.as_deref()).await,
         Request::UndoMutation { mutation_id } => mutations::undo_mutation(state, mutation_id).await,
         Request::Snooze {
             message_id,
@@ -464,6 +469,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::GetSenderProfile { account_id, email } => {
             sender_view::get_sender_profile(state, account_id, email).await
         }
+        Request::ListSenders { limit } => platform::list_senders(state, *limit).await,
         Request::GetRelationshipProfile { account_id, email } => {
             relationship_profile::get_relationship_profile(state, account_id, email).await
         }
@@ -665,6 +671,7 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::ListSignatureDefaults
             | Request::ResolveSignature { .. }
             | Request::GetSenderProfile { .. }
+            | Request::ListSenders { .. }
             | Request::ListScreenerQueue { .. }
             | Request::ListScreenerDecisions { .. }
             | Request::SummarizeThread { .. }
@@ -754,7 +761,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::CreateSavedSearch { .. } => "create_saved_search",
         Request::DeleteSavedSearch { .. } => "delete_saved_search",
         Request::RunSavedSearch { .. } => "run_saved_search",
-        Request::Mutation(cmd) => mutation_kind(cmd),
+        Request::Mutation { mutation: cmd, .. } => mutation_kind(cmd),
         Request::UndoMutation { .. } => "undo_mutation",
         Request::Unsubscribe { .. } => "unsubscribe",
         Request::Snooze { .. } => "snooze",
@@ -777,6 +784,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ClearSignatureDefault { .. } => "clear_signature_default",
         Request::ResolveSignature { .. } => "resolve_signature",
         Request::GetSenderProfile { .. } => "get_sender_profile",
+        Request::ListSenders { .. } => "list_senders",
         Request::GetRelationshipProfile { .. } => "get_relationship_profile",
         Request::RebuildRelationshipProfile { .. } => "rebuild_relationship_profile",
         Request::ListCommitments { .. } => "list_commitments",
@@ -1320,6 +1328,7 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
         }),
         QueryNode::Filter(
             FilterKind::Answered
+            | FilterKind::ReplyLater
             | FilterKind::Anywhere
             | FilterKind::HasUserLabels
             | FilterKind::NoUserLabels
@@ -4397,6 +4406,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatch_status_reports_degraded_relationship_llm_features_when_llm_disabled() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+
+        let msg = IpcMessage {
+            id: 7,
+            payload: IpcPayload::Request(Request::GetStatus),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data:
+                    ResponseData::Status {
+                        feature_health: Some(feature_health),
+                        ..
+                    },
+            }) => {
+                assert!(matches!(
+                    feature_health.relationship_profile,
+                    FeatureHealth::Degraded { .. }
+                ));
+                assert!(matches!(
+                    feature_health.commitments,
+                    FeatureHealth::Degraded { .. }
+                ));
+                assert!(matches!(
+                    feature_health.humanizer,
+                    FeatureHealth::Degraded { .. }
+                ));
+            }
+            other => panic!("Expected Status with feature health, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn dispatch_status_does_not_block_when_search_is_busy() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
 
@@ -5435,6 +5479,16 @@ mod tests {
             }
             other => panic!("expected ReplyQueue, got {other:?}"),
         }
+        let ast = mxr_search::parse_query("is:reply-later").unwrap();
+        let schema = mxr_search::MxrSchema::build();
+        let query = mxr_search::QueryBuilder::new(&schema).build(&ast);
+        let search_page = state
+            .search
+            .search_ast(query, 10, 0, mxr_core::types::SortOrder::DateDesc)
+            .await
+            .unwrap();
+        assert_eq!(search_page.results.len(), 1, "search sees reply-later");
+        assert_eq!(search_page.results[0].message_id, id.as_str());
 
         // Clear the flag.
         let resp = handle_request(
@@ -5470,6 +5524,15 @@ mod tests {
             }) => assert!(messages.is_empty(), "queue empty after clear"),
             other => panic!("expected ReplyQueue, got {other:?}"),
         }
+        let ast = mxr_search::parse_query("is:reply-later").unwrap();
+        let schema = mxr_search::MxrSchema::build();
+        let query = mxr_search::QueryBuilder::new(&schema).build(&ast);
+        let search_page = state
+            .search
+            .search_ast(query, 10, 0, mxr_core::types::SortOrder::DateDesc)
+            .await
+            .unwrap();
+        assert!(search_page.results.is_empty(), "search updates after clear");
     }
 
     #[tokio::test]
@@ -5824,7 +5887,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Star {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
                 message_ids: vec![id.clone()],
                 starred: true,
             })),
@@ -5861,7 +5924,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::ModifyLabels {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::ModifyLabels {
                 message_ids: vec![id],
                 add: vec!["Archive".to_string()],
                 remove: vec![],
@@ -6032,7 +6095,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::SetRead {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::SetRead {
                 message_ids: vec![id.clone()],
                 read: true,
             })),
@@ -6066,7 +6129,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Archive {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
                 message_ids: vec![id.clone()],
             })),
         };
@@ -6105,7 +6168,7 @@ mod tests {
         // Archive — captures snapshot, writes undo entry, returns mutation_id.
         let archive = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Archive {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
                 message_ids: vec![id.clone()],
             })),
         };
@@ -6216,7 +6279,7 @@ mod tests {
 
         let archive = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Archive {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
                 message_ids: ids.clone(),
             })),
         };
@@ -6254,7 +6317,7 @@ mod tests {
         let id = sync_and_get_first_id(&state).await;
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Star {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
                 message_ids: vec![id],
                 starred: true,
             })),
@@ -6276,7 +6339,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Archive {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
                 message_ids: vec![healthy_id],
             })),
         };
@@ -6298,7 +6361,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Archive {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
                 message_ids: vec![healthy_id, bad_id],
             })),
         };
@@ -6329,7 +6392,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::ReadAndArchive {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::ReadAndArchive {
                 message_ids: vec![id.clone()],
             })),
         };
@@ -6364,7 +6427,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Trash {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::Trash {
                 message_ids: vec![id],
             })),
         };
@@ -6552,7 +6615,7 @@ mod tests {
 
         let modify = IpcMessage {
             id: 2,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::ModifyLabels {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::ModifyLabels {
                 message_ids: vec![id.clone()],
                 add: vec![label.name.clone()],
                 remove: vec![],
@@ -6784,6 +6847,8 @@ mod tests {
                                 api_key_env: "MXR_TEST_LLM_KEY".into(),
                                 context_window: 4096,
                                 request_timeout_secs: 30,
+                                allow_cloud_relationship_data: true,
+                                overrides: None,
                             },
                         }),
                     };
@@ -6795,6 +6860,7 @@ mod tests {
                         }) => {
                             assert!(config.enabled);
                             assert_eq!(config.model, "local-test-model");
+                            assert!(config.allow_cloud_relationship_data);
                         }
                         other => panic!("Expected LlmConfig response, got {other:?}"),
                     }
@@ -6803,6 +6869,7 @@ mod tests {
                     assert!(saved.llm.enabled);
                     assert_eq!(saved.llm.model, "local-test-model");
                     assert_eq!(saved.llm.api_key_env, "MXR_TEST_LLM_KEY");
+                    assert!(saved.llm.allow_cloud_relationship_data);
 
                     let status_msg = IpcMessage {
                         id: 2,
@@ -6839,6 +6906,8 @@ mod tests {
                     api_key_env: String::new(),
                     context_window: 4096,
                     request_timeout_secs: 30,
+                    allow_cloud_relationship_data: false,
+                    overrides: None,
                 },
             }),
         };
@@ -6948,7 +7017,7 @@ mod tests {
 
         let mutation = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Star {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
                 message_ids: vec![mxr_core::MessageId::new()],
                 starred: true,
             })),
@@ -7257,7 +7326,7 @@ mod tests {
         let fake_id = mxr_core::MessageId::new();
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Star {
+            payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
                 message_ids: vec![fake_id],
                 starred: true,
             })),
@@ -7515,6 +7584,11 @@ mod tests {
             .message_id_header(Some("<parent@example.com>".to_string()))
             .build();
         state.store.upsert_envelope(&parent).await.unwrap();
+        state
+            .store
+            .set_reply_later(&parent.id, chrono::Utc::now())
+            .await
+            .unwrap();
 
         let draft = mxr_core::types::Draft {
             id: mxr_core::DraftId::new(),
@@ -7558,6 +7632,10 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(sent.thread_id, parent_thread_id);
+        assert!(
+            !state.store.is_reply_later(&parent.id).await.unwrap(),
+            "sending a reply clears the parent reply-later flag"
+        );
     }
 
     #[tokio::test]

@@ -32,6 +32,7 @@ pub mod search;
 pub mod selection;
 pub mod semantic;
 pub mod sender;
+pub mod senders;
 pub mod setup;
 pub mod signatures;
 pub mod snippets;

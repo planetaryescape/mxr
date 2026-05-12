@@ -213,4 +213,20 @@ describe("MailboxList keyboard selection", () => {
       screen.getByRole("article", { name: /conversation thread with 4 messages/i }),
     ).toBeVisible();
   });
+
+  test("shows open commitment count in the mailbox row", async () => {
+    render(
+      <MailboxRow
+        row={{ ...rows[0]!, open_commitment_count: 2 }}
+        selected={false}
+        focused={false}
+        onOpen={vi.fn<() => void>()}
+        onFocusPane={vi.fn<() => void>()}
+        onToggleSelection={vi.fn<(shift: boolean) => void>()}
+      />,
+    );
+
+    expect(screen.getByLabelText("2 open commitments")).toBeVisible();
+    expect(screen.getByRole("article", { name: /2 open commitments/i })).toBeVisible();
+  });
 });

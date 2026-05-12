@@ -4,12 +4,12 @@ use super::{
 };
 use crate::state::AppState;
 use mxr_core::types::{
-    Address, Draft, DraftStatus, Envelope, MessageBody, MessageFlags, MessageMetadata, SendReceipt,
-    UnsubscribeMethod,
+    Address, Draft, DraftStatus, Envelope, MessageBody, MessageDirection, MessageFlags,
+    MessageMetadata, SendReceipt, UnsubscribeMethod,
 };
 use mxr_protocol::{
-    AccountMutationResultData, ForwardContext, MutationCommand, MutationResultData, ReplyContext,
-    ResponseData,
+    AccountMutationResultData, DaemonEvent, ForwardContext, IpcMessage, IpcPayload,
+    MutationCommand, MutationResultData, ReplyContext, ResponseData,
 };
 use mxr_store::{EventLogRefs, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 use std::collections::HashMap;
@@ -51,7 +51,46 @@ fn quoted_subject(subject: &str) -> String {
     }
 }
 
-pub(super) async fn mutation(state: &AppState, cmd: &MutationCommand) -> HandlerResult {
+fn emit_mutation_reconciliation_failed_if_needed(
+    state: &AppState,
+    client_correlation_id: Option<&str>,
+    result: &MutationResultData,
+) {
+    let Some(cid) = client_correlation_id.filter(|s| !s.is_empty()) else {
+        return;
+    };
+    if result.requested == 0 || result.succeeded >= result.requested {
+        return;
+    }
+    let errors: Vec<&str> = result
+        .accounts
+        .iter()
+        .filter_map(|account| account.error.as_deref())
+        .collect();
+    let header = format!(
+        "mutation incomplete: {} succeeded, {} skipped",
+        result.succeeded, result.skipped
+    );
+    let error_summary = if errors.is_empty() {
+        header
+    } else {
+        format!("{header}: {}", errors.join("; "))
+    };
+    let event = IpcMessage {
+        id: 0,
+        payload: IpcPayload::Event(DaemonEvent::MutationReconciliationFailed {
+            client_correlation_id: cid.to_string(),
+            error_summary,
+        }),
+    };
+    let _ = state.event_tx.send(event);
+}
+
+pub(super) async fn mutation(
+    state: &AppState,
+    cmd: &MutationCommand,
+    client_correlation_id: Option<&str>,
+) -> HandlerResult {
     let message_ids = mutation_message_ids(cmd);
     let undoable_kind = undoable_kind(cmd);
     let mut grouped: HashMap<mxr_core::AccountId, Vec<Envelope>> = HashMap::new();
@@ -174,16 +213,18 @@ pub(super) async fn mutation(state: &AppState, cmd: &MutationCommand) -> Handler
         _ => None,
     };
 
-    Ok(ResponseData::MutationResult {
-        result: MutationResultData {
-            requested: message_ids.len() as u32,
-            succeeded,
-            skipped,
-            failed,
-            accounts,
-            mutation_id,
-        },
-    })
+    let result = MutationResultData {
+        requested: message_ids.len() as u32,
+        succeeded,
+        skipped,
+        failed,
+        accounts,
+        mutation_id,
+    };
+
+    emit_mutation_reconciliation_failed_if_needed(state, client_correlation_id, &result);
+
+    Ok(ResponseData::MutationResult { result })
 }
 
 /// Map a `MutationCommand` to the `UndoableMutationKind` used to drive
@@ -551,10 +592,19 @@ async fn reindex_message_in_search(
         .get_body(message_id)
         .await
         .map_err(|e| e.to_string())?;
+    let reply_later = state
+        .store
+        .is_reply_later(message_id)
+        .await
+        .map_err(|e| e.to_string())?;
     state
         .search
         .apply_batch(mxr_search::SearchUpdateBatch {
-            entries: vec![mxr_search::SearchIndexEntry { envelope, body }],
+            entries: vec![mxr_search::SearchIndexEntry {
+                envelope,
+                body,
+                reply_later,
+            }],
             removed_message_ids: Vec::new(),
         })
         .await
@@ -886,6 +936,7 @@ pub(super) async fn send_draft(state: &AppState, draft: &Draft) -> HandlerResult
         .send(draft, &from, &rfc2822_message_id)
         .await
         .map_err(|e| e.to_string())?;
+    clear_reply_later_for_reply_parent(state, draft).await;
     // Ingest synthetic Sent envelope so the message is searchable as `is:sent`
     // immediately, without waiting for the next sync. Failures here are
     // non-fatal: the send already succeeded on the wire and we surface the
@@ -1024,6 +1075,7 @@ pub(crate) async fn send_stored_draft(
             return Err(e.to_string());
         }
     };
+    clear_reply_later_for_reply_parent(state, &draft).await;
 
     let local_message_id = match ingest_sent_message(state, &draft, &from, &receipt).await {
         Ok(id) => id,
@@ -1049,6 +1101,37 @@ pub(crate) async fn send_stored_draft(
         provider_message_id: receipt.provider_message_id,
         rfc2822_message_id: receipt.rfc2822_message_id,
     })
+}
+
+async fn clear_reply_later_for_reply_parent(state: &AppState, draft: &Draft) {
+    let Some(reply_headers) = draft.reply_headers.as_ref() else {
+        return;
+    };
+    let parent = match state
+        .store
+        .list_envelopes_by_message_id_header(&draft.account_id, &reply_headers.in_reply_to)
+        .await
+    {
+        Ok(mut envelopes) => envelopes.pop(),
+        Err(error) => {
+            tracing::warn!(%error, "failed to resolve reply parent for reply-later clear");
+            return;
+        }
+    };
+    let Some(parent) = parent else {
+        return;
+    };
+    if let Err(error) = state
+        .store
+        .clear_reply_later(&parent.id, chrono::Utc::now())
+        .await
+    {
+        tracing::warn!(
+            message_id = %parent.id,
+            error = %error,
+            "failed to clear reply-later flag after reply send"
+        );
+    }
 }
 
 /// Insert a synthetic envelope + body into the local store immediately after a
@@ -1114,7 +1197,7 @@ async fn ingest_sent_message(
 
     state
         .store
-        .upsert_envelope(&envelope)
+        .upsert_envelope_with_direction(&envelope, MessageDirection::Outbound)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1158,6 +1241,7 @@ async fn ingest_sent_message(
             entries: vec![mxr_search::SearchIndexEntry {
                 envelope,
                 body: Some(body),
+                reply_later: false,
             }],
             removed_message_ids: Vec::new(),
         })
@@ -1379,4 +1463,70 @@ pub(super) async fn set_flags(
 
     reindex_message_in_search(state, message_id).await?;
     Ok(ResponseData::Ack)
+}
+
+#[cfg(test)]
+mod reconciliation_failed_emit_tests {
+    use super::*;
+    use crate::state::AppState;
+    use mxr_protocol::{DaemonEvent, IpcPayload};
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    fn partial_result() -> MutationResultData {
+        MutationResultData {
+            requested: 2,
+            succeeded: 1,
+            skipped: 1,
+            failed: 0,
+            accounts: vec![],
+            mutation_id: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn emits_ipc_event_when_partial_success_and_correlation_set() {
+        let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+        let mut rx = state.event_tx.subscribe();
+        emit_mutation_reconciliation_failed_if_needed(&state, Some("42"), &partial_result());
+        let msg = rx.recv().await.expect("broadcast should deliver");
+        match msg.payload {
+            IpcPayload::Event(DaemonEvent::MutationReconciliationFailed {
+                client_correlation_id,
+                ..
+            }) => assert_eq!(client_correlation_id, "42"),
+            other => panic!("expected MutationReconciliationFailed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn skips_emit_when_correlation_missing() {
+        let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+        let mut rx = state.event_tx.subscribe();
+        emit_mutation_reconciliation_failed_if_needed(&state, None, &partial_result());
+        assert!(
+            timeout(Duration::from_millis(30), rx.recv()).await.is_err(),
+            "no event without client_correlation_id"
+        );
+    }
+
+    #[tokio::test]
+    async fn skips_emit_when_mutation_fully_succeeded() {
+        let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+        let mut rx = state.event_tx.subscribe();
+        let result = MutationResultData {
+            requested: 2,
+            succeeded: 2,
+            skipped: 0,
+            failed: 0,
+            accounts: vec![],
+            mutation_id: None,
+        };
+        emit_mutation_reconciliation_failed_if_needed(&state, Some("1"), &result);
+        assert!(
+            timeout(Duration::from_millis(30), rx.recv()).await.is_err(),
+            "no event when succeeded >= requested"
+        );
+    }
 }

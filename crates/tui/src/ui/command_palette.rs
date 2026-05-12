@@ -234,8 +234,16 @@ fn match_score(command: &PaletteCommand, query: &str) -> Option<u8> {
     None
 }
 
+fn apply_registered_mail_list_shortcuts(commands: &mut [PaletteCommand]) {
+    for cmd in commands.iter_mut() {
+        if let Some(shortcut) = crate::keybindings::primary_mail_list_key_display(&cmd.action) {
+            cmd.shortcut = shortcut;
+        }
+    }
+}
+
 pub fn default_commands() -> Vec<PaletteCommand> {
-    vec![
+    let mut commands = vec![
         PaletteCommand {
             label: "Compose".into(),
             shortcut: "c".into(),
@@ -725,6 +733,26 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Semantic".into(),
         },
         PaletteCommand {
+            label: "Semantic: Use Profile (BGE Small EN)".into(),
+            shortcut: "".into(),
+            action: Action::UseSemanticProfile(mxr_core::types::SemanticProfile::BgeSmallEnV15),
+            category: "Semantic".into(),
+        },
+        PaletteCommand {
+            label: "Semantic: Use Profile (Multilingual E5)".into(),
+            shortcut: "".into(),
+            action: Action::UseSemanticProfile(
+                mxr_core::types::SemanticProfile::MultilingualE5Small,
+            ),
+            category: "Semantic".into(),
+        },
+        PaletteCommand {
+            label: "Semantic: Use Profile (BGE-M3)".into(),
+            shortcut: "".into(),
+            action: Action::UseSemanticProfile(mxr_core::types::SemanticProfile::BgeM3),
+            category: "Semantic".into(),
+        },
+        PaletteCommand {
             label: "Help".into(),
             shortcut: "?".into(),
             action: Action::Help,
@@ -742,7 +770,9 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             action: Action::QuitView,
             category: "Navigation".into(),
         },
-    ]
+    ];
+    apply_registered_mail_list_shortcuts(&mut commands);
+    commands
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &crate::theme::Theme) {

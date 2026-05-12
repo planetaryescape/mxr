@@ -3,6 +3,7 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use std::collections::HashMap;
 
+pub const CURATED_DEMO_MESSAGE_COUNT: usize = 50;
 pub const DEFAULT_DEMO_MESSAGE_COUNT: usize = 50_000;
 const MAX_DEMO_MESSAGE_COUNT: usize = 200_000;
 
@@ -607,6 +608,10 @@ pub fn generate_demo_fixtures(
         ),
     ];
 
+    if target_count == CURATED_DEMO_MESSAGE_COUNT {
+        return generate_curated_demo_fixtures(account_id, profile, labels);
+    }
+
     let people = [
         ("Maya Ortiz", "maya@orbit.example"),
         ("Theo Nash", "theo@northstar.example"),
@@ -828,6 +833,262 @@ pub fn generate_demo_fixtures(
     }
 
     (envelopes, bodies, labels)
+}
+
+fn generate_curated_demo_fixtures(
+    account_id: &AccountId,
+    profile: DemoAccountProfile,
+    labels: Vec<Label>,
+) -> (Vec<Envelope>, HashMap<String, MessageBody>, Vec<Label>) {
+    let mut envelopes = Vec::with_capacity(profile.target_count);
+    let mut bodies = HashMap::with_capacity(profile.target_count);
+    let now = Utc::now();
+    let self_addr = Address {
+        name: Some(profile.display_name.to_string()),
+        email: profile.email.to_string(),
+    };
+    let senders = curated_demo_senders();
+    let subjects = [
+        "Launch checklist for Project Aurora",
+        "Canary rollout notes",
+        "Design partner feedback",
+        "CLI-first release positioning",
+        "Security review follow-up",
+        "QBR prep and open questions",
+        "Receipt for workspace subscription",
+        "Portland demo day travel",
+        "Build failed on release branch",
+        "Local-first weekly reading list",
+        "Spring upgrade offer",
+        "Action required: unusual sign-in attempt",
+    ];
+    let thread_lengths = [3usize, 2, 1, 4, 2, 3, 1, 2, 1, 1, 1, 1];
+
+    let mut msg_num = 1usize;
+    let mut thread_num = 0usize;
+    while envelopes.len() < profile.target_count {
+        let sender = senders[thread_num % senders.len()];
+        let root_subject = subjects[thread_num % subjects.len()];
+        let thread_len = thread_lengths[thread_num % thread_lengths.len()];
+        let thread_id = ThreadId::new();
+        let mut references = Vec::new();
+        let mut previous_message_id = None;
+
+        for reply_idx in 0..thread_len {
+            if envelopes.len() >= profile.target_count {
+                break;
+            }
+
+            let sent = sender.allow_sent_replies && reply_idx == 1;
+            let peer = Address {
+                name: Some(sender.name.to_string()),
+                email: sender.email.to_string(),
+            };
+            let (from, to) = if sent {
+                (self_addr.clone(), vec![peer.clone()])
+            } else {
+                (peer.clone(), vec![self_addr.clone()])
+            };
+            let subject = if reply_idx == 0 {
+                root_subject.to_string()
+            } else {
+                format!("Re: {root_subject}")
+            };
+            let unread = !sent && reply_idx + 1 == thread_len && thread_num % 3 == 0;
+            let mut flags = if unread {
+                MessageFlags::empty()
+            } else {
+                MessageFlags::READ
+            };
+            if sent {
+                flags |= MessageFlags::SENT | MessageFlags::READ;
+            }
+            if sender.starred {
+                flags |= MessageFlags::STARRED;
+            }
+            if sender.provider_label == "SPAM" {
+                flags |= MessageFlags::SPAM;
+            }
+
+            let mut provider_labels = vec![sender.provider_label.to_string()];
+            provider_labels.push(sender.user_label.to_string());
+            if unread {
+                provider_labels.push("UNREAD".to_string());
+            }
+            if sender.starred {
+                provider_labels.push("STARRED".to_string());
+            }
+
+            let unsubscribe = match sender.user_label {
+                "newsletters" => UnsubscribeMethod::OneClick {
+                    url: format!("https://lists.demo.mxr.local/unsubscribe/{thread_num}"),
+                },
+                "promotions" => UnsubscribeMethod::Mailto {
+                    address: "unsubscribe@promo.demo.mxr.local".to_string(),
+                    subject: Some("unsubscribe".to_string()),
+                },
+                _ => UnsubscribeMethod::None,
+            };
+            let has_attachments = matches!(sender.user_label, "receipts" | "travel" | "hiring");
+            let snippet = format!(
+                "{} in curated demo thread: {root_subject}",
+                if sent { "You replied" } else { "New update" }
+            );
+            let body = demo_body(root_subject, sender.category, reply_idx, sent, sender.email);
+            let current_header = push_demo_msg(
+                &mut envelopes,
+                &mut bodies,
+                &mut msg_num,
+                account_id,
+                &thread_id,
+                from,
+                to,
+                Vec::new(),
+                subject,
+                snippet,
+                body,
+                now - Duration::hours((thread_num * 5 + reply_idx) as i64),
+                flags,
+                has_attachments,
+                sender.category,
+                unsubscribe,
+                provider_labels,
+                previous_message_id.clone(),
+                references.clone(),
+            );
+            if previous_message_id.is_none() {
+                references.push(current_header.clone());
+            }
+            previous_message_id = Some(current_header);
+        }
+        thread_num += 1;
+    }
+
+    (envelopes, bodies, labels)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CuratedDemoSender {
+    name: &'static str,
+    email: &'static str,
+    user_label: &'static str,
+    provider_label: &'static str,
+    category: usize,
+    allow_sent_replies: bool,
+    starred: bool,
+}
+
+fn curated_demo_senders() -> [CuratedDemoSender; 12] {
+    [
+        CuratedDemoSender {
+            name: "Maya Ortiz",
+            email: "maya@orbit.example",
+            user_label: "work",
+            provider_label: "INBOX",
+            category: 0,
+            allow_sent_replies: true,
+            starred: true,
+        },
+        CuratedDemoSender {
+            name: "Theo Nash",
+            email: "theo@northstar.example",
+            user_label: "work",
+            provider_label: "INBOX",
+            category: 1,
+            allow_sent_replies: true,
+            starred: false,
+        },
+        CuratedDemoSender {
+            name: "Priya Raman",
+            email: "priya@atlas.example",
+            user_label: "product",
+            provider_label: "INBOX",
+            category: 4,
+            allow_sent_replies: true,
+            starred: false,
+        },
+        CuratedDemoSender {
+            name: "Jon Bell",
+            email: "jon@papertrail.example",
+            user_label: "work",
+            provider_label: "INBOX",
+            category: 3,
+            allow_sent_replies: true,
+            starred: false,
+        },
+        CuratedDemoSender {
+            name: "Nora Kim",
+            email: "nora@foundry.example",
+            user_label: "hiring",
+            provider_label: "INBOX",
+            category: 8,
+            allow_sent_replies: false,
+            starred: false,
+        },
+        CuratedDemoSender {
+            name: "Samir Patel",
+            email: "samir@launchpad.example",
+            user_label: "receipts",
+            provider_label: "INBOX",
+            category: 5,
+            allow_sent_replies: true,
+            starred: false,
+        },
+        CuratedDemoSender {
+            name: "Elena Wood",
+            email: "elena@harbor.example",
+            user_label: "travel",
+            provider_label: "INBOX",
+            category: 6,
+            allow_sent_replies: false,
+            starred: false,
+        },
+        CuratedDemoSender {
+            name: "Ari Stone",
+            email: "ari@fieldkit.example",
+            user_label: "work",
+            provider_label: "ARCHIVE",
+            category: 9,
+            allow_sent_replies: true,
+            starred: false,
+        },
+        CuratedDemoSender {
+            name: "Build Watch",
+            email: "builds@alerts.demo.mxr.local",
+            user_label: "alerts",
+            provider_label: "INBOX",
+            category: 7,
+            allow_sent_replies: false,
+            starred: false,
+        },
+        CuratedDemoSender {
+            name: "Terminal Dispatch",
+            email: "dispatch@lists.demo.mxr.local",
+            user_label: "newsletters",
+            provider_label: "INBOX",
+            category: 2,
+            allow_sent_replies: false,
+            starred: false,
+        },
+        CuratedDemoSender {
+            name: "Cloud Deals",
+            email: "offers@promo.demo.mxr.local",
+            user_label: "promotions",
+            provider_label: "INBOX",
+            category: 11,
+            allow_sent_replies: false,
+            starred: false,
+        },
+        CuratedDemoSender {
+            name: "Account Verification",
+            email: "verify@security-mail.demo.mxr.local",
+            user_label: "potential_spam",
+            provider_label: "SPAM",
+            category: 10,
+            allow_sent_replies: false,
+            starred: false,
+        },
+    ]
 }
 
 struct DemoAccountProfile {
@@ -1239,4 +1500,65 @@ fn push_msg(
             metadata: Default::default(),
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn curated_demo_seed_is_50_messages_across_12_counterparties() {
+        let work_id = AccountId::from_provider_id("fake", "alex@work.demo.mxr.local");
+        let personal_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+        let (work, work_bodies, _) = generate_demo_fixtures(&work_id, CURATED_DEMO_MESSAGE_COUNT);
+        let (personal, personal_bodies, _) =
+            generate_demo_fixtures(&personal_id, CURATED_DEMO_MESSAGE_COUNT);
+
+        assert_eq!(work.len() + personal.len(), CURATED_DEMO_MESSAGE_COUNT);
+        assert_eq!(
+            work_bodies.len() + personal_bodies.len(),
+            CURATED_DEMO_MESSAGE_COUNT
+        );
+
+        let counterparties = work
+            .iter()
+            .chain(personal.iter())
+            .flat_map(counterparty_emails)
+            .collect::<HashSet<_>>();
+        assert_eq!(counterparties.len(), 12);
+    }
+
+    #[test]
+    fn curated_demo_seed_exercises_core_demo_surfaces() {
+        let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+        let (envelopes, bodies, _) =
+            generate_demo_fixtures(&account_id, CURATED_DEMO_MESSAGE_COUNT);
+
+        assert!(envelopes.iter().any(|env| env.has_attachments));
+        assert!(envelopes
+            .iter()
+            .any(|env| env.flags.contains(MessageFlags::STARRED)));
+        assert!(envelopes
+            .iter()
+            .any(|env| env.flags.contains(MessageFlags::SENT)));
+        assert!(envelopes
+            .iter()
+            .any(|env| env.unsubscribe != UnsubscribeMethod::None));
+        assert!(bodies.values().any(|body| body.text_html.is_some()));
+    }
+
+    fn counterparty_emails(envelope: &Envelope) -> Vec<String> {
+        let self_emails = ["alex@demo.mxr.local", "alex@work.demo.mxr.local"];
+        let mut emails = Vec::new();
+        if !self_emails.contains(&envelope.from.email.as_str()) {
+            emails.push(envelope.from.email.clone());
+        }
+        for address in &envelope.to {
+            if !self_emails.contains(&address.email.as_str()) {
+                emails.push(address.email.clone());
+            }
+        }
+        emails
+    }
 }

@@ -209,6 +209,14 @@ impl SearchIndex {
     }
 
     pub fn index_envelope(&mut self, envelope: &Envelope) -> Result<(), MxrError> {
+        self.index_envelope_with_reply_later(envelope, false)
+    }
+
+    pub fn index_envelope_with_reply_later(
+        &mut self,
+        envelope: &Envelope,
+        reply_later: bool,
+    ) -> Result<(), MxrError> {
         // Re-indexing is upsert-by-message-id; without delete_term we would leave
         // stale documents in Tantivy and `mxr search` would return duplicates
         // after every mutation that triggers a re-index.
@@ -257,6 +265,7 @@ impl SearchIndex {
             s.is_answered,
             envelope.flags.contains(MessageFlags::ANSWERED),
         );
+        doc.add_bool(s.is_reply_later, reply_later);
 
         let timestamp = envelope.date.timestamp();
         let dt = tantivy::DateTime::from_timestamp_secs(timestamp);
@@ -270,6 +279,15 @@ impl SearchIndex {
     }
 
     pub fn index_body(&mut self, envelope: &Envelope, body: &MessageBody) -> Result<(), MxrError> {
+        self.index_body_with_reply_later(envelope, body, false)
+    }
+
+    pub fn index_body_with_reply_later(
+        &mut self,
+        envelope: &Envelope,
+        body: &MessageBody,
+        reply_later: bool,
+    ) -> Result<(), MxrError> {
         let term = tantivy::Term::from_field_text(self.schema.message_id, &envelope.id.as_str());
         self.writer.delete_term(term);
 
@@ -332,6 +350,7 @@ impl SearchIndex {
             s.is_answered,
             envelope.flags.contains(MessageFlags::ANSWERED),
         );
+        doc.add_bool(s.is_reply_later, reply_later);
         let timestamp = envelope.date.timestamp();
         let dt = tantivy::DateTime::from_timestamp_secs(timestamp);
         doc.add_date(s.date, dt);

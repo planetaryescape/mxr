@@ -154,6 +154,7 @@ impl App {
             | Action::CloseReplyQueueModal
             | Action::ReplyQueueModalNext
             | Action::ReplyQueueModalPrev
+            | Action::ReplyQueueModalReply
             | Action::OpenScreenerQueue
             | Action::CloseScreenerModal
             | Action::ScreenerModalNext
@@ -199,9 +200,11 @@ impl App {
             | Action::DisableSemantic
             | Action::ReindexSemantic
             | Action::BackfillSemantic
-            | Action::InstallSemanticProfile(_) => self.apply_semantic_action(action),
+            | Action::InstallSemanticProfile(_)
+            | Action::UseSemanticProfile(_) => self.apply_semantic_action(action),
             Action::DraftAssistCurrentThread
             | Action::DraftNewForSender
+            | Action::RefinePendingDraft
             | Action::OpenVoiceProfile
             | Action::RebuildUserVoice
             | Action::OpenCommitments => self.apply_platform_action(action),

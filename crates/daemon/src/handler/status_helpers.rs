@@ -263,7 +263,14 @@ pub(super) fn feature_health_report(state: &AppState) -> FeatureHealthReport {
     let relationship_summary_health = llm_feature_health(
         state,
         mxr_llm::LlmFeature::RelationshipSummary,
-        FeatureHealth::Healthy,
+        if config.llm.enabled {
+            FeatureHealth::Healthy
+        } else {
+            FeatureHealth::Degraded {
+                reason: "LLM disabled; stylometry remains available but summaries are skipped"
+                    .to_string(),
+            }
+        },
     );
     let commitments_health = llm_feature_health(
         state,
@@ -294,7 +301,13 @@ pub(super) fn feature_health_report(state: &AppState) -> FeatureHealthReport {
         draft_assist: llm_health,
         voice_match: voice_match_health,
         humanizer: if config.humanizer.enabled {
-            FeatureHealth::Healthy
+            if config.humanizer.auto_fix && !config.llm.enabled {
+                FeatureHealth::Degraded {
+                    reason: "LLM disabled; detection works but auto-fix is unavailable".to_string(),
+                }
+            } else {
+                FeatureHealth::Healthy
+            }
         } else {
             FeatureHealth::Disabled
         },
@@ -318,7 +331,7 @@ fn llm_feature_health(
 /// failure modes — OAuth refresh failed, rate-limited, network
 /// unreachable — so the user gets a copy-pasteable next step instead
 /// of a free-text dump.
-fn build_doctor_findings(
+pub(crate) fn build_doctor_findings(
     sync_statuses: &[mxr_protocol::AccountSyncStatus],
     recent_errors: &[String],
     data_dir_exists: bool,
@@ -435,12 +448,18 @@ fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding 
         || lower.contains("timed out")
         || lower.contains("timeout")
     {
-        (DoctorFindingCategory::Network, vec![])
+        (
+            DoctorFindingCategory::Network,
+            vec![
+                format!("mxr sync --account {account} --wait --wait-timeout-secs 120"),
+                "mxr doctor".into(),
+            ],
+        )
     } else if lower.contains("rate") && lower.contains("limit") {
         (
             DoctorFindingCategory::Sync,
             vec![format!(
-                "# Provider rate-limited account `{account}`; retry after backoff"
+                "mxr sync --account {account} --wait --wait-timeout-secs 300"
             )],
         )
     } else if lower.contains("locked") || lower.contains("busy") {
@@ -483,6 +502,98 @@ fn classify_log_line(line: &str) -> Option<mxr_protocol::DoctorFinding> {
         });
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mxr_protocol::{DoctorFindingCategory, DoctorFindingSeverity};
+
+    #[test]
+    fn classify_sync_error_maps_oauth_failures_to_reauth_remediation() {
+        let finding = classify_sync_error("work", "invalid_grant: token expired");
+
+        assert_eq!(finding.category, DoctorFindingCategory::OAuth);
+        assert_eq!(finding.severity, DoctorFindingSeverity::Error);
+        assert!(finding.message.contains("work"));
+        assert!(
+            finding
+                .remediation
+                .iter()
+                .any(|step| step.contains("mxr accounts add")),
+            "OAuth findings should tell the user how to re-authenticate"
+        );
+    }
+
+    #[test]
+    fn classify_sync_error_maps_network_failures_without_guessing_a_fix() {
+        let finding = classify_sync_error("imap", "DNS lookup timed out");
+
+        assert_eq!(finding.category, DoctorFindingCategory::Network);
+        assert_eq!(finding.severity, DoctorFindingSeverity::Error);
+        assert_eq!(
+            finding.remediation,
+            vec![
+                "mxr sync --account imap --wait --wait-timeout-secs 120".to_string(),
+                "mxr doctor".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn classify_sync_error_maps_rate_limits_to_retry_guidance() {
+        let finding = classify_sync_error("gmail", "provider rate limit exceeded");
+
+        assert_eq!(finding.category, DoctorFindingCategory::Sync);
+        assert_eq!(
+            finding.remediation,
+            vec!["mxr sync --account gmail --wait --wait-timeout-secs 300".to_string()]
+        );
+    }
+
+    #[test]
+    fn classify_sync_error_maps_sqlite_contention() {
+        let finding = classify_sync_error("local", "database is busy");
+
+        assert_eq!(finding.category, DoctorFindingCategory::SqliteLock);
+        assert_eq!(
+            finding.remediation,
+            vec!["# Close other mxr processes".to_string()]
+        );
+    }
+
+    #[test]
+    fn classify_sync_error_keeps_unknown_failures_as_sync() {
+        let finding = classify_sync_error("imap", "unexpected provider payload");
+
+        assert_eq!(finding.category, DoctorFindingCategory::Sync);
+        assert!(finding.remediation.is_empty());
+    }
+
+    #[test]
+    fn classify_log_line_detects_oauth_errors() {
+        let finding = classify_log_line("WARN oauth token expired for account").unwrap();
+
+        assert_eq!(finding.category, DoctorFindingCategory::OAuth);
+        assert_eq!(finding.severity, DoctorFindingSeverity::Warning);
+        assert!(finding
+            .remediation
+            .iter()
+            .any(|step| step.contains("mxr accounts add")));
+    }
+
+    #[test]
+    fn classify_log_line_detects_sqlite_lock_contention() {
+        let finding = classify_log_line("ERROR database is locked").unwrap();
+
+        assert_eq!(finding.category, DoctorFindingCategory::SqliteLock);
+        assert_eq!(finding.severity, DoctorFindingSeverity::Warning);
+    }
+
+    #[test]
+    fn classify_log_line_ignores_unclassified_lines() {
+        assert!(classify_log_line("sync completed successfully").is_none());
+    }
 }
 
 pub(crate) fn doctor_data_stats(

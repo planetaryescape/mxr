@@ -23,5 +23,6 @@ mxr-v*.zip
 mxr-v*.zip.sha256
 
 # Scratch from local tooling (regenerated on each run)
+.playwright-cli/
 site/.playwright-cli/
 apps/desktop/.openapi-spec.json

@@ -23,7 +23,6 @@ require_checksum() {
 }
 
 macos_aarch64_sha="$(require_checksum "mxr-v${version}-macos-aarch64.tar.gz")"
-macos_x86_64_sha="$(require_checksum "mxr-v${version}-macos-x86_64.tar.gz")"
 linux_x86_64_sha="$(require_checksum "mxr-v${version}-linux-x86_64.tar.gz")"
 
 mkdir -p "$(dirname "$output_formula")"
@@ -31,6 +30,5 @@ mkdir -p "$(dirname "$output_formula")"
 sed \
   -e "s/__VERSION__/${version}/g" \
   -e "s/__SHA256_MACOS_AARCH64__/${macos_aarch64_sha}/g" \
-  -e "s/__SHA256_MACOS_X86_64__/${macos_x86_64_sha}/g" \
   -e "s/__SHA256_LINUX_X86_64__/${linux_x86_64_sha}/g" \
   "$template" > "$output_formula"

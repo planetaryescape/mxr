@@ -23,7 +23,7 @@ use utoipa::{
         contact(name = "mxr", url = "https://mxr.sh")
     ),
     paths(
-        health, openapi_json, swagger_ui, events_ws, desktop_shell,
+        health, openapi_json, swagger_ui, events_ws, client_shell,
         admin_status, admin_diagnostics, admin_bug_report, admin_events,
         admin_logs, admin_ping, admin_shutdown,
         mail_mailbox, mail_search, mail_thread, mail_thread_export,
@@ -97,7 +97,7 @@ endpoint!(get health "/api/v1/health", "Unauthenticated bridge liveness probe");
 endpoint!(get openapi_json "/api/v1/openapi.json", "OpenAPI 3.1 document");
 endpoint!(get swagger_ui "/api/v1/docs", "Swagger UI");
 endpoint!(get events_ws "/api/v1/events", "WebSocket daemon event stream");
-endpoint!(get desktop_shell "/api/v1/desktop/shell", "Desktop shell manifest");
+endpoint!(get client_shell "/api/v1/client/shell", "Client shell manifest");
 
 endpoint!(get admin_status "/api/v1/admin/status", "Daemon status snapshot");
 endpoint!(get admin_diagnostics "/api/v1/admin/diagnostics", "Diagnostics report");

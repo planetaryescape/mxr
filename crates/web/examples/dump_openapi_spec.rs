@@ -2,7 +2,7 @@
 //!
 //! Used by:
 //! - CI's openapi-conformance workflow (Schemathesis spec linting)
-//! - Desktop app codegen (`pnpm gen:types`)
+//! - Web app codegen (`npm run gen:types`)
 //! - Anyone wanting the spec without booting a daemon
 //!
 //! Run:

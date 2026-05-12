@@ -9,8 +9,8 @@
 //!
 //! These tests do NOT exercise a real `mxr daemon` process — that's
 //! covered in `crates/daemon/tests/daemon_lifecycle.rs`. The point here
-//! is the HTTP↔IPC contract. A real-daemon-against-FakeProvider end-to-
-//! end test belongs in slice 8's desktop smoke-test phase.
+//! is the HTTP↔IPC contract. Real-daemon-against-FakeProvider end-to-end
+//! coverage lives with the daemon and web app smoke tests.
 
 #![allow(clippy::unwrap_used, clippy::panic)]
 
@@ -236,8 +236,8 @@ async fn websocket_relays_every_daemon_event_variant() {
 // --------------------------------------------------------------------------
 // suite: representative HTTP routes per bucket
 
-/// One assertion per IPC bucket — admin / mail / platform / desktop /
-/// events — that the daemon-hosted bridge can dispatch and return the
+/// One assertion per IPC bucket — admin / mail / platform / events —
+/// that the daemon-hosted bridge can dispatch and return the
 /// expected ResponseData. Per CLAUDE.md `wire both clients or wire
 /// neither`: drift in a bucket should fail this immediately.
 #[tokio::test]
@@ -270,6 +270,9 @@ async fn one_route_per_bucket_dispatches() {
                 data: ResponseData::Subscriptions {
                     subscriptions: vec![],
                 },
+            }),
+            Request::ListLabels { account_id: None } => Some(Response::Ok {
+                data: ResponseData::Labels { labels: vec![] },
             }),
             Request::ListSavedSearches => Some(Response::Ok {
                 data: ResponseData::SavedSearches { searches: vec![] },
@@ -313,6 +316,15 @@ async fn one_route_per_bucket_dispatches() {
     // platform (slice 6 addition)
     let response = client
         .get(format!("http://{addr}/api/v1/platform/saved-searches"))
+        .bearer_auth(TEST_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+
+    // client
+    let response = client
+        .get(format!("http://{addr}/api/v1/client/shell"))
         .bearer_auth(TEST_TOKEN)
         .send()
         .await

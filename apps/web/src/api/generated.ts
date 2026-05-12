@@ -123,15 +123,15 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/v1/desktop/shell": {
+  "/api/v1/client/shell": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /** Desktop shell manifest */
-    get: operations["desktop_shell"];
+    /** Client shell manifest */
+    get: operations["client_shell"];
     put?: never;
     post?: never;
     delete?: never;
@@ -4125,7 +4125,7 @@ export interface operations {
       };
     };
   };
-  desktop_shell: {
+  client_shell: {
     parameters: {
       query?: never;
       header?: never;

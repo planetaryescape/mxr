@@ -118,11 +118,11 @@
         }
       }
     },
-    "/api/v1/desktop/shell": {
+    "/api/v1/client/shell": {
       "get": {
         "tags": [],
-        "summary": "Desktop shell manifest",
-        "operationId": "desktop_shell",
+        "summary": "Client shell manifest",
+        "operationId": "client_shell",
         "responses": {
           "200": {
             "description": "OK"

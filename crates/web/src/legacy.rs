@@ -88,10 +88,6 @@ fn translate(path: &str) -> Option<&'static str> {
         "/semantic/status" => "/api/v1/platform/semantic/status",
         "/semantic/reindex" => "/api/v1/platform/semantic/reindex",
 
-        // desktop — UI shaping (client-specific; stays under /desktop/* per
-        // CLAUDE.md `client-specific` boundary rule)
-        "/shell" => "/api/v1/desktop/shell",
-
         // events — top-level under v1
         "/events" => "/api/v1/events",
 

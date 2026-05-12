@@ -117,8 +117,8 @@ fn admin_router() -> Router<AppState> {
 }
 
 /// Liveness endpoint — unauthenticated. Surfaces just enough for clients
-/// (desktop app, orchestrators) to verify the bridge is up and the
-/// protocol version they expect, before they go acquire the bridge token.
+/// and orchestrators to verify the bridge is up and the protocol version
+/// they expect, before they go acquire the bridge token.
 async fn health() -> Json<serde_json::Value> {
     Json(json!({
         "status": "ok",
@@ -229,11 +229,10 @@ fn platform_router() -> Router<AppState> {
         .route("/semantic/reindex", post(trigger_semantic_reindex))
 }
 
-/// Desktop / client-specific UI shaping. Per CLAUDE.md the
-/// `client-specific` IPC bucket is not part of the core HTTP surface, so
-/// this lives under its own prefix; it stays for the desktop app's
-/// transition window and may move into the desktop process in v0.6.
-fn desktop_router() -> Router<AppState> {
+/// Client-specific UI shaping. Per AGENTS.md the `client-specific` IPC
+/// bucket is not part of the core mail surface, so this lives under its
+/// own prefix.
+fn client_router() -> Router<AppState> {
     Router::new().route("/shell", get(shell))
 }
 
@@ -248,7 +247,7 @@ pub fn app(config: WebServerConfig) -> Router {
         .nest("/admin", routes_v6::extend_admin(admin_router()))
         .nest("/mail", routes_v6::extend_mail(mail_router()))
         .nest("/platform", routes_v6::extend_platform(platform_router()))
-        .nest("/desktop", desktop_router())
+        .nest("/client", client_router())
         .route("/events", get(events))
         .with_state(state);
 
@@ -387,7 +386,7 @@ struct AuthQuery {
 /// 3. `Sec-WebSocket-Protocol: bearer, <token>` — browser WebSocket clients
 ///    (browsers cannot set `Authorization` on WS upgrades)
 /// 4. `x-mxr-bridge-token: <token>` — v0.4.x compat, kept for the v0.5
-///    cycle so old desktop installs keep working through the migration
+///    cycle while older local clients migrate
 fn extract_token<'a>(headers: &'a HeaderMap, query_token: Option<&'a str>) -> Option<&'a str> {
     if let Some(value) = headers
         .get(axum::http::header::AUTHORIZATION)
@@ -3523,7 +3522,7 @@ mod tests {
     }
 
     /// Slice 4 — `/api/v1/health` is liveness-only and unauthenticated so
-    /// the desktop app / orchestrators can probe readiness without first
+    /// clients and orchestrators can probe readiness without first
     /// loading the bridge token.
     #[tokio::test]
     async fn health_endpoint_is_unauthenticated() {

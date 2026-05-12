@@ -30,7 +30,7 @@ export function mailboxKey(params: MailboxQueryParams) {
 export const shellKey = ["shell"] as const;
 
 export async function fetchShell(): Promise<ShellResponse> {
-  return apiFetch<ShellResponse>("/api/v1/desktop/shell");
+  return apiFetch<ShellResponse>("/api/v1/client/shell");
 }
 
 export async function fetchMailbox(params: MailboxQueryParams): Promise<MailboxResponse> {

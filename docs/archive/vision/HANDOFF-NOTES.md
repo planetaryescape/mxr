@@ -41,6 +41,7 @@ The canonical plan lives at `docs/vision/01-delight-plan.md`. Per-phase trackers
 For each feature, parity = surfaced in TUI, CLI, HTTP-bridge, and desktop app where applicable.
 
 **TUI parity gaps**
+
 - Reply-later walk mode (CLI walk also TBD)
 - Sender view full-screen page (`Screen::SenderProfile`)
 - Screener queue page + 3-key disposition
@@ -55,6 +56,7 @@ For each feature, parity = surfaced in TUI, CLI, HTTP-bridge, and desktop app wh
 - Doctor findings rendering in TUI diagnostics page
 
 **HTTP bridge gaps**
+
 - New routes for ~15 IPC types added in this arc:
   - `SetReplyLater`, `ListReplyQueue`
   - `SetAutoReminder`, `CancelAutoReminder`
@@ -68,10 +70,12 @@ For each feature, parity = surfaced in TUI, CLI, HTTP-bridge, and desktop app wh
 - See `crates/web/src/` for the route table
 
 **Desktop app gaps**
+
 - TypeScript types for new IPC need regeneration (`pnpm gen:types` or whatever the codegen step is)
 - See `apps/desktop/`
 
 **Persistence/UX**
+
 - Persist `recent_actions` for the command palette across daemon restarts (currently in-memory in TUI)
 - Hint bar slim down (currently shows everything; should be top-5 contextual)
 
@@ -114,6 +118,7 @@ If that file gets reverted, daemon CLI tests will overflow. Always check `.cargo
 Migrations live in `crates/store/migrations/NNN_name.sql` AND are registered in `crates/store/src/pool.rs::MIGRATIONS`. Both are required — the SQL file is for `sqlx-cli`, the array entry is for the daemon's runtime migration loop. Use `MigrationKind::Sql(include_str!(...))` for plain SQL or `MigrationKind::AddColumn { ... }` for add-column-only steps (which need special handling for SQLite's lack of `ADD COLUMN IF NOT EXISTS`).
 
 Migration numbering as of 2026-05-08:
+
 ```
 001_initial.sql                013_message_flags.sql
 002 (body_metadata, in pool)   014_auto_reminders.sql
@@ -206,6 +211,7 @@ crates/daemon/tests/cli_help.rs     # Add a case to the snapshot list + bump cas
 ```
 
 Then accept the new snapshot:
+
 ```bash
 INSTA_FORCE_PASS=1 cargo test -p mxr --test cli_help
 cd crates/daemon/tests/snapshots && for f in *.snap.new; do mv "$f" "${f%.new}"; done
@@ -223,6 +229,7 @@ cargo test -p mxr --test cli_help  # should pass cleanly now
 - The daemon-startup recovery I added (`run_startup_maintenance` orphan-draft scan) does additional store work at startup. May need to make it a fire-and-forget background task rather than blocking before socket-accept.
 
 **Next-session fix path** for the flake:
+
 1. `grep -rn "Starting daemon\.\.\." crates/daemon/src/` to find the user-facing message.
 2. Look at the daemon's main loop for the order of operations: `bind_socket → spawn_tasks → first status check`.
 3. Verify `run_startup_maintenance` is async-spawned, not awaited inline.
@@ -238,6 +245,7 @@ cargo test -p mxr --test cli_help  # should pass cleanly now
 ## Critical files to touch when adding a feature
 
 A typical end-to-end feature touches:
+
 ```
 crates/store/migrations/NNN_*.sql
 crates/store/src/foo.rs                              (new)
@@ -284,6 +292,7 @@ The desktop app at `apps/desktop/` (Electron) consumes the bridge via TypeScript
 ## Stash safety net
 
 `stash@{0}: phase-1-wip-temp-for-test-isolation` from earlier session. All work has been re-applied; the stash is a duplicate. Safe to drop:
+
 ```
 git stash drop stash@{0}
 ```
@@ -297,6 +306,7 @@ cargo test -p mxr --test cli_help                      # CLI surface
 ```
 
 If any fail, check:
+
 1. `.cargo/config.toml` for `RUST_MIN_STACK`
 2. `.sqlx/` cache freshness (regenerate if recent migration changes)
 3. `crates/store/src/pool.rs::MIGRATIONS` matches the files in `crates/store/migrations/`

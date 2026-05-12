@@ -70,6 +70,7 @@ Each item has its own section below as I work on it.
 ## 2. Docs site updates
 
 CLI reference (`site/src/content/docs/reference/cli.md`) needs new sections:
+
 - `mxr replies` — manage reply-later queue
 - `mxr remind <id>` — set/cancel auto-reminders
 - `mxr send <id> --at` and `mxr unsend <id>` — Send Later
@@ -80,11 +81,13 @@ CLI reference (`site/src/content/docs/reference/cli.md`) needs new sections:
 - `mxr summarize <id>` and `mxr draft-assist <id>` — LLM features
 
 New guide pages:
+
 - `guides/triage-flow.md` — reply-later, screener, custom snooze
 - `guides/automated-followups.md` — auto-reminders, send-later
 - `guides/llm-features.md` — config + Ollama / LM Studio / OpenAI examples + summarize / draft-assist
 
 Existing pages to update:
+
 - `guides/compose.md` — note snippets
 - `guides/why-mxr.md` — refresh value props
 - `reference/keybindings.md` — `b` for reply-later, `g 0..9` for saved-search nav

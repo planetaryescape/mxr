@@ -463,7 +463,7 @@ If the harness check fails, fix the harness before touching anything else.
 Listed here so a future session doesn't relitigate:
 
 - Vitest unit tests beyond the sanitizer (Phase 4 Playwright + real daemon gives more coverage per hour).
-- Web Push / service worker (post-v1).
+- Web Push (post-v1).
 - Mobile / phone responsive (≥768 px tablet is the floor).
 - Wrapped story-mode polish, share-as-image (STATUS-tracked).
 - Account-scoped invalidation refinement (refetch papers over it).

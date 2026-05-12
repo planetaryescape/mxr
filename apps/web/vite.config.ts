@@ -8,6 +8,9 @@ import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig } from "vite";
+import { VitePWA } from "vite-plugin-pwa";
+
+import { pwaOptions } from "./src/lib/pwaConfig";
 
 /**
  * Discover the bridge port the daemon last bound to.
@@ -68,6 +71,7 @@ export default defineConfig({
     }),
     react(),
     tailwind(),
+    VitePWA(pwaOptions),
     process.env.ANALYZE === "1" &&
       visualizer({ filename: "dist/stats.html", template: "treemap", gzipSize: true }),
   ],

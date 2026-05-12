@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { registerSW } from "virtual:pwa-register";
 
 import App from "@/App";
 import { bootstrapFromHash } from "@/lib/tokenStorage";
@@ -16,6 +17,8 @@ useUiPrefs.subscribe((state, prev) => {
   if (state.theme !== prev.theme) applyThemeAttribute(state.theme);
   if (state.density !== prev.density) applyDensityAttribute(state.density);
 });
+
+registerSW({ immediate: true });
 
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");

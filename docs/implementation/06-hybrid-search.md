@@ -5,6 +5,8 @@
 
 Cross-phase implementation plan for stabilizing lexical search first, then layering in local semantic retrieval without violating mxr's local-first architecture.
 
+> **Superseded:** the bullet in §6 below that calls for **OCR** is **not** the current product rule. Semantic recall uses extractable text only; see `CLAUDE.md` / `AGENTS.md` (no OCR for semantic indexing).
+
 ## Non-negotiables
 
 - SQLite stays canonical
@@ -90,7 +92,7 @@ Implement:
 - PDF text extraction via `unpdf`
 - office-doc extraction via `undoc` for `.docx`, `.pptx`, and `.xlsx`
 - spreadsheet table extraction via `calamine`
-- OCR fallback for images and scanned PDFs when local OCR tools are available
+- ~~OCR fallback for images and scanned PDFs when local OCR tools are available~~ — **superseded / out of scope:** OCR is not part of the semantic indexing contract; image-only and image-only PDFs do not contribute dense text.
 
 Do not route everything through one generic parser. Keep the stack format-specific.
 

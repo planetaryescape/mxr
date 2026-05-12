@@ -9,7 +9,7 @@ HTTP — so desktop apps, mobile clients, agent runners, and your own
 shell scripts all talk to the same daemon through one stable surface.
 
 The bridge serves an OpenAPI 3.1 spec at
-`http://127.0.0.1:42829/api/v1/openapi.json` (port and host configurable
+`http://mxr.localhost:42829/api/v1/openapi.json` (port and host configurable
 in `[bridge]`). The desktop app generates its TypeScript client from
 this spec — you can do the same for any language with `openapi-generator`
 or `openapi-typescript`.
@@ -20,12 +20,12 @@ Get the auth token from `~/.config/mxr/bridge-token` (or wherever
 
 ```bash
 export MXR_TOKEN=$(cat ~/.config/mxr/bridge-token)
-# Discover the actual port (the daemon retries on conflict and writes
-# the bound port to <config_dir>/bridge-port).
+# Discover the actual port (custom ports and --auto-port write the bound
+# port to <config_dir>/bridge-port).
 export MXR_PORT=$(cat ~/Library/Application\ Support/mxr/bridge-port 2>/dev/null \
                    || cat ~/.config/mxr/bridge-port 2>/dev/null \
                    || echo 42829)
-export MXR_BASE=http://127.0.0.1:$MXR_PORT
+export MXR_BASE=http://mxr.localhost:$MXR_PORT
 ```
 :::
 
@@ -42,7 +42,7 @@ The SPA served by `mxr web` doesn't ask the user to paste a token.
 returns the bridge token to callers whose TCP peer is a loopback IP.
 
 ```bash
-curl http://127.0.0.1:$MXR_PORT/api/v1/auth/local-token
+curl http://mxr.localhost:$MXR_PORT/api/v1/auth/local-token
 # → {"token":"<uuid>","source":"local-handshake"}
 ```
 
@@ -100,9 +100,13 @@ Response:
 | `GET` | `/mail/threads/{id}` | Full thread payload (messages + bodies) |
 | `GET` | `/mail/threads/{id}/export` | Markdown / JSON export |
 | `GET` | `/mail/drafts` | List drafts |
+| `GET` | `/mail/messages/{message_id}/body` | Fetch one message body |
+| `GET` | `/mail/messages/{message_id}/html-images` | HTML-linked image asset list |
+| `GET` | `/mail/messages/{message_id}/headers` | Raw RFC 5322 headers |
 | `GET` | `/mail/snoozed` | List snoozed messages |
 | `GET` | `/mail/count` | Count messages matching a query |
 | `GET` | `/mail/sync/status` | Per-account sync state |
+| `POST` | `/mail/export-search` | Export all threads matching a search |
 
 ```bash
 curl -G -H "Authorization: Bearer $MXR_TOKEN" \
@@ -134,6 +138,7 @@ clients can reconcile optimistically.
 | `GET` | `/mail/actions/snooze/presets` | Available snooze presets |
 | `POST` | `/mail/actions/snooze` | Snooze messages |
 | `POST` | `/mail/actions/unsubscribe` | Unsubscribe from list mail |
+| `POST` | `/mail/messages/{message_id}/flags` | Set message flags (bitmask in body) |
 
 ```bash
 curl -X POST -H "Authorization: Bearer $MXR_TOKEN" \
@@ -204,6 +209,41 @@ emails from sender" and deep-link directly into the matching thread.
 |--------|------|---------|
 | `POST` | `/mail/threads/{thread_id}/summarize` | Concise Markdown thread summary + next steps |
 | `POST` | `/mail/threads/draft-assist` | `{thread_id, instruction}` → suggested reply body plus model/humanizer/voice metadata |
+| `POST` | `/mail/drafts/new` | Start an LLM-backed draft from a prompt |
+| `POST` | `/mail/drafts/refine` | Refine draft body with model knobs |
+| `POST` | `/mail/humanizer/score` | Score text against your voice profile |
+| `POST` | `/mail/humanizer/rewrite` | Rewrite toward human-like / on-voice output |
+
+### Relationship and commitments
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/mail/relationship?account_id=...&email=...` | Per-contact relationship profile |
+| `POST` | `/mail/relationship/rebuild` | JSON `{account_id, email}` — rebuild relationship summaries |
+| `GET` | `/mail/commitments?account_id=...&email=...&status=...` | List open commitments |
+| `POST` | `/mail/commitments/{commitment_id}/resolve` | Mark a commitment resolved |
+
+### Stored drafts (local IPC parity)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/mail/drafts/orphaned` | Mid-send / stuck drafts |
+| `POST` | `/mail/drafts/save-local` | Persist a draft row without compose session |
+| `POST` | `/mail/drafts/{draft_id}/reset-orphan` | Recover an orphaned send |
+| `POST` | `/mail/drafts/{draft_id}/send-stored` | Send a stored draft by id |
+| `DELETE` | `/mail/drafts/{draft_id}/stored` | Delete stored draft |
+
+### Signatures
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/mail/signatures` | List |
+| `POST` | `/mail/signatures` | Create or update |
+| `DELETE` | `/mail/signatures/{name}` | Remove |
+| `GET` | `/mail/signature-defaults` | Defaults per context |
+| `POST` | `/mail/signatures/default` | Set default |
+| `POST` | `/mail/signatures/default/clear` | Clear default |
+| `POST` | `/mail/signatures/resolve` | Resolve signature for compose context |
 
 ```bash
 curl -X POST -H "Authorization: Bearer $MXR_TOKEN" \
@@ -285,6 +325,8 @@ without an active inbox.
 | `GET` | `/platform/accounts/config` | Config-backed account list |
 | `POST` | `/platform/accounts/test` | Test credentials |
 | `POST` | `/platform/accounts/upsert` | Add / update an account |
+| `POST` | `/platform/accounts/authorize` | `{account, reauthorize}` — `AuthorizeAccountConfig` (OAuth / credential handoff) |
+| `POST` | `/platform/accounts/repair` | Repair keychain / stored credentials for a config |
 | `POST` | `/platform/accounts/default` | `{key}` set default |
 | `DELETE` | `/platform/accounts/{key}` | Remove |
 | `POST` | `/platform/accounts/{key}/disable` | Soft-disable |
@@ -319,8 +361,16 @@ The daemon owns OAuth flows so the renderer never sees a refresh token.
 | `GET` | `/platform/semantic/status` | Index health + active profile |
 | `POST` | `/platform/semantic/enable` | Activate |
 | `POST` | `/platform/semantic/reindex` | Rebuild |
+| `POST` | `/platform/semantic/backfill` | Backfill chunks / embeddings workload |
 | `POST` | `/platform/semantic/profiles/install` | `{profile}` (e.g. `bge-small-en-v1.5`) |
 | `POST` | `/platform/semantic/profiles/use` | Switch active profile |
+
+### Voice profile (drafting)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/platform/voice` | Cached user voice profile used by humanizer / draft assist |
+| `POST` | `/platform/voice/rebuild` | Recompute voice profile from sent mail |
 
 ### Analytics
 
@@ -358,7 +408,7 @@ ones:
 ```bash
 # Quick subscribe via websocat
 websocat -H "Authorization: Bearer $MXR_TOKEN" \
-  ws://127.0.0.1:7777/api/v1/events
+  ws://mxr.localhost:$MXR_PORT/api/v1/events
 ```
 
 ## Generating a typed client
@@ -380,3 +430,4 @@ openapi-generator generate -i $MXR_BASE/api/v1/openapi.json -g rust -o ./mxr-rs
 - [Recipes](/guides/recipes/) — composing the bridge with curl/jq/agents.
 - [Desktop app](/guides/desktop-app/) — first-party consumer of this bridge.
 - [For agents](/guides/for-agents/) — boundaries when an LLM drives the API.
+- Contributors: see `docs/guides/http-bridge.md` in the repo for the internal architecture and security model.

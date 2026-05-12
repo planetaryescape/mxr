@@ -30,7 +30,7 @@ The bridge has been stable since v0.5; the daemon is the system, clients are add
 - **Lint/format**: oxlint + oxfmt.
 - **Testing**: Vitest + Testing Library + jsdom; MSW for bridge mocking; Playwright for e2e against a real daemon backed by `provider-fake`.
 - **Distribution**: SPA `dist/` embedded into the daemon binary via `include_dir!` (Rust crate). Bridge serves it at `/`. `MXR_WEB_DEV_PROXY=http://localhost:5173` falls through to Vite during dev.
-- **Launch command**: `mxr web` starts or reopens a detached bridge, opens browser to `http://127.0.0.1:42829`, then returns. Stop it with `mxr web stop`; use `mxr web --foreground` for debugging. Flags: `--port`, `--no-open`, `--print-url`, `--strict-port`, `--remote-host`, `--foreground`. Token persisted at `~/.config/mxr/bridge-token` (mode 0600). Default port retries on `EADDRINUSE` up to 32 attempts (opt-out with `--strict-port`); the bound port lands in `<config_dir>/bridge-port`.
+- **Launch command**: `mxr web` opens browser to `http://mxr.localhost:42829`, reusing the daemon-managed bridge when it is already healthy; otherwise it starts or reopens a detached bridge. Stop detached bridges with `mxr web stop`; use `mxr web --foreground` for debugging. Flags: `--port`, `--auto-port`, `--no-open`, `--print-url`, `--strict-port`, `--remote-host`, `--foreground`. Token persisted at `~/.config/mxr/bridge-token` (mode 0600). Port conflicts fail by default; `--auto-port` retries up to 32 attempts and the bound port lands in `<config_dir>/bridge-port`.
 - **Auth flow**: on the same machine the SPA self-authenticates by calling `GET /api/v1/auth/local-token` — bridge returns the token only to loopback peers, gated by `[bridge].auto_local_token`. On 401 the SPA retries the handshake automatically; only when both that and any cached `localStorage` token fail does it fall back to `/settings/token`. URL fragment `#token=...` still works for remote-host launches.
 - **WebSocket auth**: `Sec-WebSocket-Protocol: bearer, <token>` (already supported by the bridge).
 - **Strict CSP** on the embedded SPA HTML response.
@@ -143,8 +143,8 @@ apps/web/
 
 ## Existing repo touchpoints
 
-- `crates/daemon/src/cli/mod.rs:408-416` — `Command::Web` (needs `--no-open`, `--remote-host` added).
-- `crates/daemon/src/commands/web.rs` — current implementation; rewrite to persist token, open browser, support remote-host.
+- `crates/daemon/src/cli/mod.rs` — `Command::Web` owns `--port`, `--auto-port`, `--no-open`, `--print-url`, `--remote-host`, and foreground/detached controls.
+- `crates/daemon/src/commands/web.rs` — local `mxr web` launch, daemon-bridge reuse, loopback safety, port conflict handling, and remote-host URL opening.
 - `crates/web/src/lib.rs` — bridge router; add SPA serving + CSP behind `web-ui` cargo feature.
 - `crates/web/Cargo.toml` — add optional `include_dir` dep behind `web-ui` feature.
 - `Cargo.toml` (root) — surface `web-ui` feature so `mxr` can build with it.

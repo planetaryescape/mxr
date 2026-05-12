@@ -28,7 +28,7 @@ Update this file as phases complete. Single source of truth for "where are we?"
 - Stores: `uiPrefsStore` (persisted theme/density/sidebar/compose-editor/notifications/VIPs), `connectionStore`, `selectionStore`, `modalStore`.
 - API client: `openapi-fetch` over `openapi-typescript`-generated types in `src/api/generated.ts` (6,295 lines from the live bridge OpenAPI spec).
 - WebSocket client (`src/lib/ws.ts`): reconnecting with exponential backoff + heartbeat + online/offline + window-focus reconnect, authenticates via `Sec-WebSocket-Protocol: bearer, <token>`.
-- Token bootstrap: reads URL fragment `#token=...&remote=...`, persists to localStorage, scrubs hash via `history.replaceState`.
+- Token bootstrap: local launches use `/api/v1/auth/local-token`; remote/manual launches can still read URL fragment `#token=...&remote=...`, persist to localStorage, and scrub the hash via `history.replaceState`.
 - TanStack Router with file-based routes for every IA URL, auto-codesplit per route.
 - `/dev` smoke page hits `/api/v1/admin/health` (unauthed) and `/api/v1/admin/status` (authed) and shows results.
 - `/settings/token` paste-token fallback panel.
@@ -38,7 +38,7 @@ Update this file as phases complete. Single source of truth for "where are we?"
 ### Rust
 
 - New `bridge_token_path()`, `remote_bridge_token_path(host)`, `read_or_create_bridge_token()` in `mxr_config`. Writes mode-0600 tokens at `~/.config/mxr/bridge-token` and `~/.config/mxr/bridge-tokens/<host>.token`.
-- `mxr web` extended with `--no-open`, `--remote-host`, persisted token, browser-open by default. Remote-host mode skips local bind and opens browser to remote URL pre-authenticated. `MXR_WEB_BRIDGE_TOKEN` env still overrides the persisted token.
+- `mxr web` opens `http://mxr.localhost:42829`, reuses a healthy daemon bridge when present, supports `--auto-port`, and keeps `--remote-host` for manually configured remote bridges. `MXR_WEB_BRIDGE_TOKEN` env still overrides the persisted token.
 - New `web-ui` cargo feature (off by default, on when explicitly enabled). When enabled, the bridge embeds `apps/web/dist/` via `include_dir!()` and serves it at `/` with a strict Content-Security-Policy (`script-src 'self'` etc.). Asset paths get long-lived caching; `index.html` falls back for unknown paths so client-side routing works.
 - Placeholder `apps/web/dist/index.html` so `cargo build --features web-ui` works without first running `npm run build` (it gets overwritten by the real build).
 - CLI snapshot regenerated. `parses_web_subcommand` + new `parses_web_subcommand_with_remote_host` tests both pass.
@@ -68,11 +68,11 @@ Update this file as phases complete. Single source of truth for "where are we?"
 - 2026-05-10 — Default theme is `midnight` (deep blue-tinted near-black with sky-cyan accent). Three themes shipped in tokens: `midnight` (default dark), `light`, `eclipse` (very dark + magenta accent), `paper` (warm off-white).
 - 2026-05-10 — Density tokens drive row heights: compact 40 px / regular 52 px / comfortable 68 px. (Plan called for 48/56/72; tightened to 40/52/68 to push more density on web.)
 - 2026-05-10 — `data-theme` attribute on `<html>` toggles palettes. CSS variables follow shadcn HSL-channel convention so shadcn components drop in unchanged.
-- 2026-05-10 — Vite proxy: `/api` → `http://127.0.0.1:7777` (configurable via `MXR_BRIDGE_URL` env). WebSocket proxied at `/api/v1/events`.
+- 2026-05-10 — Vite proxy: `/api` → the discovered local bridge port (configurable via `MXR_BRIDGE_URL` env). WebSocket proxied at `/api/v1/events`.
 - 2026-05-10 — Routing via TanStack Router with file-based routes + auto-code-splitting plugin. Generated route tree at `src/routeTree.gen.ts` (gitignored).
 - 2026-05-10 — Token uses `Uuid::now_v7()` (workspace `uuid` crate doesn't enable `v4` feature; v7 is time-sortable and equally unique).
 - 2026-05-10 — `web-ui` cargo feature is **off by default** in `crates/web` and the root binary. CI/release workflow will enable it; local Rust dev keeps fast iteration. Documented in `01-bootstrap.md` decisions.
-- 2026-05-10 — Dev path: `cd apps/web && npm run dev` (Vite at 5173, proxies API/WS to local daemon at 7777). The originally-planned `MXR_WEB_DEV_PROXY` daemon-side proxy was dropped — Vite's proxy is sufficient and simpler. Production path: `npm run build` then `cargo build --features web-ui` then `mxr web`.
+- 2026-05-10 — Dev path: `cd apps/web && npm run dev` (Vite at 5173, proxies API/WS to the local bridge). The originally-planned `MXR_WEB_DEV_PROXY` daemon-side proxy was dropped — Vite's proxy is sufficient and simpler. Production path: `npm run build` then `cargo build --features web-ui` then `mxr web`.
 - 2026-05-10 — Bundle started at 559 kB unminified / 173 kB gzipped on the initial route before Phase 9 chunk work.
 - 2026-05-10 — Browser attachment drops upload a local temp copy through `/api/v1/mail/compose/session/attachment`, then the returned path is written into compose frontmatter. This avoids pretending browser file names are usable local paths.
 - 2026-05-10 — Phase 3 compose is usable but not closed: snippets now use the platform snippets endpoint; contact autocomplete still needs a real contacts endpoint; outbound undo needs an unsend/scheduled-send bridge contract before the status-bar pill can be honest.
@@ -80,7 +80,8 @@ Update this file as phases complete. Single source of truth for "where are we?"
 - 2026-05-11 — Phase 9 polish is complete locally: production build has no Vite chunk-size warning, Playwright starts an isolated fake-provider daemon/bridge, smoke and axe accessibility specs pass, and rule/account/command-palette parity gaps are narrowed.
 - 2026-05-11 — v1 launch hardening is complete locally: release packaging embeds the real SPA, HTML rendering is sandboxed, first-launch/auth resilience is covered, tracker images are stripped, route/offline/sync progress UX has e2e coverage, and launch docs are updated.
 - 2026-05-11 — Same-machine auto-handshake added. `GET /api/v1/auth/local-token` returns the bridge token to loopback peers only; gated by `[bridge].auto_local_token` (default `true`). SPA's auth client tries this endpoint on every cold start and on 401, eliminating the "paste a valid token to reconnect" panel for local-machine users. Remote-host setups can disable via config and fall back to the paste UX.
-- 2026-05-11 — Default bridge port changed `7777 → 42829` to avoid common dev-server collisions. `mxr web` and the daemon-managed bridge now walk up to the next free port on `EADDRINUSE` (up to 32 attempts); `--strict-port` opts out. Actual bound port is published to `<config_dir>/bridge-port` so the Vite dev proxy + scripts can discover it. Snapshots regenerated.
+- 2026-05-11 — Default bridge port changed `7777 → 42829` to avoid common dev-server collisions. Actual bound port is published to `<config_dir>/bridge-port` so the Vite dev proxy + scripts can discover it. Snapshots regenerated.
+- 2026-05-12 — Local launch URL changed to `http://mxr.localhost:42829`; `mxr web` now reuses a healthy daemon-managed bridge, keeps port conflicts strict by default, and uses `--auto-port` as the explicit retry escape hatch.
 
 ## Critical files cheat-sheet
 

@@ -249,29 +249,29 @@ mxr web
 ```
 
 This starts the local web bridge in the background, opens
-`http://127.0.0.1:42829` in your default browser, then returns control to
+`http://mxr.localhost:42829` in your default browser, then returns control to
 the terminal. Run `mxr web` again to reopen the same bridge, or
 `mxr web stop` to stop it. On the same machine the SPA self-authenticates
 against the daemon — no token paste required.
 
-If the port is already in use the bridge walks up to the next free port
-and the URL `mxr web` prints reflects the actual port. The bound port
-is also written to `<config_dir>/bridge-port` for scripts and the Vite
-dev proxy.
+If the port is already in use, `mxr web` fails with a conflict message and
+best-effort process details so the local URL stays stable. Pass
+`--auto-port` to try the next free port. The bound port is also written to
+`<config_dir>/bridge-port` for scripts and the Vite dev proxy.
 
 Useful flags:
 
-- `--port N` sets a preferred port (walks up on conflict).
-- `--strict-port` makes `--port` fail-fast instead of retrying.
+- `--port N` sets the fixed local web port.
+- `--auto-port` tries the next available port on conflict.
 - `--no-open` prints the URL without opening a browser.
 - `--print-url` prints the URL without opening a browser.
 - `--foreground` runs the bridge in the terminal for debugging.
-- `--remote-host H` opens a remote daemon at `H` using `~/.config/mxr/bridge-tokens/<host>.token`.
+- `--remote-host H` is for manually configured remote bridges; SSH/Tailscale tunnels are the supported remote path for now.
 
 Troubleshooting:
 
 - Blank page: confirm the daemon is running with `mxr status`.
-- 401 / unauthorized: only happens for remote daemons or when `[bridge].auto_local_token = false`; the SPA redirects to `/settings/token`; paste `~/.config/mxr/bridge-token`.
+- 401 / unauthorized: only happens for remote bridges or when `[bridge].auto_local_token = false`; the SPA redirects to `/settings/token`; paste `~/.config/mxr/bridge-token`.
 - Stale UI after upgrading: hard-refresh with Cmd-Shift-R or Ctrl-F5.
 
 For strict-bearer setups (multi-user machines, etc.), set

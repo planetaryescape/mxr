@@ -70,7 +70,7 @@ weekend_hour = 10
 [bridge]
 enabled = true
 bind = "127.0.0.1"
-port = 42829                       # bridge walks up to next free port on EADDRINUSE
+port = 42829                       # stable local web URL port
 cors_allowlist = []
 host_allowlist = []
 auto_local_token = true            # loopback callers can auto-fetch the token
@@ -290,7 +290,7 @@ HTTP bridge configuration.
 
 - `enabled` — start the bridge alongside the daemon (default `true`).
 - `bind` — bind address (default `127.0.0.1`).
-- `port` — preferred TCP port (default `42829`). On `EADDRINUSE` the bridge walks up to the next free port (up to 32 attempts). The actual bound port is written to `<config_dir>/bridge-port` for clients to discover.
+- `port` — fixed TCP port for the local web URL (default `42829`). `mxr web` fails on `EADDRINUSE` by default and can opt into walking up with `--auto-port`. The actual bound port is written to `<config_dir>/bridge-port` for clients to discover.
 - `cors_allowlist` — additional origins (defaults already cover loopback).
 - `host_allowlist` — additional hostnames for non-loopback binds.
 - `auto_local_token` — when `true` (default), `GET /api/v1/auth/local-token` returns the bridge token to callers whose TCP peer is a loopback IP. Lets the web SPA bootstrap on the same machine without a paste prompt. Set to `false` for paranoid setups that want strict bearer auth even on loopback. Non-loopback peers never receive the token regardless of this setting.

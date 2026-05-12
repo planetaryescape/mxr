@@ -13,7 +13,7 @@ Start with a realistic local demo before connecting your own mail:
 mxr demo
 ```
 
-This creates a separate `mxr-demo` config, database, socket, and daemon. It seeds a 50k-message synthetic inbox so you can try search, labels, threads, attachments, newsletters, analytics, and keyboard triage without granting access to your real inbox.
+This creates a separate `mxr-demo` config, database, socket, and daemon. It seeds a 50k-message, two-account synthetic inbox with repeat senders, threads, attachments, links, images, newsletters, promos, spam, suspicious inbox mail, receipts, alerts, and demo rules. Demo setup also prewarms analytics, Wrapped, and semantic vectors for the active profile so you can try search, labels, summaries, sender profiles, analytics, and keyboard triage without granting access to your real inbox.
 
 Reset the demo any time:
 

@@ -51,15 +51,16 @@ commit shipped in parallel.
 The bridge becomes a **managed background task inside `mxr daemon`**,
 alongside the snooze loop and contacts refresher.
 
-- `mxr daemon` starts the bridge automatically at `127.0.0.1:42829`
-  (configurable in `~/.config/mxr/config.toml`).
+- `mxr daemon` starts the bridge automatically on loopback port `42829`
+  (configurable in `~/.config/mxr/config.toml`); local browsers use
+  `http://mxr.localhost:42829`.
 - Single PID to monitor, single config source, single auth source.
 - Existing `mxr web` standalone subcommand stays for failure-
   isolation and ephemeral-child-process use cases (the desktop app
   continues to use it). Both paths exercise the same router code.
 
-Default port: **7777**. Mnemonic, easy to type, low collision
-risk.
+Current default port: **42829**. Chosen as a high unprivileged,
+currently unassigned port that avoids common dev-server ports.
 
 ### API shape
 
@@ -175,6 +176,8 @@ daemon (protocol-version check the desktop already does).
 Each slice ships independently — green tests, clean commit, before
 moving on. Total: ~2-3 weeks.
 
+**Repo status:** slices 1–4 and much of 5–6 are implemented in `crates/web`, daemon bridge loop, and `docs/guides/http-bridge.md`. Treat the **experimental pre-v0.5 bridge** as superseded (new paths, auth, CORS). Remaining work is **verification**: full `Request` variant coverage vs routes and CI OpenAPI conformance, not re-adding the old surface.
+
 ### Slice 1 — utoipa scaffold
 
 - Add `utoipa`, `utoipa-axum`, `utoipa-swagger-ui` deps.
@@ -222,7 +225,7 @@ moving on. Total: ~2-3 weeks.
   [bridge]
   enabled = true            # default true
   bind = "127.0.0.1"
-  port = 7777
+  port = 42829
   cors_allowlist = []       # additive to localhost defaults
   ```
 
@@ -319,7 +322,7 @@ Per CLAUDE.md "test with the real system":
 1. `cargo test --workspace` — all green.
 2. Start daemon: `mxr daemon --foreground` in one shell.
 3. `curl -H "Authorization: Bearer $(cat ~/.config/mxr/bridge-token)" \
-    http://127.0.0.1:42829/api/v1/openapi.json | jq .info.version`
+    http://mxr.localhost:42829/api/v1/openapi.json | jq .info.version`
 4. Hit a representative route from each bucket; confirm 2xx + sane
    payload.
 5. Connect a WebSocket to `/api/v1/events`, trigger a `mxr sync`,

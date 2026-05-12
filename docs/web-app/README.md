@@ -1,6 +1,6 @@
 # mxr web app — implementation docs
 
-These are the **execution-side** docs for building the mxr web app at `apps/web/`. The original plan lives at `~/.claude/plans/you-excel-at-making-concurrent-rabbit.md`; these files turn it into self-contained per-phase briefs so a fresh session can pick up where the last one left off without re-reading the whole plan.
+These are the **execution-side** docs for building the mxr web app at `apps/web/`. They turn the original session plan into self-contained per-phase briefs so a fresh session can pick up where the last one left off.
 
 ## Read order
 

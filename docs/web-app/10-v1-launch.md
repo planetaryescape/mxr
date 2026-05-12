@@ -388,12 +388,13 @@ Direct edits; verification = "junior engineer can follow this without asking que
 
   $ mxr web
 
-  This opens your default browser to http://127.0.0.1:7777 pre-authenticated with the bridge token at ~/.config/mxr/bridge-token.
+  This opens your default browser to http://mxr.localhost:42829. Local auth uses the same-machine `/api/v1/auth/local-token` handshake, so the launch URL does not carry the bridge token.
 
   Flags:
-  - `--port N`        bind to a different port
+  - `--port N`        bind to a different fixed local port
+  - `--auto-port`     try the next free port on conflict
   - `--no-open`       just print the URL, do not open browser
-  - `--remote-host H` open browser to a remote daemon at H (TLS required)
+  - `--remote-host H` open browser to a manually configured remote bridge at H
   - `--print-url`     print the URL and continue serving
 
   Troubleshooting:
@@ -402,10 +403,10 @@ Direct edits; verification = "junior engineer can follow this without asking que
   - Stale UI after upgrading: hard-refresh (Cmd-Shift-R / Ctrl-F5).
   ```
 
-- **`docs/guides/http-bridge.md`** — append a "Remote-host mode" section:
-  - When to use: daemon on a VPS, browser on your laptop.
-  - Requirements: TLS (terminate via Caddy/nginx/Cloudflare); CORS + Host allowlist configured in `[bridge]`.
-  - Token setup: write the remote daemon's bridge token to `~/.config/mxr/bridge-tokens/<host>.token` (mode 0600) on the client machine.
+- **`docs/guides/http-bridge.md`** — append a "Remote access" section:
+  - Default recommendation: keep the bridge loopback-bound and use SSH/Tailscale/WireGuard.
+  - Manual remote-host mode: bridge behind a TLS reverse proxy; CORS + Host allowlist configured in `[bridge]`.
+  - Token setup: write the remote bridge token to `~/.config/mxr/bridge-tokens/<host>.token` (mode 0600) on the client machine.
   - Launch: `mxr web --remote-host mxr.example.com`.
 
 - **`docs/web-app/STATUS.md`** — mark all v1 launch items done as Phase 8 lands.

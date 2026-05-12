@@ -7,6 +7,8 @@
 
 Ready for public release. Adapter kit for community providers, binary releases, install methods, documentation site, contributor guide. After this phase, mxr is a real open-source project that people can discover, install, use, and contribute to.
 
+> **Superseded body text:** long embedded snippets below still describe **mdBook**, **crates.io workspace publish**, **four-target musl builds**, and **commitlint/cliff** layouts from an older draft. The **canonical “what we ship”** story is in [`README.md`](../../README.md), [`AGENTS.md`](../../AGENTS.md), `.github/workflows/release.yml`, and the docs **site** under `site/`. Prefer [implementation `README.md` superseded table](./README.md#superseded-items-treat-as-done) over re-implementing those snippets literally.
+
 ## Prerequisites
 
 Phase 3 complete:
@@ -2442,14 +2444,14 @@ Phase 4 is complete when ALL of the following are true:
 2. **Internal core boundary stays private**: `mxr-core` remains an internal workspace crate with stable internal traits and no accidental upward dependencies. Public release does not require crates.io publication.
 3. **CONTRIBUTING.md**: Complete with dev setup, code style, how-to sections, non-negotiable principles, PR guidelines. Issue templates created for bug reports (integrated with `mxr bug-report`), feature requests, and adapter proposals.
 4. **Bug reporting (A009)**: `mxr bug-report` generates sanitized diagnostic bundle (system info, config, account health, sync history, errors, logs). Auto-sanitization redacts emails, tokens, passwords, API keys, subjects, bodies (D073). `--github` opens pre-filled issue. `--clipboard`/`--stdout`/`--edit` output modes work. Log retention defaults configured (D074). `mxr logs --purge` works. `mxr doctor --store-stats` reports log disk usage.
-5. **Binary releases**: GitHub Actions release workflow runs on tag push. Produces static musl binaries for Linux x86_64, Linux aarch64, and native macOS x86_64, macOS aarch64. SHA256 checksums generated. GitHub Release created with binaries, checksums, and changelog. Homebrew formula auto-updated via PR. Docs site deployed on release.
-6. **Install methods**: `cargo install --git https://github.com/planetaryescape/mxr --locked mxr` works. Homebrew formula in `planetaryescape/homebrew-mxr` installs correctly with auto-update on release. AUR PKGBUILD builds and installs. Nix flake builds and runs. Install script works on macOS and Linux.
+5. **Binary releases** — **current bar:** GitHub Actions release workflow on tag (see `release.yml`): release artifacts for the **configured matrix**, SHA256 sidecars, GitHub Release, Homebrew bump where wired. *Superseded expectation:* four musl targets in one job graph — replace with whatever `release.yml` actually builds.
+6. **Install methods** — **done where maintained:** `cargo install --git … --locked mxr`, `install.sh`, Homebrew tap as documented. **Optional / outstanding if desired:** in-repo AUR, Nix flake (not required for “core” Phase 4 if you do not ship them).
 7. **No crates.io coupling**: `mxr` stays `publish = false`, internal workspace crates stay private, and release automation does not require crates.io publication.
-8. **Changelog**: `cliff.toml` configured. `git-cliff` generates grouped changelog from conventional commits. Commit-lint enforced in CI.
-9. **Documentation site**: mdBook site builds from `docs/book/`. Deployed to GitHub Pages via CI and on release to Cloudflare Pages. Contains: installation, getting started, user guide, configuration reference (incl. `[logging]` section), keybinding reference (vim+Gmail hierarchy explained per A005), search syntax, rules syntax, complete CLI reference (all commands from A004), observability & monitoring guide (`mxr logs`/`status`/`events` per A006), adapter development guide, FAQ. Search works.
+8. **Changelog** — **superseded literal:** root `cliff.toml` + commitlint job **not** required. **Current:** conventional releases via release-please (and related workflows) as in `.github/workflows/`.
+9. **Documentation site** — **superseded:** mdBook under `docs/book/`. **Current:** `site/` (build in CI when docs paths change). Content should cover install, config, keybindings, CLI/bridge reference, adapter guide (`site/src/content/docs/guides/adapter-development.md`), observability, etc.
 10. **README**: Project description, differentiation table, screenshots/GIFs, quick start, install methods, feature highlights, CLI scriptability examples (from A004), links to docs, license, contributing link.
 11. **Announcement ready**: Blog post drafted. Demo GIF created. Launch checklist passed. Target channels identified.
-12. **CI passes**: All workflows green — `ci.yml` (fmt, clippy, test, build, sqlx-check, docs build, policy sync, commit lint), `release.yml` (binary builds, crates.io publish, GitHub Release, Homebrew update, docs deploy), `docs.yml` (mdBook deploy). All required GitHub secrets configured.
+12. **CI passes**: All workflows green per **actual** repo layout (`ci.yml`, `release.yml`, `openapi-conformance.yml`, site build jobs, etc.). *Superseded:* mdBook-specific `docs.yml`, crates.io publish step in `release.yml`, commit-lint job — only required if you add them back.
 
 ### User Acceptance Test
 

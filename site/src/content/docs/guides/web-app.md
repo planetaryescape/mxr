@@ -1,6 +1,6 @@
 ---
 title: Web app
-description: How the mxr web SPA is served, how it auto-authenticates on the local machine, and how to point it at a remote daemon.
+description: How the mxr web SPA is served, how it auto-authenticates on the local machine, and how to point it at a remote bridge.
 ---
 
 The mxr web app is a React SPA that talks to the daemon through the
@@ -19,7 +19,7 @@ mxr web
 ```
 
 `mxr web` starts or reopens the detached local bridge, opens your
-default browser to `http://127.0.0.1:42829`, then returns control to the
+default browser to `http://mxr.localhost:42829`, then returns control to the
 terminal. Run `mxr web` again to reopen it, or `mxr web stop` to stop
 the detached bridge. On the same machine the SPA auto-authenticates
 against the daemon — **no token paste prompt**.
@@ -55,8 +55,10 @@ In that mode the SPA falls back to a paste-token panel at
 
 ## Port behavior
 
-The bridge prefers port **42829**. On `EADDRINUSE` it walks up to the
-next free port (up to 32 attempts). The actual bound port is written
+The bridge uses port **42829** for the stable local URL. On `EADDRINUSE`
+it fails by default and prints best-effort process details for the
+listener using that port. Pass `--auto-port` to try the next free port
+(up to 32 attempts). The actual bound port is written
 to `<config_dir>/bridge-port` (`~/.config/mxr/bridge-port` on Linux,
 `~/Library/Application Support/mxr/bridge-port` on macOS) so:
 
@@ -68,9 +70,24 @@ Detached `mxr web` also records `<data_dir>/web.pid`,
 `<data_dir>/web.port`, and `<data_dir>/web.host` so later `mxr web`
 runs reopen the same process and `mxr web stop` can terminate it.
 
-Pass `mxr web --strict-port` to opt out of retries and fail fast.
+Port conflicts fail fast unless you pass `mxr web --auto-port`.
 
-## Remote-host mode
+## Remote access
+
+First-class public bridge hosting is reserved for a later TLS/auth design.
+For now, keep the bridge bound to loopback and reach it through a private
+tunnel.
+
+SSH tunnel example:
+
+```bash
+ssh -L 42829:127.0.0.1:42829 user@vps.example.com
+```
+
+Then open `http://mxr.localhost:42829` locally. Tailscale/WireGuard work
+too, but keep the bridge itself loopback-bound on the host running mxr.
+
+### Manual remote-host mode
 
 When the daemon runs on a VPS, open the browser pointed at it:
 
@@ -82,7 +99,8 @@ This **does not bind a local bridge**. It reads the per-host token from
 `~/.config/mxr/bridge-tokens/<host>.token` (mode 0600 — place it there
 yourself) and opens the browser to `https://<host>/#token=<token>`.
 
-Requirements on the remote side:
+This mode is for manually configured remote bridges only. Requirements on
+the remote side:
 
 - TLS termination (Caddy / nginx / Cloudflare). The bridge itself does
   not yet terminate TLS.
@@ -103,10 +121,26 @@ npm run dev
 
 Vite serves the SPA at `http://localhost:5173`, proxying `/api/*` and
 the WebSocket to the bridge. It discovers the bridge port via
-`<config_dir>/bridge-port`, so port retries on the daemon side just
-work — no manual reconfig.
+`<config_dir>/bridge-port`, so custom ports and `mxr web --auto-port`
+work without manual reconfig.
 
 Set `MXR_BRIDGE_URL=http://127.0.0.1:9000` to override.
+
+## Reader layout and links
+
+The web reader follows the same first-class email shortcuts as the TUI:
+`f` forwards the open message, while `F` toggles full reader layout.
+Full reader hides the mail list so the message takes the available
+reading width.
+
+Set the default from **Settings → Reader → Default reader layout**.
+This is a web preference, so it follows the browser profile rather than
+the daemon TOML config.
+
+When a thread was opened from the mail list, `Esc` closes the reader and
+returns focus to the list unless a row selection is active. Links in
+HTML, reader, and plain views are clickable; remote image loading is
+still controlled separately by the remote-images toggle.
 
 ## Comparing surfaces
 

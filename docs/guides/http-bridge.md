@@ -1,5 +1,8 @@
 # HTTP Bridge
 
+> **Audience:** contributors. This page is the **internal architecture + security model** for the bridge.
+> Canonical endpoint reference for users lives at [/reference/bridge](https://mxr.planetaryescape.dev/reference/bridge/) (source: `site/src/content/docs/reference/bridge.md`).
+
 `mxr daemon` exposes an HTTP/WebSocket surface so non-terminal clients —
 browser apps, mobile clients, agents, scripts — can drive the same
 mailbox the TUI and CLI do. As of **v0.5.0** this is a first-class,
@@ -12,18 +15,18 @@ supported API with an OpenAPI 3.1 spec.
 mxr daemon --foreground
 
 # Discover endpoints.
-curl http://127.0.0.1:42829/api/v1/openapi.json | jq .info
+curl http://mxr.localhost:42829/api/v1/openapi.json | jq .info
 
 # Liveness probe (no auth needed).
-curl http://127.0.0.1:42829/api/v1/health
+curl http://mxr.localhost:42829/api/v1/health
 
 # Anything else needs the bearer token.
 TOKEN="$(cat ~/.config/mxr/bridge-token)"
 curl -H "Authorization: Bearer $TOKEN" \
-     http://127.0.0.1:42829/api/v1/admin/status
+     http://mxr.localhost:42829/api/v1/admin/status
 
 # Interactive docs.
-open http://127.0.0.1:42829/api/v1/docs
+open http://mxr.localhost:42829/api/v1/docs
 ```
 
 ## Architecture
@@ -43,7 +46,7 @@ Configurable via `~/.config/mxr/config.toml`:
 [bridge]
 enabled = true                      # default true
 bind = "127.0.0.1"
-port = 42829                        # default; bridge walks up on EADDRINUSE
+port = 42829                        # stable local web URL port
 cors_allowlist = []                 # additive to localhost defaults
 host_allowlist = []                 # additive to loopback (only honoured on non-loopback binds)
 auto_local_token = true             # let loopback callers auto-fetch the token (see below)
@@ -58,16 +61,19 @@ mxr daemon --bridge-port 8080       # override port
 mxr web                             # start/reopen detached bridge and open browser
 mxr web stop                        # stop the detached bridge
 mxr web --foreground                # debug the bridge in the current terminal
-mxr web --port 9000 --strict-port   # for `mxr web` only: fail instead of retrying on port-in-use
+mxr web --port 9000                 # use a different fixed local port
+mxr web --auto-port                 # try the next free port on conflict
 ```
 
-**Port retry.** The daemon-managed bridge and `mxr web` both retry the
-next available port on EADDRINUSE (up to 32 ports). The actual bound
-port is written to `<config_dir>/bridge-port` so clients (the Vite dev
-proxy, scripts) can discover it. Detached `mxr web` also writes
+**Port behavior.** The bridge uses a fixed local URL by default:
+`http://mxr.localhost:42829`. Port conflicts fail fast so users know how
+to get back home. Pass `mxr web --auto-port` to try the next available
+port (up to 32 ports). The actual bound port is written to
+`<config_dir>/bridge-port` so clients (the Vite dev proxy, scripts) can
+discover it. Detached `mxr web` also writes
 `<data_dir>/web.pid`, `<data_dir>/web.port`, and `<data_dir>/web.host`
 so `mxr web` can reopen the running bridge and `mxr web stop` can stop
-it. Pass `--strict-port` to `mxr web` to opt out and fail instead.
+it.
 
 ## Authentication
 
@@ -161,21 +167,21 @@ TOKEN="$(cat ~/.config/mxr/bridge-token)"
 
 # List inbox threads
 curl -H "Authorization: Bearer $TOKEN" \
-     "http://127.0.0.1:42829/api/v1/mail/mailbox?lens_kind=inbox&limit=10"
+     "http://mxr.localhost:42829/api/v1/mail/mailbox?lens_kind=inbox&limit=10"
 
 # Trigger a sync
 curl -X POST -H "Authorization: Bearer $TOKEN" \
-     http://127.0.0.1:42829/api/v1/mail/sync
+     http://mxr.localhost:42829/api/v1/mail/sync
 
 # Tail events with curl + a websocket client (websocat)
-websocat "ws://127.0.0.1:42829/api/v1/events?token=$TOKEN"
+websocat "ws://mxr.localhost:42829/api/v1/events?token=$TOKEN"
 ```
 
 ### Browser fetch
 
 ```js
 const TOKEN = await loadBridgeToken();
-const res = await fetch("http://127.0.0.1:42829/api/v1/admin/status", {
+const res = await fetch("http://mxr.localhost:42829/api/v1/admin/status", {
   headers: { Authorization: `Bearer ${TOKEN}` },
 });
 ```
@@ -184,7 +190,7 @@ const res = await fetch("http://127.0.0.1:42829/api/v1/admin/status", {
 
 ```js
 const ws = new WebSocket(
-  "ws://127.0.0.1:42829/api/v1/events",
+  "ws://mxr.localhost:42829/api/v1/events",
   ["bearer", TOKEN],
 );
 ```
@@ -197,7 +203,7 @@ The bridge ships an OpenAPI 3.1 spec. Any language with an
 ```bash
 # TypeScript fetch client
 npx openapi-typescript \
-  http://127.0.0.1:42829/api/v1/openapi.json \
+  http://mxr.localhost:42829/api/v1/openapi.json \
   -o src/api.ts
 
 # Or with the dump example (no running daemon needed):
@@ -205,22 +211,34 @@ cargo run --quiet --example dump_openapi_spec -p mxr-web > spec.json
 npx openapi-typescript spec.json -o src/api.ts
 ```
 
-## Remote-host mode
+## Remote access
 
-Use remote-host mode when the daemon runs on another machine, such as a
-VPS, and the browser runs on your laptop:
+First-class public bridge hosting is reserved for a later TLS/auth design.
+For now, keep the bridge loopback-bound and reach it through SSH,
+Tailscale, or WireGuard.
+
+SSH tunnel example:
+
+```bash
+ssh -L 42829:127.0.0.1:42829 user@vps.example.com
+```
+
+Then open `http://mxr.localhost:42829` on your laptop.
+
+Manual remote-host mode exists for operators who have already configured
+a public reverse proxy and token distribution:
 
 ```bash
 mxr web --remote-host mxr.example.com
 ```
 
-Requirements:
+Requirements for manual remote-host mode:
 
-- Terminate TLS in front of the daemon with Caddy, nginx, Cloudflare, or
+- Terminate TLS in front of the bridge with Caddy, nginx, Cloudflare, or
   equivalent. Remote non-loopback access should use `https://`.
 - Configure `[bridge]` `cors_allowlist` and `host_allowlist` for the
   public origin/host you expose.
-- Copy the remote daemon's bridge token to the client machine at
+- Copy the remote bridge token to the client machine at
   `~/.config/mxr/bridge-tokens/<host>.token` with mode `0600`.
 
 `mxr web --remote-host mxr.example.com` reads that per-host token, opens
@@ -236,12 +254,12 @@ defends with three layers:
 
 1. **Bearer auth required everywhere** (except `/health`) — even on
    loopback. A page without the token can't do anything useful.
-2. **Host-header allowlist** — `localhost`, `127.0.0.1`, `[::1]` are
-   always allowed; everything else returns 403. Mismatches are how DNS
-   rebinding requests look from the server's side.
+2. **Host-header allowlist** — `localhost`, `mxr.localhost`, `127.0.0.1`,
+   `[::1]` are always allowed; everything else returns 403. Mismatches
+   are how DNS rebinding requests look from the server's side.
 3. **CORS allowlist** — only loopback origins by default
-   (`http://localhost:*`, `https://localhost:*`). Cross-origin requests
-   from other domains get rejected at the preflight.
+   (`http://localhost:*`, `http://mxr.localhost:*`, and HTTPS forms).
+   Cross-origin requests from other domains get rejected at the preflight.
 
 Non-loopback binds (`bind = "0.0.0.0"`) are refused at startup unless
 TLS termination is configured (deferred — see "Out of scope" below).

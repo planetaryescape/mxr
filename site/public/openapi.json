@@ -253,6 +253,36 @@
         }
       }
     },
+    "/api/v1/mail/commitments": {
+      "get": {
+        "tags": [],
+        "summary": "List detected commitments",
+        "operationId": "mail_commitments_list",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/commitments/{commitment_id}/resolve": {
+      "post": {
+        "tags": [],
+        "summary": "Resolve a commitment",
+        "operationId": "mail_commitments_resolve",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/compose/session": {
       "post": {
         "tags": [],
@@ -403,6 +433,156 @@
         }
       }
     },
+    "/api/v1/mail/drafts/new": {
+      "post": {
+        "tags": [],
+        "summary": "Start a new LLM-backed draft",
+        "operationId": "mail_draft_new",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/drafts/orphaned": {
+      "get": {
+        "tags": [],
+        "summary": "List orphaned mid-send drafts",
+        "operationId": "mail_drafts_orphaned_list",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/drafts/refine": {
+      "post": {
+        "tags": [],
+        "summary": "Refine draft text with LLM",
+        "operationId": "mail_draft_refine",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/drafts/save-local": {
+      "post": {
+        "tags": [],
+        "summary": "Persist draft locally (SaveDraft)",
+        "operationId": "mail_drafts_save_local",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/drafts/{draft_id}/reset-orphan": {
+      "post": {
+        "tags": [],
+        "summary": "Reset orphaned sending draft",
+        "operationId": "mail_drafts_reset_orphan",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/drafts/{draft_id}/send-stored": {
+      "post": {
+        "tags": [],
+        "summary": "Send stored draft by id",
+        "operationId": "mail_drafts_send_stored",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/drafts/{draft_id}/stored": {
+      "delete": {
+        "tags": [],
+        "summary": "Delete stored draft",
+        "operationId": "mail_drafts_delete_stored",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/export-search": {
+      "post": {
+        "tags": [],
+        "summary": "Export all threads matching a search",
+        "operationId": "mail_export_search",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/humanizer/rewrite": {
+      "post": {
+        "tags": [],
+        "summary": "Rewrite draft toward target voice",
+        "operationId": "mail_humanizer_rewrite",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/humanizer/score": {
+      "post": {
+        "tags": [],
+        "summary": "Score draft for human-like voice",
+        "operationId": "mail_humanizer_score",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/labels/create": {
       "post": {
         "tags": [],
@@ -453,6 +633,66 @@
         "tags": [],
         "summary": "Mailbox view",
         "operationId": "mail_mailbox",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/messages/{message_id}/body": {
+      "get": {
+        "tags": [],
+        "summary": "Get message body (IPC GetBody)",
+        "operationId": "mail_message_body",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/messages/{message_id}/flags": {
+      "post": {
+        "tags": [],
+        "summary": "Set message flags bitmask",
+        "operationId": "mail_message_set_flags",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/messages/{message_id}/headers": {
+      "get": {
+        "tags": [],
+        "summary": "Raw RFC headers",
+        "operationId": "mail_message_raw_headers",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/messages/{message_id}/html-images": {
+      "get": {
+        "tags": [],
+        "summary": "List HTML-linked image assets",
+        "operationId": "mail_message_html_images",
         "responses": {
           "200": {
             "description": "OK"
@@ -588,6 +828,36 @@
         "tags": [],
         "summary": "Undo a recent mutation",
         "operationId": "mutation_undo",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/relationship": {
+      "get": {
+        "tags": [],
+        "summary": "Relationship profile for a contact",
+        "operationId": "mail_relationship_profile",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/relationship/rebuild": {
+      "post": {
+        "tags": [],
+        "summary": "Rebuild relationship analytics",
+        "operationId": "mail_relationship_rebuild",
         "responses": {
           "200": {
             "description": "OK"
@@ -764,6 +1034,109 @@
         "tags": [],
         "summary": "Sender profile",
         "operationId": "sender_profile",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/signature-defaults": {
+      "get": {
+        "tags": [],
+        "summary": "List signature defaults",
+        "operationId": "mail_signature_defaults_list",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/signatures": {
+      "get": {
+        "tags": [],
+        "summary": "List signatures",
+        "operationId": "mail_signatures_list",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Create or update signature",
+        "operationId": "mail_signatures_upsert",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/signatures/default": {
+      "post": {
+        "tags": [],
+        "summary": "Set default signature",
+        "operationId": "mail_signature_default_set",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/signatures/default/clear": {
+      "post": {
+        "tags": [],
+        "summary": "Clear default signature",
+        "operationId": "mail_signature_default_clear",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/signatures/resolve": {
+      "post": {
+        "tags": [],
+        "summary": "Resolve signature for compose",
+        "operationId": "mail_signature_resolve",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/signatures/{name}": {
+      "delete": {
+        "tags": [],
+        "summary": "Delete signature",
+        "operationId": "mail_signatures_delete",
         "responses": {
           "200": {
             "description": "OK"
@@ -967,6 +1340,21 @@
         }
       }
     },
+    "/api/v1/platform/accounts/authorize": {
+      "post": {
+        "tags": [],
+        "summary": "Authorize or re-authorize account config",
+        "operationId": "platform_accounts_authorize",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/platform/accounts/config": {
       "get": {
         "tags": [],
@@ -987,6 +1375,21 @@
         "tags": [],
         "summary": "Set default account",
         "operationId": "account_set_default",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/accounts/repair": {
+      "post": {
+        "tags": [],
+        "summary": "Repair account credentials in keychain",
+        "operationId": "platform_accounts_repair",
         "responses": {
           "200": {
             "description": "OK"
@@ -1533,6 +1936,21 @@
         }
       }
     },
+    "/api/v1/platform/semantic/backfill": {
+      "post": {
+        "tags": [],
+        "summary": "Backfill semantic chunks",
+        "operationId": "semantic_backfill",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/platform/semantic/enable": {
       "post": {
         "tags": [],
@@ -1613,6 +2031,36 @@
         "tags": [],
         "summary": "List subscriptions",
         "operationId": "subscriptions_list",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/voice": {
+      "get": {
+        "tags": [],
+        "summary": "User voice profile for drafting",
+        "operationId": "platform_voice_get",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/voice/rebuild": {
+      "post": {
+        "tags": [],
+        "summary": "Rebuild user voice profile from sent mail",
+        "operationId": "platform_voice_rebuild",
         "responses": {
           "200": {
             "description": "OK"
@@ -3160,7 +3608,17 @@
             "format": "int32",
             "minimum": 0
           },
+          "messages_missing_semantic_chunks": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
           "messages_with_attachments": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "relationship_drifts": {
             "type": "integer",
             "format": "int32",
             "minimum": 0
@@ -3181,6 +3639,11 @@
             "minimum": 0
           },
           "semantic_chunks": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "semantic_chunks_missing_embeddings": {
             "type": "integer",
             "format": "int32",
             "minimum": 0
@@ -3341,6 +3804,16 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          },
+          "feature_health": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FeatureHealthReport"
+              }
+            ]
           },
           "findings": {
             "type": "array",
@@ -3532,6 +4005,37 @@
         "type": "string",
         "format": "uuid"
       },
+      "DraftLengthHintData": {
+        "type": "string",
+        "enum": [
+          "short",
+          "medium",
+          "long"
+        ]
+      },
+      "DraftRefineKnobsData": {
+        "type": "object",
+        "properties": {
+          "add_context": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "less_emoji": {
+            "type": "boolean"
+          },
+          "more_formal": {
+            "type": "boolean"
+          },
+          "shorter": {
+            "type": "boolean"
+          },
+          "warmer": {
+            "type": "boolean"
+          }
+        }
+      },
       "Envelope": {
         "type": "object",
         "required": [
@@ -3700,6 +4204,91 @@
           "Mbox",
           "LlmContext"
         ]
+      },
+      "FeatureHealth": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "healthy"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "reason",
+              "status"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "degraded"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "disabled"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "FeatureHealthReport": {
+        "type": "object",
+        "required": [
+          "semantic",
+          "summarize",
+          "relationship_profile",
+          "commitments",
+          "draft_assist",
+          "voice_match",
+          "humanizer"
+        ],
+        "properties": {
+          "commitments": {
+            "$ref": "#/components/schemas/FeatureHealth"
+          },
+          "draft_assist": {
+            "$ref": "#/components/schemas/FeatureHealth"
+          },
+          "humanizer": {
+            "$ref": "#/components/schemas/FeatureHealth"
+          },
+          "relationship_profile": {
+            "$ref": "#/components/schemas/FeatureHealth"
+          },
+          "semantic": {
+            "$ref": "#/components/schemas/FeatureHealth"
+          },
+          "summarize": {
+            "$ref": "#/components/schemas/FeatureHealth"
+          },
+          "voice_match": {
+            "$ref": "#/components/schemas/FeatureHealth"
+          }
+        }
       },
       "ForwardContext": {
         "type": "object",
@@ -4412,6 +5001,22 @@
           }
         }
       },
+      "RelationshipDriftData": {
+        "type": "object",
+        "required": [
+          "detected_at",
+          "reason"
+        ],
+        "properties": {
+          "detected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
       "RelationshipProfileData": {
         "type": "object",
         "required": [
@@ -4421,6 +5026,16 @@
         "properties": {
           "account_id": {
             "$ref": "#/components/schemas/AccountId"
+          },
+          "drift": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RelationshipDriftData"
+              }
+            ]
           },
           "email": {
             "type": "string"
@@ -5826,6 +6441,20 @@
           {
             "type": "object",
             "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "BackfillSemantic"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "name",
               "query",
               "search_mode",
@@ -7007,6 +7636,74 @@
               },
               "thread_id": {
                 "$ref": "#/components/schemas/ThreadId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "account_id",
+              "to",
+              "purpose",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DraftNew"
+                ]
+              },
+              "length_hint": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DraftLengthHintData"
+                  }
+                ]
+              },
+              "purpose": {
+                "type": "string"
+              },
+              "register": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VoiceRegisterData"
+                  }
+                ]
+              },
+              "to": {
+                "$ref": "#/components/schemas/Address"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "draft_id",
+              "knobs",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DraftRefine"
+                ]
+              },
+              "draft_id": {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              "knobs": {
+                "$ref": "#/components/schemas/DraftRefineKnobsData"
               }
             }
           },
@@ -8774,6 +9471,16 @@
                 "type": [
                   "string",
                   "null"
+                ]
+              },
+              "feature_health": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FeatureHealthReport"
+                  }
                 ]
               },
               "kind": {

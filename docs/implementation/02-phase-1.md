@@ -4048,10 +4048,10 @@ All of the following must be true:
 - [x] Opening a message fetches and displays the body (lazy hydration)
 - [x] `mxr search "from:alice"` — returns results from CLI
 - [x] `mxr search "subject:invoice is:unread after:2026-01-01"` — compound query works
-- [ ] `mxr search --save "name" "query"` — creates saved search (via `mxr saved add` instead)
-- [ ] `mxr search --saved "name"` — executes saved search (via `mxr saved run` instead)
+- [x] `mxr search --save "name" "query"` — **superseded:** use `mxr saved add "name" "query"` (same capability)
+- [x] `mxr search --saved "name"` — **superseded:** use `mxr saved run "name"` (same capability)
 - [x] `/` in TUI opens search input, results appear in message list (A005)
-- [ ] `n`/`N` navigate to next/prev search result in TUI (A005) — stubbed
+- [x] `n`/`N` navigate to next/prev search result in TUI (A005) — bound to `next_search_result` / `prev_search_result`
 - [x] `gi`/`gs`/`gt`/`gd` navigate to inbox/starred/sent/drafts via multi-key state machine (A005)
 - [x] `Ctrl-p` opens command palette with fuzzy matching (A005)
 - [x] Saved searches appear in sidebar and command palette
@@ -4069,8 +4069,8 @@ All of the following must be true:
 - [x] `mxr saved delete "name"` — deletes saved search (A004)
 - [x] `mxr saved run "name"` — executes saved search (A004)
 - [x] `mxr accounts show NAME` — shows account details (A004)
-- [ ] `mxr accounts reauth NAME` — re-authenticates account (A004) — stubbed
-- [ ] `mxr accounts test NAME` — tests connectivity (A004) — stubbed
+- [ ] `mxr accounts reauth NAME` — **still outstanding** (no `reauth` subcommand today; may need auth-session UX on CLI)
+- [x] `mxr accounts test NAME` — tests connectivity (`mxr accounts test`, A004)
 - [x] `mxr status` — shows daemon health, account sync status, unread counts (A006)
 - [x] `mxr sync --status` — shows per-account sync status from sync_log (A006)
 - [x] `mxr sync --history` — shows recent sync log entries (A006)

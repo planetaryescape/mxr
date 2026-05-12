@@ -127,24 +127,27 @@ apps/web/
   Web {
       #[arg(long, default_value = "127.0.0.1")]
       host: String,
-      #[arg(long, default_value_t = 7777)]
+      #[arg(long, default_value_t = 42829)]
       port: u16,
       #[arg(long)]
       print_url: bool,
       /// Do not open the system browser; just print the URL.
       #[arg(long)]
       no_open: bool,
-      /// Open the browser pointed at a remote daemon instead of binding locally.
+      /// Try the next available port if the fixed local URL port is busy.
+      #[arg(long)]
+      auto_port: bool,
+      /// Open the browser pointed at a manually configured remote bridge.
       /// Use this when the daemon runs on a VPS or remote host with TLS terminated.
       /// Format: hostname[:port], e.g. `mxr.example.com` or `mxr.example.com:443`.
       #[arg(long, value_name = "HOST")]
       remote_host: Option<String>,
   },
   ```
-- `crates/daemon/src/commands/web.rs` — rewrite to:
+- `crates/daemon/src/commands/web.rs` — implement:
   - If `--remote-host` is set: read token from `~/.config/mxr/bridge-tokens/<host>.token` (mode 0600, create dir as needed), open browser to `https://<host>/#token=<token>` (assume TLS), print URL, exit.
-  - Else (local): persist token via `mxr_config::read_or_create_bridge_token()`, bind listener, set `MXR_WEB_BRIDGE_TOKEN` env var? — actually the bridge config takes the token directly via `WebServerConfig::new`. Pass it in.
-  - Open browser to `http://<host>:<port>/#token=<token>` unless `--no_open` or `--print_url`.
+  - Else (local): reuse the daemon-managed bridge when healthy; otherwise persist token via `mxr_config::read_or_create_bridge_token()` and bind a detached/foreground listener.
+  - Open browser to `http://mxr.localhost:<port>` unless `--no_open` or `--print_url`; local token bootstrap happens through `/api/v1/auth/local-token`.
   - Honor `MXR_BRIDGE_BIND` and other config knobs already in `[bridge]`.
 - `crates/web/Cargo.toml` — add:
   ```toml
@@ -222,7 +225,7 @@ const token = getToken();
 4. `npm run lint` — green.
 5. `npm run build` — produces `apps/web/dist/` with sourcemaps.
 6. `cargo build --features web-ui --release` — produces a binary that includes the SPA.
-7. `./target/release/mxr daemon --foreground` in one terminal; `./target/release/mxr web` in another → browser opens to `http://127.0.0.1:7777/#token=...`, `/dev` smoke check shows daemon status.
+7. `./target/release/mxr daemon --foreground` in one terminal; `./target/release/mxr web` in another → browser opens to `http://mxr.localhost:42829`, `/dev` smoke check shows daemon status.
 8. `./target/release/mxr web --no-open` → just prints URL, doesn't open browser.
 9. Token persistence: kill `mxr daemon`, restart it, run `mxr web` again → SPA reauthenticates without prompting.
 10. Refresh the SPA → token persists from localStorage; the app boots without re-paste.
@@ -238,7 +241,7 @@ const token = getToken();
 
 (To be appended as work proceeds.)
 
-- 2026-05-10 — Default port 7777 (matches existing config defaults). `--port 0` for ephemeral test bridges.
+- 2026-05-10 — Initial implementation used port 7777. Current default is 42829, with `--port 0` for ephemeral test bridges.
 - 2026-05-10 — Token file at `~/.config/mxr/bridge-token`. Per-host remote tokens at `~/.config/mxr/bridge-tokens/<host>.token`. All mode 0600.
 - 2026-05-10 — `web-ui` cargo feature is **default-on** in the root binary so the standard release builds ship with the SPA. Packagers who want a smaller binary use `cargo build --no-default-features --features semantic-local`.
 - 2026-05-10 — Use `tower-http`'s `ServeDir` is not viable since we have an embedded fs; we serve files manually from `include_dir!()` returning `Bytes` with mime via `mime_guess`. Index fallback for any non-API path returns `index.html` to support TSR client-side routing.

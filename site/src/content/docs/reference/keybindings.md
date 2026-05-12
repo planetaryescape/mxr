@@ -1,6 +1,6 @@
 ---
 title: Keybindings
-description: Default keybindings for the mxr TUI.
+description: Default keybindings for the mxr TUI and web app.
 ---
 
 :::tip[The 10 keys that get you 80% of mxr]
@@ -53,7 +53,7 @@ The Analytics screen has no default digit key; open it via `Ctrl-p` → "Analyti
 | `zz` | Center current item |
 | `Enter` / `o` | Open selected row |
 | `Tab` | Switch pane |
-| `F` | Toggle fullscreen |
+| `F` | Toggle fullscreen / full reader layout |
 | `/` | Open full-index Search |
 | `Ctrl-f` | Filter current mailbox only |
 | `n` / `N` | Next / previous search result |
@@ -131,6 +131,7 @@ The Analytics screen has no default digit key; open it via `Ctrl-p` → "Analyti
 | `O` | Open in browser |
 | `A` | Open attachment modal |
 | `L` | Open links modal (jump to any URL in the body) |
+| `F` | Toggle fullscreen / full reader layout |
 | `r` | Reply |
 | `a` | Reply all |
 | `f` | Forward |
@@ -156,6 +157,7 @@ The Analytics screen has no default digit key; open it via `Ctrl-p` → "Analyti
 | `f` | Forward focused message |
 | `A` | Open attachment modal |
 | `L` | Open links modal |
+| `F` | Toggle fullscreen / full reader layout |
 | `R` | Toggle reader mode |
 | `H` | Toggle HTML view |
 | `M` | Toggle remote content |

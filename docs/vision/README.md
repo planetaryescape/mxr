@@ -11,6 +11,7 @@ This directory holds the long-arc product plan for taking mxr from "well-built o
 | [phase-2-triage.md](./phase-2-triage.md) | Tracker for Phase 2 (Triage that scales) — reply-later walk, custom snooze, auto-reminders, send-later, screener, bulk unsubscribe. |
 | [phase-3-sender-as-unit.md](./phase-3-sender-as-unit.md) | Tracker for Phase 3 (the unique bet) — snippets, sender view, LLM provider trait, thread summarize, draft assist. |
 | [phase-4-onboarding.md](./phase-4-onboarding.md) | Tracker for Phase 4 (Onboarding & resilience) — crash-safe drafts, doctor 2.0, setup wizard. |
+| [ai-email/](./ai-email/) | Comprehensive roadmap for useful AI email features: pre-send safety, commitments, archive intelligence, timing, briefings, and collaboration suggestions. |
 
 ## Status
 

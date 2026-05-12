@@ -36,7 +36,7 @@ The canonical plan lives at `docs/vision/01-delight-plan.md`. Per-phase trackers
 | 4.2 Doctor 2.0 | ✅ structured findings + CLI/TUI/desktop render | DoctorFinding with category/severity/remediation classifier |
 | 4.3 Setup wizard | ✅ demo + quick-start + desktop affordance | `mxr setup --demo` writes Fake account; quick-start guidance; desktop palette/onboarding points users to demo setup |
 
-### Pending parity work (this is the current ask)
+### Remaining/deferred parity work
 
 For each feature, parity = surfaced in TUI, CLI, HTTP-bridge, and desktop app where applicable.
 
@@ -44,18 +44,18 @@ For each feature, parity = surfaced in TUI, CLI, HTTP-bridge, and desktop app wh
 
 - ~~Reply-later walk mode (CLI walk also TBD)~~ ✅ `mxr replies walk` implemented (2026-05-12)
 - Sender view full-screen page (`Screen::SenderProfile`) — intentionally deferred; current modal stays
-- Screener queue page + 3-key disposition
-- Snippet manager modal
-- Summarize/draft-assist invocation from thread view
-- Setup wizard TUI screen
-- Custom-snooze modal "Custom..." entry
+- ~~Screener queue page + 3-key disposition~~ ✅ modal with `a`/`d`/`f`/`p` disposition keys (2026-05-08)
+- ~~Snippet manager modal~~ ✅ read-only snippets browser modal (2026-05-08)
+- ~~Summarize/draft-assist invocation from thread view~~ ✅ summarize modal wired; draft-assist remains desktop/CLI-led (2026-05-08)
+- ~~Setup wizard TUI screen~~ ✅ welcome modal with demo/Gmail/IMAP setup shortcuts (2026-05-08)
+- ~~Custom-snooze modal "Custom..." entry~~ ✅ same parser as `mxr snooze --until` (2026-05-08)
 - ~~Visual saved-search tab strip~~ ✅ TUI saved-search tab strip added (2026-05-12)
-- Render integration: `format_subject_line` / `format_attachment_chip` in `build_row`
-- Live heartbeat plumbing in compose flow
+- ~~Render integration: `format_subject_line` / `format_attachment_chip` in `build_row`~~ ✅ subject/snippet + attachment chip integrated (2026-05-08)
+- ~~Live heartbeat plumbing in compose flow~~ ✅ heartbeat wired in stored draft send path (2026-05-08)
 - ~~Optimistic visual indicator on flagged rows (currently just a status message)~~ ✅ pending mutation row marker added (2026-05-12)
-- Doctor findings rendering in TUI diagnostics page
+- ~~Doctor findings rendering in TUI diagnostics page~~ ✅ status pane renders findings/remediation (2026-05-08)
 
-**HTTP bridge gaps**
+**HTTP bridge status**
 
 - New routes for ~15 IPC types added in this arc:
   - `SetReplyLater`, `ListReplyQueue`
@@ -81,8 +81,8 @@ For each feature, parity = surfaced in TUI, CLI, HTTP-bridge, and desktop app wh
 
 **Persistence/UX**
 
-- Persist `recent_actions` for the command palette across daemon restarts (currently in-memory in TUI)
-- Hint bar slim down (currently shows everything; should be top-5 contextual)
+- ~~Persist `recent_actions` for the command palette across daemon restarts (currently in-memory in TUI)~~ ✅ persisted via TUI local state (2026-05-08)
+- ~~Hint bar slim down (currently shows everything; should be top-5 contextual)~~ ✅ capped to top-5 contextual hints (2026-05-08)
 
 ## How the build works
 

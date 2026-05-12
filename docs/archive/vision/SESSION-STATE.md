@@ -63,10 +63,10 @@ For each delight-plan feature, a ✅/⏳/◯ in each surface column. ✅ = fully
 ## Outstanding work plan (this session)
 
 1. **Investigate + fix cli_journey flake.** Likely fix in `run_startup_maintenance` — make it spawn rather than block.
-2. **Update docs site (`site/src/content/docs/`)** with new CLI commands + new reference pages.
-3. **HTTP bridge parity** — audit how routes are defined; add the missing IPC routes.
-4. **TUI parity** — add Action variants + handlers + keybindings + palette entries for the new features. Don't rebuild every UI; use the command palette as the primary surface.
-5. **Desktop app TS regeneration** — confirm the codegen path; regen if straightforward.
+2. ~~**Update docs site (`site/src/content/docs/`)** with new CLI commands + new reference pages.~~ ✅ Completed 2026-05-08.
+3. **HTTP bridge parity** — audit how routes are defined; add the missing IPC routes. Existing parity routes are used by desktop follow-up/send-later surfaces; full audit remains.
+4. ~~**TUI parity** — add Action variants + handlers + keybindings + palette entries for the new features. Don't rebuild every UI; use the command palette as the primary surface.~~ ✅ Modal/browser parity landed 2026-05-08; saved-search tab strip + pending row marker landed 2026-05-12. Sender full-screen rewrite remains intentionally deferred.
+5. ~~**Desktop app TS regeneration** — confirm the codegen path; regen if straightforward.~~ ✅ Desktop surfaces/types updated for the new bridge usage 2026-05-12.
 
 Each item has its own section below as I work on it.
 

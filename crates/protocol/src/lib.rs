@@ -1219,6 +1219,106 @@ mod tests {
         }
     }
 
+    #[test]
+    fn check_draft_safety_request_roundtrip() {
+        use mxr_core::types::{
+            Address, CitationRef, Draft, DraftIntent, DraftSafetyIssue, DraftSafetyIssueCode,
+            DraftSafetyReport, DraftSafetySeverity, DraftSafetyVerdict,
+        };
+        use std::path::PathBuf;
+
+        let draft = Draft {
+            id: DraftId::new(),
+            account_id: AccountId::new(),
+            reply_headers: None,
+            intent: DraftIntent::Reply,
+            to: vec![Address {
+                email: "alice@example.com".into(),
+                name: None,
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "see attached".into(),
+            body_markdown: "yo".into(),
+            attachments: Vec::<PathBuf>::new(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let req = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::CheckDraftSafety {
+                draft: draft.clone(),
+                context: DraftSafetyContextData {
+                    mode: DraftSafetyModeData::Check,
+                    reply_all: true,
+                    original_message_id: None,
+                    thread_id: None,
+                    allow_llm: false,
+                },
+            }),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let parsed: IpcMessage = serde_json::from_str(&json).unwrap();
+        match parsed.payload {
+            IpcPayload::Request(Request::CheckDraftSafety { context, .. }) => {
+                assert_eq!(context.mode, DraftSafetyModeData::Check);
+                assert!(context.reply_all);
+                assert!(!context.allow_llm);
+            }
+            other => panic!("unexpected payload: {other:?}"),
+        }
+
+        // Response shape with citations + override token round-trips losslessly.
+        let report = DraftSafetyReport {
+            allowed: false,
+            verdict: DraftSafetyVerdict::Blocked,
+            checked_at: Some(chrono::Utc::now()),
+            issues: vec![
+                DraftSafetyIssue::new(
+                    DraftSafetyIssueCode::PiiSecret,
+                    DraftSafetySeverity::Blocker,
+                    "PEM private key detected",
+                )
+                .with_detail("redacted")
+                .with_citations(vec![CitationRef {
+                    message_id: Some("msg-1".into()),
+                    thread_id: None,
+                    field: "body".into(),
+                    quote: "redacted".into(),
+                }]),
+            ],
+        };
+        let resp = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Response(Response::Ok {
+                data: ResponseData::DraftSafetyReportResponse {
+                    report: report.clone(),
+                },
+            }),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        // PII redacted preview was set; raw secret bytes never appeared
+        // in this test fixture, so guard against accidental future
+        // regression that surfaces them.
+        assert!(!json.contains("BEGIN PRIVATE KEY"));
+        let parsed: IpcMessage = serde_json::from_str(&json).unwrap();
+        match parsed.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::DraftSafetyReportResponse { report: r2 },
+            }) => {
+                assert_eq!(r2.allowed, false);
+                assert!(matches!(r2.verdict, DraftSafetyVerdict::Blocked));
+                assert_eq!(r2.issues.len(), 1);
+                assert_eq!(r2.issues[0].citations.len(), 1);
+                assert_eq!(
+                    r2.issues[0].citations[0].message_id.as_deref(),
+                    Some("msg-1")
+                );
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
     proptest! {
         #[test]
         fn search_ipc_message_serde_roundtrip(

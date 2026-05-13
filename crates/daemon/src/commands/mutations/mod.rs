@@ -4,8 +4,8 @@ mod helpers;
 
 pub use attachments::{attachments_download, attachments_list, attachments_open};
 pub use compose::{
-    cancel_scheduled_send, compose, drafts, drafts_discard, drafts_recover, drafts_resume, forward,
-    reply, reply_all, schedule_send, send_draft, ComposeOptions,
+    cancel_scheduled_send, check_send, compose, drafts, drafts_discard, drafts_recover,
+    drafts_resume, forward, reply, reply_all, schedule_send, send_draft, ComposeOptions,
 };
 
 /// CLI surface for `mxr undo <mutation_id>`.

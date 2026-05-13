@@ -630,6 +630,87 @@ pub async fn send_draft(
     Ok(())
 }
 
+/// Run `mxr send <draft-id> --check`. Loads the draft from the daemon
+/// and submits it through the safety pipeline without sending. Exits
+/// non-zero when at least one Blocker issue is present.
+pub async fn check_send(draft_id: String, format: Option<OutputFormat>) -> anyhow::Result<()> {
+    let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
+    let mut client = IpcClient::connect().await?;
+    let resp = client.request(Request::ListDrafts).await?;
+    let drafts = match resp {
+        Response::Ok {
+            data: ResponseData::Drafts { drafts },
+        } => drafts,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response listing drafts"),
+    };
+    let draft = drafts
+        .into_iter()
+        .find(|d| d.id == draft_id)
+        .ok_or_else(|| anyhow::anyhow!("Draft not found: {draft_id}"))?;
+
+    let context = DraftSafetyContextData {
+        mode: DraftSafetyModeData::Check,
+        reply_all: matches!(draft.intent, mxr_core::DraftIntent::ReplyAll),
+        original_message_id: None,
+        thread_id: None,
+        allow_llm: false,
+    };
+    let resp = client
+        .request(Request::CheckDraftSafety {
+            draft: draft.clone(),
+            context,
+        })
+        .await?;
+    let report = match resp {
+        Response::Ok {
+            data: ResponseData::DraftSafetyReportResponse { report },
+        } => report,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response from CheckDraftSafety"),
+    };
+
+    let resolved = resolve_format(format);
+    if matches!(resolved, OutputFormat::Json) {
+        let json = serde_json::to_string_pretty(&report)?;
+        println!("{json}");
+    } else if matches!(resolved, OutputFormat::Jsonl) {
+        let lines = jsonl(std::slice::from_ref(&report))?;
+        print!("{lines}");
+    } else {
+        print_safety_report_table(&draft, &report);
+    }
+
+    if !report.allowed {
+        std::process::exit(2);
+    }
+    Ok(())
+}
+
+fn print_safety_report_table(draft: &Draft, report: &mxr_core::DraftSafetyReport) {
+    let verdict = match report.verdict {
+        mxr_core::DraftSafetyVerdict::Safe => "SAFE",
+        mxr_core::DraftSafetyVerdict::Warn => "WARN",
+        mxr_core::DraftSafetyVerdict::Blocked => "BLOCKED",
+    };
+    println!("Draft {} → {}", draft.id, verdict);
+    if report.issues.is_empty() {
+        println!("  no issues");
+        return;
+    }
+    for issue in &report.issues {
+        let sev = match issue.severity {
+            mxr_core::DraftSafetySeverity::Info => "info",
+            mxr_core::DraftSafetySeverity::Warning => "warn",
+            mxr_core::DraftSafetySeverity::Blocker => "BLOCK",
+        };
+        println!("  [{sev}] {:?}: {}", issue.code, issue.message);
+        if let Some(detail) = &issue.detail {
+            println!("        {}", detail);
+        }
+    }
+}
+
 pub async fn schedule_send(draft_id: String, when: String) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let send_at = mxr_core::parse_relative_time(&when, chrono::Utc::now()).map_err(|e| {

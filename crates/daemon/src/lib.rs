@@ -620,11 +620,17 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             dry_run,
             format,
             at,
+            check,
+            override_safety,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            if let Some(when) = at {
+            if check {
+                commands::mutations::check_send(draft_id, format).await?;
+            } else if let Some(when) = at {
+                let _ = override_safety; // Slice 1.3 wires it through schedule
                 commands::mutations::schedule_send(draft_id, when).await?;
             } else {
+                let _ = override_safety; // Slice 1.3 wires it through send
                 commands::mutations::send_draft(draft_id, dry_run, format).await?;
             }
         }

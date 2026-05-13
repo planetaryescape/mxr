@@ -3789,6 +3789,7 @@ dependencies = [
  "mxr-reader",
  "mxr-relationship",
  "mxr-rules",
+ "mxr-safety",
  "mxr-search",
  "mxr-semantic",
  "mxr-store",

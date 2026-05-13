@@ -562,6 +562,9 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::SendStoredDraft { draft_id } => {
             mutations::send_stored_draft(state, draft_id).await
         }
+        Request::CheckDraftSafety { draft, context } => {
+            mutations::check_draft_safety_request(state, draft, context).await
+        }
         Request::DeleteDraft { draft_id } => mutations::delete_draft(state, draft_id).await,
         Request::SaveDraftToServer { draft } => mutations::save_draft_to_server(state, draft).await,
         Request::Unsubscribe { message_id } => mutations::unsubscribe(state, message_id).await,
@@ -806,6 +809,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SendDraft { .. } => "send_draft",
         Request::SaveDraft { .. } => "save_draft",
         Request::SendStoredDraft { .. } => "send_stored_draft",
+        Request::CheckDraftSafety { .. } => "check_draft_safety",
         Request::DeleteDraft { .. } => "delete_draft",
         Request::SaveDraftToServer { .. } => "save_draft_to_server",
         Request::ListDrafts => "list_drafts",
@@ -864,7 +868,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         Request::GetSyncStatus { account_id } => Some(account_id),
         Request::SendDraft { draft }
         | Request::SaveDraft { draft }
-        | Request::SaveDraftToServer { draft } => Some(&draft.account_id),
+        | Request::SaveDraftToServer { draft }
+        | Request::CheckDraftSafety { draft, .. } => Some(&draft.account_id),
         Request::SendStoredDraft { .. } | Request::DeleteDraft { .. } => None,
         _ => None,
     }

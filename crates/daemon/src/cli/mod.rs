@@ -801,6 +801,14 @@ pub enum Command {
         /// `monday 17:00`, RFC3339. Use `mxr unsend <draft-id>` to cancel.
         #[arg(long, value_name = "TIME", conflicts_with = "dry_run")]
         at: Option<String>,
+        /// Run the safety pipeline against the draft and exit without
+        /// sending. Exit non-zero only if a Blocker issue is present.
+        #[arg(long, conflicts_with_all = ["dry_run", "at"])]
+        check: bool,
+        /// Single-use override token (issued by a previous failed
+        /// `--check`) to bypass a Blocker. Slice 1.3 wires this up.
+        #[arg(long, value_name = "TOKEN")]
+        override_safety: Option<String>,
     },
     /// Cancel a previously-scheduled send. The draft itself is preserved.
     Unsend {

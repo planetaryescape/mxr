@@ -17,6 +17,35 @@ pub enum IpcCategory {
     ClientSpecific,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DraftSafetyModeData {
+    #[default]
+    Check,
+    Send,
+    ScheduledFlush,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DraftSafetyContextData {
+    #[serde(default)]
+    pub mode: DraftSafetyModeData,
+    #[serde(default)]
+    pub reply_all: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_message_id: Option<MessageId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<ThreadId>,
+    #[serde(default = "default_allow_llm")]
+    pub allow_llm: bool,
+}
+
+fn default_allow_llm() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LlmStatusSnapshot {
@@ -585,6 +614,16 @@ pub enum Request {
     SendStoredDraft {
         draft_id: DraftId,
     },
+    /// Run the safety pipeline against a draft without actually sending.
+    /// Mirrors the gate that `SendDraft` and `SendStoredDraft` apply
+    /// before reaching the provider, so callers can preview the report
+    /// from `mxr send --check`, `mxr compose --check`, or the TUI
+    /// confirm modal.
+    CheckDraftSafety {
+        draft: Draft,
+        #[serde(default)]
+        context: DraftSafetyContextData,
+    },
     DeleteDraft {
         draft_id: DraftId,
     },
@@ -695,6 +734,7 @@ impl Request {
             | Self::SendDraft { .. }
             | Self::SaveDraft { .. }
             | Self::SendStoredDraft { .. }
+            | Self::CheckDraftSafety { .. }
             | Self::DeleteDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
@@ -1239,6 +1279,10 @@ pub enum ResponseData {
         provider_message_id: Option<String>,
         rfc2822_message_id: String,
     },
+    /// Returned by `Request::CheckDraftSafety` and surfaced to CLI / TUI.
+    DraftSafetyReportResponse {
+        report: DraftSafetyReport,
+    },
 }
 
 impl ResponseData {
@@ -1281,7 +1325,8 @@ impl ResponseData {
             | Self::DraftSuggestion { .. }
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }
-            | Self::SendReceipt { .. } => IpcCategory::CoreMail,
+            | Self::SendReceipt { .. }
+            | Self::DraftSafetyReportResponse { .. } => IpcCategory::CoreMail,
             Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }

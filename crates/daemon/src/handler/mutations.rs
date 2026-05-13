@@ -10,11 +10,13 @@ use mxr_core::types::{
     SendReceipt, UnsubscribeMethod,
 };
 use mxr_protocol::{
-    AccountMutationResultData, DaemonEvent, ForwardContext, IpcMessage, IpcPayload,
-    MutationCommand, MutationResultData, ReplyContext, ResponseData,
+    AccountMutationResultData, DaemonEvent, DraftSafetyContextData, DraftSafetyModeData,
+    ForwardContext, IpcMessage, IpcPayload, MutationCommand, MutationResultData, ReplyContext,
+    ResponseData,
 };
 use mxr_store::{EventLogRefs, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 /// How long after the mutation the user can undo it. Matches the plan
 /// (~60s) and pairs with `tick_connection_state`-style UI affordances on
@@ -113,7 +115,18 @@ async fn check_draft_safety_with_context(
 }
 
 async fn enforce_draft_safety(state: &AppState, draft: &Draft) -> Result<(), String> {
-    let report = check_draft_safety_with_context(state, draft).await?;
+    let report = run_safety_pipeline(
+        state,
+        draft,
+        &DraftSafetyContextData {
+            mode: DraftSafetyModeData::Send,
+            reply_all: matches!(draft.intent, mxr_core::types::DraftIntent::ReplyAll),
+            original_message_id: None,
+            thread_id: None,
+            allow_llm: false,
+        },
+    )
+    .await?;
     if report.allowed {
         return Ok(());
     }
@@ -126,6 +139,66 @@ async fn enforce_draft_safety(state: &AppState, draft: &Draft) -> Result<(), Str
         .collect::<Vec<_>>()
         .join("; ");
     Err(format!("draft safety blocked send: {messages}"))
+}
+
+/// Build a `mxr_safety::SafetyContext` from store data (self addresses,
+/// reply-all flag from context). Slice 1.2 keeps the contact/style
+/// loaders empty; Slice 1.3 wires them up.
+async fn build_safety_context(
+    state: &AppState,
+    draft: &Draft,
+    context: &DraftSafetyContextData,
+) -> Result<mxr_safety::SafetyContext, String> {
+    let mut self_addresses = Vec::new();
+    if let Some(account) = state
+        .store
+        .get_account(&draft.account_id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        self_addresses.push(account.email.to_ascii_lowercase());
+    }
+    for address in state
+        .store
+        .list_account_addresses(&draft.account_id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        self_addresses.push(address.email.to_ascii_lowercase());
+    }
+    Ok(mxr_safety::SafetyContext {
+        mode_reply_all: context.reply_all
+            || matches!(draft.intent, mxr_core::types::DraftIntent::ReplyAll),
+        self_addresses,
+        known_contacts: Vec::new(),
+        contact_styles: Vec::new(),
+        thread_display_names: Vec::new(),
+    })
+}
+
+/// Run the full safety pipeline: existing daemon checks (recipients,
+/// reply-all parent diff) + new `mxr-safety` deterministic checks.
+async fn run_safety_pipeline(
+    state: &AppState,
+    draft: &Draft,
+    context: &DraftSafetyContextData,
+) -> Result<DraftSafetyReport, String> {
+    let mut report = check_draft_safety_with_context(state, draft).await?;
+    let safety_ctx = build_safety_context(state, draft, context).await?;
+    let safety_cfg = mxr_safety::SafetyConfig::default();
+    let extra = mxr_safety::check_draft_deterministic(draft, &safety_ctx, &safety_cfg);
+    report.extend(extra.issues);
+    Ok(report)
+}
+
+/// IPC handler: `Request::CheckDraftSafety`.
+pub(crate) async fn check_draft_safety_request(
+    state: &Arc<AppState>,
+    draft: &Draft,
+    context: &DraftSafetyContextData,
+) -> HandlerResult {
+    let report = run_safety_pipeline(state, draft, context).await?;
+    Ok(ResponseData::DraftSafetyReportResponse { report })
 }
 
 async fn log_mutation(

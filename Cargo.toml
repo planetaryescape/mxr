@@ -282,6 +282,7 @@ mxr-provider-smtp = { workspace = true }
 mxr-reader = { workspace = true }
 mxr-relationship = { workspace = true }
 mxr-rules = { workspace = true }
+mxr-safety = { workspace = true }
 mxr-search = { workspace = true }
 mxr-semantic = { workspace = true }
 mxr-store = { workspace = true }

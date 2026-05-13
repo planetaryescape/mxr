@@ -5653,6 +5653,7 @@ mod tests {
             id: mxr_core::id::DraftId::new(),
             account_id: account.id.clone(),
             reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
             to: vec![mxr_core::types::Address {
                 name: None,
                 email: "you@example.com".into(),
@@ -5742,6 +5743,7 @@ mod tests {
             id: mxr_core::id::DraftId::new(),
             account_id: account.id.clone(),
             reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
             to: vec![mxr_core::types::Address {
                 name: None,
                 email: "you@example.com".into(),
@@ -6933,6 +6935,7 @@ mod tests {
             id: mxr_core::DraftId::new(),
             account_id: state.default_account_id(),
             reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
             to: vec![mxr_core::types::Address {
                 name: None,
                 email: "test@example.com".to_string(),
@@ -6970,6 +6973,7 @@ mod tests {
             id: mxr_core::DraftId::new(),
             account_id: state.default_account_id(),
             reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
             to: vec![mxr_core::types::Address {
                 name: None,
                 email: "test@example.com".to_string(),
@@ -7066,6 +7070,7 @@ mod tests {
             id: mxr_core::DraftId::new(),
             account_id,
             reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
             to: vec![mxr_core::types::Address {
                 name: None,
                 email: "test@example.com".to_string(),
@@ -7375,6 +7380,7 @@ mod tests {
             id: mxr_core::DraftId::new(),
             account_id: default_account_id,
             reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
             to: vec![],
             cc: vec![],
             bcc: vec![],
@@ -7388,6 +7394,7 @@ mod tests {
             id: mxr_core::DraftId::new(),
             account_id: other_account_id,
             reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
             to: vec![],
             cc: vec![],
             bcc: vec![],
@@ -7434,6 +7441,7 @@ mod tests {
             id: mxr_core::DraftId::new(),
             account_id,
             reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
             to: vec![mxr_core::types::Address {
                 name: None,
                 email: "test@example.com".to_string(),
@@ -7508,6 +7516,7 @@ mod tests {
             id: mxr_core::DraftId::new(),
             account_id,
             reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
             to: vec![mxr_core::types::Address {
                 name: None,
                 email: "test@example.com".to_string(),
@@ -7598,6 +7607,7 @@ mod tests {
                 references: vec!["<parent@example.com>".to_string()],
                 thread_id: None,
             }),
+            intent: mxr_core::DraftIntent::Reply,
             to: vec![mxr_core::types::Address {
                 name: None,
                 email: "test@example.com".to_string(),
@@ -7656,6 +7666,7 @@ mod tests {
             id: mxr_core::DraftId::new(),
             account_id,
             reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
             to: vec![mxr_core::types::Address {
                 name: None,
                 email: "test@example.com".to_string(),
@@ -7957,6 +7968,7 @@ mod tests {
             id: mxr_core::DraftId::new(),
             account_id: state.default_account_id(),
             reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
             to: vec![mxr_core::types::Address {
                 name: Some("Recipient".into()),
                 email: "recipient@example.com".into(),

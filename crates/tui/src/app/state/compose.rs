@@ -1,5 +1,6 @@
 use crate::ui::compose_picker::ComposePicker;
 use mxr_core::id::AccountId;
+use mxr_core::DraftIntent;
 
 /// Draft waiting for user confirmation after editor closes.
 pub struct PendingSend {
@@ -7,6 +8,7 @@ pub struct PendingSend {
     pub fm: mxr_compose::frontmatter::ComposeFrontmatter,
     pub body: String,
     pub draft_path: std::path::PathBuf,
+    pub intent: DraftIntent,
     pub mode: PendingSendMode,
 }
 

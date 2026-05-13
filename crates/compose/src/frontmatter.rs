@@ -1,5 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+use mxr_core::DraftIntent;
 use serde::{Deserialize, Serialize};
 
 /// YAML frontmatter for compose files.
@@ -18,6 +19,8 @@ pub struct ComposeFrontmatter {
         skip_serializing_if = "Option::is_none"
     )]
     pub in_reply_to: Option<String>,
+    #[serde(default, skip_serializing_if = "DraftIntent::is_new")]
+    pub intent: DraftIntent,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub references: Vec<String>,
     /// Provider-native thread hint (e.g. Gmail thread id). Used so replies stay in-thread.
@@ -142,6 +145,7 @@ mod tests {
             subject: "Test Subject".into(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            intent: DraftIntent::New,
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
@@ -163,6 +167,7 @@ mod tests {
             subject: "Re: Meeting".into(),
             from: "me@example.com".into(),
             in_reply_to: Some("<msg-123@example.com>".into()),
+            intent: DraftIntent::Reply,
             references: vec!["<root@example.com>".into(), "<msg-123@example.com>".into()],
             thread_id: None,
             attach: Vec::new(),
@@ -172,6 +177,7 @@ mod tests {
         let rendered = render_compose_file(&fm, "My reply.", Some(context)).unwrap();
         let (parsed_fm, parsed_body) = parse_compose_file(&rendered).unwrap();
         assert_eq!(parsed_fm.subject, "Re: Meeting");
+        assert_eq!(parsed_fm.intent, DraftIntent::Reply);
         assert_eq!(
             parsed_fm.references,
             vec![
@@ -198,6 +204,7 @@ mod tests {
                 subject: subject.clone(),
                 from: format!("{from_local}@example.com"),
                 in_reply_to: None,
+                intent: DraftIntent::New,
                 references: Vec::new(),
                 thread_id: None,
                 attach: Vec::new(),

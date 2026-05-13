@@ -1,6 +1,7 @@
 use crate::{decode_id, decode_json, decode_timestamp, encode_json, trace_lookup, trace_query};
 use mxr_core::id::*;
 use mxr_core::types::*;
+use sqlx::Row;
 
 impl super::Store {
     pub async fn insert_draft(&self, draft: &Draft) -> Result<(), sqlx::Error> {
@@ -11,24 +12,26 @@ impl super::Store {
         let bcc_addrs = encode_json(&draft.bcc)?;
         let attachments = encode_json(&draft.attachments)?;
         let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
+        let intent = draft.intent.as_db_str();
         let created_at = draft.created_at.timestamp();
         let updated_at = draft.updated_at.timestamp();
 
-        sqlx::query!(
-            "INSERT INTO drafts (id, account_id, in_reply_to, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, attachments, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            id,
-            account_id,
-            in_reply_to,
-            to_addrs,
-            cc_addrs,
-            bcc_addrs,
-            draft.subject,
-            draft.body_markdown,
-            attachments,
-            created_at,
-            updated_at,
+        sqlx::query(
+            "INSERT INTO drafts (id, account_id, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, attachments, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
+        .bind(id)
+        .bind(account_id)
+        .bind(in_reply_to)
+        .bind(intent)
+        .bind(to_addrs)
+        .bind(cc_addrs)
+        .bind(bcc_addrs)
+        .bind(&draft.subject)
+        .bind(&draft.body_markdown)
+        .bind(attachments)
+        .bind(created_at)
+        .bind(updated_at)
         .execute(self.writer())
         .await?;
 
@@ -38,31 +41,31 @@ impl super::Store {
     pub async fn get_draft(&self, id: &DraftId) -> Result<Option<Draft>, sqlx::Error> {
         let id_str = id.as_str();
         let started_at = std::time::Instant::now();
-        let row = sqlx::query!(
-            r#"SELECT id as "id!", account_id as "account_id!", in_reply_to,
-                      to_addrs as "to_addrs!", cc_addrs as "cc_addrs!", bcc_addrs as "bcc_addrs!",
-                      subject as "subject!", body_markdown as "body_markdown!",
-                      attachments as "attachments!", created_at as "created_at!", updated_at as "updated_at!"
+        let row = sqlx::query(
+            r#"SELECT id, account_id, in_reply_to, intent,
+                      to_addrs, cc_addrs, bcc_addrs, subject, body_markdown,
+                      attachments, created_at, updated_at
                FROM drafts WHERE id = ?"#,
-            id_str,
         )
+        .bind(id_str)
         .fetch_optional(self.reader())
         .await?;
         trace_lookup("draft.get_draft", started_at, row.is_some());
 
         row.map(|r| {
             Ok(Draft {
-                id: decode_id(&r.id)?,
-                account_id: decode_id(&r.account_id)?,
-                reply_headers: parse_reply_headers(r.in_reply_to),
-                to: decode_json(&r.to_addrs)?,
-                cc: decode_json(&r.cc_addrs)?,
-                bcc: decode_json(&r.bcc_addrs)?,
-                subject: r.subject,
-                body_markdown: r.body_markdown,
-                attachments: decode_json(&r.attachments)?,
-                created_at: decode_timestamp(r.created_at)?,
-                updated_at: decode_timestamp(r.updated_at)?,
+                id: decode_id(&r.get::<String, _>("id"))?,
+                account_id: decode_id(&r.get::<String, _>("account_id"))?,
+                reply_headers: parse_reply_headers(r.get::<Option<String>, _>("in_reply_to")),
+                intent: DraftIntent::from_db_str(&r.get::<String, _>("intent")),
+                to: decode_json(&r.get::<String, _>("to_addrs"))?,
+                cc: decode_json(&r.get::<String, _>("cc_addrs"))?,
+                bcc: decode_json(&r.get::<String, _>("bcc_addrs"))?,
+                subject: r.get::<String, _>("subject"),
+                body_markdown: r.get::<String, _>("body_markdown"),
+                attachments: decode_json(&r.get::<String, _>("attachments"))?,
+                created_at: decode_timestamp(r.get::<i64, _>("created_at"))?,
+                updated_at: decode_timestamp(r.get::<i64, _>("updated_at"))?,
             })
         })
         .transpose()
@@ -71,14 +74,13 @@ impl super::Store {
     pub async fn list_drafts(&self, account_id: &AccountId) -> Result<Vec<Draft>, sqlx::Error> {
         let aid = account_id.as_str();
         let started_at = std::time::Instant::now();
-        let rows = sqlx::query!(
-            r#"SELECT id as "id!", account_id as "account_id!", in_reply_to,
-                      to_addrs as "to_addrs!", cc_addrs as "cc_addrs!", bcc_addrs as "bcc_addrs!",
-                      subject as "subject!", body_markdown as "body_markdown!",
-                      attachments as "attachments!", created_at as "created_at!", updated_at as "updated_at!"
+        let rows = sqlx::query(
+            r#"SELECT id, account_id, in_reply_to, intent,
+                      to_addrs, cc_addrs, bcc_addrs, subject, body_markdown,
+                      attachments, created_at, updated_at
                FROM drafts WHERE account_id = ? ORDER BY updated_at DESC"#,
-            aid,
         )
+        .bind(aid)
         .fetch_all(self.reader())
         .await?;
         trace_query("draft.list_drafts", started_at, rows.len());
@@ -86,17 +88,18 @@ impl super::Store {
         rows.into_iter()
             .map(|r| {
                 Ok(Draft {
-                    id: decode_id(&r.id)?,
-                    account_id: decode_id(&r.account_id)?,
-                    reply_headers: parse_reply_headers(r.in_reply_to),
-                    to: decode_json(&r.to_addrs)?,
-                    cc: decode_json(&r.cc_addrs)?,
-                    bcc: decode_json(&r.bcc_addrs)?,
-                    subject: r.subject,
-                    body_markdown: r.body_markdown,
-                    attachments: decode_json(&r.attachments)?,
-                    created_at: decode_timestamp(r.created_at)?,
-                    updated_at: decode_timestamp(r.updated_at)?,
+                    id: decode_id(&r.get::<String, _>("id"))?,
+                    account_id: decode_id(&r.get::<String, _>("account_id"))?,
+                    reply_headers: parse_reply_headers(r.get::<Option<String>, _>("in_reply_to")),
+                    intent: DraftIntent::from_db_str(&r.get::<String, _>("intent")),
+                    to: decode_json(&r.get::<String, _>("to_addrs"))?,
+                    cc: decode_json(&r.get::<String, _>("cc_addrs"))?,
+                    bcc: decode_json(&r.get::<String, _>("bcc_addrs"))?,
+                    subject: r.get::<String, _>("subject"),
+                    body_markdown: r.get::<String, _>("body_markdown"),
+                    attachments: decode_json(&r.get::<String, _>("attachments"))?,
+                    created_at: decode_timestamp(r.get::<i64, _>("created_at"))?,
+                    updated_at: decode_timestamp(r.get::<i64, _>("updated_at"))?,
                 })
             })
             .collect()

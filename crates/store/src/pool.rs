@@ -504,6 +504,15 @@ const MIGRATIONS: &[Migration] = &[
         name: "contact_style_drift",
         kind: MigrationKind::Sql(include_str!("../migrations/026_contact_style_drift.sql")),
     },
+    Migration {
+        version: 27,
+        name: "draft_intent",
+        kind: MigrationKind::AddColumn {
+            table: "drafts",
+            column: "intent",
+            sql: "ALTER TABLE drafts ADD COLUMN intent TEXT NOT NULL DEFAULT 'new'",
+        },
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

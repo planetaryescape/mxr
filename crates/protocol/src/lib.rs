@@ -14,7 +14,7 @@ mod tests {
     use bytes::BytesMut;
     use mxr_core::id::*;
     use mxr_core::{
-        Address, Draft, ExportFormat, SavedSearch, SearchMode, SemanticProfile,
+        Address, Draft, DraftIntent, ExportFormat, SavedSearch, SearchMode, SemanticProfile,
         SemanticRuntimeMetrics, SemanticStatusSnapshot, SortOrder,
     };
     use proptest::prelude::*;
@@ -37,6 +37,7 @@ mod tests {
         Draft {
             id: DraftId::new(),
             account_id: AccountId::new(),
+            intent: DraftIntent::New,
             reply_headers: None,
             to: vec![Address {
                 name: Some("Alice".into()),

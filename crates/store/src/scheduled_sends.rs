@@ -99,6 +99,7 @@ mod tests {
             id: DraftId::new(),
             account_id: account.id,
             reply_headers: None,
+            intent: DraftIntent::New,
             to: vec![Address {
                 name: None,
                 email: "you@example.com".into(),
@@ -199,6 +200,7 @@ mod tests {
                 id: DraftId::new(),
                 account_id: account.id.clone(),
                 reply_headers: None,
+                intent: DraftIntent::New,
                 to: vec![Address {
                     name: None,
                     email: format!("a{i}@example.com"),

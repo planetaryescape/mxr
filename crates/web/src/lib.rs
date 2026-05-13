@@ -1207,7 +1207,7 @@ async fn update_compose_session(
             return Err(error);
         }
     };
-    let (_existing_frontmatter, file_body) =
+    let (existing_frontmatter, file_body) =
         parse_compose_file(&content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let body = request.body.unwrap_or(file_body);
     let context = extract_compose_context(&content);
@@ -1218,10 +1218,11 @@ async fn update_compose_session(
         subject: request.subject,
         from: request.from,
         in_reply_to: extract_in_reply_to(&content)?,
+        intent: existing_frontmatter.intent,
         references: extract_references(&content)?,
         thread_id: extract_thread_id(&content)?,
         attach: request.attach,
-        signature: _existing_frontmatter.signature,
+        signature: existing_frontmatter.signature,
     };
     let rendered = render_compose_file(&updated, &body, context.as_deref())
         .map_err(|error| BridgeError::Ipc(error.to_string()))?;
@@ -2222,6 +2223,7 @@ async fn create_compose_session(
             };
             (
                 ComposeKind::Reply {
+                    reply_all: matches!(request.kind, ComposeSessionKindRequest::ReplyAll),
                     in_reply_to: context.in_reply_to,
                     references: context.references,
                     thread_id: context.thread_id,
@@ -2393,6 +2395,7 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
                 references: frontmatter.references.clone(),
                 thread_id: frontmatter.thread_id.clone(),
             }),
+        intent: frontmatter.intent,
         to: parse_address_list(&frontmatter.to),
         cc: parse_address_list(&frontmatter.cc),
         bcc: parse_address_list(&frontmatter.bcc),
@@ -2439,6 +2442,7 @@ async fn restore_saved_draft_session(
             .reply_headers
             .as_ref()
             .and_then(|headers| headers.thread_id.clone()),
+        intent: draft.intent,
         attach: draft
             .attachments
             .iter()
@@ -4804,6 +4808,7 @@ mod tests {
             id: DraftId::new(),
             account_id: AccountId::new(),
             reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
             to: vec![Address {
                 name: Some("User".into()),
                 email: "user@example.com".into(),

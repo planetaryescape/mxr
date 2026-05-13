@@ -100,6 +100,7 @@ mod tests {
                 subject: "Hello".into(),
                 from: "me@example.com".into(),
                 in_reply_to: None,
+                intent: mxr_core::DraftIntent::New,
                 references: vec![],
                 thread_id: None,
                 attach: vec![],
@@ -107,6 +108,7 @@ mod tests {
             },
             body: "hi".into(),
             draft_path: std::path::PathBuf::from("/tmp/draft.md"),
+            intent: mxr_core::DraftIntent::New,
             mode,
         }
     }

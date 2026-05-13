@@ -977,6 +977,7 @@ mod tests {
             id: DraftId::new(),
             account_id: account.id.clone(),
             reply_headers: None,
+            intent: DraftIntent::ReplyAll,
             to: vec![Address {
                 name: None,
                 email: "bob@example.com".to_string(),
@@ -993,6 +994,7 @@ mod tests {
 
         let drafts = store.list_drafts(&account.id).await.unwrap();
         assert_eq!(drafts.len(), 1);
+        assert_eq!(drafts[0].intent, DraftIntent::ReplyAll);
 
         store.delete_draft(&draft.id).await.unwrap();
         let drafts = store.list_drafts(&account.id).await.unwrap();

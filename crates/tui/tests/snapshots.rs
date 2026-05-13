@@ -240,6 +240,7 @@ fn send_confirm_snapshot() {
             subject: "Snapshot draft".into(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
             references: vec![],
             thread_id: None,
             attach: vec![],
@@ -247,6 +248,7 @@ fn send_confirm_snapshot() {
         },
         body: "Hello".into(),
         draft_path: "/tmp/draft.md".into(),
+        intent: mxr_core::DraftIntent::New,
         mode: PendingSendMode::SendOrSave,
     };
 

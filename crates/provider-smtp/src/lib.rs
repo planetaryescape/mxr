@@ -179,12 +179,14 @@ trait TestSender: Send + Sync {
 mod tests {
     use super::*;
     use mxr_core::id::DraftId;
+    use mxr_core::types::DraftIntent;
     use std::sync::{Arc, Mutex};
 
     fn test_draft() -> Draft {
         Draft {
             id: DraftId::new(),
             account_id: mxr_core::id::AccountId::new(),
+            intent: DraftIntent::New,
             reply_headers: None,
             to: vec![Address {
                 name: Some("Alice".into()),

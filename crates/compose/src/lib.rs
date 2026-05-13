@@ -18,6 +18,7 @@ pub enum ComposeKind {
         subject: String,
     },
     Reply {
+        reply_all: bool,
         in_reply_to: String,
         references: Vec<String>,
         /// Provider-native thread hint (e.g. Gmail thread id).
@@ -146,6 +147,7 @@ fn build_draft_file(
             (fm, String::new(), None)
         }
         ComposeKind::Reply {
+            reply_all,
             in_reply_to,
             references,
             thread_id,
@@ -160,6 +162,11 @@ fn build_draft_file(
                 subject: format!("Re: {subject}"),
                 from: from.to_string(),
                 in_reply_to: Some(in_reply_to),
+                intent: if reply_all {
+                    mxr_core::DraftIntent::ReplyAll
+                } else {
+                    mxr_core::DraftIntent::Reply
+                },
                 references,
                 thread_id,
                 ..Default::default()
@@ -173,6 +180,7 @@ fn build_draft_file(
             let fm = ComposeFrontmatter {
                 subject: format!("Fwd: {subject}"),
                 from: from.to_string(),
+                intent: mxr_core::DraftIntent::Forward,
                 ..Default::default()
             };
             let body = "---------- Forwarded message ----------".to_string();
@@ -392,6 +400,7 @@ mod tests {
     fn roundtrip_reply() {
         let (path, _) = create_draft_file(
             ComposeKind::Reply {
+                reply_all: false,
                 in_reply_to: "<msg-123@example.com>".into(),
                 references: vec!["<root@example.com>".into(), "<msg-123@example.com>".into()],
                 thread_id: None,
@@ -408,6 +417,7 @@ mod tests {
         assert_eq!(fm.subject, "Re: Deployment plan");
         assert_eq!(fm.to, "alice@example.com");
         assert!(fm.in_reply_to.is_some());
+        assert_eq!(fm.intent, mxr_core::DraftIntent::Reply);
         assert_eq!(fm.references.len(), 2);
         assert!(!body.contains("Hey team?"));
         std::fs::remove_file(path).ok();
@@ -426,6 +436,7 @@ mod tests {
         let content = std::fs::read_to_string(&path).unwrap();
         let (fm, body) = parse_compose_file(&content).unwrap();
         assert_eq!(fm.subject, "Fwd: Important doc");
+        assert_eq!(fm.intent, mxr_core::DraftIntent::Forward);
         assert!(body.contains("Forwarded message"));
         assert!(!body.contains("original message content"));
         std::fs::remove_file(path).ok();
@@ -472,6 +483,7 @@ mod tests {
             subject: "Test".into(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
@@ -493,6 +505,7 @@ mod tests {
             subject: "Test".into(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
@@ -511,6 +524,7 @@ mod tests {
             subject: "Test".into(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
@@ -532,6 +546,7 @@ mod tests {
             subject: String::new(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
@@ -569,6 +584,7 @@ mod tests {
             subject: "Hello".into(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
@@ -587,6 +603,7 @@ mod tests {
             subject: String::new(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
@@ -605,6 +622,7 @@ mod tests {
             subject: String::new(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
@@ -629,6 +647,7 @@ mod tests {
             subject: "Hello".into(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),

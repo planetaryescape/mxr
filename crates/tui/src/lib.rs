@@ -2632,6 +2632,7 @@ mod tests {
 
         let data = ComposeReadyData {
             account_id: AccountId::new(),
+            intent: mxr_core::DraftIntent::New,
             draft_path: temp.clone(),
             cursor_line: 1,
             initial_content: String::new(),
@@ -2663,6 +2664,7 @@ mod tests {
 
         let data = ComposeReadyData {
             account_id: AccountId::new(),
+            intent: mxr_core::DraftIntent::New,
             draft_path: temp.clone(),
             cursor_line: 1,
             initial_content: String::new(),
@@ -6271,6 +6273,7 @@ mod tests {
 
         let pending = pending_send_from_edited_draft(&ComposeReadyData {
             account_id: AccountId::new(),
+            intent: mxr_core::DraftIntent::New,
             draft_path: temp.clone(),
             cursor_line: 1,
             initial_content: content.to_string(),
@@ -6296,6 +6299,7 @@ mod tests {
                 subject: "Hello".into(),
                 from: "me@example.com".into(),
                 in_reply_to: None,
+                intent: mxr_core::DraftIntent::New,
                 references: vec![],
                 thread_id: None,
                 attach: vec![],
@@ -6303,6 +6307,7 @@ mod tests {
             },
             body: "Body".into(),
             draft_path: std::path::PathBuf::from("/tmp/draft.md"),
+            intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::Unchanged,
         });
 
@@ -6334,6 +6339,7 @@ mod tests {
                 subject: "Hello".into(),
                 from: "me@example.com".into(),
                 in_reply_to: None,
+                intent: mxr_core::DraftIntent::New,
                 references: vec![],
                 thread_id: None,
                 attach: vec![],
@@ -6341,6 +6347,7 @@ mod tests {
             },
             body: "Body".into(),
             draft_path: std::path::PathBuf::from("/tmp/draft.md"),
+            intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::SendOrSave,
         });
 
@@ -6371,6 +6378,7 @@ mod tests {
                 subject: "Scheduled hello".into(),
                 from: "me@example.com".into(),
                 in_reply_to: None,
+                intent: mxr_core::DraftIntent::New,
                 references: vec![],
                 thread_id: None,
                 attach: vec![],
@@ -6378,6 +6386,7 @@ mod tests {
             },
             body: "Body".into(),
             draft_path: std::path::PathBuf::from("/tmp/scheduled-draft.md"),
+            intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::SendOrSave,
         });
 
@@ -6514,6 +6523,7 @@ mod tests {
 
         let pending = pending_send_from_edited_draft(&ComposeReadyData {
             account_id: AccountId::new(),
+            intent: mxr_core::DraftIntent::New,
             draft_path: temp.clone(),
             cursor_line: 1,
             initial_content: String::new(),
@@ -6539,6 +6549,7 @@ mod tests {
                 subject: "Hello".into(),
                 from: "me@example.com".into(),
                 in_reply_to: None,
+                intent: mxr_core::DraftIntent::New,
                 references: vec![],
                 thread_id: None,
                 attach: vec![],
@@ -6546,6 +6557,7 @@ mod tests {
             },
             body: "Body".into(),
             draft_path: std::path::PathBuf::from("/tmp/draft.md"),
+            intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::DraftOnlyNoRecipients,
         });
 
@@ -6574,6 +6586,7 @@ mod tests {
                 subject: "Hello".into(),
                 from: "me@example.com".into(),
                 in_reply_to: None,
+                intent: mxr_core::DraftIntent::New,
                 references: vec![],
                 thread_id: None,
                 attach: vec![],
@@ -6581,6 +6594,7 @@ mod tests {
             },
             body: "Body".into(),
             draft_path: std::path::PathBuf::from("/tmp/draft.md"),
+            intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::DraftOnlyNoRecipients,
         });
 
@@ -6615,6 +6629,7 @@ mod tests {
                 subject: "Hello".into(),
                 from: "me@example.com".into(),
                 in_reply_to: None,
+                intent: mxr_core::DraftIntent::New,
                 references: vec![],
                 thread_id: None,
                 attach: vec![],
@@ -6622,6 +6637,7 @@ mod tests {
             },
             body: "Body".into(),
             draft_path: temp.clone(),
+            intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::DraftOnlyNoRecipients,
         });
 
@@ -6658,6 +6674,7 @@ mod tests {
                 subject: "Hello".into(),
                 from: "me@example.com".into(),
                 in_reply_to: None,
+                intent: mxr_core::DraftIntent::New,
                 references: vec![],
                 thread_id: None,
                 attach: vec![],
@@ -6665,6 +6682,7 @@ mod tests {
             },
             body: "Body".into(),
             draft_path: temp.clone(),
+            intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::DraftOnlyNoRecipients,
         });
 
@@ -8066,6 +8084,7 @@ mod tests {
                 subject: "Quarterly plan".into(),
                 from: "me@example.com".into(),
                 in_reply_to: None,
+                intent: mxr_core::DraftIntent::New,
                 references: Vec::new(),
                 thread_id: None,
                 attach: Vec::new(),
@@ -8073,6 +8092,7 @@ mod tests {
             },
             body: "Could you review the plan?".into(),
             draft_path: std::path::PathBuf::from("/tmp/mxr-draft.md"),
+            intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::SendOrSave,
         });
 

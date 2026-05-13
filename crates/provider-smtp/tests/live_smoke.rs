@@ -1,12 +1,13 @@
 use mxr_core::id::{AccountId, DraftId};
 use mxr_core::provider::MailSendProvider;
-use mxr_core::types::{Address, Draft};
+use mxr_core::types::{Address, Draft, DraftIntent};
 use mxr_provider_smtp::{config::SmtpConfig, SmtpSendProvider};
 
 fn invalid_draft() -> Draft {
     Draft {
         id: DraftId::new(),
         account_id: AccountId::new(),
+        intent: DraftIntent::New,
         reply_headers: None,
         to: vec![Address {
             name: None,

@@ -197,12 +197,13 @@ mod tests {
     use super::*;
     use mail_parser::MessageParser;
     use mxr_core::id::{AccountId, DraftId};
-    use mxr_core::types::ReplyHeaders;
+    use mxr_core::types::{DraftIntent, ReplyHeaders};
 
     fn test_draft() -> Draft {
         Draft {
             id: DraftId::new(),
             account_id: AccountId::new(),
+            intent: DraftIntent::New,
             reply_headers: None,
             to: vec![Address {
                 name: Some("Alice".into()),

@@ -1040,12 +1040,49 @@ pub struct Thread {
 
 // -- Draft --------------------------------------------------------------------
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DraftIntent {
+    #[default]
+    New,
+    Reply,
+    ReplyAll,
+    Forward,
+}
+
+impl DraftIntent {
+    pub fn is_new(&self) -> bool {
+        matches!(self, Self::New)
+    }
+
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            Self::New => "new",
+            Self::Reply => "reply",
+            Self::ReplyAll => "reply_all",
+            Self::Forward => "forward",
+        }
+    }
+
+    pub fn from_db_str(value: &str) -> Self {
+        match value {
+            "reply" => Self::Reply,
+            "reply_all" => Self::ReplyAll,
+            "forward" => Self::Forward,
+            _ => Self::New,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Draft {
     pub id: DraftId,
     pub account_id: AccountId,
     pub reply_headers: Option<ReplyHeaders>,
+    #[serde(default)]
+    pub intent: DraftIntent,
     pub to: Vec<Address>,
     pub cc: Vec<Address>,
     pub bcc: Vec<Address>,
@@ -1055,6 +1092,38 @@ pub struct Draft {
     pub attachments: Vec<PathBuf>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DraftSafetySeverity {
+    Warning,
+    Blocker,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DraftSafetyIssueCode {
+    NoRecipients,
+    InvalidRecipient,
+    MissingReplyAllRecipient,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DraftSafetyIssue {
+    pub code: DraftSafetyIssueCode,
+    pub severity: DraftSafetySeverity,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DraftSafetyReport {
+    pub allowed: bool,
+    pub issues: Vec<DraftSafetyIssue>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

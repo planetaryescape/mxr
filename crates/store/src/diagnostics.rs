@@ -114,10 +114,10 @@ mod tests {
         AccountId, DraftId, MessageId, SavedSearchId, SemanticChunkId, SemanticProfileId, ThreadId,
     };
     use mxr_core::types::{
-        Address, BackendRef, Draft, EventSource, MessageBody, MessageFlags, ProviderKind,
-        SearchMode, SemanticChunkRecord, SemanticChunkSourceKind, SemanticEmbeddingRecord,
-        SemanticEmbeddingStatus, SemanticProfile, SemanticProfileRecord, SemanticProfileStatus,
-        Snoozed, SortOrder, UnsubscribeMethod,
+        Address, BackendRef, Draft, DraftIntent, EventSource, MessageBody, MessageFlags,
+        ProviderKind, SearchMode, SemanticChunkRecord, SemanticChunkSourceKind,
+        SemanticEmbeddingRecord, SemanticEmbeddingStatus, SemanticProfile, SemanticProfileRecord,
+        SemanticProfileStatus, Snoozed, SortOrder, UnsubscribeMethod,
     };
 
     #[tokio::test]
@@ -224,6 +224,7 @@ mod tests {
             id: DraftId::new(),
             account_id: account.id.clone(),
             reply_headers: None,
+            intent: DraftIntent::New,
             to: vec![],
             cc: vec![],
             bcc: vec![],

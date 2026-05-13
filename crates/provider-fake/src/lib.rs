@@ -500,6 +500,7 @@ mod tests {
         let draft = Draft {
             id: DraftId::new(),
             account_id: provider.account_id().clone(),
+            intent: DraftIntent::New,
             reply_headers: None,
             to: vec![Address {
                 name: None,

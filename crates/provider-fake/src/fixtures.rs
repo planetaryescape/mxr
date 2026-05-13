@@ -45,6 +45,7 @@ pub fn sample_draft(account_id: AccountId) -> Draft {
         id: DraftId::new(),
         account_id,
         reply_headers: None,
+        intent: DraftIntent::New,
         to: vec![Address {
             name: Some("Recipient".to_string()),
             email: "recipient@example.com".to_string(),

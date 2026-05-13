@@ -63,6 +63,7 @@ impl App {
                     id: draft_id.clone(),
                     account_id: pending.account_id.clone(),
                     reply_headers,
+                    intent: pending.intent,
                     to: parse_addrs(&pending.fm.to),
                     cc: parse_addrs(&pending.fm.cc),
                     bcc: parse_addrs(&pending.fm.bcc),

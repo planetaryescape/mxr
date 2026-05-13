@@ -264,6 +264,7 @@ mod tests {
                 subject: "Hello".into(),
                 from: "me@example.com".into(),
                 in_reply_to: None,
+                intent: mxr_core::DraftIntent::New,
                 references: vec![],
                 thread_id: None,
                 attach: vec![],
@@ -271,6 +272,7 @@ mod tests {
             },
             body: "Body".into(),
             draft_path,
+            intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::DraftOnlyNoRecipients,
         }
     }

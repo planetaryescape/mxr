@@ -10,12 +10,13 @@ pub(crate) async fn handle_compose_action(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     action: ComposeAction,
 ) -> Result<ComposeReadyData, MxrError> {
-    let (account_id, from, kind, signature_kind) = match action {
+    let (account_id, intent, from, kind, signature_kind) = match action {
         ComposeAction::EditDraft { path, account_id } => {
             // Re-edit existing draft — skip creating a new file
             let cursor_line = 1;
             return Ok(ComposeReadyData {
                 account_id,
+                intent: mxr_core::DraftIntent::New,
                 draft_path: path.clone(),
                 cursor_line,
                 initial_content: mxr_compose::read_draft_file_async(&path)
@@ -27,6 +28,7 @@ pub(crate) async fn handle_compose_action(
             let account = resolve_compose_account(bg, None).await?;
             (
                 account.account_id,
+                mxr_core::DraftIntent::New,
                 account.email,
                 mxr_compose::ComposeKind::New { to, subject },
                 SignatureContextData::New,
@@ -49,6 +51,7 @@ pub(crate) async fn handle_compose_action(
                 Response::Ok {
                     data: ResponseData::ReplyContext { context },
                 } => mxr_compose::ComposeKind::Reply {
+                    reply_all: false,
                     in_reply_to: context.in_reply_to,
                     references: context.references,
                     thread_id: context.thread_id,
@@ -60,7 +63,13 @@ pub(crate) async fn handle_compose_action(
                 Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
                 _ => return Err(MxrError::Ipc("unexpected response".into())),
             };
-            (account_id, account.email, kind, SignatureContextData::Reply)
+            (
+                account_id,
+                mxr_core::DraftIntent::Reply,
+                account.email,
+                kind,
+                SignatureContextData::Reply,
+            )
         }
         ComposeAction::ReplyAll {
             message_id,
@@ -79,6 +88,7 @@ pub(crate) async fn handle_compose_action(
                 Response::Ok {
                     data: ResponseData::ReplyContext { context },
                 } => mxr_compose::ComposeKind::Reply {
+                    reply_all: true,
                     in_reply_to: context.in_reply_to,
                     references: context.references,
                     thread_id: context.thread_id,
@@ -90,7 +100,13 @@ pub(crate) async fn handle_compose_action(
                 Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
                 _ => return Err(MxrError::Ipc("unexpected response".into())),
             };
-            (account_id, account.email, kind, SignatureContextData::Reply)
+            (
+                account_id,
+                mxr_core::DraftIntent::ReplyAll,
+                account.email,
+                kind,
+                SignatureContextData::Reply,
+            )
         }
         ComposeAction::Forward {
             message_id,
@@ -108,7 +124,13 @@ pub(crate) async fn handle_compose_action(
                 Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
                 _ => return Err(MxrError::Ipc("unexpected response".into())),
             };
-            (account_id, account.email, kind, SignatureContextData::Reply)
+            (
+                account_id,
+                mxr_core::DraftIntent::Forward,
+                account.email,
+                kind,
+                SignatureContextData::Reply,
+            )
         }
     };
 
@@ -120,6 +142,7 @@ pub(crate) async fn handle_compose_action(
 
     Ok(ComposeReadyData {
         account_id,
+        intent,
         draft_path: path.clone(),
         cursor_line,
         initial_content: mxr_compose::read_draft_file_async(&path)
@@ -282,6 +305,11 @@ pub(crate) async fn pending_send_from_edited_draft(
 
     Ok(Some(PendingSend {
         account_id: data.account_id.clone(),
+        intent: if fm.intent == mxr_core::DraftIntent::New {
+            data.intent
+        } else {
+            fm.intent
+        },
         fm,
         body,
         draft_path: data.draft_path.clone(),

@@ -105,7 +105,12 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     };
     let body = expand_compose_snippets(&mut client, body).await?;
 
-    let draft = draft_from_frontmatter(account.account_id, &frontmatter, body)?;
+    let draft = draft_from_frontmatter(
+        account.account_id,
+        mxr_core::DraftIntent::New,
+        &frontmatter,
+        body,
+    )?;
     validate_compose_draft(&frontmatter, &draft.body_markdown, options.yes)?;
 
     if options.dry_run {
@@ -222,6 +227,7 @@ async fn reply_inner(
     };
 
     let kind = mxr_compose::ComposeKind::Reply {
+        reply_all,
         in_reply_to: ctx.in_reply_to.clone(),
         references: ctx.references.clone(),
         thread_id: ctx.thread_id.clone(),
@@ -258,6 +264,11 @@ async fn reply_inner(
     finalize_compose(
         &mut client,
         ctx.account_id,
+        if reply_all {
+            mxr_core::DraftIntent::ReplyAll
+        } else {
+            mxr_core::DraftIntent::Reply
+        },
         frontmatter,
         body_text,
         draft_file,
@@ -327,6 +338,7 @@ pub async fn forward(
     finalize_compose(
         &mut client,
         ctx.account_id,
+        mxr_core::DraftIntent::Forward,
         frontmatter,
         body_text,
         draft_file,
@@ -377,6 +389,7 @@ async fn build_compose_draft(
 async fn finalize_compose(
     client: &mut IpcClient,
     account_id: AccountId,
+    intent: mxr_core::DraftIntent,
     frontmatter: mxr_compose::frontmatter::ComposeFrontmatter,
     body: String,
     draft_file: Option<PathBuf>,
@@ -385,7 +398,7 @@ async fn finalize_compose(
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let body = expand_compose_snippets(client, body).await?;
-    let draft = draft_from_frontmatter(account_id, &frontmatter, body)?;
+    let draft = draft_from_frontmatter(account_id, intent, &frontmatter, body)?;
     validate_compose_draft(&frontmatter, &draft.body_markdown, yes)?;
 
     if dry_run {
@@ -900,6 +913,7 @@ fn attachment_strings(paths: &[PathBuf]) -> Vec<String> {
 
 fn draft_from_frontmatter(
     account_id: AccountId,
+    fallback_intent: mxr_core::DraftIntent,
     frontmatter: &mxr_compose::frontmatter::ComposeFrontmatter,
     body: String,
 ) -> anyhow::Result<Draft> {
@@ -916,6 +930,11 @@ fn draft_from_frontmatter(
         id: DraftId::new(),
         account_id,
         reply_headers,
+        intent: if frontmatter.intent == mxr_core::DraftIntent::New {
+            fallback_intent
+        } else {
+            frontmatter.intent
+        },
         to: parse_addresses(&frontmatter.to),
         cc: parse_addresses(&frontmatter.cc),
         bcc: parse_addresses(&frontmatter.bcc),
@@ -1169,18 +1188,25 @@ mod tests {
             subject: "Hello".into(),
             from: "me@example.com".into(),
             in_reply_to: Some("<reply@example.com>".into()),
+            intent: mxr_core::DraftIntent::ReplyAll,
             references: vec!["<root@example.com>".into()],
             thread_id: None,
             attach: Vec::new(),
             signature: None,
         };
 
-        let draft = draft_from_frontmatter(mxr_core::AccountId::new(), &frontmatter, "body".into())
-            .unwrap();
+        let draft = draft_from_frontmatter(
+            mxr_core::AccountId::new(),
+            mxr_core::DraftIntent::Reply,
+            &frontmatter,
+            "body".into(),
+        )
+        .unwrap();
 
         assert_eq!(draft.to.len(), 2);
         assert_eq!(draft.to[0].name.as_deref(), Some("Last, First"));
         assert_eq!(draft.bcc[0].email, "hidden@example.com");
+        assert_eq!(draft.intent, mxr_core::DraftIntent::ReplyAll);
         assert_eq!(
             draft.reply_headers.unwrap().in_reply_to,
             "<reply@example.com>"

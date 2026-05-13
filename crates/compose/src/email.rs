@@ -6,7 +6,7 @@ mod tests {
     use super::*;
     use mxr_core::id::{AccountId, DraftId};
     use mxr_core::types::ReplyHeaders;
-    use mxr_core::types::{Address, Draft};
+    use mxr_core::types::{Address, Draft, DraftIntent};
     use mxr_test_support::redact_rfc822;
 
     fn draft() -> Draft {
@@ -18,6 +18,7 @@ mod tests {
                 references: vec!["<root@example.com>".into()],
                 thread_id: None,
             }),
+            intent: DraftIntent::Reply,
             to: vec![Address {
                 name: Some("Alice".into()),
                 email: "alice@example.com".into(),

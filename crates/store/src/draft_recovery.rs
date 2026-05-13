@@ -94,7 +94,7 @@ mod tests {
     use super::super::Store;
     use chrono::{Duration, TimeZone, Utc};
     use mxr_core::id::DraftId;
-    use mxr_core::types::{Address, Draft, DraftStatus};
+    use mxr_core::types::{Address, Draft, DraftIntent, DraftStatus};
 
     fn anchor() -> chrono::DateTime<chrono::Utc> {
         Utc.with_ymd_and_hms(2024, 5, 7, 14, 0, 0).unwrap()
@@ -107,6 +107,7 @@ mod tests {
             id: DraftId::new(),
             account_id: account.id,
             reply_headers: None,
+            intent: DraftIntent::New,
             to: vec![Address {
                 name: None,
                 email: "you@example.com".into(),

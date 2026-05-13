@@ -4261,8 +4261,12 @@ dependencies = [
 name = "mxr-test-support"
 version = "0.5.8"
 dependencies = [
+ "assert_cmd",
+ "dirs",
  "ratatui",
  "regex",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

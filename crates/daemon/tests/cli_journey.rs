@@ -4,43 +4,28 @@
 //! → reply --yes → mutate → search reflects new state. Asserts the JSON contract
 //! on every command we touch so script consumers stay covered.
 
-use assert_cmd::Command;
+use mxr_test_support::daemon::{
+    daemon_lock, instance_socket_path, run_json, run_json_with_stdin, run_status_only,
+    unique_instance_name as ts_unique_instance_name, write_fake_account_config, DaemonGuard,
+};
 use serde_json::Value;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
-use std::process::Command as StdCommand;
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::thread::sleep;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
 
-static CLI_JOURNEY_LOCK: Mutex<()> = Mutex::new(());
-
-fn cli_journey_guard() -> MutexGuard<'static, ()> {
-    CLI_JOURNEY_LOCK.lock().expect("cli journey lock")
+fn cli_journey_guard() -> std::sync::MutexGuard<'static, ()> {
+    daemon_lock()
 }
 
-struct DaemonGuard {
-    socket_path: PathBuf,
-    pid_path: PathBuf,
-    pid: Option<u64>,
+fn write_fake_config(config_dir: &Path) {
+    write_fake_account_config(config_dir);
 }
 
-impl Drop for DaemonGuard {
-    fn drop(&mut self) {
-        if let Some(pid) = self.pid {
-            let _ = StdCommand::new("kill").arg(pid.to_string()).status();
-            for _ in 0..40 {
-                if !self.socket_path.exists() {
-                    break;
-                }
-                sleep(Duration::from_millis(50));
-            }
-        }
-        let _ = std::fs::remove_file(&self.socket_path);
-        let _ = std::fs::remove_file(&self.pid_path);
-    }
+fn unique_instance_name() -> String {
+    ts_unique_instance_name("mxr-cli-journey")
 }
 
 #[test]
@@ -1054,33 +1039,6 @@ fn cli_journey_relationship_draft_and_humanizer_surfaces_round_trip() {
     );
 }
 
-fn write_fake_config(config_dir: &Path) {
-    // Disable the bridge so multiple cli_journey tests don't fight for
-    // the default fixed local web port. When that port is busy
-    // (machine-wide, or another daemon hasn't released it yet),
-    // `run_daemon_with_overrides` calls
-    // `anyhow::bail!` and the daemon exits, leaving the client to time
-    // out 40 retries on a half-up daemon. Tests don't exercise the
-    // bridge — disabling it removes the collision entirely.
-    let toml = r#"[general]
-default_account = "fake"
-
-[bridge]
-enabled = false
-
-[accounts.fake]
-name = "Fake Account"
-email = "fake@example.com"
-
-[accounts.fake.sync]
-type = "fake"
-
-[accounts.fake.send]
-type = "fake"
-"#;
-    std::fs::write(config_dir.join("config.toml"), toml).expect("write fake config");
-}
-
 fn write_llm_fake_config(config_dir: &Path, base_url: &str) {
     let toml = format!(
         r#"[general]
@@ -1258,101 +1216,5 @@ fn first_prompt_message_id(prompt: &str) -> Option<String> {
     })
 }
 
-struct CliOutput {
-    stdout: String,
-    stderr: String,
-}
-
-fn run_status_only(instance: &str, data_dir: &Path, config_dir: &Path, args: &[&str]) -> CliOutput {
-    let output = Command::cargo_bin("mxr")
-        .expect("mxr bin")
-        .env("MXR_INSTANCE", instance)
-        .env("MXR_DATA_DIR", data_dir)
-        .env("MXR_CONFIG_DIR", config_dir)
-        .env_remove("EDITOR")
-        .env_remove("VISUAL")
-        .args(args)
-        .assert()
-        .get_output()
-        .clone();
-    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
-    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
-    if !output.status.success() {
-        panic!(
-            "command {args:?} failed (exit {:?})\nstdout={stdout}\nstderr={stderr}",
-            output.status.code()
-        );
-    }
-    CliOutput { stdout, stderr }
-}
-
-fn run_json(instance: &str, data_dir: &Path, config_dir: &Path, args: &[&str]) -> Value {
-    let out = run_status_only(instance, data_dir, config_dir, args);
-    serde_json::from_str(out.stdout.trim()).unwrap_or_else(|err| {
-        panic!(
-            "expected JSON output for `mxr {}`; parse error: {err}\nstdout={}\nstderr={}",
-            args.join(" "),
-            out.stdout,
-            out.stderr
-        )
-    })
-}
-
-fn run_json_with_stdin(
-    instance: &str,
-    data_dir: &Path,
-    config_dir: &Path,
-    args: &[&str],
-    stdin: &str,
-) -> Value {
-    let output = Command::cargo_bin("mxr")
-        .expect("mxr bin")
-        .env("MXR_INSTANCE", instance)
-        .env("MXR_DATA_DIR", data_dir)
-        .env("MXR_CONFIG_DIR", config_dir)
-        .env_remove("EDITOR")
-        .env_remove("VISUAL")
-        .args(args)
-        .write_stdin(stdin)
-        .assert()
-        .get_output()
-        .clone();
-    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
-    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
-    if !output.status.success() {
-        panic!(
-            "command {args:?} failed (exit {:?})\nstdout={stdout}\nstderr={stderr}",
-            output.status.code()
-        );
-    }
-    serde_json::from_str(stdout.trim()).unwrap_or_else(|err| {
-        panic!(
-            "expected JSON output for `mxr {}`; parse error: {err}\nstdout={stdout}\nstderr={stderr}",
-            args.join(" "),
-        )
-    })
-}
-
-fn instance_socket_path(instance: &str) -> PathBuf {
-    if cfg!(target_os = "macos") {
-        dirs::home_dir()
-            .expect("home dir")
-            .join("Library")
-            .join("Application Support")
-            .join(instance)
-            .join("mxr.sock")
-    } else {
-        dirs::runtime_dir()
-            .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join(instance)
-            .join("mxr.sock")
-    }
-}
-
-fn unique_instance_name() -> String {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("now")
-        .as_nanos();
-    format!("mxr-cli-journey-{}-{stamp}", std::process::id())
-}
+// Daemon-spawning + run_* + write_fake_account_config helpers live in
+// `mxr_test_support::daemon` (shared with other integration tests).

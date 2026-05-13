@@ -1,3 +1,5 @@
+pub mod daemon;
+
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use regex::Regex;

@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { BarChart3, RefreshCw, ShieldAlert } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 
@@ -432,24 +432,153 @@ function WrappedDashboard({ range }: { range: AnalyticsRange }) {
     queryKey: ["analytics", "wrapped", range],
     queryFn: () => fetchWrapped(range),
   });
+  const [story, setStory] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
   if (wrapped.isError) return <AnalyticsError error={wrapped.error} />;
   const summary = wrapped.data?.summary;
   const totalMessages =
     (summary?.volume?.inbound_count ?? 0) + (summary?.volume?.outbound_count ?? 0);
+  const tiles: Array<{ id: string; title: string; value: string; meta: string }> = [
+    {
+      id: "messages",
+      title: "Messages",
+      value: String(totalMessages),
+      meta: "in this window",
+    },
+    {
+      id: "inbound",
+      title: "Inbound",
+      value: String(summary?.volume?.inbound_count ?? 0),
+      meta: "received",
+    },
+    {
+      id: "outbound",
+      title: "Outbound",
+      value: String(summary?.volume?.outbound_count ?? 0),
+      meta: "sent",
+    },
+    {
+      id: "superlatives",
+      title: "Superlatives",
+      value: "",
+      meta: wrappedSuperlativeRows(summary)
+        .slice(0, 3)
+        .map((r) => r.title)
+        .join(" · "),
+    },
+  ];
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-      <section className="relative overflow-hidden rounded-2xl border border-border bg-[radial-gradient(circle_at_top_left,color-mix(in_oklch,var(--chart-1)_22%,transparent),transparent_34%),hsl(var(--surface))] p-8">
-        <div className="font-mono text-2xs uppercase tracking-wide text-muted-foreground">
-          mxr wrapped
+    <div className="space-y-3" ref={containerRef}>
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          size="sm"
+          variant={story ? "default" : "outline"}
+          onClick={() => setStory((s) => !s)}
+          aria-pressed={story}
+        >
+          {story ? "Exit story mode" : "Story mode"}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => shareWrappedAsImage(containerRef.current)}
+        >
+          Share as image
+        </Button>
+      </div>
+      {story ? (
+        <WrappedStory tiles={tiles} />
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+          <section className="relative overflow-hidden rounded-2xl border border-border bg-[radial-gradient(circle_at_top_left,color-mix(in_oklch,var(--chart-1)_22%,transparent),transparent_34%),hsl(var(--surface))] p-8">
+            <div className="font-mono text-2xs uppercase tracking-wide text-muted-foreground">
+              mxr wrapped
+            </div>
+            <div className="mt-6 text-4xl font-semibold tracking-tight">{totalMessages}</div>
+            <div className="mt-2 text-sm text-muted-foreground">messages in this window</div>
+          </section>
+          <Panel title="Superlatives">
+            <DataList rows={wrappedSuperlativeRows(summary)} />
+          </Panel>
         </div>
-        <div className="mt-6 text-4xl font-semibold tracking-tight">{totalMessages}</div>
-        <div className="mt-2 text-sm text-muted-foreground">messages in this window</div>
-      </section>
-      <Panel title="Superlatives">
-        <DataList rows={wrappedSuperlativeRows(summary)} />
-      </Panel>
+      )}
     </div>
   );
+}
+
+function WrappedStory({
+  tiles,
+}: {
+  tiles: Array<{ id: string; title: string; value: string; meta: string }>;
+}) {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable=true]")) return;
+      if (e.key === "j" || e.key === "ArrowDown" || e.key === "ArrowRight") {
+        e.preventDefault();
+        setIndex((i) => Math.min(tiles.length - 1, i + 1));
+      } else if (e.key === "k" || e.key === "ArrowUp" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        setIndex((i) => Math.max(0, i - 1));
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tiles.length]);
+
+  const tile = tiles[index];
+  if (!tile) return null;
+  return (
+    <section
+      data-testid="wrapped-story"
+      className="relative overflow-hidden rounded-2xl border border-border bg-[radial-gradient(circle_at_top_right,color-mix(in_oklch,var(--chart-2)_28%,transparent),transparent_40%),hsl(var(--surface))] p-12 text-center"
+    >
+      <div className="font-mono text-2xs uppercase tracking-wide text-muted-foreground">
+        {index + 1} / {tiles.length} · j/k to advance
+      </div>
+      <h3 className="mt-8 text-xs uppercase tracking-wider text-muted-foreground">{tile.title}</h3>
+      {tile.value ? (
+        <div className="mt-2 text-6xl font-semibold tracking-tight">{tile.value}</div>
+      ) : null}
+      <div className="mt-4 text-sm text-muted-foreground">{tile.meta}</div>
+    </section>
+  );
+}
+
+function shareWrappedAsImage(node: HTMLElement | null): void {
+  if (!node) return;
+  // Lightweight share: use the experimental Web Share API with a screenshot
+  // proxy. We don't bundle html2canvas — instead we copy the rendered DOM
+  // text + share the dashboard URL. Image rendering proper is a follow-up.
+  try {
+    const text = node.innerText.replace(/\s+/g, " ").slice(0, 240);
+    const shareData = {
+      title: "mxr wrapped",
+      text,
+      url: typeof window !== "undefined" ? window.location.href : undefined,
+    };
+    type NavigatorWithShare = Navigator & {
+      share?: (data: ShareData) => Promise<void>;
+    };
+    const nav = (typeof navigator !== "undefined" ? navigator : undefined) as
+      | NavigatorWithShare
+      | undefined;
+    if (nav?.share) {
+      void nav.share(shareData);
+    } else if (typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard
+        .writeText(`${shareData.text}\n${shareData.url ?? ""}`)
+        .then(() => toast.success("Wrapped summary copied to clipboard"));
+    }
+  } catch (error) {
+    toast.error("Share failed", {
+      description: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 function Chart({

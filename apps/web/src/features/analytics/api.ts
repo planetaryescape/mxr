@@ -147,6 +147,12 @@ export function fetchWrapped(range: AnalyticsRange) {
   );
 }
 
+export function refreshAnalyticsContacts(): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>("/api/v1/platform/analytics/refresh-contacts", {
+    method: "POST",
+  });
+}
+
 export function rebuildAnalytics() {
   return apiFetch<unknown>("/api/v1/platform/analytics/rebuild", { method: "POST" });
 }

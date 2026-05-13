@@ -5,6 +5,7 @@
  */
 
 import { accountsActions } from "@/features/accounts/actions";
+import { analyticsActions } from "@/features/analytics/actions";
 import { composeActions } from "@/features/compose/actions";
 import { diagnosticsActions } from "@/features/diagnostics/actions";
 import { mailboxActions } from "@/features/mailbox/actions";
@@ -23,6 +24,7 @@ const featureActions: Action[] = [
   ...mailboxActions,
   ...rulesActions,
   ...accountsActions,
+  ...analyticsActions,
 ];
 
 let registered = false;

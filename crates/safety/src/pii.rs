@@ -19,8 +19,16 @@ static GH_PREFIX: Lazy<Regex> = Lazy::new(|| Regex::new(r"\bghp_[A-Za-z0-9]{20,}
 static SLACK_PREFIX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b").unwrap());
 static AWS_KEY_ID: Lazy<Regex> = Lazy::new(|| Regex::new(r"\bAKIA[0-9A-Z]{16}\b").unwrap());
+// Catches all four canonical/loose forms:
+//   AWS_ACCESS_KEY_ID=...      (canonical env var)
+//   AWS_SECRET_ACCESS_KEY=...  (canonical env var)
+//   aws_access_key=...         (loose)
+//   aws_secret_key=...         (loose)
 static AWS_KEY_LABEL: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)\baws[_-]?(access|secret)[_-]?key([_-]?id)?\s*[:=]\s*\S+").unwrap()
+    Regex::new(
+        r"(?i)\baws[_-]?(access[_-]?key([_-]?id)?|secret[_-]?(access[_-]?)?key)\s*[:=]\s*\S+",
+    )
+    .unwrap()
 });
 static GENERIC_API_KEY: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?i)\bapi[_-]?key\s*[:=]\s*['"]?[A-Za-z0-9_\-]{12,}['"]?"#).unwrap());

@@ -21,4 +21,7 @@ regex = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
+mxr-store = { workspace = true }
 serde_json = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

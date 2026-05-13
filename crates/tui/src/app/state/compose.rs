@@ -10,6 +10,11 @@ pub struct PendingSend {
     pub draft_path: std::path::PathBuf,
     pub intent: DraftIntent,
     pub mode: PendingSendMode,
+    /// Latest safety report, if a pre-send check has run.
+    pub safety_report: Option<mxr_core::DraftSafetyReport>,
+    /// Single-use override token minted when the latest check
+    /// returned a Blocked verdict; consumed when the user confirms.
+    pub override_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

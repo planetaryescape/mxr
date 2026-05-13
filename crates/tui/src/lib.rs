@@ -6309,6 +6309,8 @@ mod tests {
             draft_path: std::path::PathBuf::from("/tmp/draft.md"),
             intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::Unchanged,
+            safety_report: None,
+            override_token: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -6349,6 +6351,8 @@ mod tests {
             draft_path: std::path::PathBuf::from("/tmp/draft.md"),
             intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::SendOrSave,
+            safety_report: None,
+            override_token: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -6388,6 +6392,8 @@ mod tests {
             draft_path: std::path::PathBuf::from("/tmp/scheduled-draft.md"),
             intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::SendOrSave,
+            safety_report: None,
+            override_token: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
@@ -6559,6 +6565,8 @@ mod tests {
             draft_path: std::path::PathBuf::from("/tmp/draft.md"),
             intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::DraftOnlyNoRecipients,
+            safety_report: None,
+            override_token: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -6596,6 +6604,8 @@ mod tests {
             draft_path: std::path::PathBuf::from("/tmp/draft.md"),
             intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::DraftOnlyNoRecipients,
+            safety_report: None,
+            override_token: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
@@ -6639,6 +6649,8 @@ mod tests {
             draft_path: temp.clone(),
             intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::DraftOnlyNoRecipients,
+            safety_report: None,
+            override_token: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
@@ -6684,6 +6696,8 @@ mod tests {
             draft_path: temp.clone(),
             intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::DraftOnlyNoRecipients,
+            safety_report: None,
+            override_token: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -8094,6 +8108,8 @@ mod tests {
             draft_path: std::path::PathBuf::from("/tmp/mxr-draft.md"),
             intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::SendOrSave,
+            safety_report: None,
+            override_token: None,
         });
 
         app.apply(Action::RefinePendingDraft);

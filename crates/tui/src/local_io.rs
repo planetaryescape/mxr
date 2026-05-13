@@ -274,6 +274,8 @@ mod tests {
             draft_path,
             intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::DraftOnlyNoRecipients,
+            safety_report: None,
+            override_token: None,
         }
     }
 

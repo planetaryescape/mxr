@@ -314,6 +314,8 @@ pub(crate) async fn pending_send_from_edited_draft(
         body,
         draft_path: data.draft_path.clone(),
         mode,
+        safety_report: None,
+        override_token: None,
     }))
 }
 

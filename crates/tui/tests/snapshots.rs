@@ -250,6 +250,8 @@ fn send_confirm_snapshot() {
         draft_path: "/tmp/draft.md".into(),
         intent: mxr_core::DraftIntent::New,
         mode: PendingSendMode::SendOrSave,
+        safety_report: None,
+        override_token: None,
     };
 
     let snapshot = render_to_string(70, 20, |frame| {

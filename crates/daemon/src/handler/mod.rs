@@ -7574,6 +7574,193 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn send_stored_draft_blocks_empty_recipient_before_sending_state() {
+        let account_id = mxr_core::AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+        let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake.clone();
+        let send_provider: Arc<dyn mxr_core::MailSendProvider> = fake.clone();
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+                .await
+                .unwrap(),
+        );
+
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id,
+            reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "No recipients".to_string(),
+            body_markdown: "Body".to_string(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        state.store.insert_draft(&draft).await.unwrap();
+
+        let send_msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::SendStoredDraft {
+                draft_id: draft.id.clone(),
+            }),
+        };
+        match handle_request(&state, &send_msg).await.payload {
+            IpcPayload::Response(Response::Error { message, .. }) => {
+                assert!(message.contains("draft safety"));
+                assert!(message.contains("recipient"));
+            }
+            other => panic!("Expected draft safety error, got {other:?}"),
+        }
+
+        assert_eq!(
+            state.store.get_draft_status(&draft.id).await.unwrap(),
+            Some(mxr_core::DraftStatus::Draft)
+        );
+        assert_eq!(
+            state.store.get_draft_heartbeat(&draft.id).await.unwrap(),
+            None
+        );
+        assert_eq!(fake.sent_drafts().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn send_draft_blocks_invalid_recipient_before_provider_send() {
+        let account_id = mxr_core::AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+        let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake.clone();
+        let send_provider: Arc<dyn mxr_core::MailSendProvider> = fake.clone();
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+                .await
+                .unwrap(),
+        );
+
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id,
+            reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
+            to: vec![mxr_core::types::Address {
+                name: None,
+                email: "not an address".to_string(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Invalid recipient".to_string(),
+            body_markdown: "Body".to_string(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        let send_msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::SendDraft { draft }),
+        };
+        match handle_request(&state, &send_msg).await.payload {
+            IpcPayload::Response(Response::Error { message, .. }) => {
+                assert!(message.contains("draft safety"));
+                assert!(message.contains("invalid recipient"));
+            }
+            other => panic!("Expected draft safety error, got {other:?}"),
+        }
+
+        assert_eq!(fake.sent_drafts().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn send_stored_reply_all_blocks_missing_original_recipient_before_sending_state() {
+        let account_id = mxr_core::AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let account_email = account.email.clone();
+        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+        let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake.clone();
+        let send_provider: Arc<dyn mxr_core::MailSendProvider> = fake.clone();
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+                .await
+                .unwrap(),
+        );
+
+        let mut parent = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .provider_id("reply-all-parent")
+            .message_id_header(Some("<reply-all-parent@example.com>".to_string()))
+            .build();
+        parent.from = mxr_core::types::Address {
+            name: None,
+            email: "alice@example.com".to_string(),
+        };
+        parent.to = vec![
+            mxr_core::types::Address {
+                name: None,
+                email: account_email,
+            },
+            mxr_core::types::Address {
+                name: None,
+                email: "bob@example.com".to_string(),
+            },
+        ];
+        parent.cc = vec![mxr_core::types::Address {
+            name: None,
+            email: "carol@example.com".to_string(),
+        }];
+        state.store.upsert_envelope(&parent).await.unwrap();
+
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id,
+            reply_headers: Some(mxr_core::ReplyHeaders {
+                in_reply_to: "<reply-all-parent@example.com>".to_string(),
+                references: vec!["<reply-all-parent@example.com>".to_string()],
+                thread_id: None,
+            }),
+            intent: mxr_core::DraftIntent::ReplyAll,
+            to: vec![mxr_core::types::Address {
+                name: None,
+                email: "alice@example.com".to_string(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Re: parent".to_string(),
+            body_markdown: "reply".to_string(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        state.store.insert_draft(&draft).await.unwrap();
+
+        let send_msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::SendStoredDraft {
+                draft_id: draft.id.clone(),
+            }),
+        };
+        match handle_request(&state, &send_msg).await.payload {
+            IpcPayload::Response(Response::Error { message, .. }) => {
+                assert!(message.contains("reply-all is missing recipient"));
+                assert!(message.contains("bob@example.com"));
+            }
+            other => panic!("Expected draft safety error, got {other:?}"),
+        }
+
+        assert_eq!(
+            state.store.get_draft_status(&draft.id).await.unwrap(),
+            Some(mxr_core::DraftStatus::Draft)
+        );
+        assert_eq!(
+            state.store.get_draft_heartbeat(&draft.id).await.unwrap(),
+            None
+        );
+        assert_eq!(fake.sent_drafts().len(), 0);
+    }
+
+    #[tokio::test]
     async fn dispatch_send_draft_preserves_parent_thread_for_synthetic_sent() {
         let account_id = mxr_core::AccountId::new();
         let account = crate::test_fixtures::test_account_with_id(account_id.clone());

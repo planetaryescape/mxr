@@ -3,21 +3,136 @@ use super::{
     restore_snoozed_message, HandlerResult,
 };
 use crate::state::AppState;
+use lettre::message::Mailbox;
 use mxr_core::types::{
-    Address, Draft, DraftStatus, Envelope, MessageBody, MessageDirection, MessageFlags,
-    MessageMetadata, SendReceipt, UnsubscribeMethod,
+    Address, Draft, DraftSafetyIssue, DraftSafetyIssueCode, DraftSafetyReport, DraftSafetySeverity,
+    DraftStatus, Envelope, MessageBody, MessageDirection, MessageFlags, MessageMetadata,
+    SendReceipt, UnsubscribeMethod,
 };
 use mxr_protocol::{
     AccountMutationResultData, DaemonEvent, ForwardContext, IpcMessage, IpcPayload,
     MutationCommand, MutationResultData, ReplyContext, ResponseData,
 };
 use mxr_store::{EventLogRefs, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// How long after the mutation the user can undo it. Matches the plan
 /// (~60s) and pairs with `tick_connection_state`-style UI affordances on
 /// the TUI side.
 const UNDO_WINDOW_SECS: i64 = 60;
+
+pub(crate) fn check_draft_safety(draft: &Draft) -> DraftSafetyReport {
+    let mut issues = Vec::new();
+    let recipient_count = draft.to.len() + draft.cc.len() + draft.bcc.len();
+
+    if recipient_count == 0 {
+        issues.push(DraftSafetyIssue {
+            code: DraftSafetyIssueCode::NoRecipients,
+            severity: DraftSafetySeverity::Blocker,
+            message: "draft has no recipients".to_string(),
+        });
+    }
+
+    for address in draft.to.iter().chain(&draft.cc).chain(&draft.bcc) {
+        if address.email.trim().parse::<Mailbox>().is_err() {
+            issues.push(DraftSafetyIssue {
+                code: DraftSafetyIssueCode::InvalidRecipient,
+                severity: DraftSafetySeverity::Blocker,
+                message: format!("invalid recipient address: {}", address.email),
+            });
+        }
+    }
+
+    let allowed = !issues
+        .iter()
+        .any(|issue| issue.severity == DraftSafetySeverity::Blocker);
+    DraftSafetyReport { allowed, issues }
+}
+
+async fn check_draft_safety_with_context(
+    state: &AppState,
+    draft: &Draft,
+) -> Result<DraftSafetyReport, String> {
+    let mut report = check_draft_safety(draft);
+    if draft.intent != mxr_core::DraftIntent::ReplyAll {
+        return Ok(report);
+    }
+
+    let Some(reply_headers) = draft.reply_headers.as_ref() else {
+        return Ok(report);
+    };
+    let mut parents = state
+        .store
+        .list_envelopes_by_message_id_header(&draft.account_id, &reply_headers.in_reply_to)
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(parent) = parents.pop() else {
+        return Ok(report);
+    };
+
+    let mut self_addresses = HashSet::new();
+    if let Some(account) = state
+        .store
+        .get_account(&draft.account_id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        self_addresses.insert(account.email.to_ascii_lowercase());
+    }
+    for address in state
+        .store
+        .list_account_addresses(&draft.account_id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        self_addresses.insert(address.email.to_ascii_lowercase());
+    }
+
+    let actual_recipients = draft
+        .to
+        .iter()
+        .chain(&draft.cc)
+        .chain(&draft.bcc)
+        .map(|address| address.email.to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+    let reply_target = parent.from.email.to_ascii_lowercase();
+
+    for expected in parent.to.iter().chain(&parent.cc) {
+        let email = expected.email.to_ascii_lowercase();
+        if email.is_empty() || self_addresses.contains(&email) || email == reply_target {
+            continue;
+        }
+        if !actual_recipients.contains(&email) {
+            report.issues.push(DraftSafetyIssue {
+                code: DraftSafetyIssueCode::MissingReplyAllRecipient,
+                severity: DraftSafetySeverity::Blocker,
+                message: format!("reply-all is missing recipient: {}", expected.email),
+            });
+        }
+    }
+
+    report.allowed = !report
+        .issues
+        .iter()
+        .any(|issue| issue.severity == DraftSafetySeverity::Blocker);
+    Ok(report)
+}
+
+async fn enforce_draft_safety(state: &AppState, draft: &Draft) -> Result<(), String> {
+    let report = check_draft_safety_with_context(state, draft).await?;
+    if report.allowed {
+        return Ok(());
+    }
+
+    let messages = report
+        .issues
+        .iter()
+        .filter(|issue| issue.severity == DraftSafetySeverity::Blocker)
+        .map(|issue| issue.message.as_str())
+        .collect::<Vec<_>>()
+        .join("; ");
+    Err(format!("draft safety blocked send: {messages}"))
+}
 
 async fn log_mutation(
     state: &AppState,
@@ -929,6 +1044,7 @@ async fn resolve_from_address(state: &AppState, draft: &Draft) -> Address {
 }
 
 pub(super) async fn send_draft(state: &AppState, draft: &Draft) -> HandlerResult {
+    enforce_draft_safety(state, draft).await?;
     let sender = state.send_provider_for_account(&draft.account_id)?;
     let from = resolve_from_address(state, draft).await;
     let rfc2822_message_id = mxr_outbound::email::generate_message_id(&from);
@@ -996,6 +1112,8 @@ pub(crate) async fn send_stored_draft(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
+
+    enforce_draft_safety(state, &draft).await?;
 
     // Compare-and-set: only the unique `Draft` -> `Sending` transition is
     // allowed to invoke the provider. A draft already in `Sending` (likely a
@@ -1334,6 +1452,7 @@ pub(super) async fn unsubscribe(
                 id: mxr_core::DraftId::new(),
                 account_id: envelope.account_id.clone(),
                 reply_headers: None,
+                intent: mxr_core::DraftIntent::New,
                 to: vec![Address {
                     name: None,
                     email: address.clone(),

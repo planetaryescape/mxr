@@ -92,6 +92,8 @@ impl App {
             }
             // Message view
             Action::Noop => {}
+            // Intercepted in lib.rs before apply(); no-op if it somehow arrives here
+            Action::CancelOutlookAuth => {}
             _ => unreachable!("action routed to wrong handler"),
         }
     }

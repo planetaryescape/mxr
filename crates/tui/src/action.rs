@@ -220,6 +220,9 @@ pub enum Action {
 
     // No-op (for unrecognized keys)
     Noop,
+
+    /// Cancel an in-flight Outlook device-code auth session.
+    CancelOutlookAuth,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

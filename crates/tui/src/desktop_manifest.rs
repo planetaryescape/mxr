@@ -278,6 +278,7 @@ fn action_name(action: &Action) -> Option<&'static str> {
         | Action::CancelUnsubscribe
         | Action::PatternSelect(_)
         | Action::SaveSavedSearchForm
-        | Action::SwitchAccount(_) => None,
+        | Action::SwitchAccount(_)
+        | Action::CancelOutlookAuth => None,
     }
 }

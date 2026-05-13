@@ -4,8 +4,9 @@ use image::DynamicImage;
 use mxr_core::types::SubscriptionSummary;
 use mxr_core::{Envelope, Label, MessageBody, MessageId, MxrError, Thread, ThreadId};
 use mxr_protocol::{
-    AccountOperationResult, AccountSummaryData, AccountSyncStatus, AttachmentFile, BodyFailure,
-    DaemonEvent, Response, RuleFormData, ScreenerQueueEntryData, SenderProfileData, SnippetData,
+    AccountOperationResult, AccountSummaryData, AccountSyncStatus, AttachmentFile, AuthSessionData,
+    BodyFailure, DaemonEvent, Response, RuleFormData, ScreenerQueueEntryData, SenderProfileData,
+    SnippetData,
 };
 use ratatui_image::thread::ResizeResponse;
 
@@ -49,6 +50,7 @@ pub(crate) enum AsyncResult {
     AllEnvelopes(Result<Vec<Envelope>, MxrError>),
     Subscriptions(Result<Vec<SubscriptionSummary>, MxrError>),
     AccountOperation(Result<AccountOperationResult, MxrError>),
+    AuthSession(AuthSessionData),
     BugReport(Result<String, MxrError>),
     BugReportSaved(Result<std::path::PathBuf, String>),
     BrowserOpened(Result<std::path::PathBuf, String>),

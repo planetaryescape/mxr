@@ -1399,6 +1399,13 @@ impl App {
     }
 
     fn handle_accounts_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        if self.accounts.page.active_auth_session.is_some() {
+            if key.code == crossterm::event::KeyCode::Esc {
+                return Some(Action::CancelOutlookAuth);
+            }
+            return None;
+        }
+
         if self.accounts.page.resume_new_account_draft_prompt_open {
             return match (key.code, key.modifiers) {
                 (KeyCode::Enter | KeyCode::Char('c'), _) => {

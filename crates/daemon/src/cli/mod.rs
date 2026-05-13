@@ -288,6 +288,27 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Suggest "maybe include" Cc recipients for a draft. Excludes
+    /// addresses already on the draft and never reveals Bcc'd
+    /// addresses from prior threads.
+    SuggestRecipients {
+        /// Stored draft id. Mutually exclusive with --subject.
+        #[arg(long, conflicts_with = "subject")]
+        draft: Option<String>,
+        /// Subject for an ephemeral draft. Pair with --body-stdin
+        /// for the body.
+        #[arg(long)]
+        subject: Option<String>,
+        /// Read the body from stdin.
+        #[arg(long = "body-stdin")]
+        body_stdin: bool,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long, default_value_t = 5)]
+        limit: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Explain an entity (email or term) using local evidence.
     Whois {
         query: String,

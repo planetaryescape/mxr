@@ -34,6 +34,7 @@ pub mod rules;
 pub mod saved;
 pub mod screener;
 pub mod send_time;
+pub mod suggest_recipients;
 pub mod whois;
 pub mod search;
 pub mod selection;

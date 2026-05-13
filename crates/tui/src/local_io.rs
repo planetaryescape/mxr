@@ -276,6 +276,7 @@ mod tests {
             mode: PendingSendMode::DraftOnlyNoRecipients,
             safety_report: None,
             override_token: None,
+            suggested_collaborators: vec![],
         }
     }
 

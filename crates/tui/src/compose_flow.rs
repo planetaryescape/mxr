@@ -316,6 +316,7 @@ pub(crate) async fn pending_send_from_edited_draft(
         mode,
         safety_report: None,
         override_token: None,
+            suggested_collaborators: vec![],
     }))
 }
 
@@ -334,6 +335,7 @@ pub(crate) async fn handle_compose_editor_status(
                 // `safety_report = None` so the user is never blocked
                 // from seeing their draft, just from the safety hint.
                 stamp_safety_report(&mut pending, bg).await;
+                stamp_suggestions(&mut pending, bg).await;
                 app.compose.pending_send_confirm = Some(pending);
             }
             Ok(None) => {}
@@ -397,6 +399,23 @@ async fn stamp_safety_report(
             // IPC worker dropped or daemon unreachable. The user can
             // still see the modal; they just won't have safety hints.
         }
+    }
+}
+
+/// Slice 5.3 (C2.7 cont): fetch "maybe include" suggestions and
+/// stamp them onto `pending.suggested_collaborators`. Failure is
+/// silent — the modal just renders without the suggestions block.
+async fn stamp_suggestions(
+    pending: &mut PendingSend,
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+) {
+    let draft = draft_from_pending(pending);
+    let req = Request::SuggestCollaborators { draft, limit: 5 };
+    if let Ok(Response::Ok {
+        data: ResponseData::SuggestedCollaborators { suggestions },
+    }) = ipc_call(bg, req).await
+    {
+        pending.suggested_collaborators = suggestions;
     }
 }
 

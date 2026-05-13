@@ -389,6 +389,9 @@ impl App {
         // Slice 6.1 (C2.9): whois modal (entity explanation).
         ui::whois_modal::draw(frame, area, &self.modals.whois, theme);
 
+        // Slice 5.4 (C2.8 cont): expert-finder modal.
+        ui::expert_modal::draw(frame, area, &self.modals.expert, theme);
+
         // Generic platform/AI result modal (voice, commitments, draft suggestions).
         ui::platform_modal::draw(frame, area, &self.modals.platform, theme);
 

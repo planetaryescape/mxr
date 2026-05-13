@@ -55,6 +55,20 @@ fn modal_lines(pending: &PendingSend, send_at_input: Option<&str>) -> Vec<String
         push_safety_lines(&mut lines, report, pending.override_token.as_deref());
     }
 
+    if !pending.suggested_collaborators.is_empty() {
+        lines.push(String::new());
+        lines.push("Maybe include:".to_string());
+        for (i, s) in pending.suggested_collaborators.iter().enumerate() {
+            let display = s.display_name.as_deref().unwrap_or(s.email.as_str());
+            lines.push(format!(
+                "  {}. {display} ({} threads)",
+                i + 1,
+                s.evidence_msg_ids.len()
+            ));
+        }
+        lines.push("Press Ctrl-A to add the top suggestion to Cc.".to_string());
+    }
+
     if let Some(input) = send_at_input {
         lines.push(format!("Send at: {input}"));
         lines.push("Enter to schedule. Esc to cancel prompt.".to_string());
@@ -175,6 +189,7 @@ mod tests {
             mode,
             safety_report: None,
             override_token: None,
+            suggested_collaborators: vec![],
         }
     }
 

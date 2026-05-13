@@ -15,6 +15,11 @@ pub struct PendingSend {
     /// Single-use override token minted when the latest check
     /// returned a Blocked verdict; consumed when the user confirms.
     pub override_token: Option<String>,
+    /// Slice 5.3 (C2.7 cont): "maybe include" suggestions returned
+    /// by `Request::SuggestCollaborators`. Rendered in the modal as
+    /// a discoverable list; the user can press [Ctrl-A] to add the
+    /// first one to Cc.
+    pub suggested_collaborators: Vec<mxr_protocol::SuggestedRecipientData>,
 }
 
 impl PendingSend {

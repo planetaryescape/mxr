@@ -252,6 +252,7 @@ fn send_confirm_snapshot() {
         mode: PendingSendMode::SendOrSave,
         safety_report: None,
         override_token: None,
+            suggested_collaborators: vec![],
     };
 
     let snapshot = render_to_string(70, 20, |frame| {

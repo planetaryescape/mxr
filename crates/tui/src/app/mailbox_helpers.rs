@@ -161,7 +161,7 @@ impl App {
             MailListMode::Messages => "Messages",
         };
         let list_count = self.mail_row_count();
-        if self.search.active {
+        let base = if self.search.active {
             format!("Search: {} ({list_count})", self.search.bar.query)
         } else if let Some(label_id) = self
             .mailbox
@@ -177,7 +177,32 @@ impl App {
             }
         } else {
             format!("All Mail {list_name} ({list_count})")
+        };
+        // Slice 5.1 (C2.6 cont): when the focused thread qualifies as
+        // dormant, append a discoverable hint to the title.
+        if let Some(hint) = self.dormant_thread_hint() {
+            format!("{base} · {hint}")
+        } else {
+            base
         }
+    }
+
+    /// "Dormant Nd. Press B for briefing" when the focused row's
+    /// representative is older than 30d AND the thread has >=3
+    /// messages. Per Slice 5.1 doc spec.
+    pub fn dormant_thread_hint(&self) -> Option<String> {
+        const DORMANT_DAYS: i64 = 30;
+        const MIN_MESSAGES: usize = 3;
+        let row = self.mail_list_rows().into_iter().nth(self.mailbox.selected_index)?;
+        if row.message_count < MIN_MESSAGES {
+            return None;
+        }
+        let age = chrono::Utc::now() - row.representative.date;
+        let days = age.num_days();
+        if days < DORMANT_DAYS {
+            return None;
+        }
+        Some(format!("Dormant {days}d. Press B for briefing"))
     }
 
     pub(super) fn all_mail_envelopes(&self) -> Vec<Envelope> {

@@ -9,6 +9,7 @@ pub mod command_palette;
 pub mod compose_picker;
 pub mod diagnostics_page;
 pub mod error_modal;
+pub mod expert_modal;
 pub mod help_modal;
 pub mod hint_bar;
 pub mod label_picker;

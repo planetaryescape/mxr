@@ -1,0 +1,29 @@
+---
+source: crates/tui/src/ui/expert_modal.rs
+assertion_line: 143
+expression: rendered
+---
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"            ╭ Find expert: kafka ──────────────────────────────────╮            "
+"            │  1. Bob Operator — 3 answer thread(s)                │            "
+"            │       answered in 3 prior thread(s)                  │            "
+"            │  2. carol@example.com — 1 answer thread(s)           │            "
+"            │       answered in 1 prior thread(s)                  │            "
+"            │                                                      │            "
+"            │  [Esc] close                                         │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            ╰──────────────────────────────────────────────────────╯            "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "

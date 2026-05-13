@@ -328,6 +328,13 @@ impl App {
             };
         }
 
+        if self.modals.expert.visible {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseExpertModal),
+                _ => None,
+            };
+        }
+
         if self.modals.sender_profile.visible {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseSenderViewModal),
@@ -541,6 +548,25 @@ impl App {
                             return None;
                         }
                         self.dispatch_send_pending(pending, None);
+                    }
+                    return None;
+                }
+                (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                    // Slice 5.3 (C2.7 cont): add the top "maybe
+                    // include" suggestion to the draft's Cc and
+                    // remove it from the suggestions list.
+                    if let Some(pending) = self.compose.pending_send_confirm.as_mut() {
+                        if let Some(top) = pending.suggested_collaborators.first().cloned() {
+                            let cc = pending.fm.cc.trim();
+                            pending.fm.cc = if cc.is_empty() {
+                                top.email.clone()
+                            } else {
+                                format!("{cc}, {}", top.email)
+                            };
+                            pending.suggested_collaborators.remove(0);
+                            self.status_message =
+                                Some(format!("Added {} to Cc", top.email));
+                        }
                     }
                     return None;
                 }

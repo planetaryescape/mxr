@@ -125,6 +125,9 @@ pub struct ModalsState {
     /// Slice 6.1 (C2.9): whois modal -- explains an entity (email
     /// or free-text term) using local evidence.
     pub whois: WhoisModalState,
+    /// Slice 5.4 (C2.8 cont): expert-finder modal -- shows people
+    /// who have answered similar questions before.
+    pub expert: ExpertModalState,
 }
 
 #[derive(Debug, Clone)]
@@ -599,6 +602,43 @@ impl BriefingModalState {
         self.citations.clear();
         self.generated_at = None;
         self.from_cache = false;
+        self.error = None;
+    }
+}
+
+/// Slice 5.4 (C2.8 cont): expert-finder modal state. Mirrors the
+/// whois modal shape -- loading, populated, error, hidden.
+#[derive(Debug, Clone, Default)]
+pub struct ExpertModalState {
+    pub visible: bool,
+    pub loading: bool,
+    pub query: Option<String>,
+    pub experts: Vec<mxr_protocol::ExpertSuggestionData>,
+    pub error: Option<String>,
+}
+
+impl ExpertModalState {
+    pub fn open_loading(&mut self, query: String) {
+        self.visible = true;
+        self.loading = true;
+        self.query = Some(query);
+        self.experts.clear();
+        self.error = None;
+    }
+    pub fn set_experts(&mut self, experts: Vec<mxr_protocol::ExpertSuggestionData>) {
+        self.loading = false;
+        self.experts = experts;
+        self.error = None;
+    }
+    pub fn set_error(&mut self, message: String) {
+        self.loading = false;
+        self.error = Some(message);
+    }
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.loading = false;
+        self.query = None;
+        self.experts.clear();
         self.error = None;
     }
 }

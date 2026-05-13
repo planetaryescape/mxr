@@ -176,6 +176,8 @@ impl App {
             | Action::CloseBriefingModal
             | Action::OpenWhoisOnFocusedSender
             | Action::CloseWhoisModal
+            | Action::FindExpertOnFocusedMessage
+            | Action::CloseExpertModal
             | Action::OpenSnippets
             | Action::CloseSnippetsModal
             | Action::SnippetsModalNext

@@ -765,6 +765,12 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "System".into(),
         },
         PaletteCommand {
+            label: "Find expert".into(),
+            shortcut: "".into(),
+            action: Action::FindExpertOnFocusedMessage,
+            category: "AI".into(),
+        },
+        PaletteCommand {
             label: "Quit".into(),
             shortcut: "q".into(),
             action: Action::QuitView,

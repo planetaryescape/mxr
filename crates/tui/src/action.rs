@@ -144,6 +144,12 @@ pub enum Action {
     OpenWhoisOnFocusedSender,
     /// Close the whois modal (Esc).
     CloseWhoisModal,
+    /// Slice 5.4 (C2.8 cont): "Find expert" command-palette action.
+    /// Uses the focused message body as the query and fires
+    /// `Request::FindExpert`.
+    FindExpertOnFocusedMessage,
+    /// Close the expert-finder modal (Esc).
+    CloseExpertModal,
     /// Open the snippet manager modal.
     OpenSnippets,
     /// Close the snippet manager modal (Esc).

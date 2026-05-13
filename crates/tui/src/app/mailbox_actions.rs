@@ -584,6 +584,23 @@ impl App {
             Action::CloseWhoisModal => {
                 self.modals.whois.close();
             }
+            Action::FindExpertOnFocusedMessage => {
+                let Some(env) = self.context_envelope() else {
+                    self.status_message = Some("No message selected".into());
+                    return;
+                };
+                // Query is the subject + snippet — the body is the
+                // canonical corpus per the CLI but we don't have it
+                // loaded here. Subject + snippet is enough to seed
+                // the lexical search.
+                let query = format!("{} {}", env.subject, env.snippet);
+                self.modals.expert.open_loading(query.clone());
+                self.pending_expert_query = Some(query);
+                self.status_message = Some("Finding experts...".into());
+            }
+            Action::CloseExpertModal => {
+                self.modals.expert.close();
+            }
             Action::OpenSnippets => {
                 self.modals.snippets.open_loading();
                 self.pending_snippets_refresh = true;

@@ -25,7 +25,7 @@ export function bootstrapFromHash(): void {
       // remote may arrive URL-encoded or as a bare host
       const normalized = remote.startsWith("http") ? remote : `https://${remote}`;
       const url = new URL(normalized);
-      localStorage.setItem(REMOTE_URL_KEY, url.origin);
+      safeStorage()?.setItem(REMOTE_URL_KEY, url.origin);
     } catch {
       // ignore malformed remote
     }
@@ -37,20 +37,32 @@ export function bootstrapFromHash(): void {
   }
 }
 
+function safeStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function getToken(): string | undefined {
-  if (typeof window === "undefined") return undefined;
-  const v = localStorage.getItem(STORAGE_KEY);
+  const storage = safeStorage();
+  if (!storage) return undefined;
+  const v = storage.getItem(STORAGE_KEY);
   return v ?? undefined;
 }
 
 export function setToken(token: string): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, token);
+  const storage = safeStorage();
+  if (!storage) return;
+  storage.setItem(STORAGE_KEY, token);
 }
 
 export function clearToken(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(STORAGE_KEY);
+  const storage = safeStorage();
+  if (!storage) return;
+  storage.removeItem(STORAGE_KEY);
 }
 
 export function getBridgeBaseUrl(): string {
@@ -58,7 +70,8 @@ export function getBridgeBaseUrl(): string {
   // served from the daemon itself so same-origin also works. Remote-host mode
   // sets a different origin via URL fragment on first load.
   if (typeof window === "undefined") return "";
-  const remote = localStorage.getItem(REMOTE_URL_KEY);
+  const storage = safeStorage();
+  const remote = storage?.getItem(REMOTE_URL_KEY) ?? null;
   return remote ?? window.location.origin;
 }
 

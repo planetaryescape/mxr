@@ -1,87 +1,65 @@
 /*
- * Page-level keybinding map. Vim-style sequences (g i, g s, …) plus Gmail
- * shortcuts plus our own. Compose route disables this; the editor handles
- * its own keys.
+ * Global keymap built from the action registry. Page-level chords (j/k, x,
+ * etc.) are handled by per-page components — this only binds chords that the
+ * registry exposes as non-paletteOnly actions.
+ *
+ * Inline-only chords (alt-bindings like Shift+Semicolon for the command
+ * palette) live below the registry-derived map. The compose route disables
+ * the keymap; the editor handles its own keys.
  */
 
 import type { KeyBindingMap } from "tinykeys";
 
+import { getRegistry, setRuntimeNavigate } from "@/lib/actions";
+import type { ActionContext } from "@/lib/actions";
+import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
+import { useSelection } from "@/state/selectionStore";
 
 interface Navigator {
   navigate: (to: string) => void;
 }
 
-function openSearchPalette(e: KeyboardEvent): void {
-  const t = e.target as HTMLElement | null;
-  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-  e.preventDefault();
-  useModals.getState().setSearchPaletteOpen(true);
+const THREAD_PATH_RE = /^\/m\/[^/]+\/[^/]+/;
+const MESSAGE_PATH_RE = /^\/m\/[^/]+\/[^/]+\/[^/]+/;
+
+function buildContextSnapshot(): ActionContext {
+  const path = typeof window !== "undefined" ? window.location.pathname : "/";
+  return {
+    path,
+    activePane: useMailboxPane.getState().activePane,
+    selectionCount: useSelection.getState().ids.size,
+    accountCount: 0,
+    hasFocusedThread: THREAD_PATH_RE.test(path),
+    hasFocusedMessage: MESSAGE_PATH_RE.test(path),
+    isFirstAccountOnly: false,
+  };
 }
 
-function navigateUnlessTyping(e: KeyboardEvent, nav: Navigator, to: string): void {
+function suppressedInTextField(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement | null;
-  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-  e.preventDefault();
-  nav.navigate(to);
+  if (!t) return false;
+  return t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable;
 }
 
 export function buildGlobalKeymap(nav: Navigator): KeyBindingMap {
-  return {
-    "$mod+KeyK": (e) => {
+  setRuntimeNavigate(nav);
+  const reg = getRegistry();
+  const map: KeyBindingMap = {};
+  for (const [chord, actionId] of Object.entries(reg.getShortcutMap())) {
+    const action = reg.get(actionId);
+    if (!action) continue;
+    map[chord] = (e) => {
+      if (suppressedInTextField(e)) return;
       e.preventDefault();
-      useModals.getState().setCommandPaletteOpen(true);
-    },
-    "Shift+Semicolon": (e) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      e.preventDefault();
-      useModals.getState().setCommandPaletteOpen(true);
-    },
-    "/": openSearchPalette,
-    Slash: openSearchPalette,
-    "1": (e) => navigateUnlessTyping(e, nav, "/m/inbox"),
-    "2": (e) => navigateUnlessTyping(e, nav, "/search"),
-    "3": (e) => navigateUnlessTyping(e, nav, "/analytics"),
-    "4": (e) => navigateUnlessTyping(e, nav, "/rules"),
-    "5": (e) => navigateUnlessTyping(e, nav, "/screener"),
-    "6": (e) => navigateUnlessTyping(e, nav, "/subscriptions"),
-    "7": (e) => navigateUnlessTyping(e, nav, "/reply-queue"),
-    "8": (e) => navigateUnlessTyping(e, nav, "/accounts"),
-    "9": (e) => navigateUnlessTyping(e, nav, "/diagnostics"),
-    "0": (e) => navigateUnlessTyping(e, nav, "/settings/theme"),
-    Digit1: (e) => navigateUnlessTyping(e, nav, "/m/inbox"),
-    Digit2: (e) => navigateUnlessTyping(e, nav, "/search"),
-    Digit3: (e) => navigateUnlessTyping(e, nav, "/analytics"),
-    Digit4: (e) => navigateUnlessTyping(e, nav, "/rules"),
-    Digit5: (e) => navigateUnlessTyping(e, nav, "/screener"),
-    Digit6: (e) => navigateUnlessTyping(e, nav, "/subscriptions"),
-    Digit7: (e) => navigateUnlessTyping(e, nav, "/reply-queue"),
-    Digit8: (e) => navigateUnlessTyping(e, nav, "/accounts"),
-    Digit9: (e) => navigateUnlessTyping(e, nav, "/diagnostics"),
-    Digit0: (e) => navigateUnlessTyping(e, nav, "/settings/theme"),
-    "Shift+Slash": (e) => {
-      // `?` opens help cheat sheet
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      e.preventDefault();
-      const modals = useModals.getState();
-      modals.setHelpOpen(!modals.helpOpen);
-    },
-    "g i": () => nav.navigate("/m/inbox"),
-    "g s": () => nav.navigate("/m/starred"),
-    "g d": () => nav.navigate("/m/drafts"),
-    "g t": () => nav.navigate("/m/trash"),
-    "g a": () => nav.navigate("/m/archive"),
-    "g r": () => nav.navigate("/rules"),
-    "g n": () => nav.navigate("/m/snoozed"),
-    "g l": () => nav.navigate("/reply-queue"),
-    "g u": () => nav.navigate("/subscriptions"),
-    KeyC: (e) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      e.preventDefault();
-      useModals.getState().setComposeLauncherOpen(true);
-    },
+      void action.run(buildContextSnapshot());
+    };
+  }
+  // Alt-binding for command palette — colon (:) opens it, mirroring the TUI.
+  map["Shift+Semicolon"] = (e) => {
+    if (suppressedInTextField(e)) return;
+    e.preventDefault();
+    useModals.getState().setCommandPaletteOpen(true);
   };
+  return map;
 }

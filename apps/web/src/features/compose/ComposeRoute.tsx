@@ -521,11 +521,35 @@ export function ComposeRoute() {
     }
     const accountId = current.accountId;
     const draftPath = current.draftPath;
-    await sendSession.mutateAsync({ draftPath, accountId });
-    forgetActiveDraft(intent.key);
     setSendConfirmOpen(false);
-    toast.success("Message sent");
-    await navigate({ to: "/m/$mailbox", params: { mailbox: "sent" } });
+
+    // Outbound undo: defer the actual send by 5 seconds. The toast offers an
+    // Undo button that cancels the timer. Auto-fire after the window expires.
+    let cancelled = false;
+    const toastId = toast("Sending in 5s", {
+      duration: 5000,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          cancelled = true;
+        },
+      },
+    });
+    setTimeout(() => {
+      if (cancelled) {
+        toast.dismiss(toastId);
+        toast.info("Send cancelled");
+        return;
+      }
+      sendSession
+        .mutateAsync({ draftPath, accountId })
+        .then(async () => {
+          forgetActiveDraft(intent.key);
+          toast.success("Message sent");
+          await navigate({ to: "/m/$mailbox", params: { mailbox: "sent" } });
+        })
+        .catch((err: Error) => toast.error("Send failed", { description: err.message }));
+    }, 5000);
   }
 
   function requestDiscard() {

@@ -106,6 +106,22 @@ export function updateComposeSession(input: {
   });
 }
 
+export interface ContactSuggestion {
+  email: string;
+  display_name?: string | null;
+}
+
+export async function fetchContactsAutocomplete(
+  q: string,
+  limit = 8,
+): Promise<ContactSuggestion[]> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  const data = await apiFetch<{ contacts?: ContactSuggestion[] }>(
+    `/api/v1/mail/contacts/autocomplete?${params.toString()}`,
+  );
+  return data.contacts ?? [];
+}
+
 export function sendComposeSession(draftPath: string, accountId: string): Promise<{ ok: boolean }> {
   return apiFetch<{ ok: boolean }>("/api/v1/mail/compose/session/send", {
     method: "POST",

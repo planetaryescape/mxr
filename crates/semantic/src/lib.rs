@@ -15,9 +15,9 @@ use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
 #[cfg(feature = "local")]
 use hnsw_rs::prelude::{DistCosine, Hnsw};
 use mxr_config::SemanticConfig;
-use mxr_core::id::MessageId;
 #[cfg(feature = "local")]
 use mxr_core::id::SemanticProfileId;
+use mxr_core::id::{MessageId, SemanticChunkId};
 #[cfg(feature = "local")]
 use mxr_core::types::{
     AttachmentMeta, Envelope, MessageBody, SemanticChunkRecord, SemanticEmbeddingRecord,
@@ -48,12 +48,17 @@ const FASTEMBED_REVISION: &str = "fastembed-5.13.0";
 pub struct SemanticHit {
     pub message_id: MessageId,
     pub score: f32,
+    pub chunk_id: SemanticChunkId,
+    pub source_kind: SemanticChunkSourceKind,
+    pub snippet: String,
 }
 
 #[cfg(feature = "local")]
 struct IndexedChunk {
+    chunk_id: SemanticChunkId,
     message_id: MessageId,
     source_kind: SemanticChunkSourceKind,
+    normalized: String,
 }
 
 #[cfg(feature = "local")]
@@ -439,8 +444,10 @@ impl SemanticEngine {
             chunks_by_id.insert(
                 point_id,
                 IndexedChunk {
+                    chunk_id: chunk.id,
                     message_id: chunk.message_id,
                     source_kind: chunk.source_kind,
+                    normalized: chunk.normalized,
                 },
             );
         }
@@ -1182,7 +1189,7 @@ fn best_hits_for_neighbours<I>(
 where
     I: IntoIterator<Item = (usize, f32)>,
 {
-    let mut best_by_message: HashMap<MessageId, f32> = HashMap::new();
+    let mut best_by_message: HashMap<MessageId, SemanticHit> = HashMap::new();
 
     for (point_id, similarity) in neighbour_scores {
         let Some(chunk) = index.chunks_by_id.get(&point_id) else {
@@ -1191,25 +1198,39 @@ where
         if !allowed_source_kinds.contains(&chunk.source_kind) {
             continue;
         }
+        let hit = SemanticHit {
+            message_id: chunk.message_id.clone(),
+            score: similarity,
+            chunk_id: chunk.chunk_id.clone(),
+            source_kind: chunk.source_kind,
+            snippet: semantic_hit_snippet(&chunk.normalized),
+        };
         best_by_message
             .entry(chunk.message_id.clone())
-            .and_modify(|score| {
-                if similarity > *score {
-                    *score = similarity;
+            .and_modify(|existing| {
+                if similarity > existing.score {
+                    *existing = hit.clone();
                 }
             })
-            .or_insert(similarity);
+            .or_insert(hit);
     }
 
-    let mut hits = best_by_message
-        .into_iter()
-        .map(|(message_id, score)| SemanticHit { message_id, score })
-        .collect::<Vec<_>>();
+    let mut hits = best_by_message.into_values().collect::<Vec<_>>();
     hits.sort_by(|left, right| right.score.total_cmp(&left.score));
     if hits.len() > limit {
         hits.truncate(limit);
     }
     hits
+}
+
+#[cfg(feature = "local")]
+fn semantic_hit_snippet(normalized: &str) -> String {
+    const MAX_CHARS: usize = 240;
+    let mut snippet = String::new();
+    for ch in normalized.chars().take(MAX_CHARS) {
+        snippet.push(ch);
+    }
+    snippet
 }
 
 #[cfg(all(test, feature = "local"))]
@@ -1883,22 +1904,28 @@ mod tests {
                 (
                     0,
                     IndexedChunk {
+                        chunk_id: SemanticChunkId::new(),
                         message_id: message_a.clone(),
                         source_kind: SemanticChunkSourceKind::Header,
+                        normalized: "header chunk".to_string(),
                     },
                 ),
                 (
                     1,
                     IndexedChunk {
+                        chunk_id: SemanticChunkId::new(),
                         message_id: message_a.clone(),
                         source_kind: SemanticChunkSourceKind::Body,
+                        normalized: "body chunk for message a".to_string(),
                     },
                 ),
                 (
                     2,
                     IndexedChunk {
+                        chunk_id: SemanticChunkId::new(),
                         message_id: message_b.clone(),
                         source_kind: SemanticChunkSourceKind::Body,
+                        normalized: "body chunk for message b".to_string(),
                     },
                 ),
             ]),
@@ -1915,5 +1942,7 @@ mod tests {
         assert_eq!(hits[0].message_id, message_b);
         assert_eq!(hits[1].message_id, message_a);
         assert!(hits[0].score > hits[1].score);
+        assert_eq!(hits[0].source_kind, SemanticChunkSourceKind::Body);
+        assert!(hits[0].snippet.contains("message b"));
     }
 }

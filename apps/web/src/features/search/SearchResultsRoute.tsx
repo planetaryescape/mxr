@@ -6,9 +6,12 @@ import { toast } from "sonner";
 
 import {
   createSavedSearch,
+  deleteSavedSearch,
   fetchSavedSearches,
   fetchSearch,
   searchKey,
+  updateSavedSearch,
+  type SavedSearch,
   type SearchMode,
   type SearchSort,
 } from "./api";
@@ -46,6 +49,7 @@ export function SearchResultsRoute() {
   const q = search.q ?? "";
   const mode = search.mode ?? "lexical";
   const sort = search.sort ?? "relevance";
+  const scope = (search.scope as "threads" | "messages" | "attachments" | undefined) ?? "threads";
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [previewRowId, setPreviewRowId] = useState<string | null>(null);
@@ -53,11 +57,11 @@ export function SearchResultsRoute() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const results = useQuery({
-    queryKey: searchKey({ q, mode, sort, account: search.account, limit: 100 }),
+    queryKey: searchKey({ q, mode, sort, scope, account: search.account, limit: 100 }),
     queryFn: ({ signal }) =>
       runReplaceableQuery("search-results", signal, (combinedSignal) =>
         fetchSearch(
-          { q, mode, sort, account: search.account, limit: 100 },
+          { q, mode, sort, scope, account: search.account, limit: 100 },
           { signal: combinedSignal },
         ),
       ),
@@ -80,13 +84,19 @@ export function SearchResultsRoute() {
     onError: (error) => toast.error("Save search failed", { description: error.message }),
   });
 
-  function updateSearch(next: { q?: string; mode?: SearchMode; sort?: SearchSort }) {
+  function updateSearch(next: {
+    q?: string;
+    mode?: SearchMode;
+    sort?: SearchSort;
+    scope?: "threads" | "messages" | "attachments";
+  }) {
     void navigate({
       to: "/search",
       search: {
         q: next.q ?? q,
         mode: next.mode ?? mode,
         sort: next.sort ?? sort,
+        scope: next.scope ?? scope,
         account: search.account,
       },
     });
@@ -248,6 +258,24 @@ export function SearchResultsRoute() {
               </SelectContent>
             </Select>
           </div>
+          <div className="w-36">
+            <Label>Scope</Label>
+            <Select
+              value={scope}
+              onValueChange={(value) =>
+                updateSearch({ scope: value as "threads" | "messages" | "attachments" })
+              }
+            >
+              <SelectTrigger className="mt-1 h-9" aria-label="Search scope">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="threads">Threads</SelectItem>
+                <SelectItem value="messages">Messages</SelectItem>
+                <SelectItem value="attachments">Attachments</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Button variant="outline" onClick={() => setSaveOpen(true)} disabled={!q.trim()}>
             <BookmarkPlus className="size-3" />
             Save
@@ -327,6 +355,14 @@ export function SearchResultsRoute() {
           />
         </div>
       )}
+
+      <SavedSearchManager
+        searches={savedSearches.data?.searches ?? []}
+        onChange={() => {
+          void qc.invalidateQueries({ queryKey: ["saved-searches"] });
+          void qc.invalidateQueries({ queryKey: ["shell"] });
+        }}
+      />
 
       <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
         <DialogContent>
@@ -439,6 +475,99 @@ function SearchPreviewPane({
         )}
       </div>
     </aside>
+  );
+}
+
+function SavedSearchManager({
+  searches,
+  onChange,
+}: {
+  searches: SavedSearch[];
+  onChange: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const update = useMutation({
+    mutationFn: ({ name, patch }: { name: string; patch: Parameters<typeof updateSavedSearch>[1] }) =>
+      updateSavedSearch(name, patch),
+    onSuccess: () => {
+      onChange();
+      toast.success("Saved search updated");
+    },
+    onError: (error: Error) =>
+      toast.error("Update saved search failed", { description: error.message }),
+  });
+  const remove = useMutation({
+    mutationFn: (name: string) => deleteSavedSearch(name),
+    onSuccess: () => {
+      onChange();
+      toast.success("Saved search deleted");
+    },
+    onError: (error: Error) =>
+      toast.error("Delete saved search failed", { description: error.message }),
+  });
+
+  if (searches.length === 0) return null;
+
+  return (
+    <details
+      open={open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+      className="border-t border-border bg-surface px-6 py-3"
+    >
+      <summary className="cursor-pointer text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Manage saved searches ({searches.length})
+      </summary>
+      <ul className="mt-3 space-y-2">
+        {searches.map((s) => (
+          <li
+            key={s.id}
+            className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs"
+          >
+            {s.icon ? (
+              <span
+                aria-label="Color tag"
+                className="size-3 rounded-full"
+                style={{ background: s.icon }}
+              />
+            ) : null}
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium">{s.name}</div>
+              <div className="truncate font-mono text-2xs text-muted-foreground">{s.query}</div>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={update.isPending}
+              onClick={() => {
+                const isPinned = (s.position ?? 0) < 0;
+                update.mutate({ name: s.name, patch: { position: isPinned ? 0 : -1 } });
+              }}
+            >
+              {(s.position ?? 0) < 0 ? "Unpin" : "Pin"}
+            </Button>
+            <input
+              type="color"
+              aria-label={`Color for ${s.name}`}
+              defaultValue={s.icon ?? "#888888"}
+              onBlur={(e) =>
+                update.mutate({ name: s.name, patch: { icon: e.target.value } })
+              }
+              className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent"
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={remove.isPending}
+              onClick={() => {
+                if (confirm(`Delete saved search "${s.name}"?`)) remove.mutate(s.name);
+              }}
+            >
+              Delete
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

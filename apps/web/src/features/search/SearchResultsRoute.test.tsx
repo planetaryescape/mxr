@@ -126,7 +126,13 @@ describe("SearchResultsRoute keyboard flow", () => {
 
     expect(router.navigate).toHaveBeenCalledWith({
       to: "/search",
-      search: { q: "alice", mode: "lexical", sort: "relevance", account: undefined },
+      search: {
+        q: "alice",
+        mode: "lexical",
+        sort: "relevance",
+        scope: "threads",
+        account: undefined,
+      },
     });
     expect(document.activeElement).not.toBe(input);
 

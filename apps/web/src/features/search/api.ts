@@ -74,3 +74,21 @@ export function deleteSavedSearch(name: string) {
     body: { name },
   });
 }
+
+export interface SavedSearchPatch {
+  new_name?: string;
+  query?: string;
+  search_mode?: SearchMode;
+  sort?: string;
+  /** Hex color (#RRGGBB) — overloaded onto the protocol's `icon` field. */
+  icon?: string;
+  /** Smaller = higher in list. Negative values pin to top. */
+  position?: number;
+}
+
+export function updateSavedSearch(name: string, patch: SavedSearchPatch) {
+  return apiFetch<SavedSearch>("/api/v1/platform/saved-searches/update", {
+    method: "POST",
+    body: { name, ...patch },
+  });
+}

@@ -1108,6 +1108,65 @@ async fn get_sender_profile(
 }
 
 #[derive(Debug, Deserialize)]
+struct ContactsAutocompleteQuery {
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default)]
+    q: Option<String>,
+    #[serde(default = "default_autocomplete_limit")]
+    limit: u32,
+}
+
+fn default_autocomplete_limit() -> u32 {
+    10
+}
+
+/// Filtered prefix-search over the user's known senders. Returns up to `limit`
+/// candidates whose email or display name contain the query (case-insensitive).
+async fn contacts_autocomplete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ContactsAutocompleteQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    // Pull more than the requested limit so client-side filtering has headroom.
+    let scan_limit = query.limit.saturating_mul(20).max(50).min(500);
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::ListSenders { limit: scan_limit },
+    )
+    .await?;
+    let q = query.q.unwrap_or_default().to_lowercase();
+    let limit = query.limit as usize;
+    let raw = serde_json::to_value(response).unwrap_or(Value::Null);
+    let mut matches: Vec<Value> = Vec::new();
+    if let Some(senders) = raw.get("senders").and_then(|v| v.as_array()) {
+        for sender in senders {
+            let email = sender
+                .get("email")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let name = sender
+                .get("display_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if !q.is_empty()
+                && !email.to_lowercase().contains(&q)
+                && !name.to_lowercase().contains(&q)
+            {
+                continue;
+            }
+            matches.push(sender.clone());
+            if matches.len() >= limit {
+                break;
+            }
+        }
+    }
+    Ok(Json(json!({ "contacts": matches })))
+}
+
+#[derive(Debug, Deserialize)]
 struct RelationshipProfileQuery {
     #[serde(default)]
     token: Option<String>,
@@ -2002,8 +2061,9 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         // snippets
         .route("/snippets", get(list_snippets).post(set_snippet))
         .route("/snippets/{name}", delete(delete_snippet))
-        // sender view
+        // sender view + contact autocomplete
         .route("/sender", get(get_sender_profile))
+        .route("/contacts/autocomplete", get(contacts_autocomplete))
         .route("/relationship", get(get_relationship_profile))
         .route("/relationship/rebuild", post(rebuild_relationship_profile))
         .route("/commitments", get(list_commitments))

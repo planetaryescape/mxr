@@ -35,7 +35,7 @@ use utoipa::{
         label_create, label_rename, label_delete, mail_unsnooze_one,
         reply_later_list, reply_later_set, reminders_set, reminders_cancel,
         scheduled_sends_create, scheduled_sends_cancel, snippets_list,
-        snippets_set, snippets_delete, sender_profile, screener_queue,
+        snippets_set, snippets_delete, sender_profile, contacts_autocomplete, screener_queue,
         screener_decisions_list, screener_decisions_set,
         screener_decisions_clear, thread_summarize, draft_assist, mail_draft_new,
         mail_draft_refine, mail_humanizer_score, mail_humanizer_rewrite,
@@ -147,6 +147,7 @@ endpoint!(get snippets_list "/api/v1/mail/snippets", "List snippets");
 endpoint!(post snippets_set "/api/v1/mail/snippets", "Create or update a snippet");
 endpoint!(delete snippets_delete "/api/v1/mail/snippets/{name}", "Delete a snippet");
 endpoint!(get sender_profile "/api/v1/mail/sender", "Sender profile");
+endpoint!(get contacts_autocomplete "/api/v1/mail/contacts/autocomplete", "Prefix-search known senders");
 endpoint!(get screener_queue "/api/v1/mail/screener/queue", "List screener queue");
 endpoint!(get screener_decisions_list "/api/v1/mail/screener/decisions", "List screener decisions");
 endpoint!(post screener_decisions_set "/api/v1/mail/screener/decisions", "Set screener decision");

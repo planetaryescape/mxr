@@ -67,6 +67,11 @@ pub struct LlmOverridesData {
     pub draft_refine: Option<LlmOverrideData>,
     pub voice_match: Option<LlmOverrideData>,
     pub humanize_rewrite: Option<LlmOverrideData>,
+    pub answer_coverage: Option<LlmOverrideData>,
+    pub archive_ask: Option<LlmOverrideData>,
+    pub decision_log: Option<LlmOverrideData>,
+    pub briefing: Option<LlmOverrideData>,
+    pub expert: Option<LlmOverrideData>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -282,6 +282,14 @@ fn llm_override_entries(
             LlmFeature::HumanizeRewrite,
             overrides.humanize_rewrite.as_ref(),
         ),
+        (
+            LlmFeature::AnswerCoverage,
+            overrides.answer_coverage.as_ref(),
+        ),
+        (LlmFeature::ArchiveAsk, overrides.archive_ask.as_ref()),
+        (LlmFeature::DecisionLog, overrides.decision_log.as_ref()),
+        (LlmFeature::Briefing, overrides.briefing.as_ref()),
+        (LlmFeature::Expert, overrides.expert.as_ref()),
     ]
     .into_iter()
     .filter_map(|(feature, config)| config.map(|config| (feature, config)))
@@ -294,14 +302,24 @@ fn relationship_data_feature(feature: mxr_llm::LlmFeature) -> bool {
         mxr_llm::LlmFeature::RelationshipSummary
             | mxr_llm::LlmFeature::Commitments
             | mxr_llm::LlmFeature::VoiceMatch
+            | mxr_llm::LlmFeature::AnswerCoverage
+            | mxr_llm::LlmFeature::ArchiveAsk
+            | mxr_llm::LlmFeature::DecisionLog
+            | mxr_llm::LlmFeature::Briefing
+            | mxr_llm::LlmFeature::Expert
     )
 }
 
-fn relationship_data_features() -> [mxr_llm::LlmFeature; 3] {
+fn relationship_data_features() -> [mxr_llm::LlmFeature; 8] {
     [
         mxr_llm::LlmFeature::RelationshipSummary,
         mxr_llm::LlmFeature::Commitments,
         mxr_llm::LlmFeature::VoiceMatch,
+        mxr_llm::LlmFeature::AnswerCoverage,
+        mxr_llm::LlmFeature::ArchiveAsk,
+        mxr_llm::LlmFeature::DecisionLog,
+        mxr_llm::LlmFeature::Briefing,
+        mxr_llm::LlmFeature::Expert,
     ]
 }
 
@@ -1765,6 +1783,9 @@ use_tls = true
             .feature_block_reason(mxr_llm::LlmFeature::VoiceMatch)
             .is_some());
         assert!(runtime
+            .feature_block_reason(mxr_llm::LlmFeature::Expert)
+            .is_some());
+        assert!(runtime
             .feature_block_reason(mxr_llm::LlmFeature::DraftAssist)
             .is_none());
 
@@ -1786,6 +1807,10 @@ use_tls = true
                     base_url: Some("http://localhost:11434/v1".to_string()),
                     ..mxr_config::LlmOverrideConfig::default()
                 }),
+                expert: Some(mxr_config::LlmOverrideConfig {
+                    base_url: Some("http://localhost:11434/v1".to_string()),
+                    ..mxr_config::LlmOverrideConfig::default()
+                }),
                 ..mxr_config::LlmOverrides::default()
             },
             ..mxr_config::LlmConfig::default()
@@ -1799,5 +1824,8 @@ use_tls = true
         assert!(runtime
             .feature_block_reason(mxr_llm::LlmFeature::Commitments)
             .is_some());
+        assert!(runtime
+            .feature_block_reason(mxr_llm::LlmFeature::Expert)
+            .is_none());
     }
 }

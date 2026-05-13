@@ -636,6 +636,11 @@ fn llm_overrides_data(overrides: mxr_config::LlmOverrides) -> LlmOverridesData {
         draft_refine: overrides.draft_refine.map(llm_override_data),
         voice_match: overrides.voice_match.map(llm_override_data),
         humanize_rewrite: overrides.humanize_rewrite.map(llm_override_data),
+        answer_coverage: overrides.answer_coverage.map(llm_override_data),
+        archive_ask: overrides.archive_ask.map(llm_override_data),
+        decision_log: overrides.decision_log.map(llm_override_data),
+        briefing: overrides.briefing.map(llm_override_data),
+        expert: overrides.expert.map(llm_override_data),
     }
 }
 
@@ -699,6 +704,11 @@ fn normalize_llm_overrides(config: LlmOverridesData) -> Result<mxr_config::LlmOv
         draft_refine: normalize_llm_override(config.draft_refine)?,
         voice_match: normalize_llm_override(config.voice_match)?,
         humanize_rewrite: normalize_llm_override(config.humanize_rewrite)?,
+        answer_coverage: normalize_llm_override(config.answer_coverage)?,
+        archive_ask: normalize_llm_override(config.archive_ask)?,
+        decision_log: normalize_llm_override(config.decision_log)?,
+        briefing: normalize_llm_override(config.briefing)?,
+        expert: normalize_llm_override(config.expert)?,
     })
 }
 

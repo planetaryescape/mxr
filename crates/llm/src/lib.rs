@@ -44,6 +44,11 @@ pub enum LlmFeature {
     DraftRefine,
     VoiceMatch,
     HumanizeRewrite,
+    AnswerCoverage,
+    ArchiveAsk,
+    DecisionLog,
+    Briefing,
+    Expert,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

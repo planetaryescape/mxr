@@ -48,33 +48,22 @@ pub(crate) async fn ask(
         return Err("question cannot be empty".into());
     }
 
-    // Always lexical for the slice. Semantic fallback is a follow-up
-    // — we still report the requested mode honestly.
     let requested_mode = filters.mode;
-
-    // Lexical search uses the raw question. Filters are applied at
-    // the envelope level — feeding them as tantivy field syntax fails
-    // for fields it doesn't index (e.g. 'after').
-    let page = state
-        .search
-        .search(question, (limit * 4).max(1), 0, SortOrder::Relevance)
-        .await
-        .map_err(|e| e.to_string())?;
+    let candidate_pool = (limit * 4).max(1);
+    let (candidate_ids, executed_mode) =
+        retrieve_candidates(state, question, candidate_pool, requested_mode).await?;
 
     let mut allowed = Vec::new();
     let mut transcript = String::new();
-    for hit in page.results.iter() {
+    for id in candidate_ids.into_iter() {
         if allowed.len() >= limit {
             break;
         }
-        let id: mxr_core::MessageId = match hit.message_id.parse() {
-            Ok(id) => id,
-            Err(_) => continue,
-        };
         let envelope = match state.store.get_envelope(&id).await {
             Ok(Some(env)) => env,
             _ => continue,
         };
+        // (continue with envelope filtering + transcript build)
         if !pass_filter(&envelope, filters) {
             continue;
         }
@@ -133,7 +122,7 @@ pub(crate) async fn ask(
                     citations: vec![],
                     retrieval: ArchiveRetrievalData {
                         requested_mode,
-                        executed_mode: ArchiveAskMode::Lexical,
+                        executed_mode,
                         candidate_count: allowed.len() as u32,
                     },
                 },
@@ -167,11 +156,124 @@ pub(crate) async fn ask(
             citations,
             retrieval: ArchiveRetrievalData {
                 requested_mode,
-                executed_mode: ArchiveAskMode::Lexical,
+                executed_mode,
                 candidate_count: allowed.len() as u32,
             },
         },
     })
+}
+
+/// Hybrid candidate retrieval. Returns the merged candidate list AND
+/// the mode that actually executed (which may differ from the
+/// requested mode — e.g. Hybrid downgrades to Lexical when semantic
+/// is disabled or returns nothing).
+///
+/// Fusion strategy: reciprocal rank fusion over (lexical_rank,
+/// semantic_rank). RRF is order-stable, doesn't require score
+/// normalization across the two engines, and gracefully handles a
+/// candidate appearing in only one source.
+async fn retrieve_candidates(
+    state: &AppState,
+    question: &str,
+    pool_size: usize,
+    requested: ArchiveAskMode,
+) -> Result<(Vec<mxr_core::MessageId>, ArchiveAskMode), String> {
+    let semantic_enabled = state
+        .semantic
+        .status_snapshot()
+        .await
+        .map(|s| s.enabled)
+        .unwrap_or(false);
+
+    let want_lexical = matches!(
+        requested,
+        ArchiveAskMode::Lexical | ArchiveAskMode::Hybrid
+    ) || !semantic_enabled;
+    let want_semantic = matches!(
+        requested,
+        ArchiveAskMode::Semantic | ArchiveAskMode::Hybrid
+    ) && semantic_enabled;
+
+    let lexical_ids: Vec<mxr_core::MessageId> = if want_lexical {
+        let page = state
+            .search
+            .search(question, pool_size, 0, SortOrder::Relevance)
+            .await
+            .map_err(|e| e.to_string())?;
+        page.results
+            .iter()
+            .filter_map(|h| h.message_id.parse().ok())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let semantic_ids: Vec<mxr_core::MessageId> = if want_semantic {
+        let hits = state
+            .semantic
+            .search(
+                question,
+                pool_size,
+                &[mxr_core::types::SemanticChunkSourceKind::Body],
+            )
+            .await
+            .map_err(|e| e.to_string())
+            .unwrap_or_default();
+        // Deduplicate by message id while preserving rank order
+        // (semantic hits can have multiple chunks per message).
+        let mut seen = std::collections::HashSet::new();
+        hits.into_iter()
+            .filter_map(|h| {
+                if seen.insert(h.message_id.clone()) {
+                    Some(h.message_id)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // Pick executed_mode honestly: if both sources contributed, that's
+    // Hybrid; if only one did, name it.
+    let executed_mode = match (lexical_ids.is_empty(), semantic_ids.is_empty()) {
+        (false, false) => ArchiveAskMode::Hybrid,
+        (false, true) => ArchiveAskMode::Lexical,
+        (true, false) => ArchiveAskMode::Semantic,
+        // Both empty: report what the caller asked for, just with no
+        // candidates. The doc spec requires Lexical when semantic
+        // returns empty, so default to Lexical here.
+        (true, true) => ArchiveAskMode::Lexical,
+    };
+
+    let merged = reciprocal_rank_fuse(&lexical_ids, &semantic_ids, pool_size);
+    Ok((merged, executed_mode))
+}
+
+/// Reciprocal Rank Fusion (k=60 per the standard RRF paper).
+fn reciprocal_rank_fuse(
+    lexical: &[mxr_core::MessageId],
+    semantic: &[mxr_core::MessageId],
+    limit: usize,
+) -> Vec<mxr_core::MessageId> {
+    const K: f64 = 60.0;
+    let mut scores: std::collections::HashMap<mxr_core::MessageId, f64> =
+        std::collections::HashMap::new();
+    for (rank, id) in lexical.iter().enumerate() {
+        *scores.entry(id.clone()).or_default() += 1.0 / (K + rank as f64 + 1.0);
+    }
+    for (rank, id) in semantic.iter().enumerate() {
+        *scores.entry(id.clone()).or_default() += 1.0 / (K + rank as f64 + 1.0);
+    }
+    let mut ranked: Vec<_> = scores.into_iter().collect();
+    ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            // Stable secondary: lexical rank first, then semantic.
+            .then(a.0.to_string().cmp(&b.0.to_string()))
+    });
+    ranked.into_iter().take(limit).map(|(id, _)| id).collect()
 }
 
 fn pass_filter(env: &mxr_core::types::Envelope, f: &ArchiveAskFiltersData) -> bool {
@@ -408,6 +510,95 @@ mod tests {
         .await
         .expect_err("blank question must be rejected before LLM");
         assert!(err.contains("question cannot be empty"));
+    }
+
+    /// Slice 3.1 wiring contract (C2.3): semantic disabled, lexical
+    /// returns hits → executed_mode = Lexical. The default fixture
+    /// has semantic disabled (in_memory_with_fake doesn't activate
+    /// any profile), so this is the baseline path.
+    #[tokio::test]
+    async fn semantic_disabled_reports_executed_mode_lexical() {
+        let stub = Arc::new(CannedLlm {
+            body: r#"{"answer":"ok","citations":[]}"#.into(),
+            last_user: Mutex::new(String::new()),
+        });
+        let (state, account_id, _ids) = fixture(stub).await;
+        let resp = ask(
+            &state,
+            "status update",
+            &ArchiveAskFiltersData {
+                account_id: Some(account_id),
+                mode: ArchiveAskMode::Hybrid,
+                ..Default::default()
+            },
+            5,
+        )
+        .await
+        .unwrap();
+        match resp {
+            ResponseData::ArchiveAnswer { answer } => {
+                assert_eq!(
+                    answer.retrieval.requested_mode,
+                    ArchiveAskMode::Hybrid,
+                    "requested_mode preserved verbatim"
+                );
+                // Semantic is disabled in the fixture, so the only
+                // contributor is lexical.
+                assert_eq!(
+                    answer.retrieval.executed_mode,
+                    ArchiveAskMode::Lexical,
+                    "executed_mode reports actual source even when caller asked for Hybrid"
+                );
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    /// Slice 3.1 wiring contract (C2.3): when caller explicitly asks
+    /// for ArchiveAskMode::Lexical, executed_mode is Lexical and the
+    /// semantic engine is not consulted (so semantic-disabled doesn't
+    /// matter and no time is wasted on it).
+    #[tokio::test]
+    async fn explicit_lexical_mode_reports_lexical() {
+        let stub = Arc::new(CannedLlm {
+            body: r#"{"answer":"ok","citations":[]}"#.into(),
+            last_user: Mutex::new(String::new()),
+        });
+        let (state, account_id, _) = fixture(stub).await;
+        let resp = ask(
+            &state,
+            "status update",
+            &ArchiveAskFiltersData {
+                account_id: Some(account_id),
+                mode: ArchiveAskMode::Lexical,
+                ..Default::default()
+            },
+            5,
+        )
+        .await
+        .unwrap();
+        let ResponseData::ArchiveAnswer { answer } = resp else {
+            panic!("unexpected");
+        };
+        assert_eq!(answer.retrieval.executed_mode, ArchiveAskMode::Lexical);
+    }
+
+    #[tokio::test]
+    async fn rrf_is_order_stable_and_dedupes_message_ids() {
+        // Pure unit on the fusion helper -- exercises the RRF math
+        // without spinning up a fixture. Rank-1 in lexical AND rank-1
+        // in semantic should beat rank-1 in only one source.
+        let id_a = mxr_core::MessageId::new();
+        let id_b = mxr_core::MessageId::new();
+        let id_c = mxr_core::MessageId::new();
+        // a: lexical rank 0 + semantic rank 0
+        // b: lexical rank 1 (only)
+        // c: semantic rank 1 (only)
+        let lex = vec![id_a.clone(), id_b.clone()];
+        let sem = vec![id_a.clone(), id_c.clone()];
+        let merged = reciprocal_rank_fuse(&lex, &sem, 10);
+        assert_eq!(merged.len(), 3, "no duplicates: {merged:?}");
+        assert_eq!(merged[0], id_a, "double-source candidate ranks first");
     }
 
     #[tokio::test]

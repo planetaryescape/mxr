@@ -3,9 +3,13 @@ source: crates/daemon/tests/cli_help.rs
 assertion_line: 14
 expression: stdout
 ---
-List entries from the citation-backed decision log
+List or rebuild the citation-backed decision log
 
-Usage: mxr decisions [OPTIONS]
+Usage: mxr decisions [OPTIONS] [COMMAND]
+
+Commands:
+  rebuild  Re-extract decisions from every thread within --since N days. Idempotent on unchanged thread content
+  help     Print this message or the help of the given subcommand(s)
 
 Options:
       --account <ACCOUNT>

@@ -12,6 +12,7 @@ mod accounts;
 mod admin;
 mod archive_ask;
 mod briefing;
+mod decisions_extract;
 mod expert;
 mod suggest_recipients;
 mod whois;
@@ -182,6 +183,19 @@ async fn send_time_recommendation(
             },
             sample_count: rec.sample_count,
         },
+    })
+}
+
+async fn rebuild_decision_log(
+    state: &Arc<AppState>,
+    account_id: &mxr_core::AccountId,
+    since_days: u32,
+) -> HandlerResult {
+    let summary = decisions_extract::rebuild(state, account_id, since_days).await?;
+    Ok(ResponseData::DecisionLogRebuildSummary {
+        extracted: summary.extracted,
+        skipped: summary.skipped,
+        errors: summary.errors,
     })
 }
 
@@ -688,6 +702,10 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             since_days,
             limit,
         } => list_decision_log(state, account_id, topic.as_deref(), *since_days, *limit).await,
+        Request::RebuildDecisionLog {
+            account_id,
+            since_days,
+        } => rebuild_decision_log(state, account_id, *since_days).await,
         Request::SendTimeRecommendation {
             account_id,
             recipient,
@@ -1063,6 +1081,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListOwedReplies { .. } => "list_owed_replies",
         Request::ArchiveAsk { .. } => "archive_ask",
         Request::ListDecisionLog { .. } => "list_decision_log",
+        Request::RebuildDecisionLog { .. } => "rebuild_decision_log",
         Request::SendTimeRecommendation { .. } => "send_time_recommendation",
         Request::GetThreadBriefing { .. } => "get_thread_briefing",
         Request::GetRecipientBriefing { .. } => "get_recipient_briefing",
@@ -1124,6 +1143,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListCommitments { account_id, .. }
         | Request::ListOwedReplies { account_id, .. }
         | Request::ListDecisionLog { account_id, .. }
+        | Request::RebuildDecisionLog { account_id, .. }
         | Request::SendTimeRecommendation { account_id, .. }
         | Request::FindExpert { account_id, .. }
         | Request::ExplainEntity { account_id, .. }

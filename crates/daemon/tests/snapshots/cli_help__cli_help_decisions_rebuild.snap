@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+assertion_line: 14
+expression: stdout
+---
+Re-extract decisions from every thread within --since N days. Idempotent on unchanged thread content
+
+Usage: mxr decisions rebuild [OPTIONS]
+
+Options:
+      --account <ACCOUNT>
+      --since <SINCE_DAYS>  [default: 180]
+      --format <FORMAT>     [possible values: table, json, jsonl, csv, ids]
+  -h, --help                Print help

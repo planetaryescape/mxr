@@ -58,6 +58,10 @@ fn default_decision_log_limit() -> u32 {
     50
 }
 
+fn default_decision_log_since_days() -> u32 {
+    180
+}
+
 fn default_suggest_recipients_limit() -> u32 {
     5
 }
@@ -732,6 +736,16 @@ pub enum Request {
         account_id: AccountId,
         recipient: String,
     },
+    /// Walk every thread in the account whose latest message is
+    /// within `since_days` days, run the LLM-backed decision-log
+    /// extractor on each candidate, and persist new entries.
+    /// Idempotent: re-running with the same thread content does
+    /// not produce duplicate rows (source_hash dedupes).
+    RebuildDecisionLog {
+        account_id: AccountId,
+        #[serde(default = "default_decision_log_since_days")]
+        since_days: u32,
+    },
     /// List entries from the decision log. Optional topic and
     /// since-days filters.
     ListDecisionLog {
@@ -879,6 +893,7 @@ impl Request {
             | Self::ListOwedReplies { .. }
             | Self::ArchiveAsk { .. }
             | Self::ListDecisionLog { .. }
+            | Self::RebuildDecisionLog { .. }
             | Self::SendTimeRecommendation { .. }
             | Self::WatchCadence { .. }
             | Self::UnwatchCadence { .. }
@@ -1449,6 +1464,12 @@ pub enum ResponseData {
     DecisionLog {
         decisions: Vec<DecisionLogEntryData>,
     },
+    /// Returned by `Request::RebuildDecisionLog`.
+    DecisionLogRebuildSummary {
+        extracted: u32,
+        skipped: u32,
+        errors: u32,
+    },
     /// Returned by `Request::SendTimeRecommendation`.
     SendTimeRecommendationResponse {
         recommendation: SendTimeRecommendationData,
@@ -1534,6 +1555,7 @@ impl ResponseData {
             | Self::ArchiveAnswer { .. }
             | Self::DecisionLog { .. }
             | Self::SendTimeRecommendationResponse { .. }
+            | Self::DecisionLogRebuildSummary { .. }
             | Self::CadenceWatchList { .. }
             | Self::CadenceDriftList { .. }
             | Self::ThreadBriefing { .. }

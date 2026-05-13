@@ -30,7 +30,7 @@ Commands:
   briefing       Render a thread or recipient briefing
   cadence        Manage the cadence watchlist
   send-time      Show the recipient's typical reply-time bucket
-  decisions      List entries from the citation-backed decision log
+  decisions      List or rebuild the citation-backed decision log
   ask            Ask a question against the local archive. Returns a citation- validated answer; the daemon rejects LLM citations that point to messages outside the retrieved set
   owed           List threads where the user owes a reply, ranked by how overdue they are relative to the recipient's typical cadence
   commitments    List or resolve relationship commitments

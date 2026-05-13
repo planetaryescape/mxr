@@ -316,8 +316,10 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
-    /// List entries from the citation-backed decision log.
+    /// List or rebuild the citation-backed decision log.
     Decisions {
+        #[command(subcommand)]
+        action: Option<DecisionsAction>,
         #[arg(long)]
         account: Option<String>,
         #[arg(long)]
@@ -1401,6 +1403,20 @@ pub enum OutputFormat {
     Jsonl,
     Csv,
     Ids,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum DecisionsAction {
+    /// Re-extract decisions from every thread within --since N days.
+    /// Idempotent on unchanged thread content.
+    Rebuild {
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long = "since", default_value_t = 180)]
+        since_days: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]

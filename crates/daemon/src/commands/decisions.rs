@@ -1,10 +1,11 @@
-use crate::cli::OutputFormat;
+use crate::cli::{DecisionsAction, OutputFormat};
 use crate::commands::resolve_account;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::*;
 
 pub async fn run(
+    action: Option<DecisionsAction>,
     account: Option<String>,
     topic: Option<String>,
     since_days: Option<u32>,
@@ -12,16 +13,65 @@ pub async fn run(
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let account_id = resolve_account(&mut client, account.as_deref()).await?;
-    let resp = client
-        .request(Request::ListDecisionLog {
-            account_id,
-            topic,
+    match action {
+        Some(DecisionsAction::Rebuild {
+            account: rebuild_account,
             since_days,
-            limit,
-        })
-        .await?;
-    print(resp, resolve_format(format))
+            format,
+        }) => {
+            let account_id =
+                resolve_account(&mut client, rebuild_account.as_deref()).await?;
+            let resp = client
+                .request(Request::RebuildDecisionLog {
+                    account_id,
+                    since_days,
+                })
+                .await?;
+            print_rebuild(resp, resolve_format(format))
+        }
+        None => {
+            let account_id = resolve_account(&mut client, account.as_deref()).await?;
+            let resp = client
+                .request(Request::ListDecisionLog {
+                    account_id,
+                    topic,
+                    since_days,
+                    limit,
+                })
+                .await?;
+            print(resp, resolve_format(format))
+        }
+    }
+}
+
+fn print_rebuild(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
+    match resp {
+        Response::Ok {
+            data:
+                ResponseData::DecisionLogRebuildSummary {
+                    extracted,
+                    skipped,
+                    errors,
+                },
+        } => match fmt {
+            OutputFormat::Json | OutputFormat::Jsonl => {
+                let payload = serde_json::json!({
+                    "extracted": extracted,
+                    "skipped": skipped,
+                    "errors": errors,
+                });
+                println!("{}", serde_json::to_string(&payload)?);
+            }
+            _ => {
+                println!(
+                    "decisions rebuild: extracted={extracted} skipped={skipped} errors={errors}"
+                );
+            }
+        },
+        Response::Error { message, .. } => anyhow::bail!(message),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+    Ok(())
 }
 
 fn print(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {

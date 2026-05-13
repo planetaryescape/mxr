@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# scripts/cargo-test — canonical test runner for mxr CLI cargo.
+#
+# Why this exists:
+#   1. Reaps stale `cargo test` / `rustc` processes from prior aborted
+#      runs (typically agent Bash invocations that timed out and left
+#      orphan children holding the target-dir lock).
+#   2. Pins CARGO_TARGET_DIR to `target-cli/` so this run never contends
+#      with rust-analyzer's flycheck on `target/`. (`.cargo/config.toml`
+#      sets the same default; this is a belt-and-braces guarantee for
+#      shells that load with a different `CARGO_TARGET_DIR` already in
+#      the env.)
+#   3. Forwards every arg to `cargo test` unchanged.
+#
+# Usage:
+#   scripts/cargo-test -p mxr-store --lib pool::tests::pre_versioning_db_is_backfilled_into_schema_migrations
+#   scripts/cargo-test -p mxr-protocol
+#   scripts/cargo-test -p mxr --test cli_help
+#
+# Avoid `--workspace` here. The workspace is 14 crates; full builds
+# routinely run minutes and overrun agent Bash timeouts. Per AGENTS.md,
+# prefer `-p <crate>`.
+
+set -euo pipefail
+
+WORKSPACE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TARGET_DIR_NAME="target-cli"
+
+reap_zombies() {
+    local pids
+    pids=$(pgrep -f 'cargo test|cargo run|cargo build' 2>/dev/null || true)
+    if [[ -z "$pids" ]]; then
+        return 0
+    fi
+    # Filter to processes that aren't ours (i.e. predate this PID).
+    local stale=()
+    for pid in $pids; do
+        if [[ "$pid" -ne "$$" ]] && ! ps -p "$pid" -o ppid= 2>/dev/null | grep -qw "$$"; then
+            stale+=("$pid")
+        fi
+    done
+    if [[ ${#stale[@]} -eq 0 ]]; then
+        return 0
+    fi
+    echo "scripts/cargo-test: reaping ${#stale[@]} stale cargo PID(s): ${stale[*]}" >&2
+    kill -9 "${stale[@]}" 2>/dev/null || true
+    # Give the OS a moment to release file locks.
+    sleep 0.2
+}
+
+reap_zombies
+
+export CARGO_TARGET_DIR="${WORKSPACE_ROOT}/${TARGET_DIR_NAME}"
+
+# Warn if the caller passed --workspace; per project policy we want
+# per-crate runs to keep build/test wall-time bounded.
+for arg in "$@"; do
+    if [[ "$arg" == "--workspace" ]]; then
+        echo "scripts/cargo-test: warning: --workspace runs the full 14-crate suite (typically minutes)." >&2
+        echo "scripts/cargo-test: prefer 'cargo-test -p <crate>'. Continuing." >&2
+        break
+    fi
+done
+
+exec cargo test "$@"

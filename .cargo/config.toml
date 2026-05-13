@@ -1,3 +1,17 @@
+[build]
+# Isolate CLI cargo from rust-analyzer's flycheck. RA holds a long-
+# running lock on the workspace `target/` while it watches for file
+# changes; if a CLI `cargo test` lands on the same lockfile, it
+# either blocks indefinitely or, when the parent shell times out,
+# leaves a zombie cargo holding the lock for the next run too.
+#
+# Putting CLI cargo in `target-cli/` means RA's `target/` and CLI's
+# `target-cli/` never contend. RA must keep its own `targetDir` set
+# to `target` (or override with `--target-dir target`) to preserve
+# the isolation; without that override, RA reads this file and
+# follows us into `target-cli/` (defeating the point).
+target-dir = "target-cli"
+
 [env]
 SQLX_OFFLINE = "true"
 # clap-derive parses generate large stack frames in debug builds; the

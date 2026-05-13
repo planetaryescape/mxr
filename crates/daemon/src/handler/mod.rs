@@ -60,6 +60,36 @@ pub(crate) use status_helpers::{
 
 type HandlerResult = Result<ResponseData, String>;
 
+async fn list_owed_replies(
+    state: &Arc<AppState>,
+    account_id: &mxr_core::AccountId,
+    older_than_days: Option<u32>,
+    within_days: Option<u32>,
+    limit: u32,
+) -> HandlerResult {
+    let rows = state
+        .store
+        .list_owed_replies(account_id, older_than_days, within_days, limit)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::OwedReplies {
+        rows: rows
+            .into_iter()
+            .map(|r| mxr_protocol::OwedReplyRowData {
+                thread_id: r.thread_id,
+                latest_inbound_msg_id: r.latest_inbound_msg_id,
+                from_email: r.from_email,
+                from_name: r.from_name,
+                subject: r.subject,
+                latest_inbound_at: r.latest_inbound_at,
+                waiting_days: r.waiting_days,
+                expected_days: r.expected_days,
+                overdue_score: r.overdue_score,
+            })
+            .collect(),
+    })
+}
+
 pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessage {
     let response_data = match &msg.payload {
         IpcPayload::Request(req) => {
@@ -486,6 +516,12 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::ResolveCommitment { commitment_id } => {
             commitments::resolve_commitment(state, commitment_id).await
         }
+        Request::ListOwedReplies {
+            account_id,
+            older_than_days,
+            within_days,
+            limit,
+        } => list_owed_replies(state, account_id, *older_than_days, *within_days, *limit).await,
         Request::GetUserVoice { account_id } => user_voice::get_user_voice(state, account_id).await,
         Request::RebuildUserVoice { account_id } => {
             user_voice::rebuild_user_voice(state, account_id).await
@@ -822,6 +858,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SendStoredDraft { .. } => "send_stored_draft",
         Request::CheckDraftSafety { .. } => "check_draft_safety",
         Request::ExtractDraftCommitments { .. } => "extract_draft_commitments",
+        Request::ListOwedReplies { .. } => "list_owed_replies",
         Request::DeleteDraft { .. } => "delete_draft",
         Request::SaveDraftToServer { .. } => "save_draft_to_server",
         Request::ListDrafts => "list_drafts",
@@ -871,6 +908,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::GetRelationshipProfile { account_id, .. }
         | Request::RebuildRelationshipProfile { account_id, .. }
         | Request::ListCommitments { account_id, .. }
+        | Request::ListOwedReplies { account_id, .. }
         | Request::GetUserVoice { account_id }
         | Request::RebuildUserVoice { account_id }
         | Request::DraftNew { account_id, .. } => Some(account_id),

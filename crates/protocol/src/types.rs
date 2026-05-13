@@ -46,6 +46,10 @@ fn default_allow_llm() -> bool {
     true
 }
 
+fn default_owed_reply_limit() -> u32 {
+    50
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LlmStatusSnapshot {
@@ -635,6 +639,17 @@ pub enum Request {
     ExtractDraftCommitments {
         draft: Draft,
     },
+    /// List "owed reply" threads for an account: latest inbound has
+    /// not been followed by an outbound, ranked by overdue ratio.
+    ListOwedReplies {
+        account_id: AccountId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        older_than_days: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        within_days: Option<u32>,
+        #[serde(default = "default_owed_reply_limit")]
+        limit: u32,
+    },
     DeleteDraft {
         draft_id: DraftId,
     },
@@ -747,6 +762,7 @@ impl Request {
             | Self::SendStoredDraft { .. }
             | Self::CheckDraftSafety { .. }
             | Self::ExtractDraftCommitments { .. }
+            | Self::ListOwedReplies { .. }
             | Self::DeleteDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
@@ -1295,6 +1311,10 @@ pub enum ResponseData {
     DraftCommitments {
         candidates: Vec<DraftCommitmentCandidateData>,
     },
+    /// Returned by `Request::ListOwedReplies`.
+    OwedReplies {
+        rows: Vec<OwedReplyRowData>,
+    },
     /// Returned by `Request::CheckDraftSafety` and surfaced to CLI / TUI.
     DraftSafetyReportResponse {
         report: DraftSafetyReport,
@@ -1343,7 +1363,8 @@ impl ResponseData {
             | Self::MutationResult { .. }
             | Self::SendReceipt { .. }
             | Self::DraftSafetyReportResponse { .. }
-            | Self::DraftCommitments { .. } => IpcCategory::CoreMail,
+            | Self::DraftCommitments { .. }
+            | Self::OwedReplies { .. } => IpcCategory::CoreMail,
             Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }
@@ -1766,6 +1787,21 @@ pub struct CommitmentData {
     pub by_when: Option<chrono::DateTime<chrono::Utc>>,
     pub evidence_msg_id: MessageId,
     pub extracted_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OwedReplyRowData {
+    pub thread_id: ThreadId,
+    pub latest_inbound_msg_id: MessageId,
+    pub from_email: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_name: Option<String>,
+    pub subject: String,
+    pub latest_inbound_at: chrono::DateTime<chrono::Utc>,
+    pub waiting_days: f64,
+    pub expected_days: f64,
+    pub overdue_score: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

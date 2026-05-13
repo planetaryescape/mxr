@@ -20,6 +20,7 @@ pub mod llm;
 pub mod logs;
 pub mod mutations;
 pub mod notify;
+pub mod owed;
 pub mod profile;
 pub mod remind;
 pub mod replies;

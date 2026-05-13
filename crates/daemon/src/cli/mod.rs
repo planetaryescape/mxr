@@ -288,6 +288,23 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// List threads where the user owes a reply, ranked by how
+    /// overdue they are relative to the recipient's typical cadence.
+    Owed {
+        #[arg(long)]
+        account: Option<String>,
+        /// Only include threads waiting at least this many days.
+        #[arg(long = "since")]
+        older_than_days: Option<u32>,
+        /// Only include threads whose latest inbound landed in the
+        /// last N days (excludes ancient unanswered threads).
+        #[arg(long = "within")]
+        within_days: Option<u32>,
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// List or resolve relationship commitments.
     Commitments {
         #[command(subcommand)]

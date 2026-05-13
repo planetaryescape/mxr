@@ -323,10 +323,17 @@ pub(crate) async fn handle_compose_editor_status(
     app: &mut App,
     data: &ComposeReadyData,
     status: std::io::Result<std::process::ExitStatus>,
+    bg: &mpsc::UnboundedSender<IpcRequest>,
 ) {
     match status {
         Ok(s) if s.success() => match pending_send_from_edited_draft(data).await {
-            Ok(Some(pending)) => {
+            Ok(Some(mut pending)) => {
+                // Run the pre-send safety check before showing the
+                // modal. A failed IPC (daemon down, worker dropped)
+                // is non-fatal: the modal still opens with
+                // `safety_report = None` so the user is never blocked
+                // from seeing their draft, just from the safety hint.
+                stamp_safety_report(&mut pending, bg).await;
                 app.compose.pending_send_confirm = Some(pending);
             }
             Ok(None) => {}
@@ -344,6 +351,77 @@ pub(crate) async fn handle_compose_editor_status(
                 format!("Failed to launch editor: {error}"),
             );
         }
+    }
+}
+
+async fn stamp_safety_report(
+    pending: &mut PendingSend,
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+) {
+    let draft = draft_from_pending(pending);
+    let context = mxr_protocol::DraftSafetyContextData {
+        mode: mxr_protocol::DraftSafetyModeData::Check,
+        reply_all: matches!(pending.intent, mxr_core::DraftIntent::ReplyAll),
+        original_message_id: None,
+        thread_id: pending
+            .fm
+            .thread_id
+            .as_ref()
+            .and_then(|s| s.parse().ok()),
+        allow_llm: true,
+    };
+    match ipc_call(bg, Request::CheckDraftSafety { draft, context }).await {
+        Ok(Response::Ok {
+            data: ResponseData::DraftSafetyReportResponse { report },
+        }) => {
+            // The daemon mints a single-use override token and
+            // stamps it onto each Blocker issue when the verdict is
+            // Blocked. Surface the first one to the modal.
+            pending.override_token = report
+                .issues
+                .iter()
+                .find_map(|i| i.override_token.clone());
+            pending.safety_report = Some(report);
+        }
+        Ok(Response::Ok { .. }) | Ok(Response::Error { .. }) => {
+            // Unexpected variant or daemon error: leave safety_report
+            // unset so the modal renders without the safety block.
+        }
+        Err(_) => {
+            // IPC worker dropped or daemon unreachable. The user can
+            // still see the modal; they just won't have safety hints.
+        }
+    }
+}
+
+fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
+    let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
+    let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
+        mxr_core::types::ReplyHeaders {
+            in_reply_to: in_reply_to.clone(),
+            references: pending.fm.references.clone(),
+            thread_id: pending.fm.thread_id.clone(),
+        }
+    });
+    let now = chrono::Utc::now();
+    mxr_core::Draft {
+        id: mxr_core::id::DraftId::new(),
+        account_id: pending.account_id.clone(),
+        reply_headers,
+        intent: pending.intent,
+        to: parse_addrs(&pending.fm.to),
+        cc: parse_addrs(&pending.fm.cc),
+        bcc: parse_addrs(&pending.fm.bcc),
+        subject: pending.fm.subject.clone(),
+        body_markdown: pending.body.clone(),
+        attachments: pending
+            .fm
+            .attach
+            .iter()
+            .map(std::path::PathBuf::from)
+            .collect(),
+        created_at: now,
+        updated_at: now,
     }
 }
 

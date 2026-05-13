@@ -1182,6 +1182,11 @@ impl DraftSafetyIssue {
         self.citations = citations;
         self
     }
+
+    pub fn with_override_token(mut self, token: impl Into<String>) -> Self {
+        self.override_token = Some(token.into());
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

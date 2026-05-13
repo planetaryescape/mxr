@@ -17,6 +17,18 @@ pub struct PendingSend {
     pub override_token: Option<String>,
 }
 
+impl PendingSend {
+    /// True iff the latest safety check verdict is Blocked. Drives
+    /// the `[s] send` gate and the visibility of the `[Ctrl-O]
+    /// override` affordance in the modal.
+    pub fn is_blocked(&self) -> bool {
+        matches!(
+            self.safety_report.as_ref().map(|r| r.verdict),
+            Some(mxr_core::DraftSafetyVerdict::Blocked)
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PendingSendMode {
     SendOrSave,

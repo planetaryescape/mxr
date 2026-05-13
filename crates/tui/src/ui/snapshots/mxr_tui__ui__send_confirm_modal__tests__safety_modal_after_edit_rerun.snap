@@ -1,0 +1,29 @@
+---
+source: crates/tui/src/ui/send_confirm_modal.rs
+assertion_line: 405
+expression: rendered
+---
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"        ╭ Draft Ready ─────────────────────────────────────────────────────────────────────────────────────────╮        "
+"        │Send this draft?                                                                                      │        "
+"        │Subject: Hello                                                                                        │        "
+"        │Voice match: not scored for manual edits                                                              │        "
+"        │Humanizer: scored on AI draft outputs                                                                 │        "
+"        │                                                                                                      │        "
+"        │Safety: SAFE                                                                                          │        "
+"        │  no issues                                                                                           │        "
+"        │                                                                                                      │        "
+"        │[s] send   [a] send at   [d] save draft   [r] refine   [e] edit again   [Esc] discard                 │        "
+"        │                                                                                                      │        "
+"        │                                                                                                      │        "
+"        │                                                                                                      │        "
+"        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "

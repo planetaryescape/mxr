@@ -1,0 +1,29 @@
+---
+source: crates/tui/src/ui/send_confirm_modal.rs
+assertion_line: 307
+expression: rendered
+---
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"        ╭ Draft Ready ─────────────────────────────────────────────────────────────────────────────────────────╮        "
+"        │Send this draft?                                                                                      │        "
+"        │Subject: Hello                                                                                        │        "
+"        │Voice match: not scored for manual edits                                                              │        "
+"        │Humanizer: scored on AI draft outputs                                                                 │        "
+"        │                                                                                                      │        "
+"        │Safety: WARN                                                                                          │        "
+"        │  [warn] draft does not address: who owns rollout?                                                    │        "
+"        │       cite msg=msg-99 field=body                                                                     │        "
+"        │                                                                                                      │        "
+"        │[s] send   [a] send at   [d] save draft   [r] refine   [e] edit again   [Esc] discard                 │        "
+"        │                                                                                                      │        "
+"        │                                                                                                      │        "
+"        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "

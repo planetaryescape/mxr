@@ -508,52 +508,31 @@ impl App {
             }
             match (key.code, key.modifiers) {
                 (KeyCode::Char('s'), KeyModifiers::NONE) => {
-                    // Send
+                    // Send. Suppressed when the safety verdict is
+                    // Blocked — the user must use Ctrl-O (with the
+                    // override token) or edit the draft to proceed.
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
-                        if pending.mode != PendingSendMode::SendOrSave {
+                        if pending.mode != PendingSendMode::SendOrSave || pending.is_blocked() {
                             self.compose.pending_send_confirm = Some(pending);
                             return None;
                         }
-                        let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
-                        let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
-                            mxr_core::types::ReplyHeaders {
-                                in_reply_to: in_reply_to.clone(),
-                                references: pending.fm.references.clone(),
-                                thread_id: pending.fm.thread_id.clone(),
-                            }
-                        });
-                        let now = chrono::Utc::now();
-                        let draft = mxr_core::Draft {
-                            id: mxr_core::id::DraftId::new(),
-                            account_id: pending.account_id.clone(),
-                            reply_headers,
-                            intent: pending.intent,
-                            to: parse_addrs(&pending.fm.to),
-                            cc: parse_addrs(&pending.fm.cc),
-                            bcc: parse_addrs(&pending.fm.bcc),
-                            subject: pending.fm.subject,
-                            body_markdown: pending.body,
-                            attachments: pending
-                                .fm
-                                .attach
-                                .iter()
-                                .map(std::path::PathBuf::from)
-                                .collect(),
-                            created_at: now,
-                            updated_at: now,
-                        };
-                        self.queue_mutation(
-                            Request::SendDraft {
-                                draft,
-                                override_safety_token: None,
-                            },
-                            MutationEffect::SentSuccess {
-                                status: "Sent!".into(),
-                            },
-                            "Sending...".into(),
-                        );
-                        self.schedule_draft_cleanup(pending.draft_path);
+                        self.dispatch_send_pending(pending, None);
+                    }
+                    return None;
+                }
+                (KeyCode::Char('o'), KeyModifiers::CONTROL) => {
+                    // Override + send. Consumes the single-use token
+                    // the daemon minted on the prior CheckDraftSafety.
+                    // Only meaningful when the verdict is Blocked.
+                    if let Some(pending) = self.compose.pending_send_confirm.take() {
+                        if !pending.is_blocked() || pending.override_token.is_none() {
+                            self.compose.pending_send_confirm = Some(pending);
+                            return None;
+                        }
+                        let token = pending.override_token.clone();
+                        self.compose.pending_send_at_input = None;
+                        self.dispatch_send_pending(pending, token);
                     }
                     return None;
                 }

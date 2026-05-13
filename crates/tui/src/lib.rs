@@ -2035,7 +2035,7 @@ pub async fn run() -> anyhow::Result<()> {
                                     .arg(&data.draft_path)
                                     .status()
                             });
-                            handle_compose_editor_status(&mut app, &data, status).await;
+                            handle_compose_editor_status(&mut app, &data, status, &bg).await;
                         }
                         AsyncResult::ComposeReady(Err(e)) => {
                             app.status_message = Some(format!("Compose error: {e}"));
@@ -2483,6 +2483,7 @@ mod tests {
     use mxr_protocol::{BodyFailure, DaemonEvent, LabelCount, MutationCommand, Request};
     use mxr_test_support::render_to_string;
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use tokio::sync::mpsc;
     use std::collections::VecDeque;
     use std::os::unix::process::ExitStatusExt;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -2638,8 +2639,19 @@ mod tests {
             initial_content: String::new(),
         };
         let mut app = App::new();
+        let (bg, mut bg_rx) = mpsc::unbounded_channel::<crate::ipc::IpcRequest>();
+        // Drain the safety-check IPC the new wiring fires; reply with an
+        // error so the modal opens with `safety_report = None` (the
+        // contract under test here is mode/state, not safety).
+        let drain = tokio::spawn(async move {
+            if let Some(req) = bg_rx.recv().await {
+                let _ = req.reply.send(Err(MxrError::Ipc("test fixture".into())));
+            }
+        });
 
-        handle_compose_editor_status(&mut app, &data, Ok(exit_status(0))).await;
+        handle_compose_editor_status(&mut app, &data, Ok(exit_status(0)), &bg).await;
+        drop(bg);
+        drain.await.ok();
 
         assert_eq!(
             app.compose
@@ -2670,12 +2682,192 @@ mod tests {
             initial_content: String::new(),
         };
         let mut app = App::new();
+        // Editor exited non-zero, so the safety-check path is never
+        // taken; bg never receives a request.
+        let (bg, _bg_rx) = mpsc::unbounded_channel::<crate::ipc::IpcRequest>();
 
-        handle_compose_editor_status(&mut app, &data, Ok(exit_status(1))).await;
+        handle_compose_editor_status(&mut app, &data, Ok(exit_status(1)), &bg).await;
 
         assert_eq!(app.status_message.as_deref(), Some("Draft discarded"));
         assert!(app.compose.pending_send_confirm.is_none());
         assert!(!temp.exists());
+    }
+
+    /// Slice 1.5 wiring contract (C2.1): the editor-finished handler
+    /// MUST fire `Request::CheckDraftSafety` before showing the modal,
+    /// and MUST stamp the response onto `pending_send_confirm`.
+    #[tokio::test]
+    async fn compose_editor_finish_stamps_safety_report_onto_pending() {
+        let temp = std::env::temp_dir().join(format!(
+            "mxr-compose-safety-{}-{}.md",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let content = "---\nto: a@example.com\ncc: \"\"\nbcc: \"\"\nsubject: Hello\nfrom: me@example.com\nattach: []\n---\n\nBody\n";
+        std::fs::write(&temp, content).unwrap();
+
+        let data = ComposeReadyData {
+            account_id: AccountId::new(),
+            intent: mxr_core::DraftIntent::New,
+            draft_path: temp.clone(),
+            cursor_line: 1,
+            initial_content: String::new(),
+        };
+        let mut app = App::new();
+
+        // Fake daemon: returns a Blocked report with a single PiiSecret
+        // issue carrying override_token = Some("tok-test"). This is the
+        // exact shape the daemon mints for blocker verdicts.
+        let (bg, mut bg_rx) = mpsc::unbounded_channel::<crate::ipc::IpcRequest>();
+        let fake_daemon = tokio::spawn(async move {
+            let req = bg_rx.recv().await.expect("safety check IPC fired");
+            // Verify the wiring sent a CheckDraftSafety, not some other
+            // request.
+            assert!(
+                matches!(req.request, Request::CheckDraftSafety { .. }),
+                "expected CheckDraftSafety, got: {:?}",
+                req.request
+            );
+            let issue = mxr_core::DraftSafetyIssue::new(
+                mxr_core::DraftSafetyIssueCode::PiiSecret,
+                mxr_core::DraftSafetySeverity::Blocker,
+                "secret pattern",
+            )
+            .with_override_token("tok-test");
+            let report = mxr_core::DraftSafetyReport::from_issues(vec![issue]);
+            let _ = req.reply.send(Ok(mxr_protocol::Response::Ok {
+                data: mxr_protocol::ResponseData::DraftSafetyReportResponse { report },
+            }));
+        });
+
+        handle_compose_editor_status(&mut app, &data, Ok(exit_status(0)), &bg).await;
+        drop(bg);
+        fake_daemon.await.unwrap();
+
+        let pending = app
+            .compose
+            .pending_send_confirm
+            .as_ref()
+            .expect("modal should open");
+        let report = pending
+            .safety_report
+            .as_ref()
+            .expect("safety_report stamped onto pending");
+        assert_eq!(report.verdict, mxr_core::DraftSafetyVerdict::Blocked);
+        assert_eq!(pending.override_token.as_deref(), Some("tok-test"));
+        assert!(pending.is_blocked());
+
+        let _ = std::fs::remove_file(temp);
+    }
+
+    /// Slice 1.5 wiring contract (C2.1): pressing `[s] send` while
+    /// the safety verdict is Blocked is a no-op — the modal stays
+    /// open, no SendDraft mutation is queued. The user must use
+    /// `Ctrl-O` to override or edit the draft.
+    #[test]
+    fn pressing_s_with_blocked_verdict_is_a_noop() {
+        let mut app = App::new();
+        let issue = mxr_core::DraftSafetyIssue::new(
+            mxr_core::DraftSafetyIssueCode::PiiSecret,
+            mxr_core::DraftSafetySeverity::Blocker,
+            "secret",
+        );
+        let report = mxr_core::DraftSafetyReport::from_issues(vec![issue]);
+        app.compose.pending_send_confirm = Some(PendingSend {
+            account_id: AccountId::new(),
+            fm: mxr_compose::frontmatter::ComposeFrontmatter {
+                to: "alice@example.com".into(),
+                cc: String::new(),
+                bcc: String::new(),
+                subject: "hi".into(),
+                from: "me@example.com".into(),
+                in_reply_to: None,
+                intent: mxr_core::DraftIntent::New,
+                references: vec![],
+                thread_id: None,
+                attach: vec![],
+                signature: None,
+            },
+            body: "hi".into(),
+            draft_path: std::path::PathBuf::from("/tmp/draft.md"),
+            intent: mxr_core::DraftIntent::New,
+            mode: PendingSendMode::SendOrSave,
+            safety_report: Some(report),
+            override_token: Some("tok-1".into()),
+        });
+        let mutations_before = app.pending_mutation_queue.len();
+
+        let key = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE);
+        let _ = app.handle_key(key);
+
+        assert!(
+            app.compose.pending_send_confirm.is_some(),
+            "modal must stay open"
+        );
+        assert_eq!(
+            app.pending_mutation_queue.len(),
+            mutations_before,
+            "no mutation queued"
+        );
+    }
+
+    /// Slice 1.5 wiring contract (C2.1): Ctrl-O on a Blocked verdict
+    /// dispatches SendDraft with override_safety_token = the token
+    /// the daemon minted.
+    #[test]
+    fn ctrl_o_dispatches_send_with_override_token() {
+        let mut app = App::new();
+        let issue = mxr_core::DraftSafetyIssue::new(
+            mxr_core::DraftSafetyIssueCode::PiiSecret,
+            mxr_core::DraftSafetySeverity::Blocker,
+            "secret",
+        )
+        .with_override_token("tok-override-9");
+        let report = mxr_core::DraftSafetyReport::from_issues(vec![issue]);
+        app.compose.pending_send_confirm = Some(PendingSend {
+            account_id: AccountId::new(),
+            fm: mxr_compose::frontmatter::ComposeFrontmatter {
+                to: "alice@example.com".into(),
+                cc: String::new(),
+                bcc: String::new(),
+                subject: "hi".into(),
+                from: "me@example.com".into(),
+                in_reply_to: None,
+                intent: mxr_core::DraftIntent::New,
+                references: vec![],
+                thread_id: None,
+                attach: vec![],
+                signature: None,
+            },
+            body: "hi".into(),
+            draft_path: std::path::PathBuf::from("/tmp/draft.md"),
+            intent: mxr_core::DraftIntent::New,
+            mode: PendingSendMode::SendOrSave,
+            safety_report: Some(report),
+            override_token: Some("tok-override-9".into()),
+        });
+
+        let key = KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL);
+        let _ = app.handle_key(key);
+
+        // The mutation queue must contain a SendDraft with the
+        // override token.
+        let queued = app
+            .pending_mutation_queue
+            .first()
+            .expect("mutation queued");
+        match &queued.request {
+            Request::SendDraft {
+                override_safety_token,
+                ..
+            } => {
+                assert_eq!(
+                    override_safety_token.as_deref(),
+                    Some("tok-override-9")
+                );
+            }
+            other => panic!("expected SendDraft with override, got: {other:?}"),
+        }
     }
 
     #[test]

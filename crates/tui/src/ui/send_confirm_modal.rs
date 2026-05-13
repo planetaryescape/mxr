@@ -264,6 +264,10 @@ mod tests {
         assert!(rendered.contains("no issues"));
         assert!(rendered.contains("[s] send"));
         assert!(!rendered.contains("override"));
+        // Snapshot lock: any visible drift forces an insta review.
+        // The contains asserts above catch specific removals; the
+        // snapshot catches additions/relayouts the asserts miss.
+        insta::assert_snapshot!("safety_modal_safe", rendered);
     }
 
     #[test]
@@ -300,6 +304,7 @@ mod tests {
         // Warnings still allow send.
         assert!(rendered.contains("[s] send"));
         assert!(!rendered.contains("override"));
+        insta::assert_snapshot!("safety_modal_warn", rendered);
     }
 
     #[test]
@@ -332,6 +337,7 @@ mod tests {
         // Blocked verdict suppresses the normal [s] send shortcut and [r] refine.
         assert!(!rendered.contains("[s] send"));
         assert!(!rendered.contains("[r] refine"));
+        insta::assert_snapshot!("safety_modal_blocker", rendered);
     }
 
     #[test]
@@ -358,6 +364,45 @@ mod tests {
 
         assert!(rendered.contains("Safety: BLOCKED"));
         assert!(!rendered.contains("Override token:"));
+        insta::assert_snapshot!("safety_modal_blocker_no_token", rendered);
+    }
+
+    /// `safety_modal_after_edit_rerun` (per doc Slice 1.5 spec):
+    /// snapshot of the modal after the user has edited the draft and
+    /// re-run the safety check, with a fresh report attached. The
+    /// rendered shape must match `safety_modal_safe` exactly when
+    /// the rerun cleared the verdict to Safe — i.e. there's no
+    /// stale "BLOCKED" residue.
+    #[test]
+    fn safety_modal_after_edit_rerun_clears_to_safe() {
+        // Step 1: snapshot a Blocked modal.
+        let blocker_issues = vec![mxr_core::DraftSafetyIssue::new(
+            mxr_core::DraftSafetyIssueCode::PiiSecret,
+            mxr_core::DraftSafetySeverity::Blocker,
+            "secret pattern detected: sk-...abcd",
+        )];
+        let mut p = pending_with_report(
+            PendingSendMode::SendOrSave,
+            mxr_core::DraftSafetyReport::from_issues(blocker_issues),
+            Some("tok-abc".into()),
+        );
+        // Step 2: simulate the user re-editing + re-checking → Safe.
+        p.safety_report = Some(mxr_core::DraftSafetyReport::safe());
+        p.override_token = None;
+        let rendered = render_to_string(120, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 120, 24),
+                Some(&p),
+                None,
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(rendered.contains("Safety: SAFE"));
+        assert!(!rendered.contains("BLOCKED"));
+        assert!(!rendered.contains("Override token:"));
+        assert!(rendered.contains("[s] send"));
+        insta::assert_snapshot!("safety_modal_after_edit_rerun", rendered);
     }
 
     #[test]

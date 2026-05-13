@@ -647,6 +647,12 @@ pub enum Request {
     ExtractDraftCommitments {
         draft: Draft,
     },
+    /// Recommend the bucket (weekday, hour) at which the recipient
+    /// is fastest to reply.
+    SendTimeRecommendation {
+        account_id: AccountId,
+        recipient: String,
+    },
     /// List entries from the decision log. Optional topic and
     /// since-days filters.
     ListDecisionLog {
@@ -794,6 +800,7 @@ impl Request {
             | Self::ListOwedReplies { .. }
             | Self::ArchiveAsk { .. }
             | Self::ListDecisionLog { .. }
+            | Self::SendTimeRecommendation { .. }
             | Self::DeleteDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
@@ -1354,6 +1361,10 @@ pub enum ResponseData {
     DecisionLog {
         decisions: Vec<DecisionLogEntryData>,
     },
+    /// Returned by `Request::SendTimeRecommendation`.
+    SendTimeRecommendationResponse {
+        recommendation: SendTimeRecommendationData,
+    },
     /// Returned by `Request::CheckDraftSafety` and surfaced to CLI / TUI.
     DraftSafetyReportResponse {
         report: DraftSafetyReport,
@@ -1405,7 +1416,8 @@ impl ResponseData {
             | Self::DraftCommitments { .. }
             | Self::OwedReplies { .. }
             | Self::ArchiveAnswer { .. }
-            | Self::DecisionLog { .. } => IpcCategory::CoreMail,
+            | Self::DecisionLog { .. }
+            | Self::SendTimeRecommendationResponse { .. } => IpcCategory::CoreMail,
             Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }
@@ -1870,6 +1882,39 @@ pub struct ArchiveRetrievalData {
     pub requested_mode: ArchiveAskMode,
     pub executed_mode: ArchiveAskMode,
     pub candidate_count: u32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SendTimeConfidenceData {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SendTimeBucketData {
+    pub weekday: u8,
+    pub hour: u8,
+    pub p50_seconds: i64,
+    pub sample_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SendTimeRecommendationData {
+    pub recipient: String,
+    pub buckets: Vec<SendTimeBucketData>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_weekday: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_hour: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_p50_seconds: Option<i64>,
+    pub confidence: SendTimeConfidenceData,
+    pub sample_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

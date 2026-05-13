@@ -61,6 +61,44 @@ pub(crate) use status_helpers::{
 
 type HandlerResult = Result<ResponseData, String>;
 
+async fn send_time_recommendation(
+    state: &Arc<AppState>,
+    account_id: &mxr_core::AccountId,
+    recipient: &str,
+) -> HandlerResult {
+    let rec = state
+        .store
+        .send_time_recommendation(account_id, recipient)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::SendTimeRecommendationResponse {
+        recommendation: mxr_protocol::SendTimeRecommendationData {
+            recipient: rec.recipient,
+            buckets: rec
+                .buckets
+                .into_iter()
+                .map(|b| mxr_protocol::SendTimeBucketData {
+                    weekday: b.weekday,
+                    hour: b.hour,
+                    p50_seconds: b.p50_seconds,
+                    sample_count: b.sample_count,
+                })
+                .collect(),
+            best_weekday: rec.best_weekday,
+            best_hour: rec.best_hour,
+            best_p50_seconds: rec.best_p50_seconds,
+            confidence: match rec.confidence {
+                mxr_store::SendTimeConfidence::Low => mxr_protocol::SendTimeConfidenceData::Low,
+                mxr_store::SendTimeConfidence::Medium => {
+                    mxr_protocol::SendTimeConfidenceData::Medium
+                }
+                mxr_store::SendTimeConfidence::High => mxr_protocol::SendTimeConfidenceData::High,
+            },
+            sample_count: rec.sample_count,
+        },
+    })
+}
+
 async fn list_decision_log(
     state: &Arc<AppState>,
     account_id: &mxr_core::AccountId,
@@ -564,6 +602,10 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             since_days,
             limit,
         } => list_decision_log(state, account_id, topic.as_deref(), *since_days, *limit).await,
+        Request::SendTimeRecommendation {
+            account_id,
+            recipient,
+        } => send_time_recommendation(state, account_id, recipient).await,
         Request::GetUserVoice { account_id } => user_voice::get_user_voice(state, account_id).await,
         Request::RebuildUserVoice { account_id } => {
             user_voice::rebuild_user_voice(state, account_id).await
@@ -903,6 +945,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListOwedReplies { .. } => "list_owed_replies",
         Request::ArchiveAsk { .. } => "archive_ask",
         Request::ListDecisionLog { .. } => "list_decision_log",
+        Request::SendTimeRecommendation { .. } => "send_time_recommendation",
         Request::DeleteDraft { .. } => "delete_draft",
         Request::SaveDraftToServer { .. } => "save_draft_to_server",
         Request::ListDrafts => "list_drafts",
@@ -954,6 +997,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListCommitments { account_id, .. }
         | Request::ListOwedReplies { account_id, .. }
         | Request::ListDecisionLog { account_id, .. }
+        | Request::SendTimeRecommendation { account_id, .. }
         | Request::GetUserVoice { account_id }
         | Request::RebuildUserVoice { account_id }
         | Request::DraftNew { account_id, .. } => Some(account_id),

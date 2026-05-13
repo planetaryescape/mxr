@@ -31,6 +31,7 @@ pub mod response_time;
 pub mod rules;
 pub mod saved;
 pub mod screener;
+pub mod send_time;
 pub mod search;
 pub mod selection;
 pub mod semantic;

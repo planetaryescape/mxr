@@ -288,6 +288,14 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Show the recipient's typical reply-time bucket.
+    SendTime {
+        recipient: String,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// List entries from the citation-backed decision log.
     Decisions {
         #[arg(long)]

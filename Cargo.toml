@@ -323,6 +323,7 @@ serde = { workspace = true }
 serde_bytes = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
+sha2 = { workspace = true }
 sqlx = { workspace = true }
 tantivy = { workspace = true }
 thiserror = { workspace = true }

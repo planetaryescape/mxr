@@ -647,6 +647,20 @@ pub enum Request {
     ExtractDraftCommitments {
         draft: Draft,
     },
+    /// Render a thread briefing for someone returning to a dormant
+    /// thread. Cached unless `refresh = true`.
+    GetThreadBriefing {
+        thread_id: ThreadId,
+        #[serde(default)]
+        refresh: bool,
+    },
+    /// Render a recipient briefing for compose-time context.
+    GetRecipientBriefing {
+        account_id: AccountId,
+        email: String,
+        #[serde(default)]
+        refresh: bool,
+    },
     /// Add a contact to the cadence watchlist.
     WatchCadence {
         account_id: AccountId,
@@ -830,6 +844,8 @@ impl Request {
             | Self::UnwatchCadence { .. }
             | Self::ListCadenceWatch { .. }
             | Self::ListCadenceDrift { .. }
+            | Self::GetThreadBriefing { .. }
+            | Self::GetRecipientBriefing { .. }
             | Self::DeleteDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
@@ -1402,6 +1418,14 @@ pub enum ResponseData {
     CadenceDriftList {
         rows: Vec<CadenceDriftRowData>,
     },
+    /// Returned by `Request::GetThreadBriefing` or
+    /// `Request::GetRecipientBriefing`.
+    ThreadBriefing {
+        briefing: ThreadBriefingData,
+    },
+    RecipientBriefing {
+        briefing: ThreadBriefingData,
+    },
     /// Returned by `Request::CheckDraftSafety` and surfaced to CLI / TUI.
     DraftSafetyReportResponse {
         report: DraftSafetyReport,
@@ -1456,7 +1480,9 @@ impl ResponseData {
             | Self::DecisionLog { .. }
             | Self::SendTimeRecommendationResponse { .. }
             | Self::CadenceWatchList { .. }
-            | Self::CadenceDriftList { .. } => IpcCategory::CoreMail,
+            | Self::CadenceDriftList { .. }
+            | Self::ThreadBriefing { .. }
+            | Self::RecipientBriefing { .. } => IpcCategory::CoreMail,
             Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }
@@ -1921,6 +1947,28 @@ pub struct ArchiveRetrievalData {
     pub requested_mode: ArchiveAskMode,
     pub executed_mode: ArchiveAskMode,
     pub candidate_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CitationRefData {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+    pub field: String,
+    pub quote: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadBriefingData {
+    /// thread_id (Slice 5.1) or recipient email (Slice 5.2).
+    pub thread_id: String,
+    pub body_markdown: String,
+    pub citations: Vec<CitationRefData>,
+    pub generated_at: chrono::DateTime<chrono::Utc>,
+    pub from_cache: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

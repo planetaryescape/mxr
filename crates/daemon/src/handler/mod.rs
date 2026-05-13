@@ -11,6 +11,7 @@
 mod accounts;
 mod admin;
 mod archive_ask;
+mod briefing;
 mod auth_sessions;
 mod commitments;
 mod commitments_extract;
@@ -688,6 +689,14 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             account_id,
             recipient,
         } => send_time_recommendation(state, account_id, recipient).await,
+        Request::GetThreadBriefing { thread_id, refresh } => {
+            briefing::get_thread_briefing(state, thread_id, *refresh).await
+        }
+        Request::GetRecipientBriefing {
+            account_id,
+            email,
+            refresh,
+        } => briefing::get_recipient_briefing(state, account_id, email, *refresh).await,
         Request::WatchCadence {
             account_id,
             email,
@@ -1038,6 +1047,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ArchiveAsk { .. } => "archive_ask",
         Request::ListDecisionLog { .. } => "list_decision_log",
         Request::SendTimeRecommendation { .. } => "send_time_recommendation",
+        Request::GetThreadBriefing { .. } => "get_thread_briefing",
+        Request::GetRecipientBriefing { .. } => "get_recipient_briefing",
         Request::WatchCadence { .. } => "watch_cadence",
         Request::UnwatchCadence { .. } => "unwatch_cadence",
         Request::ListCadenceWatch { .. } => "list_cadence_watch",
@@ -1098,6 +1109,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::UnwatchCadence { account_id, .. }
         | Request::ListCadenceWatch { account_id }
         | Request::ListCadenceDrift { account_id }
+        | Request::GetRecipientBriefing { account_id, .. }
         | Request::GetUserVoice { account_id }
         | Request::RebuildUserVoice { account_id }
         | Request::DraftNew { account_id, .. } => Some(account_id),

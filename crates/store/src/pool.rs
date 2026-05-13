@@ -537,6 +537,13 @@ const MIGRATIONS: &[Migration] = &[
             "../migrations/031_relationship_watchlist.sql"
         )),
     },
+    Migration {
+        version: 32,
+        name: "context_briefings",
+        kind: MigrationKind::Sql(include_str!(
+            "../migrations/032_context_briefings.sql"
+        )),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

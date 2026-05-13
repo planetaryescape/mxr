@@ -288,6 +288,11 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Render a thread or recipient briefing.
+    Briefing {
+        #[command(subcommand)]
+        action: BriefingAction,
+    },
     /// Manage the cadence watchlist.
     Cadence {
         #[command(subcommand)]
@@ -1386,6 +1391,26 @@ pub enum OutputFormat {
     Jsonl,
     Csv,
     Ids,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum BriefingAction {
+    Thread {
+        thread_id: String,
+        #[arg(long)]
+        refresh: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    Recipient {
+        email: String,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        refresh: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]

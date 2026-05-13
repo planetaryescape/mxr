@@ -3814,6 +3814,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "serde_yaml",
+ "sha2",
  "sqlx",
  "tantivy",
  "temp-env",

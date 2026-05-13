@@ -1,5 +1,6 @@
 pub mod accounts;
 pub mod ask;
+pub mod briefing;
 pub mod bug_report;
 pub mod cadence;
 pub mod cat;

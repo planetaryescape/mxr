@@ -2358,6 +2358,115 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn refresh_contacts_counts_outbound_cc_and_bcc_recipients() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let mut outbound = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        outbound.provider_id = "outbound-with-copy-recipients".into();
+        outbound.from = Address {
+            name: None,
+            email: "me@example.com".into(),
+        };
+        outbound.to = vec![Address {
+            name: None,
+            email: "to@example.com".into(),
+        }];
+        outbound.cc = vec![Address {
+            name: None,
+            email: "cc@example.com".into(),
+        }];
+        outbound.bcc = vec![Address {
+            name: None,
+            email: "bcc@example.com".into(),
+        }];
+
+        store
+            .upsert_envelope_with_direction(&outbound, MessageDirection::Outbound)
+            .await
+            .unwrap();
+        store.refresh_contacts().await.unwrap();
+
+        for email in ["to@example.com", "cc@example.com", "bcc@example.com"] {
+            let profile = store
+                .get_sender_profile(&account.id, email)
+                .await
+                .unwrap()
+                .unwrap_or_else(|| panic!("missing contact profile for {email}"));
+            assert_eq!(profile.total_inbound, 0, "{email} inbound count");
+            assert_eq!(profile.total_outbound, 1, "{email} outbound count");
+            assert!(
+                profile.last_outbound_at.is_some(),
+                "{email} outbound timestamp"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn refresh_contacts_uses_reply_pairs_for_replied_count_and_cadence() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let anchor = chrono::Utc.with_ymd_and_hms(2026, 5, 4, 9, 0, 0).unwrap();
+        for (i, latency_days) in [1_i64, 3, 5].into_iter().enumerate() {
+            let mut inbound = TestEnvelopeBuilder::new()
+                .account_id(account.id.clone())
+                .build();
+            inbound.id = MessageId::new();
+            inbound.provider_id = format!("alice-parent-{i}");
+            inbound.message_id_header = Some(format!("<alice-parent-{i}@example.com>"));
+            inbound.from = Address {
+                name: Some("Alice".into()),
+                email: "alice@example.com".into(),
+            };
+            inbound.date = anchor + chrono::Duration::days(i as i64 * 10);
+            store
+                .upsert_envelope_with_direction(&inbound, MessageDirection::Inbound)
+                .await
+                .unwrap();
+
+            let mut reply = TestEnvelopeBuilder::new()
+                .account_id(account.id.clone())
+                .build();
+            reply.id = MessageId::new();
+            reply.provider_id = format!("alice-reply-{i}");
+            reply.from = Address {
+                name: None,
+                email: "me@example.com".into(),
+            };
+            reply.to = vec![Address {
+                name: None,
+                email: "alice@example.com".into(),
+            }];
+            reply.in_reply_to = inbound.message_id_header.clone();
+            reply.date = inbound.date + chrono::Duration::days(latency_days);
+            store
+                .upsert_envelope_with_direction(&reply, MessageDirection::Outbound)
+                .await
+                .unwrap();
+            assert!(store
+                .try_create_reply_pair(&reply, MessageDirection::Outbound)
+                .await
+                .unwrap());
+        }
+
+        store.refresh_contacts().await.unwrap();
+        let profile = store
+            .get_sender_profile(&account.id, "alice@example.com")
+            .await
+            .unwrap()
+            .expect("alice contact profile");
+
+        assert_eq!(profile.replied_count, 3);
+        let cadence = profile.cadence_days_p50.expect("median reply cadence");
+        assert!((cadence - 3.0).abs() < 1e-6, "cadence was {cadence}");
+    }
+
+    #[tokio::test]
     async fn list_contact_decay_excludes_30_day_boundary() {
         // Three contacts:
         //   A: last inbound 60d ago / no outbound -> appears (cold > 30 days)

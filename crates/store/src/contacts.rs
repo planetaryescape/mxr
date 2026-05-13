@@ -14,10 +14,111 @@ impl super::Store {
     pub async fn refresh_contacts(&self) -> Result<u32, sqlx::Error> {
         let started_at = Instant::now();
         let now_unix = chrono::Utc::now().timestamp();
-        // SQLite supports CTE + INSERT OR REPLACE without a transaction
-        // wrapper for a single-statement upsert.
         let result = sqlx::query(
-            r#"INSERT OR REPLACE INTO contacts (
+            r#"WITH contact_events AS (
+                SELECT
+                    messages.account_id,
+                    messages.id AS message_id,
+                    LOWER(from_email) AS email,
+                    from_name AS display_name,
+                    date,
+                    direction,
+                    list_id
+                FROM messages
+                WHERE direction = 'inbound' AND from_email != ''
+
+                UNION
+
+                SELECT
+                    messages.account_id,
+                    messages.id AS message_id,
+                    LOWER(json_extract(value, '$.email')) AS email,
+                    NULL AS display_name,
+                    date,
+                    direction,
+                    list_id
+                FROM messages, json_each(messages.to_addrs)
+                WHERE direction = 'outbound'
+
+                UNION
+
+                SELECT
+                    messages.account_id,
+                    messages.id AS message_id,
+                    LOWER(json_extract(value, '$.email')) AS email,
+                    NULL AS display_name,
+                    date,
+                    direction,
+                    list_id
+                FROM messages, json_each(messages.cc_addrs)
+                WHERE direction = 'outbound'
+
+                UNION
+
+                SELECT
+                    messages.account_id,
+                    messages.id AS message_id,
+                    LOWER(json_extract(value, '$.email')) AS email,
+                    NULL AS display_name,
+                    date,
+                    direction,
+                    list_id
+                FROM messages, json_each(messages.bcc_addrs)
+                WHERE direction = 'outbound'
+            ),
+            contact_base AS (
+                SELECT
+                    account_id,
+                    email,
+                    MAX(display_name) AS display_name,
+                    MIN(date) AS first_seen_at,
+                    MAX(date) AS last_seen_at,
+                    MAX(CASE WHEN direction = 'inbound' THEN date END) AS last_inbound_at,
+                    MAX(CASE WHEN direction = 'outbound' THEN date END) AS last_outbound_at,
+                    SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END) AS total_inbound,
+                    SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) AS total_outbound,
+                    CASE WHEN MAX(list_id IS NOT NULL) > 0 THEN 1 ELSE 0 END AS is_list_sender,
+                    MAX(list_id) AS list_id
+                FROM contact_events
+                WHERE email IS NOT NULL AND email != ''
+                GROUP BY account_id, email
+            ),
+            reply_stats AS (
+                SELECT
+                    account_id,
+                    LOWER(counterparty_email) AS email,
+                    COUNT(*) AS replied_count
+                FROM reply_pairs
+                WHERE direction = 'i_replied'
+                  AND counterparty_email != ''
+                GROUP BY account_id, LOWER(counterparty_email)
+            ),
+            ranked_latencies AS (
+                SELECT
+                    account_id,
+                    LOWER(counterparty_email) AS email,
+                    latency_seconds,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY account_id, LOWER(counterparty_email)
+                        ORDER BY latency_seconds
+                    ) AS row_num,
+                    COUNT(*) OVER (
+                        PARTITION BY account_id, LOWER(counterparty_email)
+                    ) AS row_count
+                FROM reply_pairs
+                WHERE direction = 'i_replied'
+                  AND counterparty_email != ''
+            ),
+            cadence_stats AS (
+                SELECT
+                    account_id,
+                    email,
+                    AVG(CAST(latency_seconds AS REAL)) / 86400.0 AS cadence_days_p50
+                FROM ranked_latencies
+                WHERE row_num IN ((row_count + 1) / 2, (row_count + 2) / 2)
+                GROUP BY account_id, email
+            )
+            INSERT OR REPLACE INTO contacts (
                 account_id, email, display_name,
                 first_seen_at, last_seen_at,
                 last_inbound_at, last_outbound_at,
@@ -27,46 +128,27 @@ impl super::Store {
                 refreshed_at
             )
             SELECT
-                account_id,
-                email,
-                display_name,
-                MIN(date) AS first_seen_at,
-                MAX(date) AS last_seen_at,
-                MAX(CASE WHEN direction = 'inbound' THEN date END) AS last_inbound_at,
-                MAX(CASE WHEN direction = 'outbound' THEN date END) AS last_outbound_at,
-                SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END) AS total_inbound,
-                SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) AS total_outbound,
-                0 AS replied_count,
-                NULL AS cadence_days_p50,
-                CASE WHEN MAX(list_id IS NOT NULL) > 0 THEN 1 ELSE 0 END AS is_list_sender,
-                MAX(list_id) AS list_id,
+                base.account_id,
+                base.email,
+                base.display_name,
+                base.first_seen_at,
+                base.last_seen_at,
+                base.last_inbound_at,
+                base.last_outbound_at,
+                base.total_inbound,
+                base.total_outbound,
+                COALESCE(replies.replied_count, 0) AS replied_count,
+                cadence.cadence_days_p50,
+                base.is_list_sender,
+                base.list_id,
                 ?1 AS refreshed_at
-            FROM (
-                SELECT
-                    account_id,
-                    LOWER(from_email) AS email,
-                    MAX(from_name)    AS display_name,
-                    date,
-                    direction,
-                    list_id
-                FROM messages
-                WHERE direction = 'inbound' AND from_email != ''
-                GROUP BY account_id, LOWER(from_email), date, direction, list_id
-
-                UNION ALL
-
-                SELECT
-                    account_id,
-                    LOWER(json_extract(value, '$.email')) AS email,
-                    NULL AS display_name,
-                    date,
-                    direction,
-                    list_id
-                FROM messages, json_each(messages.to_addrs)
-                WHERE direction = 'outbound'
-            )
-            WHERE email IS NOT NULL AND email != ''
-            GROUP BY account_id, email"#,
+            FROM contact_base base
+            LEFT JOIN reply_stats replies
+              ON replies.account_id = base.account_id
+             AND replies.email = base.email
+            LEFT JOIN cadence_stats cadence
+              ON cadence.account_id = base.account_id
+             AND cadence.email = base.email"#,
         )
         .bind(now_unix)
         .execute(self.writer())

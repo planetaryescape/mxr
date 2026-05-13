@@ -58,6 +58,10 @@ fn default_decision_log_limit() -> u32 {
     50
 }
 
+fn default_suggest_recipients_limit() -> u32 {
+    5
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LlmStatusSnapshot {
@@ -647,6 +651,14 @@ pub enum Request {
     ExtractDraftCommitments {
         draft: Draft,
     },
+    /// Suggest "maybe include" recipients given a draft. Excludes
+    /// addresses already on the draft and never reveals Bcc'd
+    /// addresses from prior threads.
+    SuggestCollaborators {
+        draft: Draft,
+        #[serde(default = "default_suggest_recipients_limit")]
+        limit: u32,
+    },
     /// Render a thread briefing for someone returning to a dormant
     /// thread. Cached unless `refresh = true`.
     GetThreadBriefing {
@@ -846,6 +858,7 @@ impl Request {
             | Self::ListCadenceDrift { .. }
             | Self::GetThreadBriefing { .. }
             | Self::GetRecipientBriefing { .. }
+            | Self::SuggestCollaborators { .. }
             | Self::DeleteDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
@@ -1426,6 +1439,10 @@ pub enum ResponseData {
     RecipientBriefing {
         briefing: ThreadBriefingData,
     },
+    /// Returned by `Request::SuggestCollaborators`.
+    SuggestedCollaborators {
+        suggestions: Vec<SuggestedRecipientData>,
+    },
     /// Returned by `Request::CheckDraftSafety` and surfaced to CLI / TUI.
     DraftSafetyReportResponse {
         report: DraftSafetyReport,
@@ -1482,7 +1499,8 @@ impl ResponseData {
             | Self::CadenceWatchList { .. }
             | Self::CadenceDriftList { .. }
             | Self::ThreadBriefing { .. }
-            | Self::RecipientBriefing { .. } => IpcCategory::CoreMail,
+            | Self::RecipientBriefing { .. }
+            | Self::SuggestedCollaborators { .. } => IpcCategory::CoreMail,
             Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }
@@ -1958,6 +1976,17 @@ pub struct CitationRefData {
     pub thread_id: Option<String>,
     pub field: String,
     pub quote: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SuggestedRecipientData {
+    pub email: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    pub reason: String,
+    pub confidence: String, // "low" | "medium" | "high"
+    pub evidence_msg_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

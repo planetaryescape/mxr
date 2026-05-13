@@ -12,6 +12,7 @@ mod accounts;
 mod admin;
 mod archive_ask;
 mod briefing;
+mod suggest_recipients;
 mod auth_sessions;
 mod commitments;
 mod commitments_extract;
@@ -697,6 +698,9 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             email,
             refresh,
         } => briefing::get_recipient_briefing(state, account_id, email, *refresh).await,
+        Request::SuggestCollaborators { draft, limit } => {
+            suggest_recipients::suggest(state, draft, *limit as usize).await
+        }
         Request::WatchCadence {
             account_id,
             email,
@@ -1049,6 +1053,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SendTimeRecommendation { .. } => "send_time_recommendation",
         Request::GetThreadBriefing { .. } => "get_thread_briefing",
         Request::GetRecipientBriefing { .. } => "get_recipient_briefing",
+        Request::SuggestCollaborators { .. } => "suggest_collaborators",
         Request::WatchCadence { .. } => "watch_cadence",
         Request::UnwatchCadence { .. } => "unwatch_cadence",
         Request::ListCadenceWatch { .. } => "list_cadence_watch",
@@ -1121,7 +1126,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::SaveDraft { draft }
         | Request::SaveDraftToServer { draft }
         | Request::CheckDraftSafety { draft, .. }
-        | Request::ExtractDraftCommitments { draft } => Some(&draft.account_id),
+        | Request::ExtractDraftCommitments { draft }
+        | Request::SuggestCollaborators { draft, .. } => Some(&draft.account_id),
         Request::SendStoredDraft { .. } | Request::DeleteDraft { .. } => None,
         Request::ArchiveAsk { filters, .. } => filters.account_id.as_ref(),
         _ => None,

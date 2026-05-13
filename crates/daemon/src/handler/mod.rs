@@ -61,6 +61,36 @@ pub(crate) use status_helpers::{
 
 type HandlerResult = Result<ResponseData, String>;
 
+async fn list_decision_log(
+    state: &Arc<AppState>,
+    account_id: &mxr_core::AccountId,
+    topic: Option<&str>,
+    since_days: Option<u32>,
+    limit: u32,
+) -> HandlerResult {
+    let rows = state
+        .store
+        .list_decisions(account_id, topic, since_days, limit)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::DecisionLog {
+        decisions: rows
+            .into_iter()
+            .map(|r| mxr_protocol::DecisionLogEntryData {
+                id: r.id,
+                account_id: r.account_id,
+                thread_id: r.thread_id,
+                topic: r.topic,
+                decision: r.decision,
+                rationale: r.rationale,
+                evidence_msg_ids: r.evidence_msg_ids,
+                decided_at: r.decided_at,
+                extracted_at: r.extracted_at,
+            })
+            .collect(),
+    })
+}
+
 async fn list_owed_replies(
     state: &Arc<AppState>,
     account_id: &mxr_core::AccountId,
@@ -528,6 +558,12 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             filters,
             limit,
         } => archive_ask::ask(state, question, filters, *limit as usize).await,
+        Request::ListDecisionLog {
+            account_id,
+            topic,
+            since_days,
+            limit,
+        } => list_decision_log(state, account_id, topic.as_deref(), *since_days, *limit).await,
         Request::GetUserVoice { account_id } => user_voice::get_user_voice(state, account_id).await,
         Request::RebuildUserVoice { account_id } => {
             user_voice::rebuild_user_voice(state, account_id).await
@@ -866,6 +902,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ExtractDraftCommitments { .. } => "extract_draft_commitments",
         Request::ListOwedReplies { .. } => "list_owed_replies",
         Request::ArchiveAsk { .. } => "archive_ask",
+        Request::ListDecisionLog { .. } => "list_decision_log",
         Request::DeleteDraft { .. } => "delete_draft",
         Request::SaveDraftToServer { .. } => "save_draft_to_server",
         Request::ListDrafts => "list_drafts",
@@ -916,6 +953,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::RebuildRelationshipProfile { account_id, .. }
         | Request::ListCommitments { account_id, .. }
         | Request::ListOwedReplies { account_id, .. }
+        | Request::ListDecisionLog { account_id, .. }
         | Request::GetUserVoice { account_id }
         | Request::RebuildUserVoice { account_id }
         | Request::DraftNew { account_id, .. } => Some(account_id),

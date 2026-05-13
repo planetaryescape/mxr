@@ -281,6 +281,16 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::owed::run(account, older_than_days, within_days, limit, format).await?;
         }
+        Some(Command::Decisions {
+            account,
+            topic,
+            since_days,
+            limit,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::decisions::run(account, topic, since_days, limit, format).await?;
+        }
         Some(Command::Ask {
             question,
             account,

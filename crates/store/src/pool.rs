@@ -525,6 +525,11 @@ const MIGRATIONS: &[Migration] = &[
             "../migrations/029_draft_commitment_candidates.sql"
         )),
     },
+    Migration {
+        version: 30,
+        name: "decision_log",
+        kind: MigrationKind::Sql(include_str!("../migrations/030_decision_log.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

@@ -288,6 +288,19 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// List entries from the citation-backed decision log.
+    Decisions {
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        topic: Option<String>,
+        #[arg(long = "since")]
+        since_days: Option<u32>,
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Ask a question against the local archive. Returns a citation-
     /// validated answer; the daemon rejects LLM citations that point
     /// to messages outside the retrieved set.

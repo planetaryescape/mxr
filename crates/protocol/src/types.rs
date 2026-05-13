@@ -54,6 +54,10 @@ fn default_archive_ask_limit() -> u32 {
     8
 }
 
+fn default_decision_log_limit() -> u32 {
+    50
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LlmStatusSnapshot {
@@ -643,6 +647,17 @@ pub enum Request {
     ExtractDraftCommitments {
         draft: Draft,
     },
+    /// List entries from the decision log. Optional topic and
+    /// since-days filters.
+    ListDecisionLog {
+        account_id: AccountId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        topic: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        since_days: Option<u32>,
+        #[serde(default = "default_decision_log_limit")]
+        limit: u32,
+    },
     /// Citation-validated archive question. Returns a Markdown answer
     /// plus the cited source messages; LLM-fabricated citations
     /// (msg ids not in the retrieved set) are rejected at the daemon.
@@ -778,6 +793,7 @@ impl Request {
             | Self::ExtractDraftCommitments { .. }
             | Self::ListOwedReplies { .. }
             | Self::ArchiveAsk { .. }
+            | Self::ListDecisionLog { .. }
             | Self::DeleteDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
@@ -1334,6 +1350,10 @@ pub enum ResponseData {
     ArchiveAnswer {
         answer: ArchiveAnswerData,
     },
+    /// Returned by `Request::ListDecisionLog`.
+    DecisionLog {
+        decisions: Vec<DecisionLogEntryData>,
+    },
     /// Returned by `Request::CheckDraftSafety` and surfaced to CLI / TUI.
     DraftSafetyReportResponse {
         report: DraftSafetyReport,
@@ -1384,7 +1404,8 @@ impl ResponseData {
             | Self::DraftSafetyReportResponse { .. }
             | Self::DraftCommitments { .. }
             | Self::OwedReplies { .. }
-            | Self::ArchiveAnswer { .. } => IpcCategory::CoreMail,
+            | Self::ArchiveAnswer { .. }
+            | Self::DecisionLog { .. } => IpcCategory::CoreMail,
             Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }
@@ -1849,6 +1870,23 @@ pub struct ArchiveRetrievalData {
     pub requested_mode: ArchiveAskMode,
     pub executed_mode: ArchiveAskMode,
     pub candidate_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DecisionLogEntryData {
+    pub id: String,
+    pub account_id: AccountId,
+    pub thread_id: ThreadId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topic: Option<String>,
+    pub decision: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+    pub evidence_msg_ids: Vec<MessageId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decided_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub extracted_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

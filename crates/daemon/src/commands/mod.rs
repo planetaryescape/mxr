@@ -7,6 +7,7 @@ pub mod completions;
 pub mod config;
 pub mod contacts;
 pub mod count;
+pub mod decisions;
 pub mod demo;
 pub mod doctor;
 pub mod draft;

@@ -170,6 +170,33 @@ export function modifyLabels(
   });
 }
 
+export function moveMessagesToLabel(
+  messageIds: string[],
+  targetLabel: string,
+): Promise<MutationResponse> {
+  return apiFetch<MutationResponse>("/api/v1/mail/mutations/move", {
+    method: "POST",
+    body: { message_ids: messageIds, target_label: targetLabel },
+  });
+}
+
+export function readAndArchiveMessages(messageIds: string[]): Promise<MutationResponse> {
+  return apiFetch<MutationResponse>("/api/v1/mail/mutations/read-and-archive", {
+    method: "POST",
+    body: { message_ids: messageIds },
+  });
+}
+
+export function unsubscribeFromSender(input: {
+  messageId: string;
+  archive: boolean;
+}): Promise<unknown> {
+  return apiFetch<unknown>("/api/v1/mail/actions/unsubscribe", {
+    method: "POST",
+    body: { message_id: input.messageId, archive: input.archive },
+  });
+}
+
 export function undoMutation(mutationId: string): Promise<unknown> {
   return apiFetch<unknown>("/api/v1/mail/mutations/undo", {
     method: "POST",

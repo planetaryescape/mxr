@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { resolveCommitment as resolveCommitmentApi } from "@/features/mailbox/api";
+import { LabelPicker } from "@/features/mailbox/LabelPicker";
+import { MovePicker } from "@/features/mailbox/MovePicker";
 import { AttachmentActions } from "@/features/thread/AttachmentActions";
 import type { AttachmentView } from "@/features/mailbox/types";
 import { useModals } from "@/state/modalStore";
@@ -43,6 +45,24 @@ export function RightRail() {
 }
 
 function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
+  if (kind === "label-picker" && isLabelPickerPayload(payload)) {
+    return (
+      <LabelPicker
+        mode={payload.mode}
+        messageIds={payload.messageIds}
+        appliedLabels={payload.appliedLabels}
+        onClose={() => useModals.getState().closeRightRail()}
+      />
+    );
+  }
+  if (kind === "move-picker" && isMovePickerPayload(payload)) {
+    return (
+      <MovePicker
+        messageIds={payload.messageIds}
+        onClose={() => useModals.getState().closeRightRail()}
+      />
+    );
+  }
   if (kind === "thread-context" && isThreadContext(payload)) {
     return (
       <div className="space-y-3">
@@ -78,6 +98,26 @@ function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
 
 function isThreadContext(value: unknown): value is { title?: string; items?: string[] } {
   return typeof value === "object" && value !== null && "items" in value;
+}
+
+interface LabelPickerPayload {
+  mode: "label-add" | "label-remove";
+  messageIds: string[];
+  appliedLabels?: string[];
+}
+
+function isLabelPickerPayload(value: unknown): value is LabelPickerPayload {
+  if (!isRecord(value)) return false;
+  if (value.mode !== "label-add" && value.mode !== "label-remove") return false;
+  return Array.isArray(value.messageIds);
+}
+
+interface MovePickerPayload {
+  messageIds: string[];
+}
+
+function isMovePickerPayload(value: unknown): value is MovePickerPayload {
+  return isRecord(value) && Array.isArray(value.messageIds);
 }
 
 interface SenderProfile {

@@ -7,6 +7,7 @@
 import { accountsActions } from "@/features/accounts/actions";
 import { composeActions } from "@/features/compose/actions";
 import { diagnosticsActions } from "@/features/diagnostics/actions";
+import { mailboxActions } from "@/features/mailbox/actions";
 import { rulesActions } from "@/features/rules/actions";
 
 import { navigationActions } from "./navigationActions";
@@ -19,6 +20,7 @@ const featureActions: Action[] = [
   ...settingsActions,
   ...composeActions,
   ...diagnosticsActions,
+  ...mailboxActions,
   ...rulesActions,
   ...accountsActions,
 ];

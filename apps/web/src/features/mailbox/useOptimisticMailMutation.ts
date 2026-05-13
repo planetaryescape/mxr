@@ -4,6 +4,9 @@ import { toast } from "sonner";
 import {
   archiveMessages,
   markReadMessages,
+  modifyLabels,
+  moveMessagesToLabel,
+  readAndArchiveMessages,
   shellKey,
   spamMessages,
   starMessages,
@@ -14,13 +17,36 @@ import type { MailboxResponse, MessageGroupView, MutationResponse } from "./type
 import { requestCoordinator } from "@/lib/requestCoordinator";
 import { useSelection } from "@/state/selectionStore";
 
-export type MailAction = "archive" | "trash" | "spam" | "star" | "unstar" | "read" | "unread";
+export type MailAction =
+  | "archive"
+  | "trash"
+  | "spam"
+  | "star"
+  | "unstar"
+  | "read"
+  | "unread"
+  | "read-and-archive"
+  | "move"
+  | "label-add"
+  | "label-remove";
+
+export interface MailActionPayload {
+  /** Required for label/move actions — the label name being added, removed, or moved into. */
+  label?: string;
+}
 
 interface MutationContext {
   snapshots: Array<[readonly unknown[], unknown]>;
 }
 
-const destructiveActions = new Set<MailAction>(["archive", "trash", "spam"]);
+const destructiveActions = new Set<MailAction>([
+  "archive",
+  "trash",
+  "spam",
+  "read-and-archive",
+  "move",
+  "label-remove",
+]);
 
 function isMailboxResponse(value: unknown): value is MailboxResponse {
   return typeof value === "object" && value !== null && "mailbox" in value;
@@ -52,7 +78,11 @@ function mapMailboxRows(
   return { ...data, mailbox: { ...data.mailbox, groups } };
 }
 
-function snapshotAndMutate(qc: QueryClient, ids: string[], action: MailAction): MutationContext {
+function snapshotAndMutate(
+  qc: QueryClient,
+  ids: string[],
+  action: MailAction,
+): MutationContext {
   const idSet = new Set(ids);
   const snapshots: MutationContext["snapshots"] = [];
   for (const [queryKey, data] of qc.getQueriesData({ queryKey: ["mailbox"] })) {
@@ -69,7 +99,11 @@ function restore(qc: QueryClient, context?: MutationContext) {
   }
 }
 
-function runAction(action: MailAction, ids: string[]): Promise<MutationResponse> {
+function runAction(
+  action: MailAction,
+  ids: string[],
+  payload?: MailActionPayload,
+): Promise<MutationResponse> {
   switch (action) {
     case "archive":
       return archiveMessages(ids);
@@ -85,10 +119,24 @@ function runAction(action: MailAction, ids: string[]): Promise<MutationResponse>
       return markReadMessages(ids, true);
     case "unread":
       return markReadMessages(ids, false);
+    case "read-and-archive":
+      return readAndArchiveMessages(ids);
+    case "move": {
+      if (!payload?.label) throw new Error("move requires a target label");
+      return moveMessagesToLabel(ids, payload.label);
+    }
+    case "label-add": {
+      if (!payload?.label) throw new Error("label-add requires a label");
+      return modifyLabels(ids, [payload.label], []);
+    }
+    case "label-remove": {
+      if (!payload?.label) throw new Error("label-remove requires a label");
+      return modifyLabels(ids, [], [payload.label]);
+    }
   }
 }
 
-function actionLabel(action: MailAction): string {
+function actionLabel(action: MailAction, payload?: MailActionPayload): string {
   switch (action) {
     case "archive":
       return "Archived";
@@ -104,18 +152,30 @@ function actionLabel(action: MailAction): string {
       return "Marked read";
     case "unread":
       return "Marked unread";
+    case "read-and-archive":
+      return "Marked read and archived";
+    case "move":
+      return payload?.label ? `Moved to ${payload.label}` : "Moved";
+    case "label-add":
+      return payload?.label ? `Labelled ${payload.label}` : "Labelled";
+    case "label-remove":
+      return payload?.label ? `Unlabelled ${payload.label}` : "Unlabelled";
   }
 }
 
-export function useOptimisticMailMutation(
-  action: MailAction,
-  options: { silentSuccess?: boolean } = {},
-) {
+export interface MailMutationOptions {
+  silentSuccess?: boolean;
+  /** Required for label-add / label-remove / move. */
+  payload?: MailActionPayload;
+}
+
+export function useOptimisticMailMutation(action: MailAction, options: MailMutationOptions = {}) {
   const qc = useQueryClient();
   const clearSelection = useSelection((state) => state.clear);
+  const { silentSuccess, payload } = options;
   return useMutation({
     mutationFn: (messageIds: string[]) =>
-      requestCoordinator.enqueueMutation(() => runAction(action, messageIds)),
+      requestCoordinator.enqueueMutation(() => runAction(action, messageIds, payload)),
     onMutate: async (messageIds) => {
       await qc.cancelQueries({ queryKey: ["mailbox"] });
       const context = snapshotAndMutate(qc, messageIds, action);
@@ -124,14 +184,15 @@ export function useOptimisticMailMutation(
     },
     onError: (error, _messageIds, context) => {
       restore(qc, context);
-      toast.error(`${actionLabel(action)} failed`, { description: error.message });
+      toast.error(`${actionLabel(action, payload)} failed`, { description: error.message });
     },
     onSuccess: (response, messageIds) => {
-      if (options.silentSuccess) return;
+      if (silentSuccess) return;
       const count = response.result?.succeeded ?? messageIds.length;
+      const label = actionLabel(action, payload);
       const mutationId = response.result?.mutation_id;
       if (mutationId) {
-        toast.success(`${actionLabel(action)} ${count}`, {
+        toast.success(`${label} ${count}`, {
           duration: 60_000,
           action: {
             label: "Undo",
@@ -150,7 +211,7 @@ export function useOptimisticMailMutation(
           },
         });
       } else {
-        toast.success(`${actionLabel(action)} ${count}`);
+        toast.success(`${label} ${count}`);
       }
     },
     onSettled: () => {

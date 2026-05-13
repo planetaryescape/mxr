@@ -223,6 +223,7 @@ fn platform_router() -> Router<AppState> {
             post(complete_auth_session),
         )
         .route("/saved-searches/create", post(create_saved_search))
+        .route("/saved-searches/update", post(update_saved_search))
         .route("/saved-searches/delete", post(delete_saved_search))
         .route("/subscriptions", get(list_subscriptions))
         .route("/llm/status", get(get_llm_status))
@@ -2843,6 +2844,53 @@ async fn delete_saved_search(
         Request::DeleteSavedSearch { name: body.name },
     )
     .await
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateSavedSearchBody {
+    name: String,
+    #[serde(default)]
+    new_name: Option<String>,
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    search_mode: Option<SearchMode>,
+    #[serde(default)]
+    sort: Option<mxr_core::types::SortOrder>,
+    #[serde(default)]
+    icon: Option<String>,
+    #[serde(default)]
+    position: Option<i32>,
+}
+
+async fn update_saved_search(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<UpdateSavedSearchBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let response = ipc_request(
+        &state.config.socket_path,
+        Request::UpdateSavedSearch {
+            name: body.name,
+            new_name: body.new_name,
+            query: body.query,
+            search_mode: body.search_mode,
+            sort: body.sort,
+            icon: body.icon,
+            position: body.position,
+        },
+    )
+    .await?;
+    match response {
+        ResponseData::SavedSearchData { search } => Ok(Json(
+            serde_json::to_value(search)
+                .map_err(|err| BridgeError::Ipc(format!("serialize saved search: {err}")))?,
+        )),
+        ResponseData::Ack => Ok(Json(json!({ "ok": true }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
 }
 
 #[derive(Debug, Deserialize)]

@@ -219,6 +219,30 @@ pub(super) async fn delete_saved_search(state: &AppState, name: &str) -> Handler
     diagnostics_impl::delete_saved_search(state, name).await
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn update_saved_search(
+    state: &AppState,
+    name: &str,
+    new_name: Option<&str>,
+    query: Option<&str>,
+    search_mode: Option<&SearchMode>,
+    sort: Option<&mxr_core::types::SortOrder>,
+    icon: Option<&str>,
+    position: Option<i32>,
+) -> HandlerResult {
+    diagnostics_impl::update_saved_search(
+        state,
+        name,
+        new_name,
+        query,
+        search_mode,
+        sort,
+        icon,
+        position,
+    )
+    .await
+}
+
 pub(super) async fn run_saved_search(state: &AppState, name: &str, limit: u32) -> HandlerResult {
     diagnostics_impl::run_saved_search(state, name, limit).await
 }

@@ -380,6 +380,18 @@ pub enum Request {
     DeleteSavedSearch {
         name: String,
     },
+    /// Patch a saved search by its current name. Any `None` field is left
+    /// untouched. `icon` is overloaded to also carry a hex color (the web app
+    /// uses it for the pinned-row color tag).
+    UpdateSavedSearch {
+        name: String,
+        new_name: Option<String>,
+        query: Option<String>,
+        search_mode: Option<SearchMode>,
+        sort: Option<mxr_core::types::SortOrder>,
+        icon: Option<String>,
+        position: Option<i32>,
+    },
     RunSavedSearch {
         name: String,
         limit: u32,
@@ -963,6 +975,7 @@ impl Request {
             | Self::BackfillSemantic
             | Self::CreateSavedSearch { .. }
             | Self::DeleteSavedSearch { .. }
+            | Self::UpdateSavedSearch { .. }
             | Self::RunSavedSearch { .. } => IpcCategory::MxrPlatform,
             Self::ListEvents { .. }
             | Self::GetLogs { .. }

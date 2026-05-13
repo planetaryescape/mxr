@@ -44,7 +44,7 @@ use utoipa::{
         compose_session_update, compose_session_send, compose_session_save,
         compose_session_attachment, compose_session_discard, rules_list, rule_detail, rule_form,
         rule_history, rule_dry_run, rule_upsert, rule_upsert_form, rule_delete,
-        saved_searches_list, saved_searches_create, saved_searches_delete,
+        saved_searches_list, saved_searches_create, saved_searches_delete, saved_searches_update,
         saved_searches_run, accounts_list, accounts_config, account_test,
         account_upsert, account_set_default, account_remove, account_disable,
         account_addresses_list, account_addresses_add, account_addresses_remove,
@@ -183,6 +183,7 @@ endpoint!(post rule_delete "/api/v1/platform/rules/delete", "Delete rule");
 
 endpoint!(get saved_searches_list "/api/v1/platform/saved-searches", "List saved searches");
 endpoint!(post saved_searches_create "/api/v1/platform/saved-searches/create", "Create saved search");
+endpoint!(post saved_searches_update "/api/v1/platform/saved-searches/update", "Patch a saved search by name");
 endpoint!(post saved_searches_delete "/api/v1/platform/saved-searches/delete", "Delete saved search");
 endpoint!(post saved_searches_run "/api/v1/platform/saved-searches/run", "Run saved search");
 

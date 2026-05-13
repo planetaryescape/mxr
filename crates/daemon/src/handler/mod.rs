@@ -529,6 +529,27 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             search_mode,
         } => platform::create_saved_search(state, name, query, *search_mode).await,
         Request::DeleteSavedSearch { name } => platform::delete_saved_search(state, name).await,
+        Request::UpdateSavedSearch {
+            name,
+            new_name,
+            query,
+            search_mode,
+            sort,
+            icon,
+            position,
+        } => {
+            platform::update_saved_search(
+                state,
+                name,
+                new_name.as_deref(),
+                query.as_deref(),
+                search_mode.as_ref(),
+                sort.as_ref(),
+                icon.as_deref(),
+                *position,
+            )
+            .await
+        }
         Request::RunSavedSearch { name, limit } => {
             platform::run_saved_search(state, name, *limit).await
         }
@@ -1031,6 +1052,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::BackfillSemantic => "backfill_semantic",
         Request::CreateSavedSearch { .. } => "create_saved_search",
         Request::DeleteSavedSearch { .. } => "delete_saved_search",
+        Request::UpdateSavedSearch { .. } => "update_saved_search",
         Request::RunSavedSearch { .. } => "run_saved_search",
         Request::Mutation { mutation: cmd, .. } => mutation_kind(cmd),
         Request::UndoMutation { .. } => "undo_mutation",

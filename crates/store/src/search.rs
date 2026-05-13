@@ -75,6 +75,56 @@ impl super::Store {
             .await?;
         Ok(result.rows_affected() > 0)
     }
+
+    /// Patch a saved search by its current name. Returns the updated record
+    /// or None if no match exists.
+    pub async fn update_saved_search_by_name(
+        &self,
+        name: &str,
+        new_name: Option<&str>,
+        query: Option<&str>,
+        search_mode: Option<&SearchMode>,
+        sort: Option<&SortOrder>,
+        icon: Option<&str>,
+        position: Option<i32>,
+    ) -> Result<Option<SavedSearch>, sqlx::Error> {
+        let Some(existing) = self.get_saved_search_by_name(name).await? else {
+            return Ok(None);
+        };
+        let merged = SavedSearch {
+            id: existing.id,
+            account_id: existing.account_id,
+            name: new_name.map(|s| s.to_string()).unwrap_or(existing.name),
+            query: query.map(|s| s.to_string()).unwrap_or(existing.query),
+            search_mode: search_mode.cloned().unwrap_or(existing.search_mode),
+            sort: sort.cloned().unwrap_or(existing.sort),
+            icon: icon.map(|s| s.to_string()).or(existing.icon),
+            position: position.unwrap_or(existing.position),
+            created_at: existing.created_at,
+        };
+
+        let id_str = merged.id.as_str();
+        let search_mode_json = encode_json(&merged.search_mode)?;
+        let sort_json = encode_json(&merged.sort)?;
+        let position_i64 = merged.position as i64;
+
+        sqlx::query(
+            r#"UPDATE saved_searches
+               SET name = ?, query = ?, search_mode = ?, sort_order = ?, icon = ?, position = ?
+               WHERE id = ?"#,
+        )
+        .bind(&merged.name)
+        .bind(&merged.query)
+        .bind(search_mode_json)
+        .bind(sort_json)
+        .bind(&merged.icon)
+        .bind(position_i64)
+        .bind(id_str)
+        .execute(self.writer())
+        .await?;
+
+        Ok(Some(merged))
+    }
 }
 
 fn row_to_saved_search(row: sqlx::sqlite::SqliteRow) -> Result<SavedSearch, sqlx::Error> {

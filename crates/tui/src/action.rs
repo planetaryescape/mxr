@@ -131,6 +131,14 @@ pub enum Action {
     SummarizeCurrentThread,
     /// Close the thread-summary modal (Esc).
     CloseSummaryModal,
+    /// Slice 5.1 (C2.6): open the briefing modal for the focused
+    /// thread. Fires `Request::GetThreadBriefing`.
+    OpenThreadBriefing,
+    /// Slice 5.2 (C2.6): open the briefing modal for the focused
+    /// recipient. Fires `Request::GetRecipientBriefing`.
+    OpenRecipientBriefing,
+    /// Close the briefing modal (Esc).
+    CloseBriefingModal,
     /// Open the snippet manager modal.
     OpenSnippets,
     /// Close the snippet manager modal (Esc).

@@ -118,6 +118,10 @@ pub struct ModalsState {
     /// summary of the focused thread. Loading / error / disabled
     /// states all surface inline.
     pub summary: ThreadSummaryModalState,
+    /// Slice 5.1/5.2 (C2.6): briefing modal for "returning to a
+    /// dormant thread / recipient" context. Holds either a thread
+    /// briefing or a recipient briefing.
+    pub briefing: BriefingModalState,
 }
 
 #[derive(Debug, Clone)]
@@ -517,6 +521,82 @@ impl ThreadSummaryModalState {
         self.summary = None;
         self.model = None;
         self.error = Some(message);
+    }
+}
+
+/// Slice 5.1 / 5.2 wiring (C2.6): briefing modal state. Holds
+/// either a thread briefing or a recipient briefing; the kind is
+/// encoded by which Subject was set on opening.
+#[derive(Debug, Clone, Default)]
+pub struct BriefingModalState {
+    pub visible: bool,
+    pub loading: bool,
+    pub subject: Option<BriefingModalSubject>,
+    pub body_markdown: Option<String>,
+    pub citations: Vec<mxr_protocol::CitationRefData>,
+    pub generated_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub from_cache: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BriefingModalSubject {
+    Thread(mxr_core::ThreadId),
+    Recipient(String),
+}
+
+impl BriefingModalState {
+    pub fn open_thread_loading(&mut self, thread_id: mxr_core::ThreadId) {
+        self.visible = true;
+        self.loading = true;
+        self.subject = Some(BriefingModalSubject::Thread(thread_id));
+        self.body_markdown = None;
+        self.citations.clear();
+        self.generated_at = None;
+        self.from_cache = false;
+        self.error = None;
+    }
+
+    pub fn open_recipient_loading(&mut self, email: String) {
+        self.visible = true;
+        self.loading = true;
+        self.subject = Some(BriefingModalSubject::Recipient(email));
+        self.body_markdown = None;
+        self.citations.clear();
+        self.generated_at = None;
+        self.from_cache = false;
+        self.error = None;
+    }
+
+    pub fn set_briefing(
+        &mut self,
+        body: String,
+        citations: Vec<mxr_protocol::CitationRefData>,
+        generated_at: chrono::DateTime<chrono::Utc>,
+        from_cache: bool,
+    ) {
+        self.loading = false;
+        self.body_markdown = Some(body);
+        self.citations = citations;
+        self.generated_at = Some(generated_at);
+        self.from_cache = from_cache;
+        self.error = None;
+    }
+
+    pub fn set_error(&mut self, message: String) {
+        self.loading = false;
+        self.error = Some(message);
+    }
+
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.loading = false;
+        self.subject = None;
+        self.body_markdown = None;
+        self.citations.clear();
+        self.generated_at = None;
+        self.from_cache = false;
+        self.error = None;
     }
 }
 

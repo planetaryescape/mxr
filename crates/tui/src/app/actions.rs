@@ -171,6 +171,9 @@ impl App {
             | Action::OpenSenderProfileMessage
             | Action::SummarizeCurrentThread
             | Action::CloseSummaryModal
+            | Action::OpenThreadBriefing
+            | Action::OpenRecipientBriefing
+            | Action::CloseBriefingModal
             | Action::OpenSnippets
             | Action::CloseSnippetsModal
             | Action::SnippetsModalNext

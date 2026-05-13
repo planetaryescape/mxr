@@ -545,6 +545,32 @@ impl App {
             Action::CloseSummaryModal => {
                 self.modals.summary.close();
             }
+            Action::OpenThreadBriefing => {
+                let Some(env) = self.context_envelope() else {
+                    self.status_message = Some("No message selected".into());
+                    return;
+                };
+                let thread_id = env.thread_id.clone();
+                self.modals.briefing.open_thread_loading(thread_id.clone());
+                self.pending_briefing_request = Some(BriefingRequest::Thread(thread_id));
+                self.status_message = Some("Loading briefing...".into());
+            }
+            Action::OpenRecipientBriefing => {
+                let Some(env) = self.context_envelope() else {
+                    self.status_message = Some("No message selected".into());
+                    return;
+                };
+                let email = env.from.email.clone();
+                self.modals
+                    .briefing
+                    .open_recipient_loading(email.clone());
+                self.pending_briefing_request =
+                    Some(BriefingRequest::Recipient { email });
+                self.status_message = Some("Loading briefing...".into());
+            }
+            Action::CloseBriefingModal => {
+                self.modals.briefing.close();
+            }
             Action::OpenSnippets => {
                 self.modals.snippets.open_loading();
                 self.pending_snippets_refresh = true;

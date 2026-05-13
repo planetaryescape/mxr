@@ -3,6 +3,7 @@ pub mod analytics_filter_modal;
 pub mod analytics_page;
 pub mod analytics_widgets;
 pub mod attachment_modal;
+pub mod briefing_modal;
 pub mod bulk_confirm_modal;
 pub mod command_palette;
 pub mod compose_picker;

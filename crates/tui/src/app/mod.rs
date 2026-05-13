@@ -103,6 +103,13 @@ pub enum MutationEffect {
     },
 }
 
+/// Slice 5.1/5.2 (C2.6): which briefing the runtime should fetch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BriefingRequest {
+    Thread(mxr_core::ThreadId),
+    Recipient { email: String },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
     Mailbox,
@@ -208,6 +215,10 @@ pub struct App {
     /// Pending thread-summary request — `Some(thread_id)` triggers a
     /// `Request::SummarizeThread`. Drained by the runtime.
     pub pending_summary_request: Option<mxr_core::ThreadId>,
+    /// Slice 5.1/5.2 (C2.6): pending briefing fetch. Drained by the
+    /// runtime, which fires either `Request::GetThreadBriefing` or
+    /// `Request::GetRecipientBriefing` depending on the variant.
+    pub pending_briefing_request: Option<BriefingRequest>,
     /// Pending screener queue refresh — set when the modal opens or
     /// after a disposition lands so the runtime re-fetches the queue.
     pub pending_screener_refresh: Option<mxr_core::AccountId>,
@@ -297,6 +308,7 @@ impl App {
             pending_reply_queue_refresh: false,
             pending_sender_profile_request: None,
             pending_summary_request: None,
+            pending_briefing_request: None,
             pending_screener_refresh: None,
             pending_screener_decisions: Vec::new(),
             pending_undo: None,

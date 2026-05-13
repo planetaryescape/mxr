@@ -1,0 +1,29 @@
+---
+source: crates/tui/src/ui/briefing_modal.rs
+assertion_line: 182
+expression: rendered
+---
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"        ╭ Briefing: thread 019e…0001 ──────────────────────────────────╮        "
+"        │  ## Thread snapshot                                          │        "
+"        │                                                              │        "
+"        │  - They asked about pricing.                                 │        "
+"        │  - We agreed on Postgres.                                    │        "
+"        │                                                              │        "
+"        │  Citations:                                                  │        "
+"        │    msg=msg-99 field=body "We agreed on Postgres"             │        "
+"        │                                                              │        "
+"        │  Generated 2026-05-13 12:00 [fresh]                          │        "
+"        │                                                              │        "
+"        │  [Esc] close                                                 │        "
+"        │                                                              │        "
+"        │                                                              │        "
+"        │                                                              │        "
+"        ╰──────────────────────────────────────────────────────────────╯        "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "

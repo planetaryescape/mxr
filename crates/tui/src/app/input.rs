@@ -148,6 +148,10 @@ impl App {
             (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::ExportThread)
             }
+            // Slice 5.1 (C2.6): B opens the thread briefing modal.
+            (KeyCode::Char('B'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::OpenThreadBriefing)
+            }
             _ => None,
         }
     }
@@ -301,6 +305,13 @@ impl App {
         if self.modals.summary.visible {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseSummaryModal),
+                _ => None,
+            };
+        }
+
+        if self.modals.briefing.visible {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseBriefingModal),
                 _ => None,
             };
         }

@@ -382,6 +382,10 @@ impl App {
         // Thread summary modal (LLM result).
         ui::summary_modal::draw(frame, area, &self.modals.summary, theme);
 
+        // Slice 5.1/5.2 (C2.6): briefing modal (returning to a
+        // dormant thread or recipient).
+        ui::briefing_modal::draw(frame, area, &self.modals.briefing, theme);
+
         // Generic platform/AI result modal (voice, commitments, draft suggestions).
         ui::platform_modal::draw(frame, area, &self.modals.platform, theme);
 

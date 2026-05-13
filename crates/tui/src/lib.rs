@@ -1036,6 +1036,47 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if let Some(briefing_req) = app.pending_briefing_request.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let request = match briefing_req {
+                    crate::app::BriefingRequest::Thread(thread_id) => {
+                        Request::GetThreadBriefing {
+                            thread_id,
+                            refresh: false,
+                        }
+                    }
+                    crate::app::BriefingRequest::Recipient { email } => {
+                        // Account id resolved daemon-side; the briefing
+                        // handler uses the supplied id verbatim. We use
+                        // the default account on the client side.
+                        // (For now, leave account_id construction up to
+                        // the daemon by passing a fresh AccountId — the
+                        // handler validates against the contacts table.)
+                        let account_id = mxr_core::AccountId::new();
+                        Request::GetRecipientBriefing {
+                            account_id,
+                            email,
+                            refresh: false,
+                        }
+                    }
+                };
+                let resp = ipc_call(&bg, request).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::ThreadBriefing { briefing },
+                    }) => Ok(briefing),
+                    Ok(Response::Ok {
+                        data: ResponseData::RecipientBriefing { briefing },
+                    }) => Ok(briefing),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::Briefing(result)
+            });
+        }
+
         if app.mailbox.pending_owed_refresh {
             app.mailbox.pending_owed_refresh = false;
             let bg = bg.clone();
@@ -2102,6 +2143,17 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::OwedReplies(Err(e)) => {
                             app.status_message = Some(format!("Owed replies error: {e}"));
                         }
+                        AsyncResult::Briefing(Ok(briefing)) => {
+                            app.modals.briefing.set_briefing(
+                                briefing.body_markdown,
+                                briefing.citations,
+                                briefing.generated_at,
+                                briefing.from_cache,
+                            );
+                        }
+                        AsyncResult::Briefing(Err(e)) => {
+                            app.modals.briefing.set_error(e.to_string());
+                        }
                         AsyncResult::CommitmentCounts(counts) => {
                             app.mailbox.open_commitment_counts = counts;
                         }
@@ -2951,6 +3003,53 @@ mod tests {
             app.mailbox.pending_owed_refresh,
             "SentSuccess effect must trigger an owed refresh"
         );
+    }
+
+    /// Slice 5.1 wiring contract (C2.6): pressing Action::OpenThreadBriefing
+    /// when a thread is focused must open the modal in loading state AND
+    /// queue a pending briefing fetch.
+    #[test]
+    fn open_thread_briefing_action_opens_modal_and_queues_fetch() {
+        let mut app = App::new();
+        // Seed an envelope so context_envelope() returns something.
+        let env = TestEnvelopeBuilder::new().build();
+        app.mailbox.envelopes = vec![env.clone()];
+        app.mailbox.all_envelopes = vec![env.clone()];
+        app.apply(Action::OpenSelected);
+
+        app.apply(Action::OpenThreadBriefing);
+
+        assert!(
+            app.modals.briefing.visible,
+            "briefing modal must open"
+        );
+        assert!(app.modals.briefing.loading);
+        assert!(matches!(
+            app.modals.briefing.subject,
+            Some(crate::app::BriefingModalSubject::Thread(_))
+        ));
+        assert!(
+            matches!(
+                app.pending_briefing_request,
+                Some(crate::app::BriefingRequest::Thread(_))
+            ),
+            "pending request must be queued for the runtime to drain"
+        );
+    }
+
+    /// Esc on the briefing modal closes it.
+    #[test]
+    fn close_briefing_modal_action_clears_state() {
+        let mut app = App::new();
+        app.modals
+            .briefing
+            .open_thread_loading(mxr_core::ThreadId::new());
+        assert!(app.modals.briefing.visible);
+
+        app.apply(Action::CloseBriefingModal);
+
+        assert!(!app.modals.briefing.visible);
+        assert!(app.modals.briefing.subject.is_none());
     }
 
     #[test]

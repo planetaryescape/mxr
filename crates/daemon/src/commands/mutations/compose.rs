@@ -653,6 +653,8 @@ pub async fn check_send(draft_id: String, format: Option<OutputFormat>) -> anyho
         original_message_id: None,
         thread_id: None,
         allow_llm: false,
+        // CLI `--check` defaults to "send now" timing.
+        proposed_send_at: Some(chrono::Utc::now()),
     };
     let resp = client
         .request(Request::CheckDraftSafety {

@@ -1256,6 +1256,7 @@ mod tests {
                     original_message_id: None,
                     thread_id: None,
                     allow_llm: false,
+                    proposed_send_at: None,
                 },
             }),
         };
@@ -1381,6 +1382,7 @@ mod tests {
                     original_message_id: None,
                     thread_id: None,
                     allow_llm,
+                    proposed_send_at: None,
                 },
             };
             let json = serde_json::to_string(&req)?;

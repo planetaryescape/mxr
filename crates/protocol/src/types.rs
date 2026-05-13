@@ -27,7 +27,7 @@ pub enum DraftSafetyModeData {
     ScheduledFlush,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DraftSafetyContextData {
     #[serde(default)]
@@ -40,6 +40,12 @@ pub struct DraftSafetyContextData {
     pub thread_id: Option<ThreadId>,
     #[serde(default = "default_allow_llm")]
     pub allow_llm: bool,
+    /// When set, the safety pipeline runs the send-time check
+    /// against the recipients and emits a `Severity::Info` issue
+    /// if the proposed slot is materially slower than the fastest
+    /// historic bucket. `None` = check skipped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_send_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 fn default_allow_llm() -> bool {

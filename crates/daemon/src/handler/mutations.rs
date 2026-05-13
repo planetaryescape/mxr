@@ -128,6 +128,7 @@ async fn enforce_draft_safety_with_override(
             original_message_id: None,
             thread_id: None,
             allow_llm: false,
+            proposed_send_at: None,
         },
     )
     .await?;
@@ -246,6 +247,15 @@ async fn run_safety_pipeline(
             report.extend(issues);
         }
     }
+
+    // Slice 4.1 wiring (C2.5): if the caller provided a
+    // `proposed_send_at`, emit a Severity::Info hint when the slot is
+    // materially slower than the recipient's fastest historic bucket.
+    if let Some(proposed_at) = context.proposed_send_at {
+        let issues = super::safety_timing::check_send_time(state, draft, proposed_at).await;
+        report.extend(issues);
+    }
+
     Ok(report)
 }
 

@@ -369,6 +369,12 @@ async fn stamp_safety_report(
             .as_ref()
             .and_then(|s| s.parse().ok()),
         allow_llm: true,
+        // Compose-flow doesn't pre-schedule; the user can send-now or
+        // send-at via the modal. Pass `now` so the timing check fires
+        // for immediate sends; send-at is handled by the daemon's
+        // schedule path which calls CheckDraftSafety with its own
+        // proposed_send_at.
+        proposed_send_at: Some(chrono::Utc::now()),
     };
     match ipc_call(bg, Request::CheckDraftSafety { draft, context }).await {
         Ok(Response::Ok {

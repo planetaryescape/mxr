@@ -114,7 +114,11 @@ async fn check_draft_safety_with_context(
     Ok(report)
 }
 
-async fn enforce_draft_safety(state: &AppState, draft: &Draft) -> Result<(), String> {
+async fn enforce_draft_safety_with_override(
+    state: &AppState,
+    draft: &Draft,
+    override_token: Option<&str>,
+) -> Result<(), String> {
     let report = run_safety_pipeline(
         state,
         draft,
@@ -127,8 +131,55 @@ async fn enforce_draft_safety(state: &AppState, draft: &Draft) -> Result<(), Str
         },
     )
     .await?;
+    // Always persist the audit row, including the Safe path. Helps
+    // `mxr doctor` and post-mortem debugging.
+    let _ = state
+        .store
+        .record_safety_run(&draft.account_id, Some(&draft.id), &report)
+        .await
+        .map_err(|e| {
+            tracing::warn!("failed to record safety audit: {e}");
+            ""
+        });
+
     if report.allowed {
         return Ok(());
+    }
+
+    // Blocker present. If an override token was provided AND it covers
+    // the actually-present blocker kinds, consume it and let the send
+    // proceed. Otherwise refuse.
+    let blocker_kinds: Vec<_> = report
+        .issues
+        .iter()
+        .filter(|i| i.severity == DraftSafetySeverity::Blocker)
+        .map(|i| i.code)
+        .collect();
+
+    if let Some(token) = override_token {
+        match state.store.consume_safety_override(token).await {
+            Ok(Some(allowed_kinds)) => {
+                let unauthorized: Vec<_> = blocker_kinds
+                    .iter()
+                    .filter(|k| !allowed_kinds.contains(k))
+                    .collect();
+                if unauthorized.is_empty() {
+                    tracing::info!(
+                        draft_id = %draft.id,
+                        kinds = ?allowed_kinds,
+                        "safety override token consumed"
+                    );
+                    return Ok(());
+                } else {
+                    return Err(format!(
+                        "override token does not cover blocker(s): {:?}",
+                        unauthorized
+                    ));
+                }
+            }
+            Ok(None) => return Err("override token unknown or already used".to_string()),
+            Err(e) => return Err(format!("failed to consume override token: {e}")),
+        }
     }
 
     let messages = report
@@ -191,13 +242,54 @@ async fn run_safety_pipeline(
     Ok(report)
 }
 
-/// IPC handler: `Request::CheckDraftSafety`.
+/// IPC handler: `Request::CheckDraftSafety`. When the verdict is
+/// Blocked, mints a single-use override token and stamps it onto each
+/// Blocker issue, so callers (CLI, TUI) can surface a copy-pasteable
+/// `--override-safety <token>` value next to the user-facing reason.
 pub(crate) async fn check_draft_safety_request(
     state: &Arc<AppState>,
     draft: &Draft,
     context: &DraftSafetyContextData,
 ) -> HandlerResult {
-    let report = run_safety_pipeline(state, draft, context).await?;
+    let mut report = run_safety_pipeline(state, draft, context).await?;
+
+    // Always audit a check run.
+    let _ = state
+        .store
+        .record_safety_run(&draft.account_id, Some(&draft.id), &report)
+        .await
+        .map_err(|e| {
+            tracing::warn!("failed to record safety audit: {e}");
+            ""
+        });
+
+    if matches!(report.verdict, mxr_core::DraftSafetyVerdict::Blocked) {
+        let blocker_kinds: Vec<_> = report
+            .issues
+            .iter()
+            .filter(|i| i.severity == DraftSafetySeverity::Blocker)
+            .map(|i| i.code)
+            .collect();
+        if !blocker_kinds.is_empty() {
+            match state
+                .store
+                .mint_safety_override(Some(&draft.id), &blocker_kinds)
+                .await
+            {
+                Ok(token) => {
+                    for issue in report.issues.iter_mut() {
+                        if issue.severity == DraftSafetySeverity::Blocker {
+                            issue.override_token = Some(token.clone());
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("failed to mint override token: {e}");
+                }
+            }
+        }
+    }
+
     Ok(ResponseData::DraftSafetyReportResponse { report })
 }
 
@@ -1110,8 +1202,12 @@ async fn resolve_from_address(state: &AppState, draft: &Draft) -> Address {
     }
 }
 
-pub(super) async fn send_draft(state: &AppState, draft: &Draft) -> HandlerResult {
-    enforce_draft_safety(state, draft).await?;
+pub(super) async fn send_draft(
+    state: &AppState,
+    draft: &Draft,
+    override_safety_token: Option<&str>,
+) -> HandlerResult {
+    enforce_draft_safety_with_override(state, draft, override_safety_token).await?;
     let sender = state.send_provider_for_account(&draft.account_id)?;
     let from = resolve_from_address(state, draft).await;
     let rfc2822_message_id = mxr_outbound::email::generate_message_id(&from);
@@ -1172,6 +1268,7 @@ pub(super) async fn cancel_scheduled_send(
 pub(crate) async fn send_stored_draft(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
+    override_safety_token: Option<&str>,
 ) -> HandlerResult {
     let draft = state
         .store
@@ -1180,7 +1277,7 @@ pub(crate) async fn send_stored_draft(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
 
-    enforce_draft_safety(state, &draft).await?;
+    enforce_draft_safety_with_override(state, &draft, override_safety_token).await?;
 
     // Compare-and-set: only the unique `Draft` -> `Sending` transition is
     // allowed to invoke the provider. A draft already in `Sending` (likely a

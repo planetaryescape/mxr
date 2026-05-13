@@ -607,12 +607,16 @@ pub enum Request {
     },
     SendDraft {
         draft: Draft,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        override_safety_token: Option<String>,
     },
     SaveDraft {
         draft: Draft,
     },
     SendStoredDraft {
         draft_id: DraftId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        override_safety_token: Option<String>,
     },
     /// Run the safety pipeline against a draft without actually sending.
     /// Mirrors the gate that `SendDraft` and `SendStoredDraft` apply

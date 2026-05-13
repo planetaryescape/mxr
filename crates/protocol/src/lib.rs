@@ -476,6 +476,7 @@ mod tests {
             (
                 Request::SendDraft {
                     draft: sample_draft(),
+                    override_safety_token: None,
                 },
                 IpcCategory::CoreMail,
             ),
@@ -488,6 +489,7 @@ mod tests {
             (
                 Request::SendStoredDraft {
                     draft_id: DraftId::new(),
+                    override_safety_token: None,
                 },
                 IpcCategory::CoreMail,
             ),

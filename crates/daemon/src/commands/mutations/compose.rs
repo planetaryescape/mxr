@@ -121,9 +121,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     if options.yes {
         let receipt = expect_send_receipt(
             client
-                .request(Request::SendDraft {
-                    draft: draft.clone(),
-                })
+                .request(Request::SendDraft { draft: draft.clone(), override_safety_token: None })
                 .await?,
         )?;
         if let Some(path) = draft_file {
@@ -409,9 +407,7 @@ async fn finalize_compose(
     if yes {
         let receipt = expect_send_receipt(
             client
-                .request(Request::SendDraft {
-                    draft: draft.clone(),
-                })
+                .request(Request::SendDraft { draft: draft.clone(), override_safety_token: None })
                 .await?,
         )?;
         if let Some(path) = draft_file {
@@ -584,6 +580,7 @@ pub async fn send_draft(
     draft_id: String,
     dry_run: bool,
     format: Option<OutputFormat>,
+    override_safety_token: Option<String>,
 ) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
@@ -620,6 +617,7 @@ pub async fn send_draft(
     let resp = client
         .request(Request::SendStoredDraft {
             draft_id: draft_id.clone(),
+            override_safety_token,
         })
         .await?;
     let receipt = expect_send_receipt(resp)?;

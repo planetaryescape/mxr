@@ -544,7 +544,10 @@ impl App {
                             updated_at: now,
                         };
                         self.queue_mutation(
-                            Request::SendDraft { draft },
+                            Request::SendDraft {
+                                draft,
+                                override_safety_token: None,
+                            },
                             MutationEffect::SentSuccess {
                                 status: "Sent!".into(),
                             },

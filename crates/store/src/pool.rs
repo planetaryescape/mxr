@@ -513,6 +513,11 @@ const MIGRATIONS: &[Migration] = &[
             sql: "ALTER TABLE drafts ADD COLUMN intent TEXT NOT NULL DEFAULT 'new'",
         },
     },
+    Migration {
+        version: 28,
+        name: "draft_safety_audit",
+        kind: MigrationKind::Sql(include_str!("../migrations/028_draft_safety_audit.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

@@ -1289,7 +1289,10 @@ async fn send_compose_session(
     match ipc_request_with_id(
         &state.config.socket_path,
         request_id,
-        Request::SendDraft { draft },
+        Request::SendDraft {
+            draft,
+            override_safety_token: None,
+        },
     )
     .await
     {
@@ -5396,7 +5399,7 @@ mod tests {
                         accounts: vec![account.clone()],
                     },
                 }),
-                Request::SendDraft { draft } => {
+                Request::SendDraft { draft, .. } => {
                     *captured_send.lock().unwrap() = Some(draft);
                     Some(Response::Ok {
                         data: ResponseData::Ack,

@@ -6358,7 +6358,7 @@ mod tests {
             .first()
             .map(|queued| &queued.request)
         {
-            Some(Request::SendDraft { draft }) => {
+            Some(Request::SendDraft { draft, .. }) => {
                 assert_eq!(draft.account_id, pending_account_id);
             }
             other => panic!("Expected SendDraft request, got {other:?}"),

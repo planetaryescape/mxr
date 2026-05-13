@@ -557,10 +557,16 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::PrepareForward { message_id } => {
             mutations::prepare_forward(state, message_id).await
         }
-        Request::SendDraft { draft } => mutations::send_draft(state, draft).await,
+        Request::SendDraft {
+            draft,
+            override_safety_token,
+        } => mutations::send_draft(state, draft, override_safety_token.as_deref()).await,
         Request::SaveDraft { draft } => mutations::save_draft(state, draft).await,
-        Request::SendStoredDraft { draft_id } => {
-            mutations::send_stored_draft(state, draft_id).await
+        Request::SendStoredDraft {
+            draft_id,
+            override_safety_token,
+        } => {
+            mutations::send_stored_draft(state, draft_id, override_safety_token.as_deref()).await
         }
         Request::CheckDraftSafety { draft, context } => {
             mutations::check_draft_safety_request(state, draft, context).await
@@ -866,7 +872,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ClearSignatureDefault { account_id, .. }
         | Request::ResolveSignature { account_id, .. } => account_id.as_ref(),
         Request::GetSyncStatus { account_id } => Some(account_id),
-        Request::SendDraft { draft }
+        Request::SendDraft { draft, .. }
         | Request::SaveDraft { draft }
         | Request::SaveDraftToServer { draft }
         | Request::CheckDraftSafety { draft, .. } => Some(&draft.account_id),
@@ -6956,7 +6962,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendDraft { draft }),
+            payload: IpcPayload::Request(Request::SendDraft { draft, override_safety_token: None }),
         };
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
@@ -6996,6 +7002,7 @@ mod tests {
             id: 1,
             payload: IpcPayload::Request(Request::SendDraft {
                 draft: draft.clone(),
+                override_safety_token: None,
             }),
         };
         match handle_request(&state, &send).await.payload {
@@ -7091,7 +7098,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendDraft { draft }),
+            payload: IpcPayload::Request(Request::SendDraft { draft, override_safety_token: None }),
         };
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
@@ -7476,9 +7483,7 @@ mod tests {
 
         let send_msg = IpcMessage {
             id: 2,
-            payload: IpcPayload::Request(Request::SendStoredDraft {
-                draft_id: draft.id.clone(),
-            }),
+            payload: IpcPayload::Request(Request::SendStoredDraft { draft_id: draft.id.clone(), override_safety_token: None }),
         };
         let send_resp = handle_request(&state, &send_msg).await;
         assert!(
@@ -7494,6 +7499,256 @@ mod tests {
 
         assert_eq!(fake.sent_drafts().len(), 1);
         assert!(state.store.get_draft(&draft.id).await.unwrap().is_none());
+    }
+
+    /// Slice 1.3: when CheckDraftSafety returns Blocked, the daemon
+    /// mints a single-use override token and stamps it onto each
+    /// blocker issue. The next SendStoredDraft with that token must
+    /// succeed (and FakeProvider must actually be invoked exactly once),
+    /// while a second send attempt with the same token must fail with
+    /// the token already-used error.
+    #[tokio::test]
+    async fn override_token_unblocks_send_exactly_once() {
+        let account_id = mxr_core::AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+        let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake.clone();
+        let send_provider: Arc<dyn mxr_core::MailSendProvider> = fake.clone();
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+                .await
+                .unwrap(),
+        );
+
+        // PEM private key in the body → Blocker.
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id: account_id.clone(),
+            reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
+            to: vec![mxr_core::types::Address {
+                name: None,
+                email: "alice@example.com".to_string(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "key transfer".to_string(),
+            body_markdown: "Here is the key:\n-----BEGIN RSA PRIVATE KEY-----\n...\n"
+                .to_string(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        // Save the draft so SendStoredDraft can locate it.
+        let save = handle_request(
+            &state,
+            &IpcMessage {
+                id: 1,
+                payload: IpcPayload::Request(Request::SaveDraft {
+                    draft: draft.clone(),
+                }),
+            },
+        )
+        .await;
+        assert!(matches!(
+            save.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+
+        // 1. Check returns Blocked + a token on the blocker issue.
+        let check = handle_request(
+            &state,
+            &IpcMessage {
+                id: 2,
+                payload: IpcPayload::Request(Request::CheckDraftSafety {
+                    draft: draft.clone(),
+                    context: Default::default(),
+                }),
+            },
+        )
+        .await;
+        let token = match check.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::DraftSafetyReportResponse { report },
+            }) => {
+                assert!(matches!(
+                    report.verdict,
+                    mxr_core::DraftSafetyVerdict::Blocked
+                ));
+                let blocker = report
+                    .issues
+                    .iter()
+                    .find(|i| i.severity == mxr_core::DraftSafetySeverity::Blocker)
+                    .expect("at least one blocker");
+                blocker
+                    .override_token
+                    .clone()
+                    .expect("blocker should carry override token")
+            }
+            other => panic!("expected DraftSafetyReportResponse, got {other:?}"),
+        };
+
+        // 2. SendStoredDraft WITHOUT the token: refused, FakeProvider untouched.
+        assert_eq!(fake.sent_drafts().len(), 0);
+        let blocked = handle_request(
+            &state,
+            &IpcMessage {
+                id: 3,
+                payload: IpcPayload::Request(Request::SendStoredDraft {
+                    draft_id: draft.id.clone(),
+                    override_safety_token: None,
+                }),
+            },
+        )
+        .await;
+        match blocked.payload {
+            IpcPayload::Response(Response::Error { message, .. }) => {
+                assert!(message.contains("blocked"), "{message}");
+            }
+            other => panic!("expected Error, got {other:?}"),
+        }
+        assert_eq!(
+            fake.sent_drafts().len(),
+            0,
+            "provider must NOT be called when blocked"
+        );
+        // Draft must still be in `Draft` status (no CAS to Sending).
+        assert!(state.store.get_draft(&draft.id).await.unwrap().is_some());
+
+        // 3. SendStoredDraft WITH token: succeeds.
+        let ok = handle_request(
+            &state,
+            &IpcMessage {
+                id: 4,
+                payload: IpcPayload::Request(Request::SendStoredDraft {
+                    draft_id: draft.id.clone(),
+                    override_safety_token: Some(token.clone()),
+                }),
+            },
+        )
+        .await;
+        assert!(
+            matches!(
+                ok.payload,
+                IpcPayload::Response(Response::Ok {
+                    data: ResponseData::SendReceipt { .. }
+                })
+            ),
+            "expected SendReceipt with override, got {:?}",
+            ok.payload
+        );
+        assert_eq!(fake.sent_drafts().len(), 1);
+
+        // 4. Reusing the same token after the draft is gone — token is
+        // single-use; consume must fail. We test by minting a fresh
+        // override against a new draft, sending once, then trying the
+        // SAME token a second time to assert single-use.
+        let draft2 = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id: account_id.clone(),
+            reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
+            to: vec![mxr_core::types::Address {
+                name: None,
+                email: "bob@example.com".to_string(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "again".into(),
+            body_markdown: "-----BEGIN RSA PRIVATE KEY-----\nzz\n".into(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let _ = handle_request(
+            &state,
+            &IpcMessage {
+                id: 5,
+                payload: IpcPayload::Request(Request::SaveDraft {
+                    draft: draft2.clone(),
+                }),
+            },
+        )
+        .await;
+        let check2 = handle_request(
+            &state,
+            &IpcMessage {
+                id: 6,
+                payload: IpcPayload::Request(Request::CheckDraftSafety {
+                    draft: draft2.clone(),
+                    context: Default::default(),
+                }),
+            },
+        )
+        .await;
+        let token2 = match check2.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::DraftSafetyReportResponse { report },
+            }) => report
+                .issues
+                .iter()
+                .find(|i| i.severity == mxr_core::DraftSafetySeverity::Blocker)
+                .and_then(|i| i.override_token.clone())
+                .expect("blocker token"),
+            other => panic!("unexpected: {other:?}"),
+        };
+        // First use succeeds.
+        let first = handle_request(
+            &state,
+            &IpcMessage {
+                id: 7,
+                payload: IpcPayload::Request(Request::SendStoredDraft {
+                    draft_id: draft2.id.clone(),
+                    override_safety_token: Some(token2.clone()),
+                }),
+            },
+        )
+        .await;
+        assert!(matches!(
+            first.payload,
+            IpcPayload::Response(Response::Ok { .. })
+        ));
+        // Second use with the SAME token must fail (token consumed). We
+        // can't re-send the same draft (already gone after send), so we
+        // make a third draft and try to use the spent token.
+        let draft3 = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            ..draft2
+        };
+        let _ = handle_request(
+            &state,
+            &IpcMessage {
+                id: 8,
+                payload: IpcPayload::Request(Request::SaveDraft {
+                    draft: draft3.clone(),
+                }),
+            },
+        )
+        .await;
+        let reuse = handle_request(
+            &state,
+            &IpcMessage {
+                id: 9,
+                payload: IpcPayload::Request(Request::SendStoredDraft {
+                    draft_id: draft3.id.clone(),
+                    override_safety_token: Some(token2),
+                }),
+            },
+        )
+        .await;
+        match reuse.payload {
+            IpcPayload::Response(Response::Error { message, .. }) => {
+                assert!(
+                    message.contains("override token unknown or already used")
+                        || message.contains("does not cover blocker"),
+                    "got {message}"
+                );
+            }
+            other => panic!("expected error on token reuse, got {other:?}"),
+        }
     }
 
     /// The live send pipeline must touch `last_heartbeat_at` once it has
@@ -7545,9 +7800,7 @@ mod tests {
         let before = chrono::Utc::now();
         let send_msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendStoredDraft {
-                draft_id: draft.id.clone(),
-            }),
+            payload: IpcPayload::Request(Request::SendStoredDraft { draft_id: draft.id.clone(), override_safety_token: None }),
         };
         let send_resp = handle_request(&state, &send_msg).await;
         assert!(
@@ -7609,9 +7862,7 @@ mod tests {
 
         let send_msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendStoredDraft {
-                draft_id: draft.id.clone(),
-            }),
+            payload: IpcPayload::Request(Request::SendStoredDraft { draft_id: draft.id.clone(), override_safety_token: None }),
         };
         match handle_request(&state, &send_msg).await.payload {
             IpcPayload::Response(Response::Error { message, .. }) => {
@@ -7665,7 +7916,7 @@ mod tests {
 
         let send_msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendDraft { draft }),
+            payload: IpcPayload::Request(Request::SendDraft { draft, override_safety_token: None }),
         };
         match handle_request(&state, &send_msg).await.payload {
             IpcPayload::Response(Response::Error { message, .. }) => {
@@ -7742,9 +7993,7 @@ mod tests {
 
         let send_msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendStoredDraft {
-                draft_id: draft.id.clone(),
-            }),
+            payload: IpcPayload::Request(Request::SendStoredDraft { draft_id: draft.id.clone(), override_safety_token: None }),
         };
         match handle_request(&state, &send_msg).await.payload {
             IpcPayload::Response(Response::Error { message, .. }) => {
@@ -7815,7 +8064,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendDraft { draft }),
+            payload: IpcPayload::Request(Request::SendDraft { draft, override_safety_token: None }),
         };
         let resp = handle_request(&state, &msg).await;
         let local_message_id = match resp.payload {

@@ -1115,12 +1115,31 @@ pub async fn process_due_scheduled_sends(
             );
             continue;
         }
-        match crate::handler::send_stored_draft(state, &draft_id).await {
+        match crate::handler::send_stored_draft(state, &draft_id, None).await {
             Ok(_) => tracing::debug!(draft_id = %draft_id, "scheduled-send: sent"),
-            Err(e) => tracing::warn!(
-                draft_id = %draft_id,
-                "scheduled-send: send failed: {e}"
-            ),
+            Err(e) => {
+                if e.contains("draft safety blocked send") {
+                    // Per docs/ai-email/01-pre-send-safety.md: keep the
+                    // draft, clear the schedule, log a warning event so
+                    // the user notices on next sync. Without this the
+                    // flusher would retry every tick forever.
+                    if let Err(clear_err) = state.store.cancel_scheduled_send(&draft_id).await {
+                        tracing::warn!(
+                            draft_id = %draft_id,
+                            "scheduled-send: failed to clear schedule after safety block: {clear_err}"
+                        );
+                    }
+                    tracing::warn!(
+                        draft_id = %draft_id,
+                        "scheduled-send: blocked by safety pipeline; schedule cleared. Use --check to inspect, then resend with --override-safety <token>: {e}"
+                    );
+                } else {
+                    tracing::warn!(
+                        draft_id = %draft_id,
+                        "scheduled-send: send failed: {e}"
+                    );
+                }
+            }
         }
     }
     Ok(count)

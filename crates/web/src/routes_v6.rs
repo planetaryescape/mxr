@@ -1685,7 +1685,10 @@ async fn send_stored_draft(
         &state,
         &headers,
         auth.token.as_deref(),
-        Request::SendStoredDraft { draft_id: id },
+        Request::SendStoredDraft {
+            draft_id: id,
+            override_safety_token: None,
+        },
     )
     .await?;
     passthrough(response)

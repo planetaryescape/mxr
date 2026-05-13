@@ -1098,8 +1098,19 @@ pub struct Draft {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum DraftSafetySeverity {
+    Info,
     Warning,
     Blocker,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DraftSafetyVerdict {
+    #[default]
+    Safe,
+    Warn,
+    Blocked,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1109,6 +1120,27 @@ pub enum DraftSafetyIssueCode {
     NoRecipients,
     InvalidRecipient,
     MissingReplyAllRecipient,
+    WrongRecipient,
+    MissingAttachment,
+    ReplyAll,
+    PiiSecret,
+    ToneMismatch,
+    AnswerCoverage,
+    CommitmentCandidate,
+    SendTimeNote,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CitationRef {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub field: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub quote: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1117,6 +1149,39 @@ pub struct DraftSafetyIssue {
     pub code: DraftSafetyIssueCode,
     pub severity: DraftSafetySeverity,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub citations: Vec<CitationRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub override_token: Option<String>,
+}
+
+impl DraftSafetyIssue {
+    pub fn new(
+        code: DraftSafetyIssueCode,
+        severity: DraftSafetySeverity,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            code,
+            severity,
+            message: message.into(),
+            detail: None,
+            citations: Vec::new(),
+            override_token: None,
+        }
+    }
+
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    pub fn with_citations(mut self, citations: Vec<CitationRef>) -> Self {
+        self.citations = citations;
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1124,6 +1189,63 @@ pub struct DraftSafetyIssue {
 pub struct DraftSafetyReport {
     pub allowed: bool,
     pub issues: Vec<DraftSafetyIssue>,
+    #[serde(default)]
+    pub verdict: DraftSafetyVerdict,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked_at: Option<DateTime<Utc>>,
+}
+
+impl DraftSafetyReport {
+    pub fn from_issues(issues: Vec<DraftSafetyIssue>) -> Self {
+        let verdict = if issues
+            .iter()
+            .any(|i| i.severity == DraftSafetySeverity::Blocker)
+        {
+            DraftSafetyVerdict::Blocked
+        } else if issues
+            .iter()
+            .any(|i| i.severity == DraftSafetySeverity::Warning)
+        {
+            DraftSafetyVerdict::Warn
+        } else {
+            DraftSafetyVerdict::Safe
+        };
+        Self {
+            allowed: !matches!(verdict, DraftSafetyVerdict::Blocked),
+            issues,
+            verdict,
+            checked_at: Some(Utc::now()),
+        }
+    }
+
+    pub fn safe() -> Self {
+        Self {
+            allowed: true,
+            issues: Vec::new(),
+            verdict: DraftSafetyVerdict::Safe,
+            checked_at: Some(Utc::now()),
+        }
+    }
+
+    pub fn extend(&mut self, more: Vec<DraftSafetyIssue>) {
+        self.issues.extend(more);
+        self.verdict = if self
+            .issues
+            .iter()
+            .any(|i| i.severity == DraftSafetySeverity::Blocker)
+        {
+            DraftSafetyVerdict::Blocked
+        } else if self
+            .issues
+            .iter()
+            .any(|i| i.severity == DraftSafetySeverity::Warning)
+        {
+            DraftSafetyVerdict::Warn
+        } else {
+            DraftSafetyVerdict::Safe
+        };
+        self.allowed = !matches!(self.verdict, DraftSafetyVerdict::Blocked);
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

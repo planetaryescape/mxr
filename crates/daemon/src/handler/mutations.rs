@@ -26,27 +26,24 @@ pub(crate) fn check_draft_safety(draft: &Draft) -> DraftSafetyReport {
     let recipient_count = draft.to.len() + draft.cc.len() + draft.bcc.len();
 
     if recipient_count == 0 {
-        issues.push(DraftSafetyIssue {
-            code: DraftSafetyIssueCode::NoRecipients,
-            severity: DraftSafetySeverity::Blocker,
-            message: "draft has no recipients".to_string(),
-        });
+        issues.push(DraftSafetyIssue::new(
+            DraftSafetyIssueCode::NoRecipients,
+            DraftSafetySeverity::Blocker,
+            "draft has no recipients",
+        ));
     }
 
     for address in draft.to.iter().chain(&draft.cc).chain(&draft.bcc) {
         if address.email.trim().parse::<Mailbox>().is_err() {
-            issues.push(DraftSafetyIssue {
-                code: DraftSafetyIssueCode::InvalidRecipient,
-                severity: DraftSafetySeverity::Blocker,
-                message: format!("invalid recipient address: {}", address.email),
-            });
+            issues.push(DraftSafetyIssue::new(
+                DraftSafetyIssueCode::InvalidRecipient,
+                DraftSafetySeverity::Blocker,
+                format!("invalid recipient address: {}", address.email),
+            ));
         }
     }
 
-    let allowed = !issues
-        .iter()
-        .any(|issue| issue.severity == DraftSafetySeverity::Blocker);
-    DraftSafetyReport { allowed, issues }
+    DraftSafetyReport::from_issues(issues)
 }
 
 async fn check_draft_safety_with_context(
@@ -97,24 +94,21 @@ async fn check_draft_safety_with_context(
         .collect::<HashSet<_>>();
     let reply_target = parent.from.email.to_ascii_lowercase();
 
+    let mut additions = Vec::new();
     for expected in parent.to.iter().chain(&parent.cc) {
         let email = expected.email.to_ascii_lowercase();
         if email.is_empty() || self_addresses.contains(&email) || email == reply_target {
             continue;
         }
         if !actual_recipients.contains(&email) {
-            report.issues.push(DraftSafetyIssue {
-                code: DraftSafetyIssueCode::MissingReplyAllRecipient,
-                severity: DraftSafetySeverity::Blocker,
-                message: format!("reply-all is missing recipient: {}", expected.email),
-            });
+            additions.push(DraftSafetyIssue::new(
+                DraftSafetyIssueCode::MissingReplyAllRecipient,
+                DraftSafetySeverity::Blocker,
+                format!("reply-all is missing recipient: {}", expected.email),
+            ));
         }
     }
-
-    report.allowed = !report
-        .issues
-        .iter()
-        .any(|issue| issue.severity == DraftSafetySeverity::Blocker);
+    report.extend(additions);
     Ok(report)
 }
 

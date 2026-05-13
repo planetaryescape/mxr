@@ -1,0 +1,24 @@
+[package]
+name = "mxr-safety"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Internal: deterministic pre-send safety checks for mxr drafts"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+mxr-reader = { workspace = true }
+mxr-relationship = { workspace = true }
+chrono = { workspace = true }
+once_cell = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

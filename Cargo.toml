@@ -87,6 +87,7 @@ members = [
     "crates/reader",
     "crates/relationship",
     "crates/rules",
+    "crates/safety",
     "crates/search",
     "crates/semantic",
     "crates/store",
@@ -139,6 +140,7 @@ mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.5.8" }
 mxr-reader = { path = "crates/reader", version = "0.5.8" }
 mxr-relationship = { path = "crates/relationship", version = "0.5.8" }
 mxr-rules = { path = "crates/rules", version = "0.5.8" }
+mxr-safety = { path = "crates/safety", version = "0.5.8" }
 mxr-search = { path = "crates/search", version = "0.5.8" }
 mxr-semantic = { path = "crates/semantic", version = "0.5.8" }
 mxr-store = { path = "crates/store", version = "0.5.8" }

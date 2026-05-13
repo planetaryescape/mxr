@@ -4168,6 +4168,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "mxr-safety"
+version = "0.5.8"
+dependencies = [
+ "chrono",
+ "mxr-core",
+ "mxr-reader",
+ "mxr-relationship",
+ "once_cell",
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "mxr-search"
 version = "0.5.8"
 dependencies = [

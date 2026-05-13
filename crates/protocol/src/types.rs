@@ -628,6 +628,13 @@ pub enum Request {
         #[serde(default)]
         context: DraftSafetyContextData,
     },
+    /// Extract per-draft commitment candidates (deterministic prefilter
+    /// + LLM, gated by `LlmFeature::Commitments`). Persists into
+    /// `draft_commitment_candidates`; on successful send, candidates
+    /// promote to `contact_commitments`.
+    ExtractDraftCommitments {
+        draft: Draft,
+    },
     DeleteDraft {
         draft_id: DraftId,
     },
@@ -739,6 +746,7 @@ impl Request {
             | Self::SaveDraft { .. }
             | Self::SendStoredDraft { .. }
             | Self::CheckDraftSafety { .. }
+            | Self::ExtractDraftCommitments { .. }
             | Self::DeleteDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
@@ -1283,6 +1291,10 @@ pub enum ResponseData {
         provider_message_id: Option<String>,
         rfc2822_message_id: String,
     },
+    /// Returned by `Request::ExtractDraftCommitments`.
+    DraftCommitments {
+        candidates: Vec<DraftCommitmentCandidateData>,
+    },
     /// Returned by `Request::CheckDraftSafety` and surfaced to CLI / TUI.
     DraftSafetyReportResponse {
         report: DraftSafetyReport,
@@ -1330,7 +1342,8 @@ impl ResponseData {
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }
             | Self::SendReceipt { .. }
-            | Self::DraftSafetyReportResponse { .. } => IpcCategory::CoreMail,
+            | Self::DraftSafetyReportResponse { .. }
+            | Self::DraftCommitments { .. } => IpcCategory::CoreMail,
             Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }
@@ -1752,6 +1765,21 @@ pub struct CommitmentData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by_when: Option<chrono::DateTime<chrono::Utc>>,
     pub evidence_msg_id: MessageId,
+    pub extracted_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DraftCommitmentCandidateData {
+    pub id: String,
+    pub draft_id: DraftId,
+    pub account_id: AccountId,
+    pub email: String,
+    pub direction: CommitmentDirectionData,
+    pub who_owes: String,
+    pub what: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by_when: Option<chrono::DateTime<chrono::Utc>>,
     pub extracted_at: chrono::DateTime<chrono::Utc>,
 }
 

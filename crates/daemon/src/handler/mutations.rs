@@ -1234,14 +1234,19 @@ pub(super) async fn send_draft(
             None
         }
     };
+    let resolved_id = local_message_id.clone().unwrap_or_else(|| {
+        mxr_core::MessageId::from_scoped_provider_id(
+            &draft.account_id,
+            "send-receipt",
+            &receipt.rfc2822_message_id,
+        )
+    });
+    if let Err(e) = super::commitments_extract::promote_after_send(state, draft, &resolved_id).await
+    {
+        tracing::warn!(error = %e, "commitments promotion failed after send_draft");
+    }
     Ok(ResponseData::SendReceipt {
-        local_message_id: local_message_id.unwrap_or_else(|| {
-            mxr_core::MessageId::from_scoped_provider_id(
-                &draft.account_id,
-                "send-receipt",
-                &receipt.rfc2822_message_id,
-            )
-        }),
+        local_message_id: resolved_id,
         provider_message_id: receipt.provider_message_id,
         rfc2822_message_id: receipt.rfc2822_message_id,
     })
@@ -1384,6 +1389,11 @@ pub(crate) async fn send_stored_draft(
         .store
         .update_draft_status(draft_id, DraftStatus::Sent)
         .await;
+    if let Err(e) =
+        super::commitments_extract::promote_after_send(state, &draft, &local_message_id).await
+    {
+        tracing::warn!(error = %e, "commitments promotion failed after send_stored_draft");
+    }
     let _ = state.store.delete_draft(draft_id).await;
     Ok(ResponseData::SendReceipt {
         local_message_id,

@@ -12,6 +12,7 @@ mod accounts;
 mod admin;
 mod auth_sessions;
 mod commitments;
+mod commitments_extract;
 #[path = "diagnostics/mod.rs"]
 pub(crate) mod diagnostics_impl;
 mod draft_assist;
@@ -572,6 +573,9 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::CheckDraftSafety { draft, context } => {
             mutations::check_draft_safety_request(state, draft, context).await
         }
+        Request::ExtractDraftCommitments { draft } => {
+            commitments_extract::extract_request(state, draft).await
+        }
         Request::DeleteDraft { draft_id } => mutations::delete_draft(state, draft_id).await,
         Request::SaveDraftToServer { draft } => mutations::save_draft_to_server(state, draft).await,
         Request::Unsubscribe { message_id } => mutations::unsubscribe(state, message_id).await,
@@ -817,6 +821,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SaveDraft { .. } => "save_draft",
         Request::SendStoredDraft { .. } => "send_stored_draft",
         Request::CheckDraftSafety { .. } => "check_draft_safety",
+        Request::ExtractDraftCommitments { .. } => "extract_draft_commitments",
         Request::DeleteDraft { .. } => "delete_draft",
         Request::SaveDraftToServer { .. } => "save_draft_to_server",
         Request::ListDrafts => "list_drafts",
@@ -876,7 +881,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         Request::SendDraft { draft, .. }
         | Request::SaveDraft { draft }
         | Request::SaveDraftToServer { draft }
-        | Request::CheckDraftSafety { draft, .. } => Some(&draft.account_id),
+        | Request::CheckDraftSafety { draft, .. }
+        | Request::ExtractDraftCommitments { draft } => Some(&draft.account_id),
         Request::SendStoredDraft { .. } | Request::DeleteDraft { .. } => None,
         _ => None,
     }

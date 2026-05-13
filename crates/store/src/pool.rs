@@ -518,6 +518,13 @@ const MIGRATIONS: &[Migration] = &[
         name: "draft_safety_audit",
         kind: MigrationKind::Sql(include_str!("../migrations/028_draft_safety_audit.sql")),
     },
+    Migration {
+        version: 29,
+        name: "draft_commitment_candidates",
+        kind: MigrationKind::Sql(include_str!(
+            "../migrations/029_draft_commitment_candidates.sql"
+        )),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

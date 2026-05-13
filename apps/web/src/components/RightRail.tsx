@@ -10,6 +10,7 @@ import { resolveCommitment as resolveCommitmentApi } from "@/features/mailbox/ap
 import { LabelPicker } from "@/features/mailbox/LabelPicker";
 import { MovePicker } from "@/features/mailbox/MovePicker";
 import { AttachmentActions } from "@/features/thread/AttachmentActions";
+import { DraftAssistPanel } from "@/features/thread/DraftAssistPanel";
 import type { AttachmentView } from "@/features/mailbox/types";
 import { useModals } from "@/state/modalStore";
 
@@ -62,6 +63,9 @@ function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
         onClose={() => useModals.getState().closeRightRail()}
       />
     );
+  }
+  if (kind === "draft-assist" && isDraftAssistPayload(payload)) {
+    return <DraftAssistPanel threadId={payload.threadId} />;
   }
   if (kind === "thread-context" && isThreadContext(payload)) {
     return (
@@ -118,6 +122,14 @@ interface MovePickerPayload {
 
 function isMovePickerPayload(value: unknown): value is MovePickerPayload {
   return isRecord(value) && Array.isArray(value.messageIds);
+}
+
+interface DraftAssistPayload {
+  threadId: string;
+}
+
+function isDraftAssistPayload(value: unknown): value is DraftAssistPayload {
+  return isRecord(value) && typeof value.threadId === "string";
 }
 
 interface SenderProfile {

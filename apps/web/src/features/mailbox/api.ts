@@ -197,6 +197,22 @@ export function unsubscribeFromSender(input: {
   });
 }
 
+export interface DraftAssistResponse {
+  body?: string;
+  draft?: string;
+  message?: string;
+}
+
+export function draftAssistThread(input: {
+  threadId: string;
+  instruction: string;
+}): Promise<DraftAssistResponse> {
+  return apiFetch<DraftAssistResponse>("/api/v1/mail/threads/draft-assist", {
+    method: "POST",
+    body: { thread_id: input.threadId, instruction: input.instruction },
+  });
+}
+
 export function undoMutation(mutationId: string): Promise<unknown> {
   return apiFetch<unknown>("/api/v1/mail/mutations/undo", {
     method: "POST",

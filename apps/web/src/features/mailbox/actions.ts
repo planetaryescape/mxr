@@ -91,6 +91,25 @@ export const mailboxActions: Action[] = [
     },
   },
   {
+    id: "mail.draft-assist",
+    label: "Draft assist",
+    description: "Generate a reply body for the focused thread via LLM",
+    group: "Compose",
+    paletteOnly: true,
+    when: withFocusedThread(),
+    run: () => {
+      const ids = targetMessageIds();
+      if (ids.length === 0) {
+        toast.error("Open a thread first");
+        return;
+      }
+      const threadId = ids[0];
+      if (!threadId) return;
+      useModals.getState().setCommandPaletteOpen(false);
+      useModals.getState().openRightRail("draft-assist", { threadId });
+    },
+  },
+  {
     id: "mail.unsubscribe",
     label: "Unsubscribe from sender",
     description: "Send a list-unsubscribe request for the focused message",

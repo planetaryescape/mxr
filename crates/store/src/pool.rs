@@ -321,6 +321,24 @@ const MESSAGE_ANALYTICS_STEPS: &[MigrationStep] = &[
     ),
 ];
 
+const CONTACT_STYLE_DRIFT_STEPS: &[MigrationStep] = &[
+    MigrationStep::AddColumn {
+        table: "contact_style",
+        column: "drift_detected",
+        sql: "ALTER TABLE contact_style ADD COLUMN drift_detected INTEGER NOT NULL DEFAULT 0",
+    },
+    MigrationStep::AddColumn {
+        table: "contact_style",
+        column: "drift_reason",
+        sql: "ALTER TABLE contact_style ADD COLUMN drift_reason TEXT",
+    },
+    MigrationStep::AddColumn {
+        table: "contact_style",
+        column: "drift_detected_at",
+        sql: "ALTER TABLE contact_style ADD COLUMN drift_detected_at INTEGER",
+    },
+];
+
 const DRAFT_STATUS_STEPS: &[MigrationStep] = &[
     MigrationStep::AddColumn {
         table: "drafts",
@@ -502,7 +520,11 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 26,
         name: "contact_style_drift",
-        kind: MigrationKind::Sql(include_str!("../migrations/026_contact_style_drift.sql")),
+        // Three ALTER TABLE ADD COLUMN steps. SQLite has no `ADD COLUMN
+        // IF NOT EXISTS`, so we use idempotent `AddColumn` steps that
+        // probe via `PRAGMA table_info`. This keeps the migration
+        // re-runnable when a pre-versioning DB needs backfilling.
+        kind: MigrationKind::Composite(CONTACT_STYLE_DRIFT_STEPS),
     },
     Migration {
         version: 27,

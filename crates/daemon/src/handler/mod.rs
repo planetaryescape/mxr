@@ -10,6 +10,7 @@
 
 mod accounts;
 mod admin;
+mod archive_ask;
 mod auth_sessions;
 mod commitments;
 mod commitments_extract;
@@ -522,6 +523,11 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             within_days,
             limit,
         } => list_owed_replies(state, account_id, *older_than_days, *within_days, *limit).await,
+        Request::ArchiveAsk {
+            question,
+            filters,
+            limit,
+        } => archive_ask::ask(state, question, filters, *limit as usize).await,
         Request::GetUserVoice { account_id } => user_voice::get_user_voice(state, account_id).await,
         Request::RebuildUserVoice { account_id } => {
             user_voice::rebuild_user_voice(state, account_id).await
@@ -859,6 +865,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::CheckDraftSafety { .. } => "check_draft_safety",
         Request::ExtractDraftCommitments { .. } => "extract_draft_commitments",
         Request::ListOwedReplies { .. } => "list_owed_replies",
+        Request::ArchiveAsk { .. } => "archive_ask",
         Request::DeleteDraft { .. } => "delete_draft",
         Request::SaveDraftToServer { .. } => "save_draft_to_server",
         Request::ListDrafts => "list_drafts",
@@ -922,6 +929,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::CheckDraftSafety { draft, .. }
         | Request::ExtractDraftCommitments { draft } => Some(&draft.account_id),
         Request::SendStoredDraft { .. } | Request::DeleteDraft { .. } => None,
+        Request::ArchiveAsk { filters, .. } => filters.account_id.as_ref(),
         _ => None,
     }
 }

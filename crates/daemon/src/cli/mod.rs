@@ -288,6 +288,29 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Ask a question against the local archive. Returns a citation-
+    /// validated answer; the daemon rejects LLM citations that point
+    /// to messages outside the retrieved set.
+    Ask {
+        /// The question to ask.
+        question: String,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        from: Option<String>,
+        #[arg(long)]
+        to: Option<String>,
+        #[arg(long)]
+        after: Option<String>,
+        #[arg(long)]
+        before: Option<String>,
+        #[arg(long, value_enum, default_value_t = ArchiveAskModeArg::Hybrid)]
+        mode: ArchiveAskModeArg,
+        #[arg(long, default_value_t = 8)]
+        limit: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// List threads where the user owes a reply, ranked by how
     /// overdue they are relative to the recipient's typical cadence.
     Owed {
@@ -1337,6 +1360,13 @@ pub enum OutputFormat {
     Jsonl,
     Csv,
     Ids,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ArchiveAskModeArg {
+    Hybrid,
+    Lexical,
+    Semantic,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

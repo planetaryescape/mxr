@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod ask;
 pub mod bug_report;
 pub mod cat;
 pub mod commitments;

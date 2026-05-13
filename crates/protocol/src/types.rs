@@ -50,6 +50,10 @@ fn default_owed_reply_limit() -> u32 {
     50
 }
 
+fn default_archive_ask_limit() -> u32 {
+    8
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LlmStatusSnapshot {
@@ -639,6 +643,16 @@ pub enum Request {
     ExtractDraftCommitments {
         draft: Draft,
     },
+    /// Citation-validated archive question. Returns a Markdown answer
+    /// plus the cited source messages; LLM-fabricated citations
+    /// (msg ids not in the retrieved set) are rejected at the daemon.
+    ArchiveAsk {
+        question: String,
+        #[serde(default)]
+        filters: ArchiveAskFiltersData,
+        #[serde(default = "default_archive_ask_limit")]
+        limit: u32,
+    },
     /// List "owed reply" threads for an account: latest inbound has
     /// not been followed by an outbound, ranked by overdue ratio.
     ListOwedReplies {
@@ -763,6 +777,7 @@ impl Request {
             | Self::CheckDraftSafety { .. }
             | Self::ExtractDraftCommitments { .. }
             | Self::ListOwedReplies { .. }
+            | Self::ArchiveAsk { .. }
             | Self::DeleteDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
@@ -1315,6 +1330,10 @@ pub enum ResponseData {
     OwedReplies {
         rows: Vec<OwedReplyRowData>,
     },
+    /// Returned by `Request::ArchiveAsk`.
+    ArchiveAnswer {
+        answer: ArchiveAnswerData,
+    },
     /// Returned by `Request::CheckDraftSafety` and surfaced to CLI / TUI.
     DraftSafetyReportResponse {
         report: DraftSafetyReport,
@@ -1364,7 +1383,8 @@ impl ResponseData {
             | Self::SendReceipt { .. }
             | Self::DraftSafetyReportResponse { .. }
             | Self::DraftCommitments { .. }
-            | Self::OwedReplies { .. } => IpcCategory::CoreMail,
+            | Self::OwedReplies { .. }
+            | Self::ArchiveAnswer { .. } => IpcCategory::CoreMail,
             Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }
@@ -1787,6 +1807,56 @@ pub struct CommitmentData {
     pub by_when: Option<chrono::DateTime<chrono::Utc>>,
     pub evidence_msg_id: MessageId,
     pub extracted_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ArchiveAskMode {
+    #[default]
+    Hybrid,
+    Lexical,
+    Semantic,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ArchiveAskFiltersData {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<AccountId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
+    pub mode: ArchiveAskMode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ArchiveCitationData {
+    pub msg_id: String,
+    pub quote: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ArchiveRetrievalData {
+    pub requested_mode: ArchiveAskMode,
+    pub executed_mode: ArchiveAskMode,
+    pub candidate_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ArchiveAnswerData {
+    pub text: String,
+    pub citations: Vec<ArchiveCitationData>,
+    pub retrieval: ArchiveRetrievalData,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

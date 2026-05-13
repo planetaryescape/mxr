@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/cli_help.rs
+assertion_line: 14
+expression: stdout
+---
+Manage the cadence watchlist
+
+Usage: mxr cadence <COMMAND>
+
+Commands:
+  watch    Add a contact to the watchlist
+  unwatch  Remove a contact from the watchlist
+  list     List currently watched contacts
+  drift    List watched contacts whose interval has drifted past expected
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help

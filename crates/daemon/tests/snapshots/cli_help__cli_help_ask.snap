@@ -1,0 +1,22 @@
+---
+source: crates/daemon/tests/cli_help.rs
+assertion_line: 14
+expression: stdout
+---
+Ask a question against the local archive. Returns a citation- validated answer; the daemon rejects LLM citations that point to messages outside the retrieved set
+
+Usage: mxr ask [OPTIONS] <QUESTION>
+
+Arguments:
+  <QUESTION>  The question to ask
+
+Options:
+      --account <ACCOUNT>
+      --from <FROM>
+      --to <TO>
+      --after <AFTER>
+      --before <BEFORE>
+      --mode <MODE>        [default: hybrid] [possible values: hybrid, lexical, semantic]
+      --limit <LIMIT>      [default: 8]
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

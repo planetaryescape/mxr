@@ -26,6 +26,13 @@ Commands:
   screener       Triage unknown senders: classify them as allow / deny / feed / paper-trail. Local-only consent metadata; never roundtrips to the provider
   sender         Show per-sender relationship aggregates: volume, response cadence, open threads. The unfair advantage of having local SQLite — every other email tool reasons over messages, not people
   profile        Show or rebuild the inspectable relationship profile for a contact
+  whois          Explain an entity (email or term) using local evidence
+  briefing       Render a thread or recipient briefing
+  cadence        Manage the cadence watchlist
+  send-time      Show the recipient's typical reply-time bucket
+  decisions      List entries from the citation-backed decision log
+  ask            Ask a question against the local archive. Returns a citation- validated answer; the daemon rejects LLM citations that point to messages outside the retrieved set
+  owed           List threads where the user owes a reply, ranked by how overdue they are relative to the recipient's typical cadence
   commitments    List or resolve relationship commitments
   voice          Show or rebuild the account-level user voice profile
   humanize       Score or rewrite text using the deterministic humanizer gate

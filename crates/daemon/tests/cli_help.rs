@@ -235,9 +235,26 @@ fn cli_help_snapshots_cover_all_commands() {
         ),
         ("cli_help_response_time", &["response-time", "--help"]),
         ("cli_help_wrapped", &["wrapped", "--help"]),
+        // AI-email roadmap commands.
+        ("cli_help_owed", &["owed", "--help"]),
+        ("cli_help_ask", &["ask", "--help"]),
+        ("cli_help_decisions", &["decisions", "--help"]),
+        ("cli_help_send_time", &["send-time", "--help"]),
+        ("cli_help_whois", &["whois", "--help"]),
+        ("cli_help_cadence", &["cadence", "--help"]),
+        ("cli_help_cadence_watch", &["cadence", "watch", "--help"]),
+        ("cli_help_cadence_unwatch", &["cadence", "unwatch", "--help"]),
+        ("cli_help_cadence_list", &["cadence", "list", "--help"]),
+        ("cli_help_cadence_drift", &["cadence", "drift", "--help"]),
+        ("cli_help_briefing", &["briefing", "--help"]),
+        ("cli_help_briefing_thread", &["briefing", "thread", "--help"]),
+        (
+            "cli_help_briefing_recipient",
+            &["briefing", "recipient", "--help"],
+        ),
     ];
 
-    assert_eq!(cases.len(), 134);
+    assert_eq!(cases.len(), 147);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

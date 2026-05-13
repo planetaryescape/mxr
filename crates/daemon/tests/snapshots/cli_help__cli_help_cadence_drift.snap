@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+assertion_line: 14
+expression: stdout
+---
+List watched contacts whose interval has drifted past expected
+
+Usage: mxr cadence drift [OPTIONS]
+
+Options:
+      --account <ACCOUNT>
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

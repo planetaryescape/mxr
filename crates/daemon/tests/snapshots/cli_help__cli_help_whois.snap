@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+assertion_line: 14
+expression: stdout
+---
+Explain an entity (email or term) using local evidence
+
+Usage: mxr whois [OPTIONS] <QUERY>
+
+Arguments:
+  <QUERY>
+
+Options:
+      --account <ACCOUNT>
+      --limit <LIMIT>      [default: 10]
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

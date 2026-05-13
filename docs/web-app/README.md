@@ -15,6 +15,7 @@ These are the **execution-side** docs for building the mxr web app at `apps/web/
 9. [08-accounts-onboarding.md](./08-accounts-onboarding.md) — first-run wizard, OAuth device flow, account management.
 10. [09-polish.md](./09-polish.md) — screener, settings, VIP allowlist, diagnostics, theme picker, browser notifications, e2e suite, perf budget.
 11. [10-v1-launch.md](./10-v1-launch.md) — TDD plan that closes out v1 launch blockers (C1–C4, H1–H8). Ordered, decisions locked, ~5 days.
+12. [11-parity-closure.md](./11-parity-closure.md) — TDD plan that closes every PARITY_MATRIX.md gap and the Phase 3–8 remainders, gated on a shared web action registry. 17 PRs.
 
 [STATUS.md](./STATUS.md) tracks current progress across phases — update it as work lands.
 

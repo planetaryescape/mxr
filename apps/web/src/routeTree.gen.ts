@@ -21,6 +21,7 @@ import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as AccountsRouteImport } from './routes/accounts'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsSectionRouteImport } from './routes/settings.$section'
+import { Route as SenderAddressRouteImport } from './routes/sender.$address'
 import { Route as RulesIdRouteImport } from './routes/rules.$id'
 import { Route as MMailboxRouteImport } from './routes/m.$mailbox'
 import { Route as ComposeNewRouteImport } from './routes/compose.new'
@@ -91,6 +92,11 @@ const SettingsSectionRoute = SettingsSectionRouteImport.update({
   path: '/settings/$section',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SenderAddressRoute = SenderAddressRouteImport.update({
+  id: '/sender/$address',
+  path: '/sender/$address',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RulesIdRoute = RulesIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -155,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/compose/new': typeof ComposeNewRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
   '/rules/$id': typeof RulesIdRoute
+  '/sender/$address': typeof SenderAddressRoute
   '/settings/$section': typeof SettingsSectionRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRoute
@@ -178,6 +185,7 @@ export interface FileRoutesByTo {
   '/compose/new': typeof ComposeNewRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
   '/rules/$id': typeof RulesIdRoute
+  '/sender/$address': typeof SenderAddressRoute
   '/settings/$section': typeof SettingsSectionRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRoute
@@ -202,6 +210,7 @@ export interface FileRoutesById {
   '/compose/new': typeof ComposeNewRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
   '/rules/$id': typeof RulesIdRoute
+  '/sender/$address': typeof SenderAddressRoute
   '/settings/$section': typeof SettingsSectionRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRoute
@@ -227,6 +236,7 @@ export interface FileRouteTypes {
     | '/compose/new'
     | '/m/$mailbox'
     | '/rules/$id'
+    | '/sender/$address'
     | '/settings/$section'
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
@@ -250,6 +260,7 @@ export interface FileRouteTypes {
     | '/compose/new'
     | '/m/$mailbox'
     | '/rules/$id'
+    | '/sender/$address'
     | '/settings/$section'
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
@@ -273,6 +284,7 @@ export interface FileRouteTypes {
     | '/compose/new'
     | '/m/$mailbox'
     | '/rules/$id'
+    | '/sender/$address'
     | '/settings/$section'
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
@@ -294,6 +306,7 @@ export interface RootRouteChildren {
   ComposeDraftIdRoute: typeof ComposeDraftIdRoute
   ComposeNewRoute: typeof ComposeNewRoute
   MMailboxRoute: typeof MMailboxRouteWithChildren
+  SenderAddressRoute: typeof SenderAddressRoute
   SettingsSectionRoute: typeof SettingsSectionRoute
   MLabelNameRoute: typeof MLabelNameRoute
   MSavedSlugRoute: typeof MSavedSlugRoute
@@ -383,6 +396,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/$section'
       fullPath: '/settings/$section'
       preLoaderRoute: typeof SettingsSectionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sender/$address': {
+      id: '/sender/$address'
+      path: '/sender/$address'
+      fullPath: '/sender/$address'
+      preLoaderRoute: typeof SenderAddressRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/rules/$id': {
@@ -512,6 +532,7 @@ const rootRouteChildren: RootRouteChildren = {
   ComposeDraftIdRoute: ComposeDraftIdRoute,
   ComposeNewRoute: ComposeNewRoute,
   MMailboxRoute: MMailboxRouteWithChildren,
+  SenderAddressRoute: SenderAddressRoute,
   SettingsSectionRoute: SettingsSectionRoute,
   MLabelNameRoute: MLabelNameRoute,
   MSavedSlugRoute: MSavedSlugRoute,

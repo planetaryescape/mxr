@@ -34,6 +34,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/api/client";
 import { TokenSection } from "@/features/settings/TokenSection";
+import { useActionShortcutSections } from "@/lib/actions";
 import {
   useUiPrefs,
   type ComposeEditor,
@@ -296,29 +297,7 @@ function SettingsSection({ section }: { section: string }) {
         </div>
       </Shell>
     );
-  if (section === "keybindings")
-    return (
-      <Shell title="Keybindings">
-        <div className="grid gap-2">
-          {[
-            ["Command palette", "⌘K"],
-            ["Focus search", "/"],
-            ["Help", "?"],
-            ["Compose", "c"],
-            ["Inbox", "g i"],
-            ["Rules", "g r"],
-          ].map(([label, key]) => (
-            <div
-              key={label}
-              className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-xs"
-            >
-              <span>{label}</span>
-              <KeyChip>{key}</KeyChip>
-            </div>
-          ))}
-        </div>
-      </Shell>
-    );
+  if (section === "keybindings") return <KeybindingsSection />;
   if (section === "voice") return <VoiceSettingsSection />;
   if (section === "llm") return <LlmSettingsSection />;
   if (section === "snippets") return <SnippetsSection />;
@@ -864,6 +843,46 @@ function SnippetsSection() {
             ))}
           </div>
         </Card>
+      </div>
+    </Shell>
+  );
+}
+
+function KeybindingsSection() {
+  const hintSections = useActionShortcutSections({
+    path: "/settings/keybindings",
+    activePane: "mailbox",
+    selectionCount: 0,
+    accountCount: 0,
+    hasFocusedThread: false,
+    hasFocusedMessage: false,
+    isFirstAccountOnly: false,
+  });
+  return (
+    <Shell title="Keybindings">
+      <div className="space-y-4">
+        {hintSections.length === 0 ? (
+          <div className="text-xs text-muted-foreground">No keybindings registered.</div>
+        ) : (
+          hintSections.map((section) => (
+            <div key={section.title}>
+              <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {section.title}
+              </h3>
+              <div className="grid gap-2">
+                {section.hints.map((hint) => (
+                  <div
+                    key={`${section.title}-${hint.key}-${hint.label}`}
+                    className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-xs"
+                  >
+                    <span>{hint.label}</span>
+                    <KeyChip>{hint.key}</KeyChip>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </Shell>
   );

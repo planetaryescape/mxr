@@ -76,10 +76,22 @@ export function ScreenerRoute() {
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background">
       <header className="border-b border-border px-6 py-4">
-        <h1 className="text-xl font-semibold tracking-tight">Screener</h1>
+        <h1 className="text-xl font-semibold tracking-tight">
+          Screener
+          {account?.email ? (
+            <span className="ml-2 text-2xs font-normal text-muted-foreground">
+              · {account.email}
+            </span>
+          ) : null}
+        </h1>
         <p className="text-2xs text-muted-foreground">
           Triage unknown senders before they become inbox rules.
         </p>
+        {(accounts.data?.accounts.length ?? 0) > 1 ? (
+          <p className="mt-2 text-2xs text-warning">
+            Showing the first account only. Use the CLI for cross-account screener sweeps.
+          </p>
+        ) : null}
       </header>
       {rows.length === 0 ? (
         <EmptyState

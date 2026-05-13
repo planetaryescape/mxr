@@ -288,6 +288,16 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Explain an entity (email or term) using local evidence.
+    Whois {
+        query: String,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long, default_value_t = 10)]
+        limit: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Render a thread or recipient briefing.
     Briefing {
         #[command(subcommand)]

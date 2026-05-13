@@ -66,6 +66,10 @@ fn default_expert_limit() -> u32 {
     5
 }
 
+fn default_whois_limit() -> u32 {
+    10
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LlmStatusSnapshot {
@@ -655,6 +659,16 @@ pub enum Request {
     ExtractDraftCommitments {
         draft: Draft,
     },
+    /// Explain an entity (email or free-text term) using local
+    /// evidence. Returns a person summary for emails, a citation-
+    /// backed summary for terms, and a candidate list for ambiguous
+    /// queries.
+    ExplainEntity {
+        account_id: AccountId,
+        query: String,
+        #[serde(default = "default_whois_limit")]
+        limit: u32,
+    },
     /// Find people in the local archive who have answered similar
     /// questions before. Ranking distinguishes answerers from askers.
     FindExpert {
@@ -874,6 +888,7 @@ impl Request {
             | Self::GetRecipientBriefing { .. }
             | Self::SuggestCollaborators { .. }
             | Self::FindExpert { .. }
+            | Self::ExplainEntity { .. }
             | Self::DeleteDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
@@ -1462,6 +1477,10 @@ pub enum ResponseData {
     ExpertSuggestions {
         experts: Vec<ExpertSuggestionData>,
     },
+    /// Returned by `Request::ExplainEntity`.
+    EntityExplanation {
+        entity: EntityExplanationData,
+    },
     /// Returned by `Request::CheckDraftSafety` and surfaced to CLI / TUI.
     DraftSafetyReportResponse {
         report: DraftSafetyReport,
@@ -1520,7 +1539,8 @@ impl ResponseData {
             | Self::ThreadBriefing { .. }
             | Self::RecipientBriefing { .. }
             | Self::SuggestedCollaborators { .. }
-            | Self::ExpertSuggestions { .. } => IpcCategory::CoreMail,
+            | Self::ExpertSuggestions { .. }
+            | Self::EntityExplanation { .. } => IpcCategory::CoreMail,
             Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }
@@ -1996,6 +2016,38 @@ pub struct CitationRefData {
     pub thread_id: Option<String>,
     pub field: String,
     pub quote: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct WhoisCitationData {
+    pub msg_id: String,
+    pub quote: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EntityCandidateData {
+    pub kind: String,
+    pub value: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    pub mention_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EntityExplanationData {
+    pub canonical_name: String,
+    pub kind: String, // "person" | "term" | "ambiguous" | "unknown"
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_seen_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_seen_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub topics: Vec<String>,
+    pub citations: Vec<WhoisCitationData>,
+    pub candidates: Vec<EntityCandidateData>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

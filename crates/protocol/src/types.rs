@@ -62,6 +62,10 @@ fn default_suggest_recipients_limit() -> u32 {
     5
 }
 
+fn default_expert_limit() -> u32 {
+    5
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LlmStatusSnapshot {
@@ -651,6 +655,16 @@ pub enum Request {
     ExtractDraftCommitments {
         draft: Draft,
     },
+    /// Find people in the local archive who have answered similar
+    /// questions before. Ranking distinguishes answerers from askers.
+    FindExpert {
+        account_id: AccountId,
+        query: String,
+        #[serde(default)]
+        include_self: bool,
+        #[serde(default = "default_expert_limit")]
+        limit: u32,
+    },
     /// Suggest "maybe include" recipients given a draft. Excludes
     /// addresses already on the draft and never reveals Bcc'd
     /// addresses from prior threads.
@@ -859,6 +873,7 @@ impl Request {
             | Self::GetThreadBriefing { .. }
             | Self::GetRecipientBriefing { .. }
             | Self::SuggestCollaborators { .. }
+            | Self::FindExpert { .. }
             | Self::DeleteDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
@@ -1443,6 +1458,10 @@ pub enum ResponseData {
     SuggestedCollaborators {
         suggestions: Vec<SuggestedRecipientData>,
     },
+    /// Returned by `Request::FindExpert`.
+    ExpertSuggestions {
+        experts: Vec<ExpertSuggestionData>,
+    },
     /// Returned by `Request::CheckDraftSafety` and surfaced to CLI / TUI.
     DraftSafetyReportResponse {
         report: DraftSafetyReport,
@@ -1500,7 +1519,8 @@ impl ResponseData {
             | Self::CadenceDriftList { .. }
             | Self::ThreadBriefing { .. }
             | Self::RecipientBriefing { .. }
-            | Self::SuggestedCollaborators { .. } => IpcCategory::CoreMail,
+            | Self::SuggestedCollaborators { .. }
+            | Self::ExpertSuggestions { .. } => IpcCategory::CoreMail,
             Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }
@@ -1976,6 +1996,17 @@ pub struct CitationRefData {
     pub thread_id: Option<String>,
     pub field: String,
     pub quote: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ExpertSuggestionData {
+    pub email: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    pub reason: String,
+    pub answered_thread_count: u32,
+    pub evidence_msg_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

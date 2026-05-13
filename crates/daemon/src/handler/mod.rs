@@ -12,6 +12,7 @@ mod accounts;
 mod admin;
 mod archive_ask;
 mod briefing;
+mod expert;
 mod suggest_recipients;
 mod auth_sessions;
 mod commitments;
@@ -701,6 +702,12 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::SuggestCollaborators { draft, limit } => {
             suggest_recipients::suggest(state, draft, *limit as usize).await
         }
+        Request::FindExpert {
+            account_id,
+            query,
+            include_self,
+            limit,
+        } => expert::find(state, account_id, query, *include_self, *limit as usize).await,
         Request::WatchCadence {
             account_id,
             email,
@@ -1054,6 +1061,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetThreadBriefing { .. } => "get_thread_briefing",
         Request::GetRecipientBriefing { .. } => "get_recipient_briefing",
         Request::SuggestCollaborators { .. } => "suggest_collaborators",
+        Request::FindExpert { .. } => "find_expert",
         Request::WatchCadence { .. } => "watch_cadence",
         Request::UnwatchCadence { .. } => "unwatch_cadence",
         Request::ListCadenceWatch { .. } => "list_cadence_watch",
@@ -1110,6 +1118,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListOwedReplies { account_id, .. }
         | Request::ListDecisionLog { account_id, .. }
         | Request::SendTimeRecommendation { account_id, .. }
+        | Request::FindExpert { account_id, .. }
         | Request::WatchCadence { account_id, .. }
         | Request::UnwatchCadence { account_id, .. }
         | Request::ListCadenceWatch { account_id }

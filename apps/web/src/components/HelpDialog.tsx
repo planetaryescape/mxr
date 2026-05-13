@@ -9,7 +9,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { shortcutSections, type ShortcutHint, type ShortcutSection } from "@/lib/shortcutHints";
+import {
+  type ActionContext,
+  type ShortcutHint,
+  type ShortcutSection,
+  useActionShortcutSections,
+} from "@/lib/actions";
 import type { MailPane } from "@/state/mailboxPaneStore";
 
 interface HelpDialogProps {
@@ -17,15 +22,34 @@ interface HelpDialogProps {
   onOpenChange: (open: boolean) => void;
   path: string;
   activePane: MailPane;
+  accountCount?: number;
 }
 
 interface HelpRow extends ShortcutHint {
   section: string;
 }
 
-export function HelpDialog({ open, onOpenChange, path, activePane }: HelpDialogProps) {
+export function HelpDialog({
+  open,
+  onOpenChange,
+  path,
+  activePane,
+  accountCount = 0,
+}: HelpDialogProps) {
   const [query, setQuery] = useState("");
-  const sections = useMemo(() => shortcutSections({ path, activePane }), [activePane, path]);
+  const ctx = useMemo<ActionContext>(
+    () => ({
+      path,
+      activePane,
+      selectionCount: 0,
+      accountCount,
+      hasFocusedThread: /^\/m\/[^/]+\/[^/]+/.test(path),
+      hasFocusedMessage: /^\/m\/[^/]+\/[^/]+\/[^/]+/.test(path),
+      isFirstAccountOnly: accountCount === 1,
+    }),
+    [path, activePane, accountCount],
+  );
+  const sections = useActionShortcutSections(ctx);
   const rows = useMemo(() => flattenSections(sections), [sections]);
   const filtered = filterRows(rows, query);
 

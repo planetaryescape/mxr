@@ -1,9 +1,16 @@
-import { useConnectionStore } from "@/state/connectionStore";
+import { useMemo } from "react";
+
 import { useRouterState } from "@tanstack/react-router";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { KeyChip } from "@/components/KeyChip";
-import { primaryShortcutHints, shortcutSections } from "@/lib/shortcutHints";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  type ActionContext,
+  type ShortcutSection,
+  useActionPrimaryHints,
+  useActionShortcutSections,
+} from "@/lib/actions";
+import { useConnectionStore } from "@/state/connectionStore";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
 
@@ -15,9 +22,21 @@ export function StatusBar() {
   const activePane = useMailboxPane((s) => s.activePane);
   const helpOpen = useModals((s) => s.helpOpen);
   const setHelpOpen = useModals((s) => s.setHelpOpen);
-  const context = { path, activePane };
-  const primaryHints = primaryShortcutHints(context);
-  const sections = shortcutSections(context);
+
+  const ctx = useMemo<ActionContext>(
+    () => ({
+      path,
+      activePane,
+      selectionCount: 0,
+      accountCount: 0,
+      hasFocusedThread: /^\/m\/[^/]+\/[^/]+/.test(path),
+      hasFocusedMessage: /^\/m\/[^/]+\/[^/]+\/[^/]+/.test(path),
+      isFirstAccountOnly: false,
+    }),
+    [path, activePane],
+  );
+  const primaryHints = useActionPrimaryHints(ctx);
+  const sections = useActionShortcutSections(ctx);
 
   return (
     <>
@@ -62,7 +81,7 @@ function ShortcutHelpPanel({
   onOpenChange,
 }: {
   open: boolean;
-  sections: ReturnType<typeof shortcutSections>;
+  sections: ShortcutSection[];
   onOpenChange: (open: boolean) => void;
 }) {
   return (

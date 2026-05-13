@@ -295,6 +295,18 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             )
             .await?;
         }
+        Some(Command::Expert {
+            message_id,
+            query,
+            include_self,
+            account,
+            limit,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::expert::run(message_id, query, include_self, account, limit, format)
+                .await?;
+        }
         Some(Command::Whois {
             query,
             account,

@@ -243,6 +243,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_send_time", &["send-time", "--help"]),
         ("cli_help_whois", &["whois", "--help"]),
         ("cli_help_suggest_recipients", &["suggest-recipients", "--help"]),
+        ("cli_help_expert", &["expert", "--help"]),
         ("cli_help_cadence", &["cadence", "--help"]),
         ("cli_help_cadence_watch", &["cadence", "watch", "--help"]),
         ("cli_help_cadence_unwatch", &["cadence", "unwatch", "--help"]),
@@ -256,7 +257,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ),
     ];
 
-    assert_eq!(cases.len(), 149);
+    assert_eq!(cases.len(), 150);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

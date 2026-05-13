@@ -26,6 +26,7 @@ Commands:
   screener            Triage unknown senders: classify them as allow / deny / feed / paper-trail. Local-only consent metadata; never roundtrips to the provider
   sender              Show per-sender relationship aggregates: volume, response cadence, open threads. The unfair advantage of having local SQLite — every other email tool reasons over messages, not people
   profile             Show or rebuild the inspectable relationship profile for a contact
+  expert              Find people who have answered similar questions before. Either give the message id of the question OR a free-text query; the daemon ranks answerers (not askers)
   suggest-recipients  Suggest "maybe include" Cc recipients for a draft. Excludes addresses already on the draft and never reveals Bcc'd addresses from prior threads
   whois               Explain an entity (email or term) using local evidence
   briefing            Render a thread or recipient briefing

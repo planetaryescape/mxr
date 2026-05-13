@@ -288,6 +288,24 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Find people who have answered similar questions before.
+    /// Either give the message id of the question OR a free-text
+    /// query; the daemon ranks answerers (not askers).
+    Expert {
+        /// Message id of the question. Mutually exclusive with --query.
+        message_id: Option<String>,
+        #[arg(long, conflicts_with = "message_id")]
+        query: Option<String>,
+        /// Include the current user in results (excluded by default).
+        #[arg(long)]
+        include_self: bool,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long, default_value_t = 5)]
+        limit: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Suggest "maybe include" Cc recipients for a draft. Excludes
     /// addresses already on the draft and never reveals Bcc'd
     /// addresses from prior threads.

@@ -13,6 +13,7 @@ pub mod decisions;
 pub mod demo;
 pub mod doctor;
 pub mod draft;
+pub mod expert;
 pub mod draft_assist;
 pub mod events;
 pub mod export;

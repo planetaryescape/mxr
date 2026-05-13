@@ -647,6 +647,31 @@ pub enum Request {
     ExtractDraftCommitments {
         draft: Draft,
     },
+    /// Add a contact to the cadence watchlist.
+    WatchCadence {
+        account_id: AccountId,
+        email: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_days: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+        #[serde(default)]
+        allow_list_sender: bool,
+    },
+    /// Remove a contact from the cadence watchlist.
+    UnwatchCadence {
+        account_id: AccountId,
+        email: String,
+    },
+    /// List currently watched contacts.
+    ListCadenceWatch {
+        account_id: AccountId,
+    },
+    /// List watched contacts whose interval since last contact has
+    /// exceeded their cadence (override or contact p50, default 30d).
+    ListCadenceDrift {
+        account_id: AccountId,
+    },
     /// Recommend the bucket (weekday, hour) at which the recipient
     /// is fastest to reply.
     SendTimeRecommendation {
@@ -801,6 +826,10 @@ impl Request {
             | Self::ArchiveAsk { .. }
             | Self::ListDecisionLog { .. }
             | Self::SendTimeRecommendation { .. }
+            | Self::WatchCadence { .. }
+            | Self::UnwatchCadence { .. }
+            | Self::ListCadenceWatch { .. }
+            | Self::ListCadenceDrift { .. }
             | Self::DeleteDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
@@ -1365,6 +1394,14 @@ pub enum ResponseData {
     SendTimeRecommendationResponse {
         recommendation: SendTimeRecommendationData,
     },
+    /// Returned by `Request::ListCadenceWatch`.
+    CadenceWatchList {
+        entries: Vec<RelationshipWatchEntryData>,
+    },
+    /// Returned by `Request::ListCadenceDrift`.
+    CadenceDriftList {
+        rows: Vec<CadenceDriftRowData>,
+    },
     /// Returned by `Request::CheckDraftSafety` and surfaced to CLI / TUI.
     DraftSafetyReportResponse {
         report: DraftSafetyReport,
@@ -1417,7 +1454,9 @@ impl ResponseData {
             | Self::OwedReplies { .. }
             | Self::ArchiveAnswer { .. }
             | Self::DecisionLog { .. }
-            | Self::SendTimeRecommendationResponse { .. } => IpcCategory::CoreMail,
+            | Self::SendTimeRecommendationResponse { .. }
+            | Self::CadenceWatchList { .. }
+            | Self::CadenceDriftList { .. } => IpcCategory::CoreMail,
             Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }
@@ -1882,6 +1921,31 @@ pub struct ArchiveRetrievalData {
     pub requested_mode: ArchiveAskMode,
     pub executed_mode: ArchiveAskMode,
     pub candidate_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RelationshipWatchEntryData {
+    pub account_id: AccountId,
+    pub email: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_days: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    pub added_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CadenceDriftRowData {
+    pub email: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_contact_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub expected_days: f64,
+    pub drift_days: f64,
+    pub total_volume: u32,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

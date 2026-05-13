@@ -288,6 +288,11 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Manage the cadence watchlist.
+    Cadence {
+        #[command(subcommand)]
+        action: CadenceAction,
+    },
     /// Show the recipient's typical reply-time bucket.
     SendTime {
         recipient: String,
@@ -1381,6 +1386,43 @@ pub enum OutputFormat {
     Jsonl,
     Csv,
     Ids,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum CadenceAction {
+    /// Add a contact to the watchlist.
+    Watch {
+        email: String,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long = "expected-days")]
+        expected_days: Option<f64>,
+        #[arg(long)]
+        note: Option<String>,
+        /// Watch the contact even if it looks like a list sender.
+        #[arg(long)]
+        allow_list_sender: bool,
+    },
+    /// Remove a contact from the watchlist.
+    Unwatch {
+        email: String,
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// List currently watched contacts.
+    List {
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// List watched contacts whose interval has drifted past expected.
+    Drift {
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

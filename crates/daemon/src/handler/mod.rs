@@ -61,6 +61,88 @@ pub(crate) use status_helpers::{
 
 type HandlerResult = Result<ResponseData, String>;
 
+async fn watch_cadence(
+    state: &Arc<AppState>,
+    account_id: &mxr_core::AccountId,
+    email: &str,
+    expected_days: Option<f64>,
+    note: Option<String>,
+    allow_list_sender: bool,
+) -> HandlerResult {
+    let entry = mxr_store::RelationshipWatchEntry {
+        account_id: account_id.clone(),
+        email: email.to_string(),
+        expected_days,
+        note,
+        added_at: chrono::Utc::now(),
+    };
+    state
+        .store
+        .watch_cadence(&entry, allow_list_sender)
+        .await?;
+    Ok(ResponseData::Ack)
+}
+
+async fn unwatch_cadence(
+    state: &Arc<AppState>,
+    account_id: &mxr_core::AccountId,
+    email: &str,
+) -> HandlerResult {
+    state
+        .store
+        .unwatch_cadence(account_id, email)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::Ack)
+}
+
+async fn list_cadence_watch(
+    state: &Arc<AppState>,
+    account_id: &mxr_core::AccountId,
+) -> HandlerResult {
+    let rows = state
+        .store
+        .list_cadence_watch(account_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::CadenceWatchList {
+        entries: rows
+            .into_iter()
+            .map(|r| mxr_protocol::RelationshipWatchEntryData {
+                account_id: r.account_id,
+                email: r.email,
+                expected_days: r.expected_days,
+                note: r.note,
+                added_at: r.added_at,
+            })
+            .collect(),
+    })
+}
+
+async fn list_cadence_drift(
+    state: &Arc<AppState>,
+    account_id: &mxr_core::AccountId,
+) -> HandlerResult {
+    let rows = state
+        .store
+        .list_cadence_drift(account_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::CadenceDriftList {
+        rows: rows
+            .into_iter()
+            .map(|r| mxr_protocol::CadenceDriftRowData {
+                email: r.email,
+                display_name: r.display_name,
+                last_contact_at: r.last_contact_at,
+                expected_days: r.expected_days,
+                drift_days: r.drift_days,
+                total_volume: r.total_volume,
+            })
+            .collect(),
+    })
+}
+
 async fn send_time_recommendation(
     state: &Arc<AppState>,
     account_id: &mxr_core::AccountId,
@@ -606,6 +688,16 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             account_id,
             recipient,
         } => send_time_recommendation(state, account_id, recipient).await,
+        Request::WatchCadence {
+            account_id,
+            email,
+            expected_days,
+            note,
+            allow_list_sender,
+        } => watch_cadence(state, account_id, email, *expected_days, note.clone(), *allow_list_sender).await,
+        Request::UnwatchCadence { account_id, email } => unwatch_cadence(state, account_id, email).await,
+        Request::ListCadenceWatch { account_id } => list_cadence_watch(state, account_id).await,
+        Request::ListCadenceDrift { account_id } => list_cadence_drift(state, account_id).await,
         Request::GetUserVoice { account_id } => user_voice::get_user_voice(state, account_id).await,
         Request::RebuildUserVoice { account_id } => {
             user_voice::rebuild_user_voice(state, account_id).await
@@ -946,6 +1038,10 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ArchiveAsk { .. } => "archive_ask",
         Request::ListDecisionLog { .. } => "list_decision_log",
         Request::SendTimeRecommendation { .. } => "send_time_recommendation",
+        Request::WatchCadence { .. } => "watch_cadence",
+        Request::UnwatchCadence { .. } => "unwatch_cadence",
+        Request::ListCadenceWatch { .. } => "list_cadence_watch",
+        Request::ListCadenceDrift { .. } => "list_cadence_drift",
         Request::DeleteDraft { .. } => "delete_draft",
         Request::SaveDraftToServer { .. } => "save_draft_to_server",
         Request::ListDrafts => "list_drafts",
@@ -998,6 +1094,10 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListOwedReplies { account_id, .. }
         | Request::ListDecisionLog { account_id, .. }
         | Request::SendTimeRecommendation { account_id, .. }
+        | Request::WatchCadence { account_id, .. }
+        | Request::UnwatchCadence { account_id, .. }
+        | Request::ListCadenceWatch { account_id }
+        | Request::ListCadenceDrift { account_id }
         | Request::GetUserVoice { account_id }
         | Request::RebuildUserVoice { account_id }
         | Request::DraftNew { account_id, .. } => Some(account_id),

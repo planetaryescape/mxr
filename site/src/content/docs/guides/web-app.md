@@ -142,6 +142,103 @@ returns focus to the list unless a row selection is active. Links in
 HTML, reader, and plain views are clickable; remote image loading is
 still controlled separately by the remote-images toggle.
 
+## Command palette and shared action registry
+
+The web app's command palette (`⌘K`), global keymap (`g i`, `g a`, …),
+help dialog (`?`), and **Settings → Keybindings** all read from a single
+action registry at `apps/web/src/lib/actions/`. Adding a new feature
+action means defining it once — the chord, palette entry, and help row
+all light up together. Each feature owns its own `actions.ts` module
+(compose, mailbox, diagnostics, analytics, rules, accounts).
+
+`g a` is consistently **All Mail**, matching Gmail and the TUI. Analytics
+moved to `g y` ("graphs / y-axis"); a one-time migration toast announces
+this the first time you land on `/m/archive` after the parity-closure
+update.
+
+The numeric quick-nav (`1`–`0`) is registered as aliases on the
+underlying navigation actions, so help and palette both show the verb
+and the digit shortcut next to it.
+
+## Compose: autocomplete and outbound undo
+
+The compose pane fetches contact suggestions from
+`GET /api/v1/mail/contacts/autocomplete?q=...` with a 200 ms debounce.
+ArrowDown/ArrowUp move through the list, Enter commits the highlighted
+contact as a chip.
+
+Send is **deferred** by 5 seconds. Clicking Send dismisses the confirm
+dialog and shows an undo toast; the actual `compose/session/send` API
+call only fires when the toast auto-closes. Click **Undo** within the
+window and the send is cancelled, no network request happens.
+
+Draft-assist is wired into the right-rail panel: type an instruction,
+the bridge calls `/mail/threads/draft-assist`, the generated body is
+shown with a Copy button.
+
+## Mailbox: label / move / unsubscribe / read-and-archive
+
+The optimistic-mutation hook handles every TUI mail action:
+
+- Apply a label or remove one (right-rail picker, choose label from the
+  shell sidebar).
+- Move to a label (right-rail picker; treated as destructive in the
+  current view, then invalidated).
+- Mark read and archive in one step.
+- Unsubscribe the focused message via `mail/actions/unsubscribe`.
+
+All five appear in the command palette as `mail.label`, `mail.move`,
+`mail.read-and-archive`, `mail.unsubscribe`, with a `when` predicate
+that requires either a focused thread or a non-empty selection.
+
+## Saved-search management
+
+The `/search` page has a "Manage saved searches" disclosure under the
+results header. Each row exposes:
+
+- A color swatch (overloaded onto the protocol's `icon` field; the web
+  app stores `#RRGGBB`).
+- A Pin / Unpin toggle (negative `position` floats the entry above the
+  rest in the sidebar lens list).
+- Delete with a `confirm()` guard.
+
+All three call `POST /api/v1/platform/saved-searches/update` (added in
+the parity-closure work — see the [bridge reference](/reference/bridge/#saved-searches)).
+
+Search supports a Scope picker (Threads / Messages / Attachments) and
+keeps the existing j/k result navigation with synced preview pane.
+
+## Wrapped: story mode + share
+
+The Wrapped dashboard has two modes:
+
+- **Standard**: numeric overview + superlatives in a two-column grid.
+- **Story mode**: large single-tile presentation; `j`/`k` (or arrow
+  keys) cycles between Messages / Inbound / Outbound / Superlatives.
+
+The **Share as image** button uses the browser's Web Share API where
+available, falling back to clipboard. A real PNG export pass is tracked
+as a follow-up; the current share-text is rich enough for most
+short-form contexts.
+
+## Accounts and screener
+
+Account detail gains **Refresh** (invalidates the local query cache)
+and **Repair** (`POST /platform/accounts/repair` — re-issues credentials
+for an unhealthy keychain entry) next to the existing Test / Default /
+Re-auth / Disable buttons.
+
+The screener page is intentionally first-account-only. With multiple
+accounts a notice appears below the header pointing to the CLI for
+cross-account sweeps — same constraint as the TUI screener queue.
+
+## Sender standalone route
+
+`/sender/<email>` is a deep-linkable sender profile. It hits
+`/mail/sender?account_id=...&email=...` against the first active
+account and renders the recent-messages list plus the relationship
+profile. The same right-rail panel still opens inside a thread.
+
 ## Comparing surfaces
 
 | Surface | When you'd use it |
@@ -157,6 +254,7 @@ rules — see the [why-mxr guide](/guides/why-mxr/).
 ## See also
 
 - [HTTP bridge reference](/reference/bridge/) — auth, endpoint table, OpenAPI spec.
+- [Keybindings reference](/reference/keybindings/#web-app) — every web chord, including the `g a` / `g y` migration note.
 - [`mxr web` CLI reference](/reference/cli/web/) — every flag and what it does.
 - [Config reference](/reference/config/#bridge) — `[bridge]` keys including `auto_local_token` and `port`.
 - [No native desktop app](/guides/no-native-desktop-app/) — why the web app is installable without an Electron shell.

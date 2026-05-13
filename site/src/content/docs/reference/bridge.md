@@ -185,8 +185,9 @@ The "delight features" land here. Each maps 1-1 to its CLI/TUI counterpart.
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/mail/sender?account_id=...&email=...` | Per-sender aggregates plus recent messages from that sender |
+| `GET` | `/mail/contacts/autocomplete?q=...&limit=...` | Prefix-search known senders (filters by email or display name) |
 
-The response is `SenderProfile { profile }`. When present, `profile`
+The sender response is `SenderProfile { profile }`. When present, `profile`
 includes `recent_messages`: the newest messages from that sender with
 `message_id`, `thread_id`, `subject`, `snippet`, `date`, `direction`,
 and an attachment-present flag. Clients use this to render "Other
@@ -314,6 +315,7 @@ without an active inbox.
 |--------|------|---------|
 | `GET` | `/platform/saved-searches` | List |
 | `POST` | `/platform/saved-searches/create` | `{name, query, mode}` |
+| `POST` | `/platform/saved-searches/update` | `{name, new_name?, query?, search_mode?, sort?, icon?, position?}` — patch by current name. `icon` doubles as a CSS color tag; `position < 0` pins. |
 | `POST` | `/platform/saved-searches/delete` | `{name}` |
 | `POST` | `/platform/saved-searches/run` | `{name}` |
 

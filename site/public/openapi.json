@@ -403,6 +403,21 @@
         }
       }
     },
+    "/api/v1/mail/contacts/autocomplete": {
+      "get": {
+        "tags": [],
+        "summary": "Prefix-search known senders",
+        "operationId": "contacts_autocomplete",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/count": {
       "get": {
         "tags": [],
@@ -1936,6 +1951,21 @@
         }
       }
     },
+    "/api/v1/platform/saved-searches/update": {
+      "post": {
+        "tags": [],
+        "summary": "Patch a saved search by name",
+        "operationId": "saved_searches_update",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/platform/semantic/backfill": {
       "post": {
         "tags": [],
@@ -2760,6 +2790,116 @@
           }
         }
       },
+      "ArchiveAnswerData": {
+        "type": "object",
+        "required": [
+          "text",
+          "citations",
+          "retrieval"
+        ],
+        "properties": {
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArchiveCitationData"
+            }
+          },
+          "retrieval": {
+            "$ref": "#/components/schemas/ArchiveRetrievalData"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "ArchiveAskFiltersData": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AccountId"
+              }
+            ]
+          },
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "before": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ArchiveAskMode"
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ArchiveAskMode": {
+        "type": "string",
+        "enum": [
+          "hybrid",
+          "lexical",
+          "semantic"
+        ]
+      },
+      "ArchiveCitationData": {
+        "type": "object",
+        "required": [
+          "msg_id",
+          "quote"
+        ],
+        "properties": {
+          "msg_id": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          }
+        }
+      },
+      "ArchiveRetrievalData": {
+        "type": "object",
+        "required": [
+          "requested_mode",
+          "executed_mode",
+          "candidate_count"
+        ],
+        "properties": {
+          "candidate_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "executed_mode": {
+            "$ref": "#/components/schemas/ArchiveAskMode"
+          },
+          "requested_mode": {
+            "$ref": "#/components/schemas/ArchiveAskMode"
+          }
+        }
+      },
       "AttachmentDisposition": {
         "type": "string",
         "enum": [
@@ -2958,6 +3098,46 @@
           "best_effort_summary"
         ]
       },
+      "CadenceDriftRowData": {
+        "type": "object",
+        "required": [
+          "email",
+          "expected_days",
+          "drift_days",
+          "total_volume"
+        ],
+        "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "drift_days": {
+            "type": "number",
+            "format": "double"
+          },
+          "email": {
+            "type": "string"
+          },
+          "expected_days": {
+            "type": "number",
+            "format": "double"
+          },
+          "last_contact_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "total_volume": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "CalendarMetadata": {
         "type": "object",
         "properties": {
@@ -2968,6 +3148,56 @@
             ]
           },
           "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CitationRef": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quote": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CitationRefData": {
+        "type": "object",
+        "required": [
+          "field",
+          "quote"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quote": {
+            "type": "string"
+          },
+          "thread_id": {
             "type": [
               "string",
               "null"
@@ -3566,6 +3796,60 @@
           "repair_required"
         ]
       },
+      "DecisionLogEntryData": {
+        "type": "object",
+        "required": [
+          "id",
+          "account_id",
+          "thread_id",
+          "decision",
+          "evidence_msg_ids",
+          "extracted_at"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "decided_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "decision": {
+            "type": "string"
+          },
+          "evidence_msg_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageId"
+            }
+          },
+          "extracted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "topic": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "DoctorDataStats": {
         "type": "object",
         "required": [
@@ -3999,6 +4283,9 @@
           "id": {
             "$ref": "#/components/schemas/DraftId"
           },
+          "intent": {
+            "$ref": "#/components/schemas/DraftIntent"
+          },
           "reply_headers": {
             "oneOf": [
               {
@@ -4024,9 +4311,65 @@
           }
         }
       },
+      "DraftCommitmentCandidateData": {
+        "type": "object",
+        "required": [
+          "id",
+          "draft_id",
+          "account_id",
+          "email",
+          "direction",
+          "who_owes",
+          "what",
+          "extracted_at"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "by_when": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/CommitmentDirectionData"
+          },
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "email": {
+            "type": "string"
+          },
+          "extracted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "what": {
+            "type": "string"
+          },
+          "who_owes": {
+            "type": "string"
+          }
+        }
+      },
       "DraftId": {
         "type": "string",
         "format": "uuid"
+      },
+      "DraftIntent": {
+        "type": "string",
+        "enum": [
+          "new",
+          "reply",
+          "reply_all",
+          "forward"
+        ]
       },
       "DraftLengthHintData": {
         "type": "string",
@@ -4056,6 +4399,234 @@
           },
           "warmer": {
             "type": "boolean"
+          }
+        }
+      },
+      "DraftSafetyContextData": {
+        "type": "object",
+        "properties": {
+          "allow_llm": {
+            "type": "boolean"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/DraftSafetyModeData"
+          },
+          "original_message_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            ]
+          },
+          "proposed_send_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When set, the safety pipeline runs the send-time check\nagainst the recipients and emits a `Severity::Info` issue\nif the proposed slot is materially slower than the fastest\nhistoric bucket. `None` = check skipped."
+          },
+          "reply_all": {
+            "type": "boolean"
+          },
+          "thread_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId"
+              }
+            ]
+          }
+        }
+      },
+      "DraftSafetyIssue": {
+        "type": "object",
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "properties": {
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CitationRef"
+            }
+          },
+          "code": {
+            "$ref": "#/components/schemas/DraftSafetyIssueCode"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "override_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "severity": {
+            "$ref": "#/components/schemas/DraftSafetySeverity"
+          }
+        }
+      },
+      "DraftSafetyIssueCode": {
+        "type": "string",
+        "enum": [
+          "no_recipients",
+          "invalid_recipient",
+          "missing_reply_all_recipient",
+          "wrong_recipient",
+          "missing_attachment",
+          "reply_all",
+          "pii_secret",
+          "tone_mismatch",
+          "answer_coverage",
+          "commitment_candidate",
+          "send_time_note"
+        ]
+      },
+      "DraftSafetyModeData": {
+        "type": "string",
+        "enum": [
+          "check",
+          "send",
+          "scheduled_flush"
+        ]
+      },
+      "DraftSafetyReport": {
+        "type": "object",
+        "required": [
+          "allowed",
+          "issues"
+        ],
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "checked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DraftSafetyIssue"
+            }
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/DraftSafetyVerdict"
+          }
+        }
+      },
+      "DraftSafetySeverity": {
+        "type": "string",
+        "enum": [
+          "info",
+          "warning",
+          "blocker"
+        ]
+      },
+      "DraftSafetyVerdict": {
+        "type": "string",
+        "enum": [
+          "safe",
+          "warn",
+          "blocked"
+        ]
+      },
+      "EntityCandidateData": {
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "mention_count"
+        ],
+        "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "mention_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "EntityExplanationData": {
+        "type": "object",
+        "required": [
+          "canonical_name",
+          "kind",
+          "summary",
+          "topics",
+          "citations",
+          "candidates"
+        ],
+        "properties": {
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityCandidateData"
+            }
+          },
+          "canonical_name": {
+            "type": "string"
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WhoisCitationData"
+            }
+          },
+          "first_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "topics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -4216,6 +4787,40 @@
           "timestamp": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "ExpertSuggestionData": {
+        "type": "object",
+        "required": [
+          "email",
+          "reason",
+          "answered_thread_count",
+          "evidence_msg_ids"
+        ],
+        "properties": {
+          "answered_thread_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": "string"
+          },
+          "evidence_msg_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
           }
         }
       },
@@ -4681,7 +5286,51 @@
       "LlmOverridesData": {
         "type": "object",
         "properties": {
+          "answer_coverage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
+          },
+          "archive_ask": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
+          },
+          "briefing": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
+          },
           "commitments": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
+          },
+          "decision_log": {
             "oneOf": [
               {
                 "type": "null"
@@ -4715,6 +5364,17 @@
             "default": null
           },
           "draft_refine": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
+          },
+          "expert": {
             "oneOf": [
               {
                 "type": "null"
@@ -5181,6 +5841,55 @@
           }
         }
       },
+      "OwedReplyRowData": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "latest_inbound_msg_id",
+          "from_email",
+          "subject",
+          "latest_inbound_at",
+          "waiting_days",
+          "expected_days",
+          "overdue_score"
+        ],
+        "properties": {
+          "expected_days": {
+            "type": "number",
+            "format": "double"
+          },
+          "from_email": {
+            "type": "string"
+          },
+          "from_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latest_inbound_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "latest_inbound_msg_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "overdue_score": {
+            "type": "number",
+            "format": "double"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "waiting_days": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "RelationshipDriftData": {
         "type": "object",
         "required": [
@@ -5244,6 +5953,39 @@
               {
                 "$ref": "#/components/schemas/ContactRelationshipSummaryData"
               }
+            ]
+          }
+        }
+      },
+      "RelationshipWatchEntryData": {
+        "type": "object",
+        "required": [
+          "account_id",
+          "email",
+          "added_at"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "added_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "email": {
+            "type": "string"
+          },
+          "expected_days": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
             ]
           }
         }
@@ -6678,6 +7420,70 @@
           },
           {
             "type": "object",
+            "description": "Patch a saved search by its current name. Any `None` field is left\nuntouched. `icon` is overloaded to also carry a hex color (the web app\nuses it for the pinned-row color tag).",
+            "required": [
+              "name",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UpdateSavedSearch"
+                ]
+              },
+              "icon": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "new_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "position": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32"
+              },
+              "query": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search_mode": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SearchMode"
+                  }
+                ]
+              },
+              "sort": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SortOrder"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "name",
               "limit",
@@ -7972,6 +8778,12 @@
               },
               "draft": {
                 "$ref": "#/components/schemas/Draft"
+              },
+              "override_safety_token": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             }
           },
@@ -8008,6 +8820,436 @@
               },
               "draft_id": {
                 "$ref": "#/components/schemas/DraftId"
+              },
+              "override_safety_token": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Run the safety pipeline against a draft without actually sending.\nMirrors the gate that `SendDraft` and `SendStoredDraft` apply\nbefore reaching the provider, so callers can preview the report\nfrom `mxr send --check`, `mxr compose --check`, or the TUI\nconfirm modal.",
+            "required": [
+              "draft",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "CheckDraftSafety"
+                ]
+              },
+              "context": {
+                "$ref": "#/components/schemas/DraftSafetyContextData"
+              },
+              "draft": {
+                "$ref": "#/components/schemas/Draft"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Extract per-draft commitment candidates (deterministic prefilter\n+ LLM, gated by `LlmFeature::Commitments`). Persists into\n`draft_commitment_candidates`; on successful send, candidates\npromote to `contact_commitments`.",
+            "required": [
+              "draft",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ExtractDraftCommitments"
+                ]
+              },
+              "draft": {
+                "$ref": "#/components/schemas/Draft"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Explain an entity (email or free-text term) using local\nevidence. Returns a person summary for emails, a citation-\nbacked summary for terms, and a candidate list for ambiguous\nqueries.",
+            "required": [
+              "account_id",
+              "query",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ExplainEntity"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "query": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Find people in the local archive who have answered similar\nquestions before. Ranking distinguishes answerers from askers.",
+            "required": [
+              "account_id",
+              "query",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "FindExpert"
+                ]
+              },
+              "include_self": {
+                "type": "boolean"
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "query": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Suggest \"maybe include\" recipients given a draft. Excludes\naddresses already on the draft and never reveals Bcc'd\naddresses from prior threads.",
+            "required": [
+              "draft",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SuggestCollaborators"
+                ]
+              },
+              "draft": {
+                "$ref": "#/components/schemas/Draft"
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Render a thread briefing for someone returning to a dormant\nthread. Cached unless `refresh = true`.",
+            "required": [
+              "thread_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetThreadBriefing"
+                ]
+              },
+              "refresh": {
+                "type": "boolean"
+              },
+              "thread_id": {
+                "$ref": "#/components/schemas/ThreadId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Render a recipient briefing for compose-time context.",
+            "required": [
+              "account_id",
+              "email",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetRecipientBriefing"
+                ]
+              },
+              "email": {
+                "type": "string"
+              },
+              "refresh": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Add a contact to the cadence watchlist.",
+            "required": [
+              "account_id",
+              "email",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "allow_list_sender": {
+                "type": "boolean"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "WatchCadence"
+                ]
+              },
+              "email": {
+                "type": "string"
+              },
+              "expected_days": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double"
+              },
+              "note": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Remove a contact from the cadence watchlist.",
+            "required": [
+              "account_id",
+              "email",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UnwatchCadence"
+                ]
+              },
+              "email": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "List currently watched contacts.",
+            "required": [
+              "account_id",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListCadenceWatch"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "List watched contacts whose interval since last contact has\nexceeded their cadence (override or contact p50, default 30d).",
+            "required": [
+              "account_id",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListCadenceDrift"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Recommend the bucket (weekday, hour) at which the recipient\nis fastest to reply.",
+            "required": [
+              "account_id",
+              "recipient",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SendTimeRecommendation"
+                ]
+              },
+              "recipient": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Walk every thread in the account whose latest message is\nwithin `since_days` days, run the LLM-backed decision-log\nextractor on each candidate, and persist new entries.\nIdempotent: re-running with the same thread content does\nnot produce duplicate rows (source_hash dedupes).",
+            "required": [
+              "account_id",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RebuildDecisionLog"
+                ]
+              },
+              "since_days": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "List entries from the decision log. Optional topic and\nsince-days filters.",
+            "required": [
+              "account_id",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListDecisionLog"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "since_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              },
+              "topic": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Citation-validated archive question. Returns a Markdown answer\nplus the cited source messages; LLM-fabricated citations\n(msg ids not in the retrieved set) are rejected at the daemon.",
+            "required": [
+              "question",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ArchiveAsk"
+                ]
+              },
+              "filters": {
+                "$ref": "#/components/schemas/ArchiveAskFiltersData"
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "question": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "List \"owed reply\" threads for an account: latest inbound has\nnot been followed by an outbound, ranked by overdue ratio.",
+            "required": [
+              "account_id",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListOwedReplies"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "older_than_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              },
+              "within_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
               }
             }
           },
@@ -9812,6 +11054,306 @@
                 "type": "string"
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ExtractDraftCommitments`.",
+            "required": [
+              "candidates",
+              "kind"
+            ],
+            "properties": {
+              "candidates": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DraftCommitmentCandidateData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "DraftCommitments"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ListOwedReplies`.",
+            "required": [
+              "rows",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "OwedReplies"
+                ]
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OwedReplyRowData"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ArchiveAsk`.",
+            "required": [
+              "answer",
+              "kind"
+            ],
+            "properties": {
+              "answer": {
+                "$ref": "#/components/schemas/ArchiveAnswerData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ArchiveAnswer"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ListDecisionLog`.",
+            "required": [
+              "decisions",
+              "kind"
+            ],
+            "properties": {
+              "decisions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DecisionLogEntryData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "DecisionLog"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::RebuildDecisionLog`.",
+            "required": [
+              "extracted",
+              "skipped",
+              "errors",
+              "kind"
+            ],
+            "properties": {
+              "errors": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "extracted": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "DecisionLogRebuildSummary"
+                ]
+              },
+              "skipped": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::SendTimeRecommendation`.",
+            "required": [
+              "recommendation",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SendTimeRecommendationResponse"
+                ]
+              },
+              "recommendation": {
+                "$ref": "#/components/schemas/SendTimeRecommendationData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ListCadenceWatch`.",
+            "required": [
+              "entries",
+              "kind"
+            ],
+            "properties": {
+              "entries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RelationshipWatchEntryData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CadenceWatchList"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ListCadenceDrift`.",
+            "required": [
+              "rows",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CadenceDriftList"
+                ]
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CadenceDriftRowData"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetThreadBriefing` or\n`Request::GetRecipientBriefing`.",
+            "required": [
+              "briefing",
+              "kind"
+            ],
+            "properties": {
+              "briefing": {
+                "$ref": "#/components/schemas/ThreadBriefingData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ThreadBriefing"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "briefing",
+              "kind"
+            ],
+            "properties": {
+              "briefing": {
+                "$ref": "#/components/schemas/ThreadBriefingData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RecipientBriefing"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::SuggestCollaborators`.",
+            "required": [
+              "suggestions",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SuggestedCollaborators"
+                ]
+              },
+              "suggestions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SuggestedRecipientData"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::FindExpert`.",
+            "required": [
+              "experts",
+              "kind"
+            ],
+            "properties": {
+              "experts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExpertSuggestionData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ExpertSuggestions"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ExplainEntity`.",
+            "required": [
+              "entity",
+              "kind"
+            ],
+            "properties": {
+              "entity": {
+                "$ref": "#/components/schemas/EntityExplanationData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "EntityExplanation"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::CheckDraftSafety` and surfaced to CLI / TUI.",
+            "required": [
+              "report",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "DraftSafetyReportResponse"
+                ]
+              },
+              "report": {
+                "$ref": "#/components/schemas/DraftSafetyReport"
+              }
+            }
           }
         ]
       },
@@ -10382,6 +11924,95 @@
           },
           "runtime": {
             "$ref": "#/components/schemas/SemanticRuntimeMetrics"
+          }
+        }
+      },
+      "SendTimeBucketData": {
+        "type": "object",
+        "required": [
+          "weekday",
+          "hour",
+          "p50_seconds",
+          "sample_count"
+        ],
+        "properties": {
+          "hour": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "p50_seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sample_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "weekday": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "SendTimeConfidenceData": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      "SendTimeRecommendationData": {
+        "type": "object",
+        "required": [
+          "recipient",
+          "buckets",
+          "confidence",
+          "sample_count"
+        ],
+        "properties": {
+          "best_hour": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "best_p50_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "best_weekday": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SendTimeBucketData"
+            }
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/SendTimeConfidenceData"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "sample_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -10987,6 +12618,38 @@
           }
         }
       },
+      "SuggestedRecipientData": {
+        "type": "object",
+        "required": [
+          "email",
+          "reason",
+          "confidence",
+          "evidence_msg_ids"
+        ],
+        "properties": {
+          "confidence": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": "string"
+          },
+          "evidence_msg_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
       "TextPlainFormat": {
         "oneOf": [
           {
@@ -11060,6 +12723,38 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "ThreadBriefingData": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "body_markdown",
+          "citations",
+          "generated_at",
+          "from_cache"
+        ],
+        "properties": {
+          "body_markdown": {
+            "type": "string"
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CitationRefData"
+            }
+          },
+          "from_cache": {
+            "type": "boolean"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "thread_id": {
+            "type": "string",
+            "description": "thread_id (Slice 5.1) or recipient email (Slice 5.2)."
           }
         }
       },
@@ -11288,6 +12983,21 @@
           "neutral",
           "formal"
         ]
+      },
+      "WhoisCitationData": {
+        "type": "object",
+        "required": [
+          "msg_id",
+          "quote"
+        ],
+        "properties": {
+          "msg_id": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          }
+        }
       },
       "WrappedContactRank": {
         "type": "object",

@@ -308,3 +308,47 @@ The Analytics screen has six views. Cycle them with `Tab` / `Shift-Tab`; refresh
 | Unsubscribe confirm | `u` unsubscribe + archive, `U` unsubscribe + trash, `a` archive only, `A` archive all from sender, `Esc` cancel |
 | Analytics filter modal | typing fields, `Tab` / `Shift-Tab` move, `Enter` apply, `Esc` cancel |
 | Error modal | `j` / `k`, `Ctrl-d` / `Ctrl-u` scroll, `q` / `x` / `Esc` close |
+
+## Web app
+
+The web app uses its own global keymap, derived from the shared action
+registry at `apps/web/src/lib/actions/`. Page-internal vim keys (j/k,
+x, etc.) are handled per-page; the keys below are the global chords.
+
+### Global
+
+| Key | Action |
+|-----|--------|
+| `⌘K` / `Ctrl-K` | Open command palette |
+| `:` | Open command palette (alt) |
+| `/` | Open search palette |
+| `?` | Toggle help dialog |
+| `c` | Open compose launcher |
+| `1` … `9`, `0` | Quick nav (Inbox, Search, Analytics, Rules, Screener, Subscriptions, Reply queue, Accounts, Diagnostics, Settings) |
+
+### Vim-style navigation
+
+| Key | Action |
+|-----|--------|
+| `g i` | Go to Inbox |
+| `g s` | Go to Starred |
+| `g d` | Go to Drafts |
+| `g t` | Go to Trash |
+| `g a` | Go to **All Mail** (matches Gmail muscle memory) |
+| `g n` | Go to Snoozed |
+| `g l` | Go to Reply queue |
+| `g u` | Go to Subscriptions |
+| `g r` | Go to Rules |
+| `g y` | Open Analytics |
+
+Note: in earlier builds the web command palette labelled Analytics as
+`g a`, colliding with the global keymap. As of the parity-closure work
+the palette and keymap share one registry, `g a` is consistently
+All Mail, and Analytics has moved to `g y`. On first visit to `/m/archive`
+after the migration a one-time toast announces the move.
+
+### Customization
+
+The web keymap is currently built into the SPA — there is no `keys.toml`
+equivalent yet. The Settings → Keybindings page renders the full
+registry-derived list, including which actions are palette-only.

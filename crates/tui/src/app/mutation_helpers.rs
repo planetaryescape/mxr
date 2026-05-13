@@ -261,11 +261,14 @@ impl App {
             MutationEffect::SentSuccess { status } => {
                 // Refresh the active label so a Sent-view user sees the new
                 // message immediately. Subscriptions also refresh because
-                // some sends affect mailing-list-derived counts.
+                // some sends affect mailing-list-derived counts. Owed
+                // refreshes too: a successful reply removes the thread
+                // from the owed lens.
                 if let Some(label_id) = self.mailbox.active_label.clone() {
                     self.mailbox.pending_label_fetch = Some(label_id);
                 }
                 self.mailbox.pending_subscriptions_refresh = true;
+                self.mailbox.pending_owed_refresh = true;
                 if show_completion_status {
                     self.status_message = Some(status);
                 }

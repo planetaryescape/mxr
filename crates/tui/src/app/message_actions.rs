@@ -100,6 +100,12 @@ impl App {
                                 self.status_message = Some("Showing full message view".into());
                             }
                         }
+                        MailboxView::Owed => {
+                            // Owed lens has no per-row "open" affordance
+                            // for now; selecting a row just navigates within
+                            // the lens. (A future slice can wire enter →
+                            // navigate to the underlying thread.)
+                        }
                     }
                 }
             }

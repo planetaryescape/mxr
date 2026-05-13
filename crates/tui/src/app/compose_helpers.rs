@@ -12,6 +12,26 @@ impl App {
         std::mem::take(&mut self.compose.pending_draft_cleanup)
     }
 
+    /// First default-and-enabled account id, if any. Used by IPC
+    /// dispatchers that need an account id but don't have one in
+    /// scope (e.g. sidebar lens refresh).
+    pub fn default_account_id(&self) -> Option<&mxr_core::AccountId> {
+        self.accounts
+            .page
+            .accounts
+            .iter()
+            .find(|a| a.is_default && a.enabled)
+            .map(|a| &a.account_id)
+            .or_else(|| {
+                self.accounts
+                    .page
+                    .accounts
+                    .iter()
+                    .find(|a| a.enabled)
+                    .map(|a| &a.account_id)
+            })
+    }
+
     /// Build a Draft from the PendingSend and dispatch SendDraft via
     /// the mutation queue. Shared between the regular `[s] send` path
     /// and the `[Ctrl-O] override + send` path. `override_safety_token`

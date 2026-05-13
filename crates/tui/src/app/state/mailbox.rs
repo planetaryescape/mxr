@@ -29,6 +29,10 @@ pub enum MailListMode {
 pub enum MailboxView {
     Messages,
     Subscriptions,
+    /// Owed-replies lens (Slice 2.3 / C2.2). Entries are loaded via
+    /// `Request::ListOwedReplies` and re-fetched after a successful
+    /// reply send.
+    Owed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,6 +134,7 @@ pub enum SidebarItem {
     Account(mxr_protocol::AccountSummaryData),
     AllMail,
     Subscriptions,
+    Owed,
     Label(Label),
     SavedSearch(mxr_core::SavedSearch),
 }
@@ -139,6 +144,7 @@ pub(crate) enum SidebarSelectionKey {
     Account(String),
     AllMail,
     Subscriptions,
+    Owed,
     Label(mxr_core::LabelId),
     SavedSearch(String),
 }
@@ -146,6 +152,11 @@ pub(crate) enum SidebarSelectionKey {
 #[derive(Debug, Clone, Default)]
 pub struct SubscriptionsPageState {
     pub entries: Vec<SubscriptionEntry>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct OwedRepliesPageState {
+    pub entries: Vec<mxr_protocol::OwedReplyRowData>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -211,12 +222,14 @@ pub struct MailboxState {
     pub sidebar_section: SidebarSection,
     pub saved_searches: Vec<mxr_core::SavedSearch>,
     pub subscriptions_page: SubscriptionsPageState,
+    pub owed_page: OwedRepliesPageState,
     pub active_label: Option<mxr_core::LabelId>,
     pub pending_label_fetch: Option<mxr_core::LabelId>,
     pub pending_active_label: Option<mxr_core::LabelId>,
     pub pending_labels_refresh: bool,
     pub pending_all_envelopes_refresh: bool,
     pub pending_subscriptions_refresh: bool,
+    pub pending_owed_refresh: bool,
     pub pending_commitment_counts_refresh: bool,
     pub open_commitment_counts: HashMap<(mxr_core::AccountId, mxr_core::ThreadId), u32>,
     pub reply_later_message_ids: HashSet<MessageId>,
@@ -280,12 +293,14 @@ impl MailboxState {
             sidebar_section: SidebarSection::Labels,
             saved_searches: Vec::new(),
             subscriptions_page: SubscriptionsPageState::default(),
+            owed_page: OwedRepliesPageState::default(),
             active_label: None,
             pending_label_fetch: None,
             pending_active_label: None,
             pending_labels_refresh: false,
             pending_all_envelopes_refresh: false,
             pending_subscriptions_refresh: false,
+            pending_owed_refresh: false,
             pending_commitment_counts_refresh: false,
             open_commitment_counts: HashMap::new(),
             reply_later_message_ids: HashSet::new(),

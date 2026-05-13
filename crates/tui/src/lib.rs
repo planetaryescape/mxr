@@ -1036,6 +1036,36 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if app.mailbox.pending_owed_refresh {
+            app.mailbox.pending_owed_refresh = false;
+            let bg = bg.clone();
+            let account_id = app.default_account_id().cloned();
+            let _ = submit_task(&queued, async move {
+                let Some(account_id) = account_id else {
+                    return AsyncResult::OwedReplies(Ok(Vec::new()));
+                };
+                let resp = ipc_call(
+                    &bg,
+                    Request::ListOwedReplies {
+                        account_id,
+                        older_than_days: None,
+                        within_days: None,
+                        limit: 100,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::OwedReplies { rows },
+                    }) => Ok(rows),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::OwedReplies(result)
+            });
+        }
+
         if app.mailbox.pending_commitment_counts_refresh {
             app.mailbox.pending_commitment_counts_refresh = false;
             let bg = bg.clone();
@@ -2062,6 +2092,16 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Subscriptions(Err(e)) => {
                             app.status_message = Some(format!("Subscriptions error: {e}"));
                         }
+                        AsyncResult::OwedReplies(Ok(rows)) => {
+                            app.mailbox.owed_page.entries = rows;
+                            app.mailbox.selected_index = app
+                                .mailbox
+                                .selected_index
+                                .min(app.mailbox.owed_page.entries.len().saturating_sub(1));
+                        }
+                        AsyncResult::OwedReplies(Err(e)) => {
+                            app.status_message = Some(format!("Owed replies error: {e}"));
+                        }
                         AsyncResult::CommitmentCounts(counts) => {
                             app.mailbox.open_commitment_counts = counts;
                         }
@@ -2868,6 +2908,49 @@ mod tests {
             }
             other => panic!("expected SendDraft with override, got: {other:?}"),
         }
+    }
+
+    /// Slice 2.3 wiring contract (C2.2): selecting the Owed sidebar
+    /// entry switches MailboxView to Owed AND requests a fresh
+    /// ListOwedReplies fetch.
+    #[test]
+    fn opening_owed_lens_switches_view_and_queues_refresh() {
+        let mut app = App::new();
+        assert_eq!(app.mailbox.mailbox_view, MailboxView::Messages);
+        assert!(!app.mailbox.pending_owed_refresh);
+
+        app.apply(Action::OpenOwedReplies);
+
+        assert_eq!(app.mailbox.mailbox_view, MailboxView::Owed);
+        assert!(
+            app.mailbox.pending_owed_refresh,
+            "OpenOwedReplies must queue a refresh"
+        );
+    }
+
+    /// Slice 2.3 wiring contract (C2.2): a successful SendDraft
+    /// mutation queues a ListOwedReplies refresh so a sent reply
+    /// disappears from the lens without manual intervention.
+    #[test]
+    fn sent_success_effect_triggers_owed_refresh() {
+        let mut app = App::new();
+        // Pretend the user is sitting on the owed lens.
+        app.mailbox.mailbox_view = MailboxView::Owed;
+        app.mailbox.pending_owed_refresh = false;
+
+        // Apply the SentSuccess mutation completion directly. The
+        // contract is: this branch sets pending_owed_refresh = true.
+        app.apply_mutation_completion(
+            MutationEffect::SentSuccess {
+                status: "Sent!".into(),
+            },
+            true,
+        );
+
+        assert!(
+            app.mailbox.pending_owed_refresh,
+            "SentSuccess effect must trigger an owed refresh"
+        );
     }
 
     #[test]
@@ -5873,6 +5956,9 @@ mod tests {
         }];
         app.mailbox.active_pane = ActivePane::Sidebar;
 
+        // Sidebar order: INBOX, AllMail, Subscriptions, Owed (Slice 2.3),
+        // SavedSearch. Four `j` presses to reach the saved search.
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));

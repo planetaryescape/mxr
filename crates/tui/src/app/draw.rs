@@ -102,6 +102,13 @@ impl App {
                                 },
                                 theme,
                             );
+                        } else if self.mailbox.mailbox_view == MailboxView::Owed {
+                            ui::owed_lens::draw(
+                                frame,
+                                chunks[1],
+                                &self.mailbox.owed_page.entries,
+                                theme,
+                            );
                         } else {
                             let mail_title = self.mail_list_title();
                             ui::mail_list::draw_view(
@@ -151,6 +158,13 @@ impl App {
                                     message_scroll_offset: self.mailbox.message_scroll_offset,
                                     html_images: &mut self.html_image_assets,
                                 },
+                                theme,
+                            );
+                        } else if self.mailbox.mailbox_view == MailboxView::Owed {
+                            ui::owed_lens::draw(
+                                frame,
+                                chunks[1],
+                                &self.mailbox.owed_page.entries,
                                 theme,
                             );
                         } else {

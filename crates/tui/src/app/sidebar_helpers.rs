@@ -32,6 +32,7 @@ impl App {
         }
         items.push(SidebarItem::AllMail);
         items.push(SidebarItem::Subscriptions);
+        items.push(SidebarItem::Owed);
         if self.mailbox.sidebar_user_expanded {
             items.extend(user_labels.into_iter().map(SidebarItem::Label));
         }
@@ -71,6 +72,8 @@ impl App {
                 && self.mailbox.pending_active_label.is_none(),
             subscriptions_active: self.mailbox.mailbox_view == MailboxView::Subscriptions,
             subscription_count: self.mailbox.subscriptions_page.entries.len(),
+            owed_active: self.mailbox.mailbox_view == MailboxView::Owed,
+            owed_count: self.mailbox.owed_page.entries.len(),
             accounts,
             accounts_expanded: self.mailbox.sidebar_accounts_expanded,
             system_expanded: self.mailbox.sidebar_system_expanded,
@@ -97,6 +100,7 @@ impl App {
             }
             SidebarItem::AllMail => SidebarSelectionKey::AllMail,
             SidebarItem::Subscriptions => SidebarSelectionKey::Subscriptions,
+            SidebarItem::Owed => SidebarSelectionKey::Owed,
             SidebarItem::Label(label) => SidebarSelectionKey::Label(label.id),
             SidebarItem::SavedSearch(search) => SidebarSelectionKey::SavedSearch(search.name),
         })
@@ -111,6 +115,7 @@ impl App {
                 }
                 (SidebarItem::AllMail, SidebarSelectionKey::AllMail) => true,
                 (SidebarItem::Subscriptions, SidebarSelectionKey::Subscriptions) => true,
+                (SidebarItem::Owed, SidebarSelectionKey::Owed) => true,
                 (SidebarItem::Label(label), SidebarSelectionKey::Label(label_id)) => {
                     label.id == *label_id
                 }
@@ -195,6 +200,7 @@ impl App {
             }
             Some(SidebarItem::AllMail) => Some(Action::GoToAllMail),
             Some(SidebarItem::Subscriptions) => Some(Action::OpenSubscriptions),
+            Some(SidebarItem::Owed) => Some(Action::OpenOwedReplies),
             Some(SidebarItem::Label(label)) => Some(Action::SelectLabel(label.id)),
             Some(SidebarItem::SavedSearch(search)) => {
                 Some(Action::SelectSavedSearch(search.query, search.search_mode))
@@ -220,6 +226,7 @@ impl App {
             Some(SidebarItem::Account(_))
             | Some(SidebarItem::AllMail)
             | Some(SidebarItem::Subscriptions)
+            | Some(SidebarItem::Owed)
             | None => SidebarGroup::SystemLabels,
         }
     }

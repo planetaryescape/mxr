@@ -22,8 +22,8 @@ pub(crate) use mailbox::SidebarSelectionKey;
 pub use mailbox::{
     ActivePane, AttachmentOperation, AttachmentPanelState, AttachmentSummary, BodySource,
     BodyViewMetadata, BodyViewMode, BodyViewState, LayoutMode, MailListMode, MailListRow,
-    MailboxState, MailboxView, PendingAttachmentAction, PendingBrowserOpen, SidebarItem,
-    SidebarSection, SubscriptionEntry, SubscriptionsPageState,
+    MailboxState, MailboxView, OwedRepliesPageState, PendingAttachmentAction, PendingBrowserOpen,
+    SidebarItem, SidebarSection, SubscriptionEntry, SubscriptionsPageState,
 };
 pub use modals::{
     AnalyticsFilterField, AnalyticsFilterModalState, ErrorModalState, FeatureOnboardingState,

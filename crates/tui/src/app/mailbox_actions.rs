@@ -257,6 +257,22 @@ impl App {
                 }
                 self.auto_preview();
             }
+            Action::OpenOwedReplies => {
+                self.mailbox.mailbox_view = MailboxView::Owed;
+                self.mailbox.active_label = None;
+                self.mailbox.pending_active_label = None;
+                self.mailbox.pending_label_fetch = None;
+                self.mailbox.pending_preview_read = None;
+                self.mailbox.desired_system_mailbox = None;
+                self.search.active = false;
+                self.screen = Screen::Mailbox;
+                self.mailbox.active_pane = ActivePane::MailList;
+                self.mailbox.selected_index = self.mailbox.selected_index.min(
+                    self.mailbox.owed_page.entries.len().saturating_sub(1),
+                );
+                self.mailbox.scroll_offset = 0;
+                self.mailbox.pending_owed_refresh = true;
+            }
             Action::GoToLabel => {
                 self.mailbox.mailbox_view = MailboxView::Messages;
                 self.apply(Action::ClearFilter);

@@ -49,6 +49,7 @@ pub(crate) enum AsyncResult {
     Labels(Result<Vec<Label>, MxrError>),
     AllEnvelopes(Result<Vec<Envelope>, MxrError>),
     Subscriptions(Result<Vec<SubscriptionSummary>, MxrError>),
+    OwedReplies(Result<Vec<mxr_protocol::OwedReplyRowData>, MxrError>),
     CommitmentCounts(std::collections::HashMap<(mxr_core::AccountId, mxr_core::ThreadId), u32>),
     AccountOperation(Result<AccountOperationResult, MxrError>),
     AuthSession(AuthSessionData),

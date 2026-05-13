@@ -145,6 +145,7 @@ impl App {
             | Action::GoToDrafts
             | Action::GoToAllMail
             | Action::OpenSubscriptions
+            | Action::OpenOwedReplies
             | Action::GoToLabel
             | Action::SelectLabel(_)
             | Action::SelectSavedSearch(_, _)

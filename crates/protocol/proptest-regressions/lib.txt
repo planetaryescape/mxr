@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a72530f164ff728b33f321b103a65b2369cce58a6834833a81c7a3c07ed71247 # shrinks to email = "a@example¡com", expected = Some(184.56660056138838), allow_list_sender = false

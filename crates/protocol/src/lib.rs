@@ -1362,5 +1362,343 @@ mod tests {
                 other => prop_assert!(false, "unexpected payload: {other:?}"),
             }
         }
+
+        // -----------------------------------------------------------
+        // AI-email IPC variants — one proptest per Request variant.
+        // Each test varies at least one field and round-trips via JSON.
+        // -----------------------------------------------------------
+
+        #[test]
+        fn check_draft_safety_roundtrip(
+            reply_all in any::<bool>(),
+            allow_llm in any::<bool>(),
+        ) {
+            let req = Request::CheckDraftSafety {
+                draft: ai_email_test::sample_draft("hi"),
+                context: DraftSafetyContextData {
+                    mode: DraftSafetyModeData::Check,
+                    reply_all,
+                    original_message_id: None,
+                    thread_id: None,
+                    allow_llm,
+                },
+            };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::CheckDraftSafety { context, .. } => {
+                    prop_assert_eq!(context.reply_all, reply_all);
+                    prop_assert_eq!(context.allow_llm, allow_llm);
+                }
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn extract_draft_commitments_roundtrip(body in "[a-zA-Z ]{1,64}") {
+            let req = Request::ExtractDraftCommitments {
+                draft: ai_email_test::sample_draft(&body),
+            };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::ExtractDraftCommitments { draft } => {
+                    prop_assert_eq!(draft.body_markdown, body);
+                }
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn list_owed_replies_roundtrip(
+            since in proptest::option::of(1u32..365),
+            within in proptest::option::of(1u32..365),
+            limit in 1u32..200,
+        ) {
+            let account_id = AccountId::new();
+            let req = Request::ListOwedReplies {
+                account_id: account_id.clone(),
+                older_than_days: since,
+                within_days: within,
+                limit,
+            };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::ListOwedReplies { account_id: a, older_than_days, within_days, limit: l } => {
+                    prop_assert_eq!(a, account_id);
+                    prop_assert_eq!(older_than_days, since);
+                    prop_assert_eq!(within_days, within);
+                    prop_assert_eq!(l, limit);
+                }
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn archive_ask_roundtrip(
+            question in "[a-zA-Z ?]{1,64}",
+            limit in 1u32..50,
+        ) {
+            let req = Request::ArchiveAsk {
+                question: question.clone(),
+                filters: ArchiveAskFiltersData {
+                    account_id: Some(AccountId::new()),
+                    from: Some("alice@example.com".into()),
+                    to: None,
+                    after: None,
+                    before: None,
+                    mode: ArchiveAskMode::Hybrid,
+                },
+                limit,
+            };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::ArchiveAsk { question: q, limit: l, filters } => {
+                    prop_assert_eq!(q, question);
+                    prop_assert_eq!(l, limit);
+                    prop_assert_eq!(filters.mode, ArchiveAskMode::Hybrid);
+                }
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn list_decision_log_roundtrip(
+            topic in proptest::option::of("[a-z]{1,16}"),
+            since_days in proptest::option::of(1u32..730),
+            limit in 1u32..200,
+        ) {
+            let account_id = AccountId::new();
+            let req = Request::ListDecisionLog {
+                account_id: account_id.clone(),
+                topic: topic.clone(),
+                since_days,
+                limit,
+            };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::ListDecisionLog { account_id: a, topic: t, since_days: s, limit: l } => {
+                    prop_assert_eq!(a, account_id);
+                    prop_assert_eq!(t, topic);
+                    prop_assert_eq!(s, since_days);
+                    prop_assert_eq!(l, limit);
+                }
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn send_time_recommendation_roundtrip(recipient in "[a-z]{1,16}@example.com") {
+            let account_id = AccountId::new();
+            let req = Request::SendTimeRecommendation {
+                account_id: account_id.clone(),
+                recipient: recipient.clone(),
+            };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::SendTimeRecommendation { account_id: a, recipient: r } => {
+                    prop_assert_eq!(a, account_id);
+                    prop_assert_eq!(r, recipient);
+                }
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn watch_cadence_roundtrip(
+            email in "[a-z]{1,16}@example.com",
+            // Use a roundtrip-safe f64 strategy: integer halves only
+            // (0.5, 1.0, 1.5, ... 365.0). JSON loses precision on
+            // arbitrary f64s; we only need to verify the variant
+            // shape, not that JSON preserves IEEE-754 exactly.
+            expected_halves in proptest::option::of(1u32..730),
+            allow_list_sender in any::<bool>(),
+        ) {
+            let expected = expected_halves.map(|n| n as f64 / 2.0);
+            let req = Request::WatchCadence {
+                account_id: AccountId::new(),
+                email: email.clone(),
+                expected_days: expected,
+                note: None,
+                allow_list_sender,
+            };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::WatchCadence { email: e, expected_days, allow_list_sender: a, .. } => {
+                    prop_assert_eq!(e, email);
+                    prop_assert_eq!(expected_days, expected);
+                    prop_assert_eq!(a, allow_list_sender);
+                }
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn unwatch_cadence_roundtrip(email in "[a-z]{1,16}@example.com") {
+            let req = Request::UnwatchCadence {
+                account_id: AccountId::new(),
+                email: email.clone(),
+            };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::UnwatchCadence { email: e, .. } => prop_assert_eq!(e, email),
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn list_cadence_watch_roundtrip(seed in any::<u64>()) {
+            let _ = seed;
+            let account_id = AccountId::new();
+            let req = Request::ListCadenceWatch { account_id: account_id.clone() };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::ListCadenceWatch { account_id: a } => prop_assert_eq!(a, account_id),
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn list_cadence_drift_roundtrip(seed in any::<u64>()) {
+            let _ = seed;
+            let account_id = AccountId::new();
+            let req = Request::ListCadenceDrift { account_id: account_id.clone() };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::ListCadenceDrift { account_id: a } => prop_assert_eq!(a, account_id),
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn get_thread_briefing_roundtrip(refresh in any::<bool>()) {
+            let thread_id = ThreadId::new();
+            let req = Request::GetThreadBriefing {
+                thread_id: thread_id.clone(),
+                refresh,
+            };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::GetThreadBriefing { thread_id: t, refresh: r } => {
+                    prop_assert_eq!(t, thread_id);
+                    prop_assert_eq!(r, refresh);
+                }
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn get_recipient_briefing_roundtrip(
+            email in "[a-z]{1,16}@example.com",
+            refresh in any::<bool>(),
+        ) {
+            let req = Request::GetRecipientBriefing {
+                account_id: AccountId::new(),
+                email: email.clone(),
+                refresh,
+            };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::GetRecipientBriefing { email: e, refresh: r, .. } => {
+                    prop_assert_eq!(e, email);
+                    prop_assert_eq!(r, refresh);
+                }
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn suggest_collaborators_roundtrip(limit in 1u32..50) {
+            let req = Request::SuggestCollaborators {
+                draft: ai_email_test::sample_draft("hi"),
+                limit,
+            };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::SuggestCollaborators { limit: l, .. } => prop_assert_eq!(l, limit),
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn find_expert_roundtrip(
+            query in "[a-zA-Z ?]{1,64}",
+            include_self in any::<bool>(),
+            limit in 1u32..50,
+        ) {
+            let req = Request::FindExpert {
+                account_id: AccountId::new(),
+                query: query.clone(),
+                include_self,
+                limit,
+            };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::FindExpert { query: q, include_self: i, limit: l, .. } => {
+                    prop_assert_eq!(q, query);
+                    prop_assert_eq!(i, include_self);
+                    prop_assert_eq!(l, limit);
+                }
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+
+        #[test]
+        fn explain_entity_roundtrip(
+            query in "[a-zA-Z @.]{1,64}",
+            limit in 1u32..50,
+        ) {
+            let req = Request::ExplainEntity {
+                account_id: AccountId::new(),
+                query: query.clone(),
+                limit,
+            };
+            let json = serde_json::to_string(&req)?;
+            let parsed: Request = serde_json::from_str(&json)?;
+            match parsed {
+                Request::ExplainEntity { query: q, limit: l, .. } => {
+                    prop_assert_eq!(q, query);
+                    prop_assert_eq!(l, limit);
+                }
+                other => prop_assert!(false, "wrong variant: {other:?}"),
+            }
+        }
+    }
+
+    /// Helpers shared across the AI-email roundtrip proptests.
+    mod ai_email_test {
+        use super::*;
+
+        pub(super) fn sample_draft(body: &str) -> Draft {
+            Draft {
+                id: DraftId::new(),
+                account_id: AccountId::new(),
+                reply_headers: None,
+                intent: DraftIntent::New,
+                to: vec![Address {
+                    name: None,
+                    email: "alice@example.com".into(),
+                }],
+                cc: vec![],
+                bcc: vec![],
+                subject: "test".into(),
+                body_markdown: body.into(),
+                attachments: vec![],
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }
+        }
     }
 }

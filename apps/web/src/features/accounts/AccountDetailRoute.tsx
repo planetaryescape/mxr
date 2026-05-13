@@ -12,6 +12,7 @@ import {
   fetchAuthSession,
   removeAccount,
   removeAccountAddress,
+  repairAccount,
   setDefaultAccount,
   setPrimaryAccountAddress,
   startAuthSession,
@@ -71,6 +72,19 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
     onSuccess: (result) => toast.success(result.result.summary || "Connection OK"),
     onError: (error) => toast.error("Test failed", { description: error.message }),
   });
+  const repair = useMutation({
+    mutationFn: () => repairAccount(accountConfig(account)),
+    onSuccess: () => {
+      toast.success("Account repair triggered");
+      void qc.invalidateQueries({ queryKey: ["accounts"] });
+    },
+    onError: (error) => toast.error("Repair failed", { description: error.message }),
+  });
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ["accounts"] });
+    void qc.invalidateQueries({ queryKey: ["account-addresses", account?.account_id] });
+    toast.success("Refreshed");
+  };
   const addAlias = useMutation({
     mutationFn: () => addAccountAddress(account?.account_id ?? "", alias),
     onSuccess: () => {
@@ -159,6 +173,13 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
         </div>
         <Button variant="outline" onClick={() => test.mutate()} disabled={test.isPending}>
           Test connection
+        </Button>
+        <Button variant="outline" onClick={refresh}>
+          <RefreshCw className="size-3" />
+          Refresh
+        </Button>
+        <Button variant="outline" onClick={() => repair.mutate()} disabled={repair.isPending}>
+          Repair
         </Button>
         <Button
           variant="outline"

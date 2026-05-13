@@ -60,6 +60,13 @@ export function setDefaultAccount(key: string) {
   return apiFetch<unknown>("/api/v1/platform/accounts/default", { method: "POST", body: { key } });
 }
 
+export function repairAccount(account: AccountConfig): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>("/api/v1/platform/accounts/repair", {
+    method: "POST",
+    body: account,
+  });
+}
+
 export function disableAccount(key: string) {
   return apiFetch<unknown>(`/api/v1/platform/accounts/${encodeURIComponent(key)}/disable`, {
     method: "POST",

@@ -239,6 +239,13 @@ async fn run_safety_pipeline(
     let safety_cfg = mxr_safety::SafetyConfig::default();
     let extra = mxr_safety::check_draft_deterministic(draft, &safety_ctx, &safety_cfg);
     report.extend(extra.issues);
+
+    if context.allow_llm {
+        if let Some(thread_id) = context.thread_id.clone() {
+            let issues = super::safety_llm::check_answer_coverage(state, draft, &thread_id).await;
+            report.extend(issues);
+        }
+    }
     Ok(report)
 }
 

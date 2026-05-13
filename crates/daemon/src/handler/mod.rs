@@ -26,6 +26,7 @@ mod relationship_profile;
 mod reply_later;
 mod rules;
 mod runtime;
+mod safety_llm;
 mod screener;
 mod sender_view;
 mod signatures;

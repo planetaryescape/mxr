@@ -9,6 +9,9 @@ import { fetchSearch } from "@/features/search/api";
 import {
   archiveMessages,
   markReadMessages,
+  modifyLabels,
+  moveMessagesToLabel,
+  readAndArchiveMessages,
   shellKey,
   spamMessages,
   starMessages,
@@ -166,10 +169,20 @@ export function RuleEditorRoute() {
             <Input
               value={form.action}
               onChange={(event) => setForm({ ...form, action: event.target.value })}
-              placeholder="archive, trash, label:News"
+              placeholder="archive, trash, label:News, move:Folder"
             />
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {["archive", "trash", "spam", "star", "read", "unread"].map((action) => (
+              {[
+                "archive",
+                "trash",
+                "spam",
+                "star",
+                "read",
+                "unread",
+                "read-and-archive",
+                "label:Receipts",
+                "move:Archive",
+              ].map((action) => (
                 <Button
                   key={action}
                   type="button"
@@ -279,20 +292,43 @@ export function RuleEditorRoute() {
   );
 }
 
-type SupportedRuleAction = "archive" | "trash" | "spam" | "star" | "read" | "unread";
+type SupportedRuleAction =
+  | { kind: "archive" }
+  | { kind: "trash" }
+  | { kind: "spam" }
+  | { kind: "star" }
+  | { kind: "read" }
+  | { kind: "unread" }
+  | { kind: "read-and-archive" }
+  | { kind: "label-add"; label: string }
+  | { kind: "move"; label: string };
 
 function mailAction(value: string): SupportedRuleAction | null {
-  const normalized = value.trim().toLowerCase();
-  if (["archive", "trash", "spam", "star", "read", "unread"].includes(normalized)) {
-    return normalized as SupportedRuleAction;
+  const normalized = value.trim();
+  const lower = normalized.toLowerCase();
+  if (lower === "archive") return { kind: "archive" };
+  if (lower === "trash") return { kind: "trash" };
+  if (lower === "spam") return { kind: "spam" };
+  if (lower === "star") return { kind: "star" };
+  if (lower === "read" || lower === "mark-read" || lower === "mark_read")
+    return { kind: "read" };
+  if (lower === "unread" || lower === "mark-unread" || lower === "mark_unread")
+    return { kind: "unread" };
+  if (lower === "read-and-archive" || lower === "read_and_archive")
+    return { kind: "read-and-archive" };
+  const labelMatch = normalized.match(/^label:(.+)$/i);
+  if (labelMatch && labelMatch[1]?.trim()) {
+    return { kind: "label-add", label: labelMatch[1].trim() };
   }
-  if (normalized === "mark-read" || normalized === "mark_read") return "read";
-  if (normalized === "mark-unread" || normalized === "mark_unread") return "unread";
+  const moveMatch = normalized.match(/^move:(.+)$/i);
+  if (moveMatch && moveMatch[1]?.trim()) {
+    return { kind: "move", label: moveMatch[1].trim() };
+  }
   return null;
 }
 
 function runMailAction(action: SupportedRuleAction, ids: string[]): Promise<MutationResponse> {
-  switch (action) {
+  switch (action.kind) {
     case "archive":
       return archiveMessages(ids);
     case "trash":
@@ -305,6 +341,12 @@ function runMailAction(action: SupportedRuleAction, ids: string[]): Promise<Muta
       return markReadMessages(ids, true);
     case "unread":
       return markReadMessages(ids, false);
+    case "read-and-archive":
+      return readAndArchiveMessages(ids);
+    case "label-add":
+      return modifyLabels(ids, [action.label], []);
+    case "move":
+      return moveMessagesToLabel(ids, action.label);
   }
 }
 

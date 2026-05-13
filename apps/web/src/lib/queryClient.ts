@@ -6,6 +6,17 @@ interface QueryClientOptions {
   onUnauthorized?: () => void;
 }
 
+let activeClient: QueryClient | null = null;
+
+/** Set by App.tsx (and tests) so action-registry runners can read cache state. */
+export function setActiveQueryClient(client: QueryClient): void {
+  activeClient = client;
+}
+
+export function getActiveQueryClient(): QueryClient | null {
+  return activeClient;
+}
+
 export function createQueryClient(options: QueryClientOptions = {}): QueryClient {
   return new QueryClient({
     queryCache: new QueryCache({

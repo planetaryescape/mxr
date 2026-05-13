@@ -8,7 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useConnectionStatusBootstrap } from "@/hooks/useConnectionStatus";
 import { useDaemonEventInvalidation } from "@/hooks/useDaemonEventInvalidation";
 import { useProtocolCompatibilityBootstrap } from "@/hooks/useProtocolCompatibility";
-import { createQueryClient } from "@/lib/queryClient";
+import { createQueryClient, setActiveQueryClient } from "@/lib/queryClient";
 import { daemonEvents } from "@/lib/ws";
 import { routeTree } from "@/routeTree.gen";
 
@@ -20,6 +20,7 @@ const queryClient = createQueryClient({
     }
   },
 });
+setActiveQueryClient(queryClient);
 
 const router = createRouter({
   routeTree,

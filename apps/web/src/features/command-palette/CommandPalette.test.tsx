@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { CommandPaletteMount } from "./CommandPalette";
+import { setActiveQueryClient } from "@/lib/queryClient";
 import { useModals } from "@/state/modalStore";
 
 const router = vi.hoisted(() => ({
@@ -83,7 +84,8 @@ function renderWithQueryClient(children: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>);
+  setActiveQueryClient(queryClient);
+  return { queryClient, ...render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>) };
 }
 
 describe("CommandPaletteMount", () => {
@@ -159,5 +161,32 @@ describe("CommandPaletteMount", () => {
     expect(screen.getByText("Install semantic profile: bge-m3")).toBeVisible();
     expect(screen.getByText("Voice settings")).toBeVisible();
     expect(screen.getByText("LLM settings")).toBeVisible();
+  });
+
+  test("flips Enable to Disable when semantic cache says enabled", async () => {
+    diagnosticsApi.fetchSemanticStatus.mockResolvedValue({
+      status: {
+        enabled: true,
+        active_profile: "bge-small-en-v1.5",
+        profiles: [
+          {
+            profile: "bge-small-en-v1.5",
+            backend: "fastembed",
+            model_revision: "v1",
+            dimensions: 384,
+            status: "ready",
+            progress_completed: 1,
+            progress_total: 1,
+          },
+        ],
+      },
+    });
+    const { queryClient } = renderWithQueryClient(<CommandPaletteMount />);
+    await waitFor(() =>
+      expect(queryClient.getQueryState(["diagnostics", "semantic"])?.data).toBeDefined(),
+    );
+
+    expect(screen.getByText("Disable semantic search")).toBeVisible();
+    expect(screen.queryByText("Enable semantic search")).not.toBeInTheDocument();
   });
 });

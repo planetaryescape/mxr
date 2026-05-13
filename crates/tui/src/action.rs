@@ -139,6 +139,11 @@ pub enum Action {
     OpenRecipientBriefing,
     /// Close the briefing modal (Esc).
     CloseBriefingModal,
+    /// Slice 6.1 (C2.9): open the whois modal for the focused
+    /// sender's email. Fires `Request::ExplainEntity`.
+    OpenWhoisOnFocusedSender,
+    /// Close the whois modal (Esc).
+    CloseWhoisModal,
     /// Open the snippet manager modal.
     OpenSnippets,
     /// Close the snippet manager modal (Esc).

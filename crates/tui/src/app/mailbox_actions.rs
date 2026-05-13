@@ -571,6 +571,19 @@ impl App {
             Action::CloseBriefingModal => {
                 self.modals.briefing.close();
             }
+            Action::OpenWhoisOnFocusedSender => {
+                let Some(env) = self.context_envelope() else {
+                    self.status_message = Some("No message selected".into());
+                    return;
+                };
+                let query = env.from.email.clone();
+                self.modals.whois.open_loading(query.clone());
+                self.pending_whois_query = Some(query);
+                self.status_message = Some("Loading whois...".into());
+            }
+            Action::CloseWhoisModal => {
+                self.modals.whois.close();
+            }
             Action::OpenSnippets => {
                 self.modals.snippets.open_loading();
                 self.pending_snippets_refresh = true;

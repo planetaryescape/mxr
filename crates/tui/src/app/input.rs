@@ -152,6 +152,11 @@ impl App {
             (KeyCode::Char('B'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenThreadBriefing)
             }
+            // Slice 6.1 (C2.9): W opens the whois modal for the
+            // focused sender. (`?` is reserved for the help modal.)
+            (KeyCode::Char('W'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::OpenWhoisOnFocusedSender)
+            }
             _ => None,
         }
     }
@@ -312,6 +317,13 @@ impl App {
         if self.modals.briefing.visible {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseBriefingModal),
+                _ => None,
+            };
+        }
+
+        if self.modals.whois.visible {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseWhoisModal),
                 _ => None,
             };
         }

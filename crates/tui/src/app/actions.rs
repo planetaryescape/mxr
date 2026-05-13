@@ -174,6 +174,8 @@ impl App {
             | Action::OpenThreadBriefing
             | Action::OpenRecipientBriefing
             | Action::CloseBriefingModal
+            | Action::OpenWhoisOnFocusedSender
+            | Action::CloseWhoisModal
             | Action::OpenSnippets
             | Action::CloseSnippetsModal
             | Action::SnippetsModalNext

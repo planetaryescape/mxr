@@ -35,3 +35,4 @@ pub mod subscriptions_page;
 pub mod summary_modal;
 pub mod unsubscribe_modal;
 pub mod url_modal;
+pub mod whois_modal;

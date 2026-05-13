@@ -1,0 +1,29 @@
+---
+source: crates/tui/src/ui/whois_modal.rs
+assertion_line: 168
+expression: rendered
+---
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"            ╭ Whois: alice@example.com ────────────────────────────╮            "
+"            │  alice@example.com (person)                          │            "
+"            │                                                      │            "
+"            │  Alice Smith — 42 inbound, 31 outbound.              │            "
+"            │                                                      │            "
+"            │  [Esc] close                                         │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            ╰──────────────────────────────────────────────────────╯            "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "

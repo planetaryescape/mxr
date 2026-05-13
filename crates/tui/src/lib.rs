@@ -1036,6 +1036,36 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if let Some(query) = app.pending_whois_query.take() {
+            let bg = bg.clone();
+            let account_id = app.default_account_id().cloned();
+            let _ = submit_task(&queued, async move {
+                let Some(account_id) = account_id else {
+                    return AsyncResult::Whois(Err(MxrError::Ipc(
+                        "no default account".into(),
+                    )));
+                };
+                let resp = ipc_call(
+                    &bg,
+                    Request::ExplainEntity {
+                        account_id,
+                        query,
+                        limit: 10,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::EntityExplanation { entity },
+                    }) => Ok(entity),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::Whois(result)
+            });
+        }
+
         if let Some(briefing_req) = app.pending_briefing_request.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
@@ -2154,6 +2184,12 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Briefing(Err(e)) => {
                             app.modals.briefing.set_error(e.to_string());
                         }
+                        AsyncResult::Whois(Ok(entity)) => {
+                            app.modals.whois.set_entity(entity);
+                        }
+                        AsyncResult::Whois(Err(e)) => {
+                            app.modals.whois.set_error(e.to_string());
+                        }
                         AsyncResult::CommitmentCounts(counts) => {
                             app.mailbox.open_commitment_counts = counts;
                         }
@@ -3035,6 +3071,46 @@ mod tests {
             ),
             "pending request must be queued for the runtime to drain"
         );
+    }
+
+    /// Slice 6.1 wiring contract (C2.9): pressing
+    /// OpenWhoisOnFocusedSender opens the whois modal in loading
+    /// state and queues a pending whois fetch with the focused
+    /// sender's email as the query.
+    #[test]
+    fn open_whois_action_seeds_modal_and_queues_query() {
+        let mut app = App::new();
+        let mut env = TestEnvelopeBuilder::new().build();
+        env.from = mxr_core::Address {
+            name: None,
+            email: "carol@example.com".into(),
+        };
+        app.mailbox.envelopes = vec![env.clone()];
+        app.mailbox.all_envelopes = vec![env.clone()];
+        app.apply(Action::OpenSelected);
+
+        app.apply(Action::OpenWhoisOnFocusedSender);
+
+        assert!(app.modals.whois.visible);
+        assert!(app.modals.whois.loading);
+        assert_eq!(app.modals.whois.query.as_deref(), Some("carol@example.com"));
+        assert_eq!(
+            app.pending_whois_query.as_deref(),
+            Some("carol@example.com")
+        );
+    }
+
+    /// Esc on the whois modal closes it.
+    #[test]
+    fn close_whois_modal_action_clears_state() {
+        let mut app = App::new();
+        app.modals.whois.open_loading("alice@example.com".into());
+        assert!(app.modals.whois.visible);
+
+        app.apply(Action::CloseWhoisModal);
+
+        assert!(!app.modals.whois.visible);
+        assert!(app.modals.whois.query.is_none());
     }
 
     /// Esc on the briefing modal closes it.

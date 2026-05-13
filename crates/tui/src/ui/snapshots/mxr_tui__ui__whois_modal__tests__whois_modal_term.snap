@@ -1,0 +1,29 @@
+---
+source: crates/tui/src/ui/whois_modal.rs
+assertion_line: 240
+expression: rendered
+---
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"            ╭ Whois: Project Apollo ───────────────────────────────╮            "
+"            │  Project Apollo (term)                               │            "
+"            │                                                      │            "
+"            │  Most likely match: alice@example.com (3 mentions).  │            "
+"            │                                                      │            "
+"            │  Citations:                                          │            "
+"            │    msg=msg-7 "Project Apollo update"                 │            "
+"            │                                                      │            "
+"            │  [Esc] close                                         │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            ╰──────────────────────────────────────────────────────╯            "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "

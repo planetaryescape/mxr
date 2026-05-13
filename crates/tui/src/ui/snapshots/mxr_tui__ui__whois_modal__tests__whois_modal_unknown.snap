@@ -1,0 +1,29 @@
+---
+source: crates/tui/src/ui/whois_modal.rs
+assertion_line: 267
+expression: rendered
+---
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"            ╭ Whois: ghost-term ───────────────────────────────────╮            "
+"            │  ghost-term (unknown)                                │            "
+"            │                                                      │            "
+"            │  No local evidence found.                            │            "
+"            │                                                      │            "
+"            │  [Esc] close                                         │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            ╰──────────────────────────────────────────────────────╯            "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "

@@ -51,6 +51,7 @@ pub(crate) enum AsyncResult {
     Subscriptions(Result<Vec<SubscriptionSummary>, MxrError>),
     OwedReplies(Result<Vec<mxr_protocol::OwedReplyRowData>, MxrError>),
     Briefing(Result<mxr_protocol::ThreadBriefingData, MxrError>),
+    Whois(Result<mxr_protocol::EntityExplanationData, MxrError>),
     CommitmentCounts(std::collections::HashMap<(mxr_core::AccountId, mxr_core::ThreadId), u32>),
     AccountOperation(Result<AccountOperationResult, MxrError>),
     AuthSession(AuthSessionData),

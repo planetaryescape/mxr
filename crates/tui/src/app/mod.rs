@@ -219,6 +219,9 @@ pub struct App {
     /// runtime, which fires either `Request::GetThreadBriefing` or
     /// `Request::GetRecipientBriefing` depending on the variant.
     pub pending_briefing_request: Option<BriefingRequest>,
+    /// Slice 6.1 (C2.9): pending whois query. Drained by the runtime
+    /// which fires `Request::ExplainEntity`.
+    pub pending_whois_query: Option<String>,
     /// Pending screener queue refresh — set when the modal opens or
     /// after a disposition lands so the runtime re-fetches the queue.
     pub pending_screener_refresh: Option<mxr_core::AccountId>,
@@ -309,6 +312,7 @@ impl App {
             pending_sender_profile_request: None,
             pending_summary_request: None,
             pending_briefing_request: None,
+            pending_whois_query: None,
             pending_screener_refresh: None,
             pending_screener_decisions: Vec::new(),
             pending_undo: None,

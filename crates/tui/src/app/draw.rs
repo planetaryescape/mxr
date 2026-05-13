@@ -386,6 +386,9 @@ impl App {
         // dormant thread or recipient).
         ui::briefing_modal::draw(frame, area, &self.modals.briefing, theme);
 
+        // Slice 6.1 (C2.9): whois modal (entity explanation).
+        ui::whois_modal::draw(frame, area, &self.modals.whois, theme);
+
         // Generic platform/AI result modal (voice, commitments, draft suggestions).
         ui::platform_modal::draw(frame, area, &self.modals.platform, theme);
 

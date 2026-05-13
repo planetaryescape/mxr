@@ -1,0 +1,29 @@
+---
+source: crates/tui/src/ui/whois_modal.rs
+assertion_line: 210
+expression: rendered
+---
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"            ╭ Whois: fizzbuzz ─────────────────────────────────────╮            "
+"            │  fizzbuzz (ambiguous)                                │            "
+"            │                                                      │            "
+"            │  Multiple senders match.                             │            "
+"            │                                                      │            "
+"            │  Candidates:                                         │            "
+"            │    alice@example.com (person, 3 mentions)            │            "
+"            │    bob@example.com (person, 2 mentions)              │            "
+"            │                                                      │            "
+"            │  [Esc] close                                         │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            │                                                      │            "
+"            ╰──────────────────────────────────────────────────────╯            "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "

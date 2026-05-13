@@ -202,14 +202,10 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
-    /// First-run setup. Without flags, prints quick-start guidance for
-    /// configuring a Gmail or IMAP account. With `--demo`, configures
-    /// an in-memory fake-provider account so you can try the TUI/CLI
-    /// without touching any real mail credentials.
+    /// First-run setup wizard for demo, Gmail, or IMAP/SMTP.
     Setup {
-        /// Drop a fake-provider account into your config so you can
-        /// poke around without real mail. The daemon's existing
-        /// FakeProvider seeds synthetic messages on first sync.
+        /// Legacy helper that drops a fake-provider account into the current
+        /// config. Prefer `mxr demo` for an isolated 50k-message demo profile.
         #[arg(long)]
         demo: bool,
         /// Account key to use when writing the demo entry. Defaults to
@@ -221,6 +217,19 @@ pub enum Command {
         /// account with the same key.
         #[arg(long)]
         force: bool,
+    },
+    /// Launch an isolated, realistic demo inbox without touching your real config.
+    Demo {
+        /// Reset the demo profile before launching.
+        #[arg(long)]
+        reset: bool,
+        /// Number of synthetic demo messages to seed. Defaults to a large mailbox
+        /// so search, analytics, and video demos feel real.
+        #[arg(long, default_value_t = 50_000)]
+        messages: usize,
+        /// Seed and sync the demo profile, but do not open the TUI.
+        #[arg(long)]
+        no_tui: bool,
     },
     /// Triage unknown senders: classify them as allow / deny / feed /
     /// paper-trail. Local-only consent metadata; never roundtrips to
@@ -396,14 +405,42 @@ pub enum Command {
         #[arg(long)]
         watch: bool,
     },
-    /// Start a local HTTP/WebSocket bridge over daemon IPC
+    /// Start or reopen the local HTTP/WebSocket bridge and open the web app in
+    /// the default browser. Runs detached by default; use `mxr web stop` to
+    /// stop the detached bridge.
     Web {
+        #[command(subcommand)]
+        action: Option<WebAction>,
+        /// Bind address for the bridge. Defaults to loopback.
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
-        #[arg(long, default_value = "0")]
+        /// Bridge port. On EADDRINUSE the bridge walks up to the next
+        /// available port unless `--strict-port` is set. `0` picks an
+        /// ephemeral port (useful for tests).
+        #[arg(long, default_value_t = 42829)]
         port: u16,
+        /// Print the launch URL instead of opening the browser.
         #[arg(long)]
         print_url: bool,
+        /// Do not open the system browser; just print the URL.
+        #[arg(long)]
+        no_open: bool,
+        /// Fail immediately if `--port` is in use instead of trying the
+        /// next available port. Off by default — port conflicts retry.
+        #[arg(long)]
+        strict_port: bool,
+        /// Open the browser pointed at a remote daemon instead of binding locally.
+        /// Use when the daemon runs on a VPS or remote host with TLS terminated.
+        /// Format: `host[:port]`, e.g. `mxr.example.com` or `mxr.example.com:443`.
+        /// Reads the per-host token from `~/.config/mxr/bridge-tokens/<host>.token`.
+        #[arg(long, value_name = "HOST")]
+        remote_host: Option<String>,
+        /// Run the bridge in the foreground instead of detaching it.
+        #[arg(long)]
+        foreground: bool,
+        /// Internal marker for the detached child process.
+        #[arg(long, hide = true)]
+        detached_child: bool,
     },
     /// Watch daemon events
     Events {
@@ -575,6 +612,8 @@ pub enum Command {
         /// Show what would be sent without sending
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Reply to a message
     Reply {
@@ -592,6 +631,8 @@ pub enum Command {
         /// Show what would be sent
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Reply to all recipients
     ReplyAll {
@@ -609,6 +650,8 @@ pub enum Command {
         /// Show what would be sent
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Forward a message
     Forward {
@@ -629,6 +672,8 @@ pub enum Command {
         /// Show what would be sent
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Manage drafts: list (default), recover orphaned in-flight sends,
     /// resume one for retry, or discard recovered drafts.
@@ -645,6 +690,8 @@ pub enum Command {
         /// Show what would be sent (sender, recipients, subject, byte count) without sending
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
         /// Schedule the draft to be sent later instead of sending now.
         /// Same forms as `mxr snooze --until`: `in 2h`, `tomorrow 9am`,
         /// `monday 17:00`, RFC3339. Use `mxr unsend <draft-id>` to cancel.
@@ -917,6 +964,12 @@ pub enum Command {
     Completions { shell: String },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Subcommand)]
+pub enum WebAction {
+    /// Stop the detached local web bridge started by `mxr web`.
+    Stop,
+}
+
 #[derive(Subcommand)]
 pub enum SavedAction {
     /// List saved searches
@@ -1169,13 +1222,83 @@ mod tests {
         ]);
         match cli.command {
             Some(Command::Web {
+                action,
                 host,
                 port,
                 print_url,
+                no_open,
+                strict_port,
+                remote_host,
+                foreground,
+                detached_child,
             }) => {
+                assert!(action.is_none());
                 assert_eq!(host, "127.0.0.1");
                 assert_eq!(port, 4321);
                 assert!(print_url);
+                assert!(!no_open);
+                assert!(!strict_port);
+                assert!(remote_host.is_none());
+                assert!(!foreground);
+                assert!(!detached_child);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_web_subcommand_with_remote_host() {
+        let cli = Cli::parse_from([
+            "mxr",
+            "web",
+            "--remote-host",
+            "mxr.example.com:443",
+            "--no-open",
+        ]);
+        match cli.command {
+            Some(Command::Web {
+                remote_host,
+                no_open,
+                ..
+            }) => {
+                assert_eq!(remote_host.as_deref(), Some("mxr.example.com:443"));
+                assert!(no_open);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_web_stop_subcommand() {
+        let cli = Cli::parse_from(["mxr", "web", "stop"]);
+        match cli.command {
+            Some(Command::Web { action, .. }) => {
+                assert_eq!(action, Some(WebAction::Stop));
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_web_foreground_flag() {
+        let cli = Cli::parse_from(["mxr", "web", "--foreground"]);
+        match cli.command {
+            Some(Command::Web { foreground, .. }) => {
+                assert!(foreground);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_web_subcommand_with_strict_port() {
+        let cli = Cli::parse_from(["mxr", "web", "--port", "9999", "--strict-port"]);
+        match cli.command {
+            Some(Command::Web {
+                port, strict_port, ..
+            }) => {
+                assert_eq!(port, 9999);
+                assert!(strict_port);
             }
             other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
         }

@@ -427,6 +427,7 @@ pub struct AnalyticsFilterModalState {
 pub struct AnalyticsFilterField {
     pub label: String,
     pub value: String,
+    pub options: Vec<String>,
 }
 
 /// Modal form for creating (or editing via delete+create) a saved

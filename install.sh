@@ -27,8 +27,11 @@ case "$arch" in
 esac
 
 if [[ "$VERSION" == "latest" ]]; then
-  archive="mxr-latest-${platform}-${target_arch}.tar.gz"
-  url="https://github.com/${REPO}/releases/latest/download/${archive}"
+  latest_url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest")"
+  tag="${latest_url##*/}"
+  version="${tag#v}"
+  archive="mxr-v${version}-${platform}-${target_arch}.tar.gz"
+  url="https://github.com/${REPO}/releases/download/v${version}/${archive}"
 else
   version="${VERSION#v}"
   archive="mxr-v${version}-${platform}-${target_arch}.tar.gz"

@@ -93,6 +93,48 @@ pub(crate) fn trace_lookup(operation: &'static str, started_at: Instant, found: 
     );
 }
 
+/// SQL predicate for analytics/story queries that should ignore pure
+/// self-addressed messages while still keeping real outbound mail. The
+/// surrounding query must alias `messages` as `m`.
+pub(crate) const NON_SELF_ADDRESSED_MESSAGE_PREDICATE: &str = r#"NOT (
+    EXISTS (
+        SELECT 1
+        FROM account_addresses self_from
+        WHERE LOWER(self_from.email) = LOWER(m.from_email)
+    )
+    AND EXISTS (
+        SELECT 1
+        FROM (
+            SELECT json_extract(value, '$.email') AS email FROM json_each(m.to_addrs)
+            UNION ALL
+            SELECT json_extract(value, '$.email') AS email FROM json_each(m.cc_addrs)
+            UNION ALL
+            SELECT json_extract(value, '$.email') AS email FROM json_each(m.bcc_addrs)
+        ) self_recipients
+        JOIN account_addresses self_to
+          ON LOWER(self_to.email) = LOWER(self_recipients.email)
+        WHERE self_recipients.email IS NOT NULL
+          AND self_recipients.email != ''
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM (
+            SELECT json_extract(value, '$.email') AS email FROM json_each(m.to_addrs)
+            UNION ALL
+            SELECT json_extract(value, '$.email') AS email FROM json_each(m.cc_addrs)
+            UNION ALL
+            SELECT json_extract(value, '$.email') AS email FROM json_each(m.bcc_addrs)
+        ) non_self_recipients
+        WHERE non_self_recipients.email IS NOT NULL
+          AND non_self_recipients.email != ''
+          AND NOT EXISTS (
+              SELECT 1
+              FROM account_addresses self_addr
+              WHERE LOWER(self_addr.email) = LOWER(non_self_recipients.email)
+          )
+    )
+)"#;
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -1912,6 +1954,107 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn wrapped_excludes_self_addressed_story_counts_but_keeps_storage_bytes() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let now = chrono::Utc::now();
+
+        let mut self_msg = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        self_msg.provider_id = "wrapped-self".into();
+        self_msg.from = Address {
+            name: None,
+            email: account.email.clone(),
+        };
+        self_msg.to = vec![Address {
+            name: None,
+            email: account.email.clone(),
+        }];
+        self_msg.date = now;
+        self_msg.size_bytes = 10_000;
+        store
+            .upsert_envelope_with_direction(&self_msg, MessageDirection::Outbound)
+            .await
+            .unwrap();
+
+        let mut inbound = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        inbound.provider_id = "wrapped-inbound".into();
+        inbound.from = Address {
+            name: Some("Alice".into()),
+            email: "alice@example.com".into(),
+        };
+        inbound.to = vec![Address {
+            name: None,
+            email: account.email.clone(),
+        }];
+        inbound.date = now + chrono::Duration::minutes(1);
+        inbound.size_bytes = 1_000;
+        store
+            .upsert_envelope_with_direction(&inbound, MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let mut outbound = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        outbound.provider_id = "wrapped-outbound".into();
+        outbound.from = Address {
+            name: None,
+            email: account.email.clone(),
+        };
+        outbound.to = vec![Address {
+            name: Some("Bob".into()),
+            email: "bob@example.com".into(),
+        }];
+        outbound.date = now + chrono::Duration::minutes(2);
+        outbound.size_bytes = 2_000;
+        store
+            .upsert_envelope_with_direction(&outbound, MessageDirection::Outbound)
+            .await
+            .unwrap();
+
+        let summary = store
+            .wrapped_summary(
+                None,
+                (now - chrono::Duration::hours(1)).timestamp(),
+                (now + chrono::Duration::hours(1)).timestamp(),
+                "test",
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(summary.volume.inbound_count, 1);
+        assert_eq!(summary.volume.outbound_count, 1);
+        assert_eq!(summary.volume.thread_count, 2);
+        assert_eq!(summary.storage.total_bytes, 13_000);
+        assert_eq!(
+            summary
+                .storage
+                .heaviest_message
+                .as_ref()
+                .map(|row| row.from_email.as_str()),
+            Some(account.email.as_str())
+        );
+        assert_eq!(
+            summary
+                .top_contacts
+                .most_emailed_by_me
+                .first()
+                .map(|r| r.email.as_str()),
+            Some("bob@example.com")
+        );
+        assert!(summary
+            .top_contacts
+            .most_emailed_by_me
+            .iter()
+            .all(|r| r.email != account.email));
+    }
+
+    #[tokio::test]
     async fn refresh_contacts_aggregates_inbound_and_outbound_per_email() {
         // Pins the contacts materialization contract: per (account, email),
         // inbound/outbound counts roll up correctly. asymmetry ratios derive
@@ -2111,7 +2254,7 @@ mod tests {
         store.refresh_contacts().await.unwrap();
         // Wide max-lookback so the test isn't bounded by the fixture's age.
         let decay = store
-            .list_contact_decay(None, 30, 365 * 100, 50)
+            .list_contact_decay_at(None, 30, 365 * 100, 50, now.timestamp())
             .await
             .unwrap();
         let emails: Vec<_> = decay.iter().map(|r| r.email.clone()).collect();

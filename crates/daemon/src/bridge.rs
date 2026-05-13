@@ -7,12 +7,11 @@
 
 use crate::server::BridgeOverrides;
 use crate::state::AppState;
-use mxr_config::{config_dir, load_config, BridgeConfig};
-use mxr_web::WebServerConfig;
+use mxr_config::{config_dir, load_config, write_bridge_port, BridgeConfig};
+use mxr_web::{bind_listener, WebServerConfig};
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -70,15 +69,32 @@ pub async fn spawn_bridge_loop(
     let socket_path = AppState::socket_path();
     let web_config = WebServerConfig::new(socket_path, token)
         .with_cors_allowlist(bridge_cfg.cors_allowlist.clone())
-        .with_host_allowlist(bridge_cfg.host_allowlist.clone());
+        .with_host_allowlist(bridge_cfg.host_allowlist.clone())
+        .with_auto_local_token(bridge_cfg.auto_local_token);
 
-    let listener = TcpListener::bind(addr)
+    // The daemon-managed bridge always retries free ports on conflict —
+    // we don't want a colliding port to prevent the daemon from starting
+    // at all. The actual bound port is published to `bridge_port_path()`
+    // so clients (Vite proxy, scripts) can discover it.
+    let listener = bind_listener(bind, bridge_cfg.port, true)
         .await
         .map_err(|error| BridgeStartupError::Bind {
             addr,
             error: error.to_string(),
         })?;
     let bound = listener.local_addr().unwrap_or(addr);
+    if let Err(err) = write_bridge_port(bound.port()) {
+        tracing::warn!(
+            "could not write bridge-port file: {err}; clients will need `mxr status` to find the port"
+        );
+    }
+    if bound.port() != bridge_cfg.port {
+        tracing::warn!(
+            "configured bridge port {requested} was in use; bound {actual} instead",
+            requested = bridge_cfg.port,
+            actual = bound.port(),
+        );
+    }
     tracing::info!("HTTP bridge listening on {bound}");
 
     let mut shutdown_rx = state.shutdown_receiver();

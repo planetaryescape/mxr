@@ -509,7 +509,7 @@ fn resolve_gmail_credentials(
                     if client_id.trim().is_empty()
                         || client_secret.as_deref().unwrap_or("").trim().is_empty()
                     {
-                        Err("Bundled Gmail OAuth credentials are unavailable. Switch Credential source to Custom and enter your client ID/client secret.".into())
+                        Err("This mxr build does not include one-click Gmail OAuth credentials. Install an official release build, run `mxr demo`, or switch Gmail Credential source to Custom and enter your own Google OAuth client ID/client secret.".into())
                     } else {
                         Ok((client_id, client_secret.unwrap_or_default()))
                     }

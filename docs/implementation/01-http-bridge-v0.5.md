@@ -51,7 +51,7 @@ commit shipped in parallel.
 The bridge becomes a **managed background task inside `mxr daemon`**,
 alongside the snooze loop and contacts refresher.
 
-- `mxr daemon` starts the bridge automatically at `127.0.0.1:7777`
+- `mxr daemon` starts the bridge automatically at `127.0.0.1:42829`
   (configurable in `~/.config/mxr/config.toml`).
 - Single PID to monitor, single config source, single auth source.
 - Existing `mxr web` standalone subcommand stays for failure-
@@ -319,7 +319,7 @@ Per CLAUDE.md "test with the real system":
 1. `cargo test --workspace` — all green.
 2. Start daemon: `mxr daemon --foreground` in one shell.
 3. `curl -H "Authorization: Bearer $(cat ~/.config/mxr/bridge-token)" \
-    http://127.0.0.1:7777/api/v1/openapi.json | jq .info.version`
+    http://127.0.0.1:42829/api/v1/openapi.json | jq .info.version`
 4. Hit a representative route from each bucket; confirm 2xx + sane
    payload.
 5. Connect a WebSocket to `/api/v1/events`, trigger a `mxr sync`,

@@ -1,0 +1,13 @@
+node_modules
+dist
+dist-ssr
+.openapi-spec.json
+.openapi-spec.tmp.json
+.env.local
+*.local
+coverage
+playwright-report
+test-results
+.vite
+.playwright
+stats.html

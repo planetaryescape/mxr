@@ -102,16 +102,20 @@ impl MailSendProvider for SmtpSendProvider {
         "smtp"
     }
 
-    async fn send(&self, draft: &Draft, from: &Address) -> Result<SendReceipt, MxrError> {
+    async fn send(
+        &self,
+        draft: &Draft,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> Result<SendReceipt, MxrError> {
         let attachments = load_attachments(&draft.attachments).await?;
         let started_at = Instant::now();
-        let rfc2822_message_id = mxr_outbound::email::generate_message_id(from);
         let message = mxr_outbound::email::build_message_with_id(
             draft,
             from,
             false,
             &attachments,
-            &rfc2822_message_id,
+            rfc2822_message_id,
         )
         .map_err(|e| MxrError::Provider(format!("Failed to build message: {e}")))?;
         tracing::trace!(
@@ -144,7 +148,7 @@ impl MailSendProvider for SmtpSendProvider {
         Ok(SendReceipt {
             provider_message_id: None,
             sent_at: chrono::Utc::now(),
-            rfc2822_message_id,
+            rfc2822_message_id: rfc2822_message_id.to_string(),
         })
     }
 }
@@ -311,7 +315,10 @@ mod tests {
             email: "me@example.com".into(),
         };
 
-        provider.send(&draft, &from).await.unwrap();
+        provider
+            .send(&draft, &from, "<test-message@example.com>")
+            .await
+            .unwrap();
 
         let messages = sender.messages.lock().unwrap();
         assert_eq!(messages.len(), 1);
@@ -367,7 +374,10 @@ mod tests {
             email: "me@example.com".into(),
         };
 
-        provider.send(&draft, &from).await.unwrap();
+        provider
+            .send(&draft, &from, "<test-attachment@example.com>")
+            .await
+            .unwrap();
 
         let messages = sender.messages.lock().unwrap();
         let message = &messages[0].formatted;

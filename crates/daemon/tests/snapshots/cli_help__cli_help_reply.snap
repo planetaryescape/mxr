@@ -10,8 +10,9 @@ Arguments:
   <MESSAGE_ID>  Message ID to reply to
 
 Options:
-      --body <BODY>  Inline reply body (skip $EDITOR)
-      --body-stdin   Read reply body from stdin
-      --yes          Skip confirmation
-      --dry-run      Show what would be sent
-  -h, --help         Print help
+      --body <BODY>      Inline reply body (skip $EDITOR)
+      --body-stdin       Read reply body from stdin
+      --yes              Skip confirmation
+      --dry-run          Show what would be sent
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

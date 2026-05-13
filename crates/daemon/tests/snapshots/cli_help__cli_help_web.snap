@@ -2,12 +2,20 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Start a local HTTP/WebSocket bridge over daemon IPC
+Start or reopen the local HTTP/WebSocket bridge and open the web app in the default browser. Runs detached by default; use `mxr web stop` to stop the detached bridge
 
-Usage: mxr web [OPTIONS]
+Usage: mxr web [OPTIONS] [COMMAND]
+
+Commands:
+  stop  Stop the detached local web bridge started by `mxr web`
+  help  Print this message or the help of the given subcommand(s)
 
 Options:
-      --host <HOST>  [default: 127.0.0.1]
-      --port <PORT>  [default: 0]
-      --print-url
-  -h, --help         Print help
+      --host <HOST>         Bind address for the bridge. Defaults to loopback [default: 127.0.0.1]
+      --port <PORT>         Bridge port. On EADDRINUSE the bridge walks up to the next available port unless `--strict-port` is set. `0` picks an ephemeral port (useful for tests) [default: 42829]
+      --print-url           Print the launch URL instead of opening the browser
+      --no-open             Do not open the system browser; just print the URL
+      --strict-port         Fail immediately if `--port` is in use instead of trying the next available port. Off by default — port conflicts retry
+      --remote-host <HOST>  Open the browser pointed at a remote daemon instead of binding locally. Use when the daemon runs on a VPS or remote host with TLS terminated. Format: `host[:port]`, e.g. `mxr.example.com` or `mxr.example.com:443`. Reads the per-host token from `~/.config/mxr/bridge-tokens/<host>.token`
+      --foreground          Run the bridge in the foreground instead of detaching it
+  -h, --help                Print help

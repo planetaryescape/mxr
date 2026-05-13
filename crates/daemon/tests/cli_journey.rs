@@ -563,9 +563,14 @@ fn cli_journey_archive_then_undo_restores_inbox() {
             line.strip_prefix("Undo with: mxr undo ")
                 .map(str::to_string)
         })
+        .or_else(|| {
+            serde_json::from_str::<Value>(&archive.stdout)
+                .ok()
+                .and_then(|value| value["result"]["mutation_id"].as_str().map(str::to_string))
+        })
         .unwrap_or_else(|| {
             panic!(
-                "archive --yes must print `Undo with: mxr undo <id>`; stdout={:?}",
+                "archive --yes must return a mutation id; stdout={:?}",
                 archive.stdout
             )
         });

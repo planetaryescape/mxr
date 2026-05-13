@@ -1,7 +1,7 @@
-use super::chrome::{MessageGroupView, MessageRowView};
+use super::chrome::{MessageGroupView, MessageLabelView, MessageRowView};
 use super::*;
-use chrono::Datelike;
-use mxr_core::{MessageFlags, SavedSearch};
+use chrono::{Datelike, Local};
+use mxr_core::{Label, LabelKind, MessageFlags, SavedSearch};
 use mxr_protocol::SearchResultItem;
 use std::collections::{HashMap, HashSet};
 
@@ -187,10 +187,14 @@ pub(crate) fn mailbox_thread_rows(
     envelopes: Vec<Envelope>,
 ) -> Vec<(DateTime<Utc>, MessageRowView)> {
     let mut message_counts = HashMap::new();
+    let mut thread_has_attachments = HashMap::new();
     for envelope in &envelopes {
         *message_counts
             .entry(envelope.thread_id.clone())
             .or_insert(0_u32) += 1;
+        *thread_has_attachments
+            .entry(envelope.thread_id.clone())
+            .or_insert(false) |= envelope.has_attachments;
     }
 
     let mut seen = HashSet::new();
@@ -204,6 +208,10 @@ pub(crate) fn mailbox_thread_rows(
             let mut row = message_row_view(&envelope);
             row.kind = "thread";
             row.message_count = message_counts.get(&envelope.thread_id).copied();
+            row.has_attachments = thread_has_attachments
+                .get(&envelope.thread_id)
+                .copied()
+                .unwrap_or(envelope.has_attachments);
             Some((date, row))
         })
         .collect()
@@ -265,7 +273,14 @@ pub(crate) fn message_row_view(envelope: &Envelope) -> MessageRowView {
         sender_detail: Some(envelope.from.email.clone()),
         subject: envelope.subject.clone(),
         snippet: envelope.snippet.clone(),
+        date: envelope.date,
         date_label: format_date_label(envelope.date),
+        date_full: format_date_full(envelope.date),
+        date_relative: format_relative_label(envelope.date),
+        to: envelope.to.clone(),
+        cc: envelope.cc.clone(),
+        bcc: envelope.bcc.clone(),
+        labels: Vec::new(),
         unread: !envelope.flags.contains(MessageFlags::READ),
         starred: envelope.flags.contains(MessageFlags::STARRED),
         has_attachments: envelope.has_attachments,
@@ -276,13 +291,88 @@ pub(crate) fn message_row_view(envelope: &Envelope) -> MessageRowView {
     }
 }
 
+pub(crate) fn message_row_view_with_labels(
+    envelope: &Envelope,
+    labels: &[Label],
+) -> MessageRowView {
+    let mut row = message_row_view(envelope);
+    row.labels = message_labels(envelope, labels);
+    row
+}
+
 pub(crate) fn format_date_label(date: DateTime<Utc>) -> String {
     let local = date.with_timezone(&Local);
     let today = Local::now().date_naive();
     if today == local.date_naive() {
         return local.format("%-I:%M%P").to_string();
     }
-    local.format("%b %-d").to_string()
+    if local.year() == today.year() {
+        local.format("%b %-d %-I:%M%P").to_string()
+    } else {
+        local.format("%b %-d, %Y %-I:%M%P").to_string()
+    }
+}
+
+pub(crate) fn format_date_full(date: DateTime<Utc>) -> String {
+    date.with_timezone(&Local)
+        .format("%b %-d, %Y, %-I:%M %p")
+        .to_string()
+}
+
+pub(crate) fn format_relative_label(date: DateTime<Utc>) -> String {
+    let seconds = Utc::now().signed_duration_since(date).num_seconds().max(0);
+    if seconds < 60 {
+        return "just now".to_string();
+    }
+    let minutes = seconds / 60;
+    if minutes < 60 {
+        return plural(minutes, "minute");
+    }
+    let hours = minutes / 60;
+    if hours < 24 {
+        return plural(hours, "hour");
+    }
+    let days = hours / 24;
+    if days < 7 {
+        return plural(days, "day");
+    }
+    format_date_label(date)
+}
+
+fn plural(value: i64, unit: &str) -> String {
+    if value == 1 {
+        format!("1 {unit} ago")
+    } else {
+        format!("{value} {unit}s ago")
+    }
+}
+
+fn message_labels(envelope: &Envelope, labels: &[Label]) -> Vec<MessageLabelView> {
+    if envelope.label_provider_ids.is_empty() {
+        return Vec::new();
+    }
+    let provider_ids = envelope
+        .label_provider_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    labels
+        .iter()
+        .filter(|label| {
+            provider_ids.contains(label.provider_id.as_str())
+                || provider_ids.contains(label.name.as_str())
+        })
+        .map(|label| MessageLabelView {
+            id: label.id.to_string(),
+            name: label.name.clone(),
+            kind: match label.kind {
+                LabelKind::System => "system",
+                LabelKind::Folder => "folder",
+                LabelKind::User => "user",
+            },
+            color: label.color.clone(),
+        })
+        .collect()
 }
 
 pub(crate) fn thread_reader_mode(bodies: &[MessageBody]) -> &'static str {

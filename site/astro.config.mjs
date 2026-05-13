@@ -40,6 +40,7 @@ export default defineConfig({
             { label: 'Labels and Saved Searches', slug: 'guides/labels-and-saved-searches' },
             { label: 'Sender View', slug: 'guides/sender-view' },
             { label: 'Snippets', slug: 'guides/snippets' },
+            { label: 'Web App', slug: 'guides/web-app' },
             { label: 'Desktop App', slug: 'guides/desktop-app' },
             { label: 'Recipes (fzf, jq, xargs, cron)', slug: 'guides/recipes' },
           ],

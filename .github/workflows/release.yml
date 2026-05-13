@@ -22,8 +22,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       cli_changed: ${{ steps.scope.outputs.cli_changed }}
-      desktop_source_changed: ${{ steps.scope.outputs.desktop_source_changed }}
-      desktop_changed: ${{ steps.scope.outputs.desktop_changed }}
       has_artifacts: ${{ steps.scope.outputs.has_artifacts }}
       build_matrix: ${{ steps.matrix.outputs.build_matrix }}
     steps:
@@ -46,9 +44,9 @@ jobs:
           # at runtime by `mxr semantic enable`. Intel mac stays disabled because
           # fastembed/onnxruntime fails to build on x86_64-apple-darwin (see 59d8b7a).
           MATRIX='{"include":[
-            {"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","platform_family":"linux","archive":"linux-x86_64.tar.gz","desktop_platform":"linux","desktop_arch":"x64","desktop_archive":"desktop-linux-x86_64.zip","use_cross":false,"cargo_args":"--features semantic-local"},
-            {"os":"macos-15-intel","target":"x86_64-apple-darwin","platform_family":"macos","archive":"macos-x86_64.tar.gz","desktop_platform":"darwin","desktop_arch":"x64","desktop_archive":"desktop-macos-x86_64.zip","use_cross":false,"cargo_args":"--no-default-features"},
-            {"os":"macos-15","target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","desktop_platform":"darwin","desktop_arch":"arm64","desktop_archive":"desktop-macos-aarch64.zip","use_cross":false,"cargo_args":"--features semantic-local"}
+            {"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","platform_family":"linux","archive":"linux-x86_64.tar.gz","use_cross":false,"cargo_args":"--features semantic-local,web-ui"},
+            {"os":"macos-15-intel","target":"x86_64-apple-darwin","platform_family":"macos","archive":"macos-x86_64.tar.gz","use_cross":false,"cargo_args":"--no-default-features --features web-ui"},
+            {"os":"macos-15","target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","use_cross":false,"cargo_args":"--features semantic-local,web-ui"}
           ]}'
           {
             echo 'build_matrix<<EOF'
@@ -56,9 +54,42 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
+  release-smoke:
+    name: Release CLI Smoke
+    runs-on: ubuntu-latest
+    needs: plan
+    env:
+      MXR_GMAIL_TEST_CLIENT_ID: ${{ secrets.MXR_GMAIL_TEST_CLIENT_ID }}
+      MXR_GMAIL_TEST_CLIENT_SECRET: ${{ secrets.MXR_GMAIL_TEST_CLIENT_SECRET }}
+      MXR_GMAIL_TEST_REFRESH_TOKEN: ${{ secrets.MXR_GMAIL_TEST_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+      - name: Run release-blocking CLI tests
+        if: needs.plan.outputs.cli_changed == 'true'
+        run: cargo nextest run -p mxr --test cli_journey --test daemon_lifecycle --test reset_cli --test cli_help
+      - name: Run deterministic provider smoke suite
+        if: needs.plan.outputs.cli_changed == 'true'
+        run: cargo test --workspace provider_offline_smoke_ -- --nocapture
+      - name: Run live Gmail release smoke
+        if: needs.plan.outputs.cli_changed == 'true'
+        run: |
+          if [ -z "$MXR_GMAIL_TEST_CLIENT_ID" ] \
+            || [ -z "$MXR_GMAIL_TEST_CLIENT_SECRET" ] \
+            || [ -z "$MXR_GMAIL_TEST_REFRESH_TOKEN" ]; then
+            echo "::warning ::Missing MXR_GMAIL_TEST_{CLIENT_ID,CLIENT_SECRET,REFRESH_TOKEN}; skipping live provider smoke."
+            exit 0
+          fi
+          cargo test -p mxr --test live_gmail_e2e -- --ignored --nocapture
+      - name: Skip CLI smoke
+        if: needs.plan.outputs.cli_changed != 'true'
+        run: echo "CLI artifacts unchanged; skipping CLI smoke."
+
   build-binaries:
     name: Build ${{ matrix.target }}
-    needs: plan
+    needs: [plan, release-smoke]
     if: needs.plan.outputs.has_artifacts == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
@@ -73,19 +104,22 @@ jobs:
         with:
           key: ${{ matrix.target }}
       - uses: actions/setup-node@v6
-        if: needs.plan.outputs.desktop_changed == 'true'
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
+          cache-dependency-path: apps/web/package-lock.json
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config fakeroot dpkg rpm xvfb
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
 
       - name: Install cross
         if: matrix.use_cross
         run: cargo install cross --locked
+
+      - name: Build web SPA
+        working-directory: apps/web
+        run: npm ci && npm run build
 
       - name: Build (cross)
         if: matrix.use_cross
@@ -100,6 +134,29 @@ jobs:
         env:
           GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
           GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+
+      - name: SPA embedded in release binary
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
+        run: |
+          BINARY="./target/${MATRIX_TARGET}/release/mxr"
+          "${BINARY}" daemon --foreground &
+          DAEMON=$!
+          WEB_URL="$RUNNER_TEMP/mxr-web-url.txt"
+          trap 'kill "${WEB:-}" "${DAEMON}" || true' EXIT
+          sleep 2
+          "${BINARY}" web --no-open --print-url > "${WEB_URL}" &
+          WEB=$!
+          for _ in $(seq 1 20); do
+            test -s "${WEB_URL}" && break
+            sleep 1
+          done
+          URL=$(head -n1 "${WEB_URL}")
+          test -n "${URL}"
+          HTML=$(curl -fsSL "${URL}" || echo FAIL)
+          echo "${HTML}" | grep -q 'spa-not-built' && { echo "FAIL: placeholder served"; exit 1; }
+          echo "${HTML}" | grep -q '/assets/index-' || { echo "FAIL: no Vite-built bundle"; exit 1; }
 
       # macOS code signing happens BEFORE the archive so the signed binary
       # is what gets distributed. Both signing and notarization gracefully
@@ -186,61 +243,6 @@ jobs:
         if: needs.plan.outputs.cli_changed == 'true'
         run: shasum -a 256 "${{ env.ARCHIVE }}" > "${{ env.ARCHIVE }}.sha256"
 
-      - name: Install desktop dependencies
-        if: needs.plan.outputs.desktop_changed == 'true'
-        working-directory: apps/desktop
-        run: npm ci
-
-      - name: Check desktop version sync
-        if: needs.plan.outputs.desktop_changed == 'true'
-        working-directory: apps/desktop
-        run: npm run sync-version:check
-
-      - name: Package desktop
-        if: needs.plan.outputs.desktop_changed == 'true'
-        working-directory: apps/desktop
-        env:
-          MXR_DESKTOP_BUNDLED_BINARY: ../../target/${{ matrix.target }}/release/mxr
-        run: npm run make -- --platform=${{ matrix.desktop_platform }} --arch=${{ matrix.desktop_arch }}
-
-      - name: Smoke packaged desktop bundle
-        if: needs.plan.outputs.desktop_changed == 'true'
-        working-directory: apps/desktop
-        run: |
-          BUNDLED_MXR=$(find out -type f \( -path '*resources/bin/mxr' -o -path '*Resources/bin/mxr' \) ! -path '*resources/app/*' ! -path '*Resources/app/*' -print -quit)
-          test -n "$BUNDLED_MXR"
-          "$BUNDLED_MXR" status --format json | grep '"protocol_version"'
-
-      - name: Smoke packaged desktop app
-        if: needs.plan.outputs.desktop_changed == 'true'
-        working-directory: apps/desktop
-        run: |
-          if [ "${{ matrix.desktop_platform }}" = "linux" ]; then
-            xvfb-run -a npm run smoke:packaged -- --platform=${{ matrix.desktop_platform }} --arch=${{ matrix.desktop_arch }}
-          else
-            npm run smoke:packaged -- --platform=${{ matrix.desktop_platform }} --arch=${{ matrix.desktop_arch }}
-          fi
-
-      - name: Collect desktop archive
-        if: needs.plan.outputs.desktop_changed == 'true'
-        run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
-          mkdir -p desktop-artifacts
-          find apps/desktop/out/make -type f \( -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' \) -print0 |
-            while IFS= read -r -d '' artifact; do
-              ext="${artifact##*.}"
-              cp "${artifact}" "desktop-artifacts/mxr-v${VERSION}-desktop-${{ matrix.desktop_platform }}-${{ matrix.desktop_arch }}.${ext}"
-            done
-          test "$(find desktop-artifacts -type f | wc -l | tr -d ' ')" -gt 0
-
-      - name: Generate desktop SHA256 checksum
-        if: needs.plan.outputs.desktop_changed == 'true'
-        run: |
-          find desktop-artifacts -type f ! -name '*.sha256' -print0 |
-            while IFS= read -r -d '' artifact; do
-              shasum -a 256 "${artifact}" > "${artifact}.sha256"
-            done
-
       - uses: actions/upload-artifact@v7
         if: needs.plan.outputs.cli_changed == 'true'
         with:
@@ -249,17 +251,16 @@ jobs:
             ${{ env.ARCHIVE }}
             ${{ env.ARCHIVE }}.sha256
 
-      - uses: actions/upload-artifact@v7
-        if: needs.plan.outputs.desktop_changed == 'true'
-        with:
-          name: ${{ matrix.target }}-desktop
-          path: desktop-artifacts/*
-
   github-release:
     name: GitHub Release
     runs-on: ubuntu-latest
-    needs: [plan, build-binaries]
-    if: always() && needs.plan.result == 'success' && (needs.build-binaries.result == 'success' || needs.build-binaries.result == 'skipped')
+    needs: [plan, release-smoke, build-binaries]
+    if: >-
+      always()
+      && needs.plan.result == 'success'
+      && needs.release-smoke.result == 'success'
+      && (needs.build-binaries.result == 'success'
+        || (needs.plan.outputs.has_artifacts != 'true' && needs.build-binaries.result == 'skipped'))
     steps:
       - uses: actions/checkout@v6
         with:
@@ -310,6 +311,10 @@ jobs:
         env:
           COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
+          if [ -z "$COMMITTER_TOKEN" ]; then
+            echo "::error ::HOMEBREW_TAP_TOKEN is required to update the Homebrew tap."
+            exit 1
+          fi
           VERSION="${GITHUB_REF#refs/tags/v}"
           git clone "https://x-access-token:${COMMITTER_TOKEN}@github.com/planetaryescape/homebrew-mxr.git" tap
           cp Formula/mxr.rb tap/Formula/mxr.rb
@@ -322,3 +327,9 @@ jobs:
           git -C tap add Formula/mxr.rb
           git -C tap commit -m "mxr ${VERSION}"
           git -C tap push origin HEAD:main
+      - uses: Homebrew/actions/setup-homebrew@master
+      - name: Verify Homebrew install
+        run: |
+          brew update
+          brew install planetaryescape/mxr/mxr
+          mxr version

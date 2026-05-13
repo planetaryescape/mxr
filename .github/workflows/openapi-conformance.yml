@@ -8,11 +8,13 @@ on:
       - "crates/web/**"
       - "crates/protocol/**"
       - "crates/core/**"
+      - ".github/workflows/openapi-conformance.yml"
   pull_request:
     paths:
       - "crates/web/**"
       - "crates/protocol/**"
       - "crates/core/**"
+      - ".github/workflows/openapi-conformance.yml"
   workflow_dispatch:
 
 concurrency:
@@ -54,10 +56,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: "pip"
 
       - name: Install Schemathesis
-        run: pip install "schemathesis==3.39.5"
+        run: pip install "schemathesis==3.39.5" "hypothesis==6.103.4"
 
       - name: Dump served OpenAPI spec
         run: |
@@ -79,7 +80,7 @@ jobs:
         # Endpoint-level conformance testing requires a real daemon
         # backed by FakeProvider — tracked as a follow-up after v0.5
         # ships.
-        run: schemathesis run --dry-run --validate-schema=true .openapi/spec.json
+        run: schemathesis run --dry-run --validate-schema=true --experimental=openapi-3.1 .openapi/spec.json
 
       - name: Upload spec artifact
         if: always()

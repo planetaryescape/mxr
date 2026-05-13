@@ -135,7 +135,7 @@ where
     let now = Utc::now();
 
     let receipt = provider
-        .send(&draft, &from)
+        .send(&draft, &from, "<conformance-message@example.com>")
         .await
         .expect("send should succeed");
     assert!(

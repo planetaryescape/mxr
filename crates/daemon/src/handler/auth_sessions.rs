@@ -18,16 +18,68 @@ pub(super) async fn start_auth_session(
     reauthorize: bool,
     requested_flow: AuthFlowData,
 ) -> HandlerResult {
-    let Some(AccountSyncConfigData::Gmail {
-        credential_source,
-        client_id,
-        client_secret,
-        token_ref,
-    }) = account.sync.clone()
-    else {
-        return Err("auth sessions are only available for Gmail accounts".into());
-    };
+    match account.sync.clone() {
+        Some(AccountSyncConfigData::Gmail {
+            credential_source,
+            client_id,
+            client_secret,
+            token_ref,
+        }) => {
+            start_gmail_auth_session(
+                state,
+                account,
+                reauthorize,
+                requested_flow,
+                credential_source,
+                client_id,
+                client_secret,
+                token_ref,
+            )
+            .await
+        }
+        Some(AccountSyncConfigData::OutlookPersonal {
+            client_id,
+            token_ref,
+        }) => {
+            start_outlook_auth_session(
+                state,
+                account,
+                reauthorize,
+                client_id,
+                token_ref,
+                mxr_provider_outlook::OutlookTenant::Personal,
+            )
+            .await
+        }
+        Some(AccountSyncConfigData::OutlookWork {
+            client_id,
+            token_ref,
+        }) => {
+            start_outlook_auth_session(
+                state,
+                account,
+                reauthorize,
+                client_id,
+                token_ref,
+                mxr_provider_outlook::OutlookTenant::Work,
+            )
+            .await
+        }
+        _ => Err("auth sessions are only available for Gmail and Outlook accounts".into()),
+    }
+}
 
+#[allow(clippy::too_many_arguments)]
+async fn start_gmail_auth_session(
+    state: &Arc<AppState>,
+    account: AccountConfigData,
+    reauthorize: bool,
+    requested_flow: AuthFlowData,
+    credential_source: mxr_protocol::GmailCredentialSourceData,
+    client_id: String,
+    client_secret: Option<String>,
+    token_ref: String,
+) -> HandlerResult {
     let (client_id, client_secret) =
         resolve_gmail_credentials(credential_source, client_id, client_secret)?;
     let flow = match requested_flow {
@@ -90,6 +142,92 @@ pub(super) async fn start_auth_session(
             Ok(()) => {
                 session.state = AuthSessionStateData::Authorized;
                 session.message = Some("Gmail authorization completed.".into());
+                session.error = None;
+            }
+            Err(error) => {
+                session.state = AuthSessionStateData::Failed;
+                session.message = None;
+                session.error = Some(error.to_string());
+            }
+        });
+        tracing::debug!(session_id = %task_session_id.0, "auth session task finished");
+    });
+
+    state.auth_sessions.lock().insert(
+        session_id,
+        AuthSessionRuntime {
+            account,
+            status,
+            handle,
+        },
+    );
+
+    Ok(ResponseData::AuthSession { session })
+}
+
+async fn start_outlook_auth_session(
+    state: &Arc<AppState>,
+    account: AccountConfigData,
+    reauthorize: bool,
+    client_id: Option<String>,
+    token_ref: String,
+    tenant: mxr_provider_outlook::OutlookTenant,
+) -> HandlerResult {
+    let client_id = client_id
+        .or_else(|| mxr_provider_outlook::OutlookAuth::bundled_client_id().map(str::to_owned))
+        .ok_or_else(|| {
+            "no bundled Outlook client_id; rebuild with OUTLOOK_CLIENT_ID or provide one"
+                .to_string()
+        })?;
+    let session_id = AuthSessionId(uuid::Uuid::now_v7().to_string());
+    let session = AuthSessionData {
+        session_id: session_id.clone(),
+        state: AuthSessionStateData::Starting,
+        flow: AuthFlowData::Device,
+        account_key: account.key.clone(),
+        auth_url: None,
+        user_code: None,
+        verification_uri: None,
+        expires_at_unix: None,
+        poll_interval_secs: None,
+        message: Some("Starting Microsoft authorization.".into()),
+        error: None,
+    };
+    let status = Arc::new(ParkingMutex::new(session.clone()));
+    let task_status = status.clone();
+    let task_session_id = session_id.clone();
+
+    let handle = tokio::spawn(async move {
+        let auth = mxr_provider_outlook::OutlookAuth::new(client_id, token_ref, tenant);
+        let auth_result = async {
+            if !reauthorize && auth.load_tokens()?.is_some() {
+                return Ok(());
+            }
+
+            let device = auth.start_device_flow().await?;
+            update_session(&task_status, |session| {
+                session.state = AuthSessionStateData::WaitingForUser;
+                session.auth_url = device.verification_uri_complete.clone();
+                session.user_code = Some(device.user_code.clone());
+                session.verification_uri = Some(device.verification_uri.clone());
+                session.expires_at_unix =
+                    Some(chrono::Utc::now().timestamp() + device.expires_in as i64);
+                session.poll_interval_secs = Some(device.interval.max(5));
+                session.message = Some("Enter the Microsoft device code in a browser.".into());
+                session.error = None;
+            });
+            let tokens = auth
+                .poll_for_token(&device.device_code, device.interval)
+                .await?;
+            auth.save_tokens(&tokens)?;
+            Ok::<(), mxr_provider_outlook::OutlookError>(())
+        }
+        .await;
+
+        update_session(&task_status, |session| match auth_result {
+            Ok(()) => {
+                session.state = AuthSessionStateData::Authorized;
+                session.message = Some("Microsoft authorization completed.".into());
                 session.error = None;
             }
             Err(error) => {

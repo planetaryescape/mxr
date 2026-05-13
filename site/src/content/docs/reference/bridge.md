@@ -9,7 +9,7 @@ HTTP — so desktop apps, mobile clients, agent runners, and your own
 shell scripts all talk to the same daemon through one stable surface.
 
 The bridge serves an OpenAPI 3.1 spec at
-`http://127.0.0.1:7777/api/v1/openapi.json` (port and host configurable
+`http://127.0.0.1:42829/api/v1/openapi.json` (port and host configurable
 in `[bridge]`). The desktop app generates its TypeScript client from
 this spec — you can do the same for any language with `openapi-generator`
 or `openapi-typescript`.
@@ -20,7 +20,12 @@ Get the auth token from `~/.config/mxr/bridge-token` (or wherever
 
 ```bash
 export MXR_TOKEN=$(cat ~/.config/mxr/bridge-token)
-export MXR_BASE=http://127.0.0.1:7777
+# Discover the actual port (the daemon retries on conflict and writes
+# the bound port to <config_dir>/bridge-port).
+export MXR_PORT=$(cat ~/Library/Application\ Support/mxr/bridge-port 2>/dev/null \
+                   || cat ~/.config/mxr/bridge-port 2>/dev/null \
+                   || echo 42829)
+export MXR_BASE=http://127.0.0.1:$MXR_PORT
 ```
 :::
 
@@ -29,6 +34,24 @@ export MXR_BASE=http://127.0.0.1:7777
 Every request needs `Authorization: Bearer $MXR_TOKEN`. WebSocket
 clients can also pass the token via the `Sec-WebSocket-Protocol`
 subprotocol or as a `?token=` query string.
+
+### Same-machine auto-handshake
+
+The SPA served by `mxr web` doesn't ask the user to paste a token.
+`GET /api/v1/auth/local-token` is an unauthenticated endpoint that
+returns the bridge token to callers whose TCP peer is a loopback IP.
+
+```bash
+curl http://127.0.0.1:$MXR_PORT/api/v1/auth/local-token
+# → {"token":"<uuid>","source":"local-handshake"}
+```
+
+The endpoint returns **404** (not 401) when:
+- `[bridge].auto_local_token = false` — operator opted out.
+- The connecting peer is **not** a loopback address — the bridge is bound to a non-loopback interface and the caller is on a different machine.
+
+This lets the local SPA self-authenticate while keeping the same
+strict bearer-handshake story for remote callers.
 
 ```bash
 curl -H "Authorization: Bearer $MXR_TOKEN" "$MXR_BASE/api/v1/admin/status"
@@ -279,6 +302,8 @@ The daemon owns OAuth flows so the renderer never sees a refresh token.
 
 | Method | Path | Purpose |
 |--------|------|---------|
+| `GET` | `/platform/llm/config` | Current `[llm]` config, without secrets |
+| `POST` | `/platform/llm/config` | Update `[llm]` config and reload provider |
 | `GET` | `/platform/llm/status` | Runtime LLM provider + model status |
 
 ### Semantic

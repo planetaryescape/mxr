@@ -5,6 +5,7 @@ pub mod completions;
 pub mod config;
 pub mod contacts;
 pub mod count;
+pub mod demo;
 pub mod doctor;
 pub mod draft_assist;
 pub mod events;

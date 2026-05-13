@@ -82,8 +82,6 @@ echo "pub fn web_changed() {}" >> crates/web/src/lib.rs
 commit_all "rust: touch web"
 output="$(bash scripts/release_change_scope.sh "${baseline}" HEAD)"
 assert_output "${output}" "cli_changed=true"
-assert_output "${output}" "desktop_source_changed=false"
-assert_output "${output}" "desktop_changed=true"
 assert_output "${output}" "has_artifacts=true"
 
 reset_fixture
@@ -91,9 +89,7 @@ echo "export const changed = true;" >> apps/desktop/src/main.ts
 commit_all "desktop: touch app"
 output="$(bash scripts/release_change_scope.sh "${baseline}" HEAD)"
 assert_output "${output}" "cli_changed=false"
-assert_output "${output}" "desktop_source_changed=true"
-assert_output "${output}" "desktop_changed=true"
-assert_output "${output}" "has_artifacts=true"
+assert_output "${output}" "has_artifacts=false"
 
 reset_fixture
 perl -0pi -e 's/version = "0.1.0"/version = "0.1.1"/g' Cargo.toml Cargo.lock
@@ -101,8 +97,6 @@ perl -0pi -e 's/0.1.0/0.1.1/g' apps/desktop/package.json apps/desktop/package-lo
 commit_all "chore: version bump"
 output="$(bash scripts/release_change_scope.sh "${baseline}" HEAD)"
 assert_output "${output}" "cli_changed=false"
-assert_output "${output}" "desktop_source_changed=false"
-assert_output "${output}" "desktop_changed=false"
 assert_output "${output}" "has_artifacts=false"
 
 reset_fixture
@@ -111,7 +105,6 @@ perl -0pi -e 's/0.1.0/0.1.1/g' apps/desktop/package.json apps/desktop/package-lo
 commit_all "release: prepare mxr 0.1.1"
 output="$(bash scripts/release_change_scope.sh "${baseline}" HEAD)"
 assert_output "${output}" "cli_changed=true"
-assert_output "${output}" "desktop_changed=true"
 assert_output "${output}" "has_artifacts=true"
 
 echo "release_change_scope_test: ok"

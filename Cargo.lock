@@ -2912,6 +2912,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7c5cedc30da3a610cac6b4ba17597bdf7152cf974e8aab3afb3d54455e371c8"
 
 [[package]]
+name = "include_dir"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "923d117408f1e49d914f1a379a309cffe4f18c05cf4e3d12e613a15fc81bd0dd"
+dependencies = [
+ "include_dir_macros",
+]
+
+[[package]]
+name = "include_dir_macros"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cab85a7ed0bd5f0e76d93846e0147172bed2e2d3f859bcc33a8d9699cad1a75"
+dependencies = [
+ "proc-macro2",
+ "quote",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3721,7 +3740,7 @@ checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
 
 [[package]]
 name = "mxr"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3759,6 +3778,7 @@ dependencies = [
  "mxr-keychain",
  "mxr-llm",
  "mxr-mail-parse",
+ "mxr-outbound",
  "mxr-protocol",
  "mxr-provider-fake",
  "mxr-provider-gmail",
@@ -3840,7 +3860,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-compose"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "chrono",
  "comrak",
@@ -3867,7 +3887,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-config"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "chrono",
  "dirs",
@@ -3878,11 +3898,12 @@ dependencies = [
  "thiserror 2.0.18",
  "toml",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
 name = "mxr-core"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "async-trait",
  "bitflags 2.11.0",
@@ -3898,7 +3919,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-export"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "chrono",
  "insta",
@@ -3912,7 +3933,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-keychain"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "keyring",
  "security-framework 3.7.0",
@@ -3923,7 +3944,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-llm"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "async-trait",
  "reqwest",
@@ -3936,7 +3957,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-mail-parse"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "chrono",
  "insta",
@@ -3951,7 +3972,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-outbound"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "comrak",
  "dirs",
@@ -3965,7 +3986,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-protocol"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "bytes",
  "chrono",
@@ -3980,7 +4001,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-fake"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3991,7 +4012,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-gmail"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4022,7 +4043,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-imap"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "anyhow",
  "async-native-tls",
@@ -4047,7 +4068,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-outlook"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4066,7 +4087,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-smtp"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4085,7 +4106,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-reader"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "data-url",
  "html2text",
@@ -4103,7 +4124,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-rules"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "chrono",
  "glob-match",
@@ -4120,7 +4141,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-search"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "chrono",
  "mxr-core",
@@ -4135,7 +4156,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-semantic"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "anyhow",
  "calamine",
@@ -4158,7 +4179,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-store"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "chrono",
  "mxr-core",
@@ -4172,7 +4193,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-sync"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4189,7 +4210,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-test-support"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "ratatui",
  "regex",
@@ -4197,7 +4218,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-tui"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4233,12 +4254,15 @@ dependencies = [
 
 [[package]]
 name = "mxr-web"
-version = "0.5.4"
+version = "0.5.8"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "chrono",
  "futures",
+ "include_dir",
  "insta",
+ "mime_guess",
  "mxr-compose",
  "mxr-config",
  "mxr-core",

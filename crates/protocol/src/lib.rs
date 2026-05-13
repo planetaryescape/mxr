@@ -308,6 +308,20 @@ mod tests {
                 IpcCategory::MxrPlatform,
             ),
             (Request::GetLlmStatus, IpcCategory::MxrPlatform),
+            (Request::GetLlmConfig, IpcCategory::MxrPlatform),
+            (
+                Request::UpdateLlmConfig {
+                    config: LlmConfigData {
+                        enabled: true,
+                        base_url: "http://localhost:11434/v1".into(),
+                        model: "qwen2.5:3b-instruct".into(),
+                        api_key_env: String::new(),
+                        context_window: 8192,
+                        request_timeout_secs: 120,
+                    },
+                },
+                IpcCategory::MxrPlatform,
+            ),
             (Request::GetSemanticStatus, IpcCategory::MxrPlatform),
             (
                 Request::EnableSemantic { enabled: true },
@@ -625,6 +639,19 @@ mod tests {
                         api_key_present: false,
                         context_window: 0,
                         supports_streaming: false,
+                        request_timeout_secs: 120,
+                    },
+                },
+                IpcCategory::MxrPlatform,
+            ),
+            (
+                ResponseData::LlmConfig {
+                    config: LlmConfigData {
+                        enabled: false,
+                        base_url: "http://localhost:11434/v1".into(),
+                        model: "qwen2.5:3b-instruct".into(),
+                        api_key_env: String::new(),
+                        context_window: 8192,
                         request_timeout_secs: 120,
                     },
                 },

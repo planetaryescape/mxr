@@ -30,6 +30,10 @@ pub(super) async fn get_sender_profile(
         is_list_sender: p.is_list_sender,
         list_id: p.list_id,
         open_thread_count: p.open_thread_count,
+        inbound_storage_bytes: p.inbound_storage_bytes,
+        outbound_storage_bytes: p.outbound_storage_bytes,
+        attachment_count: p.attachment_count,
+        attachment_bytes: p.attachment_bytes,
     });
     Ok(ResponseData::SenderProfile { profile: data })
 }

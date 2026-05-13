@@ -5,7 +5,7 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 <StarlightPage
   frontmatter={{
     title: 'API Explorer',
-    description: 'Interactive reference for the mxr HTTP bridge. Try requests against your local daemon at http://127.0.0.1:7777.',
+    description: 'Interactive reference for the mxr HTTP bridge. Try requests against your local daemon at http://127.0.0.1:42829.',
     template: 'splash',
     pagefind: false,
   }}
@@ -42,7 +42,7 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
     is:inline
     id="api-reference"
     data-url="/openapi.json"
-    data-configuration='{"theme":"default","darkMode":true,"hideClientButton":false,"servers":[{"url":"http://127.0.0.1:7777","description":"Local mxr daemon"}]}'
+    data-configuration='{"theme":"default","darkMode":true,"hideClientButton":false,"servers":[{"url":"http://127.0.0.1:42829","description":"Local mxr daemon"}]}'
   ></script>
   <script
     is:inline

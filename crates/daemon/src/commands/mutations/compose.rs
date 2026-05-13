@@ -20,6 +20,7 @@ pub struct ComposeOptions {
     pub from: Option<String>,
     pub yes: bool,
     pub dry_run: bool,
+    pub format: Option<OutputFormat>,
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -85,7 +86,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     validate_compose_draft(&frontmatter, &draft.body_markdown, options.yes)?;
 
     if options.dry_run {
-        print_draft_preview(&draft, options.yes);
+        print_draft_preview(&draft, options.yes, options.format)?;
         return Ok(());
     }
 
@@ -127,8 +128,9 @@ pub async fn reply(
     body_stdin: bool,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    reply_inner(message_id, body, body_stdin, yes, dry_run, false).await
+    reply_inner(message_id, body, body_stdin, yes, dry_run, false, format).await
 }
 
 pub async fn reply_all(
@@ -137,8 +139,9 @@ pub async fn reply_all(
     body_stdin: bool,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    reply_inner(message_id, body, body_stdin, yes, dry_run, true).await
+    reply_inner(message_id, body, body_stdin, yes, dry_run, true, format).await
 }
 
 async fn reply_inner(
@@ -148,6 +151,7 @@ async fn reply_inner(
     yes: bool,
     dry_run: bool,
     reply_all: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let id = parse_message_id(&message_id)?;
     let mut client = IpcClient::connect().await?;
@@ -192,6 +196,7 @@ async fn reply_inner(
         draft_file,
         yes,
         dry_run,
+        format,
     )
     .await
 }
@@ -203,6 +208,7 @@ pub async fn forward(
     body_stdin: bool,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let id = parse_message_id(&message_id)?;
     let mut client = IpcClient::connect().await?;
@@ -241,6 +247,7 @@ pub async fn forward(
         draft_file,
         yes,
         dry_run,
+        format,
     )
     .await
 }
@@ -282,12 +289,13 @@ async fn finalize_compose(
     draft_file: Option<PathBuf>,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let draft = draft_from_frontmatter(account_id, &frontmatter, body)?;
     validate_compose_draft(&frontmatter, &draft.body_markdown, yes)?;
 
     if dry_run {
-        print_draft_preview(&draft, yes);
+        print_draft_preview(&draft, yes, format)?;
         return Ok(());
     }
 
@@ -465,7 +473,11 @@ pub async fn drafts_discard(draft_id: String) -> anyhow::Result<()> {
     }
 }
 
-pub async fn send_draft(draft_id: String, dry_run: bool) -> anyhow::Result<()> {
+pub async fn send_draft(
+    draft_id: String,
+    dry_run: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
 
@@ -491,47 +503,10 @@ pub async fn send_draft(draft_id: String, dry_run: bool) -> anyhow::Result<()> {
             .map(|addr| addr.email.as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        println!("DRY-RUN — would send draft {draft_id}");
-        println!("  account: {}", draft.account_id);
-        println!(
-            "  to:      {}",
-            draft
-                .to
-                .iter()
-                .map(|a| a.email.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        if !draft.cc.is_empty() {
-            println!(
-                "  cc:      {}",
-                draft
-                    .cc
-                    .iter()
-                    .map(|a| a.email.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
-        if !draft.bcc.is_empty() {
-            println!(
-                "  bcc:     {}",
-                draft
-                    .bcc
-                    .iter()
-                    .map(|a| a.email.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
-        println!("  subject: {}", draft.subject);
-        println!("  body:    {} bytes", draft.body_markdown.len());
-        if !draft.attachments.is_empty() {
-            println!("  attachments: {}", draft.attachments.len());
-        }
         if recipients.is_empty() {
             anyhow::bail!("Draft has no recipients; aborting before send");
         }
+        print_draft_preview(&draft, true, format)?;
         return Ok(());
     }
 
@@ -807,15 +782,76 @@ struct SendReceiptInfo {
     rfc2822_message_id: String,
 }
 
-fn print_draft_preview(draft: &Draft, sending: bool) {
+#[derive(serde::Serialize)]
+struct DraftPreviewOutput<'a> {
+    action: &'static str,
+    dry_run: bool,
+    draft: &'a Draft,
+}
+
+fn print_draft_preview(
+    draft: &Draft,
+    sending: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     let action = if sending { "send" } else { "save draft" };
-    println!("Would {action}:");
-    println!("  id: {}", draft.id);
-    println!("  to: {}", format_addresses(&draft.to));
-    println!("  cc: {}", format_addresses(&draft.cc));
-    println!("  bcc: {}", format_addresses(&draft.bcc));
-    println!("  subject: {}", draft.subject);
-    println!("  attachments: {}", draft.attachments.len());
+    match resolve_format(format) {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&DraftPreviewOutput {
+                action,
+                dry_run: true,
+                draft,
+            })?
+        ),
+        OutputFormat::Jsonl => println!(
+            "{}",
+            serde_json::to_string(&DraftPreviewOutput {
+                action,
+                dry_run: true,
+                draft,
+            })?
+        ),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record([
+                "action",
+                "dry_run",
+                "draft_id",
+                "account_id",
+                "to",
+                "cc",
+                "bcc",
+                "subject",
+                "body_bytes",
+                "attachments",
+            ])?;
+            writer.write_record(vec![
+                action.to_string(),
+                "true".to_string(),
+                draft.id.as_str(),
+                draft.account_id.as_str(),
+                format_addresses(&draft.to),
+                format_addresses(&draft.cc),
+                format_addresses(&draft.bcc),
+                draft.subject.clone(),
+                draft.body_markdown.len().to_string(),
+                draft.attachments.len().to_string(),
+            ])?;
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => println!("{}", draft.id),
+        OutputFormat::Table => {
+            println!("Would {action}:");
+            println!("  id: {}", draft.id);
+            println!("  to: {}", format_addresses(&draft.to));
+            println!("  cc: {}", format_addresses(&draft.cc));
+            println!("  bcc: {}", format_addresses(&draft.bcc));
+            println!("  subject: {}", draft.subject);
+            println!("  attachments: {}", draft.attachments.len());
+        }
+    }
+    Ok(())
 }
 
 fn format_addresses(addresses: &[Address]) -> String {

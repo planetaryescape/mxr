@@ -87,6 +87,18 @@ pub struct BridgeConfig {
     /// `~/.config/mxr/bridge-token` (resolved at runtime when `None`).
     /// File is mode 0600, generated on first daemon start.
     pub token_path: Option<PathBuf>,
+    /// When true (default), the bridge exposes an unauthenticated
+    /// `GET /api/v1/auth/local-token` endpoint that returns the bridge
+    /// token to callers connecting from a loopback peer address.
+    ///
+    /// This is a same-machine convenience so the web SPA can bootstrap
+    /// without making the user paste a token, while still rejecting any
+    /// caller whose TCP peer is non-loopback (preventing cross-network
+    /// token disclosure even if the bridge is bound to 0.0.0.0).
+    ///
+    /// Set to `false` for paranoid setups that want a strict bearer
+    /// handshake even on the local machine.
+    pub auto_local_token: bool,
 }
 
 impl Default for BridgeConfig {
@@ -94,10 +106,14 @@ impl Default for BridgeConfig {
         Self {
             enabled: true,
             bind: "127.0.0.1".into(),
-            port: 7777,
+            // High unprivileged port that doesn't clash with the common
+            // dev-server set (3000/5173/8000/8080/7777/4200). On EADDRINUSE
+            // the bridge walks up from here before giving up.
+            port: 42829,
             cors_allowlist: Vec::new(),
             host_allowlist: Vec::new(),
             token_path: None,
+            auto_local_token: true,
         }
     }
 }

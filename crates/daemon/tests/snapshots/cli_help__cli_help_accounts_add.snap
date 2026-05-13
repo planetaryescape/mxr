@@ -10,7 +10,7 @@ Usage: mxr accounts add [OPTIONS] <PROVIDER>
 
 Arguments:
   <PROVIDER>
-          Provider type: `gmail`, `imap`, `imap-smtp`, or `smtp`
+          Provider type: `gmail`, `imap`, `imap-smtp`, `smtp`, `outlook`, or `outlook-work`
 
 Options:
       --account-name <ACCOUNT_NAME>

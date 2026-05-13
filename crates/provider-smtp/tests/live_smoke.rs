@@ -10,7 +10,7 @@ fn invalid_draft() -> Draft {
         reply_headers: None,
         to: vec![Address {
             name: None,
-            email: "invalid-email-without-at".into(),
+            email: "invalid email with spaces".into(),
         }],
         cc: vec![],
         bcc: vec![],
@@ -42,7 +42,7 @@ async fn provider_offline_smoke_smtp_send_rejects_invalid_recipient() {
     };
 
     let err = provider
-        .send(&invalid_draft(), &from)
+        .send(&invalid_draft(), &from, "<invalid-recipient@example.com>")
         .await
         .expect_err("invalid recipient must fail");
     assert!(err.to_string().contains("Failed to build message"));

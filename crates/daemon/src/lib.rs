@@ -25,6 +25,16 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
     }
     let cli = Cli::parse_from(&args);
 
+    if let Some(Command::Demo {
+        reset, messages, ..
+    }) = &cli.command
+    {
+        commands::demo::prepare_environment(*messages)?;
+        if *reset {
+            commands::demo::reset_profile().await?;
+        }
+    }
+
     let is_foreground = matches!(
         cli.command,
         Some(Command::Daemon {
@@ -248,6 +258,11 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             // Setup writes config; doesn't need a running daemon.
             commands::setup::run(demo, key, force).await?;
         }
+        Some(Command::Demo {
+            messages, no_tui, ..
+        }) => {
+            commands::demo::run(messages, no_tui).await?;
+        }
         Some(Command::Summarize {
             thread_id,
             search,
@@ -372,12 +387,31 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             commands::status::run(format, watch).await?;
         }
         Some(Command::Web {
+            action,
             host,
             port,
             print_url,
+            no_open,
+            strict_port,
+            remote_host,
+            foreground,
+            detached_child,
         }) => {
-            crate::server::ensure_daemon_running().await?;
-            commands::web::run(host, port, print_url).await?;
+            if remote_host.is_none() && !matches!(action, Some(cli::WebAction::Stop)) {
+                crate::server::ensure_daemon_running().await?;
+            }
+            commands::web::run(commands::web::Args {
+                action,
+                host,
+                port,
+                print_url,
+                no_open,
+                strict_port,
+                remote_host,
+                foreground,
+                detached_child,
+            })
+            .await?;
         }
         Some(Command::Events { event_type, format }) => {
             crate::server::ensure_daemon_running().await?;
@@ -416,6 +450,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             from,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::compose(commands::mutations::ComposeOptions {
@@ -429,6 +464,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 from,
                 yes,
                 dry_run,
+                format,
             })
             .await?;
         }
@@ -438,9 +474,10 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             body_stdin,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::reply(message_id, body, body_stdin, yes, dry_run).await?;
+            commands::mutations::reply(message_id, body, body_stdin, yes, dry_run, format).await?;
         }
         Some(Command::ReplyAll {
             message_id,
@@ -448,9 +485,11 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             body_stdin,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::reply_all(message_id, body, body_stdin, yes, dry_run).await?;
+            commands::mutations::reply_all(message_id, body, body_stdin, yes, dry_run, format)
+                .await?;
         }
         Some(Command::Forward {
             message_id,
@@ -459,9 +498,11 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             body_stdin,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::forward(message_id, to, body, body_stdin, yes, dry_run).await?;
+            commands::mutations::forward(message_id, to, body, body_stdin, yes, dry_run, format)
+                .await?;
         }
         Some(Command::Drafts { action, format }) => {
             crate::server::ensure_daemon_running().await?;
@@ -483,13 +524,14 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         Some(Command::Send {
             draft_id,
             dry_run,
+            format,
             at,
         }) => {
             crate::server::ensure_daemon_running().await?;
             if let Some(when) = at {
                 commands::mutations::schedule_send(draft_id, when).await?;
             } else {
-                commands::mutations::send_draft(draft_id, dry_run).await?;
+                commands::mutations::send_draft(draft_id, dry_run, format).await?;
             }
         }
         Some(Command::Unsend { draft_id }) => {
@@ -669,8 +711,10 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                     search,
                     first,
                     limit,
+                    format,
                 } => {
-                    commands::mutations::attachments_list(message_id, search, first, limit).await?;
+                    commands::mutations::attachments_list(message_id, search, first, limit, format)
+                        .await?;
                 }
                 cli::AttachmentAction::Download {
                     message_id,

@@ -29,6 +29,14 @@ pub struct DoctorRunOptions {
 pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
     let fmt = resolve_format(options.format);
 
+    if options.rebuild_analytics
+        || options.refresh_contacts
+        || options.semantic_status
+        || options.reindex_semantic
+    {
+        crate::server::ensure_daemon_running().await?;
+    }
+
     if options.rebuild_analytics {
         let mut client = IpcClient::connect().await?;
         let json_mode = matches!(fmt, OutputFormat::Json | OutputFormat::Jsonl);

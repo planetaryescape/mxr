@@ -131,15 +131,18 @@ pub fn histogram_bar_chart(
 
     let n = items.len() as u16;
     let inner_w = area.width.saturating_sub(2);
+    let gap = 1;
     let bar_w = if n == 0 {
         1
     } else {
-        ((inner_w / n).saturating_sub(1)).clamp(1, 5)
+        let total_gap = n.saturating_sub(1).saturating_mul(gap);
+        let available = inner_w.saturating_sub(total_gap).max(n);
+        (available / n).max(1)
     };
     let chart = BarChart::default()
         .direction(Direction::Vertical)
         .bar_width(bar_w)
-        .bar_gap(1)
+        .bar_gap(gap)
         .data(BarGroup::default().bars(&bars))
         .block(
             Block::default()

@@ -16,8 +16,6 @@ emit_output() {
 
 if [[ -z "${base_ref}" ]]; then
   emit_output cli_changed true
-  emit_output desktop_source_changed false
-  emit_output desktop_changed false
   emit_output has_artifacts true
   exit 0
 fi
@@ -48,8 +46,6 @@ cargo_lock_ignore='^[+-][[:space:]]*$|^[+-][[:space:]]*version[[:space:]]*=[[:sp
 package_json_ignore='^[+-][[:space:]]*"version":[[:space:]]*"[^"]+",?$'
 
 cli_changed=false
-desktop_source_changed=false
-desktop_changed=false
 
 while IFS= read -r path; do
   [[ -z "${path}" ]] && continue
@@ -65,8 +61,8 @@ while IFS= read -r path; do
     crates/*|vendor/*|.sqlx/*)
       cli_changed=true
       ;;
-    apps/desktop/*)
-      desktop_source_changed=true
+    apps/web/*)
+      cli_changed=true
       ;;
   esac
 done <<< "${changed_files}"
@@ -87,21 +83,8 @@ while IFS= read -r manifest; do
   fi
 done < <(printf '%s\n' "${changed_files}" | grep '^crates/.*/Cargo.toml$' || true)
 
-if relevant_diff "apps/desktop/package.json" "${package_json_ignore}"; then
-  desktop_source_changed=true
-fi
-
-if relevant_diff "apps/desktop/package-lock.json" "${package_json_ignore}"; then
-  desktop_source_changed=true
-fi
-
-# Temporarily pause Electron desktop release artifacts. The CLI/TUI release
-# remains active; desktop packaging will be re-enabled once stabilized.
-desktop_source_changed=false
-desktop_changed=false
-
 has_artifacts=false
-if [[ "${cli_changed}" == true || "${desktop_changed}" == true ]]; then
+if [[ "${cli_changed}" == true ]]; then
   has_artifacts=true
 fi
 
@@ -112,11 +95,8 @@ fi
 head_subject="$(git log -1 --pretty=%s "${head_ref}" 2>/dev/null || echo "")"
 if printf '%s\n' "${head_subject}" | grep -Eq '^release: prepare mxr [0-9]+\.[0-9]+\.[0-9]+($|[[:space:]])'; then
   cli_changed=true
-  desktop_changed=false
   has_artifacts=true
 fi
 
 emit_output cli_changed "${cli_changed}"
-emit_output desktop_source_changed "${desktop_source_changed}"
-emit_output desktop_changed "${desktop_changed}"
 emit_output has_artifacts "${has_artifacts}"

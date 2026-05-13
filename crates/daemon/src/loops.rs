@@ -884,10 +884,7 @@ pub async fn wrapped_warmer_loop(state: Arc<AppState>, mut shutdown_rx: watch::R
 async fn warm_default_wrapped(state: &Arc<AppState>) {
     use chrono::{Datelike, TimeZone, Utc};
     let now = Utc::now();
-    let Some(start) = Utc
-        .with_ymd_and_hms(now.year(), 1, 1, 0, 0, 0)
-        .single()
-    else {
+    let Some(start) = Utc.with_ymd_and_hms(now.year(), 1, 1, 0, 0, 0).single() else {
         return;
     };
     let since_unix = start.timestamp();

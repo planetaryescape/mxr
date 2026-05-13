@@ -68,6 +68,108 @@ pub fn data_dir() -> PathBuf {
         .join(app_instance_name())
 }
 
+/// Returns the on-disk path where the local daemon's HTTP bridge bearer
+/// token is persisted. Created lazily by `read_or_create_bridge_token`.
+pub fn bridge_token_path() -> PathBuf {
+    if let Some(path) = env_path("MXR_BRIDGE_TOKEN_PATH") {
+        return path;
+    }
+    config_dir().join("bridge-token")
+}
+
+/// Returns the on-disk path where the bridge writes the port it actually
+/// bound to. Useful for clients (Vite dev proxy, `mxr web`, scripts) that
+/// need to discover the port after the bridge applied EADDRINUSE retries.
+///
+/// File contents are the bare port number on a single line, no trailing
+/// newline required.
+pub fn bridge_port_path() -> PathBuf {
+    if let Some(path) = env_path("MXR_BRIDGE_PORT_PATH") {
+        return path;
+    }
+    config_dir().join("bridge-port")
+}
+
+/// Atomically write the bound bridge port to `bridge_port_path()`. Errors
+/// from this function are non-fatal — log and continue; clients can still
+/// discover the port via `mxr status` or `--print-url`.
+pub fn write_bridge_port(port: u16) -> std::io::Result<()> {
+    let path = bridge_port_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("port.tmp");
+    std::fs::write(&tmp, format!("{port}\n"))?;
+    std::fs::rename(&tmp, &path)?;
+    Ok(())
+}
+
+/// Read the bridge port the daemon last bound to. Returns `None` if the
+/// file is missing or unparseable.
+pub fn read_bridge_port() -> Option<u16> {
+    std::fs::read_to_string(bridge_port_path())
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+/// Returns the on-disk path for a token that authenticates against a remote
+/// daemon at `host`. The web-launcher writes one of these per remote host so
+/// `mxr web --remote-host foo.example.com` opens the browser pre-authenticated.
+pub fn remote_bridge_token_path(host: &str) -> PathBuf {
+    let safe: String = host
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    config_dir()
+        .join("bridge-tokens")
+        .join(format!("{safe}.token"))
+}
+
+/// Reads the persisted bridge token from disk, or generates and writes a new
+/// UUID v4 token if none exists. The file is created with mode 0600 on Unix.
+pub fn read_or_create_bridge_token() -> std::io::Result<String> {
+    let path = bridge_token_path();
+    if let Ok(contents) = std::fs::read_to_string(&path) {
+        let trimmed = contents.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
+        }
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let token = uuid::Uuid::now_v7().to_string();
+    write_secret(&path, &token)?;
+    Ok(token)
+}
+
+#[cfg(unix)]
+fn write_secret(path: &Path, contents: &str) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    use std::io::Write;
+    file.write_all(contents.as_bytes())?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn write_secret(path: &Path, contents: &str) -> std::io::Result<()> {
+    std::fs::write(path, contents)
+}
+
 /// Returns the IPC socket path for the current instance.
 pub fn socket_path() -> PathBuf {
     if let Some(path) = env_path("MXR_SOCKET_PATH") {

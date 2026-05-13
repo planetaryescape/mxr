@@ -1,0 +1,146 @@
+export interface MessageRowView {
+  id: string;
+  kind: "message" | "thread" | string;
+  thread_id: string;
+  provider_id: string;
+  sender: string;
+  sender_detail?: string | null;
+  subject: string;
+  snippet: string;
+  date: string;
+  date_label: string;
+  date_full: string;
+  date_relative: string;
+  to?: AddressView[];
+  cc?: AddressView[];
+  bcc?: AddressView[];
+  labels?: MessageLabelView[];
+  unread: boolean;
+  starred: boolean;
+  has_attachments: boolean;
+  message_count?: number | null;
+  attachment_id?: string | null;
+  attachment_filename?: string | null;
+  attachment_size_bytes?: number | null;
+}
+
+export interface MessageLabelView {
+  id: string;
+  name: string;
+  kind: "system" | "folder" | "user" | string;
+  color?: string | null;
+}
+
+export interface MessageGroupView {
+  id: string;
+  label: string;
+  rows: MessageRowView[];
+}
+
+export interface MailboxCounts {
+  unread?: number;
+  total?: number;
+}
+
+export interface SidebarLens {
+  kind: "inbox" | "all_mail" | "label" | "saved_search" | "subscription" | string;
+  labelId?: string | null;
+  savedSearch?: string | null;
+  senderEmail?: string | null;
+}
+
+export interface SidebarItem {
+  id: string;
+  label: string;
+  unread?: number;
+  total?: number;
+  active?: boolean;
+  lens?: SidebarLens;
+}
+
+export interface SidebarSection {
+  id: string;
+  title: string;
+  items: SidebarItem[];
+}
+
+export interface ShellData {
+  accountLabel?: string;
+  syncLabel?: string;
+  statusMessage?: string;
+  commandHint?: string;
+}
+
+export interface ShellResponse {
+  shell?: ShellData;
+  sidebar?: { sections?: SidebarSection[] };
+}
+
+export interface MailboxResponse extends ShellResponse {
+  mailbox: {
+    lensLabel: string;
+    view: "threads" | "messages" | string;
+    counts: MailboxCounts;
+    has_more?: boolean;
+    next_offset?: number | null;
+    groups: MessageGroupView[];
+  };
+}
+
+export interface AddressView {
+  name?: string | null;
+  email: string;
+}
+
+export interface AttachmentView {
+  id?: string;
+  message_id?: string;
+  part_id?: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  content_id?: string | null;
+  local_path?: string | null;
+  provider_id?: string | null;
+}
+
+export interface MessageBodyView {
+  message_id: string;
+  text_plain?: string | null;
+  text_html?: string | null;
+  reader_text?: string | null;
+  attachments?: AttachmentView[];
+}
+
+export interface ThreadView {
+  account_id: string;
+  id: string;
+  latest_date: string;
+  message_count: number;
+  participants: AddressView[];
+  snippet: string;
+  subject: string;
+  unread_count: number;
+}
+
+export interface ThreadResponse {
+  thread: ThreadView;
+  messages: MessageRowView[];
+  bodies: MessageBodyView[];
+  body_failures?: unknown[];
+  reader_mode?: string | null;
+  right_rail?: { title?: string; items?: string[] };
+}
+
+export interface MutationResult {
+  requested: number;
+  succeeded: number;
+  skipped: number;
+  failed: number;
+  mutation_id?: string;
+}
+
+export interface MutationResponse {
+  ok: boolean;
+  result?: MutationResult;
+}

@@ -149,6 +149,17 @@ pub(super) async fn llm_status(state: &AppState) -> HandlerResult {
     diagnostics_impl::llm_status(state).await
 }
 
+pub(super) async fn llm_config(state: &AppState) -> HandlerResult {
+    diagnostics_impl::llm_config(state).await
+}
+
+pub(super) async fn update_llm_config(
+    state: &AppState,
+    config: mxr_protocol::LlmConfigData,
+) -> HandlerResult {
+    diagnostics_impl::update_llm_config(state, config).await
+}
+
 pub(super) async fn enable_semantic(state: &AppState, enabled: bool) -> HandlerResult {
     diagnostics_impl::enable_semantic(state, enabled).await
 }

@@ -57,6 +57,7 @@ expression: summary
     "LabelId",
     "LabelKind",
     "LargestMessageRow",
+    "LlmConfigData",
     "LlmStatusSnapshot",
     "MessageBody",
     "MessageId",

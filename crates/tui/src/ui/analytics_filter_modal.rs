@@ -40,7 +40,7 @@ pub fn draw(
 
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            "Tab: next field   Shift-Tab: prev   Enter: apply   Esc: cancel",
+            "Tab: next field   Shift-Tab: prev   ←/→: select option   Enter: apply   Esc: cancel",
             Style::default().fg(theme.text_muted),
         ))),
         chunks[0],
@@ -59,8 +59,7 @@ pub fn draw(
         } else {
             Style::default()
         };
-        let lines = vec![
-            Line::from(Span::styled(field.label.clone(), label_style)),
+        let value_line = if field.options.is_empty() {
             Line::from(Span::styled(
                 if field.value.is_empty() && is_active {
                     "_".into()
@@ -68,7 +67,13 @@ pub fn draw(
                     field.value.clone()
                 },
                 value_style,
-            )),
+            ))
+        } else {
+            option_line(field, is_active, theme)
+        };
+        let lines = vec![
+            Line::from(Span::styled(field.label.clone(), label_style)),
+            value_line,
         ];
         frame.render_widget(Paragraph::new(lines), chunk);
     }
@@ -83,6 +88,30 @@ pub fn draw(
             err_chunk,
         );
     }
+}
+
+fn option_line<'a>(
+    field: &'a crate::app::AnalyticsFilterField,
+    is_active: bool,
+    theme: &Theme,
+) -> Line<'a> {
+    let mut spans = Vec::new();
+    for option in &field.options {
+        let selected = option == &field.value;
+        let style = if selected && is_active {
+            Style::default()
+                .bg(theme.selection_bg)
+                .fg(theme.selection_fg)
+                .add_modifier(Modifier::BOLD)
+        } else if selected {
+            theme.accent_style().add_modifier(Modifier::BOLD)
+        } else {
+            theme.muted_style()
+        };
+        spans.push(Span::styled(format!(" {option} "), style));
+        spans.push(Span::raw(" "));
+    }
+    Line::from(spans)
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {

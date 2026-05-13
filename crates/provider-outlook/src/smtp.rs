@@ -9,7 +9,8 @@ use lettre::{
 use mxr_core::error::MxrError;
 use mxr_core::provider::MailSendProvider;
 use mxr_core::types::{Address, Draft, SendReceipt};
-use mxr_outbound::email::build_message;
+use mxr_outbound::attachments::load_attachment_paths_sync;
+use mxr_outbound::email::build_message_with_id;
 use std::sync::Arc;
 
 type TokenFn = Arc<dyn Fn() -> BoxFuture<'static, anyhow::Result<String>> + Send + Sync>;
@@ -75,8 +76,15 @@ impl MailSendProvider for OutlookSmtpSendProvider {
         "outlook-smtp"
     }
 
-    async fn send(&self, draft: &Draft, from: &Address) -> Result<SendReceipt, MxrError> {
-        let _message = build_message(draft, from, false)
+    async fn send(
+        &self,
+        draft: &Draft,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> Result<SendReceipt, MxrError> {
+        let attachments = load_attachment_paths_sync(&draft.attachments)
+            .map_err(|e| MxrError::Provider(format!("failed to load attachments: {e}")))?;
+        let _message = build_message_with_id(draft, from, false, &attachments, rfc2822_message_id)
             .map_err(|e| MxrError::Provider(format!("failed to build message: {e}")))?;
 
         #[cfg(not(test))]
@@ -94,7 +102,7 @@ impl MailSendProvider for OutlookSmtpSendProvider {
         Ok(SendReceipt {
             provider_message_id: None,
             sent_at: chrono::Utc::now(),
-            rfc2822_message_id: String::new(),
+            rfc2822_message_id: rfc2822_message_id.to_string(),
         })
     }
 }

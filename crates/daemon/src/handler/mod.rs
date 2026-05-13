@@ -298,6 +298,10 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             platform::set_primary_account_address(state, account_id, email).await
         }
         Request::GetLlmStatus => platform::llm_status(state).await,
+        Request::GetLlmConfig => platform::llm_config(state).await,
+        Request::UpdateLlmConfig { config } => {
+            platform::update_llm_config(state, config.clone()).await
+        }
         Request::GetSemanticStatus => platform::semantic_status(state).await,
         Request::EnableSemantic { enabled } => platform::enable_semantic(state, *enabled).await,
         Request::InstallSemanticProfile { profile } => {
@@ -542,6 +546,7 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::ListResponseTime { .. }
             | Request::ListAccountAddresses { .. }
             | Request::GetLlmStatus
+            | Request::GetLlmConfig
             | Request::GetSemanticStatus
             | Request::RunSavedSearch { .. }
             | Request::ListEvents { .. }
@@ -633,6 +638,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::RemoveAccountAddress { .. } => "remove_account_address",
         Request::SetPrimaryAccountAddress { .. } => "set_primary_account_address",
         Request::GetLlmStatus => "get_llm_status",
+        Request::GetLlmConfig => "get_llm_config",
+        Request::UpdateLlmConfig { .. } => "update_llm_config",
         Request::GetSemanticStatus => "get_semantic_status",
         Request::EnableSemantic { .. } => "enable_semantic",
         Request::InstallSemanticProfile { .. } => "install_semantic_profile",
@@ -2477,7 +2484,7 @@ fn resolve_gmail_credentials(
                     if client_id.trim().is_empty()
                         || client_secret.as_deref().unwrap_or("").trim().is_empty()
                     {
-                        Err("Bundled Gmail OAuth credentials are unavailable. Switch Credential source to Custom and enter your client ID/client secret.".into())
+                        Err("This mxr build does not include one-click Gmail OAuth credentials. Install an official release build, run `mxr demo`, or switch Gmail Credential source to Custom and enter your own Google OAuth client ID/client secret.".into())
                     } else {
                         Ok((client_id, client_secret.unwrap_or_default()))
                     }
@@ -3303,6 +3310,7 @@ mod tests {
             &self,
             _draft: &mxr_core::Draft,
             _from: &mxr_core::Address,
+            _rfc2822_message_id: &str,
         ) -> Result<mxr_core::SendReceipt, mxr_core::MxrError> {
             Err(mxr_core::MxrError::Provider(self.message.to_string()))
         }
@@ -3318,6 +3326,7 @@ mod tests {
             &self,
             _draft: &mxr_core::Draft,
             _from: &mxr_core::Address,
+            _rfc2822_message_id: &str,
         ) -> Result<mxr_core::SendReceipt, mxr_core::MxrError> {
             unreachable!("save_draft_to_server fallback test must not send")
         }
@@ -6607,6 +6616,112 @@ mod tests {
             }
             other => panic!("Expected LlmStatus response, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn update_llm_config_persists_and_rebuilds_provider_status() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp_dir.path().join("config");
+        let data_dir = temp_dir.path().join("data");
+        let socket_path = temp_dir.path().join("mxr.sock");
+        std::fs::create_dir_all(&config_dir).expect("config dir");
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+
+        temp_env::with_vars(
+            [
+                ("MXR_CONFIG_DIR", Some(config_dir)),
+                ("MXR_DATA_DIR", Some(data_dir)),
+                ("MXR_SOCKET_PATH", Some(socket_path)),
+            ],
+            || {
+                runtime.block_on(async {
+                    mxr_config::save_config(&mxr_config::MxrConfig::default())
+                        .expect("save default config");
+                    let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+                    let msg = IpcMessage {
+                        id: 1,
+                        payload: IpcPayload::Request(Request::UpdateLlmConfig {
+                            config: mxr_protocol::LlmConfigData {
+                                enabled: true,
+                                base_url: "http://127.0.0.1:11434/v1".into(),
+                                model: "local-test-model".into(),
+                                api_key_env: "MXR_TEST_LLM_KEY".into(),
+                                context_window: 4096,
+                                request_timeout_secs: 30,
+                            },
+                        }),
+                    };
+
+                    let resp = handle_request(&state, &msg).await;
+                    match resp.payload {
+                        IpcPayload::Response(Response::Ok {
+                            data: ResponseData::LlmConfig { config },
+                        }) => {
+                            assert!(config.enabled);
+                            assert_eq!(config.model, "local-test-model");
+                        }
+                        other => panic!("Expected LlmConfig response, got {other:?}"),
+                    }
+
+                    let saved = mxr_config::load_config().expect("load saved config");
+                    assert!(saved.llm.enabled);
+                    assert_eq!(saved.llm.model, "local-test-model");
+                    assert_eq!(saved.llm.api_key_env, "MXR_TEST_LLM_KEY");
+
+                    let status_msg = IpcMessage {
+                        id: 2,
+                        payload: IpcPayload::Request(Request::GetLlmStatus),
+                    };
+                    let status_resp = handle_request(&state, &status_msg).await;
+                    match status_resp.payload {
+                        IpcPayload::Response(Response::Ok {
+                            data: ResponseData::LlmStatus { snapshot },
+                        }) => {
+                            assert!(snapshot.enabled);
+                            assert_eq!(snapshot.provider, "openai_compatible");
+                            assert_eq!(snapshot.model, "local-test-model");
+                            assert_eq!(snapshot.context_window, 4096);
+                            assert_eq!(snapshot.request_timeout_secs, 30);
+                        }
+                        other => panic!("Expected LlmStatus response, got {other:?}"),
+                    }
+                });
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn update_llm_config_rejects_blank_model() {
+        let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::UpdateLlmConfig {
+                config: mxr_protocol::LlmConfigData {
+                    enabled: true,
+                    base_url: "http://127.0.0.1:11434/v1".into(),
+                    model: "  ".into(),
+                    api_key_env: String::new(),
+                    context_window: 4096,
+                    request_timeout_secs: 30,
+                },
+            }),
+        };
+
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Error { message, .. }) => {
+                assert!(message.contains("llm.model must not be empty"));
+            }
+            other => panic!("Expected error response, got {other:?}"),
+        }
+        assert_eq!(
+            state.config_snapshot().llm.model,
+            mxr_config::LlmConfig::default().model
+        );
     }
 
     #[tokio::test]

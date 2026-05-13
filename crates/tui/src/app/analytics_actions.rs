@@ -427,114 +427,104 @@ fn filter_modal_for_view(state: &AnalyticsState) -> AnalyticsFilterModalState {
     use crate::app::AnalyticsView;
     let fields = match state.view {
         AnalyticsView::Storage => match state.storage_mode {
-            StorageMode::Breakdown => vec![AnalyticsFilterField {
-                label: "group_by (sender|mimetype|label)".into(),
-                value: match state.storage_group_by {
+            StorageMode::Breakdown => vec![select_filter_field(
+                "group_by",
+                match state.storage_group_by {
                     mxr_core::types::StorageGroupBy::Sender => "sender".into(),
                     mxr_core::types::StorageGroupBy::Mimetype => "mimetype".into(),
                     mxr_core::types::StorageGroupBy::Label => "label".into(),
                 },
-            }],
+                &["sender", "mimetype", "label"],
+            )],
             StorageMode::LargestMessages => vec![
-                AnalyticsFilterField {
-                    label: "limit".into(),
-                    value: state.largest_limit.to_string(),
-                },
-                AnalyticsFilterField {
-                    label: "since_days (blank = all)".into(),
-                    value: state
+                text_filter_field("limit", state.largest_limit.to_string()),
+                text_filter_field(
+                    "since_days (blank = all)",
+                    state
                         .largest_since_days
                         .map(|d| d.to_string())
                         .unwrap_or_default(),
-                },
+                ),
             ],
         },
         AnalyticsView::StaleThreads => vec![
-            AnalyticsFilterField {
-                label: "perspective (mine|theirs)".into(),
-                value: match state.stale_perspective {
+            select_filter_field(
+                "perspective",
+                match state.stale_perspective {
                     mxr_core::types::StaleBallInCourt::Mine => "mine".into(),
                     mxr_core::types::StaleBallInCourt::Theirs => "theirs".into(),
                 },
-            },
-            AnalyticsFilterField {
-                label: "older_than_days".into(),
-                value: state.stale_older_than_days.to_string(),
-            },
-            AnalyticsFilterField {
-                label: "within_days".into(),
-                value: state.stale_within_days.to_string(),
-            },
+                &["mine", "theirs"],
+            ),
+            text_filter_field("older_than_days", state.stale_older_than_days.to_string()),
+            text_filter_field("within_days", state.stale_within_days.to_string()),
         ],
         AnalyticsView::Contacts => match state.contacts_mode {
-            ContactsMode::Asymmetry => vec![AnalyticsFilterField {
-                label: "min_inbound".into(),
-                value: state.asymmetry_min_inbound.to_string(),
-            }],
+            ContactsMode::Asymmetry => vec![text_filter_field(
+                "min_inbound",
+                state.asymmetry_min_inbound.to_string(),
+            )],
             ContactsMode::Decay => vec![
-                AnalyticsFilterField {
-                    label: "threshold_days".into(),
-                    value: state.decay_threshold_days.to_string(),
-                },
-                AnalyticsFilterField {
-                    label: "max_lookback_days".into(),
-                    value: state.decay_max_lookback_days.to_string(),
-                },
+                text_filter_field("threshold_days", state.decay_threshold_days.to_string()),
+                text_filter_field(
+                    "max_lookback_days",
+                    state.decay_max_lookback_days.to_string(),
+                ),
             ],
         },
         AnalyticsView::ResponseTime => vec![
-            AnalyticsFilterField {
-                label: "direction (i_replied|they_replied)".into(),
-                value: match state.response_time_direction {
+            select_filter_field(
+                "direction",
+                match state.response_time_direction {
                     mxr_core::types::ResponseTimeDirection::IReplied => "i_replied".into(),
                     mxr_core::types::ResponseTimeDirection::TheyReplied => "they_replied".into(),
                 },
-            },
-            AnalyticsFilterField {
-                label: "counterparty (blank = all)".into(),
-                value: state.response_time_counterparty.clone().unwrap_or_default(),
-            },
-            AnalyticsFilterField {
-                label: "since_days (blank = all)".into(),
-                value: state
+                &["i_replied", "they_replied"],
+            ),
+            text_filter_field(
+                "counterparty (blank = all)",
+                state.response_time_counterparty.clone().unwrap_or_default(),
+            ),
+            text_filter_field(
+                "since_days (blank = all)",
+                state
                     .response_time_since_days
                     .map(|d| d.to_string())
                     .unwrap_or_default(),
-            },
+            ),
         ],
         AnalyticsView::Subscriptions => vec![
-            AnalyticsFilterField {
-                label: "limit".into(),
-                value: state.subscriptions_limit.to_string(),
-            },
-            AnalyticsFilterField {
-                label: "rank (true|false)".into(),
-                value: state.subscriptions_rank.to_string(),
-            },
+            text_filter_field("limit", state.subscriptions_limit.to_string()),
+            select_filter_field(
+                "rank",
+                state.subscriptions_rank.to_string(),
+                &["true", "false"],
+            ),
         ],
         AnalyticsView::Wrapped => vec![
-            AnalyticsFilterField {
-                label: "window (ytd|year|since_days)".into(),
-                value: match state.wrapped_window {
+            select_filter_field(
+                "window",
+                match state.wrapped_window {
                     WrappedWindow::Ytd => "ytd".into(),
                     WrappedWindow::Year(_) => "year".into(),
                     WrappedWindow::SinceDays(_) => "since_days".into(),
                 },
-            },
-            AnalyticsFilterField {
-                label: "year (used when window=year)".into(),
-                value: match state.wrapped_window {
+                &["ytd", "year", "since_days"],
+            ),
+            text_filter_field(
+                "year (used when window=year)",
+                match state.wrapped_window {
                     WrappedWindow::Year(y) => y.to_string(),
                     _ => Utc::now().year().to_string(),
                 },
-            },
-            AnalyticsFilterField {
-                label: "days (used when window=since_days)".into(),
-                value: match state.wrapped_window {
+            ),
+            text_filter_field(
+                "days (used when window=since_days)",
+                match state.wrapped_window {
                     WrappedWindow::SinceDays(d) => d.to_string(),
                     _ => "90".into(),
                 },
-            },
+            ),
         ],
     };
     AnalyticsFilterModalState {
@@ -542,6 +532,22 @@ fn filter_modal_for_view(state: &AnalyticsState) -> AnalyticsFilterModalState {
         active_field: 0,
         fields,
         validation_error: None,
+    }
+}
+
+fn text_filter_field(label: &str, value: String) -> AnalyticsFilterField {
+    AnalyticsFilterField {
+        label: label.into(),
+        value,
+        options: Vec::new(),
+    }
+}
+
+fn select_filter_field(label: &str, value: String, options: &[&str]) -> AnalyticsFilterField {
+    AnalyticsFilterField {
+        label: label.into(),
+        value,
+        options: options.iter().map(|option| (*option).to_string()).collect(),
     }
 }
 

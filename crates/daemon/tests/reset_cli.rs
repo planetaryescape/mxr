@@ -60,6 +60,7 @@ fn reset_non_interactive_refuses_without_explicit_override() {
     let data_dir = temp.path().join("data");
     let config_dir = temp.path().join("config");
     let socket_path = temp.path().join("runtime").join("mxr.sock");
+    let instance = test_instance(&temp);
 
     std::fs::create_dir_all(&data_dir).expect("data dir");
     std::fs::create_dir_all(&config_dir).expect("config dir");
@@ -69,6 +70,7 @@ fn reset_non_interactive_refuses_without_explicit_override() {
         .env("MXR_DATA_DIR", &data_dir)
         .env("MXR_CONFIG_DIR", &config_dir)
         .env("MXR_SOCKET_PATH", &socket_path)
+        .env("MXR_INSTANCE", &instance)
         .args(["reset", "--hard"])
         .assert()
         .failure()
@@ -84,6 +86,7 @@ fn reset_including_config_dry_run_lists_config_for_removal() {
     let config_dir = temp.path().join("config");
     let socket_path = temp.path().join("runtime").join("mxr.sock");
     let config_path = config_dir.join("config.toml");
+    let instance = test_instance(&temp);
 
     std::fs::create_dir_all(&data_dir).expect("data dir");
     std::fs::create_dir_all(&config_dir).expect("config dir");
@@ -94,6 +97,7 @@ fn reset_including_config_dry_run_lists_config_for_removal() {
         .env("MXR_DATA_DIR", &data_dir)
         .env("MXR_CONFIG_DIR", &config_dir)
         .env("MXR_SOCKET_PATH", &socket_path)
+        .env("MXR_INSTANCE", &instance)
         .args(["reset", "--hard", "--including-config", "--dry-run"])
         .assert()
         .success()
@@ -115,6 +119,7 @@ fn burn_including_config_dry_run_lists_config_for_removal() {
     let config_dir = temp.path().join("config");
     let socket_path = temp.path().join("runtime").join("mxr.sock");
     let config_path = config_dir.join("config.toml");
+    let instance = test_instance(&temp);
 
     std::fs::create_dir_all(&data_dir).expect("data dir");
     std::fs::create_dir_all(&config_dir).expect("config dir");
@@ -125,6 +130,7 @@ fn burn_including_config_dry_run_lists_config_for_removal() {
         .env("MXR_DATA_DIR", &data_dir)
         .env("MXR_CONFIG_DIR", &config_dir)
         .env("MXR_SOCKET_PATH", &socket_path)
+        .env("MXR_INSTANCE", &instance)
         .args(["burn", "--including-config", "--dry-run"])
         .assert()
         .success()
@@ -145,13 +151,14 @@ fn reset_dry_run_and_destructive_override_handle_daemon_runtime_state() {
     let config_dir = temp.path().join("config");
     let socket_path = temp.path().join("runtime").join("mxr.sock");
     let config_path = config_dir.join("config.toml");
+    let instance = test_instance(&temp);
 
     std::fs::create_dir_all(&data_dir).expect("data dir");
     std::fs::create_dir_all(&config_dir).expect("config dir");
     std::fs::write(&config_path, "[general]\nsync_interval = 60\n").expect("write config");
 
     let mut daemon = TestDaemon::new(socket_path.clone());
-    let status = run_status(&data_dir, &config_dir, &socket_path);
+    let status = run_status(&data_dir, &config_dir, &socket_path, &instance);
     let daemon_pid = parse_status(&status.0)["daemon_pid"]
         .as_u64()
         .expect("daemon pid");
@@ -164,6 +171,7 @@ fn reset_dry_run_and_destructive_override_handle_daemon_runtime_state() {
         .env("MXR_DATA_DIR", &data_dir)
         .env("MXR_CONFIG_DIR", &config_dir)
         .env("MXR_SOCKET_PATH", &socket_path)
+        .env("MXR_INSTANCE", &instance)
         .args(["reset", "--hard", "--dry-run"])
         .assert()
         .success()
@@ -181,6 +189,7 @@ fn reset_dry_run_and_destructive_override_handle_daemon_runtime_state() {
         .env("MXR_DATA_DIR", &data_dir)
         .env("MXR_CONFIG_DIR", &config_dir)
         .env("MXR_SOCKET_PATH", &socket_path)
+        .env("MXR_INSTANCE", &instance)
         .args([
             "reset",
             "--hard",
@@ -210,6 +219,7 @@ fn reset_dry_run_and_destructive_override_handle_daemon_runtime_state() {
         .env("MXR_DATA_DIR", &data_dir)
         .env("MXR_CONFIG_DIR", &config_dir)
         .env("MXR_SOCKET_PATH", &socket_path)
+        .env("MXR_INSTANCE", &instance)
         .args([
             "reset",
             "--hard",
@@ -226,13 +236,14 @@ fn reset_including_config_destructive_override_removes_config_file() {
     let config_dir = temp.path().join("config");
     let socket_path = temp.path().join("runtime").join("mxr.sock");
     let config_path = config_dir.join("config.toml");
+    let instance = test_instance(&temp);
 
     std::fs::create_dir_all(&data_dir).expect("data dir");
     std::fs::create_dir_all(&config_dir).expect("config dir");
     std::fs::write(&config_path, "[general]\nsync_interval = 60\n").expect("write config");
 
     let mut daemon = TestDaemon::new(socket_path.clone());
-    let status = run_status(&data_dir, &config_dir, &socket_path);
+    let status = run_status(&data_dir, &config_dir, &socket_path, &instance);
     let daemon_pid = parse_status(&status.0)["daemon_pid"]
         .as_u64()
         .expect("daemon pid");
@@ -245,6 +256,7 @@ fn reset_including_config_destructive_override_removes_config_file() {
         .env("MXR_DATA_DIR", &data_dir)
         .env("MXR_CONFIG_DIR", &config_dir)
         .env("MXR_SOCKET_PATH", &socket_path)
+        .env("MXR_INSTANCE", &instance)
         .args([
             "reset",
             "--hard",
@@ -288,12 +300,28 @@ fn create_runtime_artifacts(data_dir: &Path) {
     std::fs::write(data_dir.join("cache").join("scratch.tmp"), "scratch").expect("cache file");
 }
 
-fn run_status(data_dir: &Path, config_dir: &Path, socket_path: &Path) -> (String, String) {
+fn test_instance(temp: &TempDir) -> String {
+    let suffix = temp
+        .path()
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("unknown")
+        .trim_start_matches('.');
+    format!("mxr-reset-{suffix}")
+}
+
+fn run_status(
+    data_dir: &Path,
+    config_dir: &Path,
+    socket_path: &Path,
+    instance: &str,
+) -> (String, String) {
     let output = Command::cargo_bin("mxr")
         .expect("mxr bin")
         .env("MXR_DATA_DIR", data_dir)
         .env("MXR_CONFIG_DIR", config_dir)
         .env("MXR_SOCKET_PATH", socket_path)
+        .env("MXR_INSTANCE", instance)
         .args(["status", "--format", "json"])
         .assert()
         .success()

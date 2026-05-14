@@ -61,6 +61,20 @@ Common actions:
 - `remove-label:NAME`
 - `shell:COMMAND`
 
+## Body-derived conditions
+
+Rules can match on classifications computed from the message body during sync:
+
+- `has:link` — the body contains at least one external link (excluding
+  trackers / unsubscribe / list-management URLs).
+- `has:link-heavy` — link-dense newsletter-shaped mail. Useful for "auto-archive
+  link-heavy mail from unknown senders".
+- `has:link-none` — body has no external links at all.
+
+To populate the link classification on messages synced before mxr 0.6, run
+`mxr doctor --recompute-link-counts` once. New mail is classified automatically
+during sync.
+
 ## Runtime behavior
 
 - Rules run after sync writes messages locally.

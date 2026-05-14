@@ -15,10 +15,21 @@ mxr demo
 
 This creates a separate `mxr-demo` config, database, socket, and daemon. It seeds a 50k-message, two-account synthetic inbox with repeat senders, threads, attachments, links, images, newsletters, promos, spam, suspicious inbox mail, receipts, alerts, and demo rules. Demo setup also prewarms analytics, Wrapped, and semantic vectors for the active profile so you can try search, labels, summaries, sender profiles, analytics, and keyboard triage without granting access to your real inbox.
 
-Reset the demo any time:
+The demo also pre-seeds every "empty queue" surface so the first click on any feature shows something useful: snippets, signatures, custom labels, saved searches, screener decisions, snoozed messages, reply-later flags, and a couple of in-progress drafts. LLM-backed features (summarize, briefing, ask, draft-assist, voice, decisions, commitments) are answered by an in-process **canned provider**, so the demo works fully offline — no `OPENAI_API_KEY` needed, and your real LLM credentials are never invoked even if `[llm]` is configured.
+
+**Demo mode is sticky.** Once `mxr demo` finishes, every subsequent `mxr` command (`mxr search`, `mxr cat`, `mxr archive`, `mxr web`, ...) automatically targets the demo profile. The TUI status bar and the web app's topbar both show a `DEMO` chip so you always know which profile you're on. Exit with:
 
 ```bash
-mxr demo --reset
+mxr demo stop
+```
+
+Other demo subcommands:
+
+```bash
+mxr demo status        # is demo active? where are its files?
+mxr demo reset         # wipe demo data so the next `mxr demo` re-seeds from scratch
+mxr demo --reset       # equivalent: reset + restart in one step
+mxr demo --no-tui      # seed + sync without launching the TUI
 ```
 
 ## 2. Add your account

@@ -26,6 +26,20 @@ against the daemon — **no token paste prompt**.
 
 If you'd rather just see the URL, pass `--no-open` or `--print-url`.
 
+## Demo mode in the web app
+
+`mxr web` works transparently while demo mode is active. After running
+`mxr demo`, the bridge binds to its own demo port (namespaced by
+`MXR_CONFIG_DIR`, so the real and demo bridges can coexist on different
+ports), and the web app's topbar shows a small amber **DEMO** pill next to
+the breadcrumb. The pill stays visible on every route, so a recording always
+shows which profile is being demoed.
+
+Behind the scenes the SPA polls `/api/v1/admin/status` and reads the new
+`is_demo` boolean (`true` when the daemon is bound to the `mxr-demo`
+instance). Run `mxr demo stop` to exit demo mode; the next refresh hides the
+pill and routes return to your real profile.
+
 ## How auto-authentication works
 
 The bridge exposes `GET /api/v1/auth/local-token`, which returns the

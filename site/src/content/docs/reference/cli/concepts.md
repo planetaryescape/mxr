@@ -59,7 +59,7 @@ The query parser accepts Gmail-style operators. The same grammar drives `mxr sea
 | `deliveredto:` | `deliveredto:alias@example.com` | Delivered-To header |
 | `rfc822msgid:` | `rfc822msgid:abc@example.com` | RFC 822 Message-ID header |
 | `is:` | `is:unread`, `is:starred`, `is:answered` | flags |
-| `has:` | `has:attachment`, `has:pdf`, `has:image` | attachment/body metadata where indexed |
+| `has:` | `has:attachment`, `has:pdf`, `has:image`, `has:link`, `has:link-heavy`, `has:link-none` | attachment/body metadata where indexed. `has:link` matches any external link (excludes trackers/unsubscribe URLs). `has:link-heavy` matches newsletter-shaped mail. `has:link-none` matches plain conversation threads. |
 | `before:` / `after:` | `after:2026-01-01` | YYYY-MM-DD |
 | `older_than:` / `newer_than:` | `older_than:30d`, `newer_than:7d` | days |
 | `older:` / `newer:` | `older:30d`, `newer:7d` | aliases for `older_than:` / `newer_than:` |

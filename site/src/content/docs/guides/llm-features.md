@@ -170,6 +170,21 @@ entirely). All LLM-backed commands then return `LLM is disabled`
 errors and graceful degradation kicks in everywhere — no client code
 needs to know whether the feature is on.
 
+## Demo mode: canned offline responses
+
+When `mxr demo` is active, every LLM-backed feature is answered by an
+in-process **canned provider** instead of the real backend. The provider
+inspects each request's system prompt to classify it (summarize, briefing,
+draft-assist, ask, voice, commitments, decisions, …) and returns a realistic
+template — so recordings of the demo show real-looking output without
+spending tokens or needing an `OPENAI_API_KEY`.
+
+The swap happens inside `build_llm_provider` based on `MXR_INSTANCE ==
+mxr-demo`. It supersedes whatever `[llm]` is configured for your real
+profile, so even if you have a paid OpenAI key wired up, `mxr demo` will
+never call it. Exit demo mode with `mxr demo stop` to return to your
+configured backend.
+
 ## In real life
 
 - **Catching up after vacation:** `mxr search 'is:unread newer_than:7d'

@@ -32,6 +32,13 @@ A thread row shows:
 - Subject and snippet
 - Date metadata
 - Attachment marker when any message in the row has attachments
+- Link marker (`🔗`) when the body contains external links. A muted glyph
+  means "has some links"; a brighter/accent-coloured glyph means "link-heavy"
+  (newsletter-shaped). Trackers / unsubscribe URLs / list-management hostnames
+  are filtered out, so the marker reflects useful links — calendar invites,
+  shared docs, receipts, video calls — rather than every embedded image
+  tracker. Filter for these in search with `has:link`, `has:link-heavy`, or
+  `has:link-none`.
 - Thread count with distinct styling when the conversation has multiple messages
 
 Long subjects are truncated so date and metadata remain visible.

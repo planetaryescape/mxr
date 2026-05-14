@@ -118,6 +118,9 @@ mxr saved run urgent
 - **Find that one PDF you were sent last quarter:** `mxr search 'has:attachment filename:pricing.pdf older_than:90d' --mode hybrid`
 - **Bulk-archive every receipt 30 days old:** `mxr search 'label:receipts older_than:30d' --format ids | mxr archive --yes`
 - **Build a digest before a 1:1:** `mxr search 'from:sarah newer_than:7d' --format json | jq -r '.[].subject'`
+- **Pull only real conversations, hide newsletters:** `mxr search 'is:unread has:link-none'` — strips link-heavy promotional/transactional mail in one filter.
+- **Triage the newsletter pile in bulk:** `mxr search 'has:link-heavy older_than:7d' --format ids | mxr archive --yes` — auto-archives newsletter-shaped mail older than a week.
+- **Find a shared doc someone sent you:** `mxr search 'from:alice has:link newer_than:14d'` — `has:link` excludes trackers/unsubscribe URLs, so it surfaces real link-bearing replies.
 
 ## Agent prompts that work
 

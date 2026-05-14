@@ -198,7 +198,15 @@ impl RuntimeTasks {
 /// pointed at the configured `base_url` (Ollama / LM Studio / OpenAI
 /// / etc.) when enabled. The API key is read from `api_key_env` —
 /// keeping the secret out of the config file itself.
+///
+/// When the daemon is bound to the demo instance, every feature is routed
+/// through `DemoLlmProvider` instead. That short-circuits all outbound LLM
+/// traffic so a demo runs fully offline and can never spend the user's
+/// real-account API key by accident, even if `[llm]` is configured.
 fn build_llm_provider(config: &mxr_config::EffectiveLlmConfig) -> Arc<dyn mxr_llm::LlmProvider> {
+    if mxr_config::is_demo_instance() {
+        return Arc::new(mxr_llm::DemoLlmProvider::new());
+    }
     if !config.enabled {
         return Arc::new(mxr_llm::NoopProvider);
     }

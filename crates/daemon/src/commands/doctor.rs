@@ -26,6 +26,7 @@ pub struct DoctorRunOptions {
     pub store_stats: bool,
     pub rebuild_analytics: bool,
     pub refresh_contacts: bool,
+    pub recompute_link_counts: bool,
     pub format: Option<OutputFormat>,
 }
 
@@ -34,11 +35,31 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
 
     if options.rebuild_analytics
         || options.refresh_contacts
+        || options.recompute_link_counts
         || options.semantic_status
         || options.reindex_semantic
         || options.backfill_semantic
     {
         crate::server::ensure_daemon_running().await?;
+    }
+
+    if options.recompute_link_counts {
+        let mut client = IpcClient::connect().await?;
+        let started_at = std::time::Instant::now();
+        let response = client.request(Request::RecomputeLinkCounts).await?;
+        let elapsed = started_at.elapsed();
+        match response {
+            Response::Ok { data: ResponseData::Ack } => {
+                println!(
+                    "Recomputed link counts across all messages ({:.1}s).",
+                    elapsed.as_secs_f64()
+                );
+            }
+            Response::Error { message, .. } => {
+                anyhow::bail!("recompute-link-counts failed: {message}");
+            }
+            other => anyhow::bail!("unexpected response: {other:?}"),
+        }
     }
 
     if options.rebuild_analytics {

@@ -80,6 +80,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             store_stats,
             rebuild_analytics,
             refresh_contacts,
+            recompute_link_counts,
             format,
         }) => {
             commands::doctor::run(commands::doctor::DoctorRunOptions {
@@ -88,6 +89,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 backfill_semantic,
                 check,
                 semantic_status,
+                recompute_link_counts,
                 verbose,
                 index_stats,
                 store_stats,

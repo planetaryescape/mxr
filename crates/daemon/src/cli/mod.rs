@@ -763,6 +763,11 @@ pub enum Command {
         /// Force a full refresh of the materialized contacts table.
         #[arg(long)]
         refresh_contacts: bool,
+        /// Recompute the `link_count` + `body_word_count` for every message so
+        /// the tri-state link indicator and `has:link*` filters populate on
+        /// rows synced before the link-extractor existed.
+        #[arg(long)]
+        recompute_link_counts: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },

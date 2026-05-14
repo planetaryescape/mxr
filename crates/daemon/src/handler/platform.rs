@@ -118,6 +118,10 @@ pub(super) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
     diagnostics_impl::rebuild_analytics(state).await
 }
 
+pub(super) async fn recompute_link_counts(state: &AppState) -> HandlerResult {
+    diagnostics_impl::recompute_link_counts(state).await
+}
+
 pub(super) async fn list_response_time(
     state: &AppState,
     account_id: Option<&AccountId>,

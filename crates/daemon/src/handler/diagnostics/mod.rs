@@ -345,6 +345,54 @@ pub(crate) async fn refresh_contacts(state: &AppState) -> HandlerResult {
     Ok(ResponseData::RefreshedContacts { rows })
 }
 
+/// Walk every message body, recompute `link_count` + `body_word_count` using
+/// the current `mxr_sync::links` extractor, and persist back. Used by
+/// `mxr doctor --recompute-link-counts` to backfill rows synced before the
+/// link-extractor existed.
+///
+/// Single-pass, paginated; avoids loading every message into memory.
+pub(crate) async fn recompute_link_counts(state: &AppState) -> HandlerResult {
+    let mut offset: u32 = 0;
+    let page_size: u32 = 200;
+    let mut updated: u32 = 0;
+    loop {
+        let envelopes = state
+            .store
+            .list_all_envelopes_paginated(page_size, offset)
+            .await
+            .map_err(|e| e.to_string())?;
+        if envelopes.is_empty() {
+            break;
+        }
+        for envelope in &envelopes {
+            let body = match state.store.get_body(&envelope.id).await {
+                Ok(Some(body)) => body,
+                Ok(None) => continue,
+                Err(error) => {
+                    tracing::warn!(message_id = %envelope.id, "recompute_link_counts: get_body failed: {error}");
+                    continue;
+                }
+            };
+            let metrics = mxr_sync::links::body_link_metrics(&body);
+            if let Err(error) = state
+                .store
+                .update_link_metrics(&envelope.id, metrics.link_count, metrics.body_word_count)
+                .await
+            {
+                tracing::warn!(message_id = %envelope.id, "recompute_link_counts: update failed: {error}");
+                continue;
+            }
+            updated += 1;
+        }
+        if (envelopes.len() as u32) < page_size {
+            break;
+        }
+        offset += page_size;
+    }
+    tracing::info!(updated, "recompute_link_counts complete");
+    Ok(ResponseData::Ack)
+}
+
 pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
     use mxr_core::types::AccountAddressLookup;
     // The handler runs six sequential SQL passes. Each emits an

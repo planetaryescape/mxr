@@ -1,6 +1,8 @@
 use crate::ui::compose_picker::ComposePicker;
 use mxr_core::id::AccountId;
-use mxr_core::DraftIntent;
+use mxr_core::{DraftIntent, MessageId};
+use mxr_protocol::ReplyContext;
+use std::collections::HashMap;
 
 /// Draft waiting for user confirmation after editor closes.
 pub struct PendingSend {
@@ -54,15 +56,29 @@ pub enum ComposeAction {
     Reply {
         message_id: mxr_core::MessageId,
         account_id: AccountId,
+        /// Prewarmed reply context. When `Some`, `handle_compose_action`
+        /// skips the daemon `PrepareReply` IPC and uses this directly —
+        /// the "blazingly fast" path. Populated from `reply_context_cache`
+        /// at action-apply time when a prewarm has completed.
+        preloaded: Option<ReplyContext>,
     },
     ReplyAll {
         message_id: mxr_core::MessageId,
         account_id: AccountId,
+        preloaded: Option<ReplyContext>,
     },
     Forward {
         message_id: mxr_core::MessageId,
         account_id: AccountId,
     },
+}
+
+/// Cached reply contexts for a single message. Filled by the prewarm
+/// task that fires when a message becomes the viewing envelope.
+#[derive(Debug, Clone)]
+pub struct ReplyContextPair {
+    pub reply: Option<ReplyContext>,
+    pub reply_all: Option<ReplyContext>,
 }
 
 #[derive(Default)]
@@ -72,4 +88,12 @@ pub struct ComposeState {
     pub pending_send_confirm: Option<PendingSend>,
     pub pending_send_at_input: Option<String>,
     pub compose_picker: ComposePicker,
+    /// Reply contexts prewarmed when the user opens a message, so
+    /// pressing `r`/`a` opens the editor without waiting on the daemon.
+    /// Bodies are immutable post-sync, so no invalidation is needed.
+    pub reply_context_cache: HashMap<MessageId, ReplyContextPair>,
+    /// The message we last kicked off a prewarm for. Prevents firing
+    /// duplicate prewarm tasks every tick while the viewing envelope
+    /// stays the same.
+    pub last_prewarmed_message_id: Option<MessageId>,
 }

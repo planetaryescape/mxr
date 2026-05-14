@@ -20,17 +20,33 @@ impl App {
             }
             Action::Reply => {
                 if let Some(env) = self.context_envelope() {
+                    let message_id = env.id.clone();
+                    let account_id = env.account_id.clone();
+                    let preloaded = self
+                        .compose
+                        .reply_context_cache
+                        .get(&message_id)
+                        .and_then(|pair| pair.reply.clone());
                     self.compose.pending_compose = Some(ComposeAction::Reply {
-                        message_id: env.id.clone(),
-                        account_id: env.account_id.clone(),
+                        message_id,
+                        account_id,
+                        preloaded,
                     });
                 }
             }
             Action::ReplyAll => {
                 if let Some(env) = self.context_envelope() {
+                    let message_id = env.id.clone();
+                    let account_id = env.account_id.clone();
+                    let preloaded = self
+                        .compose
+                        .reply_context_cache
+                        .get(&message_id)
+                        .and_then(|pair| pair.reply_all.clone());
                     self.compose.pending_compose = Some(ComposeAction::ReplyAll {
-                        message_id: env.id.clone(),
-                        account_id: env.account_id.clone(),
+                        message_id,
+                        account_id,
+                        preloaded,
                     });
                 }
             }

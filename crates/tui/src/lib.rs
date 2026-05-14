@@ -1516,6 +1516,44 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        // Prewarm reply context for the message currently in view. The
+        // user's perceived 'r'/'a' latency was dominated by the daemon
+        // synchronously rendering the message body during PrepareReply.
+        // By firing this fetch as soon as the viewing envelope changes,
+        // the editor opens instantly when they actually press the key.
+        if let Some(env_id) = app.context_envelope().map(|env| env.id.clone()) {
+            let already_warming = app
+                .compose
+                .last_prewarmed_message_id
+                .as_ref()
+                .is_some_and(|id| id == &env_id);
+            let already_cached = app.compose.reply_context_cache.contains_key(&env_id);
+            if !already_warming && !already_cached {
+                app.compose.last_prewarmed_message_id = Some(env_id.clone());
+                let bg = bg.clone();
+                let message_id = env_id.clone();
+                let _ = submit_task(&queued, async move {
+                    let (reply, reply_all) = tokio::join!(
+                        crate::compose_flow::fetch_reply_context(
+                            &bg,
+                            message_id.clone(),
+                            false
+                        ),
+                        crate::compose_flow::fetch_reply_context(
+                            &bg,
+                            message_id.clone(),
+                            true
+                        ),
+                    );
+                    AsyncResult::ReplyContextWarmed {
+                        message_id,
+                        reply,
+                        reply_all,
+                    }
+                });
+            }
+        }
+
         tokio::select! {
             event = events.as_mut().expect("event stream").next() => {
                 if let Some(Ok(Event::Key(key))) = event {
@@ -2171,6 +2209,19 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::ComposeReady(Err(e)) => {
                             app.status_message = Some(format!("Compose error: {e}"));
+                        }
+                        AsyncResult::ReplyContextWarmed {
+                            message_id,
+                            reply,
+                            reply_all,
+                        } => {
+                            app.compose.reply_context_cache.insert(
+                                message_id,
+                                crate::app::ReplyContextPair {
+                                    reply: reply.ok(),
+                                    reply_all: reply_all.ok(),
+                                },
+                            );
                         }
                         AsyncResult::ExportResult(Ok(msg)) => {
                             app.status_message = Some(msg);
@@ -5234,6 +5285,7 @@ mod tests {
             Some(super::app::ComposeAction::Reply {
                 message_id: app.mailbox.envelopes[1].id.clone(),
                 account_id: app.mailbox.envelopes[1].account_id.clone(),
+                preloaded: None,
             })
         );
     }
@@ -7064,6 +7116,7 @@ mod tests {
             Some(super::app::ComposeAction::Reply {
                 message_id: selected.id,
                 account_id: selected.account_id,
+                preloaded: None,
             })
         );
     }

@@ -2,9 +2,37 @@ use crate::app::{App, ComposeAction, PendingSend, PendingSendMode};
 use crate::async_result::ComposeReadyData;
 use crate::ipc::{ipc_call, IpcRequest};
 use mxr_core::AccountId;
+use mxr_core::MessageId;
 use mxr_core::MxrError;
-use mxr_protocol::{AccountSummaryData, Request, Response, ResponseData, SignatureContextData};
+use mxr_protocol::{
+    AccountSummaryData, ReplyContext, Request, Response, ResponseData, SignatureContextData,
+};
 use tokio::sync::mpsc;
+
+/// Fetch a reply context from the daemon. Shared between the cold path
+/// in `handle_compose_action` (when no prewarm landed) and the prewarm
+/// task in `lib.rs` that fills `reply_context_cache` on message open.
+pub(crate) async fn fetch_reply_context(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    message_id: MessageId,
+    reply_all: bool,
+) -> Result<ReplyContext, MxrError> {
+    let resp = ipc_call(
+        bg,
+        Request::PrepareReply {
+            message_id,
+            reply_all,
+        },
+    )
+    .await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::ReplyContext { context },
+        } => Ok(context),
+        Response::Error { message, .. } => Err(MxrError::Ipc(message)),
+        _ => Err(MxrError::Ipc("unexpected response".into())),
+    }
+}
 
 pub(crate) async fn handle_compose_action(
     bg: &mpsc::UnboundedSender<IpcRequest>,
@@ -37,31 +65,22 @@ pub(crate) async fn handle_compose_action(
         ComposeAction::Reply {
             message_id,
             account_id,
+            preloaded,
         } => {
             let account = resolve_compose_account(bg, Some(&account_id)).await?;
-            let resp = ipc_call(
-                bg,
-                Request::PrepareReply {
-                    message_id,
-                    reply_all: false,
-                },
-            )
-            .await?;
-            let kind = match resp {
-                Response::Ok {
-                    data: ResponseData::ReplyContext { context },
-                } => mxr_compose::ComposeKind::Reply {
-                    reply_all: false,
-                    in_reply_to: context.in_reply_to,
-                    references: context.references,
-                    thread_id: context.thread_id,
-                    to: context.reply_to,
-                    cc: context.cc,
-                    subject: context.subject,
-                    thread_context: context.thread_context,
-                },
-                Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
-                _ => return Err(MxrError::Ipc("unexpected response".into())),
+            let context = match preloaded {
+                Some(ctx) => ctx,
+                None => fetch_reply_context(bg, message_id, false).await?,
+            };
+            let kind = mxr_compose::ComposeKind::Reply {
+                reply_all: false,
+                in_reply_to: context.in_reply_to,
+                references: context.references,
+                thread_id: context.thread_id,
+                to: context.reply_to,
+                cc: context.cc,
+                subject: context.subject,
+                thread_context: context.thread_context,
             };
             (
                 account_id,
@@ -74,31 +93,22 @@ pub(crate) async fn handle_compose_action(
         ComposeAction::ReplyAll {
             message_id,
             account_id,
+            preloaded,
         } => {
             let account = resolve_compose_account(bg, Some(&account_id)).await?;
-            let resp = ipc_call(
-                bg,
-                Request::PrepareReply {
-                    message_id,
-                    reply_all: true,
-                },
-            )
-            .await?;
-            let kind = match resp {
-                Response::Ok {
-                    data: ResponseData::ReplyContext { context },
-                } => mxr_compose::ComposeKind::Reply {
-                    reply_all: true,
-                    in_reply_to: context.in_reply_to,
-                    references: context.references,
-                    thread_id: context.thread_id,
-                    to: context.reply_to,
-                    cc: context.cc,
-                    subject: context.subject,
-                    thread_context: context.thread_context,
-                },
-                Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
-                _ => return Err(MxrError::Ipc("unexpected response".into())),
+            let context = match preloaded {
+                Some(ctx) => ctx,
+                None => fetch_reply_context(bg, message_id, true).await?,
+            };
+            let kind = mxr_compose::ComposeKind::Reply {
+                reply_all: true,
+                in_reply_to: context.in_reply_to,
+                references: context.references,
+                thread_id: context.thread_id,
+                to: context.reply_to,
+                cc: context.cc,
+                subject: context.subject,
+                thread_context: context.thread_context,
             };
             (
                 account_id,

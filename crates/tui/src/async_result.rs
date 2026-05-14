@@ -5,8 +5,8 @@ use mxr_core::types::SubscriptionSummary;
 use mxr_core::{Envelope, Label, MessageBody, MessageId, MxrError, Thread, ThreadId};
 use mxr_protocol::{
     AccountOperationResult, AccountSummaryData, AccountSyncStatus, AttachmentFile, AuthSessionData,
-    BodyFailure, DaemonEvent, Response, RuleFormData, ScreenerQueueEntryData, SenderProfileData,
-    SnippetData,
+    BodyFailure, DaemonEvent, ReplyContext, Response, RuleFormData, ScreenerQueueEntryData,
+    SenderProfileData, SnippetData,
 };
 use ratatui_image::thread::ResizeResponse;
 
@@ -91,6 +91,15 @@ pub(crate) enum AsyncResult {
         outcome: Result<app::MutationEffect, MxrError>,
     },
     ComposeReady(Result<ComposeReadyData, MxrError>),
+    /// Result of a fire-and-forget prewarm task that runs when the
+    /// user opens a message. Populates `reply_context_cache` so that
+    /// pressing `r`/`a` skips the IPC round-trip. Failures are
+    /// silently dropped — the cold path still works.
+    ReplyContextWarmed {
+        message_id: MessageId,
+        reply: Result<ReplyContext, MxrError>,
+        reply_all: Result<ReplyContext, MxrError>,
+    },
     ExportResult(Result<String, MxrError>),
     Unsubscribe(Result<UnsubscribeResultData, MxrError>),
     DraftCleanup {

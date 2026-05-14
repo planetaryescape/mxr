@@ -15,7 +15,7 @@ pub use analytics::{
     ANALYTICS_CACHE_TTL,
 };
 pub use command_palette::CommandPaletteState;
-pub use compose::{ComposeAction, ComposeState, PendingSend, PendingSendMode};
+pub use compose::{ComposeAction, ComposeState, PendingSend, PendingSendMode, ReplyContextPair};
 pub use diagnostics::{DiagnosticsPageState, DiagnosticsPaneKind, DiagnosticsState};
 pub(in crate::app) use mailbox::PendingPreviewRead;
 pub(crate) use mailbox::SidebarSelectionKey;
@@ -29,10 +29,11 @@ pub use modals::{
     AnalyticsFilterField, AnalyticsFilterModalState, BriefingModalState, BriefingModalSubject,
     ErrorModalState, FeatureOnboardingState, ModalsState, PendingBulkConfirm,
     PendingPlatformDispatch, PendingUnsubscribeAction, PendingUnsubscribeConfirm,
-    PlatformModalState, ReplyQueueModalState, SavedSearchFormField, SavedSearchFormState,
-    ScreenerModalState, SenderProfileModalState, SenderProfileTab, SnippetsModalState,
-    ExpertModalState, SnoozePanelState, SnoozePreset, ThreadSummaryModalState, UserError,
-    UserErrorSeverity, WhoisModalState, SNOOZE_PRESETS, USER_ERROR_LOG_CAPACITY, WARN_STATUS_TTL,
+    PlatformModalState, ReplyQueueModalState, SaveAttachmentModalState, SavedSearchFormField,
+    SavedSearchFormState, ScreenerModalState, SenderProfileModalState, SenderProfileTab,
+    SnippetsModalState, ExpertModalState, SnoozePanelState, SnoozePreset, ThreadSummaryModalState,
+    UserError, UserErrorSeverity, WhoisModalState, SNOOZE_PRESETS, USER_ERROR_LOG_CAPACITY,
+    WARN_STATUS_TTL,
 };
 pub use rules::{RuleFormState, RulesPageState, RulesPanel, RulesState};
 pub use search::{

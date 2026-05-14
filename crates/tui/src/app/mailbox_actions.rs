@@ -401,9 +401,15 @@ impl App {
                     return;
                 };
                 self.modals.reply_queue.close();
+                let preloaded = self
+                    .compose
+                    .reply_context_cache
+                    .get(&env.id)
+                    .and_then(|pair| pair.reply.clone());
                 self.compose.pending_compose = Some(ComposeAction::Reply {
                     message_id: env.id,
                     account_id: env.account_id,
+                    preloaded,
                 });
                 self.status_message = Some("Opening reply from reply queue...".into());
             }
@@ -516,6 +522,8 @@ impl App {
                         has_attachments: message.has_attachments,
                         size_bytes: 0,
                         unsubscribe: UnsubscribeMethod::None,
+                        link_count: 0,
+                        body_word_count: 0,
                         label_provider_ids: Vec::new(),
                     });
 

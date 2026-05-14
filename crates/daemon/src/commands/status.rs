@@ -27,6 +27,10 @@ struct StatusRender<'a> {
 
 fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result<String> {
     let data = serde_json::json!({
+        "runtime_instance": mxr_config::app_instance_name(),
+        "config_path": mxr_config::config_file_path(),
+        "data_dir": mxr_config::data_dir(),
+        "socket_path": mxr_config::socket_path(),
         "uptime_secs": view.uptime_secs,
         "accounts": view.accounts,
         "total_messages": view.total_messages,
@@ -46,6 +50,10 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
         OutputFormat::Jsonl => serde_json::to_string(&data)?,
         _ => {
             let mut lines = vec![
+                format!("Runtime: {}", mxr_config::app_instance_name()),
+                format!("Config: {}", mxr_config::config_file_path().display()),
+                format!("Data: {}", mxr_config::data_dir().display()),
+                format!("Socket: {}", mxr_config::socket_path().display()),
                 format!("Health: {}", view.health_class.as_str()),
                 format!("Uptime: {}s", view.uptime_secs),
                 format!(

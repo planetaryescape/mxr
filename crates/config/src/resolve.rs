@@ -2,6 +2,9 @@ use std::path::{Path, PathBuf};
 
 use crate::types::MxrConfig;
 
+pub const PROD_INSTANCE_NAME: &str = "mxr";
+pub const DEV_INSTANCE_NAME: &str = "mxr-dev";
+
 /// Errors that can occur during config loading.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -29,7 +32,7 @@ pub fn config_dir() -> PathBuf {
     }
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("mxr")
+        .join(app_instance_name())
 }
 
 /// Instance name reserved for the isolated demo profile started by `mxr demo`.
@@ -52,9 +55,9 @@ pub fn app_instance_name() -> String {
     }
 
     if cfg!(debug_assertions) {
-        "mxr-dev".to_string()
+        DEV_INSTANCE_NAME.to_string()
     } else {
-        "mxr".to_string()
+        PROD_INSTANCE_NAME.to_string()
     }
 }
 
@@ -77,6 +80,41 @@ pub fn data_dir() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(app_instance_name())
+}
+
+/// Returns the account/OAuth token directory for the current runtime identity.
+pub fn token_dir() -> PathBuf {
+    if let Some(path) = env_path("MXR_TOKEN_DIR") {
+        return path;
+    }
+    data_dir().join("tokens")
+}
+
+/// Scope an OS-keychain service/ref to the current runtime identity.
+///
+/// Production keeps legacy service names so installed users retain existing
+/// credentials. Non-production instances get an identity prefix, preventing a
+/// dev daemon from silently reading/writing prod keychain entries even if the
+/// config was copied verbatim.
+pub fn scoped_credential_service(service: &str) -> String {
+    let trimmed = service.trim();
+    if trimmed.is_empty() || app_instance_name() == PROD_INSTANCE_NAME {
+        return trimmed.to_string();
+    }
+    format!(
+        "{}/{}",
+        app_instance_name(),
+        trimmed.trim_start_matches('/')
+    )
+}
+
+/// Gmail OAuth stores a scoped token cache in the OS keychain.
+pub fn gmail_oauth_keychain_service() -> String {
+    if app_instance_name() == PROD_INSTANCE_NAME {
+        "mxr-gmail-oauth".to_string()
+    } else {
+        format!("{}-gmail-oauth", app_instance_name())
+    }
 }
 
 /// Default directory for user-initiated attachment saves. Prefers the

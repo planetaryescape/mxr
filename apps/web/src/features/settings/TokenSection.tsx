@@ -22,7 +22,7 @@ export function TokenSection() {
           launches normally fetch it through the same-machine handshake and persist it to
           <code>localStorage</code>. If you see <em>no token</em> or 401 errors, paste the token
           from
-          <code>~/.config/mxr/bridge-token</code> here.
+          the active profile's <code>bridge-token</code> file here.
         </p>
       </div>
       <div className="space-y-4 p-6">
@@ -75,7 +75,7 @@ export function TokenSection() {
         </div>
         <p className="text-2xs text-muted-foreground">
           Storage location: <code>localStorage["mxr.bridgeToken"]</code>. The token is also held on
-          disk by the daemon at <code>~/.config/mxr/bridge-token</code> (mode 0600).
+          disk by the daemon in the active profile config directory (mode 0600).
         </p>
       </div>
     </div>

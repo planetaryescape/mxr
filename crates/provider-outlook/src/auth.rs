@@ -77,6 +77,7 @@ pub struct OutlookAuth {
     client_id: String,
     token_ref: String,
     tenant: OutlookTenant,
+    token_root: PathBuf,
 }
 
 impl OutlookAuth {
@@ -85,7 +86,13 @@ impl OutlookAuth {
             client_id,
             token_ref,
             tenant,
+            token_root: legacy_token_root(),
         }
+    }
+
+    pub fn with_token_root(mut self, token_root: PathBuf) -> Self {
+        self.token_root = token_root;
+        self
     }
 
     pub fn bundled_client_id() -> Option<&'static str> {
@@ -100,11 +107,7 @@ impl OutlookAuth {
         let safe_ref = self
             .token_ref
             .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'], "_");
-        dirs::data_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("mxr")
-            .join("tokens")
-            .join(format!("{safe_ref}.json"))
+        self.token_root.join(format!("{safe_ref}.json"))
     }
 
     pub fn load_tokens(&self) -> Result<Option<OutlookTokens>, OutlookError> {
@@ -273,5 +276,30 @@ impl OutlookAuth {
         } else {
             Ok(tokens.access_token)
         }
+    }
+}
+
+fn legacy_token_root() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("mxr")
+        .join("tokens")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn custom_token_root_keeps_tokens_under_runtime_identity() {
+        let token_root = PathBuf::from("/tmp/mxr-dev/tokens");
+        let auth = OutlookAuth::new(
+            "client".to_string(),
+            "mxr/work-outlook".to_string(),
+            OutlookTenant::Work,
+        )
+        .with_token_root(token_root.clone());
+
+        assert_eq!(auth.token_path(), token_root.join("mxr_work-outlook.json"));
     }
 }

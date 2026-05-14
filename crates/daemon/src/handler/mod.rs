@@ -2420,7 +2420,7 @@ async fn authorize_account_config(
                 None,
             );
         }
-        let auth = mxr_provider_outlook::OutlookAuth::new(cid, token_ref, tenant);
+        let auth = crate::provider_credentials::outlook_auth(cid, token_ref, tenant);
         if !reauthorize {
             if auth.get_valid_access_token().await.is_ok() {
                 return account_operation_result(
@@ -2530,7 +2530,7 @@ async fn authorize_account_config(
             }
         };
 
-    let mut auth = mxr_provider_gmail::auth::GmailAuth::new(client_id, client_secret, token_ref);
+    let mut auth = crate::provider_credentials::gmail_auth(client_id, client_secret, token_ref);
     let auth_result = if reauthorize {
         auth.interactive_auth().await
     } else {
@@ -2599,7 +2599,7 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                 let creds = resolve_gmail_credentials(credential_source, client_id, client_secret);
                 match creds {
                     Ok((client_id, client_secret)) => {
-                        let mut gmail_auth = mxr_provider_gmail::auth::GmailAuth::new(
+                        let mut gmail_auth = crate::provider_credentials::gmail_auth(
                             client_id,
                             client_secret,
                             token_ref,
@@ -2717,7 +2717,7 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                     }
                     Some(cid) => {
                         let auth_inst = std::sync::Arc::new(
-                            mxr_provider_outlook::OutlookAuth::new(cid, token_ref, tenant),
+                            crate::provider_credentials::outlook_auth(cid, token_ref, tenant),
                         );
                         let email = account.email.clone();
                         let token_fn: std::sync::Arc<
@@ -2822,7 +2822,7 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                     ));
                 }
                 Some(cid) => {
-                    let auth_inst = std::sync::Arc::new(mxr_provider_outlook::OutlookAuth::new(
+                    let auth_inst = std::sync::Arc::new(crate::provider_credentials::outlook_auth(
                         cid, token_ref, tenant,
                     ));
                     let email = account.email.clone();
@@ -3396,7 +3396,8 @@ fn persist_account_password(
         password_ref,
         "persisting credential to keychain"
     );
-    mxr_keychain::set_password(password_ref, username, password)?;
+    let scoped_ref = crate::provider_credentials::scoped_password_ref(password_ref);
+    mxr_keychain::set_password(&scoped_ref, username, password)?;
     tracing::info!(
         credential_service = service,
         password_ref,

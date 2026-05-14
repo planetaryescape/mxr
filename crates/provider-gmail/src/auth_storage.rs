@@ -22,6 +22,7 @@ struct StoredToken {
 }
 
 pub(crate) struct KeychainTokenStorage {
+    keychain_service: String,
     token_ref: String,
     /// Disk path retained as a fallback target when keychain writes fail
     /// (e.g. headless Linux with no secret-service backend). Also the path
@@ -31,9 +32,14 @@ pub(crate) struct KeychainTokenStorage {
 }
 
 impl KeychainTokenStorage {
-    pub(crate) fn new(token_ref: String, fallback_path: PathBuf) -> Self {
-        let cache = load_initial(&token_ref, &fallback_path);
+    pub(crate) fn new_with_service(
+        token_ref: String,
+        fallback_path: PathBuf,
+        keychain_service: String,
+    ) -> Self {
+        let cache = load_initial_with_service(&keychain_service, &token_ref, &fallback_path);
         Self {
+            keychain_service,
             token_ref,
             fallback_path,
             cache: Mutex::new(cache),
@@ -41,7 +47,7 @@ impl KeychainTokenStorage {
     }
 
     fn persist(&self, json: &str) -> std::io::Result<()> {
-        match keyring::Entry::new(KEYCHAIN_SERVICE, &self.token_ref) {
+        match keyring::Entry::new(&self.keychain_service, &self.token_ref) {
             Ok(entry) => match entry.set_password(json) {
                 Ok(()) => Ok(()),
                 Err(error) => {
@@ -68,12 +74,35 @@ impl KeychainTokenStorage {
         if let Some(parent) = self.fallback_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&self.fallback_path, json)
+        write_fallback_token_file(&self.fallback_path, json)
     }
 }
 
-fn load_initial(token_ref: &str, fallback_path: &std::path::Path) -> Vec<StoredToken> {
-    if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, token_ref) {
+#[cfg(unix)]
+fn write_fallback_token_file(path: &std::path::Path, json: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    file.write_all(json.as_bytes())
+}
+
+#[cfg(not(unix))]
+fn write_fallback_token_file(path: &std::path::Path, json: &str) -> std::io::Result<()> {
+    std::fs::write(path, json)
+}
+
+fn load_initial_with_service(
+    keychain_service: &str,
+    token_ref: &str,
+    fallback_path: &std::path::Path,
+) -> Vec<StoredToken> {
+    if let Ok(entry) = keyring::Entry::new(keychain_service, token_ref) {
         if let Ok(payload) = entry.get_password() {
             if let Ok(parsed) = serde_json::from_str::<Vec<StoredToken>>(&payload) {
                 return parsed;
@@ -85,7 +114,7 @@ fn load_initial(token_ref: &str, fallback_path: &std::path::Path) -> Vec<StoredT
         if let Ok(bytes) = std::fs::read(fallback_path) {
             if let Ok(parsed) = serde_json::from_slice::<Vec<StoredToken>>(&bytes) {
                 if !parsed.is_empty() {
-                    if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, token_ref) {
+                    if let Ok(entry) = keyring::Entry::new(keychain_service, token_ref) {
                         if let Ok(json) = serde_json::to_string(&parsed) {
                             if entry.set_password(&json).is_ok() {
                                 let _ = std::fs::remove_file(fallback_path);
@@ -185,6 +214,7 @@ mod tests {
         let temp = tempdir().unwrap();
         let path = temp.path().join("missing.json");
         let storage = KeychainTokenStorage {
+            keychain_service: KEYCHAIN_SERVICE.to_string(),
             token_ref: unique_ref("test-mem"),
             fallback_path: path,
             cache: Mutex::new(Vec::new()),
@@ -212,7 +242,11 @@ mod tests {
         }];
         std::fs::write(&path, serde_json::to_string(&legacy).unwrap()).unwrap();
 
-        let storage = KeychainTokenStorage::new(unique_ref("test-migrate"), path);
+        let storage = KeychainTokenStorage::new_with_service(
+            unique_ref("test-migrate"),
+            path,
+            KEYCHAIN_SERVICE.to_string(),
+        );
         let token = storage.get(&["scope-a"]).await.unwrap();
         assert_eq!(token.access_token.as_deref(), Some("legacy-access"));
     }
@@ -229,6 +263,7 @@ mod tests {
         let temp = tempdir().unwrap();
         let path = temp.path().join("missing.json");
         let storage = KeychainTokenStorage {
+            keychain_service: KEYCHAIN_SERVICE.to_string(),
             token_ref: unique_ref("test-scope-order"),
             fallback_path: path,
             cache: Mutex::new(vec![StoredToken {
@@ -255,5 +290,19 @@ mod tests {
             "stored unsorted scopes must still match a sorted lookup"
         );
         assert_eq!(token.unwrap().access_token.as_deref(), Some("legacy-token"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn disk_fallback_token_cache_is_private_to_the_user() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("fallback.json");
+
+        write_fallback_token_file(&path, "[]").unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
     }
 }

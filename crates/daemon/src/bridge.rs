@@ -7,7 +7,7 @@
 
 use crate::server::BridgeOverrides;
 use crate::state::AppState;
-use mxr_config::{config_dir, load_config, write_bridge_port, BridgeConfig};
+use mxr_config::{bridge_token_path, load_config, write_bridge_port, BridgeConfig};
 use mxr_web::{bind_listener, WebServerConfig};
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
@@ -128,14 +128,11 @@ fn enforce_non_loopback_safety(cfg: &BridgeConfig) -> Result<(), BridgeStartupEr
     })
 }
 
-/// Load the token from `bridge.token_path` (default
-/// `~/.config/mxr/bridge-token`). If the file doesn't exist, generate a
+/// Load the token from `bridge.token_path` (default current profile's
+/// bridge-token path). If the file doesn't exist, generate a
 /// random UUID, write it with mode 0600, and return it.
 fn load_or_create_token(cfg: &BridgeConfig) -> Result<String, BridgeStartupError> {
-    let path = cfg
-        .token_path
-        .clone()
-        .unwrap_or_else(|| config_dir().join("bridge-token"));
+    let path = cfg.token_path.clone().unwrap_or_else(bridge_token_path);
 
     if let Ok(bytes) = std::fs::read(&path) {
         let token = String::from_utf8_lossy(&bytes).trim().to_string();

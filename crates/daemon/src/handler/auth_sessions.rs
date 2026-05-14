@@ -107,8 +107,7 @@ async fn start_gmail_auth_session(
     let task_session_id = session_id.clone();
 
     let handle = tokio::spawn(async move {
-        let mut auth =
-            mxr_provider_gmail::auth::GmailAuth::new(client_id, client_secret, token_ref);
+        let mut auth = crate::provider_credentials::gmail_auth(client_id, client_secret, token_ref);
         let auth_result = if reauthorize {
             auth.interactive_auth_with_delegates(
                 flow,
@@ -198,7 +197,7 @@ async fn start_outlook_auth_session(
     let task_session_id = session_id.clone();
 
     let handle = tokio::spawn(async move {
-        let auth = mxr_provider_outlook::OutlookAuth::new(client_id, token_ref, tenant);
+        let auth = crate::provider_credentials::outlook_auth(client_id, token_ref, tenant);
         let auth_result = async {
             if !reauthorize && auth.load_tokens()?.is_some() {
                 return Ok(());

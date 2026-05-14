@@ -256,7 +256,7 @@ pub(super) async fn authorize_account_config(
             }
         };
 
-    let mut auth = mxr_provider_gmail::auth::GmailAuth::new(client_id, client_secret, token_ref);
+    let mut auth = crate::provider_credentials::gmail_auth(client_id, client_secret, token_ref);
     let auth_result = if reauthorize {
         auth.interactive_auth().await
     } else {
@@ -325,7 +325,7 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
                 let creds = resolve_gmail_credentials(credential_source, client_id, client_secret);
                 match creds {
                     Ok((client_id, client_secret)) => {
-                        let mut gmail_auth = mxr_provider_gmail::auth::GmailAuth::new(
+                        let mut gmail_auth = crate::provider_credentials::gmail_auth(
                             client_id,
                             client_secret,
                             token_ref,
@@ -733,6 +733,7 @@ fn persist_account_password(
     if password_ref.trim().is_empty() {
         anyhow::bail!("{service} pass ref is required to store the password.");
     }
-    mxr_keychain::set_password(password_ref, username, password)?;
+    let scoped_ref = crate::provider_credentials::scoped_password_ref(password_ref);
+    mxr_keychain::set_password(&scoped_ref, username, password)?;
     Ok(())
 }

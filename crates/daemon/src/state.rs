@@ -598,7 +598,7 @@ impl AppState {
                         continue;
                     };
                     let mut auth =
-                        mxr_provider_gmail::auth::GmailAuth::new(cid, csecret, token_ref.clone());
+                        crate::provider_credentials::gmail_auth(cid, csecret, token_ref.clone());
                     match auth.load_existing().await {
                         Ok(()) => {
                             let client = mxr_provider_gmail::client::GmailClient::new(auth);
@@ -780,7 +780,7 @@ impl AppState {
                         "Outlook send for '{key}' has no client_id and no bundled OUTLOOK_CLIENT_ID"
                     )
                 })?;
-                let auth = std::sync::Arc::new(mxr_provider_outlook::OutlookAuth::new(
+                let auth = std::sync::Arc::new(crate::provider_credentials::outlook_auth(
                     cid,
                     token_ref.clone(),
                     tenant,
@@ -1473,7 +1473,7 @@ fn build_outlook_sync_provider(
                 "Outlook account '{key}' has no client_id and no bundled OUTLOOK_CLIENT_ID was compiled in"
             )
         })?;
-    let auth = std::sync::Arc::new(mxr_provider_outlook::OutlookAuth::new(
+    let auth = std::sync::Arc::new(crate::provider_credentials::outlook_auth(
         cid,
         token_ref.to_string(),
         tenant,

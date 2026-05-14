@@ -18,10 +18,7 @@ import { pwaOptions } from "./src/lib/pwaConfig";
  * Precedence:
  *   1. `MXR_BRIDGE_URL` env override (full URL).
  *   2. `MXR_BRIDGE_PORT_PATH` or `MXR_CONFIG_DIR/bridge-port`.
- *   3. Platform-conventional config dirs:
- *        - Linux:   `~/.config/mxr/bridge-port`
- *        - macOS:   `~/Library/Application Support/mxr/bridge-port`
- *        - Windows: `%APPDATA%\mxr\bridge-port`
+ *   3. Platform-conventional config dirs for `MXR_INSTANCE` or dev `mxr-dev`.
  *   4. Built-in default: `127.0.0.1:42829`.
  */
 function configCandidates(): string[] {
@@ -31,17 +28,18 @@ function configCandidates(): string[] {
   }
   const home = homedir();
   const candidates: string[] = [];
+  const instance = process.env.MXR_INSTANCE?.trim() || "mxr-dev";
   if (process.platform === "darwin") {
-    candidates.push(join(home, "Library", "Application Support", "mxr", "bridge-port"));
+    candidates.push(join(home, "Library", "Application Support", instance, "bridge-port"));
   } else if (process.platform === "win32") {
     const appdata = process.env.APPDATA ?? join(home, "AppData", "Roaming");
-    candidates.push(join(appdata, "mxr", "bridge-port"));
+    candidates.push(join(appdata, instance, "bridge-port"));
   } else {
-    candidates.push(join(home, ".config", "mxr", "bridge-port"));
+    candidates.push(join(home, ".config", instance, "bridge-port"));
   }
   // Also check the cross-platform fallback so users with explicit
   // `MXR_CONFIG_DIR` setups still work even if Vite missed the env.
-  candidates.push(join(home, ".config", "mxr", "bridge-port"));
+  candidates.push(join(home, ".config", instance, "bridge-port"));
   return candidates;
 }
 

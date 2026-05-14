@@ -18,6 +18,30 @@ pub enum AuthError {
     Io(#[from] std::io::Error),
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn custom_storage_keeps_tokens_and_keychain_service_under_runtime_identity() {
+        let token_root = std::path::PathBuf::from("/tmp/mxr-dev/tokens");
+        let auth = GmailAuth::new(
+            "client".to_string(),
+            "secret".to_string(),
+            "mxr/work-gmail".to_string(),
+        )
+        .with_storage(token_root.clone(), "mxr-dev-gmail-oauth".to_string());
+
+        assert_eq!(
+            auth.storage_config_for_test(),
+            (
+                token_root.join("mxr/work-gmail.json"),
+                "mxr-dev-gmail-oauth".to_string()
+            )
+        );
+    }
+}
+
 const GMAIL_SCOPES: &[&str] = &[
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.modify",
@@ -88,6 +112,8 @@ pub struct GmailAuth {
     client_id: String,
     client_secret: String,
     token_ref: String,
+    token_root: std::path::PathBuf,
+    keychain_service: String,
     /// Stores a boxed function that returns an access token.
     /// We use a trait object to avoid spelling out yup-oauth2's internal Authenticator type.
     token_fn: Option<Box<dyn Fn() -> TokenFuture + Send + Sync>>,
@@ -109,8 +135,25 @@ impl GmailAuth {
             client_id,
             client_secret,
             token_ref,
+            token_root: legacy_token_root(),
+            keychain_service: crate::auth_storage::KEYCHAIN_SERVICE.to_string(),
             token_fn: None,
         }
+    }
+
+    pub fn with_storage(
+        mut self,
+        token_root: std::path::PathBuf,
+        keychain_service: String,
+    ) -> Self {
+        self.token_root = token_root;
+        self.keychain_service = keychain_service;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn storage_config_for_test(&self) -> (std::path::PathBuf, String) {
+        (self.token_path(), self.keychain_service.clone())
     }
 
     pub fn with_refresh_token(
@@ -158,6 +201,8 @@ impl GmailAuth {
             client_id,
             client_secret,
             token_ref: "refresh-token".into(),
+            token_root: legacy_token_root(),
+            keychain_service: crate::auth_storage::KEYCHAIN_SERVICE.to_string(),
             token_fn: Some(token_fn),
         }
     }
@@ -174,16 +219,14 @@ impl GmailAuth {
             client_id: "test-client".into(),
             client_secret: "test-secret".into(),
             token_ref: "test-token".into(),
+            token_root: legacy_token_root(),
+            keychain_service: crate::auth_storage::KEYCHAIN_SERVICE.to_string(),
             token_fn: Some(token_fn),
         }
     }
 
     fn token_path(&self) -> std::path::PathBuf {
-        let data_dir = dirs::data_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("mxr")
-            .join("tokens");
-        data_dir.join(format!("{}.json", self.token_ref))
+        self.token_root.join(format!("{}.json", self.token_ref))
     }
 
     fn make_secret(&self) -> yup_oauth2::ApplicationSecret {
@@ -229,7 +272,11 @@ impl GmailAuth {
 
         match flow {
             AuthFlow::Installed => {
-                let storage = KeychainTokenStorage::new(self.token_ref.clone(), token_path.clone());
+                let storage = KeychainTokenStorage::new_with_service(
+                    self.token_ref.clone(),
+                    token_path.clone(),
+                    self.keychain_service.clone(),
+                );
                 let mut builder = InstalledFlowAuthenticator::builder(
                     secret,
                     InstalledFlowReturnMethod::HTTPRedirect,
@@ -263,7 +310,11 @@ impl GmailAuth {
                 }));
             }
             AuthFlow::Device => {
-                let storage = KeychainTokenStorage::new(self.token_ref.clone(), token_path.clone());
+                let storage = KeychainTokenStorage::new_with_service(
+                    self.token_ref.clone(),
+                    token_path.clone(),
+                    self.keychain_service.clone(),
+                );
                 let mut builder =
                     DeviceFlowAuthenticator::builder(secret).with_storage(Box::new(storage));
                 if let Some(delegate) = device_delegate {
@@ -303,16 +354,19 @@ impl GmailAuth {
         // Either the keychain entry or the legacy on-disk cache must exist.
         // The keychain check is fast enough (one OS call) that it's fine in
         // the common case even when nothing is stored.
-        let has_keychain_entry =
-            keyring::Entry::new(crate::auth_storage::KEYCHAIN_SERVICE, &self.token_ref)
-                .ok()
-                .and_then(|e| e.get_password().ok())
-                .is_some();
+        let has_keychain_entry = keyring::Entry::new(&self.keychain_service, &self.token_ref)
+            .ok()
+            .and_then(|e| e.get_password().ok())
+            .is_some();
         if !has_keychain_entry && !token_path.exists() {
             return Err(AuthError::TokenExpired);
         }
 
-        let storage = KeychainTokenStorage::new(self.token_ref.clone(), token_path);
+        let storage = KeychainTokenStorage::new_with_service(
+            self.token_ref.clone(),
+            token_path,
+            self.keychain_service.clone(),
+        );
         let secret = self.make_secret();
         let auth =
             InstalledFlowAuthenticator::builder(secret, InstalledFlowReturnMethod::HTTPRedirect)
@@ -342,4 +396,11 @@ impl GmailAuth {
         let token_fn = self.token_fn.as_ref().ok_or(AuthError::TokenExpired)?;
         (token_fn)().await
     }
+}
+
+fn legacy_token_root() -> std::path::PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("mxr")
+        .join("tokens")
 }

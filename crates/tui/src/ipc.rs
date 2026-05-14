@@ -144,6 +144,8 @@ async fn start_daemon_process(socket_path: &Path) -> Result<(), MxrError> {
         .map_err(|error| MxrError::Ipc(format!("failed to locate mxr binary: {error}")))?;
     std::process::Command::new(exe)
         .arg("daemon")
+        .arg("--instance")
+        .arg(mxr_config::app_instance_name())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -211,6 +213,7 @@ pub(crate) fn request_supports_retry(request: &Request) -> bool {
             | Request::Count { .. }
             | Request::GetHeaders { .. }
             | Request::ListSavedSearches
+            | Request::ListSavedSearchUnreadCounts
             | Request::ListSubscriptions { .. }
             | Request::RunSavedSearch { .. }
             | Request::ListSnoozed

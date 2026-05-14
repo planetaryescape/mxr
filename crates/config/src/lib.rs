@@ -5,9 +5,10 @@ mod types;
 
 pub use resolve::{
     app_instance_name, bridge_port_path, bridge_token_path, config_dir, config_file_path, data_dir,
-    is_demo_instance, load_config, load_config_from_path, load_config_from_str, read_bridge_port,
-    read_or_create_bridge_token, remote_bridge_token_path, save_config, save_config_to_path,
-    socket_path, write_bridge_port, ConfigError, DEMO_INSTANCE_NAME,
+    gmail_oauth_keychain_service, is_demo_instance, load_config, load_config_from_path,
+    load_config_from_str, read_bridge_port, read_or_create_bridge_token, remote_bridge_token_path,
+    save_config, save_config_to_path, scoped_credential_service, socket_path, token_dir,
+    write_bridge_port, ConfigError, DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME, PROD_INSTANCE_NAME,
 };
 pub use types::*;
 
@@ -197,8 +198,9 @@ editor = "emacs"
         temp_env::with_var("MXR_INSTANCE", None::<&str>, || {
             let cfg = config_dir();
             assert!(
-                cfg.ends_with("mxr"),
-                "config_dir should end with 'mxr': {:?}",
+                cfg.ends_with(app_instance_name()),
+                "config_dir should end with instance name '{}': {:?}",
+                app_instance_name(),
                 cfg
             );
 
@@ -223,6 +225,10 @@ editor = "emacs"
                 "socket_path should end with 'mxr.sock': {:?}",
                 socket
             );
+
+            assert_eq!(bridge_token_path(), config_dir().join("bridge-token"));
+            assert_eq!(bridge_port_path(), config_dir().join("bridge-port"));
+            assert_eq!(token_dir(), data_dir().join("tokens"));
         });
     }
 
@@ -230,7 +236,24 @@ editor = "emacs"
     fn instance_name_can_be_overridden() {
         temp_env::with_var("MXR_INSTANCE", Some("mxr-test"), || {
             assert_eq!(app_instance_name(), "mxr-test");
+            assert!(config_dir().ends_with("mxr-test"));
             assert!(data_dir().ends_with("mxr-test"));
+        });
+    }
+
+    #[test]
+    fn credentials_are_scoped_for_non_prod_instances_only() {
+        temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
+            assert_eq!(scoped_credential_service("mxr/work-imap"), "mxr/work-imap");
+            assert_eq!(gmail_oauth_keychain_service(), "mxr-gmail-oauth");
+        });
+
+        temp_env::with_var("MXR_INSTANCE", Some("mxr-dev"), || {
+            assert_eq!(
+                scoped_credential_service("mxr/work-imap"),
+                "mxr-dev/mxr/work-imap"
+            );
+            assert_eq!(gmail_oauth_keychain_service(), "mxr-dev-gmail-oauth");
         });
     }
 

@@ -17,7 +17,8 @@ pub(crate) fn imap_config_with_credentials(
     if !auth_required {
         return Ok(config);
     }
-    let password = mxr_keychain::get_password(&password_ref, &username)?;
+    let scoped_ref = scoped_password_ref(&password_ref);
+    let password = mxr_keychain::get_password(&scoped_ref, &username)?;
     Ok(config.with_password(password))
 }
 
@@ -40,6 +41,49 @@ pub(crate) fn smtp_config_with_credentials(
     if !auth_required {
         return Ok(config);
     }
-    let password = mxr_keychain::get_password(&password_ref, &username)?;
+    let scoped_ref = scoped_password_ref(&password_ref);
+    let password = mxr_keychain::get_password(&scoped_ref, &username)?;
     Ok(config.with_password(password))
+}
+
+pub(crate) fn gmail_auth(
+    client_id: String,
+    client_secret: String,
+    token_ref: String,
+) -> mxr_provider_gmail::auth::GmailAuth {
+    mxr_provider_gmail::auth::GmailAuth::new(client_id, client_secret, token_ref).with_storage(
+        mxr_config::token_dir(),
+        mxr_config::gmail_oauth_keychain_service(),
+    )
+}
+
+pub(crate) fn outlook_auth(
+    client_id: String,
+    token_ref: String,
+    tenant: mxr_provider_outlook::OutlookTenant,
+) -> mxr_provider_outlook::OutlookAuth {
+    mxr_provider_outlook::OutlookAuth::new(client_id, token_ref, tenant)
+        .with_token_root(mxr_config::token_dir())
+}
+
+pub(crate) fn scoped_password_ref(password_ref: &str) -> String {
+    mxr_config::scoped_credential_service(password_ref)
+}
+
+#[cfg(test)]
+pub(crate) fn scoped_password_ref_for_test(password_ref: &str) -> String {
+    scoped_password_ref(password_ref)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn password_refs_are_scoped_to_runtime_identity_before_keychain_lookup() {
+        temp_env::with_var("MXR_INSTANCE", Some("mxr-dev"), || {
+            assert_eq!(
+                super::scoped_password_ref_for_test("mxr/work-imap"),
+                "mxr-dev/mxr/work-imap"
+            );
+        });
+    }
 }

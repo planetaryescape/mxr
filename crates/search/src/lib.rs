@@ -72,6 +72,8 @@ mod tests {
             has_attachments,
             size_bytes: 1000,
             unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: vec!["notifications".to_string()],
         }
     }

@@ -238,3 +238,17 @@ pub(crate) async fn ipc_call(
         .await
         .map_err(|_| MxrError::Ipc("IPC worker dropped".into()))?
 }
+
+/// Send one request on a short-lived daemon connection.
+///
+/// Used for slow, user-triggered LLM work so the main TUI IPC worker can keep
+/// serving body fetches, search, and mutations while the LLM request runs.
+pub(crate) async fn ipc_call_dedicated(
+    socket_path: &Path,
+    request: Request,
+) -> Result<Response, MxrError> {
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+    drop(event_rx);
+    let mut client = connect_ipc_client(socket_path, event_tx).await?;
+    client.raw_request(request).await
+}

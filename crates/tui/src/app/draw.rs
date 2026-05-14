@@ -23,6 +23,35 @@ fn selected_tab(screen: Screen) -> usize {
 }
 
 impl App {
+    fn thread_summary_block(&self) -> Option<ui::message_view::ThreadSummaryBlock> {
+        let current_thread_id = self.context_envelope().map(|env| env.thread_id.clone())?;
+        let loading = self
+            .mailbox
+            .thread_summary_loading
+            .as_ref()
+            .is_some_and(|thread_id| thread_id == &current_thread_id);
+        let text = self
+            .mailbox
+            .thread_summary
+            .as_ref()
+            .map(|summary| summary.text.clone());
+        let model = self
+            .mailbox
+            .thread_summary
+            .as_ref()
+            .map(|summary| summary.model.clone());
+        let error = self.mailbox.thread_summary_error.clone();
+
+        (loading || text.is_some() || error.is_some()).then_some(
+            ui::message_view::ThreadSummaryBlock {
+                text,
+                model,
+                loading,
+                error,
+            },
+        )
+    }
+
     pub fn draw(&mut self, frame: &mut Frame) {
         let theme = &self.theme;
         let area = frame.area();
@@ -200,10 +229,12 @@ impl App {
                                 theme,
                             );
                             let preview_blocks = self.thread_message_blocks();
+                            let summary = self.thread_summary_block();
                             ui::message_view::draw(
                                 frame,
                                 inner[1],
                                 &preview_blocks,
+                                summary,
                                 self.mailbox.message_scroll_offset,
                                 &self.mailbox.active_pane,
                                 theme,
@@ -220,10 +251,12 @@ impl App {
                         ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
 
                         let preview_blocks = self.thread_message_blocks();
+                        let summary = self.thread_summary_block();
                         ui::message_view::draw(
                             frame,
                             chunks[1],
                             &preview_blocks,
+                            summary,
                             self.mailbox.message_scroll_offset,
                             &self.mailbox.active_pane,
                             theme,

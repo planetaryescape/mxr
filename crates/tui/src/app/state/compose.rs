@@ -81,6 +81,19 @@ pub struct ReplyContextPair {
     pub reply_all: Option<ReplyContext>,
 }
 
+/// A compose action that the user invoked while a prewarm IPC for the
+/// same message was still in flight. We park it here instead of firing
+/// a duplicate `PrepareReply` IPC — the worker is serial and a duplicate
+/// would queue *behind* the in-flight prewarm, doubling the wait. When
+/// `ReplyContextWarmed` lands, we drain this into `pending_compose` with
+/// the freshly-cached context.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeferredCompose {
+    pub message_id: MessageId,
+    pub account_id: AccountId,
+    pub reply_all: bool,
+}
+
 #[derive(Default)]
 pub struct ComposeState {
     pub pending_draft_cleanup: Vec<std::path::PathBuf>,
@@ -96,4 +109,8 @@ pub struct ComposeState {
     /// duplicate prewarm tasks every tick while the viewing envelope
     /// stays the same.
     pub last_prewarmed_message_id: Option<MessageId>,
+    /// Reply/reply-all the user invoked while a prewarm was mid-flight
+    /// for the same message. The `ReplyContextWarmed` handler drains
+    /// this into `pending_compose` once the cache fills.
+    pub deferred_compose: Option<DeferredCompose>,
 }

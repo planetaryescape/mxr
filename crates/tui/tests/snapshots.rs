@@ -60,6 +60,8 @@ fn sample_envelope() -> Envelope {
         unsubscribe: UnsubscribeMethod::HttpLink {
             url: "https://example.com/unsubscribe".into(),
         },
+        link_count: 0,
+        body_word_count: 0,
         label_provider_ids: vec!["INBOX".into(), "STARRED".into()],
     }
 }
@@ -118,6 +120,7 @@ fn message_view_snapshot() {
             frame,
             Rect::new(0, 0, 70, 20),
             &[block],
+            None,
             0,
             &ActivePane::MessageView,
             &mxr_tui::theme::Theme::default(),
@@ -301,6 +304,8 @@ fn sidebar_snapshot() {
                 all_mail_active: false,
                 subscriptions_active: false,
                 subscription_count: 2,
+                owed_active: false,
+                owed_count: 0,
                 accounts: Vec::new(),
                 accounts_expanded: true,
                 system_expanded: true,

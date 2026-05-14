@@ -222,9 +222,11 @@ async fn execute_replaceable_request(
                 Ok(Response::Ok {
                     data:
                         ResponseData::Thread {
-                            thread, messages, ..
+                            thread,
+                            messages,
+                            summary,
                         },
-                }) => Ok((thread, messages)),
+                }) => Ok((thread, messages, summary)),
                 Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),

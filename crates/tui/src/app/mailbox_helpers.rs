@@ -126,7 +126,7 @@ impl App {
             });
     }
 
-    pub(super) fn context_envelope(&self) -> Option<&Envelope> {
+    pub(crate) fn context_envelope(&self) -> Option<&Envelope> {
         if self.screen == Screen::Search {
             // In the results pane, prefer the selected search result so that
             // multi-select (ToggleSelect) targets the highlighted row rather
@@ -329,6 +329,9 @@ impl App {
         self.mailbox.signature_expanded = false;
         self.mailbox.viewed_thread = None;
         self.mailbox.viewed_thread_messages = self.optimistic_thread_messages(&env);
+        self.mailbox.thread_summary = None;
+        self.mailbox.thread_summary_loading = None;
+        self.mailbox.thread_summary_error = None;
         self.mailbox.thread_selected_index = self.default_thread_selected_index();
         self.mailbox.viewing_envelope = self.focused_thread_envelope().cloned();
         if let Some(viewing_envelope) = self.mailbox.viewing_envelope.clone() {
@@ -544,6 +547,9 @@ impl App {
         self.mailbox.viewing_envelope = None;
         self.mailbox.viewed_thread = None;
         self.mailbox.viewed_thread_messages.clear();
+        self.mailbox.thread_summary = None;
+        self.mailbox.thread_summary_loading = None;
+        self.mailbox.thread_summary_error = None;
         self.mailbox.thread_selected_index = 0;
         self.mailbox.pending_thread_fetch = None;
         self.mailbox.in_flight_thread_fetch = None;
@@ -551,7 +557,12 @@ impl App {
         self.mailbox.body_view_state = BodyViewState::Empty { preview: None };
     }
 
-    pub fn resolve_thread_success(&mut self, thread: Thread, mut messages: Vec<Envelope>) {
+    pub fn resolve_thread_success(
+        &mut self,
+        thread: Thread,
+        mut messages: Vec<Envelope>,
+        summary: Option<mxr_protocol::ThreadSummaryData>,
+    ) {
         let thread_id = thread.id.clone();
         self.mailbox.in_flight_thread_fetch = None;
         messages.sort_by_key(|message| message.date);
@@ -569,6 +580,11 @@ impl App {
             }
             self.mailbox.viewed_thread = Some(thread);
             self.mailbox.viewed_thread_messages = messages;
+            self.mailbox.thread_summary = summary.map(|summary| ThreadSummaryPreview {
+                text: summary.text,
+                model: summary.model,
+            });
+            self.mailbox.thread_summary_error = None;
             self.mailbox.thread_selected_index = focused_message_id
                 .and_then(|message_id| {
                     self.mailbox

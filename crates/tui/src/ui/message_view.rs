@@ -29,6 +29,14 @@ pub struct ThreadMessageBlock {
 }
 
 #[derive(Debug, Clone)]
+pub struct ThreadSummaryBlock {
+    pub text: Option<String>,
+    pub model: Option<String>,
+    pub loading: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 enum RenderBlock {
     Text(Vec<Line<'static>>),
     Image(HtmlImageBlock),
@@ -45,6 +53,7 @@ pub fn draw(
     frame: &mut Frame,
     area: Rect,
     messages: &[ThreadMessageBlock],
+    summary: Option<ThreadSummaryBlock>,
     scroll_offset: u16,
     active_pane: &ActivePane,
     theme: &Theme,
@@ -67,6 +76,11 @@ pub fn draw(
     frame.render_widget(block, area);
 
     let mut blocks: Vec<RenderBlock> = Vec::new();
+
+    if let Some(summary) = summary {
+        blocks.push(RenderBlock::Text(thread_summary_lines(summary, theme)));
+        blocks.push(RenderBlock::Text(vec![Line::from("")]));
+    }
 
     for (index, message) in messages.iter().enumerate() {
         if index > 0 {
@@ -263,6 +277,44 @@ pub fn draw(
     render_blocks(frame, inner, scroll_offset, blocks, theme, html_images);
 }
 
+fn thread_summary_lines(summary: ThreadSummaryBlock, theme: &Theme) -> Vec<Line<'static>> {
+    let mut header = vec![Span::styled(
+        "Summary",
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )];
+    if let Some(model) = summary.model.as_deref() {
+        header.push(Span::styled(
+            format!(" - {model}"),
+            Style::default().fg(theme.text_muted),
+        ));
+    }
+    if summary.loading {
+        header.push(Span::styled(
+            " - refreshing",
+            Style::default().fg(theme.text_muted),
+        ));
+    }
+
+    let mut lines = vec![Line::from(header)];
+    if let Some(text) = summary.text.as_deref() {
+        lines.extend(process_body_lines(text.trim(), theme, false, false));
+    }
+    if let Some(error) = summary.error.as_deref() {
+        lines.push(Line::from(Span::styled(
+            format!("Failed to summarize: {error}"),
+            Style::default().fg(theme.error),
+        )));
+    } else if summary.text.is_none() && summary.loading {
+        lines.push(Line::from(Span::styled(
+            "Summarizing in background...",
+            Style::default().fg(theme.text_muted),
+        )));
+    }
+    lines
+}
+
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {
@@ -327,6 +379,7 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 70, 18),
                 &[block],
+                None,
                 0,
                 &ActivePane::MessageView,
                 &Theme::default(),
@@ -335,6 +388,49 @@ mod tests {
         });
 
         assert!(snapshot.contains("Selected"));
+    }
+
+    #[test]
+    fn thread_summary_renders_above_message() {
+        let block = ThreadMessageBlock {
+            envelope: envelope(),
+            body_state: BodyViewState::Ready {
+                raw: "hello".into(),
+                rendered: "hello".into(),
+                source: BodySource::Plain,
+                metadata: crate::app::BodyViewMetadata::default(),
+            },
+            labels: vec![],
+            attachments: vec![],
+            selected: true,
+            bulk_selected: false,
+            has_unsubscribe: false,
+            signature_expanded: false,
+            assets_loading: false,
+        };
+
+        let snapshot = render_to_string(90, 20, |frame| {
+            let mut html_images = HashMap::new();
+            draw(
+                frame,
+                Rect::new(0, 0, 90, 20),
+                &[block],
+                Some(ThreadSummaryBlock {
+                    text: Some("Summary:\n- Alice asked for launch approval.".into()),
+                    model: Some("llama3.2".into()),
+                    loading: false,
+                    error: None,
+                }),
+                0,
+                &ActivePane::MessageView,
+                &Theme::default(),
+                &mut html_images,
+            );
+        });
+
+        assert!(snapshot.contains("Summary"));
+        assert!(snapshot.contains("Alice asked for launch approval"));
+        assert!(snapshot.contains("llama3.2"));
     }
 
     #[test]
@@ -368,6 +464,7 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 80, 18),
                 &[block],
+                None,
                 0,
                 &ActivePane::MessageView,
                 &Theme::default(),
@@ -418,6 +515,7 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 120, 30),
                 &[block],
+                None,
                 0,
                 &ActivePane::MessageView,
                 &Theme::default(),
@@ -463,6 +561,7 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 100, 18),
                 &[block],
+                None,
                 0,
                 &ActivePane::MessageView,
                 &Theme::default(),

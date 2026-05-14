@@ -191,6 +191,12 @@ pub struct AttachmentSummary {
     pub size_bytes: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadSummaryPreview {
+    pub text: String,
+    pub model: String,
+}
+
 #[derive(Debug, Clone)]
 pub(in crate::app) struct PendingPreviewRead {
     pub message_id: MessageId,
@@ -211,6 +217,9 @@ pub struct MailboxState {
     pub viewing_envelope: Option<Envelope>,
     pub viewed_thread: Option<Thread>,
     pub viewed_thread_messages: Vec<Envelope>,
+    pub thread_summary: Option<ThreadSummaryPreview>,
+    pub thread_summary_loading: Option<mxr_core::ThreadId>,
+    pub thread_summary_error: Option<String>,
     pub thread_selected_index: usize,
     pub message_scroll_offset: u16,
     pub body_cache: HashMap<MessageId, MessageBody>,
@@ -282,6 +291,9 @@ impl MailboxState {
             viewing_envelope: None,
             viewed_thread: None,
             viewed_thread_messages: Vec::new(),
+            thread_summary: None,
+            thread_summary_loading: None,
+            thread_summary_error: None,
             thread_selected_index: 0,
             message_scroll_offset: 0,
             body_cache: HashMap::new(),

@@ -401,17 +401,10 @@ impl App {
                     return;
                 };
                 self.modals.reply_queue.close();
-                let preloaded = self
-                    .compose
-                    .reply_context_cache
-                    .get(&env.id)
-                    .and_then(|pair| pair.reply.clone());
-                self.compose.pending_compose = Some(ComposeAction::Reply {
-                    message_id: env.id,
-                    account_id: env.account_id,
-                    preloaded,
-                });
-                self.status_message = Some("Opening reply from reply queue...".into());
+                self.dispatch_or_defer_reply(env.id, env.account_id, false);
+                if self.status_message.is_none() {
+                    self.status_message = Some("Opening reply from reply queue...".into());
+                }
             }
             Action::OpenScreenerQueue => {
                 // Reach for an account_id from any visible envelope so
@@ -546,9 +539,14 @@ impl App {
                     return;
                 };
                 let thread_id = env.thread_id.clone();
-                self.modals.summary.open_loading(thread_id.clone());
+                if self.mailbox.thread_summary_loading.as_ref() == Some(&thread_id) {
+                    self.status_message = Some("Summary already running".into());
+                    return;
+                }
+                self.mailbox.thread_summary_loading = Some(thread_id.clone());
+                self.mailbox.thread_summary_error = None;
                 self.pending_summary_request = Some(thread_id);
-                self.status_message = Some("Summarizing thread...".into());
+                self.status_message = Some("Summarizing in background...".into());
             }
             Action::CloseSummaryModal => {
                 self.modals.summary.close();

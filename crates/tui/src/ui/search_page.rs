@@ -125,6 +125,7 @@ pub fn draw(
             frame,
             *inner.last().unwrap_or(&chunks[1]),
             preview_messages,
+            None,
             preview_scroll,
             &preview_active_pane,
             theme,

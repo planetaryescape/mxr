@@ -40,7 +40,7 @@ use crate::accounts_helpers::load_accounts_page_accounts;
 use crate::async_result::{AsyncResult, UnsubscribeResultData};
 use crate::compose_flow::{handle_compose_action, handle_compose_editor_status};
 use crate::editor::{edit_tui_config, open_diagnostics_pane_details, open_tui_log_file};
-use crate::ipc::{ipc_call, spawn_ipc_worker, IpcRequest};
+use crate::ipc::{ipc_call, ipc_call_dedicated, spawn_ipc_worker, IpcRequest};
 use crate::local_io::{handle_result as handle_local_io_result, submit_bug_report_write};
 use crate::runtime::{
     spawn_replaceable_request_worker, spawn_task_worker, submit_task, ReplaceableRequest,
@@ -312,7 +312,7 @@ pub async fn run() -> anyhow::Result<()> {
     let (result_tx, mut result_rx) = mpsc::unbounded_channel::<AsyncResult>();
 
     // Background IPC worker — also forwards daemon events to result_tx
-    let bg = spawn_ipc_worker(socket_path, result_tx.clone());
+    let bg = spawn_ipc_worker(socket_path.clone(), result_tx.clone());
     let html_assets =
         crate::terminal_images::spawn_html_image_asset_worker(bg.clone(), result_tx.clone());
     let html_decodes = crate::terminal_images::spawn_html_image_decode_worker(result_tx.clone());
@@ -677,11 +677,12 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         if let Some(thread_id) = app.pending_summary_request.take() {
-            let bg = bg.clone();
+            let socket_path = socket_path.clone();
             let captured_id = thread_id.clone();
-            let _ = submit_task(&queued, async move {
-                let resp = ipc_call(
-                    &bg,
+            let result_tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call_dedicated(
+                    &socket_path,
                     Request::SummarizeThread {
                         thread_id: thread_id.clone(),
                     },
@@ -695,10 +696,10 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                AsyncResult::ThreadSummaryLoaded {
+                let _ = result_tx.send(AsyncResult::ThreadSummaryLoaded {
                     thread_id: captured_id,
                     result,
-                }
+                });
             });
         }
 
@@ -1518,40 +1519,45 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         // Prewarm reply context for the message currently in view. The
-        // user's perceived 'r'/'a' latency was dominated by the daemon
+        // user's perceived 'r'/'a' latency is dominated by the daemon
         // synchronously rendering the message body during PrepareReply.
         // By firing this fetch as soon as the viewing envelope changes,
         // the editor opens instantly when they actually press the key.
-        if let Some(env_id) = app.context_envelope().map(|env| env.id.clone()) {
-            let already_warming = app
-                .compose
-                .last_prewarmed_message_id
-                .as_ref()
-                .is_some_and(|id| id == &env_id);
-            let already_cached = app.compose.reply_context_cache.contains_key(&env_id);
-            if !already_warming && !already_cached {
-                app.compose.last_prewarmed_message_id = Some(env_id.clone());
-                let bg = bg.clone();
-                let message_id = env_id.clone();
-                let _ = submit_task(&queued, async move {
-                    let (reply, reply_all) = tokio::join!(
-                        crate::compose_flow::fetch_reply_context(
-                            &bg,
-                            message_id.clone(),
-                            false
-                        ),
-                        crate::compose_flow::fetch_reply_context(
-                            &bg,
-                            message_id.clone(),
-                            true
-                        ),
-                    );
-                    AsyncResult::ReplyContextWarmed {
-                        message_id,
-                        reply,
-                        reply_all,
-                    }
-                });
+        //
+        // Constraints learned the hard way:
+        // - The IPC worker is *serial* (one in-flight request at a time),
+        //   so we only prewarm `reply_all=false` — the common path — to
+        //   avoid doubling backpressure. `a` falls back to the deferred
+        //   path via `dispatch_or_defer_reply`.
+        // - We skip prewarm when `pending_compose` is already set: the
+        //   user has invoked an action and we don't want our background
+        //   IPC to land *behind* their request on the worker queue.
+        if app.compose.pending_compose.is_none() {
+            if let Some(env_id) = app.context_envelope().map(|env| env.id.clone()) {
+                let already_warming = app
+                    .compose
+                    .last_prewarmed_message_id
+                    .as_ref()
+                    .is_some_and(|id| id == &env_id);
+                let already_cached = app.compose.reply_context_cache.contains_key(&env_id);
+                if !already_warming && !already_cached {
+                    app.compose.last_prewarmed_message_id = Some(env_id.clone());
+                    let bg = bg.clone();
+                    let message_id = env_id.clone();
+                    let _ = submit_task(&queued, async move {
+                        let reply =
+                            crate::compose_flow::fetch_reply_context(&bg, message_id.clone(), false)
+                                .await;
+                        AsyncResult::ReplyContextWarmed {
+                            message_id,
+                            reply,
+                            // reply_all is fetched on demand by the cold
+                            // path; doubling the prewarm IPC was the
+                            // source of the original `r` slowness.
+                            reply_all: Err(MxrError::Ipc("not prewarmed".into())),
+                        }
+                    });
+                }
             }
         }
 
@@ -1767,22 +1773,31 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::ThreadSummaryLoaded { thread_id, result } => {
                             let still_relevant = app
-                                .modals
-                                .summary
-                                .thread_id
-                                .as_ref()
-                                .map(|current| current == &thread_id)
+                                .context_envelope()
+                                .map(|env| env.thread_id == thread_id)
                                 .unwrap_or(false);
                             if !still_relevant {
                                 continue;
                             }
+                            app.mailbox.thread_summary_loading = None;
                             match result {
                                 Ok((text, model)) => {
-                                    app.modals.summary.set_summary(text, model);
+                                    app.mailbox.thread_summary = Some(app::ThreadSummaryPreview {
+                                        text: text.clone(),
+                                        model: model.clone(),
+                                    });
+                                    app.mailbox.thread_summary_error = None;
+                                    if app.modals.summary.visible {
+                                        app.modals.summary.set_summary(text, model);
+                                    }
                                     app.status_message = Some("Summary ready".into());
                                 }
                                 Err(e) => {
-                                    app.modals.summary.set_error(e.to_string());
+                                    let message = e.to_string();
+                                    app.mailbox.thread_summary_error = Some(message.clone());
+                                    if app.modals.summary.visible {
+                                        app.modals.summary.set_error(message);
+                                    }
                                     app.status_message = Some(format!("Summarize failed: {e}"));
                                 }
                             }
@@ -2156,13 +2171,13 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Thread {
                             thread_id,
                             request_id,
-                            result: Ok((thread, messages)),
+                            result: Ok((thread, messages, summary)),
                         } => {
                             if request_id != app.mailbox.thread_request_id {
                                 tracing::trace!(request_id, current_id = app.mailbox.thread_request_id, "tui stale thread dropped");
                                 continue;
                             }
-                            app.resolve_thread_success(thread, messages);
+                            app.resolve_thread_success(thread, messages, summary);
                             let _ = thread_id;
                         }
                         AsyncResult::Thread {
@@ -2216,13 +2231,51 @@ pub async fn run() -> anyhow::Result<()> {
                             reply,
                             reply_all,
                         } => {
+                            let reply_ok = reply.ok();
+                            let reply_all_ok = reply_all.ok();
                             app.compose.reply_context_cache.insert(
-                                message_id,
+                                message_id.clone(),
                                 crate::app::ReplyContextPair {
-                                    reply: reply.ok(),
-                                    reply_all: reply_all.ok(),
+                                    reply: reply_ok.clone(),
+                                    reply_all: reply_all_ok.clone(),
                                 },
                             );
+                            // Drain a deferred compose action that was
+                            // parked waiting on this prewarm. The user
+                            // pressed `r`/`a` while the IPC was still
+                            // in flight; firing their action now uses
+                            // the cached context with no extra IPC.
+                            if let Some(deferred) = app.compose.deferred_compose.take() {
+                                if deferred.message_id == message_id {
+                                    app.status_message = None;
+                                    let preloaded = if deferred.reply_all {
+                                        reply_all_ok
+                                    } else {
+                                        reply_ok
+                                    };
+                                    app.compose.pending_compose = Some(
+                                        if deferred.reply_all {
+                                            crate::app::ComposeAction::ReplyAll {
+                                                message_id: deferred.message_id,
+                                                account_id: deferred.account_id,
+                                                preloaded,
+                                            }
+                                        } else {
+                                            crate::app::ComposeAction::Reply {
+                                                message_id: deferred.message_id,
+                                                account_id: deferred.account_id,
+                                                preloaded,
+                                            }
+                                        },
+                                    );
+                                } else {
+                                    // Stale prewarm — the user navigated
+                                    // away. Put the deferral back so the
+                                    // *next* prewarm for `deferred.message_id`
+                                    // (or a fresh keypress) can claim it.
+                                    app.compose.deferred_compose = Some(deferred);
+                                }
+                            }
                         }
                         AsyncResult::ExportResult(Ok(msg)) => {
                             app.status_message = Some(msg);
@@ -8725,6 +8778,28 @@ mod tests {
             }
             other => panic!("expected DraftAssist, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn summarize_action_starts_background_request_without_modal() {
+        use crate::action::Action;
+        let mut app = App::new();
+        let envelope = TestEnvelopeBuilder::new()
+            .with_from_address("Sender", "sender@example.com")
+            .subject("Quarterly plan")
+            .build();
+        let thread_id = envelope.thread_id.clone();
+        app.mailbox.envelopes = vec![envelope];
+
+        app.apply(Action::SummarizeCurrentThread);
+
+        assert_eq!(app.pending_summary_request, Some(thread_id.clone()));
+        assert_eq!(app.mailbox.thread_summary_loading, Some(thread_id));
+        assert!(!app.modals.summary.visible);
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Summarizing in background...")
+        );
     }
 
     #[test]

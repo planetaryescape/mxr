@@ -15,7 +15,9 @@ pub use analytics::{
     ANALYTICS_CACHE_TTL,
 };
 pub use command_palette::CommandPaletteState;
-pub use compose::{ComposeAction, ComposeState, PendingSend, PendingSendMode, ReplyContextPair};
+pub use compose::{
+    ComposeAction, ComposeState, DeferredCompose, PendingSend, PendingSendMode, ReplyContextPair,
+};
 pub use diagnostics::{DiagnosticsPageState, DiagnosticsPaneKind, DiagnosticsState};
 pub(in crate::app) use mailbox::PendingPreviewRead;
 pub(crate) use mailbox::SidebarSelectionKey;
@@ -23,7 +25,7 @@ pub use mailbox::{
     ActivePane, AttachmentOperation, AttachmentPanelState, AttachmentSummary, BodySource,
     BodyViewMetadata, BodyViewMode, BodyViewState, LayoutMode, MailListMode, MailListRow,
     MailboxState, MailboxView, OwedRepliesPageState, PendingAttachmentAction, PendingBrowserOpen,
-    SidebarItem, SidebarSection, SubscriptionEntry, SubscriptionsPageState,
+    SidebarItem, SidebarSection, SubscriptionEntry, SubscriptionsPageState, ThreadSummaryPreview,
 };
 pub use modals::{
     AnalyticsFilterField, AnalyticsFilterModalState, BriefingModalState, BriefingModalSubject,

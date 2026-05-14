@@ -6,7 +6,7 @@ use mxr_core::{Envelope, Label, MessageBody, MessageId, MxrError, Thread, Thread
 use mxr_protocol::{
     AccountOperationResult, AccountSummaryData, AccountSyncStatus, AttachmentFile, AuthSessionData,
     BodyFailure, DaemonEvent, ReplyContext, Response, RuleFormData, ScreenerQueueEntryData,
-    SenderProfileData, SnippetData,
+    SenderProfileData, SnippetData, ThreadSummaryData,
 };
 use ratatui_image::thread::ResizeResponse;
 
@@ -84,7 +84,7 @@ pub(crate) enum AsyncResult {
     Thread {
         thread_id: ThreadId,
         request_id: u64,
-        result: Result<(Thread, Vec<Envelope>), MxrError>,
+        result: Result<(Thread, Vec<Envelope>, Option<ThreadSummaryData>), MxrError>,
     },
     MutationResult {
         id: app::MutationId,

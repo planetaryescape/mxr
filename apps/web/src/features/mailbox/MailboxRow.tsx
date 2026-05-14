@@ -1,6 +1,7 @@
 import {
   Archive,
   Check,
+  Link as LinkIcon,
   MailOpen,
   MessagesSquare,
   Paperclip,
@@ -118,6 +119,23 @@ export function MailboxRow({
             >
               <title>{row.attachment_filename ?? "Has attachments"}</title>
             </Paperclip>
+          ) : null}
+          {row.link_density && row.link_density !== "none" ? (
+            <LinkIcon
+              aria-label={
+                row.link_density === "heavy" ? "Link-heavy body" : "Body has external links"
+              }
+              role="img"
+              className={
+                row.link_density === "heavy"
+                  ? "size-3.5 shrink-0 text-amber-500"
+                  : "size-3.5 shrink-0 text-foreground/55"
+              }
+            >
+              <title>
+                {row.link_density === "heavy" ? "Many external links" : "Has external links"}
+              </title>
+            </LinkIcon>
           ) : null}
           {openCommitmentCount ? <CommitmentBadge count={openCommitmentCount} /> : null}
         </div>

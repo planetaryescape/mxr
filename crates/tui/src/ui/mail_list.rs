@@ -99,11 +99,13 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
 
     // Compute the subject column's effective character width so
     // `format_subject_line` can decide whether there's room for the
-    // snippet preview. Sum of fixed column widths + 7 inter-column
-    // spaces (Table::column_spacing(1) between 8 cells) + 2 border
-    // chars. The attachment chip widened to 8 to fit "📎 99K".
-    let fixed_columns_width = 4 + 1 + 2 + 2 + 22 + 8 + 8;
-    let column_spacing_total: u16 = 7; // 8 cells, 7 gaps × 1 char
+    // snippet preview. Sum of fixed column widths + 8 inter-column
+    // spaces (Table::column_spacing(1) between 9 cells) + 2 border
+    // chars. The attachment chip widened to 8 to fit "📎 99K". The
+    // link chip is 2 chars (a single `🔗` glyph; the heavy tier uses a
+    // brighter color rather than a double glyph to keep the column narrow).
+    let fixed_columns_width = 4 + 1 + 2 + 2 + 22 + 8 + 8 + 2;
+    let column_spacing_total: u16 = 8; // 9 cells, 8 gaps × 1 char
     let border_total: u16 = 2;
     let subject_max_width = u16::from(area.width)
         .saturating_sub(fixed_columns_width)
@@ -128,6 +130,7 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
         Constraint::Fill(1),    // subject (+ snippet preview)
         Constraint::Length(8),  // date
         Constraint::Length(8),  // attachment chip ("📎 99K")
+        Constraint::Length(2),  // link chip (`🔗` for Some / Heavy, blank for None)
     ];
 
     let table = Table::new(table_rows, widths)
@@ -307,6 +310,24 @@ fn build_row<'a>(
         Cell::from(Span::styled(attach_text, Style::default().fg(row_fg)))
     };
 
+    // Link chip: tri-state glyph driven by `Envelope::link_density()`.
+    // Heavy uses the accent color so newsletter-shaped mail stands out from
+    // ordinary link-bearing mail without claiming a second column.
+    let link_cell = match env.link_density() {
+        mxr_core::types::LinkDensity::None => {
+            Cell::from(Span::styled("  ", Style::default().fg(row_fg)))
+        }
+        mxr_core::types::LinkDensity::Some => {
+            Cell::from(Span::styled("🔗", Style::default().fg(row_muted_fg)))
+        }
+        mxr_core::types::LinkDensity::Heavy => Cell::from(Span::styled(
+            "🔗",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(ratatui::style::Modifier::BOLD),
+        )),
+    };
+
     Row::new(vec![
         line_num_cell,
         unread_cell,
@@ -316,6 +337,7 @@ fn build_row<'a>(
         subject_cell,
         date_cell,
         attach_cell,
+        link_cell,
     ])
     .style(base_style)
 }
@@ -691,6 +713,8 @@ mod tests {
                 has_attachments,
                 size_bytes: 1024,
                 unsubscribe: UnsubscribeMethod::None,
+                link_count: 0,
+                body_word_count: 0,
                 label_provider_ids: vec![],
             },
             message_count,

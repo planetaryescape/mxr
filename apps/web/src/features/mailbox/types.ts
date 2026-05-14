@@ -19,6 +19,10 @@ export interface MessageRowView {
   unread: boolean;
   starred: boolean;
   has_attachments: boolean;
+  /// Tri-state link-density classification computed at sync time. Drives the
+  /// `🔗` indicator next to the subject. Absent for older payloads — treat as
+  /// `"none"` when missing.
+  link_density?: "none" | "some" | "heavy";
   message_count?: number | null;
   attachment_id?: string | null;
   attachment_filename?: string | null;

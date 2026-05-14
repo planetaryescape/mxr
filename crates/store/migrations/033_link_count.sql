@@ -1,0 +1,17 @@
+-- =========================================================================
+-- `link_count` column on `messages`. Counts external URLs in the body after
+-- the body-derived flags pass filters out tracker / unsubscribe / list-
+-- management hostnames. Drives the tri-state link indicator on the mail list
+-- and the `has:link` / `has:link-heavy` search filters.
+--
+-- Defaults to 0 for rows synced before the link-extractor existed. Backfill
+-- happens lazily on the next sync of each message, or eagerly via
+-- `mxr doctor --recompute-link-counts`.
+--
+-- `body_word_count` already exists from migration 007; no schema change for it
+-- here — sync just needs to populate the column going forward.
+--
+-- The pool.rs runtime applies this via `add_column_if_missing`, so a partial
+-- run is safe — re-running is a no-op for already-present columns.
+-- =========================================================================
+ALTER TABLE messages ADD COLUMN link_count INTEGER NOT NULL DEFAULT 0;

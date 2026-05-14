@@ -292,9 +292,16 @@ impl SyncEngine {
                 normalized_body.ensure_best_effort_readable();
 
                 let direction = self.classify_direction(&synced.envelope.from.email);
-                let envelope = self
+                let mut envelope = self
                     .apply_screener_decision(&synced.envelope, direction)
                     .await?;
+
+                // Derive link-density inputs from the normalized body so the
+                // tri-state link indicator and `has:link*` search filters work.
+                let link_metrics = crate::links::body_link_metrics(&normalized_body);
+                envelope.link_count = link_metrics.link_count;
+                envelope.body_word_count = link_metrics.body_word_count;
+
                 self.store
                     .upsert_envelope_with_direction(&envelope, direction)
                     .await

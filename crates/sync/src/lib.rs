@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
 
 mod engine;
+pub mod links;
 pub mod threading;
 pub use engine::SyncEngine;
 
@@ -416,6 +417,8 @@ mod tests {
             has_attachments: false,
             size_bytes: 1000,
             unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids,
         }
     }
@@ -661,6 +664,8 @@ mod tests {
                 has_attachments: false,
                 size_bytes: 100,
                 unsubscribe: UnsubscribeMethod::None,
+                link_count: 0,
+                body_word_count: 0,
                 label_provider_ids: vec![],
             },
             body: make_empty_body(&first_id),
@@ -688,6 +693,8 @@ mod tests {
                 has_attachments: false,
                 size_bytes: 100,
                 unsubscribe: UnsubscribeMethod::None,
+                link_count: 0,
+                body_word_count: 0,
                 label_provider_ids: vec![],
             },
             body: make_empty_body(&second_id),
@@ -1675,6 +1682,8 @@ mod tests {
                     has_attachments: false,
                     size_bytes: 42,
                     unsubscribe: UnsubscribeMethod::None,
+                    link_count: 0,
+                    body_word_count: 0,
                     label_provider_ids: vec![],
                 },
                 body: make_empty_body(&message_id),

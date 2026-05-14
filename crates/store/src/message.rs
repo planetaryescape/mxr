@@ -62,6 +62,15 @@ impl super::Store {
                 .fetch_optional(&mut *tx)
                 .await?;
 
+        let link_count = envelope.link_count as i64;
+        let body_word_count_persist: Option<i64> = if envelope.body_word_count == 0 {
+            // Preserve prior body_word_count (populated by analytics) instead
+            // of clobbering with zero when sync code path didn't compute it.
+            None
+        } else {
+            Some(envelope.body_word_count as i64)
+        };
+
         if let Some(existing_id) = existing_id {
             sqlx::query(
                 "UPDATE messages SET
@@ -81,6 +90,8 @@ impl super::Store {
                     has_attachments = ?,
                     size_bytes = ?,
                     unsubscribe_method = ?,
+                    link_count = ?,
+                    body_word_count = COALESCE(?, body_word_count),
                     direction = CASE
                         WHEN ? = 'unknown' THEN direction
                         ELSE ?
@@ -103,6 +114,8 @@ impl super::Store {
             .bind(has_attachments)
             .bind(size_bytes)
             .bind(&unsub)
+            .bind(link_count)
+            .bind(body_word_count_persist)
             .bind(direction_str)
             .bind(direction_str)
             .bind(existing_id)
@@ -117,8 +130,8 @@ impl super::Store {
              (id, account_id, provider_id, thread_id, message_id_header, in_reply_to,
               reference_headers, from_name, from_email, to_addrs, cc_addrs, bcc_addrs,
               subject, date, flags, snippet, has_attachments, size_bytes,
-              unsubscribe_method, direction)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              unsubscribe_method, link_count, body_word_count, direction)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(account_id)
@@ -139,6 +152,8 @@ impl super::Store {
         .bind(has_attachments)
         .bind(size_bytes)
         .bind(&unsub)
+        .bind(link_count)
+        .bind(body_word_count_persist)
         .bind(direction_str)
         .execute(&mut *tx)
         .await?;
@@ -172,31 +187,39 @@ impl super::Store {
         .await?;
         trace_lookup("message.get_envelope", started_at, row.is_some());
 
-        row.map(|r| {
-            record_to_envelope(
-                &r.id,
-                &r.account_id,
-                &r.provider_id,
-                &r.thread_id,
-                r.message_id_header.as_deref(),
-                r.in_reply_to.as_deref(),
-                r.reference_headers.as_deref(),
-                r.from_name.as_deref(),
-                &r.from_email,
-                &r.to_addrs,
-                &r.cc_addrs,
-                &r.bcc_addrs,
-                &r.subject,
-                r.date,
-                r.flags,
-                &r.snippet,
-                r.has_attachments,
-                r.size_bytes,
-                r.unsubscribe_method.as_deref(),
-                &r.label_provider_ids,
-            )
-        })
-        .transpose()
+        let envelope = row
+            .map(|r| {
+                record_to_envelope(
+                    &r.id,
+                    &r.account_id,
+                    &r.provider_id,
+                    &r.thread_id,
+                    r.message_id_header.as_deref(),
+                    r.in_reply_to.as_deref(),
+                    r.reference_headers.as_deref(),
+                    r.from_name.as_deref(),
+                    &r.from_email,
+                    &r.to_addrs,
+                    &r.cc_addrs,
+                    &r.bcc_addrs,
+                    &r.subject,
+                    r.date,
+                    r.flags,
+                    &r.snippet,
+                    r.has_attachments,
+                    r.size_bytes,
+                    r.unsubscribe_method.as_deref(),
+                    &r.label_provider_ids,
+                )
+            })
+            .transpose()?;
+        let Some(mut envelope) = envelope else {
+            return Ok(None);
+        };
+        let mut envelopes = vec![envelope.clone()];
+        self.hydrate_link_metadata(&mut envelopes).await?;
+        envelope = envelopes.remove(0);
+        Ok(Some(envelope))
     }
 
     pub async fn list_envelopes_by_label(
@@ -239,7 +262,8 @@ impl super::Store {
         .await?;
         trace_query("message.list_envelopes_by_label", started_at, rows.len());
 
-        rows.into_iter()
+        let mut envelopes: Vec<Envelope> = rows
+            .into_iter()
             .map(|r| {
                 record_to_envelope(
                     &r.id,
@@ -264,7 +288,9 @@ impl super::Store {
                     &r.label_provider_ids,
                 )
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+        self.hydrate_link_metadata(&mut envelopes).await?;
+        Ok(envelopes)
     }
 
     pub async fn list_envelopes_by_account(
@@ -306,7 +332,8 @@ impl super::Store {
         .await?;
         trace_query("message.list_envelopes_by_account", started_at, rows.len());
 
-        rows.into_iter()
+        let mut envelopes: Vec<Envelope> = rows
+            .into_iter()
             .map(|r| {
                 record_to_envelope(
                     &r.id,
@@ -331,7 +358,9 @@ impl super::Store {
                     &r.label_provider_ids,
                 )
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+        self.hydrate_link_metadata(&mut envelopes).await?;
+        Ok(envelopes)
     }
 
     pub async fn list_message_ids_by_account(
@@ -564,10 +593,12 @@ impl super::Store {
             by_id.insert(envelope.id.clone(), envelope);
         }
 
-        Ok(message_ids
+        let mut envelopes: Vec<Envelope> = message_ids
             .iter()
             .filter_map(|message_id| by_id.remove(message_id))
-            .collect())
+            .collect();
+        self.hydrate_link_metadata(&mut envelopes).await?;
+        Ok(envelopes)
     }
 
     pub async fn list_message_directions_by_ids(
@@ -1229,6 +1260,68 @@ impl super::Store {
             })
             .collect()
     }
+
+    /// Update the link-metrics columns for a single message. Used by the
+    /// `mxr doctor --recompute-link-counts` backfill. `body_word_count` is
+    /// always written here (the backfill knows the body content); the sync
+    /// upsert path preserves the prior value when given zero.
+    pub async fn update_link_metrics(
+        &self,
+        message_id: &MessageId,
+        link_count: u32,
+        body_word_count: u32,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE messages SET link_count = ?, body_word_count = ? WHERE id = ?",
+        )
+        .bind(link_count as i64)
+        .bind(body_word_count as i64)
+        .bind(message_id.as_str())
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
+    /// Bulk-hydrate `link_count` and `body_word_count` onto envelopes that were
+    /// read via the existing offline-cached `query!` macros (which don't yet
+    /// select these columns). Single round-trip per call. Safe no-op when the
+    /// input is empty.
+    pub async fn hydrate_link_metadata(
+        &self,
+        envelopes: &mut [Envelope],
+    ) -> Result<(), sqlx::Error> {
+        if envelopes.is_empty() {
+            return Ok(());
+        }
+        let placeholders: Vec<&str> = envelopes.iter().map(|_| "?").collect();
+        let sql = format!(
+            "SELECT id, link_count, COALESCE(body_word_count, 0) AS body_word_count \
+             FROM messages WHERE id IN ({})",
+            placeholders.join(",")
+        );
+        let mut query = sqlx::query(&sql);
+        for envelope in envelopes.iter() {
+            query = query.bind(envelope.id.as_str());
+        }
+        let rows = query.fetch_all(self.reader()).await?;
+        let mut by_id: std::collections::HashMap<String, (i64, i64)> = rows
+            .iter()
+            .map(|row| {
+                use sqlx::Row;
+                let id: String = row.try_get("id").unwrap_or_default();
+                let link_count: i64 = row.try_get("link_count").unwrap_or(0);
+                let body_word_count: i64 = row.try_get("body_word_count").unwrap_or(0);
+                (id, (link_count, body_word_count))
+            })
+            .collect();
+        for envelope in envelopes {
+            if let Some((link_count, body_word_count)) = by_id.remove(&envelope.id.as_str()) {
+                envelope.link_count = link_count.max(0) as u32;
+                envelope.body_word_count = body_word_count.max(0) as u32;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Shared helper to convert individual field values into an Envelope.
@@ -1285,6 +1378,8 @@ pub(crate) fn record_to_envelope(
             .map(decode_json::<UnsubscribeMethod>)
             .transpose()?
             .unwrap_or(UnsubscribeMethod::None),
+        link_count: 0,
+        body_word_count: 0,
         label_provider_ids: if label_provider_ids.is_empty() {
             vec![]
         } else {

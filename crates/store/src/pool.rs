@@ -566,6 +566,15 @@ const MIGRATIONS: &[Migration] = &[
             "../migrations/032_context_briefings.sql"
         )),
     },
+    Migration {
+        version: 33,
+        name: "link_count",
+        kind: MigrationKind::AddColumn {
+            table: "messages",
+            column: "link_count",
+            sql: "ALTER TABLE messages ADD COLUMN link_count INTEGER NOT NULL DEFAULT 0",
+        },
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

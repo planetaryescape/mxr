@@ -174,6 +174,8 @@ mod tests {
             has_attachments: true,
             size_bytes: 10,
             unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: vec![label.provider_id.clone()],
         };
         store.upsert_envelope(&envelope).await.unwrap();

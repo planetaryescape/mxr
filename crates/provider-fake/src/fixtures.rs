@@ -1224,6 +1224,8 @@ fn push_demo_msg(
         has_attachments: !attachments.is_empty(),
         size_bytes,
         unsubscribe,
+        link_count: 0,
+        body_word_count: 0,
         label_provider_ids,
     });
 
@@ -1469,6 +1471,8 @@ fn push_msg(
         has_attachments,
         size_bytes: body_text.len() as u64 + 500,
         unsubscribe,
+        link_count: 0,
+        body_word_count: 0,
         label_provider_ids: {
             let mut labels = vec!["INBOX".to_string()];
             if flags.contains(MessageFlags::SENT) {

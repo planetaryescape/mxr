@@ -1089,6 +1089,8 @@ mod tests {
             has_attachments: false,
             size_bytes: 128,
             unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: Vec::new(),
         };
         let missing_envelope = Envelope {
@@ -1116,6 +1118,8 @@ mod tests {
             has_attachments: false,
             size_bytes: 128,
             unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: Vec::new(),
         };
 
@@ -1191,6 +1195,8 @@ mod tests {
             has_attachments: false,
             size_bytes: 128,
             unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: Vec::new(),
         };
 

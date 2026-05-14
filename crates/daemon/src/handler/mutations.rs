@@ -1496,6 +1496,8 @@ async fn ingest_sent_message(
         has_attachments: !draft.attachments.is_empty(),
         size_bytes: draft.body_markdown.len() as u64,
         unsubscribe: UnsubscribeMethod::None,
+        link_count: 0,
+        body_word_count: 0,
         label_provider_ids: if provider_namespace == "gmail" {
             vec!["SENT".to_string()]
         } else {

@@ -142,6 +142,8 @@ pub fn imap_fetch_to_synced_message(
         has_attachments,
         size_bytes: msg.size.unwrap_or(0) as u64,
         unsubscribe,
+        link_count: 0,
+        body_word_count: 0,
         label_provider_ids: vec![mailbox.to_string()],
     };
 

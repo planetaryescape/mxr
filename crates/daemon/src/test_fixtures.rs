@@ -57,6 +57,8 @@ pub(crate) struct TestEnvelopeBuilder {
     has_attachments: bool,
     size_bytes: u64,
     unsubscribe: UnsubscribeMethod,
+    link_count: u32,
+    body_word_count: u32,
     label_provider_ids: Vec<String>,
 }
 
@@ -88,6 +90,8 @@ impl TestEnvelopeBuilder {
             has_attachments: false,
             size_bytes: 1024,
             unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: vec![],
         }
     }
@@ -203,6 +207,8 @@ impl TestEnvelopeBuilder {
             has_attachments: self.has_attachments,
             size_bytes: self.size_bytes,
             unsubscribe: self.unsubscribe,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: self.label_provider_ids,
         }
     }

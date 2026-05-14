@@ -740,10 +740,93 @@ pub struct Envelope {
     pub has_attachments: bool,
     pub size_bytes: u64,
     pub unsubscribe: UnsubscribeMethod,
+    /// Count of external links in the body after filtering out tracker /
+    /// unsubscribe / list-management hostnames. Drives the tri-state
+    /// "link" indicator on the mail list and the `has:link` search filter.
+    /// `0` means no link indicator.
+    #[serde(default)]
+    pub link_count: u32,
+    /// Word count of the rendered body, snapshot at sync time. Used together
+    /// with `link_count` to classify newsletter-shaped mail into
+    /// `LinkDensity::Heavy`. `0` if the body word count wasn't computed
+    /// (older rows pre-backfill).
+    #[serde(default)]
+    pub body_word_count: u32,
     /// Provider-specific label IDs (e.g. "INBOX", "SENT", "Label_123").
     /// Transient: used during sync to populate the message_labels junction table.
     #[serde(default)]
     pub label_provider_ids: Vec<String>,
+}
+
+/// Tri-state classification of how link-bearing a message body is. Renders
+/// as: blank / single link icon / double-or-emphasized link icon.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum LinkDensity {
+    /// No external links survived filtering.
+    #[default]
+    None,
+    /// At least one external link, body is not dominated by them.
+    Some,
+    /// Many links and/or high link-to-word ratio (newsletter-shaped).
+    Heavy,
+}
+
+/// Word-count divisor used in the heavy-density ratio. Keep in one place so
+/// the threshold logic stays consistent between sync, search, and tests.
+const LINK_DENSITY_WORDS_PER_LINK: u32 = 50;
+
+/// Absolute link-count above which a body counts as `Heavy` regardless of
+/// length. Picked so that newsletters reliably trip the heavier tier without
+/// flagging short "here's the doc:" replies.
+const LINK_DENSITY_HEAVY_ABSOLUTE: u32 = 5;
+
+impl Envelope {
+    /// Classify this envelope's link presence into the tri-state used by the
+    /// mail-list indicator and rule conditions. Derived from `link_count` and
+    /// `body_word_count` so the threshold can be retuned without re-running
+    /// sync.
+    pub fn link_density(&self) -> LinkDensity {
+        Self::classify_link_density(self.link_count, self.body_word_count)
+    }
+
+    /// Pure helper exposed so the sync / search / doctor crates can classify
+    /// counts without constructing an `Envelope`.
+    pub fn classify_link_density(link_count: u32, body_word_count: u32) -> LinkDensity {
+        if link_count == 0 {
+            return LinkDensity::None;
+        }
+        if link_count >= LINK_DENSITY_HEAVY_ABSOLUTE {
+            return LinkDensity::Heavy;
+        }
+        // Density = links / (words / WORDS_PER_LINK). Heavy when ≥ 1.0,
+        // implemented in integer arithmetic to avoid floating-point in the hot
+        // path. Equivalent to `link_count * WORDS_PER_LINK >= max(1, words)`.
+        let denominator = body_word_count.max(1);
+        if link_count * LINK_DENSITY_WORDS_PER_LINK >= denominator {
+            return LinkDensity::Heavy;
+        }
+        LinkDensity::Some
+    }
+}
+
+impl LinkDensity {
+    pub fn as_db_u8(self) -> u8 {
+        match self {
+            LinkDensity::None => 0,
+            LinkDensity::Some => 1,
+            LinkDensity::Heavy => 2,
+        }
+    }
+
+    pub fn from_db_u8(value: u8) -> Self {
+        match value {
+            2 => LinkDensity::Heavy,
+            1 => LinkDensity::Some,
+            _ => LinkDensity::None,
+        }
+    }
 }
 
 // -- UnsubscribeMethod --------------------------------------------------------

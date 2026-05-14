@@ -5,7 +5,7 @@ pub mod history;
 pub mod shell_hook;
 
 pub use action::{RuleAction, SnoozeDuration};
-pub use condition::{Conditions, FieldCondition, MessageView, StringMatch};
+pub use condition::{Conditions, FieldCondition, LinkDensityMatch, MessageView, StringMatch};
 pub use engine::{DryRunMatch, DryRunResult, EvaluationResult, RuleEngine};
 pub use history::{RuleExecutionLog, RuleMatchEntry};
 

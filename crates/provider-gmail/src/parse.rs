@@ -85,6 +85,8 @@ pub fn gmail_message_to_envelope(
         has_attachments,
         size_bytes: msg.size_estimate.unwrap_or(0),
         unsubscribe,
+        link_count: 0,
+        body_word_count: 0,
         label_provider_ids: msg.label_ids.clone().unwrap_or_default(),
     })
 }

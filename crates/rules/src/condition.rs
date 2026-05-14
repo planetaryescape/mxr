@@ -28,6 +28,23 @@ pub enum FieldCondition {
     IsStarred,
     HasUnsubscribe,
     BodyContains { pattern: StringMatch },
+    /// Match on the tri-state link-density classification computed at sync
+    /// time. `match_kind: "any"` covers `Some` and `Heavy`; `"heavy"` covers
+    /// only `Heavy`; `"none"` covers the no-links tier. Lets users write
+    /// rules like "auto-archive link-heavy mail from unknown senders".
+    LinkDensity { match_kind: LinkDensityMatch },
+}
+
+/// How to match the tri-state `LinkDensity` classification.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkDensityMatch {
+    /// `Some` or `Heavy` — any external link survived the deny-list filter.
+    Any,
+    /// Only `Heavy` — newsletter-shaped mail.
+    Heavy,
+    /// Only `None` — no external links at all.
+    None,
 }
 
 /// How to match a string field.
@@ -55,6 +72,13 @@ pub trait MessageView {
     fn is_starred(&self) -> bool;
     fn has_unsubscribe(&self) -> bool;
     fn body_text(&self) -> Option<&str>;
+    /// Computed link count and body word count for the message body. Default
+    /// returns `(0, 0)` so existing implementations stay compatible — only
+    /// MessageView impls that actually feed link-density rules need to
+    /// override.
+    fn link_density_inputs(&self) -> (u32, u32) {
+        (0, 0)
+    }
 }
 
 impl StringMatch {
@@ -100,6 +124,20 @@ impl FieldCondition {
             FieldCondition::HasUnsubscribe => msg.has_unsubscribe(),
             FieldCondition::BodyContains { pattern } => {
                 msg.body_text().is_some_and(|body| pattern.matches(body))
+            }
+            FieldCondition::LinkDensity { match_kind } => {
+                let (link_count, body_word_count) = msg.link_density_inputs();
+                let tier = mxr_core::types::Envelope::classify_link_density(
+                    link_count,
+                    body_word_count,
+                );
+                match (match_kind, tier) {
+                    (LinkDensityMatch::Any, mxr_core::types::LinkDensity::Some) => true,
+                    (LinkDensityMatch::Any, mxr_core::types::LinkDensity::Heavy) => true,
+                    (LinkDensityMatch::Heavy, mxr_core::types::LinkDensity::Heavy) => true,
+                    (LinkDensityMatch::None, mxr_core::types::LinkDensity::None) => true,
+                    _ => false,
+                }
             }
         }
     }

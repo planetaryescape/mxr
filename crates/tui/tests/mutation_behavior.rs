@@ -66,6 +66,8 @@ fn unstarred_inbox_envelope() -> Envelope {
         has_attachments: false,
         size_bytes: 100,
         unsubscribe: UnsubscribeMethod::None,
+        link_count: 0,
+        body_word_count: 0,
         label_provider_ids: vec!["INBOX".into()],
     }
 }

@@ -849,6 +849,8 @@ struct RuleMessage {
     is_starred: bool,
     has_unsubscribe: bool,
     body_text: Option<String>,
+    link_count: u32,
+    body_word_count: u32,
 }
 
 impl RuleMessage {
@@ -872,6 +874,8 @@ impl RuleMessage {
                 mxr_core::types::UnsubscribeMethod::None
             ),
             body_text: body.and_then(|body| body.text_plain.or(body.text_html)),
+            link_count: envelope.link_count,
+            body_word_count: envelope.body_word_count,
         }
     }
 }
@@ -909,6 +913,9 @@ impl mxr_rules::MessageView for RuleMessage {
     }
     fn body_text(&self) -> Option<&str> {
         self.body_text.as_deref()
+    }
+    fn link_density_inputs(&self) -> (u32, u32) {
+        (self.link_count, self.body_word_count)
     }
 }
 

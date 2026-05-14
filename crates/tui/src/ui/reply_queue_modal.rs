@@ -165,6 +165,8 @@ mod tests {
             has_attachments: false,
             size_bytes: 1024,
             unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: vec![],
         }
     }

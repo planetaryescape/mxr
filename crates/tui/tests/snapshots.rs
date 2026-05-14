@@ -415,6 +415,7 @@ fn accounts_page_snapshot() {
         new_account_draft: None,
         resume_new_account_draft_prompt_open: false,
         form: AccountFormState::default(),
+        active_auth_session: None,
     };
 
     let snapshot = render_to_string(100, 20, |frame| {

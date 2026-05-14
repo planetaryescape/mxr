@@ -128,6 +128,53 @@ pub struct ModalsState {
     /// Slice 5.4 (C2.8 cont): expert-finder modal -- shows people
     /// who have answered similar questions before.
     pub expert: ExpertModalState,
+    /// Path-input modal shown when the user presses `d` in the
+    /// attachment list. Lets them choose where to save instead of
+    /// the daemon silently dropping the file in its internal cache.
+    pub save_attachment: SaveAttachmentModalState,
+}
+
+/// State for the "save attachment as..." modal. Pre-filled with the
+/// user's configured `download_dir` joined to the attachment filename;
+/// `1`/`2`/`3` swap to Downloads/Desktop/cwd presets. Two-step
+/// overwrite confirmation when the target file already exists.
+#[derive(Debug, Clone, Default)]
+pub struct SaveAttachmentModalState {
+    pub visible: bool,
+    pub message_id: Option<mxr_core::MessageId>,
+    pub attachment_id: Option<mxr_core::AttachmentId>,
+    pub filename: String,
+    /// The current path text. Edited directly by the user; presets
+    /// replace the whole buffer on `1`/`2`/`3`.
+    pub input: String,
+    /// Last validation/IO error to surface in the modal, e.g. "parent
+    /// directory does not exist".
+    pub error: Option<String>,
+    /// When true, the input already resolved to an existing file and
+    /// the user must press Enter a second time to confirm overwrite.
+    pub awaiting_overwrite_confirm: bool,
+}
+
+impl SaveAttachmentModalState {
+    pub fn open(
+        &mut self,
+        message_id: mxr_core::MessageId,
+        attachment_id: mxr_core::AttachmentId,
+        filename: String,
+        prefilled_path: String,
+    ) {
+        self.visible = true;
+        self.message_id = Some(message_id);
+        self.attachment_id = Some(attachment_id);
+        self.filename = filename;
+        self.input = prefilled_path;
+        self.error = None;
+        self.awaiting_overwrite_confirm = false;
+    }
+
+    pub fn close(&mut self) {
+        *self = Self::default();
+    }
 }
 
 #[derive(Debug, Clone)]

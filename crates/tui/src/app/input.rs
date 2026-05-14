@@ -817,6 +817,53 @@ impl App {
             }
         }
 
+        // Route keys to the save-attachment modal when it's on top of
+        // the attachment panel. This block must run before the
+        // attachment-panel handler below since the modal layers on top.
+        if self.modals.save_attachment.visible {
+            match (key.code, key.modifiers) {
+                (KeyCode::Esc, _) => {
+                    self.modals.save_attachment.close();
+                    return None;
+                }
+                (KeyCode::Enter, _) => {
+                    self.save_attachment_confirm();
+                    return None;
+                }
+                (KeyCode::Char('1'), m) if m.is_empty() => {
+                    self.save_attachment_apply_preset(
+                        crate::app::attachment_helpers::SavePathPreset::Downloads,
+                    );
+                    return None;
+                }
+                (KeyCode::Char('2'), m) if m.is_empty() => {
+                    self.save_attachment_apply_preset(
+                        crate::app::attachment_helpers::SavePathPreset::Desktop,
+                    );
+                    return None;
+                }
+                (KeyCode::Char('3'), m) if m.is_empty() => {
+                    self.save_attachment_apply_preset(
+                        crate::app::attachment_helpers::SavePathPreset::Cwd,
+                    );
+                    return None;
+                }
+                (KeyCode::Backspace, _) => {
+                    self.modals.save_attachment.input.pop();
+                    self.modals.save_attachment.error = None;
+                    self.modals.save_attachment.awaiting_overwrite_confirm = false;
+                    return None;
+                }
+                (KeyCode::Char(c), _) => {
+                    self.modals.save_attachment.input.push(c);
+                    self.modals.save_attachment.error = None;
+                    self.modals.save_attachment.awaiting_overwrite_confirm = false;
+                    return None;
+                }
+                _ => return None,
+            }
+        }
+
         // Route keys to compose picker when active
         if self.mailbox.attachment_panel.visible {
             match (key.code, key.modifiers) {
@@ -825,7 +872,7 @@ impl App {
                     return None;
                 }
                 (KeyCode::Char('d'), _) => {
-                    self.queue_attachment_action(AttachmentOperation::Download);
+                    self.open_save_attachment_modal();
                     return None;
                 }
                 (KeyCode::Char('j') | KeyCode::Down, _) => {

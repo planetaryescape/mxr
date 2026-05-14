@@ -329,7 +329,9 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::DownloadAttachment {
             message_id,
             attachment_id,
-        } => mailbox::download_attachment(state, message_id, attachment_id).await,
+            destination,
+        } => mailbox::download_attachment(state, message_id, attachment_id, destination.as_deref())
+            .await,
         Request::OpenAttachment {
             message_id,
             attachment_id,
@@ -479,6 +481,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         }
         Request::RefreshContacts => platform::refresh_contacts(state).await,
         Request::RebuildAnalytics => platform::rebuild_analytics(state).await,
+        Request::RecomputeLinkCounts => platform::recompute_link_counts(state).await,
         Request::ListResponseTime {
             account_id,
             direction,
@@ -1036,6 +1039,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListContactDecay { .. } => "list_contact_decay",
         Request::RefreshContacts => "refresh_contacts",
         Request::RebuildAnalytics => "rebuild_analytics",
+        Request::RecomputeLinkCounts => "recompute_link_counts",
         Request::ListResponseTime { .. } => "list_response_time",
         Request::ListAccountAddresses { .. } => "list_account_addresses",
         Request::AddAccountAddress { .. } => "add_account_address",
@@ -1650,6 +1654,17 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
         QueryNode::Filter(FilterKind::Archived) => Conditions::Field(FieldCondition::HasLabel {
             label: "ARCHIVE".to_string(),
         }),
+        QueryNode::Filter(FilterKind::HasLink) => Conditions::Field(FieldCondition::LinkDensity {
+            match_kind: mxr_rules::LinkDensityMatch::Any,
+        }),
+        QueryNode::Filter(FilterKind::HasLinkHeavy) => {
+            Conditions::Field(FieldCondition::LinkDensity {
+                match_kind: mxr_rules::LinkDensityMatch::Heavy,
+            })
+        }
+        QueryNode::Filter(FilterKind::NoLinks) => Conditions::Field(FieldCondition::LinkDensity {
+            match_kind: mxr_rules::LinkDensityMatch::None,
+        }),
         QueryNode::Filter(
             FilterKind::Answered
             | FilterKind::ReplyLater
@@ -1824,6 +1839,11 @@ fn field_condition_to_query(field: &FieldCondition) -> Result<String, String> {
         FieldCondition::IsUnread => Ok("is:unread".to_string()),
         FieldCondition::IsStarred => Ok("is:starred".to_string()),
         FieldCondition::BodyContains { pattern } => string_match_to_query("", pattern),
+        FieldCondition::LinkDensity { match_kind } => Ok(match match_kind {
+            mxr_rules::LinkDensityMatch::Any => "has:link".to_string(),
+            mxr_rules::LinkDensityMatch::Heavy => "has:link-heavy".to_string(),
+            mxr_rules::LinkDensityMatch::None => "has:link-none".to_string(),
+        }),
         FieldCondition::SizeGreaterThan { .. }
         | FieldCondition::SizeLessThan { .. }
         | FieldCondition::HasUnsubscribe => {
@@ -3517,6 +3537,67 @@ async fn materialize_attachment_file(
     })
 }
 
+/// Like `materialize_attachment_file` but writes the bytes to a user-chosen
+/// `destination` path instead of the daemon's internal cache. The caller
+/// owns the full path including the filename; the daemon creates parent
+/// directories as needed. Used by the TUI save-attachment modal.
+pub(super) async fn materialize_attachment_to_path(
+    state: &AppState,
+    message_id: &mxr_core::MessageId,
+    attachment_id: &mxr_core::AttachmentId,
+    destination: &std::path::Path,
+) -> Result<mxr_protocol::AttachmentFile, mxr_core::MxrError> {
+    let envelope = state
+        .store
+        .get_envelope(message_id)
+        .await
+        .map_err(|err| mxr_core::MxrError::Store(err.to_string()))?
+        .ok_or_else(|| mxr_core::MxrError::NotFound(format!("message {message_id}")))?;
+
+    let body = state.sync_engine.get_body(message_id).await?;
+    let attachment = body
+        .attachments
+        .iter()
+        .find(|attachment| &attachment.id == attachment_id)
+        .cloned()
+        .ok_or_else(|| mxr_core::MxrError::NotFound(format!("attachment {attachment_id}")))?;
+
+    // Reuse the cached bytes if we've already pulled them down, so a
+    // user-initiated save after Open doesn't refetch from the provider.
+    let bytes = match attachment
+        .local_path
+        .as_ref()
+        .filter(|path| path.exists())
+    {
+        Some(cached) => tokio::fs::read(cached).await.map_err(mxr_core::MxrError::Io)?,
+        None => {
+            let provider = state
+                .get_provider(Some(&envelope.account_id))
+                .map_err(mxr_core::MxrError::Provider)?;
+            provider
+                .fetch_attachment(&envelope.provider_id, &attachment.provider_id)
+                .await?
+        }
+    };
+
+    if let Some(parent) = destination.parent() {
+        if !parent.as_os_str().is_empty() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(mxr_core::MxrError::Io)?;
+        }
+    }
+    tokio::fs::write(destination, bytes)
+        .await
+        .map_err(mxr_core::MxrError::Io)?;
+
+    Ok(mxr_protocol::AttachmentFile {
+        attachment_id: attachment.id,
+        filename: attachment.filename,
+        path: destination.display().to_string(),
+    })
+}
+
 fn sanitized_attachment_filename(filename: &str, attachment_id: &mxr_core::AttachmentId) -> String {
     const MAX_ATTACHMENT_FILENAME_BYTES: usize = 220;
     const MAX_EXTENSION_BYTES: usize = 16;
@@ -3709,6 +3790,8 @@ mod tests {
                         has_attachments: false,
                         size_bytes: 128,
                         unsubscribe: mxr_core::UnsubscribeMethod::None,
+                        link_count: 0,
+                        body_word_count: 0,
                         label_provider_ids: vec![folder.clone()],
                     };
                     let body = mxr_core::MessageBody {
@@ -5713,6 +5796,7 @@ mod tests {
             payload: IpcPayload::Request(Request::DownloadAttachment {
                 message_id: envelope.id.clone(),
                 attachment_id: attachment_id.clone(),
+                destination: None,
             }),
         };
         let resp = handle_request(&state, &download_msg).await;

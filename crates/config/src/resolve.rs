@@ -32,6 +32,11 @@ pub fn config_dir() -> PathBuf {
         .join("mxr")
 }
 
+/// Instance name reserved for the isolated demo profile started by `mxr demo`.
+/// Exported so clients (TUI, web bridge) can detect demo mode without
+/// depending on the daemon crate.
+pub const DEMO_INSTANCE_NAME: &str = "mxr-demo";
+
 /// Returns the runtime instance name used for data/socket namespacing.
 ///
 /// Defaults:
@@ -53,6 +58,12 @@ pub fn app_instance_name() -> String {
     }
 }
 
+/// True when the current process is bound to the demo profile. Cheap to call;
+/// reads only an env var.
+pub fn is_demo_instance() -> bool {
+    app_instance_name() == DEMO_INSTANCE_NAME
+}
+
 /// Returns the path to the main config file.
 pub fn config_file_path() -> PathBuf {
     config_dir().join("config.toml")
@@ -66,6 +77,17 @@ pub fn data_dir() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(app_instance_name())
+}
+
+/// Default directory for user-initiated attachment saves. Prefers the
+/// platform's XDG `Downloads` (or macOS `~/Downloads`), falling back to
+/// `~/Downloads` if `dirs::download_dir` is unset.
+pub fn default_download_dir() -> PathBuf {
+    dirs::download_dir().unwrap_or_else(|| {
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("Downloads")
+    })
 }
 
 /// Returns the on-disk path where the local daemon's HTTP bridge bearer
@@ -276,6 +298,9 @@ fn apply_env_overrides(config: &mut MxrConfig) {
     }
     if let Ok(val) = std::env::var("MXR_ATTACHMENT_DIR") {
         config.general.attachment_dir = PathBuf::from(val);
+    }
+    if let Ok(val) = std::env::var("MXR_DOWNLOAD_DIR") {
+        config.general.download_dir = PathBuf::from(val);
     }
     if let Ok(val) = std::env::var("MXR_SAFETY_POLICY") {
         if let Some(policy) = crate::types::SafetyPolicy::parse_env(&val) {

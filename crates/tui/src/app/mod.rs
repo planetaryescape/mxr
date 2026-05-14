@@ -234,6 +234,10 @@ pub struct App {
     /// Recent undoable mutation, if any. Cleared by `tick_pending_undo`
     /// once the daemon-side window expires.
     pub pending_undo: Option<PendingUndo>,
+    /// Default destination for the "save attachment as..." modal,
+    /// mirrored from `config.general.download_dir`. Falls back to
+    /// `dirs::download_dir()` when no config is available.
+    pub download_dir: std::path::PathBuf,
     recorder: ActionRecorder,
     input: InputHandler,
 }
@@ -268,6 +272,7 @@ impl App {
         self.mailbox.show_reader_stats = config.render.show_reader_stats;
         self.mailbox.remote_content_enabled = config.render.html_remote_content;
         self.modals.snooze_config = config.snooze.clone();
+        self.download_dir = config.general.download_dir.clone();
     }
 
     pub fn from_render_config(render: &RenderConfig) -> Self {
@@ -320,6 +325,11 @@ impl App {
             pending_screener_refresh: None,
             pending_screener_decisions: Vec::new(),
             pending_undo: None,
+            download_dir: dirs::download_dir().unwrap_or_else(|| {
+                dirs::home_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .join("Downloads")
+            }),
             recorder: ActionRecorder::new(1000),
             input: InputHandler::new(),
         }
@@ -755,6 +765,8 @@ fn subscription_summary_to_envelope(summary: &SubscriptionSummary) -> Envelope {
         has_attachments: summary.latest_has_attachments,
         size_bytes: summary.latest_size_bytes,
         unsubscribe: summary.unsubscribe.clone(),
+        link_count: 0,
+        body_word_count: 0,
         label_provider_ids: vec![],
     }
 }

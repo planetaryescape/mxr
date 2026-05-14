@@ -5,9 +5,9 @@ mod types;
 
 pub use resolve::{
     app_instance_name, bridge_port_path, bridge_token_path, config_dir, config_file_path, data_dir,
-    load_config, load_config_from_path, load_config_from_str, read_bridge_port,
+    is_demo_instance, load_config, load_config_from_path, load_config_from_str, read_bridge_port,
     read_or_create_bridge_token, remote_bridge_token_path, save_config, save_config_to_path,
-    socket_path, write_bridge_port, ConfigError,
+    socket_path, write_bridge_port, ConfigError, DEMO_INSTANCE_NAME,
 };
 pub use types::*;
 
@@ -51,6 +51,7 @@ default_account = "personal"
 sync_interval = 120
 hook_timeout = 45
 attachment_dir = "/tmp/attachments"
+download_dir = "/tmp/downloads"
 
 [accounts.personal]
 name = "Personal"

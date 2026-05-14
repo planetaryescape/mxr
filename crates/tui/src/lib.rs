@@ -1381,6 +1381,7 @@ pub async fn run() -> anyhow::Result<()> {
                     AttachmentOperation::Download => Request::DownloadAttachment {
                         message_id: pending.message_id,
                         attachment_id: pending.attachment_id,
+                        destination: pending.destination,
                     },
                 };
                 let resp = ipc_call(&bg, request).await;

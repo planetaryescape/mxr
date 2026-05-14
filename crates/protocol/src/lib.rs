@@ -80,6 +80,8 @@ mod tests {
             has_attachments: false,
             size_bytes: 42,
             unsubscribe: mxr_core::types::UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: Vec::new(),
         }
     }
@@ -162,6 +164,7 @@ mod tests {
                 Request::DownloadAttachment {
                     message_id: MessageId::new(),
                     attachment_id: AttachmentId::new(),
+                    destination: None,
                 },
                 IpcCategory::CoreMail,
             ),

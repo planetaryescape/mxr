@@ -193,6 +193,7 @@ pub async fn attachments_download(
             Request::DownloadAttachment {
                 message_id: id.clone(),
                 attachment_id: attachment.id.clone(),
+                destination: None,
             },
         )
         .await?;

@@ -536,6 +536,8 @@ async fn status(
             "repair_required": repair_required,
             "semantic_runtime": semantic_runtime,
             "feature_health": feature_health,
+            "instance": mxr_config::app_instance_name(),
+            "is_demo": mxr_config::is_demo_instance(),
         }))),
         _ => Err(BridgeError::UnexpectedResponse),
     }
@@ -1505,6 +1507,7 @@ async fn download_attachment(
         Request::DownloadAttachment {
             message_id: parse_message_id(&request.message_id)?,
             attachment_id: parse_attachment_id(&request.attachment_id)?,
+            destination: None,
         },
     )
     .await?
@@ -4037,6 +4040,8 @@ mod tests {
             has_attachments: false,
             size_bytes: 128,
             unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: Vec::new(),
         }
     }

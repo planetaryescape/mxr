@@ -294,6 +294,10 @@ impl App {
         // Attachment overlay
         ui::attachment_modal::draw(frame, area, &self.mailbox.attachment_panel, theme);
 
+        // Save-attachment "where to?" modal — drawn after the attachment
+        // modal so it appears on top.
+        ui::save_attachment_modal::draw(frame, area, &self.modals.save_attachment, theme);
+
         // URL picker overlay
         ui::url_modal::draw(frame, area, self.mailbox.url_modal.as_ref(), theme);
 

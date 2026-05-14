@@ -193,6 +193,14 @@ pub enum Request {
     DownloadAttachment {
         message_id: MessageId,
         attachment_id: AttachmentId,
+        /// Optional user-chosen destination path. When `None`, the daemon
+        /// materializes into its internal attachment cache (used by the
+        /// open-in-app flow). When `Some`, the daemon writes the bytes
+        /// directly to this exact path (parent dirs are created; caller
+        /// owns the filename in the path).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+        destination: Option<std::path::PathBuf>,
     },
     OpenAttachment {
         message_id: MessageId,
@@ -333,6 +341,11 @@ pub enum Request {
     },
     RefreshContacts,
     RebuildAnalytics,
+    /// Walk every message body and recompute `link_count` + `body_word_count`
+    /// using the current link-extractor. Drives `mxr doctor --recompute-link-counts`
+    /// for users who want the link indicator/search filters to populate on
+    /// pre-existing rows without waiting for the next sync.
+    RecomputeLinkCounts,
     ListResponseTime {
         account_id: Option<AccountId>,
         direction: ResponseTimeDirection,
@@ -959,6 +972,7 @@ impl Request {
             | Self::ListContactDecay { .. }
             | Self::RefreshContacts
             | Self::RebuildAnalytics
+            | Self::RecomputeLinkCounts
             | Self::ListResponseTime { .. }
             | Self::ListAccountAddresses { .. }
             | Self::AddAccountAddress { .. }
@@ -1025,7 +1039,7 @@ pub enum MutationCommand {
 }
 
 /// Reply context returned by PrepareReply.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReplyContext {
     pub account_id: AccountId,

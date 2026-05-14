@@ -234,6 +234,10 @@ pub struct GeneralConfig {
     pub sync_interval: u64,
     pub hook_timeout: u64,
     pub attachment_dir: PathBuf,
+    /// Default destination directory for user-initiated attachment saves
+    /// (the TUI "save as..." flow). Distinct from `attachment_dir`, which
+    /// is the daemon's internal cache for opened/inline attachments.
+    pub download_dir: PathBuf,
     pub safety_policy: SafetyPolicy,
 }
 

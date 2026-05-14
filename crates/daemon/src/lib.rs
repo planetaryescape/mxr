@@ -17,7 +17,7 @@ pub(crate) mod test_fixtures;
 pub mod unsubscribe;
 
 use clap::Parser;
-use cli::{unsupported_command_guidance, Cli, Command};
+use cli::{unsupported_command_guidance, Cli, Command, DemoAction};
 
 pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
     if let Some(guidance) = unsupported_command_guidance(&args) {
@@ -25,13 +25,37 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
     }
     let cli = Cli::parse_from(&args);
 
+    // Sticky demo: when `mxr demo` has been started in a prior invocation,
+    // it leaves an active-marker behind so every subsequent CLI command
+    // operates on the demo profile until `mxr demo stop`. Apply demo env
+    // vars up front for any non-Demo command so the rest of dispatch sees
+    // the demo paths transparently.
+    //
+    // The Demo command handles its own env setup below (Start re-seeds with
+    // the requested message count; Stop/Status/Reset call apply_active_environment
+    // themselves so they target the demo daemon, not the real one).
+    let is_demo_command = matches!(cli.command, Some(Command::Demo { .. }));
+    if !is_demo_command {
+        commands::demo::apply_active_environment()?;
+    }
+
     if let Some(Command::Demo {
-        reset, messages, ..
+        action,
+        reset,
+        messages,
+        ..
     }) = &cli.command
     {
-        commands::demo::prepare_environment(*messages)?;
-        if *reset {
-            commands::demo::reset_profile().await?;
+        // Stop/Status/Reset must run inside the demo env so they target the
+        // demo profile rather than the user's real one. Start re-applies env
+        // anyway via demo::run.
+        if action.is_some() {
+            commands::demo::apply_active_environment()?;
+        } else {
+            commands::demo::prepare_environment(*messages)?;
+            if *reset {
+                commands::demo::reset_profile().await?;
+            }
         }
     }
 
@@ -387,10 +411,19 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             commands::setup::run(demo, key, force).await?;
         }
         Some(Command::Demo {
-            messages, no_tui, ..
-        }) => {
-            commands::demo::run(messages, no_tui).await?;
-        }
+            action,
+            messages,
+            no_tui,
+            ..
+        }) => match action {
+            None => commands::demo::run(messages, no_tui).await?,
+            Some(DemoAction::Stop) => commands::demo::stop().await?,
+            Some(DemoAction::Status) => commands::demo::status()?,
+            Some(DemoAction::Reset) => {
+                commands::demo::reset_profile().await?;
+                println!("Demo profile wiped. Run `mxr demo` to re-seed.");
+            }
+        },
         Some(Command::Summarize {
             thread_id,
             search,

@@ -53,6 +53,34 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &StatusBarState, theme: &crate
         status
     };
 
+    // Reserve room on the right for a DEMO chip when the process is bound to
+    // the demo instance — this way a recording always shows whether the user
+    // is on demo data or their real inbox.
+    if mxr_config::is_demo_instance() {
+        let chip = " DEMO ";
+        let chip_width = chip.len() as u16;
+        let split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Length(chip_width)])
+            .split(area);
+        let bar = Paragraph::new(status).style(
+            Style::default()
+                .bg(theme.hint_bar_bg)
+                .fg(theme.text_primary),
+        );
+        let chip_widget = Paragraph::new(chip)
+            .alignment(Alignment::Center)
+            .style(
+                Style::default()
+                    .bg(theme.warning)
+                    .fg(theme.modal_bg)
+                    .add_modifier(Modifier::BOLD),
+            );
+        frame.render_widget(bar, split[0]);
+        frame.render_widget(chip_widget, split[1]);
+        return;
+    }
+
     let bar = Paragraph::new(status).style(
         Style::default()
             .bg(theme.hint_bar_bg)

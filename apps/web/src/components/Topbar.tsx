@@ -1,18 +1,32 @@
 import { useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 
 import { DensityToggle } from "@/components/DensityToggle";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/features/search/SearchInput";
+import { fetchAdminStatus } from "@/features/diagnostics/api";
 import { useModals } from "@/state/modalStore";
 
 export function Topbar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const setComposeOpen = useModals((state) => state.setComposeLauncherOpen);
 
+  // Surface a small chip whenever the bridge is bound to the demo profile.
+  // Polled lazily; status is cheap and stable for the session.
+  const { data: status } = useQuery({
+    queryKey: ["admin-status-is-demo"],
+    queryFn: fetchAdminStatus,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const isDemo = Boolean((status as { is_demo?: boolean } | undefined)?.is_demo);
+
   return (
     <div className="flex w-full items-center gap-3">
       <Breadcrumb path={path} />
+
+      {isDemo ? <DemoChip /> : null}
 
       <SearchInput />
 
@@ -23,6 +37,18 @@ export function Topbar() {
         Compose
       </Button>
     </div>
+  );
+}
+
+function DemoChip() {
+  return (
+    <span
+      className="rounded-sm bg-amber-300 px-1.5 py-0.5 font-mono text-2xs font-semibold text-amber-950"
+      title="Demo profile — no real mail is being touched"
+      aria-label="Demo mode active"
+    >
+      DEMO
+    </span>
   );
 }
 

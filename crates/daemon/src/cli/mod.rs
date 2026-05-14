@@ -241,8 +241,16 @@ pub enum Command {
         force: bool,
     },
     /// Launch an isolated, realistic demo inbox without touching your real config.
+    ///
+    /// Once started, demo mode is sticky: every subsequent `mxr` command
+    /// (search, cat, archive, web, etc.) operates on the demo profile until
+    /// you run `mxr demo stop`.
     Demo {
-        /// Reset the demo profile before launching.
+        /// Optional subcommand. Defaults to starting the demo when omitted.
+        #[command(subcommand)]
+        action: Option<DemoAction>,
+        /// Reset the demo profile before launching. Equivalent to `mxr demo reset`
+        /// followed by `mxr demo`, kept as a flag for backward compatibility.
         #[arg(long)]
         reset: bool,
         /// Number of synthetic demo messages to seed. Defaults to a large mailbox
@@ -1262,6 +1270,18 @@ pub enum ScreenerAction {
     },
     /// Clear an existing decision
     Clear { sender_email: String },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum DemoAction {
+    /// Exit demo mode: shut down the demo daemon and remove the active marker.
+    /// Real-profile commands resume on the next invocation.
+    Stop,
+    /// Show whether demo mode is active and where its profile lives.
+    Status,
+    /// Wipe the demo profile (config + data) so the next `mxr demo` re-seeds
+    /// from scratch.
+    Reset,
 }
 
 #[derive(Debug, Clone, Subcommand)]

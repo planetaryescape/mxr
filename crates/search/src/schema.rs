@@ -24,6 +24,8 @@ pub struct MxrSchema {
     pub size_bytes: Field,
     pub flags: Field,
     pub has_attachments: Field,
+    pub has_link: Field,
+    pub link_density: Field,
     pub has_user_labels: Field,
     pub is_read: Field,
     pub is_starred: Field,
@@ -63,6 +65,11 @@ impl MxrSchema {
         let size_bytes = builder.add_u64_field("size_bytes", INDEXED | STORED);
         let flags = builder.add_u64_field("flags", INDEXED);
         let has_attachments = builder.add_bool_field("has_attachments", INDEXED);
+        // Link-density indexing: a boolean for the cheap `has:link` filter
+        // (covers `Some` + `Heavy`) plus a u64 tier (0/1/2) for `has:link-heavy`
+        // and `has:link-none`. See `LinkDensity::as_db_u8` for the encoding.
+        let has_link = builder.add_bool_field("has_link", INDEXED);
+        let link_density = builder.add_u64_field("link_density", INDEXED);
         let has_user_labels = builder.add_bool_field("has_user_labels", INDEXED);
         let is_read = builder.add_bool_field("is_read", INDEXED);
         let is_starred = builder.add_bool_field("is_starred", INDEXED);
@@ -99,6 +106,8 @@ impl MxrSchema {
             size_bytes,
             flags,
             has_attachments,
+            has_link,
+            link_density,
             has_user_labels,
             is_read,
             is_starred,

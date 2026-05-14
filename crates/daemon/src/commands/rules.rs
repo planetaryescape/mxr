@@ -103,6 +103,21 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
         QueryNode::Filter(FilterKind::Archived) => Conditions::Field(FieldCondition::HasLabel {
             label: "ARCHIVE".to_string(),
         }),
+        QueryNode::Filter(FilterKind::HasLink) => {
+            Conditions::Field(FieldCondition::LinkDensity {
+                match_kind: mxr_rules::LinkDensityMatch::Any,
+            })
+        }
+        QueryNode::Filter(FilterKind::HasLinkHeavy) => {
+            Conditions::Field(FieldCondition::LinkDensity {
+                match_kind: mxr_rules::LinkDensityMatch::Heavy,
+            })
+        }
+        QueryNode::Filter(FilterKind::NoLinks) => {
+            Conditions::Field(FieldCondition::LinkDensity {
+                match_kind: mxr_rules::LinkDensityMatch::None,
+            })
+        }
         QueryNode::Filter(
             FilterKind::Answered
             | FilterKind::ReplyLater

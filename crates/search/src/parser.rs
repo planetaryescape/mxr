@@ -455,6 +455,13 @@ impl Parser {
                 "inline" | "image" | "inline-image" | "inline-images" => {
                     Ok(QueryNode::Filter(FilterKind::HasInlineImage))
                 }
+                "link" | "links" => Ok(QueryNode::Filter(FilterKind::HasLink)),
+                "link-heavy" | "links-heavy" | "linkheavy" => {
+                    Ok(QueryNode::Filter(FilterKind::HasLinkHeavy))
+                }
+                "link-none" | "no-link" | "no-links" | "linkfree" | "link-free" => {
+                    Ok(QueryNode::Filter(FilterKind::NoLinks))
+                }
                 "yellow-star" | "orange-star" | "red-star" | "purple-star" | "blue-star"
                 | "green-star" | "red-bang" | "orange-guillemet" | "yellow-bang"
                 | "green-check" | "blue-info" | "purple-question" => {

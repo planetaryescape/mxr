@@ -105,6 +105,11 @@ fn matches_filter(filter: &FilterKind, envelope: &mxr_core::Envelope) -> bool {
         | FilterKind::HasPresentation
         | FilterKind::HasYoutube
         | FilterKind::HasInlineImage => true,
+        FilterKind::HasLink => envelope.link_count > 0,
+        FilterKind::HasLinkHeavy => {
+            matches!(envelope.link_density(), mxr_core::types::LinkDensity::Heavy)
+        }
+        FilterKind::NoLinks => envelope.link_count == 0,
     }
 }
 

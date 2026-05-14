@@ -65,6 +65,15 @@ pub enum FilterKind {
     HasPresentation,
     HasYoutube,
     HasInlineImage,
+    /// `has:link` — at least one external link in the body (excludes
+    /// trackers).
+    HasLink,
+    /// `has:link-heavy` (or `is:link-heavy`) — link-dense newsletter-shaped
+    /// mail.
+    HasLinkHeavy,
+    /// `has:link-none` (or `is:link-none`) — no external links at all.
+    /// Useful for "show me real conversations only".
+    NoLinks,
 }
 
 #[derive(Debug, Clone, PartialEq)]

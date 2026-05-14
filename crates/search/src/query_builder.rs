@@ -32,6 +32,8 @@ pub struct QueryBuilder {
     is_answered: Field,
     is_reply_later: Field,
     has_attachments: Field,
+    has_link: Field,
+    link_density: Field,
     has_user_labels: Field,
 }
 
@@ -61,6 +63,8 @@ impl QueryBuilder {
             is_answered: schema.is_answered,
             is_reply_later: schema.is_reply_later,
             has_attachments: schema.has_attachments,
+            has_link: schema.has_link,
+            link_density: schema.link_density,
             has_user_labels: schema.has_user_labels,
         }
     }
@@ -281,6 +285,20 @@ impl QueryBuilder {
             ]),
             FilterKind::HasYoutube => self.build_content_hint_any(&["youtube.com", "youtu.be"]),
             FilterKind::HasInlineImage => self.build_content_hint_any(&["content-id", "image"]),
+            FilterKind::HasLink => {
+                let term = Term::from_field_bool(self.has_link, true);
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic))
+            }
+            FilterKind::HasLinkHeavy => {
+                // link_density == 2 means LinkDensity::Heavy. See
+                // `mxr_core::LinkDensity::as_db_u8` for the encoding.
+                let term = Term::from_field_u64(self.link_density, 2);
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic))
+            }
+            FilterKind::NoLinks => {
+                let term = Term::from_field_bool(self.has_link, false);
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic))
+            }
         }
     }
 

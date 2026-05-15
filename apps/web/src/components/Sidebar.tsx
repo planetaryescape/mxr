@@ -5,6 +5,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Filter,
+  History,
   Inbox,
   Mail,
   MessageSquareReply,
@@ -61,6 +62,7 @@ const fallbackLenses: NavItem[] = [
 ];
 
 const systemItems: NavItem[] = [
+  { to: "/activity", label: "Activity log", Icon: History },
   { to: "/diagnostics", label: "Diagnostics", Icon: Activity, shortcut: "9" },
   { to: "/settings/theme", label: "Settings", Icon: Settings, shortcut: "0" },
 ];

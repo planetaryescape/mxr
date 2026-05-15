@@ -18,6 +18,7 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as DiagnosticsRouteImport } from './routes/diagnostics'
 import { Route as DevRouteImport } from './routes/dev'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
+import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as AccountsRouteImport } from './routes/accounts'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsSectionRouteImport } from './routes/settings.$section'
@@ -75,6 +76,11 @@ const DevRoute = DevRouteImport.update({
 const AnalyticsRoute = AnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ActivityRoute = ActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AccountsRoute = AccountsRouteImport.update({
@@ -146,6 +152,7 @@ const MMailboxThreadIdRoute = MMailboxThreadIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/accounts': typeof AccountsRouteWithChildren
+  '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
@@ -170,6 +177,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/accounts': typeof AccountsRouteWithChildren
+  '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
@@ -195,6 +203,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/accounts': typeof AccountsRouteWithChildren
+  '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
@@ -221,6 +230,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/accounts'
+    | '/activity'
     | '/analytics'
     | '/dev'
     | '/diagnostics'
@@ -245,6 +255,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/accounts'
+    | '/activity'
     | '/analytics'
     | '/dev'
     | '/diagnostics'
@@ -269,6 +280,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/accounts'
+    | '/activity'
     | '/analytics'
     | '/dev'
     | '/diagnostics'
@@ -294,6 +306,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccountsRoute: typeof AccountsRouteWithChildren
+  ActivityRoute: typeof ActivityRoute
   AnalyticsRoute: typeof AnalyticsRouteWithChildren
   DevRoute: typeof DevRoute
   DiagnosticsRoute: typeof DiagnosticsRoute
@@ -375,6 +388,13 @@ declare module '@tanstack/react-router' {
       path: '/analytics'
       fullPath: '/analytics'
       preLoaderRoute: typeof AnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/activity': {
+      id: '/activity'
+      path: '/activity'
+      fullPath: '/activity'
+      preLoaderRoute: typeof ActivityRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/accounts': {
@@ -520,6 +540,7 @@ const MMailboxRouteWithChildren = MMailboxRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountsRoute: AccountsRouteWithChildren,
+  ActivityRoute: ActivityRoute,
   AnalyticsRoute: AnalyticsRouteWithChildren,
   DevRoute: DevRoute,
   DiagnosticsRoute: DiagnosticsRoute,

@@ -958,6 +958,10 @@ mod tests {
     #[tokio::test]
     async fn execute_search_hybrid_falls_back_to_lexical_when_semantic_is_disabled() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
+        let mut config = state.config_snapshot();
+        config.search.semantic.enabled = false;
+        state.set_config_for_test(config).await;
+
         let account_id = state.default_account_id();
         let message = crate::test_fixtures::TestEnvelopeBuilder::new()
             .account_id(account_id)

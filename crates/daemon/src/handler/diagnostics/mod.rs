@@ -1648,6 +1648,9 @@ mod tests {
     #[tokio::test]
     async fn sync_now_persists_semantic_chunks_without_embeddings_when_semantic_is_disabled() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
+        let mut config = state.config_snapshot();
+        config.search.semantic.enabled = false;
+        state.set_config_for_test(config).await;
 
         let response = sync_now(&state, None).await.unwrap();
         assert!(matches!(response, ResponseData::Ack));

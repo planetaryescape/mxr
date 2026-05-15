@@ -7,8 +7,27 @@ attachment_filenames:
 auth_results:
   - mx.example.net; dkim=pass
 calendar:
+  attendees: []
+  component_kind: VEVENT
+  description: ~
+  dtstamp: ~
+  ends_at: ~
+  location: ~
   method: REQUEST
+  organizer: ~
+  raw_ics: "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nSUMMARY:Planning meeting\r\nEND:VEVENT\r\nEND:VCALENDAR"
+  recurrence_id: ~
+  rrule: ~
+  rsvp_requested: false
+  sequence: ~
+  starts_at: ~
+  status: ~
   summary: Planning meeting
+  uid: ~
+  warnings:
+    - calendar invite is missing UID
+    - calendar invite is missing organizer
+    - calendar invite has no attendees
 content_language:
   - en
 flags: 0

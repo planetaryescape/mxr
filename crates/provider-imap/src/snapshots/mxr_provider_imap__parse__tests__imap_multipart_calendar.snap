@@ -6,8 +6,27 @@ attachment_filenames:
   - Q4-€-report.pdf
 auth_results: []
 calendar:
+  attendees: []
+  component_kind: VEVENT
+  description: ~
+  dtstamp: ~
+  ends_at: ~
+  location: ~
   method: REQUEST
+  organizer: ~
+  raw_ics: "BEGIN:VCALENDAR\nMETHOD:REQUEST\nBEGIN:VEVENT\nSUMMARY:Planning meeting\nEND:VEVENT\nEND:VCALENDAR"
+  recurrence_id: ~
+  rrule: ~
+  rsvp_requested: false
+  sequence: ~
+  starts_at: ~
+  status: ~
   summary: Planning meeting
+  uid: ~
+  warnings:
+    - calendar invite is missing UID
+    - calendar invite is missing organizer
+    - calendar invite has no attendees
 content_language: []
 from:
   email: alice@example.com

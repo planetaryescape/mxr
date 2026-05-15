@@ -3,7 +3,7 @@
   "description": "Web interface for the mxr terminal email client. Connects to the daemon HTTP bridge.",
   "license": "MIT OR Apache-2.0",
   "private": true,
-  "version": "0.5.8",
+  "version": "0.5.9",
   "type": "module",
   "scripts": {
     "dev": "vite",

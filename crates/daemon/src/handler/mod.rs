@@ -2818,7 +2818,10 @@ async fn authorize_account_config(
             false,
             "Gmail authorization failed.".into(),
             None,
-            Some(account_step(false, error.to_string())),
+            Some(account_step(
+                false,
+                friendly_gmail_auth_error(&error.to_string()),
+            )),
             None,
             None,
         ),
@@ -2886,7 +2889,10 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                             }
                             Err(error) => {
                                 ok = false;
-                                auth = Some(account_step(false, error.to_string()));
+                                auth = Some(account_step(
+                                    false,
+                                    friendly_gmail_auth_error(&error.to_string()),
+                                ));
                                 sync = Some(account_step(
                                     false,
                                     "Skipped Gmail sync because authorization failed.".into(),
@@ -3027,7 +3033,37 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
 
     match account.send {
         Some(AccountSendConfigData::Gmail) => {
-            send = Some(account_step(true, "Gmail send configured.".into()));
+            // Gmail send uses the same OAuth token as Gmail sync. Only claim
+            // send is reachable if Gmail sync auth actually succeeded — the
+            // old behavior reported "configured" unconditionally and masked
+            // real auth failures.
+            let gmail_sync_auth_ok = matches!(
+                (&account.sync, auth.as_ref()),
+                (Some(AccountSyncConfigData::Gmail { .. }), Some(step)) if step.ok
+            );
+            let has_gmail_sync = matches!(
+                account.sync,
+                Some(AccountSyncConfigData::Gmail { .. })
+            );
+            if gmail_sync_auth_ok {
+                send = Some(account_step(
+                    true,
+                    "Gmail send reachable (shares OAuth credentials with sync).".into(),
+                ));
+            } else if has_gmail_sync {
+                ok = false;
+                send = Some(account_step(
+                    false,
+                    "Gmail send unavailable because Gmail authorization failed.".into(),
+                ));
+            } else {
+                ok = false;
+                send = Some(account_step(
+                    false,
+                    "Gmail send requires a Gmail sync configuration to provide OAuth credentials."
+                        .into(),
+                ));
+            }
         }
         Some(
             send_cfg @ (AccountSendConfigData::OutlookPersonal { .. }
@@ -3240,6 +3276,29 @@ fn resolve_gmail_credentials(
             }
         }
     }
+}
+
+/// Rewrite raw Gmail OAuth errors into actionable guidance for onboarding UI.
+/// Google's response strings are precise but cryptic; users need to know what
+/// to change in Google Cloud Console.
+fn friendly_gmail_auth_error(raw: &str) -> String {
+    let lower = raw.to_lowercase();
+    if lower.contains("invalid_client") {
+        return format!(
+            "{raw}\n\nGoogle rejected the OAuth client. Most likely the client in Google Cloud Console is not type \"Desktop app\". mxr uses the installed-application flow with an http://localhost redirect, which only works with Desktop app credentials.\n\nFix:\n  1. Open https://console.cloud.google.com/apis/credentials\n  2. Find the OAuth 2.0 Client ID being used (check the client_id reported in this build).\n  3. If its Application type is not \"Desktop app\", create a new one of type \"Desktop app\".\n  4. Re-run Gmail onboarding with the new credentials, or rebuild mxr with updated GMAIL_CLIENT_ID/GMAIL_CLIENT_SECRET.\n\nSee https://mxr-mail.vercel.app/getting-started/gmail-setup/ for full instructions."
+        );
+    }
+    if lower.contains("access_denied") {
+        return format!(
+            "{raw}\n\nYou (or Google) denied the consent screen. If the OAuth app is in \"Testing\" mode, make sure your Google account is added under \"Test users\" in the OAuth consent screen settings."
+        );
+    }
+    if lower.contains("invalid_scope") {
+        return format!(
+            "{raw}\n\nGoogle rejected the requested scopes. Make sure the Gmail API is enabled for the project in https://console.cloud.google.com/apis/library/gmail.googleapis.com and the OAuth consent screen lists the gmail.readonly, gmail.modify, and gmail.labels scopes."
+        );
+    }
+    raw.to_string()
 }
 
 fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfigData {

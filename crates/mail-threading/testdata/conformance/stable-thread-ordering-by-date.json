@@ -1,0 +1,43 @@
+{
+  "name": "stable-thread-ordering-by-date",
+  "description": "Independent threads are ordered by earliest visible message date.",
+  "spec": {
+    "source": "public API contract",
+    "url": "https://www.rfc-editor.org/rfc/rfc5256",
+    "behavior": "flat public output is deterministic across input order"
+  },
+  "input": [
+    {
+      "id": "<later@example>",
+      "message_id": "<later@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Later",
+      "date": "2026-05-15T10:00:00Z"
+    },
+    {
+      "id": "<earlier@example>",
+      "message_id": "<earlier@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Earlier",
+      "date": "2026-05-15T09:00:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "<earlier@example>",
+        "messages": [
+          "<earlier@example>"
+        ]
+      },
+      {
+        "root": "<later@example>",
+        "messages": [
+          "<later@example>"
+        ]
+      }
+    ]
+  }
+}

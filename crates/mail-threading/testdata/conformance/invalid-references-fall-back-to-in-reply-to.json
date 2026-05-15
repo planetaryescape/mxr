@@ -1,0 +1,40 @@
+{
+  "name": "invalid-references-fall-back-to-in-reply-to",
+  "description": "If References contains no valid Message-IDs, In-Reply-To supplies the parent.",
+  "spec": {
+    "source": "RFC 5256",
+    "url": "https://www.rfc-editor.org/rfc/rfc5256",
+    "behavior": "empty or invalid References falls back to the first valid In-Reply-To Message-ID"
+  },
+  "input": [
+    {
+      "id": "parent",
+      "message_id": "<invalid-ref-parent@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Invalid References",
+      "date": "2026-05-15T09:00:00Z"
+    },
+    {
+      "id": "child",
+      "message_id": "<invalid-ref-child@example>",
+      "in_reply_to": "<invalid-ref-parent@example>",
+      "references": [
+        "not-a-message-id"
+      ],
+      "subject": "Re: Invalid References",
+      "date": "2026-05-15T09:05:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "parent",
+        "messages": [
+          "parent",
+          "child"
+        ]
+      }
+    ]
+  }
+}

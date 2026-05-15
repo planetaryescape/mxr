@@ -1,0 +1,29 @@
+{
+  "name": "missing-message-id-assigned-unique-id",
+  "description": "A message without a Message-ID remains visible using its caller-stable id.",
+  "spec": {
+    "source": "RFC 5256",
+    "url": "https://www.rfc-editor.org/rfc/rfc5256",
+    "behavior": "messages without valid Message-ID values are assigned unique IDs for threading"
+  },
+  "input": [
+    {
+      "id": "missing-id-message",
+      "message_id": null,
+      "in_reply_to": null,
+      "references": [],
+      "subject": "No Message-ID",
+      "date": "2026-05-15T09:00:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "missing-id-message",
+        "messages": [
+          "missing-id-message"
+        ]
+      }
+    ]
+  }
+}

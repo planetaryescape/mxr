@@ -1,0 +1,52 @@
+{
+  "name": "basic-references-chain",
+  "description": "A References chain links descendants into one thread.",
+  "spec": {
+    "source": "RFC 5256 / JWZ",
+    "url": "https://www.rfc-editor.org/rfc/rfc5256",
+    "behavior": "messages are threaded by ordered References ancestors"
+  },
+  "input": [
+    {
+      "id": "<root@example>",
+      "message_id": "<root@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Hello",
+      "date": "2026-05-15T09:00:00Z"
+    },
+    {
+      "id": "<reply@example>",
+      "message_id": "<reply@example>",
+      "in_reply_to": "<root@example>",
+      "references": [
+        "<root@example>"
+      ],
+      "subject": "Re: Hello",
+      "date": "2026-05-15T09:05:00Z"
+    },
+    {
+      "id": "<second-reply@example>",
+      "message_id": "<second-reply@example>",
+      "in_reply_to": "<reply@example>",
+      "references": [
+        "<root@example>",
+        "<reply@example>"
+      ],
+      "subject": "Re: Hello",
+      "date": "2026-05-15T09:10:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "<root@example>",
+        "messages": [
+          "<root@example>",
+          "<reply@example>",
+          "<second-reply@example>"
+        ]
+      }
+    ]
+  }
+}

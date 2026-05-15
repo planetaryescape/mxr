@@ -1,0 +1,38 @@
+{
+  "name": "subject-forward-wrapper-normalization",
+  "description": "The RFC 5256 [fwd: subject] wrapper is removed during subject fallback.",
+  "spec": {
+    "source": "RFC 5256",
+    "url": "https://www.rfc-editor.org/rfc/rfc5256",
+    "behavior": "base subject extraction removes forward header/trailer wrappers"
+  },
+  "input": [
+    {
+      "id": "topic",
+      "message_id": "<fwd-wrapper-topic@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Wrapped Topic",
+      "date": "2026-05-15T09:00:00Z"
+    },
+    {
+      "id": "wrapped",
+      "message_id": "<fwd-wrapper-forward@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "[Fwd: Wrapped Topic]",
+      "date": "2026-05-15T09:05:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "topic",
+        "messages": [
+          "topic",
+          "wrapped"
+        ]
+      }
+    ]
+  }
+}

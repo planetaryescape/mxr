@@ -1,3 +1,4 @@
+use mail_threading::{thread_messages, Message as ThreadingMessage};
 use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::{MailSyncProvider, MxrError};
@@ -5,8 +6,6 @@ use mxr_search::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};
 use mxr_store::{ScreenerDisposition, Store};
 use std::collections::HashMap;
 use std::sync::Arc;
-
-use crate::threading::{thread_messages, MessageForThreading};
 
 pub struct SyncOutcome {
     pub synced_count: u32,
@@ -538,29 +537,20 @@ impl SyncEngine {
             .await
             .map_err(|e| MxrError::Store(e.to_string()))?;
 
-        let by_header: HashMap<String, Envelope> = envelopes
+        let by_threading_id: HashMap<String, Envelope> = envelopes
             .iter()
-            .filter_map(|envelope| {
-                envelope
-                    .message_id_header
-                    .clone()
-                    .map(|header| (header, envelope.clone()))
-            })
+            .map(|envelope| (envelope.id.to_string(), envelope.clone()))
             .collect();
 
-        let threading_input: Vec<MessageForThreading> = envelopes
+        let threading_input: Vec<ThreadingMessage> = envelopes
             .iter()
-            .filter_map(|envelope| {
-                envelope
-                    .message_id_header
-                    .clone()
-                    .map(|message_id| MessageForThreading {
-                        message_id,
-                        in_reply_to: envelope.in_reply_to.clone(),
-                        references: envelope.references.clone(),
-                        date: envelope.date,
-                        subject: envelope.subject.clone(),
-                    })
+            .map(|envelope| ThreadingMessage {
+                id: envelope.id.to_string(),
+                message_id: envelope.message_id_header.clone(),
+                in_reply_to: envelope.in_reply_to.clone(),
+                references: envelope.references.clone(),
+                date: envelope.date,
+                subject: envelope.subject.clone(),
             })
             .collect();
 
@@ -568,14 +558,14 @@ impl SyncEngine {
             let thread_members: Vec<Envelope> = thread
                 .messages
                 .iter()
-                .filter_map(|message_id| by_header.get(message_id).cloned())
+                .filter_map(|message_id| by_threading_id.get(message_id).cloned())
                 .collect();
 
             if thread_members.is_empty() {
                 continue;
             }
 
-            let canonical_thread_id = by_header
+            let canonical_thread_id = by_threading_id
                 .get(&thread.root_message_id)
                 .map(|root| root.thread_id.clone())
                 .or_else(|| {

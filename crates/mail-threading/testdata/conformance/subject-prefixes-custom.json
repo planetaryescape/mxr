@@ -1,0 +1,43 @@
+{
+  "name": "subject-prefixes-custom",
+  "description": "Custom subject prefixes are honored by subject fallback.",
+  "spec": {
+    "source": "public API contract",
+    "url": "https://www.jwz.org/doc/threading.html",
+    "behavior": "subject prefix normalization is caller-configurable"
+  },
+  "options": {
+    "subject_prefixes": [
+      "respuesta"
+    ]
+  },
+  "input": [
+    {
+      "id": "topic",
+      "message_id": "<custom-prefix-topic@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Plan",
+      "date": "2026-05-15T09:00:00Z"
+    },
+    {
+      "id": "reply",
+      "message_id": "<custom-prefix-reply@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Respuesta: Plan",
+      "date": "2026-05-15T09:05:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "topic",
+        "messages": [
+          "topic",
+          "reply"
+        ]
+      }
+    ]
+  }
+}

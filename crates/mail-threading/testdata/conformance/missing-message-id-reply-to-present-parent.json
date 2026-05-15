@@ -1,0 +1,38 @@
+{
+  "name": "missing-message-id-reply-to-present-parent",
+  "description": "A message without Message-ID can still be threaded under its In-Reply-To parent.",
+  "spec": {
+    "source": "RFC 5256",
+    "url": "https://www.rfc-editor.org/rfc/rfc5256",
+    "behavior": "assigned unique IDs still participate in parent-child links from references"
+  },
+  "input": [
+    {
+      "id": "parent",
+      "message_id": "<missing-child-parent@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Parent",
+      "date": "2026-05-15T09:00:00Z"
+    },
+    {
+      "id": "missing-child",
+      "message_id": null,
+      "in_reply_to": "<missing-child-parent@example>",
+      "references": [],
+      "subject": "Re: Parent",
+      "date": "2026-05-15T09:05:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "parent",
+        "messages": [
+          "parent",
+          "missing-child"
+        ]
+      }
+    ]
+  }
+}

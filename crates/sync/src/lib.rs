@@ -2,7 +2,6 @@
 
 mod engine;
 pub mod links;
-pub mod threading;
 pub use engine::SyncEngine;
 
 #[cfg(test)]
@@ -717,6 +716,51 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(thread.message_count, 2);
+    }
+
+    #[tokio::test]
+    async fn sync_rethreads_messages_without_message_id_headers() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search);
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+
+        let mut first = make_test_envelope(&account_id, "headerless-1", vec![]);
+        first.message_id_header = None;
+        first.subject = "Headerless topic".into();
+        first.date = chrono::Utc::now() - chrono::Duration::minutes(5);
+        let first_id = first.id.clone();
+
+        let mut second = make_test_envelope(&account_id, "headerless-2", vec![]);
+        second.message_id_header = None;
+        second.subject = "Re: Headerless topic".into();
+        second.date = chrono::Utc::now();
+        let second_id = second.id.clone();
+
+        let provider = ThreadingProvider {
+            account_id: account_id.clone(),
+            messages: vec![
+                SyncedMessage {
+                    body: make_empty_body(&first_id),
+                    envelope: first,
+                },
+                SyncedMessage {
+                    body: make_empty_body(&second_id),
+                    envelope: second,
+                },
+            ],
+        };
+
+        engine.sync_account(&provider).await.unwrap();
+
+        let first_env = store.get_envelope(&first_id).await.unwrap().unwrap();
+        let second_env = store.get_envelope(&second_id).await.unwrap().unwrap();
+        assert_eq!(first_env.thread_id, second_env.thread_id);
     }
 
     #[tokio::test]

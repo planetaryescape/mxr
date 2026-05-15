@@ -1,0 +1,31 @@
+{
+  "name": "self-reference",
+  "description": "A message that references itself is not parented to itself.",
+  "spec": {
+    "source": "JWZ",
+    "url": "https://www.jwz.org/doc/threading.html",
+    "behavior": "self-references are ignored because they would create a cycle"
+  },
+  "input": [
+    {
+      "id": "<self@example>",
+      "message_id": "<self@example>",
+      "in_reply_to": "<self@example>",
+      "references": [
+        "<self@example>"
+      ],
+      "subject": "Self",
+      "date": "2026-05-15T09:00:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "<self@example>",
+        "messages": [
+          "<self@example>"
+        ]
+      }
+    ]
+  }
+}

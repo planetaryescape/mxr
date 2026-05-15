@@ -3532,6 +3532,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mail-threading"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4269,6 +4278,7 @@ version = "0.5.15"
 dependencies = [
  "async-trait",
  "chrono",
+ "mail-threading",
  "mxr-core",
  "mxr-provider-fake",
  "mxr-search",

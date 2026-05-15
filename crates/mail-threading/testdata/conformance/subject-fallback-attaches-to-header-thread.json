@@ -1,0 +1,49 @@
+{
+  "name": "subject-fallback-attaches-to-header-thread",
+  "description": "A headerless subject reply attaches to an existing header-backed thread.",
+  "spec": {
+    "source": "JWZ",
+    "url": "https://www.jwz.org/doc/threading.html",
+    "behavior": "subject fallback prefers an existing thread with the same base subject"
+  },
+  "input": [
+    {
+      "id": "<topic-root@example>",
+      "message_id": "<topic-root@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Topic",
+      "date": "2026-05-15T09:00:00Z"
+    },
+    {
+      "id": "<topic-reply@example>",
+      "message_id": "<topic-reply@example>",
+      "in_reply_to": "<topic-root@example>",
+      "references": [
+        "<topic-root@example>"
+      ],
+      "subject": "Re: Topic",
+      "date": "2026-05-15T09:05:00Z"
+    },
+    {
+      "id": "<topic-headerless@example>",
+      "message_id": "<topic-headerless@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "SV: Topic",
+      "date": "2026-05-15T09:10:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "<topic-root@example>",
+        "messages": [
+          "<topic-root@example>",
+          "<topic-reply@example>",
+          "<topic-headerless@example>"
+        ]
+      }
+    ]
+  }
+}

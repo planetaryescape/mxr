@@ -1,0 +1,38 @@
+{
+  "name": "reply-arrives-before-parent",
+  "description": "A reply can arrive before its parent and still be threaded under it.",
+  "spec": {
+    "source": "JWZ",
+    "url": "https://www.jwz.org/doc/threading.html",
+    "behavior": "phantom containers are materialized when their messages arrive later"
+  },
+  "input": [
+    {
+      "id": "<late-parent-reply@example>",
+      "message_id": "<late-parent-reply@example>",
+      "in_reply_to": "<late-parent-root@example>",
+      "references": [],
+      "subject": "Re: Late",
+      "date": "2026-05-15T09:05:00Z"
+    },
+    {
+      "id": "<late-parent-root@example>",
+      "message_id": "<late-parent-root@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Late",
+      "date": "2026-05-15T09:00:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "<late-parent-root@example>",
+        "messages": [
+          "<late-parent-root@example>",
+          "<late-parent-reply@example>"
+        ]
+      }
+    ]
+  }
+}

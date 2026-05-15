@@ -1,0 +1,65 @@
+{
+  "name": "two-independent-threads",
+  "description": "Unrelated reference chains remain separate threads.",
+  "spec": {
+    "source": "RFC 5256 / JWZ",
+    "url": "https://www.rfc-editor.org/rfc/rfc5256",
+    "behavior": "containers without shared ancestors produce separate thread roots"
+  },
+  "input": [
+    {
+      "id": "<a-root@example>",
+      "message_id": "<a-root@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Topic A",
+      "date": "2026-05-15T09:00:00Z"
+    },
+    {
+      "id": "<a-reply@example>",
+      "message_id": "<a-reply@example>",
+      "in_reply_to": "<a-root@example>",
+      "references": [
+        "<a-root@example>"
+      ],
+      "subject": "Re: Topic A",
+      "date": "2026-05-15T09:05:00Z"
+    },
+    {
+      "id": "<b-root@example>",
+      "message_id": "<b-root@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Topic B",
+      "date": "2026-05-15T10:00:00Z"
+    },
+    {
+      "id": "<b-reply@example>",
+      "message_id": "<b-reply@example>",
+      "in_reply_to": "<b-root@example>",
+      "references": [
+        "<b-root@example>"
+      ],
+      "subject": "Re: Topic B",
+      "date": "2026-05-15T10:05:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "<a-root@example>",
+        "messages": [
+          "<a-root@example>",
+          "<a-reply@example>"
+        ]
+      },
+      {
+        "root": "<b-root@example>",
+        "messages": [
+          "<b-root@example>",
+          "<b-reply@example>"
+        ]
+      }
+    ]
+  }
+}

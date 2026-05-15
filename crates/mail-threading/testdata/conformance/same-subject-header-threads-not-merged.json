@@ -1,0 +1,65 @@
+{
+  "name": "same-subject-header-threads-not-merged",
+  "description": "Header-backed threads with the same subject stay separate.",
+  "spec": {
+    "source": "JWZ",
+    "url": "https://www.jwz.org/doc/threading.html",
+    "behavior": "subject fallback does not merge distinct threads that already have reply headers"
+  },
+  "input": [
+    {
+      "id": "<same-a-root@example>",
+      "message_id": "<same-a-root@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Topic",
+      "date": "2026-05-15T09:00:00Z"
+    },
+    {
+      "id": "<same-a-reply@example>",
+      "message_id": "<same-a-reply@example>",
+      "in_reply_to": "<same-a-root@example>",
+      "references": [
+        "<same-a-root@example>"
+      ],
+      "subject": "Re: Topic",
+      "date": "2026-05-15T09:05:00Z"
+    },
+    {
+      "id": "<same-b-root@example>",
+      "message_id": "<same-b-root@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Topic",
+      "date": "2026-05-15T10:00:00Z"
+    },
+    {
+      "id": "<same-b-reply@example>",
+      "message_id": "<same-b-reply@example>",
+      "in_reply_to": "<same-b-root@example>",
+      "references": [
+        "<same-b-root@example>"
+      ],
+      "subject": "Re: Topic",
+      "date": "2026-05-15T10:05:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "<same-a-root@example>",
+        "messages": [
+          "<same-a-root@example>",
+          "<same-a-reply@example>"
+        ]
+      },
+      {
+        "root": "<same-b-root@example>",
+        "messages": [
+          "<same-b-root@example>",
+          "<same-b-reply@example>"
+        ]
+      }
+    ]
+  }
+}

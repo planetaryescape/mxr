@@ -1,0 +1,38 @@
+{
+  "name": "subject-trailer-fwd-normalization",
+  "description": "The RFC 5256 (fwd) subject trailer is removed during subject fallback.",
+  "spec": {
+    "source": "RFC 5256",
+    "url": "https://www.rfc-editor.org/rfc/rfc5256",
+    "behavior": "base subject extraction removes subj-trailer artifacts such as (fwd)"
+  },
+  "input": [
+    {
+      "id": "topic",
+      "message_id": "<fwd-trailer-topic@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Topic",
+      "date": "2026-05-15T09:00:00Z"
+    },
+    {
+      "id": "topic-fwd",
+      "message_id": "<fwd-trailer-forward@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Topic (fwd)",
+      "date": "2026-05-15T09:05:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "topic",
+        "messages": [
+          "topic",
+          "topic-fwd"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "name": "duplicate-message-id-first-wins",
+  "description": "Duplicate Message-ID input keeps the first message associated with that Message-ID and gives later duplicates unique identities.",
+  "spec": {
+    "source": "RFC 5256",
+    "url": "https://www.rfc-editor.org/rfc/rfc5256",
+    "behavior": "the first message with a duplicate Message-ID uses that ID; subsequent duplicates are assigned unique IDs"
+  },
+  "input": [
+    {
+      "id": "first",
+      "message_id": "<dup@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Duplicate",
+      "date": "2026-05-15T10:00:00Z"
+    },
+    {
+      "id": "second",
+      "message_id": "<dup@example>",
+      "in_reply_to": null,
+      "references": [],
+      "subject": "Duplicate replacement",
+      "date": "2026-05-15T08:00:00Z"
+    },
+    {
+      "id": "child",
+      "message_id": "<dup-child@example>",
+      "in_reply_to": "<dup@example>",
+      "references": [
+        "<dup@example>"
+      ],
+      "subject": "Re: Duplicate",
+      "date": "2026-05-15T09:00:00Z"
+    }
+  ],
+  "expected": {
+    "threads": [
+      {
+        "root": "second",
+        "messages": [
+          "second"
+        ]
+      },
+      {
+        "root": "first",
+        "messages": [
+          "child",
+          "first"
+        ]
+      }
+    ]
+  }
+}

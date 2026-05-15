@@ -1,20 +1,59 @@
 use crate::{decode_id, decode_optional_timestamp, decode_timestamp, trace_query};
 use mxr_core::id::*;
 use mxr_core::types::*;
+use sqlx::FromRow;
 use std::time::Instant;
+
+/// Intermediate row shape for the read half of `refresh_contacts`.
+/// Mirrors the columns of the inner SELECT so the chunked writer phase
+/// can rebind them one row at a time.
+#[derive(Debug, Clone, FromRow)]
+struct ContactAggregateRow {
+    account_id: String,
+    email: String,
+    display_name: Option<String>,
+    first_seen_at: i64,
+    last_seen_at: i64,
+    last_inbound_at: Option<i64>,
+    last_outbound_at: Option<i64>,
+    total_inbound: i64,
+    total_outbound: i64,
+    replied_count: i64,
+    cadence_days_p50: Option<f64>,
+    is_list_sender: i64,
+    list_id: Option<String>,
+}
 
 /// Same floor as analytics::EARLIEST_PLAUSIBLE_TS — duplicated rather than
 /// pub(crate)'d to keep modules independent. 2000-01-01 UTC.
 const EARLIEST_PLAUSIBLE_TS: i64 = 946_684_800;
 
 impl super::Store {
-    /// Full-table refresh of the `contacts` materialized table. Cheap on small
-    /// mailboxes; the plan calls for an incremental fallback past ~100k
-    /// messages. Aggregates per (account_id, email) over `messages`.
+    /// Full refresh of the `contacts` materialized table.
+    ///
+    /// The aggregation runs against the **reader pool** (no writer lock
+    /// held during the expensive scan over `messages` and
+    /// `reply_pairs`), then the UPSERT into `contacts` runs in
+    /// **bounded chunks** on the writer with `yield_now()` between
+    /// chunks so other writers (sync, mutations, snooze wake, activity
+    /// recorder, reply-pair reconciler) interleave instead of queueing
+    /// behind a single multi-second `INSERT OR REPLACE`.
+    ///
+    /// Tradeoff: the table is briefly half-updated between chunks.
+    /// Acceptable — this is a materialized cache, the SELECT helpers
+    /// just see a mix of fresh and stale rows for a fraction of a
+    /// second.
     pub async fn refresh_contacts(&self) -> Result<u32, sqlx::Error> {
+        const CHUNK_SIZE: usize = 500;
+
         let started_at = Instant::now();
         let now_unix = chrono::Utc::now().timestamp();
-        let result = sqlx::query(
+
+        // Phase 1: aggregate on the reader pool. The single statement
+        // below is the inner SELECT from the prior implementation,
+        // promoted to a top-level query. Returns one row per (account,
+        // email).
+        let aggregated: Vec<ContactAggregateRow> = sqlx::query_as(
             r#"WITH contact_events AS (
                 SELECT
                     messages.account_id,
@@ -118,30 +157,20 @@ impl super::Store {
                 WHERE row_num IN ((row_count + 1) / 2, (row_count + 2) / 2)
                 GROUP BY account_id, email
             )
-            INSERT OR REPLACE INTO contacts (
-                account_id, email, display_name,
-                first_seen_at, last_seen_at,
-                last_inbound_at, last_outbound_at,
-                total_inbound, total_outbound,
-                replied_count, cadence_days_p50,
-                is_list_sender, list_id,
-                refreshed_at
-            )
             SELECT
-                base.account_id,
-                base.email,
-                base.display_name,
-                base.first_seen_at,
-                base.last_seen_at,
-                base.last_inbound_at,
-                base.last_outbound_at,
-                base.total_inbound,
-                base.total_outbound,
+                base.account_id AS account_id,
+                base.email AS email,
+                base.display_name AS display_name,
+                base.first_seen_at AS first_seen_at,
+                base.last_seen_at AS last_seen_at,
+                base.last_inbound_at AS last_inbound_at,
+                base.last_outbound_at AS last_outbound_at,
+                base.total_inbound AS total_inbound,
+                base.total_outbound AS total_outbound,
                 COALESCE(replies.replied_count, 0) AS replied_count,
-                cadence.cadence_days_p50,
-                base.is_list_sender,
-                base.list_id,
-                ?1 AS refreshed_at
+                cadence.cadence_days_p50 AS cadence_days_p50,
+                base.is_list_sender AS is_list_sender,
+                base.list_id AS list_id
             FROM contact_base base
             LEFT JOIN reply_stats replies
               ON replies.account_id = base.account_id
@@ -150,15 +179,50 @@ impl super::Store {
               ON cadence.account_id = base.account_id
              AND cadence.email = base.email"#,
         )
-        .bind(now_unix)
-        .execute(self.writer())
+        .fetch_all(self.reader())
         .await?;
-        trace_query(
-            "contacts.refresh",
-            started_at,
-            result.rows_affected() as usize,
-        );
-        Ok(result.rows_affected() as u32)
+
+        // Phase 2: chunked UPSERT on the writer. Each chunk is its own
+        // transaction; `yield_now()` between chunks lets other writers
+        // grab the lock instead of starving behind one giant write.
+        let mut affected: u32 = 0;
+        for chunk in aggregated.chunks(CHUNK_SIZE) {
+            let mut tx = self.writer().begin().await?;
+            for row in chunk {
+                sqlx::query(
+                    r#"INSERT OR REPLACE INTO contacts (
+                        account_id, email, display_name,
+                        first_seen_at, last_seen_at,
+                        last_inbound_at, last_outbound_at,
+                        total_inbound, total_outbound,
+                        replied_count, cadence_days_p50,
+                        is_list_sender, list_id,
+                        refreshed_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+                )
+                .bind(&row.account_id)
+                .bind(&row.email)
+                .bind(&row.display_name)
+                .bind(row.first_seen_at)
+                .bind(row.last_seen_at)
+                .bind(row.last_inbound_at)
+                .bind(row.last_outbound_at)
+                .bind(row.total_inbound)
+                .bind(row.total_outbound)
+                .bind(row.replied_count)
+                .bind(row.cadence_days_p50)
+                .bind(row.is_list_sender)
+                .bind(&row.list_id)
+                .bind(now_unix)
+                .execute(&mut *tx)
+                .await?;
+                affected = affected.saturating_add(1);
+            }
+            tx.commit().await?;
+            tokio::task::yield_now().await;
+        }
+        trace_query("contacts.refresh", started_at, affected as usize);
+        Ok(affected)
     }
 
     pub async fn list_contact_asymmetry(

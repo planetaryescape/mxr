@@ -4,7 +4,13 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
-use tokio::time::{sleep, Duration};
+use tokio::time::Duration;
+
+/// Debounce window after the most recent enqueue before the worker
+/// actually runs `refresh_contacts`. Coalesces a burst of sync ticks
+/// during heavy traffic into a single refresh — the user pays the
+/// writer cost once per quiet period instead of once per sync tick.
+const DEBOUNCE: Duration = Duration::from_secs(10);
 
 #[derive(Clone)]
 pub struct ContactsRefreshHandle {
@@ -28,28 +34,61 @@ impl ContactsRefreshHandle {
         let handle = tokio::spawn({
             let pending = pending.clone();
             async move {
-                while let Some(command) = rx.recv().await {
-                    match command {
-                        ContactsRefreshCommand::Enqueue { account_ids, resp } => {
-                            if let Ok(mut pending) = pending.lock() {
-                                pending.extend(account_ids);
-                            }
-                            let _ = resp.send(Ok(()));
-                            sleep(Duration::from_secs(10)).await;
-                            let drained = pending
-                                .lock()
-                                .map(|mut pending| pending.drain().collect::<Vec<_>>())
-                                .unwrap_or_default();
-                            if drained.is_empty() {
-                                continue;
-                            }
-                            if let Err(error) = store.refresh_contacts().await {
-                                tracing::warn!(%error, "contacts refresh failed");
+                // Trailing-edge debounce: each enqueue resets the timer.
+                // The previous design slept *inside* the command handler,
+                // which blocked the mpsc queue for the full debounce
+                // window and caused new enqueues to backpressure (or
+                // worse, force the sender — including the post-sync
+                // fan-out — to wait synchronously). With a `select!`
+                // loop we keep draining commands at line rate while the
+                // refresh is gated on its own timer.
+                let mut debounce: Option<tokio::time::Instant> = None;
+                loop {
+                    if let Some(deadline) = debounce {
+                        tokio::select! {
+                            biased;
+                            command = rx.recv() => match command {
+                                Some(ContactsRefreshCommand::Enqueue { account_ids, resp }) => {
+                                    if let Ok(mut pending) = pending.lock() {
+                                        pending.extend(account_ids);
+                                    }
+                                    let _ = resp.send(Ok(()));
+                                    debounce = Some(tokio::time::Instant::now() + DEBOUNCE);
+                                }
+                                Some(ContactsRefreshCommand::Shutdown { resp }) => {
+                                    let _ = resp.send(());
+                                    return;
+                                }
+                                None => return,
+                            },
+                            _ = tokio::time::sleep_until(deadline) => {
+                                debounce = None;
+                                let drained = pending
+                                    .lock()
+                                    .map(|mut pending| pending.drain().collect::<Vec<_>>())
+                                    .unwrap_or_default();
+                                if drained.is_empty() {
+                                    continue;
+                                }
+                                if let Err(error) = store.refresh_contacts().await {
+                                    tracing::warn!(%error, "contacts refresh failed");
+                                }
                             }
                         }
-                        ContactsRefreshCommand::Shutdown { resp } => {
-                            let _ = resp.send(());
-                            break;
+                    } else {
+                        match rx.recv().await {
+                            Some(ContactsRefreshCommand::Enqueue { account_ids, resp }) => {
+                                if let Ok(mut pending) = pending.lock() {
+                                    pending.extend(account_ids);
+                                }
+                                let _ = resp.send(Ok(()));
+                                debounce = Some(tokio::time::Instant::now() + DEBOUNCE);
+                            }
+                            Some(ContactsRefreshCommand::Shutdown { resp }) => {
+                                let _ = resp.send(());
+                                return;
+                            }
+                            None => return,
                         }
                     }
                 }

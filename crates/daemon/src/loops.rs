@@ -264,24 +264,29 @@ async fn sync_loop_for_account(
                         post_sync_cursor.as_ref(),
                         Some(SyncCursor::GmailBackfill { .. })
                     );
-                    if let Err(error) = state
-                        .semantic
-                        .enqueue_ingest_messages(&outcome.upserted_message_ids)
-                        .await
+
+                    // Critical: the post-sync fan-out (semantic ingest,
+                    // contacts refresh, relationship profile, rules
+                    // engine, analytics backfill) used to run inline
+                    // here. That kept the sync loop blocked until every
+                    // downstream worker had ack'd the enqueue and any
+                    // network call inside the rules engine had
+                    // returned. On a busy mailbox that meant 10+
+                    // minutes between "Gmail has new mail" and "mxr
+                    // shows new mail". Move the fan-out to a detached
+                    // task so the loop returns immediately to its
+                    // periodic sleep / IDLE wait. Each downstream
+                    // worker has its own bounded channel; if a worker
+                    // is slow, only that worker backs up.
+                    let upserted_ids = outcome.upserted_message_ids.clone();
+                    let mut handover_relationship_contacts = Vec::new();
+                    if initial_backfill_in_progress
+                        || was_initial_backfill
+                        || !deferred_relationship_contacts.is_empty()
                     {
-                        tracing::error!(account = %account_id, "Semantic indexing failed: {error}");
-                    }
-                    if let Err(error) = state
-                        .contacts_refresh
-                        .enqueue_accounts(std::slice::from_ref(&account_id))
-                        .await
-                    {
-                        tracing::warn!(account = %account_id, "Contacts refresh enqueue failed: {error}");
-                    }
-                    if initial_backfill_in_progress {
                         match state
                             .store
-                            .relationship_contacts_for_messages(&outcome.upserted_message_ids)
+                            .relationship_contacts_for_messages(&upserted_ids)
                             .await
                         {
                             Ok(contacts) => {
@@ -289,50 +294,36 @@ async fn sync_loop_for_account(
                                     .extend(contacts.into_iter().map(|(_, email)| email));
                             }
                             Err(error) => {
-                                tracing::warn!(account = %account_id, "Relationship backfill deferral failed: {error}");
+                                tracing::warn!(account = %account_id, %error, "relationship backfill contact lookup failed");
                             }
                         }
-                        tracing::debug!(account = %account_id, "relationship profile refresh deferred during initial backfill");
-                    } else if was_initial_backfill || !deferred_relationship_contacts.is_empty() {
-                        match state
-                            .store
-                            .relationship_contacts_for_messages(&outcome.upserted_message_ids)
-                            .await
-                        {
-                            Ok(contacts) => {
-                                deferred_relationship_contacts
-                                    .extend(contacts.into_iter().map(|(_, email)| email));
-                            }
-                            Err(error) => {
-                                tracing::warn!(account = %account_id, "Relationship backfill completion contact lookup failed: {error}");
-                            }
+                        if initial_backfill_in_progress {
+                            tracing::debug!(account = %account_id, "relationship profile refresh deferred during initial backfill");
+                        } else {
+                            handover_relationship_contacts = deferred_relationship_contacts
+                                .iter()
+                                .cloned()
+                                .map(|email| (account_id.clone(), email))
+                                .collect::<Vec<_>>();
+                            deferred_relationship_contacts.clear();
                         }
-                        let contacts = deferred_relationship_contacts
-                            .iter()
-                            .cloned()
-                            .map(|email| (account_id.clone(), email))
-                            .collect::<Vec<_>>();
-                        deferred_relationship_contacts.clear();
-                        if let Err(error) = state.relationship.enqueue_contacts(contacts).await {
-                            tracing::warn!(account = %account_id, "Relationship profile enqueue after backfill failed: {error}");
-                        }
-                    } else if let Err(error) = state
-                        .relationship
-                        .enqueue_contacts_from_messages(&outcome.upserted_message_ids)
-                        .await
-                    {
-                        tracing::warn!(account = %account_id, "Relationship profile enqueue failed: {error}");
                     }
-                    if let Err(error) = apply_rules_to_messages(
-                        &state,
-                        &account_id,
-                        provider.as_ref(),
-                        &outcome.upserted_message_ids,
-                    )
-                    .await
-                    {
-                        tracing::error!(account = %account_id, "Rule execution failed: {error}");
-                    }
+
+                    let fanout_state = state.clone();
+                    let fanout_account = account_id.clone();
+                    let fanout_provider = provider.clone();
+                    let fanout_initial_in_progress = initial_backfill_in_progress;
+                    tokio::spawn(async move {
+                        post_sync_fanout(
+                            fanout_state,
+                            fanout_account,
+                            fanout_provider,
+                            upserted_ids,
+                            handover_relationship_contacts,
+                            fanout_initial_in_progress,
+                        )
+                        .await;
+                    });
                     // No automatic summary backfill: even gated by
                     // `llm.enabled`, this previously spawned unbounded
                     // tokio tasks (one per changed thread) on every sync
@@ -366,25 +357,6 @@ async fn sync_loop_for_account(
                     last_message_sync_at = chrono::Utc::now();
                 }
 
-                // Self-heal analytics derived data inline. Each step
-                // is a no-op when there's nothing to fix, so this
-                // costs near-zero on healthy syncs and silently
-                // backfills on unhealthy ones — eliminating the need
-                // for users to run `mxr doctor --rebuild-analytics`
-                // for ordinary drift.
-                let backfill =
-                    crate::handler::diagnostics_impl::incremental_analytics_backfill(&state).await;
-                if backfill.did_work() || backfill.startup_repair_ran {
-                    tracing::info!(
-                        account = %account_id,
-                        directions = backfill.directions_reclassified,
-                        list_ids = backfill.list_ids_backfilled,
-                        reply_pairs = backfill.reply_pairs_resolved,
-                        business_hours = backfill.business_hours_backfilled,
-                        startup_repair = backfill.startup_repair_ran,
-                        "post-sync analytics backfill"
-                    );
-                }
                 tracing::info!(account = %account_id, "Sync completed: {count} messages");
                 let event = IpcMessage {
                     id: 0,
@@ -491,6 +463,77 @@ async fn sync_loop_for_account(
                 let _ = state.event_tx.send(event);
             }
         }
+    }
+}
+
+/// Run the work that used to sit inline at the end of each successful
+/// sync cycle. Lives in a detached `tokio::spawn` so the sync loop
+/// itself can return immediately and start sleeping for the next
+/// interval (or wake on IDLE). Each step's failure is logged and
+/// swallowed — none of this work blocks the user-facing path, and a
+/// transient failure on one step shouldn't prevent the others from
+/// running.
+async fn post_sync_fanout(
+    state: Arc<AppState>,
+    account_id: AccountId,
+    provider: Arc<dyn MailSyncProvider>,
+    upserted_message_ids: Vec<mxr_core::MessageId>,
+    relationship_handover_contacts: Vec<(AccountId, String)>,
+    initial_backfill_in_progress: bool,
+) {
+    if let Err(error) = state
+        .semantic
+        .enqueue_ingest_messages(&upserted_message_ids)
+        .await
+    {
+        tracing::error!(account = %account_id, %error, "semantic indexing enqueue failed");
+    }
+    if let Err(error) = state
+        .contacts_refresh
+        .enqueue_accounts(std::slice::from_ref(&account_id))
+        .await
+    {
+        tracing::warn!(account = %account_id, %error, "contacts refresh enqueue failed");
+    }
+    if !relationship_handover_contacts.is_empty() {
+        if let Err(error) = state
+            .relationship
+            .enqueue_contacts(relationship_handover_contacts)
+            .await
+        {
+            tracing::warn!(account = %account_id, %error, "relationship handover enqueue failed");
+        }
+    } else if !initial_backfill_in_progress {
+        if let Err(error) = state
+            .relationship
+            .enqueue_contacts_from_messages(&upserted_message_ids)
+            .await
+        {
+            tracing::warn!(account = %account_id, %error, "relationship profile enqueue failed");
+        }
+    }
+
+    if let Err(error) =
+        apply_rules_to_messages(&state, &account_id, provider.as_ref(), &upserted_message_ids).await
+    {
+        tracing::error!(account = %account_id, %error, "rule execution failed");
+    }
+
+    // Self-heal analytics derived data. Each step is a `WHERE column IS
+    // NULL / = 'unknown'` filter so it costs near-zero on healthy data
+    // and silently backfills the rest. Runs in the fan-out task — not
+    // critical for next-tick sync responsiveness.
+    let backfill = crate::handler::diagnostics_impl::incremental_analytics_backfill(&state).await;
+    if backfill.did_work() || backfill.startup_repair_ran {
+        tracing::info!(
+            account = %account_id,
+            directions = backfill.directions_reclassified,
+            list_ids = backfill.list_ids_backfilled,
+            reply_pairs = backfill.reply_pairs_resolved,
+            business_hours = backfill.business_hours_backfilled,
+            startup_repair = backfill.startup_repair_ran,
+            "post-sync analytics backfill"
+        );
     }
 }
 
@@ -675,6 +718,13 @@ async fn apply_rules_to_messages(
                 error.as_deref(),
             )
             .await;
+
+        // Yield between messages so a large rule fan-out doesn't
+        // monopolize the single writer connection. Sync mutations,
+        // snooze wake, activity-log writes — anything else that needs
+        // the writer — gets to interleave instead of waiting for the
+        // entire batch to finish.
+        tokio::task::yield_now().await;
     }
 
     Ok(())

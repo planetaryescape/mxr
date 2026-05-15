@@ -344,6 +344,88 @@ async fn list_owed_replies(
     })
 }
 
+/// IPC concurrency lane for a request. Splits the semaphore pool into a
+/// fast lane for short user-initiated commands (lists, gets, mutations)
+/// and a slow lane for long-running operations (LLM inference, network
+/// attachment downloads, full-store rebuilds) so a burst of slow ops
+/// can't starve fast commands of permits.
+///
+/// Sized so the bulk lane holds enough headroom for a handful of
+/// parallel LLM calls or attachment downloads while leaving the hot
+/// lane untouched. See `server.rs` for the concrete pool sizes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IpcLane {
+    /// Fast user-initiated commands: lists, gets, mutations, sync
+    /// status, label CRUD. Should complete in milliseconds. Bound is
+    /// generous so realistic burst traffic never queues.
+    Hot,
+    /// Slow operations: anything that calls into the LLM runtime,
+    /// fetches a network attachment, rebuilds an entire index, or runs
+    /// a multi-second store aggregate. Bounded tighter to keep the
+    /// daemon from spawning unbounded LLM/network work in parallel.
+    Bulk,
+}
+
+/// Classify a request for permit routing. Default to `Hot`; only
+/// requests that are known to be slow (network round-trips, LLM,
+/// rebuilds) belong on the bulk lane. Adding a new request defaults to
+/// the hot lane — if it turns out to be slow, demote it explicitly.
+pub fn request_lane(req: &Request) -> IpcLane {
+    match req {
+        // LLM-bearing operations: variable latency, can hold permits for
+        // many seconds while awaiting inference.
+        Request::ArchiveAsk { .. }
+        | Request::CheckDraftSafety { .. }
+        | Request::DraftAssist { .. }
+        | Request::DraftNew { .. }
+        | Request::DraftRefine { .. }
+        | Request::ExtractDraftCommitments { .. }
+        | Request::ExplainEntity { .. }
+        | Request::FindExpert { .. }
+        | Request::GetRecipientBriefing { .. }
+        | Request::GetThreadBriefing { .. }
+        | Request::HumanizerRewrite { .. }
+        | Request::HumanizerScore { .. }
+        | Request::SuggestCollaborators { .. }
+        | Request::SummarizeThread { .. } => IpcLane::Bulk,
+
+        // Network-bound: hit Gmail / IMAP / SMTP, can stall on a slow link.
+        Request::DownloadAttachment { .. }
+        | Request::OpenAttachment { .. }
+        | Request::SendDraft { .. }
+        | Request::SendStoredDraft { .. }
+        | Request::SyncNow { .. }
+        | Request::AuthorizeAccountConfig { .. }
+        | Request::StartAuthSession { .. }
+        | Request::CompleteAuthSession { .. }
+        | Request::TestAccountConfig { .. } => IpcLane::Bulk,
+
+        // Full-store rebuilds and bulk indexing.
+        Request::RebuildAnalytics
+        | Request::RebuildDecisionLog { .. }
+        | Request::RebuildRelationshipProfile { .. }
+        | Request::RebuildUserVoice { .. }
+        | Request::RecomputeLinkCounts
+        | Request::RefreshContacts
+        | Request::BackfillCalendarInvites
+        | Request::ReindexSemantic
+        | Request::BackfillSemantic
+        | Request::InstallSemanticProfile { .. }
+        | Request::UseSemanticProfile { .. }
+        | Request::EnableSemantic { .. } => IpcLane::Bulk,
+
+        // HTML asset prefetch with remote-content fetching is a network
+        // round-trip per image; demote so a large gallery can't tie up
+        // every fast slot.
+        Request::GetHtmlImageAssets { allow_remote, .. } if *allow_remote => IpcLane::Bulk,
+
+        // Diagnostics that scan large tables.
+        Request::GenerateBugReport { .. } => IpcLane::Bulk,
+
+        _ => IpcLane::Hot,
+    }
+}
+
 pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessage {
     let response_data = match &msg.payload {
         IpcPayload::Request(req) => {
@@ -4001,6 +4083,65 @@ mod tests {
     use chrono::TimeZone;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex as StdMutex;
+
+    #[test]
+    fn request_lane_routes_llm_and_network_requests_to_bulk() {
+        // Sample of the slow lane: at least one LLM call, one network
+        // round-trip, and one heavy rebuild. Locks the classifier so a
+        // refactor that drops a slow request back to Hot will trip the
+        // test instead of silently re-introducing head-of-line blocking
+        // on fast user-initiated commands.
+        let llm = Request::SummarizeThread {
+            thread_id: mxr_core::ThreadId::new(),
+        };
+        assert_eq!(request_lane(&llm), IpcLane::Bulk);
+
+        let download = Request::DownloadAttachment {
+            message_id: mxr_core::MessageId::new(),
+            attachment_id: mxr_core::AttachmentId::from_provider_id("p", "a"),
+            destination: None,
+        };
+        assert_eq!(request_lane(&download), IpcLane::Bulk);
+
+        let rebuild = Request::RefreshContacts;
+        assert_eq!(request_lane(&rebuild), IpcLane::Bulk);
+
+        let remote_assets = Request::GetHtmlImageAssets {
+            message_id: mxr_core::MessageId::new(),
+            allow_remote: true,
+        };
+        assert_eq!(request_lane(&remote_assets), IpcLane::Bulk);
+    }
+
+    #[test]
+    fn request_lane_defaults_user_initiated_commands_to_hot() {
+        let list = Request::ListEnvelopes {
+            label_id: None,
+            account_id: None,
+            limit: 50,
+            offset: 0,
+        };
+        assert_eq!(request_lane(&list), IpcLane::Hot);
+
+        let archive = Request::Mutation {
+            mutation: mxr_protocol::MutationCommand::Archive {
+                message_ids: vec![mxr_core::MessageId::new()],
+            },
+            client_correlation_id: None,
+        };
+        assert_eq!(request_lane(&archive), IpcLane::Hot);
+
+        // HTML images without remote fetch is a local-only render and
+        // should stay on the hot lane.
+        let local_assets = Request::GetHtmlImageAssets {
+            message_id: mxr_core::MessageId::new(),
+            allow_remote: false,
+        };
+        assert_eq!(request_lane(&local_assets), IpcLane::Hot);
+
+        let ping = Request::Ping;
+        assert_eq!(request_lane(&ping), IpcLane::Hot);
+    }
 
     #[test]
     fn sanitized_attachment_filename_truncates_long_names_preserving_extension() {

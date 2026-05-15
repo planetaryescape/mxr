@@ -1,6 +1,6 @@
 #![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
 
-use crate::handler::handle_request;
+use crate::handler::{handle_request, request_lane, IpcLane};
 use crate::ipc_client::IpcClient;
 use crate::loops;
 use crate::reindex::{reindex, ReindexProgress};
@@ -24,7 +24,15 @@ use tokio::task::JoinSet;
 use tokio_util::codec::Framed;
 
 const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+/// Hot-lane concurrency: fast user-initiated commands (lists, gets,
+/// mutations, sync status). Sized large enough that realistic burst
+/// traffic never queues. See `crate::handler::request_lane`.
 const REQUEST_CONCURRENCY_LIMIT: usize = 64;
+/// Bulk-lane concurrency: long-running operations (LLM inference,
+/// network attachments, full-store rebuilds). Bounded so a burst of
+/// slow ops can't starve hot commands of CPU/permits or spawn
+/// unbounded parallel LLM / network work.
+const BULK_CONCURRENCY_LIMIT: usize = 8;
 const CONNECTION_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const SOCKET_PROBE_ATTEMPTS: usize = 5;
 const SOCKET_PROBE_DELAY: Duration = Duration::from_millis(100);
@@ -74,6 +82,7 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     write_daemon_pid_file()?;
     tracing::info!("Daemon listening on {}", sock_path.display());
     let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
+    let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
 
     // All syncing happens in the background sync loops — no blocking initial sync.
     // The daemon starts accepting clients immediately. The sync loops detect
@@ -188,6 +197,7 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                 let (stream, _addr) = accepted?;
                 let state = state.clone();
                 let request_semaphore = request_semaphore.clone();
+                let bulk_semaphore = bulk_semaphore.clone();
                 let event_rx = state.event_tx.subscribe();
                 let connection_shutdown_rx = state.shutdown_receiver();
 
@@ -196,6 +206,7 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                         stream,
                         state,
                         request_semaphore,
+                        bulk_semaphore,
                         event_rx,
                         connection_shutdown_rx,
                     )
@@ -217,6 +228,7 @@ async fn serve_client_connection(
     stream: UnixStream,
     state: Arc<AppState>,
     request_semaphore: Arc<Semaphore>,
+    bulk_semaphore: Arc<Semaphore>,
     mut event_rx: broadcast::Receiver<IpcMessage>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) {
@@ -261,7 +273,22 @@ async fn serve_client_connection(
                 match msg {
                     Some(Ok(ipc_msg)) => {
                         let permit_wait_started = std::time::Instant::now();
-                        let permit = match request_semaphore.clone().acquire_owned().await {
+                        // Route the request to its lane semaphore before
+                        // spawning. Slow operations (LLM inference,
+                        // network downloads, full-store rebuilds) drain a
+                        // bounded bulk pool; everything else uses the hot
+                        // pool. Net effect: a burst of LLM calls can't
+                        // starve fast list/get/mutation commands of
+                        // permits.
+                        let lane = match &ipc_msg.payload {
+                            mxr_protocol::IpcPayload::Request(req) => request_lane(req),
+                            _ => IpcLane::Hot,
+                        };
+                        let semaphore = match lane {
+                            IpcLane::Hot => request_semaphore.clone(),
+                            IpcLane::Bulk => bulk_semaphore.clone(),
+                        };
+                        let permit = match semaphore.acquire_owned().await {
                             Ok(permit) => permit,
                             Err(_) => {
                                 accept_requests = false;
@@ -273,6 +300,7 @@ async fn serve_client_connection(
                             let _permit = permit;
                             tracing::trace!(
                                 wait_ms = permit_wait_started.elapsed().as_secs_f64() * 1000.0,
+                                lane = ?lane,
                                 "ipc request permit acquired"
                             );
                             guard_ipc_response(ipc_msg.id, async {
@@ -1022,7 +1050,7 @@ mod tests {
     use super::{
         classify_health, current_build_id, daemon_requires_restart, daemon_responds_to_status,
         guard_ipc_response, is_index_lock_error, request_shutdown_to, serve_client_connection,
-        spawn_startup_maintenance, REQUEST_CONCURRENCY_LIMIT,
+        spawn_startup_maintenance, BULK_CONCURRENCY_LIMIT, REQUEST_CONCURRENCY_LIMIT,
     };
     use crate::{handler::handle_request, state::AppState};
     use chrono::Utc;
@@ -1405,6 +1433,7 @@ mod tests {
         let state_for_cleanup = state.clone();
         let (server_stream, client_stream) = UnixStream::pair().expect("unix stream pair");
         let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
+        let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
         let event_rx = state.event_tx.subscribe();
         let shutdown_rx = state.shutdown_receiver();
 
@@ -1413,6 +1442,7 @@ mod tests {
                 server_stream,
                 state,
                 request_semaphore,
+                bulk_semaphore,
                 event_rx,
                 shutdown_rx,
             )

@@ -1189,10 +1189,12 @@ pub(crate) async fn incremental_analytics_backfill(state: &AppState) -> Analytic
         Ok(n) => report.directions_reclassified = n,
         Err(e) => tracing::warn!("post-sync reclassify_unknown_directions: {e}"),
     }
+    tokio::task::yield_now().await;
     match state.store.backfill_message_list_ids().await {
         Ok(n) => report.list_ids_backfilled = n,
         Err(e) => tracing::warn!("post-sync backfill_message_list_ids: {e}"),
     }
+    tokio::task::yield_now().await;
 
     // One-shot heavy step: scan messages for reply_pairs we haven't
     // captured yet (covers release upgrades adding the table). The
@@ -1210,12 +1212,14 @@ pub(crate) async fn incremental_analytics_backfill(state: &AppState) -> Analytic
             }
             Err(e) => tracing::warn!("startup backfill_reply_pairs_from_messages: {e}"),
         }
+        tokio::task::yield_now().await;
     }
 
     match state.store.reconcile_reply_pair_pending().await {
         Ok(n) => report.reply_pairs_resolved += n,
         Err(e) => tracing::warn!("post-sync reconcile_reply_pair_pending: {e}"),
     }
+    tokio::task::yield_now().await;
     match state.store.backfill_business_hours_latency().await {
         Ok(n) => report.business_hours_backfilled = n,
         Err(e) => tracing::warn!("post-sync backfill_business_hours_latency: {e}"),

@@ -1290,6 +1290,8 @@ mod tests {
             has_attachments: false,
             size_bytes: 128,
             unsubscribe: mxr_core::types::UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: Vec::new(),
         }
     }
@@ -1646,8 +1648,14 @@ mod tests {
         store.insert_body(&body).await.unwrap();
 
         let data_dir = tempdir().unwrap();
-        let mut engine =
-            SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
+        let mut engine = SemanticEngine::new(
+            store.clone(),
+            data_dir.path(),
+            SemanticConfig {
+                enabled: false,
+                ..SemanticConfig::default()
+            },
+        );
         engine
             .ingest_messages(std::slice::from_ref(&envelope.id))
             .await

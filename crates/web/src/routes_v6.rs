@@ -2468,7 +2468,10 @@ pub fn extend_admin(router: Router<AppState>) -> Router<AppState> {
         .route("/activity/prune", post(prune_activity))
         .route("/activity/pause", post(pause_activity))
         .route("/activity/resume", post(resume_activity))
-        .route("/activity/saved", get(list_saved_activity_filters).post(upsert_saved_activity_filter))
+        .route(
+            "/activity/saved",
+            get(list_saved_activity_filters).post(upsert_saved_activity_filter),
+        )
         .route(
             "/activity/saved/{slug}",
             get(get_saved_activity_filter).delete(delete_saved_activity_filter),

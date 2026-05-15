@@ -53,6 +53,8 @@ fn bench_store_read(c: &mut Criterion) {
                     has_attachments: false,
                     size_bytes: 512,
                     unsubscribe: UnsubscribeMethod::None,
+                    link_count: 0,
+                    body_word_count: 0,
                     label_provider_ids: Vec::new(),
                 })
                 .await

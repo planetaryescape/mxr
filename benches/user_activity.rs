@@ -26,7 +26,11 @@ fn seed_rows(store: &Store, n: usize) {
                     "view.open_screen"
                 },
                 target_kind: Some("thread"),
-                target_id: Some(if i % 5 == 0 { "thr_archive" } else { "thr_other" }),
+                target_id: Some(if i % 5 == 0 {
+                    "thr_archive"
+                } else {
+                    "thr_other"
+                }),
                 tier: if i % 5 == 0 {
                     Tier::Important
                 } else if i % 3 == 0 {

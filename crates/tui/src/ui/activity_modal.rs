@@ -92,9 +92,13 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ActivityModalState, theme: &T
                 String::new()
             };
             let style = if i == state.selected_index {
-                Style::default().bg(theme.selection_bg).fg(theme.selection_fg)
+                Style::default()
+                    .bg(theme.selection_bg)
+                    .fg(theme.selection_fg)
             } else if e.redacted {
-                Style::default().fg(theme.text_muted).add_modifier(Modifier::DIM)
+                Style::default()
+                    .fg(theme.text_muted)
+                    .add_modifier(Modifier::DIM)
             } else {
                 Style::default().fg(theme.text_primary)
             };
@@ -120,8 +124,11 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ActivityModalState, theme: &T
         ],
     )
     .header(
-        Row::new(vec!["TIME", "SRC", "ACTION", "TARGET", "CONTEXT"])
-            .style(Style::default().fg(theme.text_muted).add_modifier(Modifier::BOLD)),
+        Row::new(vec!["TIME", "SRC", "ACTION", "TARGET", "CONTEXT"]).style(
+            Style::default()
+                .fg(theme.text_muted)
+                .add_modifier(Modifier::BOLD),
+        ),
     );
     frame.render_widget(table, chunks[0]);
 

@@ -1114,6 +1114,7 @@ fn strip_reply_forward_prefix(subject: &str) -> Option<String> {
     }
 }
 
+#[cfg(test)]
 fn expand_snippet_keywords(body: &str, snippets: &[SnippetData]) -> String {
     expand_snippet_keywords_with_context(body, snippets, None)
 }

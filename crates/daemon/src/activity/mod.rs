@@ -204,8 +204,7 @@ async fn worker_loop(
                 // are eligible for write-time coalescing. Important-tier
                 // mutations are always written as-is to preserve audit
                 // fidelity.
-                let coalesce_eligible =
-                    matches!(entry.tier, Tier::Ephemeral | Tier::Standard);
+                let coalesce_eligible = matches!(entry.tier, Tier::Ephemeral | Tier::Standard);
                 if coalesce_eligible {
                     let key: CompactionKey = (
                         entry.account_id.clone(),
@@ -232,8 +231,10 @@ async fn worker_loop(
                                 // Drop the oldest entry. HashMap doesn't preserve
                                 // order, so we evict by lowest `ts`. Cheap because
                                 // the cache is bounded.
-                                if let Some(oldest) =
-                                    cache.iter().min_by_key(|(_, v)| v.ts).map(|(k, _)| k.clone())
+                                if let Some(oldest) = cache
+                                    .iter()
+                                    .min_by_key(|(_, v)| v.ts)
+                                    .map(|(k, _)| k.clone())
                                 {
                                     cache.remove(&oldest);
                                 }
@@ -461,11 +462,7 @@ mod tests {
             .list_activity(&ActivityFilter::default(), 10, None)
             .await
             .unwrap();
-        assert_eq!(
-            page.rows.len(),
-            3,
-            "important mutations preserved verbatim"
-        );
+        assert_eq!(page.rows.len(), 3, "important mutations preserved verbatim");
     }
 
     #[tokio::test]

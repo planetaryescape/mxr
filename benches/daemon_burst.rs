@@ -95,6 +95,8 @@ async fn daemon_bench_fixture() -> (Arc<AppState>, Vec<MessageId>) {
             has_attachments: false,
             size_bytes: 1024,
             unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: vec!["INBOX".into()],
         };
         let body = MessageBody {
@@ -117,6 +119,7 @@ async fn daemon_bench_fixture() -> (Arc<AppState>, Vec<MessageId>) {
         batch.entries.push(SearchIndexEntry {
             envelope: envelope.clone(),
             body: Some(body),
+            reply_later: false,
         });
         message_ids.push(envelope.id);
     }

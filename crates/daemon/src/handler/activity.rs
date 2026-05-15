@@ -95,7 +95,9 @@ pub(super) async fn list_activity(
         .await
         .map_err(|e| e.to_string())?;
     let entries: Vec<ActivityEntry> = page.rows.iter().map(store_row_to_proto).collect();
-    let next_cursor = page.next_cursor.map(|c| ActivityCursor { ts: c.ts, id: c.id });
+    let next_cursor = page
+        .next_cursor
+        .map(|c| ActivityCursor { ts: c.ts, id: c.id });
     Ok(ResponseData::ActivityEntries {
         entries,
         next_cursor,
@@ -126,7 +128,10 @@ pub(super) async fn activity_stats(
         ActivityStatGroupBy::Day => state.store.activity_stats_by_day(since, until).await,
         ActivityStatGroupBy::Source => state.store.activity_stats_by_source(since, until).await,
         ActivityStatGroupBy::TargetKind => {
-            state.store.activity_stats_by_target_kind(since, until).await
+            state
+                .store
+                .activity_stats_by_target_kind(since, until)
+                .await
         }
         ActivityStatGroupBy::Hour => state.store.activity_stats_by_hour(since, until).await,
     }
@@ -417,10 +422,7 @@ pub(super) async fn prune_activity(
     })
 }
 
-pub(super) async fn pause_activity(
-    state: &Arc<AppState>,
-    until_ts: Option<i64>,
-) -> HandlerResult {
+pub(super) async fn pause_activity(state: &Arc<AppState>, until_ts: Option<i64>) -> HandlerResult {
     state.activity.pause(until_ts);
     state.activity.record_forced(OwnedEntry {
         ts: current_unix_ms(),
@@ -441,8 +443,7 @@ pub(super) async fn pause_activity(
 // ===== saved filter handlers (Phase 8) =====
 
 fn store_saved_to_proto(s: &store::SavedActivityFilter) -> SavedActivityFilterEntry {
-    let filter: ActivityFilter =
-        serde_json::from_str(&s.filter_json).unwrap_or_default();
+    let filter: ActivityFilter = serde_json::from_str(&s.filter_json).unwrap_or_default();
     SavedActivityFilterEntry {
         slug: s.slug.clone(),
         name: s.name.clone(),

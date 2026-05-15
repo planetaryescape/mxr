@@ -1216,7 +1216,11 @@ pub async fn activity_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::R
             match state.store.prune_activity_before(cutoff, Some(tier)).await {
                 Ok(0) => {}
                 Ok(n) => {
-                    tracing::debug!(rows = n, tier = tier.as_str(), "activity prune deleted rows");
+                    tracing::debug!(
+                        rows = n,
+                        tier = tier.as_str(),
+                        "activity prune deleted rows"
+                    );
                     state.activity.record(crate::activity::OwnedEntry {
                         ts: now_ms,
                         account_id: None,

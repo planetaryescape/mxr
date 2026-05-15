@@ -86,8 +86,8 @@ pub struct ActivityInsert<'a> {
 /// not narrow that field.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ActivityFilter {
-    pub since: Option<i64>,         // unix ms inclusive
-    pub until: Option<i64>,         // unix ms exclusive
+    pub since: Option<i64>, // unix ms inclusive
+    pub until: Option<i64>, // unix ms exclusive
     pub account_id: Option<String>,
     pub sources: Vec<String>,
     pub actions: Vec<String>,
@@ -95,7 +95,7 @@ pub struct ActivityFilter {
     pub target_kind: Option<String>,
     pub target_id: Option<String>,
     pub tiers: Vec<String>,
-    pub query: Option<String>,      // FTS5 expression
+    pub query: Option<String>, // FTS5 expression
     pub include_redacted: bool,
 }
 
@@ -161,8 +161,7 @@ impl Store {
     pub async fn record_activity(&self, e: ActivityInsert<'_>) -> sqlx::Result<i64> {
         let context_str: Option<String> = match e.context {
             Some(value) => Some(
-                serde_json::to_string(value)
-                    .map_err(|err| sqlx::Error::Encode(Box::new(err)))?,
+                serde_json::to_string(value).map_err(|err| sqlx::Error::Encode(Box::new(err)))?,
             ),
             None => None,
         };
@@ -196,13 +195,12 @@ impl Store {
         new_count: u64,
     ) -> sqlx::Result<()> {
         // Read existing context_json, bump `count`, write back.
-        let existing: Option<String> = sqlx::query_scalar(
-            "SELECT context_json FROM user_activity WHERE id = ?",
-        )
-        .bind(id)
-        .fetch_optional(self.writer())
-        .await?
-        .flatten();
+        let existing: Option<String> =
+            sqlx::query_scalar("SELECT context_json FROM user_activity WHERE id = ?")
+                .bind(id)
+                .fetch_optional(self.writer())
+                .await?
+                .flatten();
         let mut value: serde_json::Value = match existing.as_deref() {
             Some(s) => serde_json::from_str(s).unwrap_or(serde_json::json!({})),
             None => serde_json::json!({}),
@@ -211,8 +209,8 @@ impl Store {
             value = serde_json::json!({});
         }
         value["count"] = serde_json::Value::from(new_count);
-        let new_json = serde_json::to_string(&value)
-            .map_err(|err| sqlx::Error::Encode(Box::new(err)))?;
+        let new_json =
+            serde_json::to_string(&value).map_err(|err| sqlx::Error::Encode(Box::new(err)))?;
         sqlx::query("UPDATE user_activity SET ts = ?, context_json = ? WHERE id = ?")
             .bind(new_ts)
             .bind(new_json)
@@ -286,7 +284,10 @@ impl Store {
         qb.push_bind(limit as i64);
 
         let rows = qb.build().fetch_all(self.reader()).await?;
-        let rows: Vec<ActivityRow> = rows.iter().map(row_to_activity).collect::<sqlx::Result<_>>()?;
+        let rows: Vec<ActivityRow> = rows
+            .iter()
+            .map(row_to_activity)
+            .collect::<sqlx::Result<_>>()?;
 
         let next_cursor = if rows.len() as u32 == limit {
             rows.last().map(|r| ActivityCursor { ts: r.ts, id: r.id })
@@ -324,10 +325,7 @@ impl Store {
     }
 
     /// Tombstone rows by filter. Useful for `mxr activity clear --last 1h`.
-    pub async fn redact_activity_by_filter(
-        &self,
-        filter: &ActivityFilter,
-    ) -> sqlx::Result<u64> {
+    pub async fn redact_activity_by_filter(&self, filter: &ActivityFilter) -> sqlx::Result<u64> {
         let mut qb: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
             "UPDATE user_activity SET redacted = 1, context_json = NULL WHERE 1=1",
         );
@@ -447,9 +445,7 @@ impl Store {
 
     // ---- saved activity filters (Phase 8) ----
 
-    pub async fn list_saved_activity_filters(
-        &self,
-    ) -> sqlx::Result<Vec<SavedActivityFilter>> {
+    pub async fn list_saved_activity_filters(&self) -> sqlx::Result<Vec<SavedActivityFilter>> {
         let rows = sqlx::query(
             "SELECT slug, name, filter_json, created_at, updated_at, last_used_at
              FROM saved_activity_filters
@@ -701,10 +697,26 @@ mod tests {
         let store = fresh_store().await;
         store
             .record_activity_batch(&[
-                ins(100, "mail.archive", Tier::Important, "tui", None, None, None),
+                ins(
+                    100,
+                    "mail.archive",
+                    Tier::Important,
+                    "tui",
+                    None,
+                    None,
+                    None,
+                ),
                 ins(200, "mail.send", Tier::Important, "cli", None, None, None),
                 ins(300, "search.run", Tier::Standard, "tui", None, None, None),
-                ins(400, "view.open_screen", Tier::Ephemeral, "tui", None, None, None),
+                ins(
+                    400,
+                    "view.open_screen",
+                    Tier::Ephemeral,
+                    "tui",
+                    None,
+                    None,
+                    None,
+                ),
             ])
             .await
             .unwrap();
@@ -722,10 +734,42 @@ mod tests {
         let store = fresh_store().await;
         store
             .record_activity_batch(&[
-                ins(100, "view.open_screen", Tier::Ephemeral, "tui", None, None, None),
-                ins(200, "view.open_screen", Tier::Ephemeral, "web", None, None, None),
-                ins(300, "view.open_screen", Tier::Ephemeral, "cli", None, None, None),
-                ins(400, "view.open_screen", Tier::Ephemeral, "tui", None, None, None),
+                ins(
+                    100,
+                    "view.open_screen",
+                    Tier::Ephemeral,
+                    "tui",
+                    None,
+                    None,
+                    None,
+                ),
+                ins(
+                    200,
+                    "view.open_screen",
+                    Tier::Ephemeral,
+                    "web",
+                    None,
+                    None,
+                    None,
+                ),
+                ins(
+                    300,
+                    "view.open_screen",
+                    Tier::Ephemeral,
+                    "cli",
+                    None,
+                    None,
+                    None,
+                ),
+                ins(
+                    400,
+                    "view.open_screen",
+                    Tier::Ephemeral,
+                    "tui",
+                    None,
+                    None,
+                    None,
+                ),
             ])
             .await
             .unwrap();
@@ -754,7 +798,17 @@ mod tests {
         let store = fresh_store().await;
         // Insert 7 rows with strictly increasing ts.
         let entries: Vec<_> = (1..=7i64)
-            .map(|i| ins(i * 100, "mail.read", Tier::Important, "tui", None, None, None))
+            .map(|i| {
+                ins(
+                    i * 100,
+                    "mail.read",
+                    Tier::Important,
+                    "tui",
+                    None,
+                    None,
+                    None,
+                )
+            })
             .collect();
         store.record_activity_batch(&entries).await.unwrap();
 
@@ -839,7 +893,15 @@ mod tests {
         store
             .record_activity_batch(&[
                 ins(100, "mail.read", Tier::Important, "tui", None, None, None),
-                ins(200, "mail.archive", Tier::Important, "tui", None, None, None),
+                ins(
+                    200,
+                    "mail.archive",
+                    Tier::Important,
+                    "tui",
+                    None,
+                    None,
+                    None,
+                ),
                 ins(300, "search.run", Tier::Standard, "tui", None, None, None),
             ])
             .await
@@ -847,10 +909,7 @@ mod tests {
 
         let mut filter = ActivityFilter::default();
         filter.action_prefix = Some("mail.".into());
-        let n = store
-            .redact_activity_by_filter(&filter)
-            .await
-            .unwrap();
+        let n = store.redact_activity_by_filter(&filter).await.unwrap();
         assert_eq!(n, 2);
 
         // search.run survives, unredacted.
@@ -867,7 +926,15 @@ mod tests {
         let store = fresh_store().await;
         store
             .record_activity_batch(&[
-                ins(100, "view.open_screen", Tier::Ephemeral, "tui", None, None, None),
+                ins(
+                    100,
+                    "view.open_screen",
+                    Tier::Ephemeral,
+                    "tui",
+                    None,
+                    None,
+                    None,
+                ),
                 ins(110, "mail.read", Tier::Important, "tui", None, None, None),
                 ins(120, "search.run", Tier::Standard, "tui", None, None, None),
             ])
@@ -936,9 +1003,33 @@ mod tests {
         let store = fresh_store().await;
         store
             .record_activity_batch(&[
-                ins(100, "mail.archive", Tier::Important, "tui", None, None, None),
-                ins(200, "mail.archive", Tier::Important, "tui", None, None, None),
-                ins(300, "mail.archive", Tier::Important, "tui", None, None, None),
+                ins(
+                    100,
+                    "mail.archive",
+                    Tier::Important,
+                    "tui",
+                    None,
+                    None,
+                    None,
+                ),
+                ins(
+                    200,
+                    "mail.archive",
+                    Tier::Important,
+                    "tui",
+                    None,
+                    None,
+                    None,
+                ),
+                ins(
+                    300,
+                    "mail.archive",
+                    Tier::Important,
+                    "tui",
+                    None,
+                    None,
+                    None,
+                ),
                 ins(400, "mail.read", Tier::Important, "tui", None, None, None),
                 ins(500, "mail.read", Tier::Important, "tui", None, None, None),
             ])
@@ -947,15 +1038,15 @@ mod tests {
         // Redact one mail.archive so it doesn't get counted.
         store.redact_activity_by_ids(&[1]).await.unwrap();
 
-        let buckets = store
-            .activity_stats_by_action(0, 1_000)
-            .await
-            .unwrap();
+        let buckets = store.activity_stats_by_action(0, 1_000).await.unwrap();
         // mail.archive=2 (after redaction), mail.read=2 — alphabetical tie-break for equal counts.
-        assert_eq!(buckets, vec![
-            ("mail.archive".to_string(), 2),
-            ("mail.read".to_string(), 2),
-        ]);
+        assert_eq!(
+            buckets,
+            vec![
+                ("mail.archive".to_string(), 2),
+                ("mail.read".to_string(), 2),
+            ]
+        );
     }
 
     #[tokio::test]
@@ -968,10 +1059,7 @@ mod tests {
         assert!(page.rows.is_empty());
         assert!(page.next_cursor.is_none());
 
-        let n = store
-            .redact_activity_by_ids(&[])
-            .await
-            .unwrap();
+        let n = store.redact_activity_by_ids(&[]).await.unwrap();
         assert_eq!(n, 0);
     }
 

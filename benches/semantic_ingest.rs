@@ -80,6 +80,8 @@ async fn semantic_bench_fixture(data_dir: &Path) -> (SemanticEngine, Vec<Message
             has_attachments: true,
             size_bytes: 4096,
             unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: vec!["INBOX".into()],
         };
         let body = MessageBody {

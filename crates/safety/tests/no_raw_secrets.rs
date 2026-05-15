@@ -42,7 +42,13 @@ fn cases() -> Vec<SecretCase> {
         },
         SecretCase {
             kind: "Slack token (xoxb-)",
-            body: concat!("slack: ", "xoxb-", "1234567890-", "abcdefghijklmnop-", "qrstuvwxyz"),
+            body: concat!(
+                "slack: ",
+                "xoxb-",
+                "1234567890-",
+                "abcdefghijklmnop-",
+                "qrstuvwxyz"
+            ),
             raw_marker: concat!("xoxb-", "1234567890-", "abcdefghijklmnop-", "qrstuvwxyz"),
             // redact_token keeps the first 4 chars; the dash isn't
             // part of the head for `xoxb-...` so the preview begins

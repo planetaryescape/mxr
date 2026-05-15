@@ -46,7 +46,8 @@ pub(crate) fn recent_log_lines_filtered_sync(
         // to a case-insensitive substring (covers plaintext lines).
         let needle = format!("\"level\":\"{}\"", level.to_uppercase());
         let fallback = level.to_ascii_lowercase();
-        lines.retain(|line| line.contains(&needle) || line.to_ascii_lowercase().contains(&fallback));
+        lines
+            .retain(|line| line.contains(&needle) || line.to_ascii_lowercase().contains(&fallback));
     }
     if let Some(search) = search {
         let needle = search.to_ascii_lowercase();

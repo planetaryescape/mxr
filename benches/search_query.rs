@@ -35,6 +35,8 @@ fn bench_search_query(c: &mut Criterion) {
             has_attachments: i % 3 == 0,
             size_bytes: 1024,
             unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
             label_provider_ids: vec!["INBOX".to_string()],
         };
         index.index_envelope(&envelope).expect("index envelope");

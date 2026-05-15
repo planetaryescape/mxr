@@ -14,7 +14,11 @@ use std::path::{Path, PathBuf};
 fn workspace_root() -> PathBuf {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     // CARGO_MANIFEST_DIR is `crates/daemon`. The workspace root is two parents up.
-    manifest.parent().and_then(Path::parent).unwrap().to_path_buf()
+    manifest
+        .parent()
+        .and_then(Path::parent)
+        .unwrap()
+        .to_path_buf()
 }
 
 fn collect_rs_files(root: &Path) -> Vec<PathBuf> {

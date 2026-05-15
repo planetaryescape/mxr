@@ -143,8 +143,8 @@ impl TestEnvelopeBuilder {
             has_attachments: self.has_attachments,
             size_bytes: self.size_bytes,
             unsubscribe: self.unsubscribe,
-            link_count: 0,
-            body_word_count: 0,
+            link_count: self.link_count,
+            body_word_count: self.body_word_count,
             label_provider_ids: self.label_provider_ids,
         }
     }

@@ -733,7 +733,10 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                             String::new()
                         };
                         let source_str = format!("{:?}", e.source).to_lowercase();
-                        format!("{ts} {source_str:<6} {:<24} {target:<20} {context}", e.action)
+                        format!(
+                            "{ts} {source_str:<6} {:<24} {target:<20} {context}",
+                            e.action
+                        )
                     })
                     .collect()
             }

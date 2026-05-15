@@ -3,7 +3,6 @@ mod search_filter;
 
 use search_execute::execute_search;
 
-use super::helpers::recent_log_lines;
 use super::status_helpers::{
     build_account_sync_status, collect_doctor_report, collect_status_snapshot,
     feature_health_report,

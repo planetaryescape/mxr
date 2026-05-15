@@ -351,9 +351,9 @@ async fn run_top(
 ) -> anyhow::Result<()> {
     // top is just stats group=action capped to `limit`.
     let f = args_to_filter(filter)?;
-    let since = f.since.unwrap_or_else(|| {
-        Utc::now().timestamp_millis() - 7 * 86_400_000
-    });
+    let since = f
+        .since
+        .unwrap_or_else(|| Utc::now().timestamp_millis() - 7 * 86_400_000);
     let until = f.until.unwrap_or_else(|| Utc::now().timestamp_millis());
 
     let resp = client
@@ -570,11 +570,15 @@ async fn run_clear(
 
 // ===== pause / resume =====
 
-async fn run_pause(client: &mut IpcClient, for_: Option<String>, quiet: bool) -> anyhow::Result<()> {
+async fn run_pause(
+    client: &mut IpcClient,
+    for_: Option<String>,
+    quiet: bool,
+) -> anyhow::Result<()> {
     let until_ts = match for_.as_deref() {
         Some(d) => {
-            let dur = parse_duration_ms(d)
-                .ok_or_else(|| anyhow::anyhow!("invalid duration '{d}'"))?;
+            let dur =
+                parse_duration_ms(d).ok_or_else(|| anyhow::anyhow!("invalid duration '{d}'"))?;
             if dur <= 0 {
                 anyhow::bail!("`--for` must be a positive duration");
             }
@@ -597,7 +601,9 @@ async fn run_pause(client: &mut IpcClient, for_: Option<String>, quiet: bool) ->
                     .unwrap_or_default();
                 println!("Activity recording paused until {when}.");
             }
-            None => println!("Activity recording paused indefinitely. Run `mxr activity resume` to resume."),
+            None => println!(
+                "Activity recording paused indefinitely. Run `mxr activity resume` to resume."
+            ),
         }
     }
     Ok(())
@@ -626,9 +632,7 @@ async fn run_status(client: &mut IpcClient, format: Option<OutputFormat>) -> any
         include_redacted: true,
         ..Default::default()
     };
-    let count_resp = client
-        .request(Request::CountActivity { filter })
-        .await?;
+    let count_resp = client.request(Request::CountActivity { filter }).await?;
     let count = super::expect_response(count_resp, |r| match r {
         Response::Ok {
             data: ResponseData::ActivityCount { count },
@@ -874,7 +878,10 @@ pub fn parse_recall_phrase(phrase: &str) -> anyhow::Result<(i64, i64)> {
         .timestamp_millis();
 
     // Bare relative: "last 5 minutes", "past 2 days", "last hour".
-    if let Some(rest) = phrase.strip_prefix("last ").or_else(|| phrase.strip_prefix("past ")) {
+    if let Some(rest) = phrase
+        .strip_prefix("last ")
+        .or_else(|| phrase.strip_prefix("past "))
+    {
         if let Some(ms) = parse_human_duration(rest) {
             return Ok((now.timestamp_millis() - ms, now.timestamp_millis()));
         }
@@ -893,7 +900,12 @@ pub fn parse_recall_phrase(phrase: &str) -> anyhow::Result<(i64, i64)> {
         "morning" => return Ok((today_start + 6 * 3_600_000, today_start + 12 * 3_600_000)),
         "afternoon" => return Ok((today_start + 12 * 3_600_000, today_start + 18 * 3_600_000)),
         "evening" => return Ok((today_start + 18 * 3_600_000, today_start + 23 * 3_600_000)),
-        "lunch" => return Ok((today_start + 12 * 3_600_000, today_start + 13 * 3_600_000 + 1_800_000)),
+        "lunch" => {
+            return Ok((
+                today_start + 12 * 3_600_000,
+                today_start + 13 * 3_600_000 + 1_800_000,
+            ))
+        }
         "breakfast" => return Ok((today_start + 6 * 3_600_000, today_start + 9 * 3_600_000)),
         "night" => return Ok((today_start + 22 * 3_600_000, today_start + 28 * 3_600_000)),
         _ => {}
@@ -1086,7 +1098,10 @@ fn group_for_replay(entries: &[ActivityEntry]) -> Vec<String> {
         let ts = chrono::DateTime::from_timestamp_millis(entries[i].ts)
             .map(|dt| dt.format("%H:%M").to_string())
             .unwrap_or_default();
-        out.push(format!("{ts}  {}", describe_group(action, count, &entries[i..j])));
+        out.push(format!(
+            "{ts}  {}",
+            describe_group(action, count, &entries[i..j])
+        ));
         i = j;
     }
     out

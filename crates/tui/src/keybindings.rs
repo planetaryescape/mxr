@@ -163,9 +163,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "open_voice_profile" | "voice_profile" => Some(Action::OpenVoiceProfile),
         "rebuild_user_voice" => Some(Action::RebuildUserVoice),
         "open_commitments" | "commitments" => Some(Action::OpenCommitments),
-        "open_activity" | "activity" | "open_activity_screen" => {
-            Some(Action::OpenActivityScreen)
-        }
+        "open_activity" | "activity" | "open_activity_screen" => Some(Action::OpenActivityScreen),
         "close_activity_modal" => Some(Action::CloseActivityModal),
         "activity_next" => Some(Action::ActivityModalNext),
         "activity_prev" => Some(Action::ActivityModalPrev),

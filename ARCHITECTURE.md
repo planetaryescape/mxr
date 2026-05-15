@@ -56,6 +56,26 @@ Semantic search is an `mxr-platform` feature, not a core mail requirement.
 
 That boundary matters. Do not blur exact lexical behavior and semantic recall into one fuzzy system.
 
+## Activity log
+
+User-initiated actions are recorded in `user_activity`, captured at the daemon's IPC dispatch seam (`crates/daemon/src/handler/mod.rs::handle_request`). Every IPC request that mutates state or expresses user intent (search, view, mutation, draft action) produces one row, tagged with the originating client (`tui` | `cli` | `web` | `daemon`).
+
+Storage: dedicated table + FTS5 mirror over `context_json`. Append-only; redaction is a tombstone, never a hard delete. Retention is tier-aware (30 / 90 / 365 days for ephemeral / standard / important by default, configurable per tier in `[activity.retention]`).
+
+Capture seam: a single `Recorder` writes through a bounded mpsc channel. Failures are observability-only and never propagate to user-facing responses. The list of capturable IPC verbs lives in `crates/daemon/src/activity/mapper.rs` — explicit per-variant mapping for the ~40 user-intent verbs; everything else returns `None` with a `tracing::debug!` for visibility. New IPC verbs default to "not captured" until someone decides what to log; this keeps the table from accumulating noise as the protocol grows.
+
+Compaction: write-time coalescing folds rapid-fire duplicates (same `action+target_id` within 250 ms) into a single row with an incremented `count`. Applies only to `ephemeral`- and `standard`-tier rows; `important`-tier mutations are always written as-is to preserve audit fidelity.
+
+Query: `AdminMaintenance` IPC bucket with verbs `ListActivity` / `CountActivity` / `ActivityStats` / `ExportActivity` / `RedactActivity` / `PruneActivity` / `PauseActivity` / `ResumeActivity`. CLI: `mxr activity` (alias `mxr act`). TUI: `g a` chord. Web: `/activity` route.
+
+Invariants:
+1. Never transmitted off-device. No sync, no telemetry, no remote logging.
+2. `context_json` never holds credentials, tokens, password hashes, attachment bytes, or full mail bodies.
+3. `MXR_ACTIVITY=off` disables the recorder for the lifetime of the daemon. `mxr activity pause` is the runtime equivalent.
+4. The recorder is the only path that writes to `user_activity`.
+
+Detailed implementation plan: [`docs/activity-log.md`](./docs/activity-log.md). User-facing privacy guide: [`site/.../guides/activity-log.md`](./site/src/content/docs/guides/activity-log.md).
+
 ## Lifecycle guarantees
 
 Current runtime story:

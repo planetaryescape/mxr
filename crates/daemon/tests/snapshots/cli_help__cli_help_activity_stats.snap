@@ -1,0 +1,23 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Group and count activity rows over a time window
+
+Usage: mxr activity stats [OPTIONS]
+
+Options:
+      --since <SINCE>              Relative duration (e.g. `1h`, `3d`, `2w`) or ISO date inclusive lower bound
+      --until <UNTIL>              Relative duration or ISO date exclusive upper bound. Defaults to now
+      --source <SOURCE>            Originating client. Repeatable [possible values: tui, cli, web, daemon]
+      --action <ACTION>            Exact action token (e.g. `mail.archive`). Repeatable
+      --prefix <PREFIX>            Match all actions starting with this prefix (e.g. `mail.`)
+      --target-kind <TARGET_KIND>  Filter by target kind (`thread`, `message`, `draft`, `search`, ...)
+      --target-id <TARGET_ID>      Filter by exact target id
+      --tier <TIER>                Retention tier. Repeatable [possible values: ephemeral, standard, important]
+      --account <ACCOUNT>          Filter by account id
+      --query <QUERY>              FTS5 expression against context_json
+      --include-redacted           Include tombstoned rows in the result
+      --group-by <GROUP_BY>        [default: action] [possible values: action, day, source, target-kind, hour]
+      --format <FORMAT>            [possible values: table, json, jsonl, csv, ids]
+  -h, --help                       Print help

@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Convenience tombstone over a recent time window. Browser-history style
+
+Usage: mxr activity clear [OPTIONS] --last <WINDOW>
+
+Options:
+      --last <WINDOW>      [possible values: 1h, 1d, 7d, 30d, all]
+      --include-important  Also tombstone important-tier rows (sends, redactions, etc.)
+      --dry-run
+      --yes
+  -h, --help               Print help

@@ -68,6 +68,18 @@ Rules:
   - `filename:` -> attachment-origin chunks
 - Do not casually reintroduce OCR or blur lexical exactness and semantic recall into one fuzzy layer.
 
+## Activity Log Invariants
+
+The user-activity log (`user_activity` table; CLI `mxr activity`; design at `docs/activity-log.md`) records what the user does across TUI, CLI, and web. It is personal data. The following invariants are non-negotiable.
+
+1. **Local-only.** Activity rows never leave the user's device. No sync. No telemetry. No transmission. Code paths that touch `user_activity` must never wire into bridge/HTTP/websocket egress beyond the loopback bridge that serves the local web client.
+2. **Failure isolation.** Recorder failures never propagate to user-facing IPC responses. Activity is observability, not correctness — `tracing::warn!` only.
+3. **No sensitive material in `context_json`.** Never store credentials, OAuth/refresh tokens, password hashes, API keys, attachment bytes, or full mail bodies. Subjects/recipient handles/draft prefixes are bounded to documented sizes; see `docs/activity-log.md`.
+4. **Env kill-switch.** The recorder respects `MXR_ACTIVITY=off`. When set, no rows are written for the lifetime of the daemon.
+5. **Redaction is irreversible.** Tombstone rows (`redacted=1`) do not retain prior `context_json`.
+6. **Retention prune is irreversible** and runs daily (per tier: 30 / 90 / 365 days for ephemeral / standard / important by default; configurable in `[activity.retention]`).
+7. **One writer.** Only `crates/daemon/src/activity/` writes to the table. New code paths that need to log activity go through `state.activity.record(...)` — not direct SQL.
+
 ### Operational lifecycle
 
 - Sync's immediate guarantee is SQLite + lexical search freshness.

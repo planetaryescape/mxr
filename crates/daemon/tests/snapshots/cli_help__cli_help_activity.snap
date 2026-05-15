@@ -1,0 +1,27 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Browse the local user-activity log (the git-reflog for your inbox). Strictly local: never transmitted off-device. See `mxr activity --help`
+
+Usage: mxr activity <COMMAND>
+
+Commands:
+  list    List recent activity in reverse chronological order
+  stats   Group and count activity rows over a time window
+  top     Most-frequent actions in a window. Convenience over `stats --group-by action`
+  export  Export matching rows in CSV / JSON / NDJSON
+  prune   Hard-delete rows older than `--before`. Destructive; confirms unless `--yes`
+  redact  Tombstone rows by id or filter. Destructive; confirms unless `--yes`
+  clear   Convenience tombstone over a recent time window. Browser-history style
+  pause   Pause recording. With `--for DURATION`, auto-resumes after
+  resume  Resume recording
+  status  Show current recorder status (paused state, retention defaults)
+  saved   Manage saved filter presets. Slug-keyed, like saved searches
+  tail    Follow new activity. Press Ctrl-C to stop
+  recall  Resolve a fuzzy time phrase ("yesterday afternoon", "last hour") and list activity from that window
+  replay  Print a prose narrative of what you did in the window
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help

@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Manage saved filter presets. Slug-keyed, like saved searches
+
+Usage: mxr activity saved <COMMAND>
+
+Commands:
+  list    List all saved filter presets
+  save    Save the current filter under a slug
+  delete  Delete a preset by slug
+  open    Apply a preset and list the matching rows
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help

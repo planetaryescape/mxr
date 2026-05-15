@@ -1,0 +1,23 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Export matching rows in CSV / JSON / NDJSON
+
+Usage: mxr activity export [OPTIONS] --format <FORMAT>
+
+Options:
+      --since <SINCE>              Relative duration (e.g. `1h`, `3d`, `2w`) or ISO date inclusive lower bound
+      --until <UNTIL>              Relative duration or ISO date exclusive upper bound. Defaults to now
+      --source <SOURCE>            Originating client. Repeatable [possible values: tui, cli, web, daemon]
+      --action <ACTION>            Exact action token (e.g. `mail.archive`). Repeatable
+      --prefix <PREFIX>            Match all actions starting with this prefix (e.g. `mail.`)
+      --target-kind <TARGET_KIND>  Filter by target kind (`thread`, `message`, `draft`, `search`, ...)
+      --target-id <TARGET_ID>      Filter by exact target id
+      --tier <TIER>                Retention tier. Repeatable [possible values: ephemeral, standard, important]
+      --account <ACCOUNT>          Filter by account id
+      --query <QUERY>              FTS5 expression against context_json
+      --include-redacted           Include tombstoned rows in the result
+      --format <FORMAT>            [possible values: csv, json, ndjson]
+      --out <OUT>                  Write to this path instead of stdout
+  -h, --help                       Print help

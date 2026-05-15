@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Print a prose narrative of what you did in the window
+
+Usage: mxr activity replay [OPTIONS]
+
+Options:
+      --since <SINCE>    [default: 1h]
+      --limit <LIMIT>    [default: 200]
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

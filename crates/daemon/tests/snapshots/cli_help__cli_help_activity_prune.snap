@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Hard-delete rows older than `--before`. Destructive; confirms unless `--yes`
+
+Usage: mxr activity prune [OPTIONS] --before <BEFORE>
+
+Options:
+      --before <BEFORE>  Relative duration (e.g. `90d`) or ISO date. Required
+      --tier <TIER>      [possible values: ephemeral, standard, important]
+      --dry-run
+      --yes
+  -h, --help             Print help

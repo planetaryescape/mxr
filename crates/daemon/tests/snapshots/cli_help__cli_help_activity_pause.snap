@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Pause recording. With `--for DURATION`, auto-resumes after
+
+Usage: mxr activity pause [OPTIONS]
+
+Options:
+      --for <FOR>
+      --quiet
+  -h, --help       Print help

@@ -16,6 +16,10 @@ pub struct HintBarState<'a> {
     pub selected_count: usize,
     pub bulk_confirm_open: bool,
     pub sync_status: Option<String>,
+    /// True when the focused message carries a calendar invite that the
+    /// user can RSVP to. Surfaces accept/decline keys in the hint bar so
+    /// the action is discoverable without opening the palette.
+    pub viewing_invite: bool,
     pub _marker: std::marker::PhantomData<&'a ()>,
 }
 
@@ -46,7 +50,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
         )]
     } else {
         build_lines(
-            &hints_for_context(state.ui_context, state.selected_count),
+            &hints_for_context(state.ui_context, state.selected_count, state.viewing_invite),
             theme,
         )
     };
@@ -89,7 +93,11 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
 /// less-frequent actions live in Cmd+K palette or the `?` help modal.
 /// Action lists below are ordered by user-task primacy: open the
 /// dominant action first, then escape/help last.
-pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(String, String)> {
+pub fn hints_for_context(
+    context: UiContext,
+    selected_count: usize,
+    viewing_invite: bool,
+) -> Vec<(String, String)> {
     let mut hints = match context {
         UiContext::MailboxSidebar => display_bindings_for_actions(
             ViewContext::MailList,
@@ -113,6 +121,28 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
                 "command_palette",
             ],
         ),
+        UiContext::MailboxMessage if viewing_invite => {
+            // Calendar invite is open — surface RSVP keys first so the
+            // action is discoverable without the palette.
+            let mut hints = display_bindings_for_actions(
+                ViewContext::ThreadView,
+                &[
+                    "invite_accept",
+                    "invite_tentative",
+                    "invite_decline",
+                    "reply",
+                    "archive",
+                ],
+            );
+            // Fall back to defaults if any binding is missing in user config.
+            if hints.is_empty() {
+                hints = display_bindings_for_actions(
+                    ViewContext::ThreadView,
+                    &["reply", "summarize_current_thread", "archive"],
+                );
+            }
+            hints
+        }
         UiContext::MailboxMessage => display_bindings_for_actions(
             ViewContext::ThreadView,
             &[
@@ -265,7 +295,7 @@ mod tests {
             (UiContext::Analytics, 0),
         ];
         for (context, selected) in contexts {
-            let hints = hints_for_context(context, selected);
+            let hints = hints_for_context(context, selected, false);
             assert!(
                 hints.len() <= HINT_BAR_MAX_HINTS,
                 "context {context:?} (selected={selected}) yielded {} hints, cap is {HINT_BAR_MAX_HINTS}",
@@ -276,7 +306,7 @@ mod tests {
 
     #[test]
     fn selected_mailbox_hints_lead_with_clear_and_keep_archive() {
-        let hints = hints_for_context(UiContext::MailboxList, 3);
+        let hints = hints_for_context(UiContext::MailboxList, 3, false);
         let labels: Vec<String> = hints.into_iter().map(|(_, label)| label).collect();
         assert_eq!(
             labels.first().map(String::as_str),
@@ -291,12 +321,26 @@ mod tests {
 
     #[test]
     fn message_view_hints_lead_with_reply() {
-        let hints = hints_for_context(UiContext::MailboxMessage, 0);
+        let hints = hints_for_context(UiContext::MailboxMessage, 0, false);
         let labels: Vec<String> = hints.into_iter().map(|(_, label)| label).collect();
         assert_eq!(
             labels.first().map(String::as_str),
             Some("Reply"),
             "message view must surface Reply first; got {labels:?}",
+        );
+    }
+
+    #[test]
+    fn invite_message_view_surfaces_rsvp_keys() {
+        let hints = hints_for_context(UiContext::MailboxMessage, 0, true);
+        let labels: Vec<String> = hints.into_iter().map(|(_, label)| label).collect();
+        assert!(
+            labels.iter().any(|label| label == "Accept Invite"),
+            "invite view must surface Accept; got {labels:?}",
+        );
+        assert!(
+            labels.iter().any(|label| label == "Decline Invite"),
+            "invite view must surface Decline; got {labels:?}",
         );
     }
 }

@@ -330,19 +330,19 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Accept Invite".into(),
-            shortcut: String::new(),
+            shortcut: "ia".into(),
             action: Action::RespondInvite(mxr_protocol::CalendarInviteActionData::Accept),
             category: "Calendar".into(),
         },
         PaletteCommand {
             label: "Maybe Invite".into(),
-            shortcut: String::new(),
+            shortcut: "im".into(),
             action: Action::RespondInvite(mxr_protocol::CalendarInviteActionData::Tentative),
             category: "Calendar".into(),
         },
         PaletteCommand {
             label: "Decline Invite".into(),
-            shortcut: String::new(),
+            shortcut: "id".into(),
             action: Action::RespondInvite(mxr_protocol::CalendarInviteActionData::Decline),
             category: "Calendar".into(),
         },

@@ -694,3 +694,214 @@ impl App {
         }
     }
 }
+
+/// Reading speed ≈ 200 wpm; a sub-minute read isn't worth a 30-word LLM
+/// summary plus a "Next steps:" line. The user can still press `y` to force.
+const AUTO_SUMMARY_MIN_WORDS: u32 = 200;
+
+/// Sender local-parts that smell automated. Conservative list — anything
+/// that lands here from a real human will still be summarizable on demand.
+const AUTO_SENDER_PATTERNS: &[&str] = &[
+    "noreply",
+    "no-reply",
+    "donotreply",
+    "do-not-reply",
+    "notifications",
+    "notification",
+    "alerts",
+    "automated",
+    "mailer-daemon",
+    "postmaster",
+    "bounce",
+];
+
+/// Decide whether a thread is worth auto-summarizing. Returns `false` to
+/// suppress the lazy backfill; the user can always trigger summary
+/// explicitly with `y`.
+///
+/// Skip when:
+/// - Any message carries a calendar `METHOD` (REQUEST/REPLY/CANCEL) — the
+///   invite card already shows the relevant fields and the iCal payload
+///   doesn't summarize meaningfully.
+/// - The thread has no real body text (empty plain + empty html) across
+///   all messages we currently have cached.
+/// - Total body word count is under [`AUTO_SUMMARY_MIN_WORDS`].
+/// - A single-message thread from an automated/notification sender — the
+///   summary is almost guaranteed to be longer than the body.
+pub(crate) fn auto_summary_eligible(
+    envelopes: &[Envelope],
+    body_cache: &HashMap<MessageId, MessageBody>,
+) -> bool {
+    if envelopes.is_empty() {
+        return false;
+    }
+
+    let mut total_words: u32 = 0;
+    let mut any_body_text = false;
+    for envelope in envelopes {
+        total_words = total_words.saturating_add(envelope.body_word_count);
+        if let Some(body) = body_cache.get(&envelope.id) {
+            if body.metadata.calendar.is_some() {
+                return false;
+            }
+            if body
+                .text_plain
+                .as_deref()
+                .is_some_and(|text| !text.trim().is_empty())
+                || body
+                    .text_html
+                    .as_deref()
+                    .is_some_and(|text| !text.trim().is_empty())
+            {
+                any_body_text = true;
+            }
+        }
+    }
+
+    // If every cached body is empty *and* word counts agree, skip. Word
+    // counts come from sync and are present even when bodies aren't yet
+    // fetched — so we only treat "all bodies empty" as decisive when we
+    // actually have all the bodies in cache.
+    let all_bodies_cached = envelopes
+        .iter()
+        .all(|envelope| body_cache.contains_key(&envelope.id));
+    if all_bodies_cached && !any_body_text {
+        return false;
+    }
+
+    if envelopes.len() == 1 && is_automated_sender(&envelopes[0].from) {
+        return false;
+    }
+
+    total_words >= AUTO_SUMMARY_MIN_WORDS
+}
+
+fn is_automated_sender(addr: &Address) -> bool {
+    let email = addr.email.trim().to_ascii_lowercase();
+    let local = email.split('@').next().unwrap_or("");
+    if local.is_empty() {
+        return false;
+    }
+    AUTO_SENDER_PATTERNS
+        .iter()
+        .any(|pattern| local.contains(pattern))
+}
+
+#[cfg(test)]
+mod auto_summary_tests {
+    use super::*;
+    use chrono::Utc;
+    use mxr_core::id::{AccountId, MessageId, ThreadId};
+    use mxr_core::types::{
+        Address, CalendarMetadata, MessageBody, MessageFlags, MessageMetadata, UnsubscribeMethod,
+    };
+
+    fn envelope(word_count: u32, from_email: &str) -> Envelope {
+        Envelope {
+            id: MessageId::new(),
+            account_id: AccountId::new(),
+            provider_id: "prov".into(),
+            thread_id: ThreadId::new(),
+            message_id_header: None,
+            in_reply_to: None,
+            references: vec![],
+            from: Address {
+                name: None,
+                email: from_email.into(),
+            },
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "subject".into(),
+            date: Utc::now(),
+            flags: MessageFlags::empty(),
+            snippet: String::new(),
+            has_attachments: false,
+            size_bytes: 0,
+            unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: word_count,
+            label_provider_ids: vec![],
+        }
+    }
+
+    fn body(message_id: MessageId, plain: Option<&str>) -> MessageBody {
+        MessageBody {
+            message_id,
+            text_plain: plain.map(str::to_string),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: Utc::now(),
+            metadata: MessageMetadata::default(),
+        }
+    }
+
+    fn body_with_calendar(message_id: MessageId) -> MessageBody {
+        let mut metadata = MessageMetadata::default();
+        metadata.calendar = Some(CalendarMetadata {
+            method: Some("REQUEST".into()),
+            summary: Some("Sync".into()),
+            ..CalendarMetadata::default()
+        });
+        MessageBody {
+            message_id,
+            text_plain: Some("Calendar invite payload".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: Utc::now(),
+            metadata,
+        }
+    }
+
+    #[test]
+    fn long_thread_is_eligible() {
+        let envs = vec![envelope(250, "alice@example.com")];
+        assert!(auto_summary_eligible(&envs, &HashMap::new()));
+    }
+
+    #[test]
+    fn short_thread_is_skipped() {
+        let envs = vec![envelope(40, "alice@example.com")];
+        assert!(!auto_summary_eligible(&envs, &HashMap::new()));
+    }
+
+    #[test]
+    fn calendar_invite_is_skipped() {
+        let env = envelope(500, "alice@example.com");
+        let mut bodies = HashMap::new();
+        bodies.insert(env.id.clone(), body_with_calendar(env.id.clone()));
+        assert!(!auto_summary_eligible(&[env], &bodies));
+    }
+
+    #[test]
+    fn single_automated_sender_is_skipped() {
+        let envs = vec![envelope(500, "no-reply@stripe.com")];
+        assert!(!auto_summary_eligible(&envs, &HashMap::new()));
+    }
+
+    #[test]
+    fn multi_message_with_automated_sender_still_eligible() {
+        let envs = vec![
+            envelope(150, "notifications@github.com"),
+            envelope(150, "alice@example.com"),
+        ];
+        assert!(auto_summary_eligible(&envs, &HashMap::new()));
+    }
+
+    #[test]
+    fn empty_bodies_when_all_cached_skip() {
+        let env = envelope(0, "alice@example.com");
+        let mut bodies = HashMap::new();
+        bodies.insert(env.id.clone(), body(env.id.clone(), None));
+        assert!(!auto_summary_eligible(&[env], &bodies));
+    }
+
+    #[test]
+    fn empty_bodies_partially_cached_falls_through_to_word_count() {
+        // No bodies cached at all → only word count gates. Sufficient
+        // count keeps eligibility live so we don't suppress on every
+        // first paint before bodies arrive.
+        let envs = vec![envelope(500, "alice@example.com")];
+        assert!(auto_summary_eligible(&envs, &HashMap::new()));
+    }
+}

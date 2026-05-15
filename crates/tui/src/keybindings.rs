@@ -1,4 +1,5 @@
 use crate::action::Action;
+use mxr_protocol::CalendarInviteActionData;
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -126,6 +127,11 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "reply_all" => Some(Action::ReplyAll),
         "forward" => Some(Action::Forward),
         "summarize_current_thread" | "summarize_thread" => Some(Action::SummarizeCurrentThread),
+        "invite_accept" => Some(Action::RespondInvite(CalendarInviteActionData::Accept)),
+        "invite_tentative" | "invite_maybe" => {
+            Some(Action::RespondInvite(CalendarInviteActionData::Tentative))
+        }
+        "invite_decline" => Some(Action::RespondInvite(CalendarInviteActionData::Decline)),
         "archive" => Some(Action::Archive),
         "mark_read_archive" => Some(Action::MarkReadAndArchive),
         "trash" => Some(Action::Trash),
@@ -302,6 +308,9 @@ fn action_display_name(action: &str) -> String {
         "reply_all" => "Reply All".into(),
         "forward" => "Forward".into(),
         "summarize_current_thread" | "summarize_thread" => "Summary".into(),
+        "invite_accept" => "Accept Invite".into(),
+        "invite_tentative" | "invite_maybe" => "Maybe".into(),
+        "invite_decline" => "Decline Invite".into(),
         "archive" => "Archive".into(),
         "mark_read_archive" => "Read + Archive".into(),
         "star" => "Star".into(),
@@ -429,6 +438,9 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("a", "reply_all"),
         ("f", "forward"),
         ("y", "summarize_current_thread"),
+        ("ia", "invite_accept"),
+        ("im", "invite_tentative"),
+        ("id", "invite_decline"),
         ("e", "archive"),
         ("m", "mark_read_archive"),
         ("#", "trash"),
@@ -495,6 +507,9 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("a", "reply_all"),
         ("f", "forward"),
         ("y", "summarize_current_thread"),
+        ("ia", "invite_accept"),
+        ("im", "invite_tentative"),
+        ("id", "invite_decline"),
         ("e", "archive"),
         ("m", "mark_read_archive"),
         ("#", "trash"),
@@ -535,6 +550,9 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("a", "reply_all"),
         ("f", "forward"),
         ("y", "summarize_current_thread"),
+        ("ia", "invite_accept"),
+        ("im", "invite_tentative"),
+        ("id", "invite_decline"),
         ("A", "attachment_list"),
         ("L", "open_links"),
         ("R", "toggle_reader_mode"),

@@ -744,6 +744,9 @@ impl App {
                 self.apply_local_mutation_effect(effect);
             }
             let id = self.queue_mutation(request, effect, status_message);
+            if let Some(effect) = optimistic_effect.as_ref() {
+                self.pending_optimistic.record(id, effect);
+            }
             if let Some(snapshot) = snapshot {
                 self.mutation_snapshots.insert(id, snapshot);
             }

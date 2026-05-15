@@ -88,6 +88,10 @@ impl App {
         frame.render_widget(tabs, tab_bar_area);
 
         // Hint bar
+        let viewing_invite = self
+            .focused_thread_envelope()
+            .and_then(|env| self.mailbox.body_cache.get(&env.id))
+            .is_some_and(|body| body.metadata.calendar.is_some());
         ui::hint_bar::draw(
             frame,
             hint_bar_area,
@@ -98,6 +102,7 @@ impl App {
                 selected_count: self.mailbox.selected_set.len(),
                 bulk_confirm_open: self.modals.pending_bulk_confirm.is_some(),
                 sync_status: self.last_sync_status.clone(),
+                viewing_invite,
                 _marker: std::marker::PhantomData,
             },
             theme,

@@ -16,6 +16,7 @@ mod modal_actions;
 mod mutation_actions;
 mod mutation_helpers;
 pub mod mutation_snapshot;
+mod pending_optimistic;
 mod platform_actions;
 mod recorder;
 mod rule_actions;
@@ -50,9 +51,11 @@ use throbber_widgets_tui::ThrobberState;
 use tui_textarea::TextArea;
 
 pub(in crate::app) use crate::ui::label_picker::LabelPickerMode;
+pub(crate) use mailbox_helpers::auto_summary_eligible;
 pub use mutation_snapshot::{
     MutationId, MutationIdGenerator, MutationSnapshot, MutationSnapshotStore, QueuedMutation,
 };
+pub use pending_optimistic::PendingOptimisticState;
 use state::PendingPreviewRead;
 pub use state::*;
 
@@ -200,6 +203,11 @@ pub struct App {
     pub pending_mutation_queue: Vec<QueuedMutation>,
     pub mutation_snapshots: MutationSnapshotStore,
     pub mutation_id_generator: MutationIdGenerator,
+    /// Tracks message-id state of in-flight optimistic mutations so a
+    /// stale envelope refresh from the daemon can't undo a still-pending
+    /// optimistic change. See `pending_optimistic.rs` for the full bug
+    /// description.
+    pub pending_optimistic: PendingOptimisticState,
     pub connection_state: ConnectionState,
     /// Set by the input handler when the user presses "retry now" while the
     /// connection-error modal is open. The IPC worker drains and clears it.
@@ -328,6 +336,7 @@ impl App {
             pending_mutation_queue: Vec::new(),
             mutation_snapshots: MutationSnapshotStore::default(),
             mutation_id_generator: MutationIdGenerator::default(),
+            pending_optimistic: PendingOptimisticState::default(),
             connection_state: ConnectionState::Connecting,
             pending_connection_retry: false,
             pending_snippets_refresh: false,

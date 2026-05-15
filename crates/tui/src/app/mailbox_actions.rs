@@ -150,6 +150,9 @@ impl App {
                         pending.effect,
                         pending.status_message,
                     );
+                    if let Some(effect) = pending.optimistic_effect.as_ref() {
+                        self.pending_optimistic.record(id, effect);
+                    }
                     if let Some(snapshot) = snapshot {
                         self.mutation_snapshots.insert(id, snapshot);
                     }

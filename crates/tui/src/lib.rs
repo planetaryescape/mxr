@@ -740,7 +740,21 @@ pub async fn run() -> anyhow::Result<()> {
             if tokio::time::Instant::now() >= *deadline {
                 let thread_id = thread_id.clone();
                 app.pending_summary_debounce = None;
-                if app.mailbox.thread_summary_loading.as_ref() != Some(&thread_id)
+                // Only schedule the auto-summary if the thread is worth
+                // summarizing. The user can still force a summary by
+                // pressing `y` (Action::SummarizeCurrentThread bypasses
+                // this gate entirely).
+                let eligible = app
+                    .mailbox
+                    .viewed_thread
+                    .as_ref()
+                    .is_some_and(|thread| thread.id == thread_id)
+                    && crate::app::auto_summary_eligible(
+                        &app.mailbox.viewed_thread_messages,
+                        &app.mailbox.body_cache,
+                    );
+                if eligible
+                    && app.mailbox.thread_summary_loading.as_ref() != Some(&thread_id)
                     && app.pending_summary_request.as_ref() != Some(&thread_id)
                 {
                     app.mailbox.thread_summary_loading = Some(thread_id.clone());
@@ -1726,7 +1740,9 @@ pub async fn run() -> anyhow::Result<()> {
                                 if session_id != app.search.mailbox_session_id {
                                     continue;
                                 }
-                                app.mailbox.envelopes = results.envelopes;
+                                let mut envelopes = results.envelopes;
+                                app.pending_optimistic.apply(&mut envelopes);
+                                app.mailbox.envelopes = envelopes;
                                 app.mailbox.selected_index = 0;
                                 app.mailbox.scroll_offset = 0;
                                 app.mailbox.pending_commitment_counts_refresh = true;
@@ -2249,6 +2265,11 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::LabelEnvelopes(Ok(envelopes)) => {
                             let selected_id =
                                 app.selected_mail_row().map(|row| row.representative.id);
+                            // Mask in-flight optimistic state so a daemon
+                            // refresh response can't undo an optimistic remove
+                            // or flag change before the mutation acks.
+                            let mut envelopes = envelopes;
+                            app.pending_optimistic.apply(&mut envelopes);
                             app.mailbox.envelopes = envelopes;
                             // Only update active_label when this is a user-initiated
                             // label switch (pending_active_label was set). For
@@ -2347,6 +2368,11 @@ pub async fn run() -> anyhow::Result<()> {
                             // Daemon ack'd the mutation: discard the rollback
                             // snapshot — there's no longer anything to revert.
                             let _ = app.mutation_snapshots.take(id);
+                            // The optimistic change is now authoritative on
+                            // both sides; subsequent refreshes will reflect it
+                            // naturally, so stop masking refresh responses for
+                            // this mutation.
+                            app.pending_optimistic.clear(id);
                             let show_completion_status = app.pending_mutation_count == 0;
                             app.apply_mutation_completion(effect, show_completion_status);
                         }
@@ -2358,6 +2384,7 @@ pub async fn run() -> anyhow::Result<()> {
                             // Replay the snapshot to revert the optimistic change
                             // before surfacing the error UX.
                             app.handle_mutation_reconciliation_failed(id);
+                            app.pending_optimistic.clear(id);
                             app.refresh_mailbox_after_mutation_failure();
                             app.show_mutation_failure(&e);
                         }
@@ -2800,6 +2827,7 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             if let Ok(raw) = client_correlation_id.parse::<u64>() {
                 let mid = MutationId::from_raw(raw);
                 app.handle_mutation_reconciliation_failed(mid);
+                app.pending_optimistic.clear(mid);
                 app.refresh_mailbox_after_mutation_failure();
                 app.status_message = Some(format!("Mutation failed: {error_summary}"));
             }
@@ -2816,6 +2844,8 @@ fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>
         && app.mailbox.mailbox_view == app::MailboxView::Messages)
         .then(|| app.selected_mail_row().map(|row| row.representative.id))
         .flatten();
+    let mut envelopes = envelopes;
+    app.pending_optimistic.apply(&mut envelopes);
     app.mailbox.all_envelopes = envelopes;
     app.mailbox.pending_commitment_counts_refresh = true;
     if app.mailbox.active_label.is_none()
@@ -4879,6 +4909,50 @@ mod tests {
             }
             other => panic!("expected Archive mutation, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn stale_label_refresh_does_not_revive_optimistically_archived_envelope() {
+        // Reproduces the bounce-back bug: user presses `e` on a message,
+        // it disappears optimistically, then a label-refresh response
+        // (sync- or mutation-triggered) lands with the still-present
+        // envelope because the daemon hasn't yet processed the archive.
+        // Before the fix, the response unconditionally replaced
+        // `mailbox.envelopes` and the row came back. With the fix, the
+        // pending optimistic state masks the refresh until the mutation
+        // acks.
+        let mut app = App::new();
+        set_active_inbox(&mut app);
+        app.mailbox.envelopes = make_test_envelopes(3);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let before_archive = app.mailbox.envelopes.clone();
+        let archived_id = app.mailbox.envelopes[0].id.clone();
+
+        app.apply(Action::Archive);
+        assert_eq!(app.mailbox.envelopes.len(), 2, "optimistic remove fired");
+        assert!(app.pending_optimistic.is_removed(&archived_id));
+
+        // Stale refresh from the daemon: it hasn't processed the archive
+        // yet, so it returns every envelope including the archived one.
+        let mut refresh = before_archive.clone();
+        app.pending_optimistic.apply(&mut refresh);
+        assert_eq!(
+            refresh.len(),
+            2,
+            "stale refresh must be filtered to honor the pending archive"
+        );
+        assert!(!refresh.iter().any(|env| env.id == archived_id));
+
+        // Once the daemon acks, future refreshes are unmasked again.
+        let mutation_id = app.pending_mutation_queue[0].id;
+        app.pending_optimistic.clear(mutation_id);
+        let mut after_ack = before_archive;
+        app.pending_optimistic.apply(&mut after_ack);
+        assert_eq!(
+            after_ack.len(),
+            3,
+            "after mutation ack, refresh is no longer masked"
+        );
     }
 
     #[test]

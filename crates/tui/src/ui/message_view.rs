@@ -752,6 +752,20 @@ fn calendar_invite_lines(
             ),
         ]));
     }
+    let method = calendar.method.as_deref().map(str::to_ascii_uppercase);
+    if matches!(method.as_deref(), Some("REQUEST") | Some("PUBLISH") | None) {
+        let key_style = Style::default().fg(theme.text_primary).bold();
+        let sep_style = Style::default().fg(theme.text_muted);
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<label_width$}", "Respond:"), label_style),
+            Span::styled("ia", key_style),
+            Span::styled(" Accept   ", sep_style),
+            Span::styled("im", key_style),
+            Span::styled(" Maybe   ", sep_style),
+            Span::styled("id", key_style),
+            Span::styled(" Decline", sep_style),
+        ]));
+    }
     lines.push(Line::from(""));
     lines
 }

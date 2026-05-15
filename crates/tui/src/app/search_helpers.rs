@@ -10,6 +10,23 @@ impl App {
         let selected_row_message_id = (!append && self.search.page.result_selected)
             .then(|| self.selected_search_envelope().map(|env| env.id.clone()))
             .flatten();
+        // Mask in-flight optimistic state so a daemon-sourced page can't
+        // undo an optimistic remove or flag change before the mutation acks.
+        let mut envelopes = envelopes;
+        let mut scores = scores;
+        envelopes.retain(|env| {
+            if self.pending_optimistic.is_removed(&env.id) {
+                scores.remove(&env.id);
+                false
+            } else {
+                true
+            }
+        });
+        for envelope in &mut envelopes {
+            if let Some(flags) = self.pending_optimistic.flag_override(&envelope.id) {
+                envelope.flags = flags;
+            }
+        }
 
         if append {
             self.search.page.results.extend(envelopes);

@@ -47,11 +47,37 @@ EOF
 
 ```bash
 mxr snippets set followup-3d "Bumping this — has there been any movement since last Tuesday?"
-mxr snippets set intro "Hi {{name}}, copying {{cc}} so we have one thread on this."
+mxr snippets set intro "Hi {first_name}, copying the team on this thread."
+mxr snippets set followup "Following up on {thread_subject} ({today})."
 mxr snippets set ack "Got it, will follow up by EOD."
 ```
 
-mxr does not interpret template variables (`{{name}}`); they pass through as literal text. The convention exists for visual recognition, not auto-fill — fill them in your editor.
+## Built-in tokens
+
+Snippet bodies — and any text you type directly into the compose
+buffer — may reference these tokens. They are resolved at send time,
+once your draft has a `to:` and `subject:`:
+
+| Token              | Resolves to                                                                                       |
+|--------------------|---------------------------------------------------------------------------------------------------|
+| `{first_name}`     | First whitespace-delimited token of the recipient's display name. Falls back to the email's local part if no display name is set. Handles `"Last, First"` directory-export order. |
+| `{full_name}`      | Full display name of the recipient (the first address in `to:`).                                  |
+| `{thread_subject}` | Draft subject with leading `Re:` / `Fwd:` / `Fw:` chains stripped.                                |
+| `{today}` / `{date}` | Today's date in your local timezone (`YYYY-MM-DD`).                                             |
+| `{year}`           | Current year (`YYYY`).                                                                            |
+
+A token with no value (e.g. `{first_name}` when the draft has no
+recipient yet) is left literal so the [send-time validator](/guides/pre-send-safety/) can warn about it instead of silently
+producing "Hi ," in your message.
+
+Custom `{var}` tokens you invent (`{deadline}`, `{cc_team}`, …) are
+treated as user-fillable — they pass through unchanged and are flagged
+at send-time, so you don't ship a message with a half-edited template.
+
+```bash
+# Show me what's installed; pipe to jq for scripts.
+mxr snippets list --format json | jq -r '.[].name'
+```
 
 ## TUI
 

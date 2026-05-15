@@ -5,18 +5,29 @@ description: Configure Ollama, LM Studio, OpenAI, or any OpenAI-compatible endpo
 
 ## What's in scope
 
-mxr ships two LLM-driven features today:
+This page covers how to **configure** the LLM backend that powers every
+synthesis surface in mxr. The features themselves each have their own
+guide:
 
-- `mxr summarize <thread-id>` — concise Markdown summary with per-message
-  bullets and concrete next steps.
-- `mxr draft-assist <thread-id> "<instruction>"` — generate a draft
-  reply grounded on the thread context, your instruction, and similar
-  prior sent mail when semantic search is ready. Output goes to stdout;
-  **never auto-sends**.
+| Feature | Guide | What the LLM does |
+|---|---|---|
+| `mxr summarize` | this page | thread → Markdown summary |
+| `mxr draft-assist` | this page | thread + instruction → draft body |
+| `mxr send --check` answer coverage | [Pre-send safety](/guides/pre-send-safety/#answer-coverage) | extract asks from thread, judge whether the draft addresses each |
+| `mxr send --check` commitment candidates | [Forgotten work](/guides/forgotten-work/#commitments--promises-you-made) | extract "I'll send the deck Friday" promises from drafts |
+| `mxr ask` | [Archive intelligence](/guides/archive-intelligence/) | retrieval-grounded answer over local mail, every claim cited |
+| `mxr decisions rebuild` | [Archive intelligence](/guides/archive-intelligence/#the-decision-log) | extract explicit decisions from threads |
+| `mxr briefing thread` / `recipient` | [Briefings and loop-in](/guides/briefings-and-loop-in/) | dormant-thread / long-gap recap from existing source pack |
+| `mxr expert` reason text | [Briefings and loop-in](/guides/briefings-and-loop-in/#whos-the-expert) | improve the deterministic ranking's `reason` field |
+| `mxr whois` summary | [Briefings and loop-in](/guides/briefings-and-loop-in/#whois) | cited explanation of a person / project / term |
 
-Both are off by default. Enable them by setting `[llm] enabled = true`
-in your config and pointing at any backend that speaks the
-**OpenAI Chat Completions** schema.
+Every feature degrades cleanly when `[llm] enabled = false`: deterministic
+fallbacks return the retrieval set, the regex matches, or the cached
+data; the synthesis section is omitted or labeled `LLM disabled`.
+
+Enable LLM features by setting `[llm] enabled = true` in your config and
+pointing at any backend that speaks the **OpenAI Chat Completions**
+schema.
 
 ## Backends supported
 
@@ -214,6 +225,10 @@ don't send."
 
 ## See also
 
+- [Pre-send safety](/guides/pre-send-safety/) — the safety pipeline's LLM-backed answer-coverage check
+- [Forgotten work](/guides/forgotten-work/) — LLM-confirmed commitment extraction from drafts
+- [Archive intelligence](/guides/archive-intelligence/) — `mxr ask` and the decision log, citations required
+- [Briefings and loop-in](/guides/briefings-and-loop-in/) — dormant-thread briefings, expert reasons, whois summaries
 - [Recipes — talking to your agent](/guides/recipes/#talking-to-your-agent)
 - [For agents](/guides/for-agents/)
 - [Config — `[llm]`](/reference/config/#llm)

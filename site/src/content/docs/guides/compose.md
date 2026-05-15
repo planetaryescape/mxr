@@ -63,6 +63,34 @@ After the editor closes, mxr shows a confirmation modal:
 - Changed draft: send, save draft, edit again, discard
 - Unchanged draft: edit again or discard
 
+The modal also shows the [pre-send safety verdict](/guides/pre-send-safety/)
+(SAFE / WARN / BLOCKED) and any issues found. Blocker issues require a
+fix or override token before the `s` (send) key is enabled.
+
+## Pre-send safety
+
+Every send runs through a [six-check safety pipeline](/guides/pre-send-safety/):
+wrong recipient, missing attachment, reply-all sanity, PII/secrets, tone
+mismatch, and answer-coverage. The pipeline runs in three places:
+
+- The TUI send-confirm modal after `Ctrl-x` (changed draft).
+- The CLI on `mxr send DRAFT_ID` (gates the send) and `mxr send
+  DRAFT_ID --check` (dry-run only).
+- The scheduled-send flusher when a scheduled send fires.
+
+```bash
+# Dry-run a stored draft (no provider call). Exit 2 on Blocker.
+mxr send DRAFT_ID --check --format json
+
+# Same idea, but for a transient draft built from CLI args — no daemon
+# row created.
+mxr compose --to alice@example.com --body 'see attached' --check
+
+# If --check turned up a Blocker you accept (e.g. you really do mean
+# to email competitor.com), it minted a single-use override token.
+mxr send DRAFT_ID --override-safety 01HXYZ-K4M2-...
+```
+
 ## Account selection
 
 The sender address comes from the selected/default runtime account, not from a static status snapshot. This matters for multi-account setups.
@@ -156,6 +184,8 @@ days. Use `mxr stale --mine --older-than-days 7 --format ids | xargs
 
 ## See also
 
+- [Pre-send safety](/guides/pre-send-safety/) — the six checks every
+  draft passes through, plus the override-token flow
 - [Crash-safe drafts](/guides/crash-safe-drafts/)
 - [LLM features — draft assist](/guides/llm-features/)
 - [Recipes — compose loops](/guides/recipes/#with-editor--compose-loops)

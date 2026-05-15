@@ -54,6 +54,46 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 **Screener** — Hey-borrowed term for triaging unknown senders into Allow / Deny / Feed / Paper Trail. Local-only consent metadata; never round-trips to the provider. CLI: `mxr screener`.
 
+**Owed reply** — a thread where you're the bottleneck: the latest message is inbound, no later outbound from you exists, the sender isn't a newsletter or screener-denied. mxr ranks them by `waiting_days / expected_days` (using the recipient's cadence baseline). Reachable via `mxr owed`, `mxr search 'is:owed-reply'`, or the TUI sidebar (Owed). See the [search guide](/guides/search/#common-patterns).
+
+**Commitment** — a promise mxr extracted from your sent mail (e.g. "I'll send the deck Friday"). Persisted to `contact_commitments` after every successful `mxr send`. Browse with `mxr commitments --status open`. See the [follow-up work spec](https://github.com/planetaryescape/mxr/blob/main/docs/ai-email/02-follow-up-work.md).
+
+## Pre-send safety
+
+mxr gates every send through a [six-check pipeline](/guides/pre-send-safety/) before any provider call.
+
+**Verdict** — the rollup decision from the safety pipeline: `Safe` (no issues), `Warn` (one or more Warnings, no Blockers), or `Blocked` (at least one Blocker). The CLI `mxr send --check` exits 0 on Safe/Warn and exit code 2 on Blocked.
+
+**Issue** — a single finding from one check. Has a code (`WrongRecipient`, `MissingAttachment`, `ReplyAll`, `PiiSecret`, `ToneMismatch`, `AnswerCoverage`), a severity (`Info`, `Warning`, `Blocker`), a message, optional detail/citations, and — for Blockers — an `override_token`.
+
+**Override token** — a single-use, draft-scoped token that bypasses Blocker issues for one send. Minted by `mxr send --check` when a Blocker is present. Consumed atomically on the next `mxr send DRAFT_ID --override-safety TOKEN`. Subsequent attempts with the same token fail. Editing the draft and adding a new Blocker kind invalidates the token.
+
+**Safety audit** — every safety run is persisted to `draft_safety_runs` (verdict + redacted issues). Every override consumption is persisted to `draft_safety_overrides`. PII is never persisted raw — only redacted previews.
+
+## AI features
+
+mxr ships citation-required AI features that run above the core mail model. None of them mutate anything; all of them cite. See [archive intelligence](/guides/archive-intelligence/), [briefings and loop-in](/guides/briefings-and-loop-in/), and [timing and cadence](/guides/timing-and-cadence/).
+
+**Archive ask** — `mxr ask "<question>"` runs a hybrid (or lexical, or semantic) retrieval over your local mail and synthesizes a Markdown answer with cited message ids. The daemon rejects any LLM citation that points outside the retrieved set; "not enough evidence" is a valid answer.
+
+**Citation** — a structured reference to a source message: `{ message_id, thread_id, subject, date, quote }`. Every synthesis feature (ask, briefing, expert reasons, whois summaries, decisions) carries citations; uncited output is rejected before reaching the user.
+
+**Decision log** — `mxr decisions` is a queryable ledger of explicit decisions extracted from threads ("we agreed on Postgres"). Rows are stable across rebuilds: `id = hash(account, thread, normalized_decision, evidence_ids)`. Rebuild with `mxr decisions rebuild --since N` — idempotent on unchanged threads.
+
+**Thread briefing** — `mxr briefing thread <id>` is a cached, citation-backed recap of a dormant thread (default threshold: 30 days). Synthesized from existing thread summary + relationship profile + open commitments + decision log. Invalidated by content hash; force regenerate with `--refresh`.
+
+**Recipient briefing** — `mxr briefing recipient <email>` is the same primitive scoped to a person: last interaction, open commitments, tone, cadence. The TUI compose flow surfaces it as a quiet hint after a long gap; never auto-inserts into the draft.
+
+**Cadence watchlist** — `relationship_watchlist` is an explicit, account-scoped table of "relationships I chose to maintain". `mxr cadence watch <email> --every <N>d` adds a row; `mxr cadence drift` lists watched contacts whose interval has drifted past expected. mxr never auto-watches contacts.
+
+**Send-time recommendation** — `mxr send-time <recipient>` computes the recipient's reply-latency bucket from local `reply_pairs`. Statistical, no LLM. Fires as a non-blocking hint inside `mxr send --check` when the proposed slot is at least 2× slower than the best window and confidence is medium or high.
+
+**Maybe include** — `mxr suggest-recipients --draft <id>` proposes Cc candidates who co-participate on similar prior threads. Hard rules: minimum support of 3 distinct threads, no self-suggestions, Bcc is never leaked, existing recipients excluded.
+
+**Expert** — `mxr expert <message-id>` or `--query "<text>"` ranks locally cited answerers of similar questions, not askers. Citations point at *answer* messages — replies that follow a question, contain explanatory content, and are followed by thanks or no further unresolved ask.
+
+**Whois entity** — `mxr whois <name|email|term>` looks up a person, project, or jargon term using only locally cited mail evidence. Query-time only — there is no persisted `entities` table in v1. Ambiguous queries return `candidates`, not a synthesized definition.
+
 ## Display
 
 **Reader mode** — strips signatures, quoted text, tracking pixels, and remote-image references for distraction-free reading. Toggle with `R`.

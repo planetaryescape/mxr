@@ -16,7 +16,17 @@ mxr search "subject:\"quarterly review\" after:2026-01-01"
 mxr search "unsubscribe"
 mxr search "label:inbox" --format ids
 mxr search "body:house of cards" --mode hybrid --explain
+mxr search "is:owed-reply"
 ```
+
+The `is:` filter has the usual suspects (`unread`, `read`, `starred`,
+`draft`, `sent`, `trash`, `spam`, `answered`, `inbox`, `archived`,
+`reply-later`) and one computed lens worth knowing about:
+
+- **`is:owed-reply`** (alias `is:owed`) — threads where the latest
+  message is inbound, no later outbound exists, the sender isn't a
+  newsletter/list, and the screener hasn't denied them. Same result
+  set as `mxr owed`, so the TUI sidebar can show it as a saved search.
 
 ## Search modes
 
@@ -121,6 +131,8 @@ mxr saved run urgent
 - **Pull only real conversations, hide newsletters:** `mxr search 'is:unread has:link-none'` — strips link-heavy promotional/transactional mail in one filter.
 - **Triage the newsletter pile in bulk:** `mxr search 'has:link-heavy older_than:7d' --format ids | mxr archive --yes` — auto-archives newsletter-shaped mail older than a week.
 - **Find a shared doc someone sent you:** `mxr search 'from:alice has:link newer_than:14d'` — `has:link` excludes trackers/unsubscribe URLs, so it surfaces real link-bearing replies.
+- **Work the owed-reply backlog:** `mxr search 'is:owed-reply' --format ids | mxr remind --when 'friday 16:00'` — pin a Friday-afternoon nudge on every thread you owe a reply on.
+- **Owed within the last two weeks only:** `mxr search 'is:owed-reply newer_than:14d'` — skip ancient threads you've implicitly already ignored.
 
 ## Agent prompts that work
 

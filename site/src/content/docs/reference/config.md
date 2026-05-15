@@ -25,6 +25,9 @@ mxr config path
 [appearance]
 [bridge]
 [llm]
+[llm.overrides.answer_coverage]
+[safety.recipients]
+[safety.tone]
 
 [accounts.work]
 ```
@@ -83,6 +86,21 @@ model = "qwen2.5:3b-instruct"
 api_key_env = ""                          # name of env var; empty for Ollama / LM Studio
 context_window = 8192
 request_timeout_secs = 120
+
+[llm.overrides.answer_coverage]
+# Optional per-feature LLM override. Same shape as [llm] above. Useful
+# when answer-coverage benefits from a different model than the default
+# (e.g. a smarter cloud model for the only LLM-backed safety check).
+# enabled = true
+# model = "gpt-5-mini"
+
+[safety.recipients]
+internal_domains = ["company.com"]        # paired with internal markers in body
+sensitive_domains = ["competitor.com"]    # always Blocker
+warn_on_first_time_external = true        # warn on never-seen-before domains
+
+[safety.tone]
+formality_delta_threshold = 0.25          # 0.0 = always warn, 1.0 = never
 
 [accounts.personal]
 name = "Personal"
@@ -276,6 +294,44 @@ Notes:
 - `stderr`
 - `event_retention_days`
 
+## `activity`
+
+Controls the user-activity log (`user_activity` table). Strictly local; never transmitted off-device. See the [Activity Log guide](/guides/activity-log/) for the full design.
+
+```toml
+[activity]
+enabled = true
+track_link_clicks = false       # opt-in; URLs reveal a lot
+track_subjects = true
+track_recipient_handles = true
+track_search_queries = true
+
+[activity.retention]
+ephemeral_days = 30
+standard_days = 90
+important_days = 365
+```
+
+- `enabled` — global switch. When `false`, the recorder is spawned but every `record()` call is a no-op. `MXR_ACTIVITY=off` is the env-var equivalent.
+- `track_link_clicks` — record `link.click` rows with the URL in `context_json`. Default `false` because URL history is sensitive.
+- `track_subjects` — keep email subjects in `context_json`. Default `true`. Flip off if you'd rather not retain message subjects in the audit trail.
+- `track_recipient_handles` — keep `name`/`email` recipient blocks in `context_json`. Default `true`.
+- `track_search_queries` — keep search query text verbatim. Default `true`. Flip off for high-sensitivity work.
+- `retention.ephemeral_days` / `standard_days` / `important_days` — daily prune sweep hard-deletes rows older than this. Defaults 30 / 90 / 365.
+
+Verify it's wired:
+
+```bash
+mxr activity status                  # paused state + recent-30d row count
+mxr activity prune --before 30d --dry-run
+```
+
+Hard kill at startup:
+
+```bash
+MXR_ACTIVITY=off mxr daemon          # recorder is spawned but writes are dropped
+```
+
 ## `appearance`
 
 - `theme`
@@ -331,6 +387,61 @@ restarting the process.
 
 The web app's Settings > LLM panel edits this same section through the
 daemon and reloads the provider immediately after save.
+
+### Per-feature overrides
+
+Every LLM-backed feature can override `[llm]` independently. Useful
+when one feature benefits from a different model — for example, you
+might run thread summaries through a local 3B model but want
+answer-coverage on a smarter cloud model.
+
+```toml
+[llm.overrides.answer_coverage]
+enabled = true
+base_url = "https://api.openai.com/v1"
+model = "gpt-5-mini"
+api_key_env = "OPENAI_API_KEY"
+```
+
+Any field omitted from an override falls back to the top-level `[llm]`
+section. Feature keys: `summarize`, `draft_assist`, `draft_new`,
+`draft_refine`, `voice_match`, `answer_coverage`, `commitments`.
+
+## `safety`
+
+Pre-send safety pipeline tuning. See the
+[Pre-send safety guide](/guides/pre-send-safety/) for the full check
+inventory and the override-token flow.
+
+### `safety.recipients`
+
+```toml
+[safety.recipients]
+internal_domains = ["company.com"]
+sensitive_domains = ["competitor.com"]
+warn_on_first_time_external = true
+```
+
+| Key | Type | Default | Purpose |
+|---|---|---|---|
+| `internal_domains` | string[] | `[]` | Domains flagged as internal. Body markers like `INTERNAL` or `CONFIDENTIAL` paired with a recipient OUTSIDE this list trigger a Blocker. |
+| `sensitive_domains` | string[] | `[]` | Any recipient at one of these domains is a Blocker. Common use: known competitors, regulators, journalists, ex-employers — anywhere a misfire would be expensive. |
+| `warn_on_first_time_external` | bool | `false` | Warn when sending to a domain you have no prior history with. Cheap nudge that catches "did I get the right alice?" cases. |
+
+### `safety.tone`
+
+```toml
+[safety.tone]
+formality_delta_threshold = 0.25
+```
+
+| Key | Type | Default | Purpose |
+|---|---|---|---|
+| `formality_delta_threshold` | float [0.0, 1.0] | `0.25` | How different the draft's formality score must be from the recipient's baseline before the warning fires. `0.0` = always warn (every send vs. baseline). `1.0` = never warn. Lower it if you want stricter checking, raise it to mute noise. |
+
+Tone match needs at least 3 prior messages to a recipient — fewer than
+that and the check silently skips (no point warning when there's no
+stable baseline to compare against).
 
 ## Custom keybindings
 

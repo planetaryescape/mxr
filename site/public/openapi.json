@@ -2773,6 +2773,195 @@
           }
         }
       },
+      "ActivityCursor": {
+        "type": "object",
+        "required": [
+          "ts",
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ts": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ActivityEntry": {
+        "type": "object",
+        "required": [
+          "id",
+          "ts",
+          "source",
+          "action",
+          "tier",
+          "redacted"
+        ],
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "action": {
+            "type": "string"
+          },
+          "context": {
+            "description": "Parsed context; clients see structured JSON, not the raw string."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "redacted": {
+            "type": "boolean"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ClientKind"
+          },
+          "target_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tier": {
+            "$ref": "#/components/schemas/ActivityTier"
+          },
+          "ts": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ActivityExportFormat": {
+        "type": "string",
+        "enum": [
+          "csv",
+          "json",
+          "ndjson"
+        ]
+      },
+      "ActivityFilter": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "action_prefix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "include_redacted": {
+            "type": "boolean"
+          },
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "FTS5 expression against `context_json`."
+          },
+          "since": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Unix ms inclusive lower bound."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClientKind"
+            },
+            "description": "Empty = any."
+          },
+          "target_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityTier"
+            }
+          },
+          "until": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Unix ms exclusive upper bound."
+          }
+        }
+      },
+      "ActivityStatBucket": {
+        "type": "object",
+        "required": [
+          "key",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "key": {
+            "type": "string",
+            "description": "Group key — depends on `group_by`: action token, ISO date, source,\ntarget kind, or hour-of-day string `00`..`23`."
+          }
+        }
+      },
+      "ActivityStatGroupBy": {
+        "type": "string",
+        "enum": [
+          "action",
+          "day",
+          "source",
+          "target_kind",
+          "hour"
+        ]
+      },
+      "ActivityTier": {
+        "type": "string",
+        "description": "Mirror of `mxr_store::Tier`. Three retention buckets used by the\nactivity log: 30 / 90 / 365 days for ephemeral / standard / important.",
+        "enum": [
+          "ephemeral",
+          "standard",
+          "important"
+        ]
+      },
       "Address": {
         "type": "object",
         "required": [
@@ -2867,15 +3056,28 @@
       "ArchiveCitationData": {
         "type": "object",
         "required": [
-          "msg_id",
+          "message_id",
+          "thread_id",
+          "subject",
+          "date",
           "quote"
         ],
         "properties": {
-          "msg_id": {
-            "type": "string"
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
           },
           "quote": {
             "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
           }
         }
       },
@@ -3204,6 +3406,16 @@
             ]
           }
         }
+      },
+      "ClientKind": {
+        "type": "string",
+        "description": "Originating client for an IPC request. Carried on the envelope so the\ndaemon's activity recorder can tag rows with the surface that produced\nthem. Legacy clients (pre-source-field) decode as `Cli` — the most\nrealistic guess for scripts hand-rolled against the socket.",
+        "enum": [
+          "tui",
+          "cli",
+          "web",
+          "daemon"
+        ]
       },
       "CommitmentData": {
         "type": "object",
@@ -4660,6 +4872,12 @@
               "$ref": "#/components/schemas/Address"
             }
           },
+          "body_word_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Word count of the rendered body, snapshot at sync time. Used together\nwith `link_count` to classify newsletter-shaped mail into\n`LinkDensity::Heavy`. `0` if the body word count wasn't computed\n(older rows pre-backfill).",
+            "minimum": 0
+          },
           "cc": {
             "type": "array",
             "items": {
@@ -4696,6 +4914,12 @@
               "type": "string"
             },
             "description": "Provider-specific label IDs (e.g. \"INBOX\", \"SENT\", \"Label_123\").\nTransient: used during sync to populate the message_labels junction table."
+          },
+          "link_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Count of external links in the body after filtering out tracker /\nunsubscribe / list-management hostnames. Drives the tri-state\n\"link\" indicator on the mail list and the `has:link` search filter.\n`0` means no link indicator.",
+            "minimum": 0
           },
           "message_id_header": {
             "type": [
@@ -5890,6 +6114,44 @@
           }
         }
       },
+      "RecipientSendTimeRowData": {
+        "type": "object",
+        "required": [
+          "email",
+          "sample_count",
+          "best_windows"
+        ],
+        "properties": {
+          "best_expected_reply_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "best_windows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SendWindowData"
+            }
+          },
+          "email": {
+            "type": "string"
+          },
+          "proposed_expected_reply_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "sample_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "RelationshipDriftData": {
         "type": "object",
         "required": [
@@ -6207,6 +6469,13 @@
                 "enum": [
                   "DownloadAttachment"
                 ]
+              },
+              "destination": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional user-chosen destination path. When `None`, the daemon\nmaterializes into its internal attachment cache (used by the\nopen-in-app flow). When `Some`, the daemon writes the bytes\ndirectly to this exact path (parent dirs are created; caller\nowns the filename in the path)."
               },
               "message_id": {
                 "$ref": "#/components/schemas/MessageId"
@@ -6812,6 +7081,21 @@
           },
           {
             "type": "object",
+            "description": "Return unread match counts per saved search. The TUI uses\nthis to render `(N)` after each tab label. The handler runs\neach saved search's query ANDed with `is:unread` and counts\nhits; queries that can't be parsed return 0 so the tab strip\nstays visible.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListSavedSearchUnreadCounts"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "limit",
               "cmd"
@@ -7098,6 +7382,21 @@
                 "type": "string",
                 "enum": [
                   "RebuildAnalytics"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Walk every message body and recompute `link_count` + `body_word_count`\nusing the current link-extractor. Drives `mxr doctor --recompute-link-counts`\nfor users who want the link indicator/search filters to populate on\npre-existing rows without waiting for the next sync.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RecomputeLinkCounts"
                 ]
               }
             }
@@ -7519,6 +7818,13 @@
                   "null"
                 ]
               },
+              "category_prefix": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Category prefix (e.g. `mutation`, `sync.`). Applied as\n`category LIKE <prefix>%`. Optional."
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -7535,6 +7841,35 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              },
+              "offset": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Result offset for paging. Defaults to 0.",
+                "minimum": 0
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Free-text `LIKE %term%` over the `summary` column. Optional."
+              },
+              "since": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "description": "Unix-seconds inclusive lower bound on `timestamp`. Optional."
+              },
+              "until": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "description": "Unix-seconds exclusive upper bound on `timestamp`. Optional."
               }
             }
           },
@@ -7561,6 +7896,81 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Free-text substring filter against each log line. Case-insensitive."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Distinct categories present in `event_log`, ordered by recency.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListEventCategories"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Count events matching the same filter shape as `ListEvents`.\nPowers pagination affordances in the diagnostics surfaces.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "category": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "category_prefix": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "CountEvents"
+                ]
+              },
+              "level": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "since": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              },
+              "until": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
               }
             }
           },
@@ -8335,6 +8745,14 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              },
+              "since_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "description": "Restrict counts to messages whose `date >= since_unix`.\n`None` means \"no time bound\" (legacy behavior)."
               }
             }
           },
@@ -9103,10 +9521,10 @@
           },
           {
             "type": "object",
-            "description": "Recommend the bucket (weekday, hour) at which the recipient\nis fastest to reply.",
+            "description": "Recommend the bucket (weekday, hour) at which the recipient\nis fastest to reply. When `proposed_at` is set, the response\nalso includes the proposed slot's expected reply time so the\ncaller can render a delta against the recipient's best bucket.",
             "required": [
               "account_id",
-              "recipient",
+              "recipients",
               "cmd"
             ],
             "properties": {
@@ -9119,8 +9537,18 @@
                   "SendTimeRecommendation"
                 ]
               },
-              "recipient": {
-                "type": "string"
+              "proposed_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "recipients": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -9145,6 +9573,25 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Fetch a single decision-log row by id. Returns\n`ResponseData::DecisionDetail` with `Option<DecisionLogEntryData>`\n— `None` means the id is unknown (not an error).",
+            "required": [
+              "id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetDecision"
+                ]
+              },
+              "id": {
+                "type": "string"
               }
             }
           },
@@ -9421,6 +9868,306 @@
                 "enum": [
                   "Shutdown"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Paginated reverse-chron list of activity rows.",
+            "required": [
+              "filter",
+              "limit",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListActivity"
+                ]
+              },
+              "cursor": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ActivityCursor"
+                  }
+                ]
+              },
+              "filter": {
+                "$ref": "#/components/schemas/ActivityFilter"
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Total matching rows (UI badge counts).",
+            "required": [
+              "filter",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "CountActivity"
+                ]
+              },
+              "filter": {
+                "$ref": "#/components/schemas/ActivityFilter"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Grouped counts over a time window.",
+            "required": [
+              "since",
+              "until",
+              "group_by",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ActivityStats"
+                ]
+              },
+              "group_by": {
+                "$ref": "#/components/schemas/ActivityStatGroupBy"
+              },
+              "since": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "until": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Export matching rows in CSV / JSON / NDJSON. When `path` is set the\ndaemon writes the file; otherwise it returns the body inline (capped).",
+            "required": [
+              "filter",
+              "format",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ExportActivity"
+                ]
+              },
+              "filter": {
+                "$ref": "#/components/schemas/ActivityFilter"
+              },
+              "format": {
+                "$ref": "#/components/schemas/ActivityExportFormat"
+              },
+              "path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Tombstone rows (set `redacted=1`, clear `context_json`). Either\n`ids` is non-empty OR `filter` is `Some` — not both, not neither.",
+            "required": [
+              "ids",
+              "dry_run",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RedactActivity"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "filter": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ActivityFilter"
+                  }
+                ]
+              },
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Hard-delete rows older than `before_ts`. Retention pruner uses this.",
+            "required": [
+              "before_ts",
+              "dry_run",
+              "cmd"
+            ],
+            "properties": {
+              "before_ts": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PruneActivity"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "tier": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ActivityTier"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Stop recording new rows. `until_ts=None` is indefinite.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PauseActivity"
+                ]
+              },
+              "until_ts": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Resume recording.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ResumeActivity"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "List all saved filter presets, most-recently-used first.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListSavedActivityFilters"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Fetch a single preset by slug.",
+            "required": [
+              "slug",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetSavedActivityFilter"
+                ]
+              },
+              "slug": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Create or update a preset (slug is the primary key).",
+            "required": [
+              "slug",
+              "name",
+              "filter",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UpsertSavedActivityFilter"
+                ]
+              },
+              "filter": {
+                "$ref": "#/components/schemas/ActivityFilter"
+              },
+              "name": {
+                "type": "string"
+              },
+              "slug": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Delete a preset by slug.",
+            "required": [
+              "slug",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DeleteSavedActivityFilter"
+                ]
+              },
+              "slug": {
+                "type": "string"
               }
             }
           }
@@ -10059,6 +10806,34 @@
                 "items": {
                   "$ref": "#/components/schemas/SenderSummaryData"
                 }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Per-saved-search unread counts. Map shape so callers can do\nfast id-keyed lookups when rendering the tab strip; missing\nentries render as a bare label (no `(0)` clutter).",
+            "required": [
+              "counts",
+              "kind"
+            ],
+            "properties": {
+              "counts": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                },
+                "propertyNames": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SavedSearchUnreadCounts"
+                ]
               }
             }
           },
@@ -11142,6 +11917,31 @@
           },
           {
             "type": "object",
+            "description": "Returned by `Request::GetDecision`. `None` when the id is\nunknown — CLI surfaces that as \"not found\", not as an error.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "decision": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DecisionLogEntryData"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "DecisionDetail"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Returned by `Request::RebuildDecisionLog`.",
             "required": [
               "extracted",
@@ -11354,6 +12154,248 @@
                 "$ref": "#/components/schemas/DraftSafetyReport"
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "Paginated activity rows. See `Request::ListActivity`.",
+            "required": [
+              "entries",
+              "kind"
+            ],
+            "properties": {
+              "entries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ActivityEntry"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ActivityEntries"
+                ]
+              },
+              "next_cursor": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ActivityCursor"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::CountActivity`. (Distinct from the\n`Count { count: u32 }` variant returned by the mail `Count`\nrequest — different scale, different consumer.)",
+            "required": [
+              "count",
+              "kind"
+            ],
+            "properties": {
+              "count": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ActivityCount"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ActivityStats`. Buckets are pre-sorted.",
+            "required": [
+              "buckets",
+              "kind"
+            ],
+            "properties": {
+              "buckets": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ActivityStatBucket"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ActivityStatBuckets"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ExportActivity`. Either `body` or `path` is set\ndepending on whether the export was inline or written to disk.",
+            "required": [
+              "format",
+              "count",
+              "size_bytes",
+              "kind"
+            ],
+            "properties": {
+              "body": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "count": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "format": {
+                "$ref": "#/components/schemas/ActivityExportFormat"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ActivityExportResult"
+                ]
+              },
+              "path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "size_bytes": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by mutating activity verbs. `count` is the row count\naffected (or that *would* be affected when `dry_run=true`).",
+            "required": [
+              "count",
+              "dry_run",
+              "kind"
+            ],
+            "properties": {
+              "count": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ActivityAffected"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Generic acknowledgement for verbs that have no return payload\n(`PauseActivity`, `ResumeActivity`).",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Acknowledged"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "entries",
+              "kind"
+            ],
+            "properties": {
+              "entries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SavedActivityFilterEntry"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SavedActivityFilters"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "entry": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SavedActivityFilterEntry"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SavedActivityFilterDetail"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Distinct event-log categories, recency-ordered.",
+            "required": [
+              "categories",
+              "kind"
+            ],
+            "properties": {
+              "categories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "EventCategories"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Count for an event-log filter.",
+            "required": [
+              "count",
+              "kind"
+            ],
+            "properties": {
+              "count": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "EventLogCount"
+                ]
+              }
+            }
           }
         ]
       },
@@ -11468,6 +12510,43 @@
           "priority": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "SavedActivityFilterEntry": {
+        "type": "object",
+        "description": "Wire shape of a saved activity filter preset (Phase 8).",
+        "required": [
+          "slug",
+          "name",
+          "filter",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/ActivityFilter"
+          },
+          "last_used_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -11927,36 +13006,6 @@
           }
         }
       },
-      "SendTimeBucketData": {
-        "type": "object",
-        "required": [
-          "weekday",
-          "hour",
-          "p50_seconds",
-          "sample_count"
-        ],
-        "properties": {
-          "hour": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "p50_seconds": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "sample_count": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "weekday": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          }
-        }
-      },
       "SendTimeConfidenceData": {
         "type": "string",
         "enum": [
@@ -11968,48 +13017,78 @@
       "SendTimeRecommendationData": {
         "type": "object",
         "required": [
-          "recipient",
-          "buckets",
-          "confidence",
-          "sample_count"
+          "recipient_rows",
+          "best_windows",
+          "confidence"
         ],
         "properties": {
-          "best_hour": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "minimum": 0
-          },
-          "best_p50_seconds": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "best_weekday": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "minimum": 0
-          },
-          "buckets": {
+          "best_windows": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/SendTimeBucketData"
+              "$ref": "#/components/schemas/SendWindowData"
             }
           },
           "confidence": {
             "$ref": "#/components/schemas/SendTimeConfidenceData"
           },
-          "recipient": {
-            "type": "string"
+          "proposed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Slot the caller asked us to evaluate, echoed back so JSON\nconsumers don't have to rebuild it. Present only when the\ncaller passed `proposed_at` on the request."
           },
-          "sample_count": {
+          "proposed_hour": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Hour (0-23) of `proposed_at` in UTC.",
+            "minimum": 0
+          },
+          "proposed_weekday": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Weekday (0 = Monday) of `proposed_at` in UTC.",
+            "minimum": 0
+          },
+          "recipient_rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecipientSendTimeRowData"
+            }
+          }
+        }
+      },
+      "SendWindowData": {
+        "type": "object",
+        "required": [
+          "weekday",
+          "hour_start",
+          "hour_end",
+          "expected_reply_seconds"
+        ],
+        "properties": {
+          "expected_reply_seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "hour_end": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "hour_start": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "weekday": {
             "type": "integer",
             "format": "int32",
             "minimum": 0

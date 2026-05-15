@@ -101,6 +101,20 @@ mxr stale --theirs --older-than-days 7 --format json \
 `--theirs` means *they* owe me a reply (latest message is outbound).
 `--older-than-days 7` excludes threads with activity in the last week.
 
+### Owed-reply backlog ranked by how overdue
+
+```bash
+mxr owed --format json \
+  | jq -r 'sort_by(-.overdue_score) | .[]
+           | "\(.overdue_score | tostring | .[0:4])\t\(.waiting_days|round)d\t\(.counterparty_email)\t\(.subject)"' \
+  | head -20
+```
+
+What you get: top 20 threads where *you* are the bottleneck, ranked by
+`waiting_days / expected_days` (using the recipient's typical cadence;
+default 7 days when no history). Same set as `mxr search
+'is:owed-reply'` — pick whichever surface fits your script.
+
 ### Extract all attachment filenames from a query
 
 ```bash
@@ -149,6 +163,82 @@ Always preview when piping into mutations:
 ```bash
 mxr search 'from:no-reply' --format ids \
   | mxr archive --dry-run
+```
+
+## With `--check` — pre-send safety gate
+
+Every recipe here uses the [pre-send safety](/guides/pre-send-safety/)
+pipeline. The `--check` flag runs every safety check WITHOUT sending,
+exits 2 on any Blocker, and prints a JSON report you can parse.
+
+### Block sends with leaked secrets (pre-commit hook)
+
+`.git/hooks/pre-commit` for a repo where you stash outgoing-mail
+templates:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+for draft in mail/*.md; do
+  to=$(yq '.to' "$draft")
+  body=$(awk '/^---$/{n++;next} n==2' "$draft")
+  printf '%s' "$body" | mxr compose --to "$to" --body-stdin --check --format json | \
+    jq -e '
+      ([.issues[] | select(.severity == "blocker") | .code]) as $blockers
+      | if $blockers | length == 0 then true
+        else error("blocked: \($blockers | join(\", \")) in \(input_filename)")
+        end' || exit 1
+done
+```
+
+What you get: any commit that introduces a draft with a PEM private
+key, AWS/OpenAI/GitHub token, or other blocker-grade secret fails the
+hook before push.
+
+### Send only if safety is clean, otherwise mint and pause
+
+```bash
+report=$(mxr send "$DRAFT_ID" --check --format json)
+verdict=$(echo "$report" | jq -r '.verdict')
+case "$verdict" in
+  safe|warn) mxr send "$DRAFT_ID" ;;
+  blocked)
+    token=$(echo "$report" | jq -r '.issues[] | select(.severity == "blocker") | .override_token | select(. != null)' | head -1)
+    echo "BLOCKED. To override: mxr send $DRAFT_ID --override-safety $token"
+    exit 2
+    ;;
+esac
+```
+
+### Audit every scheduled send before it fires
+
+```bash
+mxr drafts --format json | jq -r '.[] | select(.send_at != null) | .id' \
+  | while read draft_id; do
+      verdict=$(mxr send "$draft_id" --check --format json | jq -r '.verdict')
+      printf '%s\t%s\n' "$draft_id" "$verdict"
+    done
+```
+
+What you get: one line per scheduled draft with its current verdict.
+Catch drafts that would silently fail when the scheduler fires them
+(the scheduler clears the schedule on Blocker, so an unaddressed
+warning isn't enough — only Blockers stop a scheduled send).
+
+### Owed-reply digest emailed every morning
+
+`crontab -e`:
+
+```text
+0 8 * * 1-5 /usr/local/bin/mxr owed --format json | jq -r 'sort_by(-.overdue_score) | .[0:10] | .[] | "  • \(.counterparty_email): \(.waiting_days|round)d — \(.subject)"' | { echo "Threads you owe (top 10):"; cat; } | mail -s "mxr: owed replies" you@example.com
+```
+
+```text
+Tell an agent
+"Walk my `mxr search 'is:owed-reply'` set. For each thread, show me a
+two-line summary, then ask if I want to reply (`r`), snooze a week
+(`s`), or skip. Use `mxr summarize` for context. Never send without
+showing me the body."
 ```
 
 The core mail mutations (`archive`, `trash`, `spam`, `snooze`, `label`, etc.) support `--dry-run` and print what would happen without touching the provider.
@@ -344,6 +434,86 @@ mxr screener allow|deny|feed|paper-trail <addr>
 
 The agent doesn't need a special API. The same flags humans use are the same ones it composes.
 
+## With AI features — synthesis with citations
+
+### "What did we decide about X last quarter?"
+
+Situation: you need a grounded answer plus the messages that prove it.
+
+```bash
+mxr ask "what did Alice and I decide about pricing in Q2?" \
+  --from alice@example.com \
+  --after 2026-04-01 --before 2026-06-30 \
+  --format json \
+  | tee /tmp/answer.json \
+  | jq -r '.text, "\nCitations:", (.citations[] | "- \(.message_id)\t\(.subject)")'
+```
+
+What you get: the synthesized answer to stdout, JSON to `/tmp/answer.json`. `jq` prints the answer text followed by citation rows you can pipe back into `mxr cat`. If retrieval can't support an answer the text is literally "not enough evidence" — no synthesized confidence.
+
+### Resolve overdue commitments before standup
+
+Situation: it's Friday and you want to know what you promised to send this week.
+
+```bash
+mxr commitments --status open --format json \
+  | jq -r '.[] | select(.direction == "yours" and .by_when != null)
+           | "\(.by_when)\t\(.contact_email)\t\(.what)\t\(.evidence_msg_id)"' \
+  | sort \
+  | column -t -s $'\t'
+```
+
+What you get: a sortable table of every open promise with the source message id — pipe `--format ids` and `xargs -I{} mxr cat {} --view reader` if you want to read the original draft text.
+
+### Find an expert before forwarding
+
+Situation: inbound question you'd otherwise forward — find who's answered something similar.
+
+```bash
+mxr expert MESSAGE_ID --format json \
+  | jq -r '.[0:3]
+           | .[]
+           | "\(.score | tostring | .[0:4])\t\(.email)\t\(.reason)"'
+```
+
+What you get: top 3 candidate experts with score and the cited reason. Their `citations[]` point at the *answer* messages, not at the matching questions — verify before forwarding.
+
+### Re-enter a dormant thread
+
+Situation: you're about to reply on a 3-month-old thread.
+
+```bash
+mxr briefing thread THREAD_ID --format json \
+  | jq -r '"\(.dormant_days)d quiet — \(.summary)\n",
+           "Pending you owe:",
+           (.pending_commitments[] | "  - \(.what) (msg: \(.evidence_msg_id))"),
+           "\nOpen questions:",
+           (.open_questions[] | "  - \(.text) (msg: \(.evidence_msg_id))")'
+```
+
+What you get: dormancy header, summary paragraph, your open commitments on the thread, and any unaddressed inbound questions — all cited. Cached, so the second run is instant.
+
+### Pick a send slot that matches the recipient
+
+Situation: scheduling a sensitive ask, want to land it in their fastest reply bucket.
+
+```bash
+mxr send-time alice@example.com --at "$PROPOSED_AT" --format json \
+  | jq -r 'if .confidence == "low" then "low confidence — no recommendation"
+           else "best window: \(.recipient_rows[0].best_windows[0] | "\(.weekday) \(.hour_start):00-\(.hour_end):00")"
+           end'
+```
+
+What you get: a one-liner with the best window if mxr has enough data, or an honest "no recommendation" line when sample count is low. Pair with `mxr send DRAFT_ID --at "$WHEN"` to actually schedule.
+
+```text
+Tell an agent
+"Before scheduling DRAFT_ID with `mxr send DRAFT_ID --at <when>`, run
+`mxr send-time <to_address> --at <when> --format json`. If the proposed
+slot is at least 2x slower than the best window AND confidence is medium
+or high, propose the better slot. Don't auto-reschedule."
+```
+
 ## See also
 
 - [CLI reference](/reference/cli/) — every command and flag.
@@ -353,3 +523,7 @@ The agent doesn't need a special API. The same flags humans use are the same one
 - [API explorer](/api/bridge/) — interactive Scalar reference; try requests against your local daemon.
 - [For agents](/guides/for-agents/) — boundaries and safe defaults when an LLM is driving.
 - [AI agent skill](/guides/agent-skill/) — install the mxr skill into Claude / Cursor / Continue.
+- [Forgotten work](/guides/forgotten-work/) — commitments and owed-reply lens behind the recipes above.
+- [Archive intelligence](/guides/archive-intelligence/) — citation-validated `mxr ask` and the decision log.
+- [Briefings and loop-in](/guides/briefings-and-loop-in/) — dormant-thread briefings, expert finder, suggest-recipients, whois.
+- [Timing and cadence](/guides/timing-and-cadence/) — send-time optimizer and cadence watchlist.

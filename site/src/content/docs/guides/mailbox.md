@@ -127,6 +127,10 @@ The help modal is context-aware. The command palette exposes mailbox, search, ru
   --older-than-days 30 --format ids | xargs -n1 mxr cat | $PAGER` —
   scan everything you've been ignoring, then bulk-archive what you
   decide to drop.
+- **Pin an Owed lens to your sidebar:** `mxr saved add owed
+  'is:owed-reply'`. The lens lists threads where you're the bottleneck,
+  ranked by overdue score. Same set as `mxr owed`; whichever surface
+  you prefer.
 - **Switching contexts mid-day:** `g 1`–`g 9` jump straight to your
   saved-search lenses. Set up "VIP", "Today", "Waiting on me", and
   hop between them with one keystroke.

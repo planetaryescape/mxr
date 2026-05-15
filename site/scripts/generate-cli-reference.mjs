@@ -29,6 +29,7 @@ const COMMAND_EXAMPLES = {
     examples: [
       "mxr search 'from:alice is:unread' --format json",
       "mxr search 'has:attachment subject:invoice' --format ids | mxr label receipts --dry-run",
+      "mxr search 'is:owed-reply' --format ids   # threads you're the bottleneck on",
     ],
   },
   cat: {
@@ -74,31 +75,97 @@ const COMMAND_EXAMPLES = {
   },
   unsnooze: { use: 'Wake snoozed messages early.', examples: ["mxr unsnooze MESSAGE_ID", "mxr unsnooze --all --dry-run"] },
   unsubscribe: {
-    use: 'Unsubscribe from mailing-list messages after previewing candidates.',
-    examples: ["mxr unsubscribe MESSAGE_ID --dry-run", "mxr unsubscribe --search 'list:<news.example.com>' --dry-run"],
+    use: 'Unsubscribe from a single message id, or from every message by a given sender address. Passing an email address is shorthand for `--search "from:<addr>"` — the daemon picks the most recent match and uses its List-Unsubscribe header.',
+    examples: [
+      "mxr unsubscribe alice@example.com --dry-run",
+      "mxr unsubscribe alice@example.com bob@example.com --yes",
+      "mxr unsubscribe MESSAGE_ID --dry-run",
+      "mxr unsubscribe --search 'list:<news.example.com>' --dry-run",
+    ],
   },
-  compose: { use: 'Write a new message in $EDITOR or from stdin in scripts.', examples: ["mxr compose --to alice@example.com --subject 'Friday'", "printf 'Approved' | mxr compose --to alice@example.com --subject 'Re: plan' --body-stdin --dry-run"] },
+  compose: {
+    use: 'Write a new message in $EDITOR or from stdin in scripts. Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) against a transient draft built from these flags — useful in CI / pre-commit hooks.',
+    examples: [
+      "mxr compose --to alice@example.com --subject 'Friday'",
+      "printf 'Approved' | mxr compose --to alice@example.com --subject 'Re: plan' --body-stdin --dry-run",
+      "mxr compose --to alice@example.com --body 'see attached' --check --format json   # warns: missing attachment",
+    ],
+  },
   reply: { use: 'Reply to one message, interactively or from an agent-approved body.', examples: ["mxr reply MESSAGE_ID", "mxr reply MESSAGE_ID --body 'On it.' --yes"] },
   'reply-all': { use: 'Reply to everyone on a thread.', examples: ["mxr reply-all MESSAGE_ID --body-stdin --dry-run"] },
   forward: { use: 'Forward a message with optional context.', examples: ["mxr forward MESSAGE_ID --to teammate@example.com"] },
   drafts: { use: 'List, recover, resume, or discard local drafts.', examples: ["mxr drafts --format json", "mxr drafts recover"] },
-  send: { use: 'Send or schedule a saved draft.', examples: ["mxr send DRAFT_ID --dry-run", "mxr send DRAFT_ID --at 'tomorrow 9am'"] },
+  send: {
+    use: 'Send or schedule a saved draft. Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) without sending; exit 2 on Blocker. Use `--override-safety <TOKEN>` to bypass a Blocker the previous `--check` minted.',
+    examples: [
+      "mxr send DRAFT_ID --dry-run",
+      "mxr send DRAFT_ID --at 'tomorrow 9am'",
+      "mxr send DRAFT_ID --check --format json   # safety report, no send",
+      "mxr send DRAFT_ID --override-safety 01HXYZ-K4M2-...   # bypass minted Blocker",
+    ],
+  },
   unsend: { use: 'Cancel a scheduled send while keeping the draft.', examples: ["mxr unsend DRAFT_ID"] },
   accounts: { use: 'Add, test, repair, disable, or inspect accounts and aliases.', examples: ["mxr accounts add gmail", "mxr accounts addresses add --account work alias@example.com"] },
   sync: { use: 'Trigger sync or wait for sync completion in scripts.', examples: ["mxr sync --wait", "mxr sync --status --format json"] },
   status: { use: 'Check daemon health from a shell, status bar, or agent.', examples: ["mxr status --format json", "mxr status --watch"] },
   doctor: { use: 'Diagnose broken sync, search, semantic index, or daemon state.', examples: ["mxr doctor --format json", "mxr doctor --reindex --semantic-status"] },
-  logs: { use: 'Inspect daemon logs without digging through runtime files.', examples: ["mxr logs --level warn --since 1h", "mxr logs --format jsonl"] },
+  logs: {
+    use: 'Inspect daemon logs without digging through runtime files. Combine `--level`, `--search`, and `--limit` to zero in on incidents.',
+    examples: [
+      "mxr logs --level warn --since 1h",
+      "mxr logs --search 'timeout' --limit 200 --format jsonl",
+      "mxr logs --level error --since 24h --search 'gmail'   # past errors mentioning Gmail",
+    ],
+  },
   events: { use: 'Watch live daemon events.', examples: ["mxr events --type sync --format jsonl"] },
-  history: { use: 'Inspect persisted events after a mutation or sync run.', examples: ["mxr history --category mutation --limit 5 --format json"] },
+  history: {
+    use: 'Inspect persisted events after a mutation or sync run. Filter by category, level, time window, or free-text search.',
+    examples: [
+      "mxr history --category mutation --limit 5 --format json",
+      "mxr history --search 'archive failed' --since 24h --level error",
+      "mxr history --category-prefix sync --since 7d --limit 200 --format jsonl | jq -r '.summary'",
+    ],
+  },
+  activity: {
+    use: "Browse the local user-activity log — the git-reflog of your inbox. Strictly local; never transmitted off-device. See the [Activity Log guide](/guides/activity-log/) for the full design.",
+    examples: [
+      "mxr activity list --since 24h",
+      "mxr activity stats --group-by action --since 7d --format json",
+      "mxr activity export --format ndjson --out my-week.ndjson",
+      "mxr activity clear --last 1h --yes   # tombstone the last hour",
+    ],
+  },
   notify: { use: 'Feed unread counts into status bars.', examples: ["mxr notify", "mxr notify --watch --format jsonl"] },
   labels: { use: 'List and manage labels/folders.', examples: ["mxr labels", "mxr labels create receipts --dry-run"] },
-  saved: { use: 'Name searches you run every day.', examples: ["mxr saved add today 'is:unread newer_than:1d'", "mxr saved run today --format ids"] },
+  saved: {
+    use: 'Name searches you run every day. Saved searches appear in the TUI sidebar and the command palette.',
+    examples: [
+      "mxr saved add today 'is:unread newer_than:1d'",
+      "mxr saved add owed 'is:owed-reply'   # threads you owe a reply on",
+      "mxr saved run today --format ids",
+    ],
+  },
   rules: { use: 'Create deterministic filing/mutation rules and dry-run them before enabling.', examples: ["mxr rules validate --when 'from:billing' --then 'label:receipts'", "mxr rules dry-run --all --after 2026-01-01"] },
-  snippets: { use: 'Manage stock reply snippets.', examples: ["mxr snippets set thanks 'Thanks, will follow up.'", "mxr snippets list --format json"] },
+  snippets: {
+    use: "Manage stock reply snippets. Bodies may reference built-in tokens: `{first_name}` / `{full_name}` (resolved from the draft's `to:`), `{thread_subject}` (the draft subject with `Re:` / `Fwd:` stripped), and `{today}` / `{date}` / `{year}` (local time at expansion).",
+    examples: [
+      "mxr snippets set hi 'Hi {first_name},'",
+      "mxr snippets set followup 'Following up on {thread_subject} ({today}).'",
+      "mxr snippets list --format json",
+      "mxr snippets remove hi",
+    ],
+  },
   replies: { use: 'Manage the reply-later queue.', examples: ["mxr replies list --format ids", "mxr replies add MESSAGE_ID"] },
   remind: { use: 'Set reminders on outbound messages when you need a reply.', examples: ["mxr remind SENT_MESSAGE_ID --when 'friday 10am'"] },
   sender: { use: 'Inspect one sender before replying, unsubscribing, or writing an agent prompt.', examples: ["mxr sender alice@example.com --format json"] },
+  senders: {
+    use: "List top inbound senders by message volume. Use `--since` to restrict to a recent window (e.g. `--since 7d` for the last week, or an RFC-3339 timestamp). Pipe `--format ids` into `mxr unsubscribe` to clean house in two commands.",
+    examples: [
+      "mxr senders --top 20",
+      "mxr senders --top 10 --since 7d",
+      "mxr senders --since 2026-01-01T00:00:00Z --format json | jq '.[] | {who:.sender_email, count:.message_count}'",
+    ],
+  },
   screener: { use: 'Decide where first-time senders should go.', examples: ["mxr screener queue", "mxr screener feed newsletter@example.com --label feeds"] },
   summarize: { use: 'Summarize long threads through the configured LLM.', examples: ["mxr summarize THREAD_ID", "mxr summarize --search 'from:team newer_than:7d' --limit 5"] },
   'draft-assist': { use: 'Generate a draft body grounded in a thread, then review before sending.', examples: ["mxr draft-assist THREAD_ID 'Polite follow-up with next steps'", "mxr draft-assist --search 'from:sarah newer_than:14d' --first '1:1 agenda'"] },
@@ -107,6 +174,88 @@ const COMMAND_EXAMPLES = {
   contacts: { use: 'Surface relationship asymmetry or decay.', examples: ["mxr contacts asymmetry --limit 20", "mxr contacts decay --threshold-days 45"] },
   'response-time': { use: 'Measure reply latency with a counterparty or account.', examples: ["mxr response-time --theirs --counterparty alice@example.com --format json"] },
   stale: { use: 'Find threads where someone owes a reply.', examples: ["mxr stale --theirs --older-than-days 7", "mxr stale --mine --format ids | mxr snooze --until tomorrow --dry-run"] },
+  owed: {
+    use: "List threads where you're the bottleneck, ranked by overdue score (waiting days / recipient's typical cadence). Same set as `is:owed-reply` in search — pick whichever surface you prefer.",
+    examples: [
+      "mxr owed --format ids",
+      "mxr owed --since 7 --format json | jq '.[] | {who:.counterparty_email, days:.waiting_days, score:.overdue_score}'",
+      "mxr saved add owed 'is:owed-reply'   # persistent sidebar lens",
+    ],
+  },
+  commitments: {
+    use: 'List or resolve commitments mxr extracted from your sent mail. Set after every successful `mxr send`; persisted in `contact_commitments`. See the [forgotten-work guide](/guides/forgotten-work/) for the full draft → send → ledger flow.',
+    examples: [
+      "mxr commitments --status open --format json",
+      "mxr commitments --contact alice@example.com",
+      "mxr commitments resolve COMMITMENT_ID",
+    ],
+  },
+  ask: {
+    use: 'Synthesize a citation-backed answer over your local mail. Every claim cites a retrieved message id; uncited LLM output is rejected. See [archive intelligence](/guides/archive-intelligence/).',
+    examples: [
+      "mxr ask 'what did Alice and I decide about pricing in Q2?'",
+      "mxr ask 'launch timeline' --from alice@example.com --after 2026-01-01 --format json",
+      "mxr ask 'open infra questions' --mode lexical   # skip semantic when index is rebuilding",
+      "mxr ask 'who owns the legal review' --format json | jq -r '.citations[].message_id' | xargs -I{} mxr cat {} --view reader",
+    ],
+  },
+  decisions: {
+    use: 'List or rebuild the citation-backed decision log. Idempotent on unchanged threads. See [archive intelligence](/guides/archive-intelligence/#the-decision-log).',
+    examples: [
+      "mxr decisions --topic pricing --format json",
+      "mxr decisions rebuild --since 180",
+      "mxr decisions --since 30 --format ids | xargs -I{} mxr decisions show {}",
+    ],
+  },
+  briefing: {
+    use: 'Re-enter old context fast: cached, citation-backed summaries of dormant threads or contacts after a long gap. See [briefings and loop-in](/guides/briefings-and-loop-in/).',
+    examples: [
+      "mxr briefing thread THREAD_ID",
+      "mxr briefing thread THREAD_ID --refresh --format json",
+      "mxr briefing recipient alice@example.com --format json",
+    ],
+  },
+  cadence: {
+    use: 'Watchlist for relationships you chose to maintain. Surfaces drift against an explicit expected interval — never auto-watches contacts. See [timing and cadence](/guides/timing-and-cadence/#cadence-drift).',
+    examples: [
+      "mxr cadence watch alice@example.com --every 14d",
+      "mxr cadence list --format json",
+      "mxr cadence drift --format ids | xargs -I{} mxr sender {}",
+      "mxr cadence unwatch alice@example.com",
+    ],
+  },
+  'send-time': {
+    use: "Show the recipient's typical reply-time bucket from local `reply_pairs`. Statistical only — no LLM, no tracking pixels. See [timing and cadence](/guides/timing-and-cadence/).",
+    examples: [
+      "mxr send-time alice@example.com",
+      "mxr send-time alice@example.com --at 'fri 19:00' --format json",
+      "mxr send-time alice@example.com bob@example.com --format json   # worst meaningful delta wins",
+    ],
+  },
+  expert: {
+    use: 'Identify locally who has answered similar questions before. Ranks answerers above askers; citations point at answer messages, not just topic matches. See [briefings and loop-in](/guides/briefings-and-loop-in/#whos-the-expert).',
+    examples: [
+      "mxr expert MESSAGE_ID",
+      "mxr expert --query 'DKIM setup' --format json",
+      "mxr expert MESSAGE_ID --include-self --limit 10",
+    ],
+  },
+  whois: {
+    use: 'Explain a person, project, or jargon term using only locally cited mail evidence. No invented summaries when the corpus has nothing. See [briefings and loop-in](/guides/briefings-and-loop-in/#whois).',
+    examples: [
+      "mxr whois sam",
+      "mxr whois 'Project Apollo' --format json",
+      "mxr whois alice@example.com --limit 20",
+    ],
+  },
+  'suggest-recipients': {
+    use: 'Suggest "maybe include" Cc recipients for a draft based on co-participation in similar prior threads. Suggestions only, never auto-adds; never reveals Bcc. See [briefings and loop-in](/guides/briefings-and-loop-in/#maybe-include).',
+    examples: [
+      "mxr suggest-recipients --draft DRAFT_ID --format json",
+      "echo 'rollout plan attached' | mxr suggest-recipients --subject 'pricing rollout' --body-stdin",
+      "mxr suggest-recipients --draft DRAFT_ID --limit 3",
+    ],
+  },
   wrapped: { use: 'Generate year-to-date or yearly email analytics.', examples: ["mxr wrapped --ytd", "mxr wrapped --year 2025 --format json"] },
   export: { use: 'Turn threads into Markdown/JSON/LLM context.', examples: ["mxr export THREAD_ID --format markdown", "mxr export --search 'from:legal' --format markdown > legal.md"] },
   attachments: { use: 'List, open, or download message attachments.', examples: ["mxr attachments list MESSAGE_ID", "mxr attachments download MESSAGE_ID 1 --dir ~/Downloads/mxr"] },

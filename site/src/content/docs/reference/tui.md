@@ -118,7 +118,9 @@ Two cross-view interactions:
 - Command palette
 - Help modal
 - Label picker
-- Compose confirmation
+- Compose confirmation — `[s]` sends, `[a]` schedules send-later,
+  `[n]` sends and sets a follow-up reminder, `[d]` saves a draft,
+  `[r]` refines, `[e]` reopens `$EDITOR`, `Esc` discards
 - Bulk confirmation
 - Attachment modal
 - Snooze modal — preset list plus a **Custom…** entry that opens a
@@ -126,8 +128,9 @@ Two cross-view interactions:
   `monday 17:00` / RFC3339 grammar as `mxr snooze --until`
 - Unsubscribe confirmation
 - Analytics filter modal
-- Reply-later queue browser — list of flagged messages, opened with
-  `Ctrl-p → Reply Queue`
+- Reply-later queue browser — list of flagged messages and due reminders,
+  opened with `Ctrl-p → Reply Queue`; cancel a pending reminder from the
+  focused sent message with `Ctrl-p → Cancel Reminder`
 - Snippets browser — read-only list with body preview; CRUD flows
   through `mxr snippets`
 - Sender profile — volume, cadence, open commitments, and other recent

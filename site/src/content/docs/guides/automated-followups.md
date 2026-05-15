@@ -24,12 +24,21 @@ by the `auto_reminders_loop`.
 mxr remind MESSAGE_ID --when "in 5d"
 mxr remind MESSAGE_ID --when "monday 9am"
 
+# Send a reply and set the follow-up in one step:
+mxr reply MESSAGE_ID --body "Thanks — I'll check." --yes --remind-after "in 5d"
+
 # Cancel before it fires:
 mxr remind MESSAGE_ID --cancel
 ```
 
-When the time elapses, mxr emits a `ReminderTriggered` event so any
-connected client (TUI, HTTP-bridge consumer, agent) can surface the
+In the TUI compose confirmation, press `n`, enter the same relative
+time string, and press `Enter` to send and set the reminder in one
+flow. Use `Ctrl-p → Cancel Reminder` from the focused sent message to
+cancel a pending reminder.
+
+When the time elapses, mxr marks the sent message for reply-later,
+refreshes `is:reply-later` search state, and emits a
+`ReminderTriggered` event so connected clients can surface the
 follow-up. Re-setting the reminder on the same message replaces the
 existing schedule.
 
@@ -89,13 +98,12 @@ Past times are rejected. "Today" without a specific time is rejected
 ## Composition with reply-later
 
 If a reminder fires on an outbound message that's still awaiting a
-reply, the natural next step is to flag the original outbound (or the
-thread it belongs to) for reply-later — so it shows up in `mxr replies`
-alongside the rest of your follow-up queue:
+reply, mxr flags the original outbound for reply-later so it shows up
+in `mxr replies` alongside the rest of your follow-up queue:
 
 ```bash
-mxr replies add OUTBOUND_MESSAGE_ID
+mxr replies --format json
 ```
 
-Future polish: this could happen automatically when the reminder
-fires. Today it's a manual one-liner.
+What you get: the same reply-later queue, now including due
+auto-reminders.

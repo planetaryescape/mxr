@@ -93,6 +93,8 @@ jobs:
     needs: [plan]
     if: needs.plan.outputs.has_artifacts == 'true'
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TARGET_DIR: target
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.build_matrix) }}

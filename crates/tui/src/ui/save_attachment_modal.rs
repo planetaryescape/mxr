@@ -38,8 +38,8 @@ pub fn draw(
     row += 1;
 
     let input_area = Rect::new(inner.x, row, inner.width, 1);
-    let input_line = Paragraph::new(format!("> {}", state.input))
-        .style(Style::default().fg(theme.text_primary));
+    let input_line =
+        Paragraph::new(format!("> {}", state.input)).style(Style::default().fg(theme.text_primary));
     frame.render_widget(input_line, input_area);
     row += 1;
 

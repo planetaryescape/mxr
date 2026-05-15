@@ -21,7 +21,9 @@ pub fn draw(
     frame.render_widget(Clear, popup);
 
     let title = match &state.subject {
-        Some(BriefingModalSubject::Thread(id)) => format!(" Briefing: thread {} ", short_id(&id.to_string())),
+        Some(BriefingModalSubject::Thread(id)) => {
+            format!(" Briefing: thread {} ", short_id(&id.to_string()))
+        }
         Some(BriefingModalSubject::Recipient(email)) => format!(" Briefing: {email} "),
         None => " Briefing ".to_string(),
     };
@@ -65,7 +67,11 @@ pub fn draw(
             }
         }
         if let Some(when) = state.generated_at {
-            let cache_label = if state.from_cache { "[cached]" } else { "[fresh]" };
+            let cache_label = if state.from_cache {
+                "[cached]"
+            } else {
+                "[fresh]"
+            };
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 format!(
@@ -88,10 +94,7 @@ pub fn draw(
         Style::default().fg(theme.text_muted),
     )));
 
-    frame.render_widget(
-        Paragraph::new(lines).wrap(Wrap { trim: false }),
-        inner,
-    );
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
 fn short_id(id: &str) -> String {
@@ -186,12 +189,7 @@ mod tests {
     fn cached_briefing_marks_from_cache() {
         let mut state = BriefingModalState::default();
         state.open_recipient_loading("alice@example.com".into());
-        state.set_briefing(
-            "Recipient summary".into(),
-            vec![],
-            chrono::Utc::now(),
-            true,
-        );
+        state.set_briefing("Recipient summary".into(), vec![], chrono::Utc::now(), true);
         let rendered = render_to_string(80, 24, |frame| {
             draw(
                 frame,

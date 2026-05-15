@@ -6,6 +6,8 @@
 
 use mxr_tui::action::{Action, UiContext};
 use mxr_tui::app::{App, Screen};
+use mxr_tui::keybindings::{action_from_name, default_keybindings, ViewContext};
+use mxr_tui::ui::command_palette::commands_for_context;
 use mxr_tui::ui::command_palette::{CommandPalette, PaletteCommand};
 
 fn palette_with(commands: Vec<PaletteCommand>) -> CommandPalette {
@@ -260,5 +262,50 @@ fn prefix_match_ranks_above_substring_match() {
     assert_eq!(
         first.label, "Reply",
         "prefix match ('Reply') must rank above substring match ('Mark for Reply')"
+    );
+}
+
+#[test]
+fn every_default_keybinding_is_searchable_in_palette() {
+    let config = default_keybindings();
+    let contexts = [
+        (
+            ViewContext::MailList,
+            UiContext::MailboxList,
+            config.mail_list.values().cloned().collect::<Vec<_>>(),
+        ),
+        (
+            ViewContext::MessageView,
+            UiContext::MailboxMessage,
+            config.message_view.values().cloned().collect::<Vec<_>>(),
+        ),
+        (
+            ViewContext::ThreadView,
+            UiContext::MailboxMessage,
+            config.thread_view.values().cloned().collect::<Vec<_>>(),
+        ),
+    ];
+
+    let mut missing = Vec::new();
+    for (key_context, ui_context, action_names) in contexts {
+        let palette_actions: Vec<Action> = commands_for_context(ui_context)
+            .into_iter()
+            .map(|command| command.action)
+            .collect();
+
+        for action_name in action_names {
+            let Some(action) = action_from_name(&action_name) else {
+                continue;
+            };
+
+            if !palette_actions.contains(&action) {
+                missing.push(format!("{key_context:?}:{action_name}"));
+            }
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "default keybound actions must be discoverable from the palette; missing: {missing:?}"
     );
 }

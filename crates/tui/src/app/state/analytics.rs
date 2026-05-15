@@ -43,6 +43,7 @@ pub enum AnalyticsCacheKey {
         threshold_days: u32,
         max_lookback_days: u32,
     },
+    CadenceDrift,
     ResponseTime {
         direction: ResponseTimeDirection,
         counterparty: Option<String>,
@@ -61,6 +62,7 @@ pub enum AnalyticsView {
     Storage,
     StaleThreads,
     Contacts,
+    CadenceDrift,
     ResponseTime,
     Subscriptions,
     Wrapped,
@@ -72,6 +74,7 @@ impl AnalyticsView {
             Self::Storage => "Storage",
             Self::StaleThreads => "Stale Threads",
             Self::Contacts => "Contacts",
+            Self::CadenceDrift => "Cadence Drift",
             Self::ResponseTime => "Response Time",
             Self::Subscriptions => "Subscriptions",
             Self::Wrapped => "Wrapped",
@@ -147,6 +150,8 @@ pub struct AnalyticsState {
     pub decay_threshold_days: u32,
     pub decay_max_lookback_days: u32,
 
+    pub cadence_drift_rows: Vec<mxr_protocol::CadenceDriftRowData>,
+
     pub response_time: Option<ResponseTimeSummary>,
     pub response_time_direction: ResponseTimeDirection,
     pub response_time_counterparty: Option<String>,
@@ -205,6 +210,7 @@ impl Default for AnalyticsState {
             decay_rows: Vec::new(),
             decay_threshold_days: 30,
             decay_max_lookback_days: 1095,
+            cadence_drift_rows: Vec::new(),
 
             response_time: None,
             response_time_direction: ResponseTimeDirection::IReplied,
@@ -260,6 +266,7 @@ impl AnalyticsState {
                     max_lookback_days: self.decay_max_lookback_days,
                 },
             },
+            AnalyticsView::CadenceDrift => AnalyticsCacheKey::CadenceDrift,
             AnalyticsView::ResponseTime => AnalyticsCacheKey::ResponseTime {
                 direction: self.response_time_direction,
                 counterparty: self.response_time_counterparty.clone(),
@@ -288,6 +295,7 @@ impl AnalyticsState {
                 ContactsMode::Asymmetry => !self.asymmetry_rows.is_empty(),
                 ContactsMode::Decay => !self.decay_rows.is_empty(),
             },
+            AnalyticsView::CadenceDrift => !self.cadence_drift_rows.is_empty(),
             AnalyticsView::ResponseTime => self.response_time.is_some(),
             AnalyticsView::Subscriptions => !self.subscriptions.is_empty(),
             AnalyticsView::Wrapped => self.wrapped.is_some(),

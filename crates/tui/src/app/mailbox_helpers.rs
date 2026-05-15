@@ -193,7 +193,10 @@ impl App {
     pub fn dormant_thread_hint(&self) -> Option<String> {
         const DORMANT_DAYS: i64 = 30;
         const MIN_MESSAGES: usize = 3;
-        let row = self.mail_list_rows().into_iter().nth(self.mailbox.selected_index)?;
+        let row = self
+            .mail_list_rows()
+            .into_iter()
+            .nth(self.mailbox.selected_index)?;
         if row.message_count < MIN_MESSAGES {
             return None;
         }
@@ -572,7 +575,7 @@ impl App {
             .viewing_envelope
             .as_ref()
             .map(|env| env.thread_id.clone())
-            == Some(thread_id)
+            == Some(thread_id.clone())
         {
             let focused_message_id = self.focused_thread_envelope().map(|env| env.id.clone());
             for message in &messages {
@@ -580,11 +583,29 @@ impl App {
             }
             self.mailbox.viewed_thread = Some(thread);
             self.mailbox.viewed_thread_messages = messages;
+            let summary_was_cached = summary.is_some();
             self.mailbox.thread_summary = summary.map(|summary| ThreadSummaryPreview {
                 text: summary.text,
                 model: summary.model,
             });
             self.mailbox.thread_summary_error = None;
+            // Lazy summary backfill: if the daemon didn't have a cached
+            // summary for this thread, schedule one — but *debounce* so
+            // holding the down-arrow through the mail list doesn't fire
+            // an LLM request for every row passed. The debounce parks
+            // the thread_id for ~250ms; if the user keeps moving, this
+            // call replaces the pending one with the new thread_id and
+            // resets the timer. When they finally land, the timer
+            // expires and `lib.rs` drains it into a real IPC request.
+            // The request goes on a dedicated IPC connection so it
+            // doesn't block body fetches or other navigation.
+            if !summary_was_cached
+                && self.mailbox.thread_summary_loading.as_ref() != Some(&thread_id)
+                && self.pending_summary_request.as_ref() != Some(&thread_id)
+            {
+                let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(250);
+                self.pending_summary_debounce = Some((thread_id.clone(), deadline));
+            }
             self.mailbox.thread_selected_index = focused_message_id
                 .and_then(|message_id| {
                     self.mailbox

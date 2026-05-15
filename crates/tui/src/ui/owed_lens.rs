@@ -9,12 +9,7 @@ use mxr_protocol::OwedReplyRowData;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(
-    frame: &mut Frame,
-    area: Rect,
-    rows: &[OwedReplyRowData],
-    theme: &crate::theme::Theme,
-) {
+pub fn draw(frame: &mut Frame, area: Rect, rows: &[OwedReplyRowData], theme: &crate::theme::Theme) {
     let block = Block::bordered()
         .title(" Owed Replies ")
         .border_type(BorderType::Rounded)
@@ -54,10 +49,7 @@ pub fn draw(
         } else {
             theme.text_muted
         };
-        let from = row
-            .from_name
-            .as_deref()
-            .unwrap_or(&row.from_email);
+        let from = row.from_name.as_deref().unwrap_or(&row.from_email);
         lines.push(Line::from(vec![
             Span::styled(
                 format!("  {:>4.2}  ", row.overdue_score),
@@ -71,10 +63,7 @@ pub fn draw(
         ]));
     }
 
-    frame.render_widget(
-        Paragraph::new(lines).wrap(Wrap { trim: false }),
-        inner,
-    );
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
 fn truncate(s: &str, max: usize) -> String {

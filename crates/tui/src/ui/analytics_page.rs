@@ -27,6 +27,7 @@ fn draw_header(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cr
         AnalyticsView::Storage,
         AnalyticsView::StaleThreads,
         AnalyticsView::Contacts,
+        AnalyticsView::CadenceDrift,
         AnalyticsView::ResponseTime,
         AnalyticsView::Subscriptions,
         AnalyticsView::Wrapped,
@@ -73,6 +74,7 @@ fn draw_header(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cr
                 state.decay_threshold_days, state.decay_max_lookback_days
             ),
         },
+        AnalyticsView::CadenceDrift => "Cadence Drift  [explicit watchlist]".into(),
         AnalyticsView::ResponseTime => format!(
             "Response Time  [direction={}]",
             response_direction_label(state.response_time_direction)
@@ -179,6 +181,7 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
             ContactsMode::Asymmetry => draw_asymmetry(frame, body_area, state, theme),
             ContactsMode::Decay => draw_decay(frame, body_area, state, theme),
         },
+        AnalyticsView::CadenceDrift => draw_cadence_drift(frame, body_area, state, theme),
         AnalyticsView::ResponseTime => draw_response_time(frame, body_area, state, theme),
         AnalyticsView::Subscriptions => draw_subscriptions(frame, body_area, state, theme),
         AnalyticsView::Wrapped => draw_wrapped(frame, body_area, state, theme),
@@ -223,6 +226,11 @@ fn view_explainer_lines<'a>(
                 "Press 'r' to refresh the materialized contacts table; Enter to jump to that contact's mail.",
             ),
         },
+        AnalyticsView::CadenceDrift => (
+            "Watched relationships past their cadence.",
+            "Only contacts you explicitly watch appear here. Drift = days since contact minus expected cadence.",
+            "Use `mxr cadence watch <email> --every 14d` to add rows. Enter jumps to that contact's mail.",
+        ),
         AnalyticsView::ResponseTime => (
             "Reply times — how fast you/they respond.",
             "Typical wait = half of replies are faster. Slow tail = only 10% take longer. Histogram below buckets every reply.",
@@ -938,6 +946,92 @@ fn draw_decay(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
         frame,
         table,
         " Contact Decay ",
+        header,
+        rows,
+        &widths,
+        state.selected_index,
+        theme,
+    );
+}
+
+fn draw_cadence_drift(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AnalyticsState,
+    theme: &crate::theme::Theme,
+) {
+    if state.cadence_drift_rows.is_empty() {
+        empty_state(frame, area, "No watched contacts are past cadence.", theme);
+        return;
+    }
+
+    let count = state.cadence_drift_rows.len() as u64;
+    let largest = state
+        .cadence_drift_rows
+        .iter()
+        .map(|row| row.drift_days)
+        .fold(0.0_f64, f64::max);
+    let total_volume: u64 = state
+        .cadence_drift_rows
+        .iter()
+        .map(|row| row.total_volume as u64)
+        .sum();
+
+    let (strip, table) = strip_and_table(area);
+    let cards = three_up(strip);
+    stat_card(
+        frame,
+        cards[0],
+        "Overdue",
+        &format_count(count),
+        theme,
+        true,
+    );
+    stat_card(
+        frame,
+        cards[1],
+        "Largest drift",
+        &format!("{largest:.1}d"),
+        theme,
+        false,
+    );
+    stat_card(
+        frame,
+        cards[2],
+        "Volume",
+        &format_count(total_volume),
+        theme,
+        false,
+    );
+
+    let header = Row::new(vec!["Email", "Drift", "Expected", "Last contact", "Volume"])
+        .style(Style::default().fg(theme.text_muted).bold());
+    let rows: Vec<Row> = state
+        .cadence_drift_rows
+        .iter()
+        .map(|row| {
+            Row::new(vec![
+                row.email.clone(),
+                format!("{:.1}d", row.drift_days),
+                format!("{:.1}d", row.expected_days),
+                row.last_contact_at
+                    .map(|dt| dt.format("%Y-%m-%d").to_string())
+                    .unwrap_or_else(|| "never".into()),
+                row.total_volume.to_string(),
+            ])
+        })
+        .collect();
+    let widths = [
+        Constraint::Percentage(38),
+        Constraint::Percentage(12),
+        Constraint::Percentage(12),
+        Constraint::Percentage(23),
+        Constraint::Percentage(15),
+    ];
+    render_table(
+        frame,
+        table,
+        " Cadence Drift ",
         header,
         rows,
         &widths,
@@ -2040,6 +2134,9 @@ fn draw_footer(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cr
         }
         AnalyticsView::Contacts => {
             "Tab/Shift-Tab:view  j/k:select  m:mode  Enter:sender  r:refresh  Esc:mailbox"
+        }
+        AnalyticsView::CadenceDrift => {
+            "Tab/Shift-Tab:view  j/k:select  Enter:sender  r:refresh  Esc:mailbox"
         }
         AnalyticsView::ResponseTime => {
             "Tab/Shift-Tab:view  d:you/them  f:filters  r:refresh  Esc:mailbox"

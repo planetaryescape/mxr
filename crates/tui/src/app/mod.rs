@@ -100,6 +100,8 @@ pub enum MutationEffect {
     /// `status` in the status bar.
     SentSuccess {
         status: String,
+        remind_at: Option<chrono::DateTime<chrono::Utc>>,
+        sent_message_id: Option<MessageId>,
     },
 }
 
@@ -208,6 +210,11 @@ pub struct App {
     /// Set when the reply-later queue modal opens; the runtime drains
     /// this flag and dispatches a `Request::ListReplyQueue`.
     pub pending_reply_queue_refresh: bool,
+    /// Set when the activity modal opens (or the user requests a refresh);
+    /// the runtime drains this and dispatches a `Request::ListActivity`.
+    pub pending_activity_refresh: bool,
+    /// Set when the user toggles pause/resume from the activity modal.
+    pub pending_activity_pause_toggle: bool,
     /// Pending sender-view request — `Some((account_id, email))`
     /// triggers a `Request::GetSenderProfile`. Drained by the runtime
     /// after dispatch.
@@ -215,6 +222,14 @@ pub struct App {
     /// Pending thread-summary request — `Some(thread_id)` triggers a
     /// `Request::SummarizeThread`. Drained by the runtime.
     pub pending_summary_request: Option<mxr_core::ThreadId>,
+    /// Trailing-edge debounce for the lazy on-thread-open summary fire.
+    /// Scrolling through the mail list opens a thread per row, which
+    /// would otherwise fire an LLM request for every keypress. We park
+    /// the request here with a deadline; only when the deadline elapses
+    /// without being replaced does it move to `pending_summary_request`
+    /// and actually go to the daemon. In-flight requests already fired
+    /// are not cancelled — they complete and the daemon caches them.
+    pub pending_summary_debounce: Option<(mxr_core::ThreadId, tokio::time::Instant)>,
     /// Slice 5.1/5.2 (C2.6): pending briefing fetch. Drained by the
     /// runtime, which fires either `Request::GetThreadBriefing` or
     /// `Request::GetRecipientBriefing` depending on the variant.
@@ -317,8 +332,11 @@ impl App {
             pending_connection_retry: false,
             pending_snippets_refresh: false,
             pending_reply_queue_refresh: false,
+            pending_activity_refresh: false,
+            pending_activity_pause_toggle: false,
             pending_sender_profile_request: None,
             pending_summary_request: None,
+            pending_summary_debounce: None,
             pending_briefing_request: None,
             pending_whois_query: None,
             pending_expert_query: None,

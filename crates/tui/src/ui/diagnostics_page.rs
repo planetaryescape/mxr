@@ -52,6 +52,7 @@ fn render_selector(
                 DiagnosticsPaneKind::Sync => format!("{} accounts", state.sync_statuses.len()),
                 DiagnosticsPaneKind::Events => format!("{} recent", state.events.len()),
                 DiagnosticsPaneKind::Logs => format!("{} lines", state.logs.len()),
+                DiagnosticsPaneKind::Activity => format!("{} rows", state.activity.len()),
             };
             ListItem::new(Line::from(vec![
                 Span::styled(
@@ -100,16 +101,38 @@ fn render_detail_layout(
         .split(area);
     render_summary(frame, chunks[0], state, pane, theme, fullscreen);
     render_detail(frame, chunks[1], state, pane, theme, fullscreen);
-    render_footer(
-        frame,
-        chunks[2],
-        if fullscreen {
-            "j/k:section  Ctrl-d/u:scroll  Enter/o:exit full  d:details  c:config  L:logs"
+    let footer_text: String = if let Some(target) = state.search_input {
+        // Active /-search input: show what the user is typing.
+        let buf = match target {
+            DiagnosticsPaneKind::Events => state.events_search.as_str(),
+            DiagnosticsPaneKind::Logs => state.logs_search.as_str(),
+            DiagnosticsPaneKind::Activity => state.activity_search.as_str(),
+            _ => "",
+        };
+        format!(
+            "/  {} {} _   Enter:apply  Esc:clear",
+            pane_label(target),
+            buf
+        )
+    } else {
+        let active_search = match pane {
+            DiagnosticsPaneKind::Events => state.events_search.as_str(),
+            DiagnosticsPaneKind::Logs => state.logs_search.as_str(),
+            DiagnosticsPaneKind::Activity => state.activity_search.as_str(),
+            _ => "",
+        };
+        let filter_hint = if !active_search.is_empty() {
+            format!("filter='{active_search}'  ")
         } else {
-            "j/k:section  Ctrl-d/u:scroll  Enter/o:full  r:refresh  c:config  L:logs"
-        },
-        theme,
-    );
+            String::new()
+        };
+        if fullscreen {
+            format!("{filter_hint}j/k:section  Ctrl-d/u:scroll  Enter/o:exit full  /:search  d:details  c:config  L:logs")
+        } else {
+            format!("{filter_hint}j/k:section  Ctrl-d/u:scroll  Enter/o:full  /:search  r:refresh  c:config  L:logs")
+        }
+    };
+    render_footer(frame, chunks[2], &footer_text, theme);
 }
 
 fn pane_label(pane: DiagnosticsPaneKind) -> &'static str {
@@ -119,6 +142,7 @@ fn pane_label(pane: DiagnosticsPaneKind) -> &'static str {
         DiagnosticsPaneKind::Sync => "Sync Health",
         DiagnosticsPaneKind::Events => "Recent Events",
         DiagnosticsPaneKind::Logs => "Recent Logs",
+        DiagnosticsPaneKind::Activity => "Activity Log",
     }
 }
 
@@ -244,13 +268,14 @@ fn render_footer(frame: &mut Frame, area: Rect, text: &str, theme: &crate::theme
     );
 }
 
-fn all_panes() -> [DiagnosticsPaneKind; 5] {
+fn all_panes() -> [DiagnosticsPaneKind; 6] {
     [
         DiagnosticsPaneKind::Status,
         DiagnosticsPaneKind::Data,
         DiagnosticsPaneKind::Sync,
         DiagnosticsPaneKind::Events,
         DiagnosticsPaneKind::Logs,
+        DiagnosticsPaneKind::Activity,
     ]
 }
 
@@ -294,7 +319,11 @@ fn summary_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec
         ],
         DiagnosticsPaneKind::Logs => vec![
             Line::from(format!("{} recent log lines loaded.", state.logs.len())),
-            Line::from("Open logs for the full file in your editor."),
+            Line::from("`/` to filter; `L` opens the full file in your editor."),
+        ],
+        DiagnosticsPaneKind::Activity => vec![
+            Line::from(format!("{} activity rows loaded.", state.activity.len())),
+            Line::from("Local-only; `/` to filter; `r` to refresh."),
         ],
     }
 }
@@ -585,14 +614,33 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
             }
         }
         DiagnosticsPaneKind::Events => {
-            if event_entries.is_empty() {
+            let needle = state.events_search.trim().to_lowercase();
+            let filtered: Vec<&EventLogEntry> = event_entries
+                .iter()
+                .filter(|event| {
+                    if needle.is_empty() {
+                        return true;
+                    }
+                    event.summary.to_lowercase().contains(&needle)
+                        || event.level.to_lowercase().contains(&needle)
+                        || event.category.to_lowercase().contains(&needle)
+                        || event
+                            .details
+                            .as_deref()
+                            .map(|d| d.to_lowercase().contains(&needle))
+                            .unwrap_or(false)
+                })
+                .collect();
+            if filtered.is_empty() {
                 vec![if loading {
                     "Loading events...".into()
+                } else if !needle.is_empty() {
+                    format!("No events match '{}'", state.events_search)
                 } else {
                     "No events".into()
                 }]
             } else {
-                event_entries
+                filtered
                     .iter()
                     .flat_map(|event| {
                         let mut lines = vec![format!(
@@ -608,14 +656,86 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
             }
         }
         DiagnosticsPaneKind::Logs => {
-            if log_entries.is_empty() {
+            // Apply free-text search if present.
+            let needle = state.logs_search.trim().to_lowercase();
+            let lines: Vec<String> = if needle.is_empty() {
+                log_entries
+            } else {
+                log_entries
+                    .into_iter()
+                    .filter(|line| line.to_lowercase().contains(&needle))
+                    .collect()
+            };
+            if lines.is_empty() {
                 vec![if loading {
                     "Loading logs...".into()
+                } else if !state.logs_search.is_empty() {
+                    format!("No logs match '{}'", state.logs_search)
                 } else {
                     "No logs".into()
                 }]
             } else {
-                log_entries
+                lines
+            }
+        }
+        DiagnosticsPaneKind::Activity => {
+            if state.activity.is_empty() {
+                vec![if loading {
+                    "Loading activity...".into()
+                } else {
+                    "No recent activity. Open the activity modal with `g a` to fetch.".into()
+                }]
+            } else {
+                let needle = state.activity_search.trim().to_lowercase();
+                let filtered: Vec<&mxr_protocol::ActivityEntry> = state
+                    .activity
+                    .iter()
+                    .filter(|e| {
+                        if needle.is_empty() {
+                            return true;
+                        }
+                        if e.action.to_lowercase().contains(&needle) {
+                            return true;
+                        }
+                        if let Some(ctx) = &e.context {
+                            let blob = serde_json::to_string(ctx).unwrap_or_default();
+                            return blob.to_lowercase().contains(&needle);
+                        }
+                        false
+                    })
+                    .collect();
+                if filtered.is_empty() {
+                    return vec![format!("No activity matches '{}'", state.activity_search)];
+                }
+                filtered
+                    .iter()
+                    .map(|e| {
+                        let ts = chrono::DateTime::from_timestamp_millis(e.ts)
+                            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                            .unwrap_or_else(|| e.ts.to_string());
+                        let target = match (&e.target_kind, &e.target_id) {
+                            (Some(k), Some(id)) => {
+                                let trimmed: String = id.chars().take(12).collect();
+                                format!("{k}:{trimmed}")
+                            }
+                            (Some(k), None) => k.clone(),
+                            _ => "—".into(),
+                        };
+                        let context = if e.redacted {
+                            "(redacted)".to_string()
+                        } else if let Some(c) = &e.context {
+                            serde_json::to_string(c)
+                                .unwrap_or_default()
+                                .chars()
+                                .take(60)
+                                .collect()
+                        } else {
+                            String::new()
+                        };
+                        let source_str = format!("{:?}", e.source).to_lowercase();
+                        format!("{ts} {source_str:<6} {:<24} {target:<20} {context}", e.action)
+                    })
+                    .collect()
             }
         }
     }

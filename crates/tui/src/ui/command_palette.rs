@@ -335,10 +335,22 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Triage".into(),
         },
         PaletteCommand {
+            label: "Cancel Reminder".into(),
+            shortcut: String::new(),
+            action: Action::CancelAutoReminder,
+            category: "Triage".into(),
+        },
+        PaletteCommand {
             label: "Reply Queue".into(),
             shortcut: String::new(),
             action: Action::OpenReplyQueue,
             category: "Triage".into(),
+        },
+        PaletteCommand {
+            label: "View activity".into(),
+            shortcut: "ga".into(),
+            action: Action::OpenActivityScreen,
+            category: "Activity".into(),
         },
         PaletteCommand {
             label: "Screener Queue".into(),
@@ -431,6 +443,84 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Selection".into(),
         },
         PaletteCommand {
+            label: "Move Down".into(),
+            shortcut: "j".into(),
+            action: Action::MoveDown,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Move Up".into(),
+            shortcut: "k".into(),
+            action: Action::MoveUp,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Page Down".into(),
+            shortcut: "Ctrl-d".into(),
+            action: Action::PageDown,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Page Up".into(),
+            shortcut: "Ctrl-u".into(),
+            action: Action::PageUp,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Jump Top".into(),
+            shortcut: "gg".into(),
+            action: Action::JumpTop,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Jump Bottom".into(),
+            shortcut: "G".into(),
+            action: Action::JumpBottom,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Viewport Top".into(),
+            shortcut: "H".into(),
+            action: Action::ViewportTop,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Viewport Middle".into(),
+            shortcut: "M".into(),
+            action: Action::ViewportMiddle,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Viewport Bottom".into(),
+            shortcut: "L".into(),
+            action: Action::ViewportBottom,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Center Current".into(),
+            shortcut: "zz".into(),
+            action: Action::CenterCurrent,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Open Selected".into(),
+            shortcut: "Enter".into(),
+            action: Action::OpenSelected,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Next Search Result".into(),
+            shortcut: "n".into(),
+            action: Action::NextSearchResult,
+            category: "Search".into(),
+        },
+        PaletteCommand {
+            label: "Previous Search Result".into(),
+            shortcut: "N".into(),
+            action: Action::PrevSearchResult,
+            category: "Search".into(),
+        },
+        PaletteCommand {
             label: "Go to Inbox".into(),
             shortcut: "gi".into(),
             action: Action::GoToInbox,
@@ -461,6 +551,42 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Navigation".into(),
         },
         PaletteCommand {
+            label: "Go to Label".into(),
+            shortcut: "gl".into(),
+            action: Action::GoToLabel,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Open Mailbox Tab".into(),
+            shortcut: "1".into(),
+            action: Action::OpenTab1,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Open Search Tab".into(),
+            shortcut: "2".into(),
+            action: Action::OpenTab2,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Open Rules Tab".into(),
+            shortcut: "3".into(),
+            action: Action::OpenTab3,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Open Accounts Tab".into(),
+            shortcut: "4".into(),
+            action: Action::OpenTab4,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Open Diagnostics Tab".into(),
+            shortcut: "5".into(),
+            action: Action::OpenTab5,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
             label: "Edit Config".into(),
             shortcut: "gc".into(),
             action: Action::EditConfig,
@@ -477,6 +603,12 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             shortcut: "/".into(),
             action: Action::OpenGlobalSearch,
             category: "Search".into(),
+        },
+        PaletteCommand {
+            label: "Command Palette".into(),
+            shortcut: "Ctrl-p".into(),
+            action: Action::OpenCommandPalette,
+            category: "Navigation".into(),
         },
         PaletteCommand {
             label: "Filter Current Mailbox".into(),
@@ -617,6 +749,12 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "View".into(),
         },
         PaletteCommand {
+            label: "Toggle Signature".into(),
+            shortcut: "S".into(),
+            action: Action::ToggleSignature,
+            category: "Compose".into(),
+        },
+        PaletteCommand {
             label: "Sync now".into(),
             shortcut: "".into(),
             action: Action::SyncNow,
@@ -638,6 +776,12 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             label: "Analytics: Contacts".into(),
             shortcut: "".into(),
             action: Action::OpenAnalyticsView(crate::app::AnalyticsView::Contacts),
+            category: "Analytics".into(),
+        },
+        PaletteCommand {
+            label: "Analytics: Cadence Drift".into(),
+            shortcut: "".into(),
+            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::CadenceDrift),
             category: "Analytics".into(),
         },
         PaletteCommand {
@@ -775,6 +919,13 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             shortcut: "q".into(),
             action: Action::QuitView,
             category: "Navigation".into(),
+        },
+        #[cfg(debug_assertions)]
+        PaletteCommand {
+            label: "Dump Action Trace".into(),
+            shortcut: "Ctrl-Alt-d".into(),
+            action: Action::DumpActionTrace,
+            category: "Diagnostics".into(),
         },
     ];
     apply_registered_mail_list_shortcuts(&mut commands);

@@ -236,6 +236,15 @@ impl App {
                     self.jump_to_search(format!("from:{email}"));
                 }
             }
+            AnalyticsView::CadenceDrift => {
+                if let Some(row) = self
+                    .analytics
+                    .cadence_drift_rows
+                    .get(self.analytics.selected_index)
+                {
+                    self.jump_to_search(format!("from:{}", row.email));
+                }
+            }
             AnalyticsView::Subscriptions => {
                 let Some(row) = self
                     .analytics
@@ -365,59 +374,63 @@ impl App {
     /// `view` value can fire either of two daemon requests. Wrapped
     /// converts its window state into the same `(since_unix,
     /// until_unix, label)` tuple the CLI computes.
-    pub(crate) fn analytics_request_for_active_view(&self) -> mxr_protocol::Request {
+    pub(crate) fn analytics_request_for_active_view(&self) -> Option<mxr_protocol::Request> {
         match self.analytics.view {
             AnalyticsView::Storage => match self.analytics.storage_mode {
-                StorageMode::Breakdown => mxr_protocol::Request::ListStorageBreakdown {
+                StorageMode::Breakdown => Some(mxr_protocol::Request::ListStorageBreakdown {
                     account_id: None,
                     group_by: self.analytics.storage_group_by,
                     limit: 100,
-                },
-                StorageMode::LargestMessages => mxr_protocol::Request::ListLargestMessages {
+                }),
+                StorageMode::LargestMessages => Some(mxr_protocol::Request::ListLargestMessages {
                     account_id: None,
                     since_days: self.analytics.largest_since_days,
                     limit: self.analytics.largest_limit,
-                },
+                }),
             },
-            AnalyticsView::StaleThreads => mxr_protocol::Request::ListStaleThreads {
+            AnalyticsView::StaleThreads => Some(mxr_protocol::Request::ListStaleThreads {
                 account_id: None,
                 perspective: self.analytics.stale_perspective,
                 older_than_days: self.analytics.stale_older_than_days,
                 within_days: self.analytics.stale_within_days,
                 limit: 100,
-            },
+            }),
             AnalyticsView::Contacts => match self.analytics.contacts_mode {
-                ContactsMode::Asymmetry => mxr_protocol::Request::ListContactAsymmetry {
+                ContactsMode::Asymmetry => Some(mxr_protocol::Request::ListContactAsymmetry {
                     account_id: None,
                     min_inbound: self.analytics.asymmetry_min_inbound,
                     limit: 100,
-                },
-                ContactsMode::Decay => mxr_protocol::Request::ListContactDecay {
+                }),
+                ContactsMode::Decay => Some(mxr_protocol::Request::ListContactDecay {
                     account_id: None,
                     threshold_days: self.analytics.decay_threshold_days,
                     max_lookback_days: self.analytics.decay_max_lookback_days,
                     limit: 100,
-                },
+                }),
             },
-            AnalyticsView::ResponseTime => mxr_protocol::Request::ListResponseTime {
+            AnalyticsView::CadenceDrift => self
+                .default_account_id()
+                .cloned()
+                .map(|account_id| mxr_protocol::Request::ListCadenceDrift { account_id }),
+            AnalyticsView::ResponseTime => Some(mxr_protocol::Request::ListResponseTime {
                 account_id: None,
                 direction: self.analytics.response_time_direction,
                 counterparty: self.analytics.response_time_counterparty.clone(),
                 since_days: self.analytics.response_time_since_days,
-            },
-            AnalyticsView::Subscriptions => mxr_protocol::Request::ListSubscriptions {
+            }),
+            AnalyticsView::Subscriptions => Some(mxr_protocol::Request::ListSubscriptions {
                 account_id: None,
                 limit: self.analytics.subscriptions_limit,
-            },
+            }),
             AnalyticsView::Wrapped => {
                 let (since_unix, until_unix, label) =
                     wrapped_window_to_request(self.analytics.wrapped_window);
-                mxr_protocol::Request::Wrapped {
+                Some(mxr_protocol::Request::Wrapped {
                     account_id: None,
                     since_unix,
                     until_unix,
                     label,
-                }
+                })
             }
         }
     }
@@ -472,6 +485,7 @@ fn filter_modal_for_view(state: &AnalyticsState) -> AnalyticsFilterModalState {
                 ),
             ],
         },
+        AnalyticsView::CadenceDrift => Vec::new(),
         AnalyticsView::ResponseTime => vec![
             select_filter_field(
                 "direction",
@@ -593,6 +607,7 @@ fn apply_filter_modal_fields(
                 state.decay_max_lookback_days = parse_u32(get(1), "max_lookback_days")?;
             }
         },
+        AnalyticsView::CadenceDrift => {}
         AnalyticsView::ResponseTime => {
             use mxr_core::types::ResponseTimeDirection;
             state.response_time_direction = match get(0).trim().to_ascii_lowercase().as_str() {
@@ -654,7 +669,8 @@ fn next_analytics_view(view: AnalyticsView) -> AnalyticsView {
     match view {
         AnalyticsView::Storage => AnalyticsView::StaleThreads,
         AnalyticsView::StaleThreads => AnalyticsView::Contacts,
-        AnalyticsView::Contacts => AnalyticsView::ResponseTime,
+        AnalyticsView::Contacts => AnalyticsView::CadenceDrift,
+        AnalyticsView::CadenceDrift => AnalyticsView::ResponseTime,
         AnalyticsView::ResponseTime => AnalyticsView::Subscriptions,
         AnalyticsView::Subscriptions => AnalyticsView::Wrapped,
         AnalyticsView::Wrapped => AnalyticsView::Storage,
@@ -666,7 +682,8 @@ fn prev_analytics_view(view: AnalyticsView) -> AnalyticsView {
         AnalyticsView::Storage => AnalyticsView::Wrapped,
         AnalyticsView::StaleThreads => AnalyticsView::Storage,
         AnalyticsView::Contacts => AnalyticsView::StaleThreads,
-        AnalyticsView::ResponseTime => AnalyticsView::Contacts,
+        AnalyticsView::CadenceDrift => AnalyticsView::Contacts,
+        AnalyticsView::ResponseTime => AnalyticsView::CadenceDrift,
         AnalyticsView::Subscriptions => AnalyticsView::ResponseTime,
         AnalyticsView::Wrapped => AnalyticsView::Subscriptions,
     }

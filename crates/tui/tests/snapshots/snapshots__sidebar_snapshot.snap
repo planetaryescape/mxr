@@ -1,6 +1,6 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 245
+assertion_line: 319
 expression: snapshot
 ---
 "╭ Sidebar ─────────────────────────────╮"
@@ -9,13 +9,13 @@ expression: snapshot
 "│  Starred                            2│"
 "│  All Mail                            │"
 "│  Subscriptions                      2│"
+"│  Owed                                │"
 "│──────────────────────────────────────│"
 "│▾ Labels                              │"
 "│  Projects                         1/5│"
 "│──────────────────────────────────────│"
 "│▾ Saved Searches                      │"
 "│  Unread                              │"
-"│                                      │"
 "│                                      │"
 "│                                      │"
 "│                                      │"

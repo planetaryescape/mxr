@@ -1,6 +1,5 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 699
 expression: snapshot
 ---
 "┌ Diagnostics ───────────┐┌ Summary / Status / Doctor ─────────────────────────────────────────────┐"
@@ -9,7 +8,7 @@ expression: snapshot
 "│  Sync Health  [1 accoun││health healthy ─────────────────────────────────────────────────────────│"
 "│  Recent Events  [1 rece││index current ──────────────────────────────────────────────────────────│"
 "│  Recent Logs  [2 lines]││                                                                        │"
-"│                        │└────────────────────────────────────────────────────────────────────────┘"
+"│  Activity Log  [0 rows]│└────────────────────────────────────────────────────────────────────────┘"
 "│                        │┌ Status / Doctor ───────────────────────────────────────────────────────┐"
 "│                        ││Health: healthy status=ok                                               │"
 "│                        ││Lifecycle: restart=no repair=no                                         │"
@@ -25,5 +24,5 @@ expression: snapshot
 "│                        ││                                                                        │"
 "│                        │└────────────────────────────────────────────────────────────────────────┘"
 "│                        │┌────────────────────────────────────────────────────────────────────────┐"
-"│                        ││j/k:section  Ctrl-d/u:scroll  Enter/o:full  r:refresh  c:config  L:logs │"
+"│                        ││j/k:section  Ctrl-d/u:scroll  Enter/o:full  /:search  r:refresh  c:confi│"
 "└────────────────────────┘└────────────────────────────────────────────────────────────────────────┘"

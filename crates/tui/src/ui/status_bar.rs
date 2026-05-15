@@ -68,14 +68,12 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &StatusBarState, theme: &crate
                 .bg(theme.hint_bar_bg)
                 .fg(theme.text_primary),
         );
-        let chip_widget = Paragraph::new(chip)
-            .alignment(Alignment::Center)
-            .style(
-                Style::default()
-                    .bg(theme.warning)
-                    .fg(theme.modal_bg)
-                    .add_modifier(Modifier::BOLD),
-            );
+        let chip_widget = Paragraph::new(chip).alignment(Alignment::Center).style(
+            Style::default()
+                .bg(theme.warning)
+                .fg(theme.modal_bg)
+                .add_modifier(Modifier::BOLD),
+        );
         frame.render_widget(bar, split[0]);
         frame.render_widget(chip_widget, split[1]);
         return;

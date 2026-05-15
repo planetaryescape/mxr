@@ -1,17 +1,17 @@
 use crate::app::{App, ComposeAction, PendingSend, PendingSendMode};
 use crate::async_result::ComposeReadyData;
-use crate::ipc::{ipc_call, IpcRequest};
+use crate::ipc::{ipc_call, ipc_call_dedicated, IpcRequest};
 use mxr_core::AccountId;
 use mxr_core::MessageId;
 use mxr_core::MxrError;
 use mxr_protocol::{
     AccountSummaryData, ReplyContext, Request, Response, ResponseData, SignatureContextData,
 };
+use std::path::Path;
 use tokio::sync::mpsc;
 
-/// Fetch a reply context from the daemon. Shared between the cold path
-/// in `handle_compose_action` (when no prewarm landed) and the prewarm
-/// task in `lib.rs` that fills `reply_context_cache` on message open.
+/// Fetch a reply context via the shared IPC worker. Used by the cold
+/// path in `handle_compose_action` when no prewarm landed.
 pub(crate) async fn fetch_reply_context(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     message_id: MessageId,
@@ -25,6 +25,30 @@ pub(crate) async fn fetch_reply_context(
         },
     )
     .await?;
+    extract_reply_context(resp)
+}
+
+/// Fetch a reply context on a short-lived daemon connection. Used by
+/// the prewarm task in `lib.rs` so it never blocks user actions on the
+/// shared IPC worker. Mirrors `ipc_call_dedicated`, which the rest of
+/// the codebase uses for slow LLM work for the same reason.
+pub(crate) async fn fetch_reply_context_dedicated(
+    socket_path: &Path,
+    message_id: MessageId,
+    reply_all: bool,
+) -> Result<ReplyContext, MxrError> {
+    let resp = ipc_call_dedicated(
+        socket_path,
+        Request::PrepareReply {
+            message_id,
+            reply_all,
+        },
+    )
+    .await?;
+    extract_reply_context(resp)
+}
+
+fn extract_reply_context(resp: Response) -> Result<ReplyContext, MxrError> {
     match resp {
         Response::Ok {
             data: ResponseData::ReplyContext { context },
@@ -326,7 +350,7 @@ pub(crate) async fn pending_send_from_edited_draft(
         mode,
         safety_report: None,
         override_token: None,
-            suggested_collaborators: vec![],
+        suggested_collaborators: vec![],
     }))
 }
 
@@ -366,20 +390,13 @@ pub(crate) async fn handle_compose_editor_status(
     }
 }
 
-async fn stamp_safety_report(
-    pending: &mut PendingSend,
-    bg: &mpsc::UnboundedSender<IpcRequest>,
-) {
+async fn stamp_safety_report(pending: &mut PendingSend, bg: &mpsc::UnboundedSender<IpcRequest>) {
     let draft = draft_from_pending(pending);
     let context = mxr_protocol::DraftSafetyContextData {
         mode: mxr_protocol::DraftSafetyModeData::Check,
         reply_all: matches!(pending.intent, mxr_core::DraftIntent::ReplyAll),
         original_message_id: None,
-        thread_id: pending
-            .fm
-            .thread_id
-            .as_ref()
-            .and_then(|s| s.parse().ok()),
+        thread_id: pending.fm.thread_id.as_ref().and_then(|s| s.parse().ok()),
         allow_llm: true,
         // Compose-flow doesn't pre-schedule; the user can send-now or
         // send-at via the modal. Pass `now` so the timing check fires
@@ -395,10 +412,7 @@ async fn stamp_safety_report(
             // The daemon mints a single-use override token and
             // stamps it onto each Blocker issue when the verdict is
             // Blocked. Surface the first one to the modal.
-            pending.override_token = report
-                .issues
-                .iter()
-                .find_map(|i| i.override_token.clone());
+            pending.override_token = report.issues.iter().find_map(|i| i.override_token.clone());
             pending.safety_report = Some(report);
         }
         Ok(Response::Ok { .. }) | Ok(Response::Error { .. }) => {
@@ -415,10 +429,7 @@ async fn stamp_safety_report(
 /// Slice 5.3 (C2.7 cont): fetch "maybe include" suggestions and
 /// stamp them onto `pending.suggested_collaborators`. Failure is
 /// silent — the modal just renders without the suggestions block.
-async fn stamp_suggestions(
-    pending: &mut PendingSend,
-    bg: &mpsc::UnboundedSender<IpcRequest>,
-) {
+async fn stamp_suggestions(pending: &mut PendingSend, bg: &mpsc::UnboundedSender<IpcRequest>) {
     let draft = draft_from_pending(pending);
     let req = Request::SuggestCollaborators { draft, limit: 5 };
     if let Ok(Response::Ok {
@@ -431,13 +442,16 @@ async fn stamp_suggestions(
 
 fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
     let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
-    let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
-        mxr_core::types::ReplyHeaders {
-            in_reply_to: in_reply_to.clone(),
-            references: pending.fm.references.clone(),
-            thread_id: pending.fm.thread_id.clone(),
-        }
-    });
+    let reply_headers =
+        pending
+            .fm
+            .in_reply_to
+            .as_ref()
+            .map(|in_reply_to| mxr_core::types::ReplyHeaders {
+                in_reply_to: in_reply_to.clone(),
+                references: pending.fm.references.clone(),
+                thread_id: pending.fm.thread_id.clone(),
+            });
     let now = chrono::Utc::now();
     mxr_core::Draft {
         id: mxr_core::id::DraftId::new(),

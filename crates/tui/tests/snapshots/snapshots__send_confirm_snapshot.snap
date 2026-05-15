@@ -1,9 +1,8 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 265
+assertion_line: 274
 expression: snapshot
 ---
-"                                                                      "
 "                                                                      "
 "                                                                      "
 "                                                                      "
@@ -15,9 +14,10 @@ expression: snapshot
 "     │Voice match: not scored for manual edits                  │     "
 "     │Humanizer: scored on AI draft outputs                     │     "
 "     │                                                          │     "
-"     │[s] send   [a] send at   [d] save draft   [r] refine   [e]│     "
+"     │[s] send   [a] send at   [n] remind   [d] save draft      │     "
+"     │[r] refine   [e] edit again   [Esc] discard               │     "
+"     │                                                          │     "
 "     ╰──────────────────────────────────────────────────────────╯     "
-"                                                                      "
 "                                                                      "
 "                                                                      "
 "                                                                      "

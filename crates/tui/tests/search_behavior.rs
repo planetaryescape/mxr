@@ -7,6 +7,9 @@
 
 use std::time::{Duration, Instant};
 
+use chrono::{TimeZone, Utc};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
+use mxr_core::types::{Address, Envelope, MessageFlags, UnsubscribeMethod};
 use mxr_core::{SearchMode, SortOrder};
 use mxr_tui::app::{App, PendingSearchDebounce, PendingSearchRequest};
 
@@ -97,5 +100,92 @@ fn new_debounce_replaces_an_unfired_one() {
     assert_eq!(
         second_query, "from",
         "later keystrokes overwrite the pending query"
+    );
+}
+
+fn search_result_envelope(slug: &str) -> Envelope {
+    Envelope {
+        id: MessageId::new(),
+        account_id: AccountId::new(),
+        provider_id: slug.into(),
+        thread_id: ThreadId::new(),
+        message_id_header: Some(format!("<{slug}@example.com>")),
+        in_reply_to: None,
+        references: vec![],
+        from: Address {
+            name: Some(format!("Sender {slug}")),
+            email: format!("{slug}@example.com"),
+        },
+        to: vec![Address {
+            name: Some("Me".into()),
+            email: "me@example.com".into(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: format!("subject {slug}"),
+        date: Utc.with_ymd_and_hms(2024, 3, 15, 9, 30, 0).unwrap(),
+        flags: MessageFlags::READ,
+        snippet: format!("snippet for {slug}"),
+        has_attachments: false,
+        size_bytes: 100,
+        unsubscribe: UnsubscribeMethod::None,
+        link_count: 0,
+        body_word_count: 0,
+        label_provider_ids: vec!["INBOX".into()],
+    }
+}
+
+/// Phase 1.4 regression: clearing the search input (or executing search
+/// against an empty query) must wipe the workspace so the previous
+/// query's results cannot linger as stale UI. The user's contract is
+/// "empty input = no results" — anything else lies about what's being
+/// shown.
+#[test]
+fn empty_query_clears_results() {
+    let mut app = App::new();
+
+    // Simulate a prior search session: one stored result, a non-trivial
+    // status, and a leftover debounce timer.
+    app.search.page.query.clear();
+    app.search
+        .page
+        .results
+        .push(search_result_envelope("hit-1"));
+    app.search.page.session_active = true;
+    app.search.page.total_count = Some(1);
+    app.search.pending_debounce = Some(PendingSearchDebounce {
+        query: "lingering".into(),
+        mode: SearchMode::Lexical,
+        session_id: app.search.page.session_id,
+        due_at: Instant::now() + Duration::from_secs(60),
+    });
+
+    assert_eq!(
+        app.search.page.results.len(),
+        1,
+        "precondition: there is a stale result in the workspace"
+    );
+
+    app.execute_search_page_search();
+
+    assert!(
+        app.search.page.results.is_empty(),
+        "empty query must drop all rendered results"
+    );
+    assert_eq!(
+        app.search.page.total_count, None,
+        "empty query must drop the total-count summary"
+    );
+    assert!(
+        !app.search.page.session_active,
+        "empty query ends the search session"
+    );
+    assert!(
+        app.search.pending_debounce.is_none(),
+        "empty query must drain any pending debounce so it can't re-fire"
+    );
+    assert!(
+        app.search.pending.is_none(),
+        "empty query must not enqueue a real search request"
     );
 }

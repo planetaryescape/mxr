@@ -6,12 +6,7 @@ use crate::app::WhoisModalState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(
-    frame: &mut Frame,
-    area: Rect,
-    state: &WhoisModalState,
-    theme: &crate::theme::Theme,
-) {
+pub fn draw(frame: &mut Frame, area: Rect, state: &WhoisModalState, theme: &crate::theme::Theme) {
     if !state.visible {
         return;
     }
@@ -71,10 +66,7 @@ pub fn draw(
                 Style::default().fg(theme.text_muted),
             )));
             for c in &entity.citations {
-                lines.push(Line::from(format!(
-                    "    msg={} \"{}\"",
-                    c.msg_id, c.quote
-                )));
+                lines.push(Line::from(format!("    msg={} \"{}\"", c.msg_id, c.quote)));
             }
         }
     } else {
@@ -90,10 +82,7 @@ pub fn draw(
         Style::default().fg(theme.text_muted),
     )));
 
-    frame.render_widget(
-        Paragraph::new(lines).wrap(Wrap { trim: false }),
-        inner,
-    );
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {

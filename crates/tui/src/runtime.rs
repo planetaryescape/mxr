@@ -25,6 +25,7 @@ pub(crate) enum ReplaceableRequestKey {
     DiagnosticsDoctor,
     DiagnosticsEvents,
     DiagnosticsLogs,
+    DiagnosticsActivity,
 }
 
 #[derive(Debug)]
@@ -404,6 +405,7 @@ mod tests {
                 request: Box::new(Request::GetLogs {
                     limit: 20,
                     level: None,
+                    search: None,
                 }),
                 request_id: 1,
                 enqueued_at: Instant::now(),
@@ -416,6 +418,7 @@ mod tests {
                 request: Box::new(Request::GetLogs {
                     limit: 50,
                     level: None,
+                    search: None,
                 }),
                 request_id: 2,
                 enqueued_at: Instant::now(),
@@ -433,7 +436,11 @@ mod tests {
                 assert_eq!(kind, ReplaceableRequestKey::DiagnosticsLogs);
                 assert_eq!(request_id, 2);
                 match *request {
-                    Request::GetLogs { limit, level: None } => assert_eq!(limit, 50),
+                    Request::GetLogs {
+                        limit,
+                        level: None,
+                        search: None,
+                    } => assert_eq!(limit, 50),
                     other => panic!("expected diagnostics logs request, got {other:?}"),
                 }
             }

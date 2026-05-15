@@ -1,6 +1,6 @@
 ---
 source: crates/tui/src/ui/send_confirm_modal.rs
-assertion_line: 270
+assertion_line: 317
 expression: rendered
 ---
 "                                                                                                                        "
@@ -16,8 +16,8 @@ expression: rendered
 "        │Safety: SAFE                                                                                          │        "
 "        │  no issues                                                                                           │        "
 "        │                                                                                                      │        "
-"        │[s] send   [a] send at   [d] save draft   [r] refine   [e] edit again   [Esc] discard                 │        "
-"        │                                                                                                      │        "
+"        │[s] send   [a] send at   [n] remind   [d] save draft                                                  │        "
+"        │[r] refine   [e] edit again   [Esc] discard                                                           │        "
 "        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯        "
 "                                                                                                                        "
 "                                                                                                                        "

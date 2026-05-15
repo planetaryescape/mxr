@@ -70,12 +70,8 @@ impl App {
                 }
             });
         if cached.is_some() {
-            self.compose.pending_compose = Some(reply_action(
-                reply_all,
-                message_id,
-                account_id,
-                cached,
-            ));
+            self.compose.pending_compose =
+                Some(reply_action(reply_all, message_id, account_id, cached));
             return;
         }
         let prewarm_running = self
@@ -92,12 +88,7 @@ impl App {
             self.status_message = Some("Preparing reply…".into());
             return;
         }
-        self.compose.pending_compose = Some(reply_action(
-            reply_all,
-            message_id,
-            account_id,
-            None,
-        ));
+        self.compose.pending_compose = Some(reply_action(reply_all, message_id, account_id, None));
     }
 }
 

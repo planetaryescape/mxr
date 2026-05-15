@@ -278,13 +278,7 @@ fn render_owed_item<'a>(
     theme: &Theme,
 ) -> ListItem<'a> {
     let count_str = (count > 0).then(|| count.to_string());
-    render_sidebar_link(
-        inner_width,
-        "Owed",
-        count_str.as_deref(),
-        is_active,
-        theme,
-    )
+    render_sidebar_link(inner_width, "Owed", count_str.as_deref(), is_active, theme)
 }
 
 fn render_sidebar_link<'a>(

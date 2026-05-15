@@ -255,7 +255,7 @@ fn send_confirm_snapshot() {
         mode: PendingSendMode::SendOrSave,
         safety_report: None,
         override_token: None,
-            suggested_collaborators: vec![],
+        suggested_collaborators: vec![],
     };
 
     let snapshot = render_to_string(70, 20, |frame| {
@@ -263,6 +263,7 @@ fn send_confirm_snapshot() {
             frame,
             Rect::new(0, 0, 70, 20),
             Some(&pending),
+            None,
             None,
             &mxr_tui::theme::Theme::default(),
         );
@@ -697,6 +698,11 @@ fn diagnostics_page_snapshot() {
             details: None,
         }],
         logs: vec!["daemon started".into(), "sync complete".into()],
+        activity: vec![],
+        events_search: String::new(),
+        logs_search: String::new(),
+        activity_search: String::new(),
+        search_input: None,
         status: None,
         refresh_pending: false,
         pending_requests: 0,
@@ -707,6 +713,7 @@ fn diagnostics_page_snapshot() {
         sync_scroll_offset: 0,
         events_scroll_offset: 0,
         logs_scroll_offset: 0,
+        activity_scroll_offset: 0,
     };
 
     let snapshot = render_to_string(100, 24, |frame| {

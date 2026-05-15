@@ -41,14 +41,26 @@ impl App {
         pending: PendingSend,
         override_safety_token: Option<String>,
     ) {
+        self.dispatch_send_pending_with_reminder(pending, override_safety_token, None);
+    }
+
+    pub(crate) fn dispatch_send_pending_with_reminder(
+        &mut self,
+        pending: PendingSend,
+        override_safety_token: Option<String>,
+        remind_at: Option<chrono::DateTime<chrono::Utc>>,
+    ) {
         let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
-        let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
-            mxr_core::types::ReplyHeaders {
-                in_reply_to: in_reply_to.clone(),
-                references: pending.fm.references.clone(),
-                thread_id: pending.fm.thread_id.clone(),
-            }
-        });
+        let reply_headers =
+            pending
+                .fm
+                .in_reply_to
+                .as_ref()
+                .map(|in_reply_to| mxr_core::types::ReplyHeaders {
+                    in_reply_to: in_reply_to.clone(),
+                    references: pending.fm.references.clone(),
+                    thread_id: pending.fm.thread_id.clone(),
+                });
         let now = chrono::Utc::now();
         let draft = mxr_core::Draft {
             id: mxr_core::id::DraftId::new(),
@@ -76,6 +88,8 @@ impl App {
             },
             MutationEffect::SentSuccess {
                 status: "Sent!".into(),
+                remind_at,
+                sent_message_id: None,
             },
             "Sending...".into(),
         );

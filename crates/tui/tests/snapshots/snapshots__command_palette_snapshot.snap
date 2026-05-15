@@ -1,19 +1,19 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 144
+assertion_line: 151
 expression: snapshot
 ---
 "                                                                      "
 "                                                                      "
 "       ╭ Command Palette ─────────────────────────────────────╮       "
-"       │╭ Query  9 matches  Mailbox / List ──────────────────╮│       "
+"       │╭ Query  10 matches  Mailbox / List ─────────────────╮│       "
 "       ││> un                                                ││       "
 "       │╰────────────────────────────────────────────────────╯│       "
 "       │╭ Commands ──────────────────────────────────────────▲│       "
 "       ││@    Mail  Unsubscribe                    D         █│       "
 "       ││@    Mail  Star / Unstar                  s         █│       "
 "       ││@    Mail  Mark Unread                    U         ║│       "
-"       ││>    Navigation  Open Accounts Page       palette   ║│       "
+"       ││>    Navigation  Open Accounts Tab        4         ║│       "
 "       │╰────────────────────────────────────────────────────▼│       "
 "       │╭────────────────────────────────────────────────────╮│       "
 "       ││enter run   ↑↓ move   esc close   selected Unsubscri││       "

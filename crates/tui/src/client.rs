@@ -38,6 +38,7 @@ impl Client {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let msg = IpcMessage {
             id,
+            source: ::mxr_protocol::ClientKind::Tui,
             payload: IpcPayload::Request(req),
         };
         self.framed

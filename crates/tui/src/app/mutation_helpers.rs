@@ -258,7 +258,11 @@ impl App {
                     self.status_message = Some(msg);
                 }
             }
-            MutationEffect::SentSuccess { status } => {
+            MutationEffect::SentSuccess {
+                status,
+                remind_at,
+                sent_message_id,
+            } => {
                 // Refresh the active label so a Sent-view user sees the new
                 // message immediately. Subscriptions also refresh because
                 // some sends affect mailing-list-derived counts. Owed
@@ -271,6 +275,16 @@ impl App {
                 self.mailbox.pending_owed_refresh = true;
                 if show_completion_status {
                     self.status_message = Some(status);
+                }
+                if let (Some(sent_message_id), Some(remind_at)) = (sent_message_id, remind_at) {
+                    self.queue_mutation(
+                        Request::SetAutoReminder {
+                            sent_message_id,
+                            remind_at,
+                        },
+                        MutationEffect::StatusOnly("Reminder set".into()),
+                        "Setting reminder...".into(),
+                    );
                 }
             }
         }

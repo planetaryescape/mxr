@@ -485,6 +485,53 @@ impl App {
 
         // Route keys to send confirmation prompt
         if self.compose.pending_send_confirm.is_some() {
+            if self.compose.pending_remind_at_input.is_some() {
+                match (key.code, key.modifiers) {
+                    (KeyCode::Enter, _) => {
+                        let input = self
+                            .compose
+                            .pending_remind_at_input
+                            .take()
+                            .unwrap_or_default();
+                        if let Some(pending) = self.compose.pending_send_confirm.take() {
+                            let now = chrono::Utc::now();
+                            let remind_at = match mxr_core::parse_relative_time(&input, now) {
+                                Ok(remind_at) => remind_at,
+                                Err(error) => {
+                                    self.status_message =
+                                        Some(format!("Cannot parse reminder time: {error}"));
+                                    self.compose.pending_send_confirm = Some(pending);
+                                    self.compose.pending_remind_at_input = Some(input);
+                                    return None;
+                                }
+                            };
+                            self.dispatch_send_pending_with_reminder(
+                                pending,
+                                None,
+                                Some(remind_at),
+                            );
+                        }
+                        return None;
+                    }
+                    (KeyCode::Esc, _) => {
+                        self.compose.pending_remind_at_input = None;
+                        return None;
+                    }
+                    (KeyCode::Backspace, _) => {
+                        if let Some(input) = &mut self.compose.pending_remind_at_input {
+                            input.pop();
+                        }
+                        return None;
+                    }
+                    (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                        if let Some(input) = &mut self.compose.pending_remind_at_input {
+                            input.push(c);
+                        }
+                        return None;
+                    }
+                    _ => return None,
+                }
+            }
             if self.compose.pending_send_at_input.is_some() {
                 match (key.code, key.modifiers) {
                     (KeyCode::Enter, _) => {
@@ -543,6 +590,7 @@ impl App {
                     // override token) or edit the draft to proceed.
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
+                        self.compose.pending_remind_at_input = None;
                         if pending.mode != PendingSendMode::SendOrSave || pending.is_blocked() {
                             self.compose.pending_send_confirm = Some(pending);
                             return None;
@@ -564,8 +612,7 @@ impl App {
                                 format!("{cc}, {}", top.email)
                             };
                             pending.suggested_collaborators.remove(0);
-                            self.status_message =
-                                Some(format!("Added {} to Cc", top.email));
+                            self.status_message = Some(format!("Added {} to Cc", top.email));
                         }
                     }
                     return None;
@@ -581,6 +628,7 @@ impl App {
                         }
                         let token = pending.override_token.clone();
                         self.compose.pending_send_at_input = None;
+                        self.compose.pending_remind_at_input = None;
                         self.dispatch_send_pending(pending, token);
                     }
                     return None;
@@ -593,10 +641,19 @@ impl App {
                     }
                     return None;
                 }
+                (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                    if let Some(pending) = self.compose.pending_send_confirm.as_ref() {
+                        if pending.mode == PendingSendMode::SendOrSave && !pending.is_blocked() {
+                            self.compose.pending_remind_at_input = Some(String::new());
+                        }
+                    }
+                    return None;
+                }
                 (KeyCode::Char('d'), KeyModifiers::NONE) => {
                     // Save as draft to mail server
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
+                        self.compose.pending_remind_at_input = None;
                         if pending.mode == PendingSendMode::Unchanged {
                             self.compose.pending_send_confirm = Some(pending);
                             return None;
@@ -642,6 +699,7 @@ impl App {
                     // Edit again — reopen editor
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
+                        self.compose.pending_remind_at_input = None;
                         self.compose.pending_compose = Some(ComposeAction::EditDraft {
                             path: pending.draft_path,
                             account_id: pending.account_id,
@@ -656,6 +714,7 @@ impl App {
                     // Discard
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
+                        self.compose.pending_remind_at_input = None;
                         self.schedule_draft_cleanup(pending.draft_path);
                         self.status_message = Some("Discarded".into());
                     }
@@ -1572,7 +1631,82 @@ impl App {
     }
 
     fn handle_diagnostics_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        // Live-search input mode: when active, all keys feed into the search
+        // string for the focused pane. Esc cancels, Enter commits (closes the
+        // input but keeps the string applied), Backspace deletes.
+        if let Some(target_pane) = self.diagnostics.page.search_input {
+            match (key.code, key.modifiers) {
+                (KeyCode::Esc, _) => {
+                    // Cancel: clear both the input and the applied search.
+                    match target_pane {
+                        crate::app::DiagnosticsPaneKind::Events => {
+                            self.diagnostics.page.events_search.clear()
+                        }
+                        crate::app::DiagnosticsPaneKind::Logs => {
+                            self.diagnostics.page.logs_search.clear()
+                        }
+                        crate::app::DiagnosticsPaneKind::Activity => {
+                            self.diagnostics.page.activity_search.clear()
+                        }
+                        _ => {}
+                    }
+                    self.diagnostics.page.search_input = None;
+                    return None;
+                }
+                (KeyCode::Enter, _) => {
+                    self.diagnostics.page.search_input = None;
+                    return None;
+                }
+                (KeyCode::Backspace, _) => {
+                    let buf = match target_pane {
+                        crate::app::DiagnosticsPaneKind::Events => {
+                            &mut self.diagnostics.page.events_search
+                        }
+                        crate::app::DiagnosticsPaneKind::Logs => {
+                            &mut self.diagnostics.page.logs_search
+                        }
+                        crate::app::DiagnosticsPaneKind::Activity => {
+                            &mut self.diagnostics.page.activity_search
+                        }
+                        _ => return None,
+                    };
+                    buf.pop();
+                    return None;
+                }
+                (KeyCode::Char(c), modifiers) if !modifiers.contains(KeyModifiers::CONTROL) => {
+                    let buf = match target_pane {
+                        crate::app::DiagnosticsPaneKind::Events => {
+                            &mut self.diagnostics.page.events_search
+                        }
+                        crate::app::DiagnosticsPaneKind::Logs => {
+                            &mut self.diagnostics.page.logs_search
+                        }
+                        crate::app::DiagnosticsPaneKind::Activity => {
+                            &mut self.diagnostics.page.activity_search
+                        }
+                        _ => return None,
+                    };
+                    buf.push(c);
+                    return None;
+                }
+                _ => return None,
+            }
+        }
+
         match (key.code, key.modifiers) {
+            (KeyCode::Char('/'), _) => {
+                // Start search-input mode on a filterable pane.
+                let pane = self.diagnostics.page.active_pane();
+                if matches!(
+                    pane,
+                    crate::app::DiagnosticsPaneKind::Events
+                        | crate::app::DiagnosticsPaneKind::Logs
+                        | crate::app::DiagnosticsPaneKind::Activity
+                ) {
+                    self.diagnostics.page.search_input = Some(pane);
+                }
+                None
+            }
             (KeyCode::Tab | KeyCode::Right, _) => {
                 self.diagnostics.page.selected_pane = self.diagnostics.page.selected_pane.next();
                 None
@@ -1892,6 +2026,7 @@ fn analytics_row_count(app: &App) -> usize {
             ContactsMode::Asymmetry => app.analytics.asymmetry_rows.len(),
             ContactsMode::Decay => app.analytics.decay_rows.len(),
         },
+        AnalyticsView::CadenceDrift => app.analytics.cadence_drift_rows.len(),
         AnalyticsView::ResponseTime => 1, // single summary row
         AnalyticsView::Subscriptions => app.analytics.subscriptions.len(),
         AnalyticsView::Wrapped => 1, // tile grid uses tile selection, not row index

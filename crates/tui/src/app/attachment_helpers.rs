@@ -77,17 +77,10 @@ impl App {
             return;
         };
         let filename = attachment.filename.clone();
-        let prefilled = self
-            .download_dir
-            .join(&filename)
-            .display()
-            .to_string();
-        self.modals.save_attachment.open(
-            message_id,
-            attachment.id,
-            filename,
-            prefilled,
-        );
+        let prefilled = self.download_dir.join(&filename).display().to_string();
+        self.modals
+            .save_attachment
+            .open(message_id, attachment.id, filename, prefilled);
     }
 
     /// Apply a numbered preset (1=Downloads, 2=Desktop, 3=cwd) to the
@@ -103,8 +96,9 @@ impl App {
             SavePathPreset::Desktop => dirs::desktop_dir()
                 .or_else(|| dirs::home_dir().map(|h| h.join("Desktop")))
                 .unwrap_or_else(|| std::path::PathBuf::from(".")),
-            SavePathPreset::Cwd => std::env::current_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from(".")),
+            SavePathPreset::Cwd => {
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+            }
         };
         self.modals.save_attachment.input = dir.join(&filename).display().to_string();
         self.modals.save_attachment.error = None;

@@ -1931,35 +1931,7 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                         }
                         AsyncResult::ThreadSummaryLoaded { thread_id, result } => {
-                            let still_relevant = app
-                                .context_envelope()
-                                .map(|env| env.thread_id == thread_id)
-                                .unwrap_or(false);
-                            if !still_relevant {
-                                continue;
-                            }
-                            app.mailbox.thread_summary_loading = None;
-                            match result {
-                                Ok((text, model)) => {
-                                    app.mailbox.thread_summary = Some(app::ThreadSummaryPreview {
-                                        text: text.clone(),
-                                        model: model.clone(),
-                                    });
-                                    app.mailbox.thread_summary_error = None;
-                                    if app.modals.summary.visible {
-                                        app.modals.summary.set_summary(text, model);
-                                    }
-                                    app.status_message = Some("Summary ready".into());
-                                }
-                                Err(e) => {
-                                    let message = e.to_string();
-                                    app.mailbox.thread_summary_error = Some(message.clone());
-                                    if app.modals.summary.visible {
-                                        app.modals.summary.set_error(message);
-                                    }
-                                    app.status_message = Some(format!("Summarize failed: {e}"));
-                                }
-                            }
+                            apply_thread_summary_loaded(&mut app, thread_id, result);
                         }
                         AsyncResult::RuleDetail {
                             request_id,
@@ -2833,6 +2805,51 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             }
         }
         _ => {}
+    }
+}
+
+/// Apply a `ThreadSummaryLoaded` async result to the app. Always
+/// clears `thread_summary_loading` when it matches this thread — even
+/// when the user has navigated away — so a subsequent `y` press on
+/// the same thread isn't blocked by a stale "already running" guard.
+/// Visible UI updates (summary preview, status, modal) only fire when
+/// the thread is still focused so a stale response can't overwrite
+/// the user's current view.
+fn apply_thread_summary_loaded(
+    app: &mut App,
+    thread_id: mxr_core::ThreadId,
+    result: Result<(String, String), MxrError>,
+) {
+    if app.mailbox.thread_summary_loading.as_ref() == Some(&thread_id) {
+        app.mailbox.thread_summary_loading = None;
+    }
+    let still_relevant = app
+        .context_envelope()
+        .map(|env| env.thread_id == thread_id)
+        .unwrap_or(false);
+    if !still_relevant {
+        return;
+    }
+    match result {
+        Ok((text, model)) => {
+            app.mailbox.thread_summary = Some(app::ThreadSummaryPreview {
+                text: text.clone(),
+                model: model.clone(),
+            });
+            app.mailbox.thread_summary_error = None;
+            if app.modals.summary.visible {
+                app.modals.summary.set_summary(text, model);
+            }
+            app.status_message = Some("Summary ready".into());
+        }
+        Err(e) => {
+            let message = e.to_string();
+            app.mailbox.thread_summary_error = Some(message.clone());
+            if app.modals.summary.visible {
+                app.modals.summary.set_error(message);
+            }
+            app.status_message = Some(format!("Summarize failed: {e}"));
+        }
     }
 }
 
@@ -9309,6 +9326,41 @@ mod tests {
             }
             other => panic!("expected DraftAssist, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn thread_summary_response_clears_loading_after_user_navigates_away() {
+        use crate::apply_thread_summary_loaded;
+        // Reproduces the "y doesn't work" bug: user opens thread A,
+        // auto-summary fires, user navigates to thread B, response
+        // lands for A. Before the fix the response handler bailed on
+        // `still_relevant` *without* clearing `thread_summary_loading`,
+        // leaving thread A's loading flag stuck. Then `y` on thread A
+        // short-circuited with "Summary already running".
+        let mut app = App::new();
+        let envelope_a = TestEnvelopeBuilder::new()
+            .with_from_address("Alice", "alice@example.com")
+            .subject("A")
+            .build();
+        let envelope_b = TestEnvelopeBuilder::new()
+            .with_from_address("Bob", "bob@example.com")
+            .subject("B")
+            .build();
+        let thread_a = envelope_a.thread_id.clone();
+        // User is now focused on thread B; response will arrive for A.
+        app.mailbox.envelopes = vec![envelope_b];
+        app.mailbox.thread_summary_loading = Some(thread_a.clone());
+
+        apply_thread_summary_loaded(
+            &mut app,
+            thread_a.clone(),
+            Ok(("summary".into(), "model".into())),
+        );
+
+        assert!(
+            app.mailbox.thread_summary_loading.is_none(),
+            "loading flag must clear so the next `y` press can fire"
+        );
     }
 
     #[test]

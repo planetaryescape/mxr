@@ -737,6 +737,7 @@ pub(crate) fn auto_summary_eligible(
     }
 
     let mut total_words: u32 = 0;
+    let mut body_text_words: u32 = 0;
     let mut any_body_text = false;
     for envelope in envelopes {
         total_words = total_words.saturating_add(envelope.body_word_count);
@@ -744,15 +745,19 @@ pub(crate) fn auto_summary_eligible(
             if body.metadata.calendar.is_some() {
                 return false;
             }
-            if body
+            let plain_words = body
                 .text_plain
                 .as_deref()
-                .is_some_and(|text| !text.trim().is_empty())
-                || body
-                    .text_html
-                    .as_deref()
-                    .is_some_and(|text| !text.trim().is_empty())
-            {
+                .map(|text| count_words(text))
+                .unwrap_or(0);
+            let html_words = body
+                .text_html
+                .as_deref()
+                .map(|text| count_words(text))
+                .unwrap_or(0);
+            let cached_words = plain_words.max(html_words);
+            body_text_words = body_text_words.saturating_add(cached_words);
+            if cached_words > 0 {
                 any_body_text = true;
             }
         }
@@ -773,7 +778,17 @@ pub(crate) fn auto_summary_eligible(
         return false;
     }
 
-    total_words >= AUTO_SUMMARY_MIN_WORDS
+    // Prefer the sync-computed `body_word_count` column, but fall back
+    // to counting words in cached bodies when it's zero. Messages
+    // synced before the column was added (or where the sync path
+    // didn't compute it) persist as 0 and would otherwise gate out
+    // every thread the user opens, even with full body text available.
+    let effective_words = total_words.max(body_text_words);
+    effective_words >= AUTO_SUMMARY_MIN_WORDS
+}
+
+fn count_words(text: &str) -> u32 {
+    text.split_whitespace().count().try_into().unwrap_or(u32::MAX)
 }
 
 fn is_automated_sender(addr: &Address) -> bool {
@@ -903,5 +918,21 @@ mod auto_summary_tests {
         // first paint before bodies arrive.
         let envs = vec![envelope(500, "alice@example.com")];
         assert!(auto_summary_eligible(&envs, &HashMap::new()));
+    }
+
+    #[test]
+    fn cached_body_text_overrides_zero_body_word_count() {
+        // Messages synced before `body_word_count` was added (or where
+        // the sync path didn't compute it) persist as 0. If we have a
+        // substantial body in cache, count its words directly instead
+        // of gating out every thread the user opens.
+        let env = envelope(0, "alice@example.com");
+        let long_text = "word ".repeat(300);
+        let mut bodies = HashMap::new();
+        bodies.insert(env.id.clone(), body(env.id.clone(), Some(&long_text)));
+        assert!(
+            auto_summary_eligible(&[env], &bodies),
+            "fallback word count from cached body must override zero column"
+        );
     }
 }

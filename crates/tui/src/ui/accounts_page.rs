@@ -218,6 +218,10 @@ pub fn draw(
     );
     frame.render_widget(footer, detail_chunks[1]);
 
+    if let Some(session) = &state.active_auth_session {
+        draw_device_code_overlay(frame, area, session, theme);
+    }
+
     if state.resume_new_account_draft_prompt_open {
         draw_resume_new_account_draft_modal(frame, area, theme);
     }
@@ -844,6 +848,78 @@ fn draw_resume_new_account_draft_modal(frame: &mut Frame, area: Rect, theme: &cr
                 .title(" Resume Draft ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(theme.warning))
+                .style(Style::default().bg(theme.modal_bg)),
+        )
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(paragraph, popup);
+}
+
+fn draw_device_code_overlay(
+    frame: &mut Frame,
+    area: Rect,
+    session: &mxr_protocol::AuthSessionData,
+    theme: &crate::theme::Theme,
+) {
+    let popup = centered_rect(66, 50, area);
+    frame.render_widget(Clear, popup);
+
+    let user_code = session.user_code.as_deref().unwrap_or("—");
+    let url = session
+        .verification_uri
+        .as_deref()
+        .unwrap_or("https://microsoft.com/devicelogin");
+
+    let expiry_line = if let Some(expires_at) = session.expires_at_unix {
+        let remaining = expires_at - chrono::Utc::now().timestamp();
+        if remaining > 0 {
+            format!("Code expires in {}s", remaining)
+        } else {
+            "Code expired".to_string()
+        }
+    } else {
+        String::new()
+    };
+
+    let mut lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "Open this URL in your browser:",
+            Style::default().fg(theme.accent),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(url, Style::default().fg(theme.warning).bold())),
+        Line::from(""),
+        Line::from("Then enter this code:"),
+        Line::from(""),
+        Line::from(Span::styled(
+            user_code,
+            Style::default()
+                .fg(theme.accent)
+                .bold()
+                .add_modifier(Modifier::REVERSED),
+        )),
+        Line::from(""),
+        Line::from("Waiting for browser confirmation..."),
+    ];
+    if !expiry_line.is_empty() {
+        lines.push(Line::from(Span::styled(
+            expiry_line,
+            Style::default().fg(theme.warning),
+        )));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Esc: cancel",
+        Style::default().fg(theme.accent),
+    )));
+
+    let paragraph = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title(" Authorize with Microsoft ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.accent))
                 .style(Style::default().bg(theme.modal_bg)),
         )
         .alignment(Alignment::Center)

@@ -114,6 +114,9 @@ pub struct ModalsState {
     /// can walk them. Read-only: actually replying still uses the
     /// regular reply flow once the user opens the focused message.
     pub reply_queue: ReplyQueueModalState,
+    /// Activity-log modal (Phase 5). Read-only browser of recent
+    /// `user_activity` rows fetched via IPC.
+    pub activity: ActivityModalState,
     /// Thread-summary modal showing the LLM-generated 2-3 sentence
     /// summary of the focused thread. Loading / error / disabled
     /// states all surface inline.
@@ -464,6 +467,69 @@ impl ScreenerModalState {
             self.selected_index = 0;
         }
         Some(removed)
+    }
+}
+
+/// State for the local activity-log modal. Read-only listing of recent
+/// rows from `user_activity`. Pause/resume controls available inline;
+/// redaction still goes through the CLI to keep this surface
+/// non-destructive in v1.
+#[derive(Debug, Clone, Default)]
+pub struct ActivityModalState {
+    pub visible: bool,
+    pub loading: bool,
+    pub entries: Vec<mxr_protocol::ActivityEntry>,
+    pub selected_index: usize,
+    pub error: Option<String>,
+    pub paused: bool,
+}
+
+impl ActivityModalState {
+    pub fn open_loading(&mut self) {
+        self.visible = true;
+        self.loading = true;
+        self.entries.clear();
+        self.selected_index = 0;
+        self.error = None;
+    }
+
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.loading = false;
+        self.error = None;
+    }
+
+    pub fn set_entries(&mut self, entries: Vec<mxr_protocol::ActivityEntry>) {
+        self.loading = false;
+        self.error = None;
+        self.entries = entries;
+        if self.selected_index >= self.entries.len() {
+            self.selected_index = self.entries.len().saturating_sub(1);
+        }
+    }
+
+    pub fn set_error(&mut self, message: String) {
+        self.loading = false;
+        self.error = Some(message);
+    }
+
+    pub fn select_next(&mut self) {
+        if self.entries.is_empty() {
+            return;
+        }
+        if self.selected_index + 1 < self.entries.len() {
+            self.selected_index += 1;
+        }
+    }
+
+    pub fn select_prev(&mut self) {
+        if self.selected_index > 0 {
+            self.selected_index -= 1;
+        }
+    }
+
+    pub fn selected(&self) -> Option<&mxr_protocol::ActivityEntry> {
+        self.entries.get(self.selected_index)
     }
 }
 
@@ -848,4 +914,75 @@ pub struct PendingUnsubscribeAction {
     pub message_id: MessageId,
     pub archive_message_ids: Vec<MessageId>,
     pub sender_email: String,
+}
+
+#[cfg(test)]
+mod activity_modal_tests {
+    use super::ActivityModalState;
+    use mxr_protocol::{ActivityEntry, ActivityTier, ClientKind};
+
+    fn entry(id: i64) -> ActivityEntry {
+        ActivityEntry {
+            id,
+            ts: id * 1_000,
+            account_id: None,
+            source: ClientKind::Tui,
+            action: "mail.archive".into(),
+            target_kind: Some("thread".into()),
+            target_id: Some(format!("thr_{id}")),
+            tier: ActivityTier::Important,
+            context: None,
+            redacted: false,
+        }
+    }
+
+    #[test]
+    fn open_loading_resets_state() {
+        let mut s = ActivityModalState::default();
+        s.entries = vec![entry(1)];
+        s.selected_index = 5;
+        s.error = Some("stale".into());
+        s.open_loading();
+        assert!(s.visible);
+        assert!(s.loading);
+        assert!(s.entries.is_empty());
+        assert_eq!(s.selected_index, 0);
+        assert!(s.error.is_none());
+    }
+
+    #[test]
+    fn set_entries_clamps_selected_index() {
+        let mut s = ActivityModalState::default();
+        s.selected_index = 10;
+        s.set_entries(vec![entry(1), entry(2)]);
+        assert!(s.selected_index < s.entries.len());
+    }
+
+    #[test]
+    fn select_next_stops_at_last_row() {
+        let mut s = ActivityModalState::default();
+        s.set_entries(vec![entry(1), entry(2)]);
+        s.selected_index = 1;
+        s.select_next();
+        assert_eq!(s.selected_index, 1, "no wrap at end");
+    }
+
+    #[test]
+    fn select_prev_stops_at_zero() {
+        let mut s = ActivityModalState::default();
+        s.set_entries(vec![entry(1), entry(2)]);
+        s.select_prev();
+        assert_eq!(s.selected_index, 0);
+    }
+
+    #[test]
+    fn close_clears_loading_and_error() {
+        let mut s = ActivityModalState::default();
+        s.open_loading();
+        s.set_error("nope".into());
+        s.close();
+        assert!(!s.visible);
+        assert!(!s.loading);
+        assert!(s.error.is_none());
+    }
 }

@@ -89,6 +89,8 @@ pub enum Action {
     /// never roundtrips to the provider. Cleared via the queue view or
     /// when the user replies.
     FlagReplyLater,
+    /// Cancel a pending follow-up reminder for the current sent message.
+    CancelAutoReminder,
     /// Open the reply-later queue (a saved search for `is:reply-later`
     /// once the Tantivy operator lands; today opens via CLI).
     OpenReplyQueue,
@@ -104,6 +106,17 @@ pub enum Action {
     OpenScreenerQueue,
     /// Close the screener triage modal (Esc).
     CloseScreenerModal,
+    /// Open the local activity log modal (Phase 5).
+    /// Chord: `g a` (g-prefix for "go to") · palette: View activity.
+    OpenActivityScreen,
+    /// Close the activity log modal (Esc).
+    CloseActivityModal,
+    /// Move cursor to the next entry in the activity modal.
+    ActivityModalNext,
+    /// Move cursor to the previous entry in the activity modal.
+    ActivityModalPrev,
+    /// Toggle paused state from the activity modal.
+    ActivityTogglePause,
     /// Move cursor to the next entry in the screener queue.
     ScreenerModalNext,
     /// Move cursor to the previous entry in the screener queue.

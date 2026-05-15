@@ -1,3 +1,5 @@
+#[doc(hidden)]
+pub mod activity;
 pub(crate) mod bridge;
 pub mod cli;
 pub mod commands;
@@ -127,10 +129,12 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             no_follow,
             level,
             since,
+            search,
+            limit,
             purge,
             format,
         }) => {
-            commands::logs::run(no_follow, level, since, purge, format)?;
+            commands::logs::run(no_follow, level, since, search, limit, purge, format)?;
         }
         Some(Command::Reset {
             hard,
@@ -316,10 +320,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::suggest_recipients::run(
-                draft, subject, body_stdin, account, limit, format,
-            )
-            .await?;
+            commands::suggest_recipients::run(draft, subject, body_stdin, account, limit, format)
+                .await?;
         }
         Some(Command::Expert {
             message_id,
@@ -330,8 +332,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::expert::run(message_id, query, include_self, account, limit, format)
-                .await?;
+            commands::expert::run(message_id, query, include_self, account, limit, format).await?;
         }
         Some(Command::Whois {
             query,
@@ -351,12 +352,13 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             commands::cadence::run(action).await?;
         }
         Some(Command::SendTime {
-            recipient,
+            recipients,
             account,
+            at,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::send_time::run(recipient, account, format).await?;
+            commands::send_time::run(recipients, account, at, format).await?;
         }
         Some(Command::Decisions {
             action,
@@ -491,9 +493,9 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::subscriptions::run(limit, rank, format).await?;
         }
-        Some(Command::Senders { top, format }) => {
+        Some(Command::Senders { top, since, format }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::senders::run(top, format).await?;
+            commands::senders::run(top, since, format).await?;
         }
         Some(Command::Storage {
             by,
@@ -596,14 +598,34 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::events::run(event_type, format).await?;
         }
+        Some(Command::Activity { action }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::activity::run(action).await?;
+        }
         Some(Command::History {
             category,
+            category_prefix,
             level,
+            search,
+            since,
+            until,
+            offset,
             limit,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::history::run(category, level, limit, format).await?;
+            commands::history::run(
+                category,
+                category_prefix,
+                level,
+                search,
+                since,
+                until,
+                offset,
+                limit,
+                format,
+            )
+            .await?;
         }
         Some(Command::Notify { format, watch }) => {
             crate::server::ensure_daemon_running().await?;
@@ -632,9 +654,11 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
+            check,
+            no_llm,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::compose(commands::mutations::ComposeOptions {
+            let options = commands::mutations::ComposeOptions {
                 to,
                 cc,
                 bcc,
@@ -648,8 +672,12 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 yes,
                 dry_run,
                 format,
-            })
-            .await?;
+            };
+            if check {
+                commands::mutations::compose_check(options, no_llm).await?;
+            } else {
+                commands::mutations::compose(options).await?;
+            }
         }
         Some(Command::Reply {
             message_id,
@@ -659,6 +687,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             no_signature,
             yes,
             dry_run,
+            remind_after,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
@@ -670,6 +699,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 no_signature,
                 yes,
                 dry_run,
+                remind_after,
                 format,
             )
             .await?;
@@ -682,6 +712,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             no_signature,
             yes,
             dry_run,
+            remind_after,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
@@ -693,6 +724,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 no_signature,
                 yes,
                 dry_run,
+                remind_after,
                 format,
             )
             .await?;
@@ -744,17 +776,25 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             dry_run,
             format,
             at,
+            remind_after,
             check,
             override_safety,
+            no_llm,
         }) => {
             crate::server::ensure_daemon_running().await?;
             if check {
-                commands::mutations::check_send(draft_id, format).await?;
+                commands::mutations::check_send(draft_id, format, no_llm).await?;
             } else if let Some(when) = at {
                 commands::mutations::schedule_send(draft_id, when).await?;
             } else {
-                commands::mutations::send_draft(draft_id, dry_run, format, override_safety)
-                    .await?;
+                commands::mutations::send_draft(
+                    draft_id,
+                    dry_run,
+                    format,
+                    override_safety,
+                    remind_after,
+                )
+                .await?;
             }
         }
         Some(Command::Unsend { draft_id }) => {

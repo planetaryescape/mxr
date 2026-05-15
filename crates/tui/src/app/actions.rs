@@ -151,11 +151,17 @@ impl App {
             | Action::SelectSavedSearch(_, _)
             | Action::OpenSavedSearchByIndex(_)
             | Action::FlagReplyLater
+            | Action::CancelAutoReminder
             | Action::OpenReplyQueue
             | Action::CloseReplyQueueModal
             | Action::ReplyQueueModalNext
             | Action::ReplyQueueModalPrev
             | Action::ReplyQueueModalReply
+            | Action::OpenActivityScreen
+            | Action::CloseActivityModal
+            | Action::ActivityModalNext
+            | Action::ActivityModalPrev
+            | Action::ActivityTogglePause
             | Action::OpenScreenerQueue
             | Action::CloseScreenerModal
             | Action::ScreenerModalNext

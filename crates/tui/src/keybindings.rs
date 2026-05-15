@@ -141,6 +141,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "unsubscribe" => Some(Action::Unsubscribe),
         "snooze" => Some(Action::Snooze),
         "flag_reply_later" => Some(Action::FlagReplyLater),
+        "cancel_reminder" => Some(Action::CancelAutoReminder),
         "open_in_browser" => Some(Action::OpenInBrowser),
         "toggle_reader_mode" => Some(Action::ToggleReaderMode),
         "toggle_html_view" => Some(Action::ToggleHtmlView),
@@ -162,6 +163,13 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "open_voice_profile" | "voice_profile" => Some(Action::OpenVoiceProfile),
         "rebuild_user_voice" => Some(Action::RebuildUserVoice),
         "open_commitments" | "commitments" => Some(Action::OpenCommitments),
+        "open_activity" | "activity" | "open_activity_screen" => {
+            Some(Action::OpenActivityScreen)
+        }
+        "close_activity_modal" => Some(Action::CloseActivityModal),
+        "activity_next" => Some(Action::ActivityModalNext),
+        "activity_prev" => Some(Action::ActivityModalPrev),
+        "activity_toggle_pause" => Some(Action::ActivityTogglePause),
         // Go-to navigation (A005)
         "go_inbox" => Some(Action::GoToInbox),
         "go_starred" => Some(Action::GoToStarred),
@@ -400,6 +408,7 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("j", "move_down"),
         ("k", "move_up"),
         ("gg", "jump_top"),
+        ("ga", "open_activity"),
         ("G", "jump_bottom"),
         ("Ctrl-d", "page_down"),
         ("Ctrl-u", "page_up"),

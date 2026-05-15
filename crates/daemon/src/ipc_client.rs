@@ -70,6 +70,7 @@ impl IpcClient {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let msg = IpcMessage {
             id,
+            source: ::mxr_protocol::ClientKind::Cli,
             payload: IpcPayload::Request(req),
         };
         self.framed.send(msg).await?;
@@ -109,6 +110,7 @@ impl IpcClient {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let msg = IpcMessage {
             id,
+            source: ::mxr_protocol::ClientKind::Cli,
             payload: IpcPayload::Request(req),
         };
         self.framed.send(msg).await?;

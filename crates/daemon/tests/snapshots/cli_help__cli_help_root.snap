@@ -1,6 +1,5 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 14
 expression: stdout
 ---
 Terminal email client (pronounced "Mixer")
@@ -54,6 +53,7 @@ Commands:
   status              Show daemon status
   web                 Start or reopen the local HTTP/WebSocket bridge and open the web app in the default browser. Runs detached by default; use `mxr web stop` to stop the detached bridge
   events              Watch daemon events
+  activity            Browse the local user-activity log (the git-reflog for your inbox). Strictly local: never transmitted off-device. See `mxr activity --help`
   history             Show persisted event history
   notify              Unread summary for status bars
   logs                View daemon logs

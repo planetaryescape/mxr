@@ -38,7 +38,9 @@ use crate::account_workflow::{
 };
 use crate::accounts_helpers::load_accounts_page_accounts;
 use crate::async_result::{AsyncResult, UnsubscribeResultData};
-use crate::compose_flow::{handle_compose_action, handle_compose_editor_status};
+use crate::compose_flow::{
+    fetch_reply_context_dedicated, handle_compose_action, handle_compose_editor_status,
+};
 use crate::editor::{edit_tui_config, open_diagnostics_pane_details, open_tui_log_file};
 use crate::ipc::{ipc_call, ipc_call_dedicated, spawn_ipc_worker, IpcRequest};
 use crate::local_io::{handle_result as handle_local_io_result, submit_bug_report_write};
@@ -594,6 +596,59 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if app.pending_activity_refresh {
+            app.pending_activity_refresh = false;
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::ListActivity {
+                        filter: mxr_protocol::ActivityFilter {
+                            since: Some(
+                                chrono::Utc::now().timestamp_millis() - 86_400_000,
+                            ),
+                            ..Default::default()
+                        },
+                        limit: 100,
+                        cursor: None,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::ActivityEntries { entries, .. },
+                    }) => Ok(entries),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::ActivityList(result)
+            });
+        }
+
+        if app.pending_activity_pause_toggle {
+            app.pending_activity_pause_toggle = false;
+            let bg = bg.clone();
+            let now_paused = app.modals.activity.paused;
+            let _ = submit_task(&queued, async move {
+                let req = if now_paused {
+                    Request::ResumeActivity
+                } else {
+                    Request::PauseActivity { until_ts: None }
+                };
+                let resp = ipc_call(&bg, req).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Acknowledged,
+                    }) => Ok(!now_paused),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::ActivityPauseToggled(result)
+            });
+        }
+
         if let Some(account_id) = app.pending_screener_refresh.take() {
             let bg = bg.clone();
             let captured_account = account_id.clone();
@@ -674,6 +729,26 @@ pub async fn run() -> anyhow::Result<()> {
                     result,
                 }
             });
+        }
+
+        // Drain a debounced summary request once its deadline has
+        // elapsed. Holding down-arrow through the mail list re-stamps
+        // the debounce on every row; only the thread the user actually
+        // lands on (the last to outlast the 250ms window) goes to the
+        // daemon. In-flight requests fired by an earlier debounce are
+        // not cancelled — they complete and the daemon caches the
+        // result for when the user comes back.
+        if let Some((thread_id, deadline)) = app.pending_summary_debounce.as_ref() {
+            if tokio::time::Instant::now() >= *deadline {
+                let thread_id = thread_id.clone();
+                app.pending_summary_debounce = None;
+                if app.mailbox.thread_summary_loading.as_ref() != Some(&thread_id)
+                    && app.pending_summary_request.as_ref() != Some(&thread_id)
+                {
+                    app.mailbox.thread_summary_loading = Some(thread_id.clone());
+                    app.pending_summary_request = Some(thread_id);
+                }
+            }
         }
 
         if let Some(thread_id) = app.pending_summary_request.take() {
@@ -933,13 +1008,32 @@ pub async fn run() -> anyhow::Result<()> {
                         limit: 20,
                         level: None,
                         category: None,
+                        since: None,
+                        until: None,
+                        search: None,
+                        category_prefix: None,
+                        offset: 0,
                     },
                 ),
                 (
                     ReplaceableRequestKey::DiagnosticsLogs,
                     Request::GetLogs {
-                        limit: 50,
+                        limit: 200,
                         level: None,
+                        search: None,
+                    },
+                ),
+                (
+                    ReplaceableRequestKey::DiagnosticsActivity,
+                    Request::ListActivity {
+                        filter: mxr_protocol::ActivityFilter {
+                            since: Some(
+                                chrono::Utc::now().timestamp_millis() - 86_400_000,
+                            ),
+                            ..Default::default()
+                        },
+                        limit: 200,
+                        cursor: None,
                     },
                 ),
             ] {
@@ -1042,9 +1136,7 @@ pub async fn run() -> anyhow::Result<()> {
             let account_id = app.default_account_id().cloned();
             let _ = submit_task(&queued, async move {
                 let Some(account_id) = account_id else {
-                    return AsyncResult::Expert(Err(MxrError::Ipc(
-                        "no default account".into(),
-                    )));
+                    return AsyncResult::Expert(Err(MxrError::Ipc("no default account".into())));
                 };
                 let resp = ipc_call(
                     &bg,
@@ -1073,9 +1165,7 @@ pub async fn run() -> anyhow::Result<()> {
             let account_id = app.default_account_id().cloned();
             let _ = submit_task(&queued, async move {
                 let Some(account_id) = account_id else {
-                    return AsyncResult::Whois(Err(MxrError::Ipc(
-                        "no default account".into(),
-                    )));
+                    return AsyncResult::Whois(Err(MxrError::Ipc("no default account".into())));
                 };
                 let resp = ipc_call(
                     &bg,
@@ -1102,12 +1192,10 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let request = match briefing_req {
-                    crate::app::BriefingRequest::Thread(thread_id) => {
-                        Request::GetThreadBriefing {
-                            thread_id,
-                            refresh: false,
-                        }
-                    }
+                    crate::app::BriefingRequest::Thread(thread_id) => Request::GetThreadBriefing {
+                        thread_id,
+                        refresh: false,
+                    },
                     crate::app::BriefingRequest::Recipient { email } => {
                         // Account id resolved daemon-side; the briefing
                         // handler uses the supplied id verbatim. We use
@@ -1261,7 +1349,11 @@ pub async fn run() -> anyhow::Result<()> {
             app.analytics.loading = true;
             app.analytics.error = None;
             let view = app.analytics.view;
-            let request = app.analytics_request_for_active_view();
+            let Some(request) = app.analytics_request_for_active_view() else {
+                app.analytics.loading = false;
+                app.analytics.error = Some("Cadence drift needs an enabled account.".into());
+                continue;
+            };
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, request).await;
@@ -1284,6 +1376,11 @@ pub async fn run() -> anyhow::Result<()> {
                         Ok(Response::Ok {
                             data: ResponseData::ContactDecay { rows },
                         }) => Ok(crate::async_result::AnalyticsResultPayload::Decay(rows)),
+                        Ok(Response::Ok {
+                            data: ResponseData::CadenceDriftList { rows },
+                        }) => Ok(crate::async_result::AnalyticsResultPayload::CadenceDrift(
+                            rows,
+                        )),
                         Ok(Response::Ok {
                             data: ResponseData::ResponseTime { summary },
                         }) => Ok(crate::async_result::AnalyticsResultPayload::ResponseTime(
@@ -1444,8 +1541,22 @@ pub async fn run() -> anyhow::Result<()> {
                         data: ResponseData::Ack,
                     }) => Ok(effect),
                     Ok(Response::Ok {
-                        data: ResponseData::SendReceipt { .. },
-                    }) => Ok(effect),
+                        data:
+                            ResponseData::SendReceipt {
+                                local_message_id, ..
+                            },
+                    }) => Ok(match effect {
+                        app::MutationEffect::SentSuccess {
+                            status,
+                            remind_at,
+                            sent_message_id: _,
+                        } => app::MutationEffect::SentSuccess {
+                            status,
+                            remind_at,
+                            sent_message_id: Some(local_message_id),
+                        },
+                        other => other,
+                    }),
                     Ok(Response::Ok {
                         data: ResponseData::MutationResult { result },
                     }) if result.succeeded > 0 => {
@@ -1518,48 +1629,51 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        // Prewarm reply context for the message currently in view. The
-        // user's perceived 'r'/'a' latency is dominated by the daemon
-        // synchronously rendering the message body during PrepareReply.
-        // By firing this fetch as soon as the viewing envelope changes,
-        // the editor opens instantly when they actually press the key.
-        //
-        // Constraints learned the hard way:
-        // - The IPC worker is *serial* (one in-flight request at a time),
-        //   so we only prewarm `reply_all=false` — the common path — to
-        //   avoid doubling backpressure. `a` falls back to the deferred
-        //   path via `dispatch_or_defer_reply`.
-        // - We skip prewarm when `pending_compose` is already set: the
-        //   user has invoked an action and we don't want our background
-        //   IPC to land *behind* their request on the worker queue.
-        if app.compose.pending_compose.is_none() {
-            if let Some(env_id) = app.context_envelope().map(|env| env.id.clone()) {
-                let already_warming = app
-                    .compose
-                    .last_prewarmed_message_id
-                    .as_ref()
-                    .is_some_and(|id| id == &env_id);
-                let already_cached = app.compose.reply_context_cache.contains_key(&env_id);
-                if !already_warming && !already_cached {
-                    app.compose.last_prewarmed_message_id = Some(env_id.clone());
-                    let bg = bg.clone();
-                    let message_id = env_id.clone();
-                    let _ = submit_task(&queued, async move {
-                        let reply =
-                            crate::compose_flow::fetch_reply_context(&bg, message_id.clone(), false)
-                                .await;
-                        AsyncResult::ReplyContextWarmed {
-                            message_id,
-                            reply,
-                            // reply_all is fetched on demand by the cold
-                            // path; doubling the prewarm IPC was the
-                            // source of the original `r` slowness.
-                            reply_all: Err(MxrError::Ipc("not prewarmed".into())),
-                        }
+        // Prewarm reply context for the message currently in view on a
+        // *dedicated* daemon connection. The shared IPC worker is serial
+        // (one request in flight at a time), so the prewarm must run on
+        // its own socket — otherwise it would queue ahead of the user's
+        // `r`/`a` action. Daemon-side, PrepareReply is now a cheap memo
+        // hit on the second call for the same message, so the prewarm
+        // fills the cache and the keypress wins immediately.
+        if let Some(env_id) = app.context_envelope().map(|env| env.id.clone()) {
+            let already_warming = app
+                .compose
+                .last_prewarmed_message_id
+                .as_ref()
+                .is_some_and(|id| id == &env_id);
+            let already_cached = app.compose.reply_context_cache.contains_key(&env_id);
+            if !already_warming && !already_cached {
+                app.compose.last_prewarmed_message_id = Some(env_id.clone());
+                let socket_path = socket_path.clone();
+                let result_tx_clone = result_tx.clone();
+                let message_id = env_id.clone();
+                tokio::spawn(async move {
+                    let reply =
+                        fetch_reply_context_dedicated(&socket_path, message_id.clone(), false)
+                            .await;
+                    let reply_all =
+                        fetch_reply_context_dedicated(&socket_path, message_id.clone(), true).await;
+                    let _ = result_tx_clone.send(AsyncResult::ReplyContextWarmed {
+                        message_id,
+                        reply,
+                        reply_all,
                     });
-                }
+                });
             }
         }
+
+        // Future that resolves when the debounced summary request is
+        // ready to fire. Returns `pending` (never resolves) when no
+        // debounce is set, so the select arm stays armed without
+        // forcing a wake-up. Re-evaluated each loop iteration, so a
+        // freshly-stamped debounce shifts the deadline correctly.
+        let debounce_wait = async {
+            match app.pending_summary_debounce.as_ref() {
+                Some((_, deadline)) => tokio::time::sleep_until(*deadline).await,
+                None => std::future::pending::<()>().await,
+            }
+        };
 
         tokio::select! {
             event = events.as_mut().expect("event stream").next() => {
@@ -1588,6 +1702,11 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                     }
                 }
+            }
+            _ = debounce_wait => {
+                // Wake-up only — the top of the next loop iteration
+                // checks `pending_summary_debounce` against the
+                // current time and drains it into the real request.
             }
             result = result_rx.recv() => {
                 if let Some(msg) = result {
@@ -1707,6 +1826,31 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::ReplyQueueList(Err(e)) => {
                             app.modals.reply_queue.set_error(e.to_string());
                             app.status_message = Some(format!("Reply queue load failed: {e}"));
+                        }
+                        AsyncResult::ActivityList(Ok(entries)) => {
+                            let count = entries.len();
+                            app.modals.activity.set_entries(entries);
+                            app.status_message = Some(if count == 0 {
+                                "Activity log is empty for the last 24h".into()
+                            } else {
+                                format!("Loaded {count} activity rows (last 24h)")
+                            });
+                        }
+                        AsyncResult::ActivityList(Err(e)) => {
+                            app.modals.activity.set_error(e.to_string());
+                            app.status_message = Some(format!("Activity load failed: {e}"));
+                        }
+                        AsyncResult::ActivityPauseToggled(Ok(now_paused)) => {
+                            app.modals.activity.paused = now_paused;
+                            app.status_message = Some(if now_paused {
+                                "Activity recording paused".into()
+                            } else {
+                                "Activity recording resumed".into()
+                            });
+                            app.pending_activity_refresh = true;
+                        }
+                        AsyncResult::ActivityPauseToggled(Err(e)) => {
+                            app.status_message = Some(format!("Pause toggle failed: {e}"));
                         }
                         AsyncResult::ScreenerQueueLoaded { account_id, result } => {
                             let still_relevant = app
@@ -1937,6 +2081,11 @@ pub async fn run() -> anyhow::Result<()> {
                                     data: ResponseData::LogLines { lines },
                                 } => {
                                     app.diagnostics.page.logs = lines;
+                                }
+                                Response::Ok {
+                                    data: ResponseData::ActivityEntries { entries, .. },
+                                } => {
+                                    app.diagnostics.page.activity = entries;
                                 }
                                 Response::Error { message, .. } => {
                                     app.diagnostics.page.status = Some(message);
@@ -2359,9 +2508,40 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::SavedSearchListRefreshed(Ok(searches)) => {
                             app.mailbox.saved_searches = searches;
+                            // Chain a follow-up to refresh the per-tab
+                            // unread counts so the strip badges stay
+                            // in sync with what the user just changed.
+                            let bg_inner = bg.clone();
+                            let _ = submit_task(&queued, async move {
+                                let resp = ipc_call(
+                                    &bg_inner,
+                                    Request::ListSavedSearchUnreadCounts,
+                                )
+                                .await;
+                                let result = match resp {
+                                    Ok(Response::Ok {
+                                        data: ResponseData::SavedSearchUnreadCounts { counts },
+                                    }) => Ok(counts),
+                                    Ok(Response::Error { message, .. }) => {
+                                        Err(MxrError::Ipc(message))
+                                    }
+                                    Err(e) => Err(e),
+                                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                                };
+                                AsyncResult::SavedSearchUnreadCountsRefreshed(result)
+                            });
                         }
                         AsyncResult::SavedSearchListRefreshed(Err(e)) => {
                             app.report_warn(format!("Could not refresh saved searches: {e}"));
+                        }
+                        AsyncResult::SavedSearchUnreadCountsRefreshed(Ok(counts)) => {
+                            app.mailbox.saved_search_unread_counts = counts;
+                        }
+                        AsyncResult::SavedSearchUnreadCountsRefreshed(Err(e)) => {
+                            // Non-fatal — bare labels render fine
+                            // without counts. Log so the user sees the
+                            // failure but keep the strip visible.
+                            tracing::debug!(error = %e, "saved-search unread counts refresh failed");
                         }
                         AsyncResult::SemanticOperationResult(Ok(())) => {
                             // Don't overwrite a fresh `Sent!`-style success
@@ -2422,6 +2602,11 @@ pub async fn run() -> anyhow::Result<()> {
                                 }
                                 Ok(crate::async_result::AnalyticsResultPayload::Decay(rows)) => {
                                     app.analytics.decay_rows = rows;
+                                }
+                                Ok(crate::async_result::AnalyticsResultPayload::CadenceDrift(
+                                    rows,
+                                )) => {
+                                    app.analytics.cadence_drift_rows = rows;
                                 }
                                 Ok(crate::async_result::AnalyticsResultPayload::ResponseTime(
                                     summary,
@@ -2568,6 +2753,13 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             ));
             app.status_message = Some(format!("Sync error: {error}"));
             app.diagnostics.pending_status_refresh = true;
+        }
+        DaemonEvent::ReminderTriggered { sent_message_id } => {
+            app.mailbox.reply_later_message_ids.insert(sent_message_id);
+            if app.modals.reply_queue.visible {
+                app.pending_reply_queue_refresh = true;
+            }
+            app.status_message = Some("Reminder due; added to reply queue".into());
         }
         // Surface long-running operation progress (sync, rebuild
         // analytics, reindex) in the status bar so the user can see
@@ -2753,11 +2945,11 @@ mod tests {
     use mxr_protocol::{BodyFailure, DaemonEvent, LabelCount, MutationCommand, Request};
     use mxr_test_support::render_to_string;
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use tokio::sync::mpsc;
     use std::collections::VecDeque;
     use std::os::unix::process::ExitStatusExt;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
+    use tokio::sync::mpsc;
     use tokio::time::Instant;
 
     fn make_test_envelopes(count: usize) -> Vec<Envelope> {
@@ -2779,6 +2971,29 @@ mod tests {
                     .build()
             })
             .collect()
+    }
+
+    fn account_summary(
+        account_id: AccountId,
+        enabled: bool,
+        is_default: bool,
+    ) -> mxr_protocol::AccountSummaryData {
+        mxr_protocol::AccountSummaryData {
+            account_id,
+            key: Some("user".into()),
+            name: "User".into(),
+            email: "user@example.com".into(),
+            provider_kind: "imap".into(),
+            sync_kind: Some("imap".into()),
+            send_kind: Some("smtp".into()),
+            enabled,
+            is_default,
+            source: mxr_protocol::AccountSourceData::Config,
+            editable: mxr_protocol::AccountEditModeData::Full,
+            sync: None,
+            send: None,
+            capabilities: Default::default(),
+        }
     }
 
     fn make_unsubscribe_envelope(
@@ -3124,19 +3339,13 @@ mod tests {
 
         // The mutation queue must contain a SendDraft with the
         // override token.
-        let queued = app
-            .pending_mutation_queue
-            .first()
-            .expect("mutation queued");
+        let queued = app.pending_mutation_queue.first().expect("mutation queued");
         match &queued.request {
             Request::SendDraft {
                 override_safety_token,
                 ..
             } => {
-                assert_eq!(
-                    override_safety_token.as_deref(),
-                    Some("tok-override-9")
-                );
+                assert_eq!(override_safety_token.as_deref(), Some("tok-override-9"));
             }
             other => panic!("expected SendDraft with override, got: {other:?}"),
         }
@@ -3175,6 +3384,8 @@ mod tests {
         app.apply_mutation_completion(
             MutationEffect::SentSuccess {
                 status: "Sent!".into(),
+                remind_at: None,
+                sent_message_id: None,
             },
             true,
         );
@@ -3199,10 +3410,7 @@ mod tests {
 
         app.apply(Action::OpenThreadBriefing);
 
-        assert!(
-            app.modals.briefing.visible,
-            "briefing modal must open"
-        );
+        assert!(app.modals.briefing.visible, "briefing modal must open");
         assert!(app.modals.briefing.loading);
         assert!(matches!(
             app.modals.briefing.subject,
@@ -3217,11 +3425,6 @@ mod tests {
         );
     }
 
-    /// Slice 6.1 wiring contract (C2.9): pressing
-    /// OpenWhoisOnFocusedSender opens the whois modal in loading
-    /// state and queues a pending whois fetch with the focused
-    /// sender's email as the query.
-    #[test]
     /// Slice 5.1 (C2.6 cont): dormant_thread_hint returns Some when
     /// the focused row's representative is >=30 days old AND the
     /// thread has >=3 messages.
@@ -3345,6 +3548,11 @@ mod tests {
         assert!(!app.modals.expert.visible);
     }
 
+    /// Slice 6.1 wiring contract (C2.9): pressing
+    /// OpenWhoisOnFocusedSender opens the whois modal in loading
+    /// state and queues a pending whois fetch with the focused
+    /// sender's email as the query.
+    #[test]
     fn open_whois_action_seeds_modal_and_queues_query() {
         let mut app = App::new();
         let mut env = TestEnvelopeBuilder::new().build();
@@ -7152,6 +7360,120 @@ mod tests {
     }
 
     #[test]
+    fn remind_prompt_sends_draft_with_pending_reminder_time() {
+        let mut app = App::new();
+        let pending_account_id = AccountId::new();
+        app.compose.pending_send_confirm = Some(PendingSend {
+            account_id: pending_account_id.clone(),
+            fm: mxr_compose::frontmatter::ComposeFrontmatter {
+                to: "a@example.com".into(),
+                cc: String::new(),
+                bcc: String::new(),
+                subject: "Needs follow-up".into(),
+                from: "me@example.com".into(),
+                in_reply_to: None,
+                intent: mxr_core::DraftIntent::New,
+                references: vec![],
+                thread_id: None,
+                attach: vec![],
+                signature: None,
+            },
+            body: "Body".into(),
+            draft_path: std::path::PathBuf::from("/tmp/reminder-draft.md"),
+            intent: mxr_core::DraftIntent::New,
+            mode: PendingSendMode::SendOrSave,
+            safety_report: None,
+            override_token: None,
+            suggested_collaborators: vec![],
+        });
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+        for c in "in 2h".chars() {
+            let _ = app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert!(app.compose.pending_send_confirm.is_none());
+        assert!(app.compose.pending_remind_at_input.is_none());
+        let queued = app
+            .pending_mutation_queue
+            .first()
+            .expect("reminder send queues SendDraft");
+        match &queued.request {
+            Request::SendDraft { draft, .. } => {
+                assert_eq!(draft.account_id, pending_account_id);
+                assert_eq!(draft.subject, "Needs follow-up");
+            }
+            other => panic!("Expected SendDraft request, got {other:?}"),
+        }
+        match &queued.effect {
+            MutationEffect::SentSuccess {
+                remind_at,
+                sent_message_id,
+                ..
+            } => {
+                assert!(remind_at.is_some(), "reminder time is carried with send");
+                assert!(
+                    sent_message_id.is_none(),
+                    "sent message id is not known until daemon SendReceipt"
+                );
+            }
+            other => panic!("Expected SentSuccess effect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cancel_reminder_action_queues_cancel_for_focused_message() {
+        let mut app = App::new();
+        let env = TestEnvelopeBuilder::new().build();
+        app.mailbox.viewing_envelope = Some(env.clone());
+
+        app.apply(Action::CancelAutoReminder);
+
+        let queued = app
+            .pending_mutation_queue
+            .first()
+            .expect("cancel reminder should queue daemon mutation");
+        match &queued.request {
+            Request::CancelAutoReminder { sent_message_id } => {
+                assert_eq!(sent_message_id, &env.id);
+            }
+            other => panic!("Expected CancelAutoReminder request, got {other:?}"),
+        }
+        assert_eq!(
+            app.pending_mutation_status.as_deref(),
+            Some("Cancelling reminder...")
+        );
+    }
+
+    #[test]
+    fn reminder_triggered_event_marks_reply_queue_and_refreshes_open_modal() {
+        let mut app = App::new();
+        let message_id = MessageId::new();
+        app.modals.reply_queue.open_loading();
+
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::ReminderTriggered {
+                sent_message_id: message_id.clone(),
+            },
+        );
+
+        assert!(
+            app.mailbox.reply_later_message_ids.contains(&message_id),
+            "TUI should show reminder-triggered messages as reply-later nudges"
+        );
+        assert!(
+            app.pending_reply_queue_refresh,
+            "open reply queue should refresh when a reminder fires"
+        );
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Reminder due; added to reply queue")
+        );
+    }
+
+    #[test]
     fn reply_queue_enter_starts_reply_compose_for_selected_message() {
         let mut app = App::new();
         let messages = make_test_envelopes(2);
@@ -8266,6 +8588,8 @@ mod tests {
         app.apply_mutation_completion(
             MutationEffect::SentSuccess {
                 status: "Sent!".into(),
+                remind_at: None,
+                sent_message_id: None,
             },
             true,
         );
@@ -8282,6 +8606,37 @@ mod tests {
         assert_eq!(app.status_message.as_deref(), Some("Sent!"));
     }
 
+    #[test]
+    fn sent_success_with_reminder_queues_auto_reminder_for_sent_message() {
+        let mut app = App::new();
+        let sent_message_id = MessageId::new();
+        let remind_at = chrono::Utc::now() + chrono::Duration::hours(2);
+
+        app.apply_mutation_completion(
+            MutationEffect::SentSuccess {
+                status: "Sent!".into(),
+                remind_at: Some(remind_at),
+                sent_message_id: Some(sent_message_id.clone()),
+            },
+            true,
+        );
+
+        let queued = app
+            .pending_mutation_queue
+            .first()
+            .expect("sent reminder should queue SetAutoReminder");
+        match &queued.request {
+            Request::SetAutoReminder {
+                sent_message_id: queued_message_id,
+                remind_at: queued_remind_at,
+            } => {
+                assert_eq!(queued_message_id, &sent_message_id);
+                assert_eq!(queued_remind_at, &remind_at);
+            }
+            other => panic!("Expected SetAutoReminder request, got {other:?}"),
+        }
+    }
+
     /// Phase 1.1 / Behavior 4: with no active label (e.g. on the accounts
     /// screen), applying SentSuccess still updates the status message but
     /// does not enqueue a label fetch. Catches regressions that would
@@ -8294,6 +8649,8 @@ mod tests {
         app.apply_mutation_completion(
             MutationEffect::SentSuccess {
                 status: "Sent!".into(),
+                remind_at: None,
+                sent_message_id: None,
             },
             true,
         );
@@ -8977,24 +9334,41 @@ mod tests {
         app.analytics.view = AnalyticsView::Storage;
         assert!(matches!(
             app.analytics_request_for_active_view(),
-            mxr_protocol::Request::ListStorageBreakdown { .. }
+            Some(mxr_protocol::Request::ListStorageBreakdown { .. })
         ));
         app.analytics.view = AnalyticsView::StaleThreads;
         assert!(matches!(
             app.analytics_request_for_active_view(),
-            mxr_protocol::Request::ListStaleThreads { .. }
+            Some(mxr_protocol::Request::ListStaleThreads { .. })
         ));
         app.analytics.view = AnalyticsView::Contacts;
         // Default contacts_mode is Asymmetry per Default impl.
         assert!(matches!(
             app.analytics_request_for_active_view(),
-            mxr_protocol::Request::ListContactAsymmetry { .. }
+            Some(mxr_protocol::Request::ListContactAsymmetry { .. })
         ));
         app.analytics.view = AnalyticsView::ResponseTime;
         assert!(matches!(
             app.analytics_request_for_active_view(),
-            mxr_protocol::Request::ListResponseTime { .. }
+            Some(mxr_protocol::Request::ListResponseTime { .. })
         ));
+        app.accounts.page.accounts = vec![account_summary(AccountId::new(), true, true)];
+        app.analytics.view = AnalyticsView::CadenceDrift;
+        assert!(matches!(
+            app.analytics_request_for_active_view(),
+            Some(mxr_protocol::Request::ListCadenceDrift { .. })
+        ));
+    }
+
+    #[test]
+    fn cadence_drift_request_requires_enabled_account() {
+        use crate::app::AnalyticsView;
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::CadenceDrift;
+        assert!(
+            app.analytics_request_for_active_view().is_none(),
+            "cadence drift must not dispatch a request with a fabricated account id"
+        );
     }
 
     /// Phase 2.5 / Behavior 4: the refresh action re-marks
@@ -9110,11 +9484,11 @@ mod tests {
         app.analytics.largest_limit = 25;
         app.analytics.largest_since_days = Some(90);
         match app.analytics_request_for_active_view() {
-            mxr_protocol::Request::ListLargestMessages {
+            Some(mxr_protocol::Request::ListLargestMessages {
                 since_days,
                 limit,
                 account_id,
-            } => {
+            }) => {
                 assert_eq!(since_days, Some(90));
                 assert_eq!(limit, 25);
                 assert!(account_id.is_none());
@@ -9153,11 +9527,11 @@ mod tests {
         app.analytics.view = AnalyticsView::Contacts;
         app.analytics.contacts_mode = ContactsMode::Decay;
         match app.analytics_request_for_active_view() {
-            mxr_protocol::Request::ListContactDecay {
+            Some(mxr_protocol::Request::ListContactDecay {
                 threshold_days,
                 max_lookback_days,
                 ..
-            } => {
+            }) => {
                 assert_eq!(threshold_days, 30);
                 assert_eq!(max_lookback_days, 1095);
             }
@@ -9201,7 +9575,7 @@ mod tests {
         let mut app = App::new();
         app.analytics.view = AnalyticsView::Subscriptions;
         match app.analytics_request_for_active_view() {
-            mxr_protocol::Request::ListSubscriptions { limit, account_id } => {
+            Some(mxr_protocol::Request::ListSubscriptions { limit, account_id }) => {
                 assert_eq!(limit, 200);
                 assert!(account_id.is_none());
             }
@@ -9289,7 +9663,7 @@ mod tests {
         app.analytics.view = AnalyticsView::Wrapped;
         let now_year = Utc::now().year();
         match app.analytics_request_for_active_view() {
-            mxr_protocol::Request::Wrapped { label, .. } => {
+            Some(mxr_protocol::Request::Wrapped { label, .. }) => {
                 let expected = format!("{now_year} year-to-date");
                 assert_eq!(label, expected);
             }
@@ -9317,12 +9691,12 @@ mod tests {
             .unwrap()
             .timestamp();
         match app.analytics_request_for_active_view() {
-            mxr_protocol::Request::Wrapped {
+            Some(mxr_protocol::Request::Wrapped {
                 since_unix,
                 until_unix,
                 label,
                 ..
-            } => {
+            }) => {
                 assert_eq!(since_unix, expected_start);
                 assert_eq!(until_unix, expected_end);
                 assert_eq!(label, "2025");
@@ -9636,7 +10010,7 @@ mod tests {
         assert_eq!(app.search.page.query, "from:bob@example.com");
     }
 
-    /// Slice 2 / B2.1: forward cycling visits all six analytics views
+    /// Slice 2 / B2.1: forward cycling visits all analytics views
     /// in the documented order (Storage → StaleThreads → Contacts →
     /// ResponseTime → Subscriptions → Wrapped → Storage). Pins the
     /// next() arm so reordering or dropping a variant breaks here
@@ -9650,6 +10024,7 @@ mod tests {
         let order = [
             AnalyticsView::StaleThreads,
             AnalyticsView::Contacts,
+            AnalyticsView::CadenceDrift,
             AnalyticsView::ResponseTime,
             AnalyticsView::Subscriptions,
             AnalyticsView::Wrapped,
@@ -9673,6 +10048,7 @@ mod tests {
             AnalyticsView::Wrapped,
             AnalyticsView::Subscriptions,
             AnalyticsView::ResponseTime,
+            AnalyticsView::CadenceDrift,
             AnalyticsView::Contacts,
             AnalyticsView::StaleThreads,
             AnalyticsView::Storage,
@@ -10300,6 +10676,8 @@ mod tests {
         app.apply_mutation_completion(
             MutationEffect::SentSuccess {
                 status: "Sent!".into(),
+                remind_at: None,
+                sent_message_id: None,
             },
             false, // not last in the batch
         );

@@ -1,9 +1,9 @@
 pub mod accounts_page;
+pub mod activity_modal;
 pub mod analytics_filter_modal;
 pub mod analytics_page;
 pub mod analytics_widgets;
 pub mod attachment_modal;
-pub mod save_attachment_modal;
 pub mod briefing_modal;
 pub mod bulk_confirm_modal;
 pub mod command_palette;
@@ -21,6 +21,7 @@ pub mod owed_lens;
 pub mod platform_modal;
 pub mod reply_queue_modal;
 pub mod rules_page;
+pub mod save_attachment_modal;
 pub mod saved_search_form;
 pub mod saved_search_tabs;
 pub mod screener_modal;

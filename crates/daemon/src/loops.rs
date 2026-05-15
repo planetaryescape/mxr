@@ -333,17 +333,13 @@ async fn sync_loop_for_account(
                     {
                         tracing::error!(account = %account_id, "Rule execution failed: {error}");
                     }
-                    if state.config_snapshot().llm.enabled {
-                        let summary_state = state.clone();
-                        let summary_message_ids = outcome.upserted_message_ids.clone();
-                        tokio::spawn(async move {
-                            crate::handler::summarize::summarize_changed_message_threads(
-                                summary_state,
-                                summary_message_ids,
-                            )
-                            .await;
-                        });
-                    }
+                    // No automatic summary backfill: even gated by
+                    // `llm.enabled`, this previously spawned unbounded
+                    // tokio tasks (one per changed thread) on every sync
+                    // tick. On a 100k-message initial backfill that
+                    // saturates the tokio runtime + LLM and the TUI
+                    // grinds to a halt. Summaries are now generated
+                    // strictly on demand when the user opens a thread.
                 }
 
                 if count == 0
@@ -392,6 +388,7 @@ async fn sync_loop_for_account(
                 tracing::info!(account = %account_id, "Sync completed: {count} messages");
                 let event = IpcMessage {
                     id: 0,
+                    source: ::mxr_protocol::ClientKind::default(),
                     payload: IpcPayload::Event(DaemonEvent::SyncCompleted {
                         account_id: account_id.clone(),
                         messages_synced: count,
@@ -410,6 +407,7 @@ async fn sync_loop_for_account(
                         .collect();
                     let counts_event = IpcMessage {
                         id: 0,
+                        source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Event(DaemonEvent::LabelCountsUpdated { counts }),
                     };
                     let _ = state.event_tx.send(counts_event);
@@ -484,6 +482,7 @@ async fn sync_loop_for_account(
                 tracing::error!(account = %account_id, "Sync error: {err_str}");
                 let event = IpcMessage {
                     id: 0,
+                    source: ::mxr_protocol::ClientKind::default(),
                     payload: IpcPayload::Event(DaemonEvent::SyncError {
                         account_id: account_id.clone(),
                         error: err_str,
@@ -1085,8 +1084,16 @@ pub async fn process_due_reminders(
             );
             continue;
         }
+        if let Err(e) = crate::handler::reply_later::set_reply_later_at(state, &id, true, now).await
+        {
+            tracing::warn!(
+                message_id = %id.as_str(),
+                "auto-reminder reply-later marker failed: {e}"
+            );
+        }
         let event = IpcMessage {
             id: 0,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Event(DaemonEvent::ReminderTriggered {
                 sent_message_id: id,
             }),
@@ -1176,6 +1183,63 @@ pub async fn scheduled_sends_loop(state: Arc<AppState>, mut shutdown_rx: watch::
 
 /// Background loop: scan auto-reminders on a 60-second cadence and
 /// fire any whose window has elapsed.
+/// Daily sweep that hard-deletes activity rows older than the per-tier
+/// retention windows. Mirrors `auto_reminders_loop` shape. The recorder
+/// also writes a synthesized `activity.pruned` marker for each tier that
+/// produced deletions so users can audit retention behavior.
+pub async fn activity_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
+    use mxr_protocol::ClientKind;
+    use mxr_store::Tier;
+
+    const DAY_MS: i64 = 86_400_000;
+    // Run once shortly after startup, then every 24 h.
+    let mut ticker = interval(Duration::from_secs(86_400));
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {}
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                    tracing::info!("Activity prune loop exiting: shutdown requested");
+                    break;
+                }
+                continue;
+            }
+        }
+        let cfg = state.config_snapshot().activity.retention;
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        for (tier, days) in [
+            (Tier::Ephemeral, cfg.ephemeral_days),
+            (Tier::Standard, cfg.standard_days),
+            (Tier::Important, cfg.important_days),
+        ] {
+            let cutoff = now_ms - (days as i64) * DAY_MS;
+            match state.store.prune_activity_before(cutoff, Some(tier)).await {
+                Ok(0) => {}
+                Ok(n) => {
+                    tracing::debug!(rows = n, tier = tier.as_str(), "activity prune deleted rows");
+                    state.activity.record(crate::activity::OwnedEntry {
+                        ts: now_ms,
+                        account_id: None,
+                        source: ClientKind::Daemon,
+                        action: "activity.pruned".into(),
+                        target_kind: None,
+                        target_id: None,
+                        tier: Tier::Important,
+                        context: Some(serde_json::json!({
+                            "tier": tier.as_str(),
+                            "before_ts": cutoff,
+                            "deleted": n,
+                        })),
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, tier = tier.as_str(), "activity prune failed");
+                }
+            }
+        }
+    }
+}
+
 pub async fn auto_reminders_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
     let mut ticker = interval(Duration::from_secs(60));
     loop {
@@ -1220,6 +1284,7 @@ pub async fn snooze_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<
                     }
                     let event = IpcMessage {
                         id: 0,
+                        source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Event(DaemonEvent::MessageUnsnoozed { message_id }),
                     };
                     let _ = state.event_tx.send(event);
@@ -1351,6 +1416,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 1,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::UpsertRule { rule }),
             },
         )
@@ -1372,6 +1438,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 2,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::ListRuleHistory {
                     rule: Some("rule-1".to_string()),
                     limit: 10,

@@ -10,6 +10,7 @@ pub(crate) async fn ipc_request(
     let mut framed = Framed::new(stream, IpcCodec::new());
     let message = IpcMessage {
         id: 1,
+        source: ::mxr_protocol::ClientKind::Web,
         payload: IpcPayload::Request(request),
     };
     framed

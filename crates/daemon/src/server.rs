@@ -126,6 +126,17 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     });
     state.register_wrapped_warmer(wrapped_warmer_handle);
 
+    // Activity prune loop: enforces the tiered retention windows from
+    // config. Fire-and-forget; on shutdown the watch channel exits the
+    // loop. Not registered with `runtime_tasks` because we don't need to
+    // join on it during graceful shutdown — losing the last sweep is
+    // harmless.
+    let activity_prune_state = state.clone();
+    tokio::spawn(async move {
+        let shutdown_rx = activity_prune_state.shutdown_receiver();
+        loops::activity_prune_loop(activity_prune_state, shutdown_rx).await;
+    });
+
     // Managed HTTP bridge. Reads [bridge] from config, applies CLI
     // overrides, refuses to start non-loopback binds without operator
     // intent.
@@ -759,6 +770,7 @@ where
             );
             IpcMessage {
                 id: msg_id,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Response(Response::error(format!(
                     "Daemon handler panicked while processing the request: {panic_message}"
                 ))),
@@ -830,13 +842,41 @@ pub(crate) async fn shutdown_daemon_for_maintenance(
         return Ok(state);
     }
 
+    // Capture the daemon PID before it has a chance to clear its
+    // pid file. We use this to wait for the actual process to exit
+    // (not just the socket to disappear) so callers like `reset
+    // --hard` can rely on the daemon being fully gone before they
+    // start mutating shared state.
+    let pid_before_shutdown = read_daemon_pid_file();
+
     let _ = request_shutdown_to(sock_path).await;
+
+    // Phase 1: poll the socket until it's gone. The daemon removes
+    // the socket file at the very end of its shutdown sequence, so
+    // socket-gone is a strong signal that cleanup finished.
     let deadline = std::time::Instant::now() + wait_timeout;
     while std::time::Instant::now() < deadline {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         state = inspect_socket_state(sock_path).await;
         if !matches!(state, SocketState::Reachable) {
-            return Ok(state);
+            break;
+        }
+    }
+
+    // Phase 2: even after the socket is gone, the process may still
+    // be in tokio runtime drop / final flushes. The shutdown sequence
+    // can take up to drain (5s) + runtime tasks (5s) in pathological
+    // cases. Wait an additional generous window for the process
+    // itself to exit. This is what fixes the `reset_cli` flake:
+    // previously the CLI returned while the daemon was mid-shutdown,
+    // the test then asserted process-gone, and lost the race.
+    if let Some(pid) = pid_before_shutdown {
+        let process_deadline = std::time::Instant::now() + Duration::from_secs(12);
+        while std::time::Instant::now() < process_deadline {
+            if !process_is_alive(pid) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
     }
 
@@ -1218,6 +1258,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 1,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::Ping),
             },
         )
@@ -1245,6 +1286,7 @@ mod tests {
             #[allow(unreachable_code)]
             IpcMessage {
                 id: 7,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Response(Response::Ok {
                     data: ResponseData::Pong,
                 }),
@@ -1289,6 +1331,7 @@ mod tests {
                 framed
                     .send(IpcMessage {
                         id: message.id,
+                        source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Response(Response::Ok {
                             data: ResponseData::Status {
                                 uptime_secs: 1,
@@ -1336,6 +1379,7 @@ mod tests {
                     framed
                         .send(IpcMessage {
                             id: message.id,
+                            source: ::mxr_protocol::ClientKind::default(),
                             payload: IpcPayload::Response(Response::Ok {
                                 data: ResponseData::Ack,
                             }),
@@ -1379,6 +1423,7 @@ mod tests {
         client
             .send(IpcMessage {
                 id: 44,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::Shutdown),
             })
             .await

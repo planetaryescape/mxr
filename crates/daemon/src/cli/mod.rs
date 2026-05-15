@@ -356,10 +356,21 @@ pub enum Command {
         action: CadenceAction,
     },
     /// Show the recipient's typical reply-time bucket.
+    ///
+    /// When `--at` is given, also reports the expected reply time
+    /// for that slot so you can compare a proposed send time
+    /// against the recipient's fastest bucket. Same time forms as
+    /// `mxr remind --when`: `tomorrow 9am`, `fri 19:00`, `in 2h`,
+    /// or RFC3339.
     SendTime {
-        recipient: String,
+        #[arg(required = true)]
+        recipients: Vec<String>,
         #[arg(long)]
         account: Option<String>,
+        /// Proposed send time to evaluate against the recipient's
+        /// historical buckets.
+        #[arg(long)]
+        at: Option<String>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -501,9 +512,18 @@ pub enum Command {
         format: Option<OutputFormat>,
     },
     /// List top inbound senders by message volume.
+    ///
+    /// `--since` restricts the count window to recent messages so the
+    /// ranking reflects *current* noise, not all-time history. Accepts
+    /// shorthand durations like `7d` / `4w` / `12h`, or an RFC-3339
+    /// timestamp (`2026-02-01T00:00:00Z`).
     Senders {
         #[arg(long, default_value = "20")]
         top: u32,
+        /// Only count messages received within this window. Defaults
+        /// to unbounded (all-time).
+        #[arg(long)]
+        since: Option<String>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -656,12 +676,35 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Browse the local user-activity log (the git-reflog for your inbox).
+    /// Strictly local: never transmitted off-device. See `mxr activity --help`.
+    #[command(alias = "act")]
+    Activity {
+        #[command(subcommand)]
+        action: ActivityAction,
+    },
     /// Show persisted event history
     History {
+        /// Exact category match (e.g. `mutation`, `sync`).
         #[arg(long)]
         category: Option<String>,
+        /// Category prefix (e.g. `sync.`). Matches `category LIKE prefix%`.
+        #[arg(long)]
+        category_prefix: Option<String>,
         #[arg(long)]
         level: Option<String>,
+        /// Free-text substring match against `summary` and `details`. Case-insensitive.
+        #[arg(long)]
+        search: Option<String>,
+        /// Lower-bound timestamp. Accepts `1h`/`3d`/`2w` or ISO date.
+        #[arg(long)]
+        since: Option<String>,
+        /// Upper-bound timestamp. Accepts `1h`/`3d`/`2w` or ISO date.
+        #[arg(long)]
+        until: Option<String>,
+        /// Result offset for paging.
+        #[arg(long, default_value_t = 0)]
+        offset: u32,
         #[arg(long, default_value = "50")]
         limit: u32,
         #[arg(long)]
@@ -682,6 +725,12 @@ pub enum Command {
         level: Option<String>,
         #[arg(long)]
         since: Option<String>,
+        /// Free-text substring filter applied to each log line. Case-insensitive.
+        #[arg(long)]
+        search: Option<String>,
+        /// Maximum lines to return when not following. Default 200.
+        #[arg(long, default_value_t = 200)]
+        limit: u32,
         #[arg(long)]
         purge: bool,
         /// Output format. `json`/`jsonl` emit one JSON object per line with
@@ -835,6 +884,17 @@ pub enum Command {
         dry_run: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
+        /// Build a transient draft from these args and run the
+        /// pre-send safety pipeline against it without sending or
+        /// saving. Exit non-zero only on Blocker issues. Useful for
+        /// CI/pre-commit hooks: pipe a body in and assert the JSON
+        /// report.
+        #[arg(long, conflicts_with_all = ["dry_run", "yes"])]
+        check: bool,
+        /// With `--check`: skip LLM-backed checks (answer-coverage).
+        /// Has no effect on a real send.
+        #[arg(long, requires = "check")]
+        no_llm: bool,
     },
     /// Reply to a message
     Reply {
@@ -858,6 +918,16 @@ pub enum Command {
         /// Show what would be sent
         #[arg(long)]
         dry_run: bool,
+        /// After sending, remind if no reply has arrived by this time.
+        /// Same forms as `mxr remind --when`: `in 2h`, `tomorrow 9am`,
+        /// `monday 17:00`, RFC3339.
+        #[arg(
+            long,
+            value_name = "TIME",
+            requires = "yes",
+            conflicts_with = "dry_run"
+        )]
+        remind_after: Option<String>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -883,6 +953,16 @@ pub enum Command {
         /// Show what would be sent
         #[arg(long)]
         dry_run: bool,
+        /// After sending, remind if no reply has arrived by this time.
+        /// Same forms as `mxr remind --when`: `in 2h`, `tomorrow 9am`,
+        /// `monday 17:00`, RFC3339.
+        #[arg(
+            long,
+            value_name = "TIME",
+            requires = "yes",
+            conflicts_with = "dry_run"
+        )]
+        remind_after: Option<String>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -936,14 +1016,24 @@ pub enum Command {
         /// `monday 17:00`, RFC3339. Use `mxr unsend <draft-id>` to cancel.
         #[arg(long, value_name = "TIME", conflicts_with = "dry_run")]
         at: Option<String>,
+        /// After sending now, remind if no reply has arrived by this time.
+        /// Same forms as `mxr remind --when`: `in 2h`, `tomorrow 9am`,
+        /// `monday 17:00`, RFC3339.
+        #[arg(long, value_name = "TIME", conflicts_with_all = ["dry_run", "at", "check"])]
+        remind_after: Option<String>,
         /// Run the safety pipeline against the draft and exit without
         /// sending. Exit non-zero only if a Blocker issue is present.
         #[arg(long, conflicts_with_all = ["dry_run", "at"])]
         check: bool,
         /// Single-use override token (issued by a previous failed
-        /// `--check`) to bypass a Blocker. Slice 1.3 wires this up.
+        /// `--check`) to bypass a Blocker.
         #[arg(long, value_name = "TOKEN")]
         override_safety: Option<String>,
+        /// Skip LLM-backed safety checks (answer-coverage). Useful when
+        /// the daemon's LLM is a rate-limited cloud model. Only honored
+        /// with `--check`.
+        #[arg(long, requires = "check")]
+        no_llm: bool,
     },
     /// Cancel a previously-scheduled send. The draft itself is preserved.
     Unsend {
@@ -1164,9 +1254,16 @@ pub enum Command {
     },
 
     // --- Phase 2: Unsubscribe ---
-    /// Unsubscribe from a mailing list
+    /// Unsubscribe from a mailing list.
+    ///
+    /// Positional argument accepts either a message id (uses the
+    /// List-Unsubscribe header on that exact message) or an email
+    /// address (`alice@example.com`), which is rewritten to
+    /// `--search "from:alice@example.com"` and acts on the most recent
+    /// match. Combine with `--search` to scope an address-wide
+    /// unsubscribe to a label or date range.
     Unsubscribe {
-        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        #[arg(value_name = "MESSAGE_ID_OR_ADDRESS", conflicts_with = "search")]
         message_ids: Vec<String>,
         #[arg(long)]
         yes: bool,
@@ -1469,6 +1566,247 @@ pub enum OutputFormat {
     Ids,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
+pub enum ActivityTierArg {
+    Ephemeral,
+    Standard,
+    Important,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
+pub enum ActivitySourceArg {
+    Tui,
+    Cli,
+    Web,
+    Daemon,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
+pub enum ActivityGroupByArg {
+    Action,
+    Day,
+    Source,
+    TargetKind,
+    Hour,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
+pub enum ActivityExportFormatArg {
+    Csv,
+    Json,
+    Ndjson,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
+pub enum ActivityClearWindow {
+    #[value(name = "1h")]
+    LastHour,
+    #[value(name = "1d")]
+    LastDay,
+    #[value(name = "7d")]
+    LastWeek,
+    #[value(name = "30d")]
+    LastMonth,
+    All,
+}
+
+/// Shared filter args for activity read/redact subcommands.
+#[derive(Debug, Clone, clap::Args)]
+pub struct ActivityFilterArgs {
+    /// Relative duration (e.g. `1h`, `3d`, `2w`) or ISO date inclusive lower bound.
+    #[arg(long)]
+    pub since: Option<String>,
+    /// Relative duration or ISO date exclusive upper bound. Defaults to now.
+    #[arg(long)]
+    pub until: Option<String>,
+    /// Originating client. Repeatable.
+    #[arg(long, value_enum)]
+    pub source: Vec<ActivitySourceArg>,
+    /// Exact action token (e.g. `mail.archive`). Repeatable.
+    #[arg(long)]
+    pub action: Vec<String>,
+    /// Match all actions starting with this prefix (e.g. `mail.`).
+    #[arg(long)]
+    pub prefix: Option<String>,
+    /// Filter by target kind (`thread`, `message`, `draft`, `search`, ...).
+    #[arg(long)]
+    pub target_kind: Option<String>,
+    /// Filter by exact target id.
+    #[arg(long)]
+    pub target_id: Option<String>,
+    /// Retention tier. Repeatable.
+    #[arg(long, value_enum)]
+    pub tier: Vec<ActivityTierArg>,
+    /// Filter by account id.
+    #[arg(long)]
+    pub account: Option<String>,
+    /// FTS5 expression against context_json.
+    #[arg(long)]
+    pub query: Option<String>,
+    /// Include tombstoned rows in the result.
+    #[arg(long)]
+    pub include_redacted: bool,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ActivityAction {
+    /// List recent activity in reverse chronological order.
+    List {
+        #[command(flatten)]
+        filter: ActivityFilterArgs,
+        /// Page size. Capped server-side to 500.
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+        /// Resume from a previous cursor: `--cursor TS,ID`.
+        #[arg(long)]
+        cursor: Option<String>,
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+    },
+    /// Group and count activity rows over a time window.
+    Stats {
+        #[command(flatten)]
+        filter: ActivityFilterArgs,
+        #[arg(long, value_enum, default_value_t = ActivityGroupByArg::Action)]
+        group_by: ActivityGroupByArg,
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+    },
+    /// Most-frequent actions in a window. Convenience over `stats --group-by action`.
+    Top {
+        #[command(flatten)]
+        filter: ActivityFilterArgs,
+        #[arg(long, default_value_t = 20)]
+        limit: u32,
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+    },
+    /// Export matching rows in CSV / JSON / NDJSON.
+    Export {
+        #[command(flatten)]
+        filter: ActivityFilterArgs,
+        #[arg(long, value_enum)]
+        format: ActivityExportFormatArg,
+        /// Write to this path instead of stdout.
+        #[arg(long)]
+        out: Option<String>,
+    },
+    /// Hard-delete rows older than `--before`. Destructive; confirms unless `--yes`.
+    Prune {
+        /// Relative duration (e.g. `90d`) or ISO date. Required.
+        #[arg(long)]
+        before: String,
+        #[arg(long, value_enum)]
+        tier: Option<ActivityTierArg>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Tombstone rows by id or filter. Destructive; confirms unless `--yes`.
+    Redact {
+        /// Comma-separated row ids.
+        #[arg(long, num_args = 1.., value_delimiter = ',')]
+        ids: Vec<i64>,
+        #[command(flatten)]
+        filter: ActivityFilterArgs,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Convenience tombstone over a recent time window. Browser-history style.
+    Clear {
+        #[arg(long = "last", value_enum)]
+        window: ActivityClearWindow,
+        /// Also tombstone important-tier rows (sends, redactions, etc.).
+        #[arg(long)]
+        include_important: bool,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Pause recording. With `--for DURATION`, auto-resumes after.
+    Pause {
+        #[arg(long = "for")]
+        for_: Option<String>,
+        #[arg(long)]
+        quiet: bool,
+    },
+    /// Resume recording.
+    Resume,
+    /// Show current recorder status (paused state, retention defaults).
+    Status {
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+    },
+    /// Manage saved filter presets. Slug-keyed, like saved searches.
+    Saved {
+        #[command(subcommand)]
+        action: ActivitySavedAction,
+    },
+    /// Follow new activity. Press Ctrl-C to stop.
+    Tail {
+        #[command(flatten)]
+        filter: ActivityFilterArgs,
+        /// Initial backfill — show this many recent rows before tailing.
+        #[arg(short = 'n', long, default_value_t = 20)]
+        lines: u32,
+        /// Poll interval in seconds.
+        #[arg(long, default_value_t = 2)]
+        interval: u64,
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+    },
+    /// Resolve a fuzzy time phrase ("yesterday afternoon", "last hour") and
+    /// list activity from that window.
+    Recall {
+        /// Time phrase to resolve.
+        phrase: String,
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+    },
+    /// Print a prose narrative of what you did in the window.
+    Replay {
+        #[arg(long, default_value = "1h")]
+        since: String,
+        #[arg(long, default_value_t = 200)]
+        limit: u32,
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ActivitySavedAction {
+    /// List all saved filter presets.
+    List {
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+    },
+    /// Save the current filter under a slug.
+    Save {
+        slug: String,
+        #[arg(long)]
+        name: String,
+        #[command(flatten)]
+        filter: ActivityFilterArgs,
+    },
+    /// Delete a preset by slug.
+    Delete { slug: String },
+    /// Apply a preset and list the matching rows.
+    Open {
+        slug: String,
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+    },
+}
+
 #[derive(Debug, Clone, Subcommand)]
 pub enum DecisionsAction {
     /// Re-extract decisions from every thread within --since N days.
@@ -1478,6 +1816,14 @@ pub enum DecisionsAction {
         account: Option<String>,
         #[arg(long = "since", default_value_t = 180)]
         since_days: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Show a single decision row by its id (returned by `mxr decisions
+    /// --format json|ids`). Exits non-zero when the id is unknown so
+    /// scripts can branch on presence.
+    Show {
+        id: String,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1512,6 +1858,9 @@ pub enum CadenceAction {
         account: Option<String>,
         #[arg(long = "expected-days")]
         expected_days: Option<f64>,
+        /// Expected cadence as a duration, e.g. `14d`, `2w`, or `30 days`.
+        #[arg(long = "every")]
+        every: Option<String>,
         #[arg(long)]
         note: Option<String>,
         /// Watch the contact even if it looks like a list sender.

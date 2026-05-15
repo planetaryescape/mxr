@@ -9,28 +9,27 @@
 )]
 
 mod accounts;
+pub(crate) mod activity;
 mod admin;
 mod archive_ask;
-mod briefing;
-mod decisions_extract;
-mod expert;
-mod suggest_recipients;
-mod whois;
 mod auth_sessions;
+mod briefing;
 mod commitments;
 mod commitments_extract;
+mod decisions_extract;
 #[path = "diagnostics/mod.rs"]
 pub(crate) mod diagnostics_impl;
 mod draft_assist;
 mod draft_new;
 mod draft_refine;
+mod expert;
 mod helpers;
 mod humanizer;
 mod mailbox;
 mod mutations;
 mod platform;
 mod relationship_profile;
-mod reply_later;
+pub(crate) mod reply_later;
 mod rules;
 mod runtime;
 mod safety_llm;
@@ -40,8 +39,10 @@ mod sender_view;
 mod signatures;
 mod snippets;
 mod status_helpers;
+mod suggest_recipients;
 pub(crate) mod summarize;
 mod user_voice;
+mod whois;
 
 use crate::state::AppState;
 use mxr_config::SafetyPolicy;
@@ -82,10 +83,7 @@ async fn watch_cadence(
         note,
         added_at: chrono::Utc::now(),
     };
-    state
-        .store
-        .watch_cadence(&entry, allow_list_sender)
-        .await?;
+    state.store.watch_cadence(&entry, allow_list_sender).await?;
     Ok(ResponseData::Ack)
 }
 
@@ -152,39 +150,104 @@ async fn list_cadence_drift(
 async fn send_time_recommendation(
     state: &Arc<AppState>,
     account_id: &mxr_core::AccountId,
-    recipient: &str,
+    recipients: &[String],
+    proposed_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> HandlerResult {
-    let rec = state
-        .store
-        .send_time_recommendation(account_id, recipient)
-        .await
-        .map_err(|e| e.to_string())?;
+    use chrono::{Datelike, Timelike};
+    let normalized_recipients: Vec<String> = recipients
+        .iter()
+        .map(|recipient| recipient.trim())
+        .filter(|recipient| !recipient.is_empty())
+        .map(str::to_string)
+        .collect();
+    if normalized_recipients.is_empty() {
+        return Err("at least one recipient is required".into());
+    }
+
+    let (proposed_weekday, proposed_hour) = proposed_at
+        .map(|at| {
+            let wd = at.weekday().num_days_from_monday() as u8;
+            let hr = at.hour() as u8;
+            (Some(wd), Some(hr))
+        })
+        .unwrap_or((None, None));
+
+    let mut rows = Vec::new();
+    let mut best_windows = Vec::new();
+    let mut confidence = mxr_protocol::SendTimeConfidenceData::High;
+    for recipient in normalized_recipients {
+        let rec = state
+            .store
+            .send_time_recommendation(account_id, &recipient)
+            .await
+            .map_err(|e| e.to_string())?;
+        let row_confidence = send_time_confidence_data(rec.confidence);
+        confidence = min_send_time_confidence(confidence, row_confidence);
+        let row_windows = best_windows_for_recipient(&rec);
+        best_windows.extend(row_windows.clone());
+        let proposed_expected_reply_seconds = match (proposed_weekday, proposed_hour) {
+            (Some(wd), Some(hr)) => rec.bucket_p50(wd, hr),
+            _ => None,
+        };
+        rows.push(mxr_protocol::RecipientSendTimeRowData {
+            email: rec.recipient,
+            sample_count: rec.sample_count,
+            proposed_expected_reply_seconds,
+            best_expected_reply_seconds: rec.best_p50_seconds,
+            best_windows: row_windows,
+        });
+    }
+    best_windows.sort_by_key(|window| window.expected_reply_seconds);
     Ok(ResponseData::SendTimeRecommendationResponse {
         recommendation: mxr_protocol::SendTimeRecommendationData {
-            recipient: rec.recipient,
-            buckets: rec
-                .buckets
-                .into_iter()
-                .map(|b| mxr_protocol::SendTimeBucketData {
-                    weekday: b.weekday,
-                    hour: b.hour,
-                    p50_seconds: b.p50_seconds,
-                    sample_count: b.sample_count,
-                })
-                .collect(),
-            best_weekday: rec.best_weekday,
-            best_hour: rec.best_hour,
-            best_p50_seconds: rec.best_p50_seconds,
-            confidence: match rec.confidence {
-                mxr_store::SendTimeConfidence::Low => mxr_protocol::SendTimeConfidenceData::Low,
-                mxr_store::SendTimeConfidence::Medium => {
-                    mxr_protocol::SendTimeConfidenceData::Medium
-                }
-                mxr_store::SendTimeConfidence::High => mxr_protocol::SendTimeConfidenceData::High,
-            },
-            sample_count: rec.sample_count,
+            proposed_at,
+            proposed_weekday,
+            proposed_hour,
+            recipient_rows: rows,
+            best_windows,
+            confidence,
         },
     })
+}
+
+fn send_time_confidence_data(
+    confidence: mxr_store::SendTimeConfidence,
+) -> mxr_protocol::SendTimeConfidenceData {
+    match confidence {
+        mxr_store::SendTimeConfidence::Low => mxr_protocol::SendTimeConfidenceData::Low,
+        mxr_store::SendTimeConfidence::Medium => mxr_protocol::SendTimeConfidenceData::Medium,
+        mxr_store::SendTimeConfidence::High => mxr_protocol::SendTimeConfidenceData::High,
+    }
+}
+
+fn min_send_time_confidence(
+    left: mxr_protocol::SendTimeConfidenceData,
+    right: mxr_protocol::SendTimeConfidenceData,
+) -> mxr_protocol::SendTimeConfidenceData {
+    use mxr_protocol::SendTimeConfidenceData::{High, Low, Medium};
+    match (left, right) {
+        (Low, _) | (_, Low) => Low,
+        (Medium, _) | (_, Medium) => Medium,
+        (High, High) => High,
+    }
+}
+
+fn best_windows_for_recipient(
+    rec: &mxr_store::SendTimeRecommendation,
+) -> Vec<mxr_protocol::SendWindowData> {
+    let Some(best) = rec.best_p50_seconds else {
+        return Vec::new();
+    };
+    rec.buckets
+        .iter()
+        .filter(|bucket| bucket.p50_seconds == best)
+        .map(|bucket| mxr_protocol::SendWindowData {
+            weekday: bucket.weekday,
+            hour_start: bucket.hour,
+            hour_end: bucket.hour.saturating_add(1).min(24),
+            expected_reply_seconds: bucket.p50_seconds,
+        })
+        .collect()
 }
 
 async fn rebuild_decision_log(
@@ -230,6 +293,27 @@ async fn list_decision_log(
     })
 }
 
+async fn get_decision(state: &Arc<AppState>, id: &str) -> HandlerResult {
+    let row = state
+        .store
+        .get_decision(id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::DecisionDetail {
+        decision: row.map(|r| mxr_protocol::DecisionLogEntryData {
+            id: r.id,
+            account_id: r.account_id,
+            thread_id: r.thread_id,
+            topic: r.topic,
+            decision: r.decision,
+            rationale: r.rationale,
+            evidence_msg_ids: r.evidence_msg_ids,
+            decided_at: r.decided_at,
+            extracted_at: r.extracted_at,
+        }),
+    })
+}
+
 async fn list_owed_replies(
     state: &Arc<AppState>,
     account_id: &mxr_core::AccountId,
@@ -264,7 +348,7 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
     let response_data = match &msg.payload {
         IpcPayload::Request(req) => {
             let request = request_kind(req);
-            let account_id = request_account_id(req)
+            let account_id_str = request_account_id(req)
                 .map(|id| id.as_str())
                 .unwrap_or_else(|| "-".to_string());
             let account_key = request_account_key(req).unwrap_or("-");
@@ -272,16 +356,32 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
                 "ipc_request",
                 request_id = msg.id,
                 request,
-                account_id,
+                account_id = account_id_str.as_str(),
                 account_key
             );
-            dispatch(state, req).instrument(span).await
+            let response = dispatch(state, req).instrument(span).await;
+
+            // Activity capture seam. Fire-and-forget; never propagates errors.
+            // See `docs/activity-log.md`.
+            let ok = matches!(&response, Response::Ok { .. });
+            let account_id_for_activity = request_account_id(req).map(|id| id.as_str());
+            if let Some(entry) = crate::activity::mapper::map_request(
+                req,
+                msg.source,
+                account_id_for_activity.as_deref(),
+                ok,
+            ) {
+                state.activity.record(entry);
+            }
+
+            response
         }
         _ => Response::error("Expected a Request"),
     };
 
     IpcMessage {
         id: msg.id,
+        source: ::mxr_protocol::ClientKind::Daemon,
         payload: IpcPayload::Response(response_data),
     }
 }
@@ -330,8 +430,10 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             message_id,
             attachment_id,
             destination,
-        } => mailbox::download_attachment(state, message_id, attachment_id, destination.as_deref())
-            .await,
+        } => {
+            mailbox::download_attachment(state, message_id, attachment_id, destination.as_deref())
+                .await
+        }
         Request::OpenAttachment {
             message_id,
             attachment_id,
@@ -421,6 +523,9 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             rules::dry_run(state, rule.as_ref(), *all, after.as_ref()).await
         }
         Request::ListSavedSearches => platform::list_saved_searches(state).await,
+        Request::ListSavedSearchUnreadCounts => {
+            platform::list_saved_search_unread_counts(state).await
+        }
         Request::ListSubscriptions { account_id, limit } => {
             platform::list_subscriptions(state, account_id.as_ref(), *limit).await
         }
@@ -562,8 +667,50 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             limit,
             level,
             category,
-        } => admin::list_events(state, *limit, level.as_deref(), category.as_deref()).await,
-        Request::GetLogs { limit, level } => admin::get_logs(state, *limit, level.as_deref()).await,
+            since,
+            until,
+            search,
+            category_prefix,
+            offset,
+        } => {
+            admin::list_events(
+                state,
+                *limit,
+                *offset,
+                level.as_deref(),
+                category.as_deref(),
+                category_prefix.as_deref(),
+                *since,
+                *until,
+                search.as_deref(),
+            )
+            .await
+        }
+        Request::GetLogs {
+            limit,
+            level,
+            search,
+        } => admin::get_logs(state, *limit, level.as_deref(), search.as_deref()).await,
+        Request::ListEventCategories => admin::list_event_categories(state).await,
+        Request::CountEvents {
+            level,
+            category,
+            category_prefix,
+            since,
+            until,
+            search,
+        } => {
+            admin::count_events(
+                state,
+                level.as_deref(),
+                category.as_deref(),
+                category_prefix.as_deref(),
+                *since,
+                *until,
+                search.as_deref(),
+            )
+            .await
+        }
         Request::GetDoctorReport => admin::doctor_report(state).await,
         Request::GenerateBugReport {
             verbose,
@@ -573,6 +720,46 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::GetStatus => admin::get_status(state).await,
         Request::Ping => Ok(ResponseData::Pong),
         Request::Shutdown => admin::shutdown(state).await,
+
+        // ----- activity log (Phase 3) -----
+        Request::ListActivity {
+            filter,
+            limit,
+            cursor,
+        } => activity::list_activity(state, filter, *limit, *cursor).await,
+        Request::CountActivity { filter } => activity::count_activity(state, filter).await,
+        Request::ActivityStats {
+            since,
+            until,
+            group_by,
+        } => activity::activity_stats(state, *since, *until, *group_by).await,
+        Request::ExportActivity {
+            filter,
+            format,
+            path,
+        } => activity::export_activity(state, filter, *format, path.clone()).await,
+        Request::RedactActivity {
+            ids,
+            filter,
+            dry_run,
+        } => activity::redact_activity(state, ids, filter.as_ref(), *dry_run).await,
+        Request::PruneActivity {
+            before_ts,
+            tier,
+            dry_run,
+        } => activity::prune_activity(state, *before_ts, *tier, *dry_run).await,
+        Request::PauseActivity { until_ts } => activity::pause_activity(state, *until_ts).await,
+        Request::ResumeActivity => activity::resume_activity(state).await,
+        Request::ListSavedActivityFilters => activity::list_saved_filters(state).await,
+        Request::GetSavedActivityFilter { slug } => activity::get_saved_filter(state, slug).await,
+        Request::UpsertSavedActivityFilter {
+            slug,
+            name,
+            filter,
+        } => activity::upsert_saved_filter(state, slug, name, filter).await,
+        Request::DeleteSavedActivityFilter { slug } => {
+            activity::delete_saved_filter(state, slug).await
+        }
 
         // core mail/runtime
         Request::Search {
@@ -695,7 +882,9 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::GetSenderProfile { account_id, email } => {
             sender_view::get_sender_profile(state, account_id, email).await
         }
-        Request::ListSenders { limit } => platform::list_senders(state, *limit).await,
+        Request::ListSenders { limit, since_unix } => {
+            platform::list_senders(state, *limit, *since_unix).await
+        }
         Request::GetRelationshipProfile { account_id, email } => {
             relationship_profile::get_relationship_profile(state, account_id, email).await
         }
@@ -731,10 +920,12 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             account_id,
             since_days,
         } => rebuild_decision_log(state, account_id, *since_days).await,
+        Request::GetDecision { id } => get_decision(state, id).await,
         Request::SendTimeRecommendation {
             account_id,
-            recipient,
-        } => send_time_recommendation(state, account_id, recipient).await,
+            recipients,
+            proposed_at,
+        } => send_time_recommendation(state, account_id, recipients, *proposed_at).await,
         Request::GetThreadBriefing { thread_id, refresh } => {
             briefing::get_thread_briefing(state, thread_id, *refresh).await
         }
@@ -763,8 +954,20 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             expected_days,
             note,
             allow_list_sender,
-        } => watch_cadence(state, account_id, email, *expected_days, note.clone(), *allow_list_sender).await,
-        Request::UnwatchCadence { account_id, email } => unwatch_cadence(state, account_id, email).await,
+        } => {
+            watch_cadence(
+                state,
+                account_id,
+                email,
+                *expected_days,
+                note.clone(),
+                *allow_list_sender,
+            )
+            .await
+        }
+        Request::UnwatchCadence { account_id, email } => {
+            unwatch_cadence(state, account_id, email).await
+        }
         Request::ListCadenceWatch { account_id } => list_cadence_watch(state, account_id).await,
         Request::ListCadenceDrift { account_id } => list_cadence_drift(state, account_id).await,
         Request::GetUserVoice { account_id } => user_voice::get_user_voice(state, account_id).await,
@@ -848,9 +1051,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::SendStoredDraft {
             draft_id,
             override_safety_token,
-        } => {
-            mutations::send_stored_draft(state, draft_id, override_safety_token.as_deref()).await
-        }
+        } => mutations::send_stored_draft(state, draft_id, override_safety_token.as_deref()).await,
         Request::CheckDraftSafety { draft, context } => {
             mutations::check_draft_safety_request(state, draft, context).await
         }
@@ -937,6 +1138,7 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::GetRuleForm { .. }
             | Request::DryRunRules { .. }
             | Request::ListSavedSearches
+            | Request::ListSavedSearchUnreadCounts
             | Request::ListSubscriptions { .. }
             | Request::ListStorageBreakdown { .. }
             | Request::ListLargestMessages { .. }
@@ -1030,6 +1232,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::Count { .. } => "count",
         Request::GetHeaders { .. } => "get_headers",
         Request::ListSavedSearches => "list_saved_searches",
+        Request::ListSavedSearchUnreadCounts => "list_saved_search_unread_counts",
         Request::ListSubscriptions { .. } => "list_subscriptions",
         Request::ListStorageBreakdown { .. } => "list_storage_breakdown",
         Request::ListLargestMessages { .. } => "list_largest_messages",
@@ -1108,6 +1311,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListOwedReplies { .. } => "list_owed_replies",
         Request::ArchiveAsk { .. } => "archive_ask",
         Request::ListDecisionLog { .. } => "list_decision_log",
+        Request::GetDecision { .. } => "get_decision",
         Request::RebuildDecisionLog { .. } => "rebuild_decision_log",
         Request::SendTimeRecommendation { .. } => "send_time_recommendation",
         Request::GetThreadBriefing { .. } => "get_thread_briefing",
@@ -1129,6 +1333,20 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetStatus => "get_status",
         Request::Ping => "ping",
         Request::Shutdown => "shutdown",
+        Request::ListEventCategories => "list_event_categories",
+        Request::CountEvents { .. } => "count_events",
+        Request::ListActivity { .. } => "list_activity",
+        Request::CountActivity { .. } => "count_activity",
+        Request::ActivityStats { .. } => "activity_stats",
+        Request::ExportActivity { .. } => "export_activity",
+        Request::RedactActivity { .. } => "redact_activity",
+        Request::PruneActivity { .. } => "prune_activity",
+        Request::PauseActivity { .. } => "pause_activity",
+        Request::ResumeActivity => "resume_activity",
+        Request::ListSavedActivityFilters => "list_saved_activity_filters",
+        Request::GetSavedActivityFilter { .. } => "get_saved_activity_filter",
+        Request::UpsertSavedActivityFilter { .. } => "upsert_saved_activity_filter",
+        Request::DeleteSavedActivityFilter { .. } => "delete_saved_activity_filter",
     }
 }
 
@@ -1296,13 +1514,48 @@ async fn find_label_by_name(
         .ok_or_else(|| format!("Label not found: {name}"))
 }
 
-fn render_message_context(body: &mxr_core::types::MessageBody) -> String {
-    mxr_reader::clean(
-        body.text_plain.as_deref(),
-        body.text_html.as_deref(),
-        &ReaderConfig::default(),
-    )
-    .content
+/// Fast path used for reply/forward quoted text. The user is composing a
+/// reply; they want the original content quoted, *not* the aggressive
+/// reader-view cleaning (which strips signatures, boilerplate, tracking,
+/// collapses prior quotes, and runs several regex passes that get
+/// slow-to-pathological on big HTML emails).
+///
+/// Plain text passes through as-is. HTML-only messages get one
+/// `html2text` pass. Empty bodies return an empty string.
+pub(crate) fn render_reply_quoted_text(body: &mxr_core::types::MessageBody) -> String {
+    if let Some(text) = body.text_plain.as_deref() {
+        if !text.is_empty() {
+            return text.to_string();
+        }
+    }
+    if let Some(html) = body.text_html.as_deref() {
+        if !html.is_empty() {
+            return html2text::from_read(html.as_bytes(), 80).unwrap_or_default();
+        }
+    }
+    String::new()
+}
+
+/// Memoized render of the reply quoted text for `message_id`. Bodies
+/// are immutable post-sync, so a hit is correct forever. Misses do
+/// the (now cheap) render and insert into the cache.
+pub(crate) fn get_or_render_reply_context(
+    state: &crate::state::AppState,
+    message_id: &mxr_core::MessageId,
+    body: &mxr_core::types::MessageBody,
+) -> std::sync::Arc<String> {
+    {
+        let cache = state.reply_context_cache.lock();
+        if let Some(cached) = cache.get(message_id) {
+            return cached.clone();
+        }
+    }
+    let rendered = std::sync::Arc::new(render_reply_quoted_text(body));
+    state
+        .reply_context_cache
+        .lock()
+        .insert(message_id.clone(), rendered.clone());
+    rendered
 }
 
 async fn populate_envelope_label_provider_ids(
@@ -1676,7 +1929,8 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
             | FilterKind::HasSpreadsheet
             | FilterKind::HasPresentation
             | FilterKind::HasYoutube
-            | FilterKind::HasInlineImage,
+            | FilterKind::HasInlineImage
+            | FilterKind::OwedReply,
         ) => return Err("search filter is not supported in rules form".to_string()),
         QueryNode::Text(value) | QueryNode::Phrase(value) => {
             Conditions::Field(FieldCondition::BodyContains {
@@ -3565,12 +3819,10 @@ pub(super) async fn materialize_attachment_to_path(
 
     // Reuse the cached bytes if we've already pulled them down, so a
     // user-initiated save after Open doesn't refetch from the provider.
-    let bytes = match attachment
-        .local_path
-        .as_ref()
-        .filter(|path| path.exists())
-    {
-        Some(cached) => tokio::fs::read(cached).await.map_err(mxr_core::MxrError::Io)?,
+    let bytes = match attachment.local_path.as_ref().filter(|path| path.exists()) {
+        Some(cached) => tokio::fs::read(cached)
+            .await
+            .map_err(mxr_core::MxrError::Io)?,
         None => {
             let provider = state
                 .get_provider(Some(&envelope.account_id))
@@ -4174,6 +4426,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Ping),
         };
         let resp = handle_request(&state, &msg).await;
@@ -4199,6 +4452,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListEnvelopes {
                 label_id: None,
                 account_id: None,
@@ -4231,6 +4485,7 @@ mod tests {
         // Get labels first
         let labels_msg = IpcMessage {
             id: 10,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListLabels { account_id: None }),
         };
         let resp = handle_request(&state, &labels_msg).await;
@@ -4250,6 +4505,7 @@ mod tests {
         // Fetch envelopes by Inbox label
         let msg = IpcMessage {
             id: 11,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListEnvelopes {
                 label_id: Some(inbox.id.clone()),
                 account_id: None,
@@ -4281,6 +4537,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 12,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListLabels { account_id: None }),
         };
         let resp = handle_request(&state, &msg).await;
@@ -4299,6 +4556,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 13,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListEnvelopes {
                 label_id: None,
                 account_id: None,
@@ -4323,6 +4581,7 @@ mod tests {
 
         let create_msg = IpcMessage {
             id: 14,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CreateLabel {
                 name: "Urgent".to_string(),
                 color: Some("#ff6600".to_string()),
@@ -4342,6 +4601,7 @@ mod tests {
 
         let list_msg = IpcMessage {
             id: 15,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListLabels {
                 account_id: Some(account_id),
             }),
@@ -4374,6 +4634,7 @@ mod tests {
 
         let upsert_msg = IpcMessage {
             id: 20,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::UpsertRule { rule: rule.clone() }),
         };
         let resp = handle_request(&state, &upsert_msg).await;
@@ -4388,6 +4649,7 @@ mod tests {
 
         let list_msg = IpcMessage {
             id: 21,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListRules),
         };
         let resp = handle_request(&state, &list_msg).await;
@@ -4425,6 +4687,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 22,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::UpsertRule { rule }),
             },
         )
@@ -4432,6 +4695,7 @@ mod tests {
 
         let dry_run_msg = IpcMessage {
             id: 23,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::DryRunRules {
                 rule: Some("rule-1".to_string()),
                 all: false,
@@ -4459,6 +4723,7 @@ mod tests {
 
         let upsert_msg = IpcMessage {
             id: 231,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::UpsertRuleForm {
                 existing_rule: None,
                 name: "Archive unread".into(),
@@ -4481,6 +4746,7 @@ mod tests {
 
         let get_form_msg = IpcMessage {
             id: 232,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetRuleForm { rule: rule_id }),
         };
         let resp = handle_request(&state, &get_form_msg).await;
@@ -4505,6 +4771,7 @@ mod tests {
 
         let create_msg = IpcMessage {
             id: 14,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CreateLabel {
                 name: "Projects".to_string(),
                 color: None,
@@ -4515,6 +4782,7 @@ mod tests {
 
         let rename_msg = IpcMessage {
             id: 15,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::RenameLabel {
                 old: "Projects".to_string(),
                 new: "Client Work".to_string(),
@@ -4534,6 +4802,7 @@ mod tests {
 
         let list_msg = IpcMessage {
             id: 16,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListLabels {
                 account_id: Some(account_id),
             }),
@@ -4557,6 +4826,7 @@ mod tests {
 
         let create_msg = IpcMessage {
             id: 17,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CreateLabel {
                 name: "Temporary".to_string(),
                 color: None,
@@ -4567,6 +4837,7 @@ mod tests {
 
         let delete_msg = IpcMessage {
             id: 18,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::DeleteLabel {
                 name: "Temporary".to_string(),
                 account_id: Some(account_id.clone()),
@@ -4582,6 +4853,7 @@ mod tests {
 
         let list_msg = IpcMessage {
             id: 19,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListLabels {
                 account_id: Some(account_id),
             }),
@@ -4609,6 +4881,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 3,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Count {
                 query: "deployment".to_string(),
                 mode: None,
@@ -4632,6 +4905,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 4,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListSavedSearches),
         };
         let resp = handle_request(&state, &msg).await;
@@ -4653,6 +4927,7 @@ mod tests {
         // Create
         let create_msg = IpcMessage {
             id: 5,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CreateSavedSearch {
                 name: "Important".to_string(),
                 query: "is:starred".to_string(),
@@ -4674,6 +4949,7 @@ mod tests {
         // List
         let list_msg = IpcMessage {
             id: 6,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListSavedSearches),
         };
         let resp = handle_request(&state, &list_msg).await;
@@ -4694,6 +4970,7 @@ mod tests {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let create_msg = IpcMessage {
             id: 51,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CreateSavedSearch {
                 name: "Hybrid".to_string(),
                 query: "deployment".to_string(),
@@ -4731,6 +5008,7 @@ mod tests {
 
         let create = IpcMessage {
             id: 200,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CreateSavedSearch {
                 name: "Deploy".into(),
                 query: "deployment".into(),
@@ -4741,6 +5019,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 201,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::RunSavedSearch {
                 name: "Deploy".into(),
                 limit: 10,
@@ -4778,6 +5057,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 7,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetStatus),
         };
         let resp = handle_request(&state, &msg).await;
@@ -4819,6 +5099,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 7,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetStatus),
         };
         let resp = handle_request(&state, &msg).await;
@@ -4854,6 +5135,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 8,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetStatus),
         };
 
@@ -4878,6 +5160,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 9,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Shutdown),
         };
         let resp = handle_request(&state, &msg).await;
@@ -4897,6 +5180,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 81,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetDoctorReport),
         };
         let resp = handle_request(&state, &msg).await;
@@ -4922,6 +5206,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 82,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetSyncStatus { account_id }),
         };
         let resp = handle_request(&state, &msg).await;
@@ -4952,6 +5237,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 10,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Search {
                 query: "deployment".to_string(),
                 limit: 10,
@@ -4989,6 +5275,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 11,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Search {
                 query: "deployment".to_string(),
                 limit: 5,
@@ -5035,6 +5322,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 13,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Search {
                 query: "is:unread".to_string(),
                 limit: 10,
@@ -5070,6 +5358,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 14,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Search {
                 query: "is:unread".to_string(),
                 limit: 10,
@@ -5114,6 +5403,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 15,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Search {
                 query: "body:deployment".to_string(),
                 limit: 10,
@@ -5154,6 +5444,7 @@ mod tests {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let msg = IpcMessage {
             id: 12,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Search {
                 query: "older:30q".to_string(),
                 limit: 10,
@@ -5187,6 +5478,7 @@ mod tests {
         // Get first envelope
         let envelopes_msg = IpcMessage {
             id: 11,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListEnvelopes {
                 label_id: None,
                 account_id: None,
@@ -5208,6 +5500,7 @@ mod tests {
         // Get body for that envelope
         let body_msg = IpcMessage {
             id: 12,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetBody {
                 message_id: message_id.clone(),
             }),
@@ -5234,6 +5527,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 13,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListBodies {
                 message_ids: vec![missing_id],
             }),
@@ -5267,6 +5561,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 14,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetBody {
                 message_id: id.clone(),
             }),
@@ -5306,6 +5601,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 15,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListBodies {
                 message_ids: vec![id.clone()],
             }),
@@ -5344,6 +5640,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 19,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetBody {
                 message_id: id.clone(),
             }),
@@ -5395,6 +5692,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 20,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetBody {
                 message_id: id.clone(),
             }),
@@ -5447,6 +5745,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 16,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListBodies {
                 message_ids: vec![id.clone()],
             }),
@@ -5502,6 +5801,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 17,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetBody {
                 message_id: id.clone(),
             }),
@@ -5564,6 +5864,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 18,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetBody {
                 message_id: id.clone(),
             }),
@@ -5642,6 +5943,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 16,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetHtmlImageAssets {
                 message_id: id.clone(),
                 allow_remote: false,
@@ -5720,6 +6022,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 17,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetHtmlImageAssets {
                 message_id: id.clone(),
                 allow_remote: true,
@@ -5760,6 +6063,7 @@ mod tests {
 
         let list_msg = IpcMessage {
             id: 14,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListEnvelopes {
                 label_id: None,
                 account_id: None,
@@ -5780,6 +6084,7 @@ mod tests {
 
         let body_msg = IpcMessage {
             id: 15,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetBody {
                 message_id: envelope.id.clone(),
             }),
@@ -5794,6 +6099,7 @@ mod tests {
 
         let download_msg = IpcMessage {
             id: 16,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::DownloadAttachment {
                 message_id: envelope.id.clone(),
                 attachment_id: attachment_id.clone(),
@@ -5840,6 +6146,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 200,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::ListReplyQueue),
             },
         )
@@ -5856,6 +6163,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 201,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::SetReplyLater {
                     message_id: id.clone(),
                     flag: true,
@@ -5875,6 +6183,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 202,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::ListReplyQueue),
             },
         )
@@ -5904,6 +6213,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 203,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::SetReplyLater {
                     message_id: id.clone(),
                     flag: false,
@@ -5923,6 +6233,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 204,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::ListReplyQueue),
             },
         )
@@ -5944,6 +6255,86 @@ mod tests {
         assert!(search_page.results.is_empty(), "search updates after clear");
     }
 
+    /// Phase 2.1: dismissing a reply-later flag is a pure metadata
+    /// operation. It removes the message from the queue, but it must
+    /// not generate a draft, hand a message to the outbound pipeline,
+    /// or otherwise pretend the user replied. The user is saying
+    /// "never mind, I'm not going to reply" — the daemon must take that
+    /// at face value.
+    #[tokio::test]
+    async fn dispatch_clearing_reply_later_does_not_send_reply() {
+        let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let id = sync_and_get_first_id(&state).await;
+        let account_id = state.default_account_id();
+
+        // Flag it first so we have something to dismiss.
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 250,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::SetReplyLater {
+                    message_id: id.clone(),
+                    flag: true,
+                }),
+            },
+        )
+        .await;
+        assert!(matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+
+        // Capture a baseline of state that would change if a reply were
+        // queued or sent.
+        let drafts_before = state.store.list_drafts(&account_id).await.unwrap().len();
+        let mut events = state.event_tx.subscribe();
+
+        // Dismiss the flag — this is the "I'm not going to reply"
+        // outcome the user signals by clearing the queue entry.
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 251,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::SetReplyLater {
+                    message_id: id.clone(),
+                    flag: false,
+                }),
+            },
+        )
+        .await;
+        assert!(matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+
+        // No draft created, none consumed — the drafts table is exactly
+        // where it was before the dismiss.
+        let drafts_after = state.store.list_drafts(&account_id).await.unwrap().len();
+        assert_eq!(
+            drafts_after, drafts_before,
+            "dismissing reply-later must not touch the drafts table"
+        );
+
+        // No daemon event was emitted by the dismiss. The flag clear
+        // is a pure metadata edit; anything published here means the
+        // path is doing more than the user asked for.
+        match events.try_recv() {
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty) => {} // expected
+            Ok(received) => panic!(
+                "dismissing reply-later must not emit any daemon event; got {:?}",
+                received.payload
+            ),
+            Err(err) => panic!("unexpected event channel state: {err:?}"),
+        }
+    }
+
     #[tokio::test]
     async fn dispatch_set_auto_reminder_persists_and_loop_fires_when_due() {
         // End-to-end: setting a reminder via IPC persists it; the
@@ -5960,6 +6351,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 300,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::SetAutoReminder {
                     sent_message_id: id.clone(),
                     remind_at,
@@ -5989,6 +6381,27 @@ mod tests {
             other => panic!("expected ReminderTriggered event, got {other:?}"),
         }
 
+        let queue = handle_request(
+            &state,
+            &IpcMessage {
+                id: 302,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::ListReplyQueue),
+            },
+        )
+        .await;
+        match queue.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::ReplyQueue { messages },
+            }) => {
+                assert!(
+                    messages.iter().any(|message| message.id == id),
+                    "due reminders must be visible in the reply-later queue"
+                );
+            }
+            other => panic!("expected ReplyQueue response, got {other:?}"),
+        }
+
         // Second tick: nothing fires (already-triggered reminders are
         // excluded).
         let fired_again = crate::loops::process_due_reminders(&state, chrono::Utc::now())
@@ -6010,6 +6423,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 310,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::SetAutoReminder {
                     sent_message_id: id.clone(),
                     remind_at,
@@ -6021,6 +6435,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 311,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::CancelAutoReminder {
                     sent_message_id: id.clone(),
                 }),
@@ -6082,6 +6497,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 400,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::ScheduleSend {
                     draft_id: draft.id.clone(),
                     send_at: chrono::Utc::now() - chrono::Duration::hours(1),
@@ -6171,6 +6587,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 410,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::ScheduleSend {
                     draft_id: draft.id.clone(),
                     send_at: chrono::Utc::now() - chrono::Duration::hours(1),
@@ -6182,6 +6599,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 411,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::CancelScheduledSend {
                     draft_id: draft.id.clone(),
                 }),
@@ -6217,6 +6635,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 100,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListEnvelopes {
                 label_id: None,
                 account_id: None,
@@ -6298,6 +6717,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
                 message_ids: vec![id.clone()],
                 starred: true,
@@ -6309,6 +6729,7 @@ mod tests {
         // Verify flag is set
         let get_msg = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetEnvelope { message_id: id }),
         };
         let resp = handle_request(&state, &get_msg).await;
@@ -6335,6 +6756,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::ModifyLabels {
                 message_ids: vec![id],
                 add: vec!["Archive".to_string()],
@@ -6388,6 +6810,7 @@ mod tests {
 
         let snooze = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Snooze {
                 message_id: original_id.clone(),
                 wake_at: chrono::Utc::now() + chrono::Duration::hours(4),
@@ -6426,6 +6849,7 @@ mod tests {
 
         let unsnooze = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Unsnooze {
                 message_id: snoozed[0].message_id.clone(),
             }),
@@ -6466,6 +6890,7 @@ mod tests {
 
         let snooze = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Snooze {
                 message_id: original_id,
                 wake_at: chrono::Utc::now() + chrono::Duration::hours(4),
@@ -6506,6 +6931,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::SetRead {
                 message_ids: vec![id.clone()],
                 read: true,
@@ -6516,6 +6942,7 @@ mod tests {
 
         let get_msg = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetEnvelope { message_id: id }),
         };
         let resp = handle_request(&state, &get_msg).await;
@@ -6540,6 +6967,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
                 message_ids: vec![id.clone()],
             })),
@@ -6579,6 +7007,7 @@ mod tests {
         // Archive — captures snapshot, writes undo entry, returns mutation_id.
         let archive = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
                 message_ids: vec![id.clone()],
             })),
@@ -6599,6 +7028,7 @@ mod tests {
         // Undo — restores INBOX both locally and via the fake provider.
         let undo = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::UndoMutation {
                 mutation_id: mutation_id.clone(),
             }),
@@ -6622,6 +7052,7 @@ mod tests {
         // (regression test for "user mashes u and double-undoes").
         let replay = IpcMessage {
             id: 3,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::UndoMutation { mutation_id }),
         };
         match handle_request(&state, &replay).await.payload {
@@ -6643,6 +7074,7 @@ mod tests {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::UndoMutation {
                 mutation_id: "01HVTOTALLYBOGUSID0000000".into(),
             }),
@@ -6671,6 +7103,7 @@ mod tests {
         // Pull three INBOX-tagged messages by listing envelopes.
         let list_msg = IpcMessage {
             id: 100,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListEnvelopes {
                 label_id: None,
                 account_id: None,
@@ -6690,6 +7123,7 @@ mod tests {
 
         let archive = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
                 message_ids: ids.clone(),
             })),
@@ -6700,6 +7134,7 @@ mod tests {
 
         let undo = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::UndoMutation { mutation_id }),
         };
         match handle_request(&state, &undo).await.payload {
@@ -6728,6 +7163,7 @@ mod tests {
         let id = sync_and_get_first_id(&state).await;
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
                 message_ids: vec![id],
                 starred: true,
@@ -6750,6 +7186,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
                 message_ids: vec![healthy_id],
             })),
@@ -6772,6 +7209,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
                 message_ids: vec![healthy_id, bad_id],
             })),
@@ -6803,6 +7241,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::ReadAndArchive {
                 message_ids: vec![id.clone()],
             })),
@@ -6838,6 +7277,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::Trash {
                 message_ids: vec![id],
             })),
@@ -6861,6 +7301,7 @@ mod tests {
         // Fetch body first so it's cached
         let body_msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetBody {
                 message_id: id.clone(),
             }),
@@ -6869,6 +7310,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::PrepareReply {
                 message_id: id,
                 reply_all: false,
@@ -6901,6 +7343,7 @@ mod tests {
         // Fetch body first
         let body_msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetBody {
                 message_id: id.clone(),
             }),
@@ -6909,6 +7352,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::PrepareReply {
                 message_id: id,
                 reply_all: true,
@@ -6947,6 +7391,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::PrepareReply {
                 message_id: id,
                 reply_all: false,
@@ -6979,6 +7424,7 @@ mod tests {
         // Fetch body first
         let body_msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetBody {
                 message_id: id.clone(),
             }),
@@ -6987,6 +7433,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::PrepareForward { message_id: id }),
         };
         let resp = handle_request(&state, &msg).await;
@@ -7011,6 +7458,7 @@ mod tests {
 
         let create = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CreateLabel {
                 name: "Follow Up".into(),
                 color: None,
@@ -7026,6 +7474,7 @@ mod tests {
 
         let modify = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::ModifyLabels {
                 message_ids: vec![id.clone()],
                 add: vec![label.name.clone()],
@@ -7046,6 +7495,7 @@ mod tests {
 
         let create = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CreateLabel {
                 name: "Recruiters".into(),
                 color: None,
@@ -7067,6 +7517,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetThread {
                 thread_id: envelope.thread_id,
             }),
@@ -7096,6 +7547,7 @@ mod tests {
 
         let create = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CreateLabel {
                 name: "Recruiters".into(),
                 color: None,
@@ -7117,6 +7569,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListEnvelopes {
                 label_id: None,
                 account_id: None,
@@ -7148,6 +7601,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListAccounts),
         };
         let resp = handle_request(&state, &msg).await;
@@ -7171,6 +7625,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetLlmStatus),
         };
         let resp = handle_request(&state, &msg).await;
@@ -7202,6 +7657,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetLlmStatus),
         };
         let resp = handle_request(&state, &msg).await;
@@ -7250,6 +7706,7 @@ mod tests {
                     let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
                     let msg = IpcMessage {
                         id: 1,
+                        source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Request(Request::UpdateLlmConfig {
                             config: mxr_protocol::LlmConfigData {
                                 enabled: true,
@@ -7284,6 +7741,7 @@ mod tests {
 
                     let status_msg = IpcMessage {
                         id: 2,
+                        source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Request(Request::GetLlmStatus),
                     };
                     let status_resp = handle_request(&state, &status_msg).await;
@@ -7309,6 +7767,7 @@ mod tests {
         let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::UpdateLlmConfig {
                 config: mxr_protocol::LlmConfigData {
                     enabled: true,
@@ -7360,7 +7819,11 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendDraft { draft, override_safety_token: None }),
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SendDraft {
+                draft,
+                override_safety_token: None,
+            }),
         };
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
@@ -7398,6 +7861,7 @@ mod tests {
 
         let send = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SendDraft {
                 draft: draft.clone(),
                 override_safety_token: None,
@@ -7412,6 +7876,7 @@ mod tests {
 
         let save = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SaveDraft { draft }),
         };
         match handle_request(&state, &save).await.payload {
@@ -7431,6 +7896,7 @@ mod tests {
 
         let mutation = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
                 message_ids: vec![mxr_core::MessageId::new()],
                 starred: true,
@@ -7445,6 +7911,7 @@ mod tests {
 
         let search = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Search {
                 query: "hello".into(),
                 limit: 10,
@@ -7496,7 +7963,11 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendDraft { draft, override_safety_token: None }),
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SendDraft {
+                draft,
+                override_safety_token: None,
+            }),
         };
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
@@ -7517,6 +7988,7 @@ mod tests {
         let wake_at = chrono::Utc::now() + chrono::Duration::hours(24);
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Snooze {
                 message_id: id.clone(),
                 wake_at,
@@ -7533,6 +8005,7 @@ mod tests {
         // List snoozed - should have 1
         let msg = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListSnoozed),
         };
         let resp = handle_request(&state, &msg).await;
@@ -7548,6 +8021,7 @@ mod tests {
         // Unsnooze
         let msg = IpcMessage {
             id: 3,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Unsnooze { message_id: id }),
         };
         let resp = handle_request(&state, &msg).await;
@@ -7561,6 +8035,7 @@ mod tests {
         // List snoozed - should have 0
         let msg = IpcMessage {
             id: 4,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListSnoozed),
         };
         let resp = handle_request(&state, &msg).await;
@@ -7597,6 +8072,7 @@ mod tests {
 
         let snooze = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Snooze {
                 message_id: id.clone(),
                 wake_at: chrono::Utc::now() + chrono::Duration::hours(4),
@@ -7614,6 +8090,7 @@ mod tests {
 
         let unsnooze = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Unsnooze {
                 message_id: id.clone(),
             }),
@@ -7638,6 +8115,7 @@ mod tests {
         let flags = MessageFlags::READ | MessageFlags::STARRED;
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SetFlags {
                 message_id: id.clone(),
                 flags,
@@ -7654,6 +8132,7 @@ mod tests {
         // Verify flags
         let get_msg = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetEnvelope { message_id: id }),
         };
         let resp = handle_request(&state, &get_msg).await;
@@ -7679,6 +8158,7 @@ mod tests {
         // The first envelope from FakeProvider fixtures uses UnsubscribeMethod::None
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Unsubscribe { message_id: id }),
         };
         let resp = handle_request(&state, &msg).await;
@@ -7716,6 +8196,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Unsubscribe {
                 message_id: mailto_id,
             }),
@@ -7734,6 +8215,217 @@ mod tests {
         assert_eq!(sent[0].subject, "unsubscribe");
     }
 
+    /// Phase 2.6: `mxr unsubscribe <id>` is idempotent. A second call
+    /// against the same message must NOT re-send the mailto / re-POST
+    /// the one-click URL — the user's intent on the second call is "I
+    /// already unsubscribed, stop bugging me." Without this guard, a
+    /// shell retry / agent loop would spam the list operator's inbox.
+    /// Phase 1.5: saved-search unread counts return one entry per
+    /// configured saved search. Counts reflect the saved query
+    /// ANDed with `is:unread`. The tab strip uses this to render
+    /// `(N)` on each tab.
+    #[tokio::test]
+    async fn dispatch_list_saved_search_unread_counts_returns_id_to_count_map() {
+        let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+
+        // Register two saved searches with predictable shapes:
+        //   "All Mail"  = "" (empty query) — matches everything;
+        //                  unread count == number of unread messages
+        //   "Nonexistent" = "from:nobody@nope.example" — zero matches
+        let now = chrono::Utc::now();
+        let search_all = mxr_core::types::SavedSearch {
+            id: mxr_core::id::SavedSearchId::new(),
+            account_id: None,
+            name: "All Mail".to_string(),
+            query: String::new(),
+            search_mode: mxr_core::SearchMode::Lexical,
+            sort: mxr_core::SortOrder::DateDesc,
+            icon: None,
+            position: 0,
+            created_at: now,
+        };
+        let search_none = mxr_core::types::SavedSearch {
+            id: mxr_core::id::SavedSearchId::new(),
+            account_id: None,
+            name: "Nonexistent".to_string(),
+            query: "from:nobody@nope.example".to_string(),
+            search_mode: mxr_core::SearchMode::Lexical,
+            sort: mxr_core::SortOrder::DateDesc,
+            icon: None,
+            position: 1,
+            created_at: now,
+        };
+        state.store.insert_saved_search(&search_all).await.unwrap();
+        state.store.insert_saved_search(&search_none).await.unwrap();
+
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 1,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::ListSavedSearchUnreadCounts),
+            },
+        )
+        .await;
+        let counts = match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::SavedSearchUnreadCounts { counts },
+            }) => counts,
+            other => panic!("expected SavedSearchUnreadCounts, got {other:?}"),
+        };
+
+        // Both saved searches appear in the response (even the
+        // zero-match one — the tab strip needs to know it exists).
+        assert!(
+            counts.contains_key(&search_all.id),
+            "every registered saved search must be present in the count map; missing All Mail"
+        );
+        assert!(
+            counts.contains_key(&search_none.id),
+            "every registered saved search must be present in the count map; missing Nonexistent"
+        );
+        assert_eq!(
+            counts[&search_none.id], 0,
+            "the never-matching saved search reports zero unread"
+        );
+        // We don't assert an exact number for All Mail because the
+        // FakeProvider fixture set evolves; we just assert it's
+        // non-negative (always true for u32) and the response shape
+        // is correct.
+    }
+
+    #[tokio::test]
+    async fn dispatch_unsubscribe_is_idempotent_via_event_log() {
+        let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+
+        let mailto_id = state
+            .store
+            .list_envelopes_by_account(&state.default_account_id(), 200, 0)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|envelope| matches!(envelope.unsubscribe, UnsubscribeMethod::Mailto { .. }))
+            .map(|envelope| envelope.id)
+            .expect("mailto fixture");
+
+        let request = || IpcMessage {
+            id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::Unsubscribe {
+                message_id: mailto_id.clone(),
+            }),
+        };
+
+        // First call: succeeds and emits the outbound message.
+        let resp = handle_request(&state, &request()).await;
+        assert!(matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+        assert_eq!(
+            fake.sent_drafts().len(),
+            1,
+            "first call sends the unsubscribe mail"
+        );
+
+        // Second call: also returns Ack but MUST NOT re-send.
+        let resp = handle_request(&state, &request()).await;
+        assert!(
+            matches!(
+                resp.payload,
+                IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Ack
+                })
+            ),
+            "repeated unsubscribe should still ack so scripts and agents don't see a spurious failure"
+        );
+        assert_eq!(
+            fake.sent_drafts().len(),
+            1,
+            "second call must not produce a second outbound — that's the entire point of idempotency"
+        );
+    }
+
+    /// Phase 2.6: when the unsubscribe URL fails (network error,
+    /// non-2xx), the handler must surface an Error response. Quietly
+    /// returning Ack would mislead the user into thinking they were
+    /// removed from the list when nothing happened. Equally critically,
+    /// no `_unsubscribed` event must be logged on a failed attempt —
+    /// otherwise the idempotency check would block a future retry.
+    #[tokio::test]
+    async fn dispatch_unsubscribe_oneclick_failure_returns_error_and_does_not_log() {
+        let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+
+        // Replace the fixture envelope's unsubscribe method with a
+        // OneClick URL pointing at a port nothing's listening on — the
+        // POST will reliably fail.
+        let mut envelope = state
+            .store
+            .list_envelopes_by_account(&state.default_account_id(), 200, 0)
+            .await
+            .unwrap()
+            .into_iter()
+            .next()
+            .expect("at least one fixture envelope");
+        envelope.unsubscribe = UnsubscribeMethod::OneClick {
+            // 127.0.0.1:1 — RFC 6890 / "definitely-no-listener" port.
+            url: "http://127.0.0.1:1/unsubscribe".into(),
+        };
+        state
+            .store
+            .upsert_envelope_with_direction(&envelope, mxr_core::types::MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 1,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::Unsubscribe {
+                    message_id: envelope.id.clone(),
+                }),
+            },
+        )
+        .await;
+        match resp.payload {
+            IpcPayload::Response(Response::Error { .. }) => {} // expected
+            other => panic!("expected Error for failed one-click POST, got {other:?}"),
+        }
+
+        // No success event was logged. If it were, a retry would be
+        // blocked by the idempotency short-circuit.
+        let logged = state
+            .store
+            .has_event_for_message_with_summary(&envelope.id.as_str(), "mutation", "unsubscrib")
+            .await
+            .unwrap();
+        assert!(
+            !logged,
+            "a failed unsubscribe must not write a success event — otherwise retries are silently blocked"
+        );
+    }
+
     #[tokio::test]
     async fn dispatch_mutation_nonexistent_message() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -7741,6 +8433,7 @@ mod tests {
         let fake_id = mxr_core::MessageId::new();
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
                 message_ids: vec![fake_id],
                 starred: true,
@@ -7765,6 +8458,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListDrafts),
         };
         let resp = handle_request(&state, &msg).await;
@@ -7819,6 +8513,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListDrafts),
         };
         let resp = handle_request(&state, &msg).await;
@@ -7867,6 +8562,7 @@ mod tests {
 
         let save_msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SaveDraft {
                 draft: draft.clone(),
             }),
@@ -7881,7 +8577,11 @@ mod tests {
 
         let send_msg = IpcMessage {
             id: 2,
-            payload: IpcPayload::Request(Request::SendStoredDraft { draft_id: draft.id.clone(), override_safety_token: None }),
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SendStoredDraft {
+                draft_id: draft.id.clone(),
+                override_safety_token: None,
+            }),
         };
         let send_resp = handle_request(&state, &send_msg).await;
         assert!(
@@ -7931,8 +8631,7 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: "key transfer".to_string(),
-            body_markdown: "Here is the key:\n-----BEGIN RSA PRIVATE KEY-----\n...\n"
-                .to_string(),
+            body_markdown: "Here is the key:\n-----BEGIN RSA PRIVATE KEY-----\n...\n".to_string(),
             attachments: vec![],
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -7943,6 +8642,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 1,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::SaveDraft {
                     draft: draft.clone(),
                 }),
@@ -7961,6 +8661,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 2,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::CheckDraftSafety {
                     draft: draft.clone(),
                     context: Default::default(),
@@ -7995,6 +8696,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 3,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::SendStoredDraft {
                     draft_id: draft.id.clone(),
                     override_safety_token: None,
@@ -8021,6 +8723,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 4,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::SendStoredDraft {
                     draft_id: draft.id.clone(),
                     override_safety_token: Some(token.clone()),
@@ -8065,6 +8768,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 5,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::SaveDraft {
                     draft: draft2.clone(),
                 }),
@@ -8075,6 +8779,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 6,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::CheckDraftSafety {
                     draft: draft2.clone(),
                     context: Default::default(),
@@ -8098,6 +8803,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 7,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::SendStoredDraft {
                     draft_id: draft2.id.clone(),
                     override_safety_token: Some(token2.clone()),
@@ -8120,6 +8826,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 8,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::SaveDraft {
                     draft: draft3.clone(),
                 }),
@@ -8130,6 +8837,7 @@ mod tests {
             &state,
             &IpcMessage {
                 id: 9,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::SendStoredDraft {
                     draft_id: draft3.id.clone(),
                     override_safety_token: Some(token2),
@@ -8198,7 +8906,11 @@ mod tests {
         let before = chrono::Utc::now();
         let send_msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendStoredDraft { draft_id: draft.id.clone(), override_safety_token: None }),
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SendStoredDraft {
+                draft_id: draft.id.clone(),
+                override_safety_token: None,
+            }),
         };
         let send_resp = handle_request(&state, &send_msg).await;
         assert!(
@@ -8260,7 +8972,11 @@ mod tests {
 
         let send_msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendStoredDraft { draft_id: draft.id.clone(), override_safety_token: None }),
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SendStoredDraft {
+                draft_id: draft.id.clone(),
+                override_safety_token: None,
+            }),
         };
         match handle_request(&state, &send_msg).await.payload {
             IpcPayload::Response(Response::Error { message, .. }) => {
@@ -8314,7 +9030,11 @@ mod tests {
 
         let send_msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendDraft { draft, override_safety_token: None }),
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SendDraft {
+                draft,
+                override_safety_token: None,
+            }),
         };
         match handle_request(&state, &send_msg).await.payload {
             IpcPayload::Response(Response::Error { message, .. }) => {
@@ -8391,7 +9111,11 @@ mod tests {
 
         let send_msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendStoredDraft { draft_id: draft.id.clone(), override_safety_token: None }),
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SendStoredDraft {
+                draft_id: draft.id.clone(),
+                override_safety_token: None,
+            }),
         };
         match handle_request(&state, &send_msg).await.payload {
             IpcPayload::Response(Response::Error { message, .. }) => {
@@ -8462,7 +9186,11 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::SendDraft { draft, override_safety_token: None }),
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SendDraft {
+                draft,
+                override_safety_token: None,
+            }),
         };
         let resp = handle_request(&state, &msg).await;
         let local_message_id = match resp.payload {
@@ -8521,6 +9249,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SaveDraftToServer {
                 draft: draft.clone(),
             }),
@@ -8542,6 +9271,7 @@ mod tests {
         // Create a saved search
         let create_msg = IpcMessage {
             id: 20,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CreateSavedSearch {
                 name: "ToDelete".to_string(),
                 query: "is:unread".to_string(),
@@ -8561,6 +9291,7 @@ mod tests {
         // Verify it's in the list
         let list_msg = IpcMessage {
             id: 21,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListSavedSearches),
         };
         let resp = handle_request(&state, &list_msg).await;
@@ -8577,6 +9308,7 @@ mod tests {
         // Delete it
         let delete_msg = IpcMessage {
             id: 22,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::DeleteSavedSearch {
                 name: "ToDelete".to_string(),
             }),
@@ -8592,6 +9324,7 @@ mod tests {
         // Verify it's gone
         let list_msg2 = IpcMessage {
             id: 23,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListSavedSearches),
         };
         let resp = handle_request(&state, &list_msg2).await;
@@ -8622,6 +9355,7 @@ mod tests {
         // Get an envelope to find its thread_id
         let list_msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListEnvelopes {
                 label_id: None,
                 account_id: None,
@@ -8640,6 +9374,7 @@ mod tests {
         // Export the thread as markdown
         let export_msg = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ExportThread {
                 thread_id,
                 format: mxr_core::types::ExportFormat::Markdown,
@@ -8667,6 +9402,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 300,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SyncNow { account_id: None }),
         };
         let resp = handle_request(&state, &msg).await;
@@ -8690,6 +9426,7 @@ mod tests {
 
         let list_msg = IpcMessage {
             id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListEnvelopes {
                 label_id: None,
                 account_id: None,
@@ -8707,6 +9444,7 @@ mod tests {
 
         let export_msg = IpcMessage {
             id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ExportThread {
                 thread_id,
                 format: mxr_core::types::ExportFormat::Json,
@@ -8739,6 +9477,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 3,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetHeaders {
                 message_id: id.clone(),
             }),
@@ -8776,6 +9515,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 4,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ExportSearch {
                 query: "deployment".into(),
                 format: mxr_core::types::ExportFormat::Json,
@@ -8823,6 +9563,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 5,
+            source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SaveDraftToServer { draft }),
         };
         let resp = handle_request(&state, &msg).await;

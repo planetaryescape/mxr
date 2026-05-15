@@ -129,6 +129,12 @@ pub(crate) enum AsyncResult {
     SavedSearchMutation(Result<(), MxrError>),
     /// Refreshed sidebar list after a saved-search create/delete.
     SavedSearchListRefreshed(Result<Vec<mxr_core::types::SavedSearch>, MxrError>),
+    /// Per-saved-search unread counts. Issued as a follow-up after a
+    /// `SavedSearchListRefreshed` so the tab-strip badges can show
+    /// `(N)` next to each label.
+    SavedSearchUnreadCountsRefreshed(
+        Result<std::collections::HashMap<mxr_core::id::SavedSearchId, u32>, MxrError>,
+    ),
     /// One semantic-runtime operation response (Enable / Disable /
     /// Reindex / InstallProfile). Errors route through `report_error`
     /// so a missing `semantic-local` feature is visible to the user
@@ -151,6 +157,10 @@ pub(crate) enum AsyncResult {
     SnippetsList(Result<Vec<SnippetData>, MxrError>),
     /// Snapshot of the messages flagged for reply-later.
     ReplyQueueList(Result<Vec<Envelope>, MxrError>),
+    /// Snapshot of recent activity log rows.
+    ActivityList(Result<Vec<mxr_protocol::ActivityEntry>, MxrError>),
+    /// Confirmation that a pause/resume toggle reached the daemon.
+    ActivityPauseToggled(Result<bool, MxrError>),
     /// Per-sender relationship aggregates for the sender-view modal.
     /// `Ok(None)` when the sender is unknown to the contacts table.
     SenderProfileLoaded {
@@ -186,6 +196,7 @@ pub(crate) enum AnalyticsResultPayload {
     Stale(Vec<mxr_core::types::StaleThreadRow>),
     Asymmetry(Vec<mxr_core::types::ContactAsymmetryRow>),
     Decay(Vec<mxr_core::types::ContactDecayRow>),
+    CadenceDrift(Vec<mxr_protocol::CadenceDriftRowData>),
     ResponseTime(mxr_core::types::ResponseTimeSummary),
     Subscriptions(Vec<mxr_core::types::SubscriptionSummary>),
     Wrapped(mxr_core::types::WrappedSummary),

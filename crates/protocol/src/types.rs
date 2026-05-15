@@ -149,10 +149,167 @@ pub struct LlmOverrideData {
     pub request_timeout_secs: Option<u64>,
 }
 
+// =========================================================================
+// Activity log types — shared with `crates/store` via the boundary
+// converters at the bottom of this section. The `store` crate has its own
+// `Tier`/`ActivityFilter` because `protocol` is a leaf crate; we duplicate
+// the shape rather than pull in a heavier dep graph.
+// =========================================================================
+
+/// Mirror of `mxr_store::Tier`. Three retention buckets used by the
+/// activity log: 30 / 90 / 365 days for ephemeral / standard / important.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum ActivityTier {
+    Ephemeral,
+    Standard,
+    Important,
+}
+
+impl ActivityTier {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Ephemeral => "ephemeral",
+            Self::Standard => "standard",
+            Self::Important => "important",
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ActivityFilter {
+    /// Unix ms inclusive lower bound.
+    pub since: Option<i64>,
+    /// Unix ms exclusive upper bound.
+    pub until: Option<i64>,
+    pub account_id: Option<String>,
+    /// Empty = any.
+    #[serde(default)]
+    pub sources: Vec<ClientKind>,
+    #[serde(default)]
+    pub actions: Vec<String>,
+    pub action_prefix: Option<String>,
+    pub target_kind: Option<String>,
+    pub target_id: Option<String>,
+    #[serde(default)]
+    pub tiers: Vec<ActivityTier>,
+    /// FTS5 expression against `context_json`.
+    pub query: Option<String>,
+    #[serde(default)]
+    pub include_redacted: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ActivityCursor {
+    pub ts: i64,
+    pub id: i64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ActivityStatGroupBy {
+    Action,
+    Day,
+    Source,
+    TargetKind,
+    Hour,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum ActivityExportFormat {
+    Csv,
+    Json,
+    Ndjson,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ActivityEntry {
+    pub id: i64,
+    pub ts: i64,
+    pub account_id: Option<String>,
+    pub source: ClientKind,
+    pub action: String,
+    pub target_kind: Option<String>,
+    pub target_id: Option<String>,
+    pub tier: ActivityTier,
+    /// Parsed context; clients see structured JSON, not the raw string.
+    pub context: Option<serde_json::Value>,
+    pub redacted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ActivityStatBucket {
+    /// Group key — depends on `group_by`: action token, ISO date, source,
+    /// target kind, or hour-of-day string `00`..`23`.
+    pub key: String,
+    pub count: i64,
+}
+
+/// Wire shape of a saved activity filter preset (Phase 8).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SavedActivityFilterEntry {
+    pub slug: String,
+    pub name: String,
+    pub filter: ActivityFilter,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub last_used_at: Option<i64>,
+}
+
+/// Originating client for an IPC request. Carried on the envelope so the
+/// daemon's activity recorder can tag rows with the surface that produced
+/// them. Legacy clients (pre-source-field) decode as `Cli` — the most
+/// realistic guess for scripts hand-rolled against the socket.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum ClientKind {
+    Tui,
+    Cli,
+    Web,
+    /// Synthesized internally by the daemon (scheduled prunes, pause markers, etc.).
+    Daemon,
+}
+
+impl ClientKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Tui => "tui",
+            Self::Cli => "cli",
+            Self::Web => "web",
+            Self::Daemon => "daemon",
+        }
+    }
+
+    pub fn default_for_legacy() -> Self {
+        Self::Cli
+    }
+}
+
+impl Default for ClientKind {
+    fn default() -> Self {
+        Self::default_for_legacy()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct IpcMessage {
     pub id: u64,
+    /// Originating client surface. Optional on the wire for backwards
+    /// compatibility with pre-Phase-2 clients; the default is `Cli`. New
+    /// clients always set this explicitly.
+    #[serde(default)]
+    pub source: ClientKind,
     pub payload: IpcPayload,
 }
 
@@ -301,6 +458,12 @@ pub enum Request {
     },
 
     ListSavedSearches,
+    /// Return unread match counts per saved search. The TUI uses
+    /// this to render `(N)` after each tab label. The handler runs
+    /// each saved search's query ANDed with `is:unread` and counts
+    /// hits; queries that can't be parsed return 0 so the tab strip
+    /// stays visible.
+    ListSavedSearchUnreadCounts,
     ListSubscriptions {
         account_id: Option<AccountId>,
         limit: u32,
@@ -416,10 +579,47 @@ pub enum Request {
         limit: u32,
         level: Option<String>,
         category: Option<String>,
+        /// Unix-seconds inclusive lower bound on `timestamp`. Optional.
+        #[serde(default)]
+        since: Option<i64>,
+        /// Unix-seconds exclusive upper bound on `timestamp`. Optional.
+        #[serde(default)]
+        until: Option<i64>,
+        /// Free-text `LIKE %term%` over the `summary` column. Optional.
+        #[serde(default)]
+        search: Option<String>,
+        /// Category prefix (e.g. `mutation`, `sync.`). Applied as
+        /// `category LIKE <prefix>%`. Optional.
+        #[serde(default)]
+        category_prefix: Option<String>,
+        /// Result offset for paging. Defaults to 0.
+        #[serde(default)]
+        offset: u32,
     },
     GetLogs {
         limit: u32,
         level: Option<String>,
+        /// Free-text substring filter against each log line. Case-insensitive.
+        #[serde(default)]
+        search: Option<String>,
+    },
+    /// Distinct categories present in `event_log`, ordered by recency.
+    ListEventCategories,
+    /// Count events matching the same filter shape as `ListEvents`.
+    /// Powers pagination affordances in the diagnostics surfaces.
+    CountEvents {
+        #[serde(default)]
+        level: Option<String>,
+        #[serde(default)]
+        category: Option<String>,
+        #[serde(default)]
+        category_prefix: Option<String>,
+        #[serde(default)]
+        since: Option<i64>,
+        #[serde(default)]
+        until: Option<i64>,
+        #[serde(default)]
+        search: Option<String>,
     },
     GetDoctorReport,
     GenerateBugReport {
@@ -572,6 +772,10 @@ pub enum Request {
     ListSenders {
         #[serde(default = "default_sender_limit")]
         limit: u32,
+        /// Restrict counts to messages whose `date >= since_unix`.
+        /// `None` means "no time bound" (legacy behavior).
+        #[serde(default)]
+        since_unix: Option<i64>,
     },
     GetRelationshipProfile {
         account_id: AccountId,
@@ -762,10 +966,14 @@ pub enum Request {
         account_id: AccountId,
     },
     /// Recommend the bucket (weekday, hour) at which the recipient
-    /// is fastest to reply.
+    /// is fastest to reply. When `proposed_at` is set, the response
+    /// also includes the proposed slot's expected reply time so the
+    /// caller can render a delta against the recipient's best bucket.
     SendTimeRecommendation {
         account_id: AccountId,
-        recipient: String,
+        recipients: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        proposed_at: Option<chrono::DateTime<chrono::Utc>>,
     },
     /// Walk every thread in the account whose latest message is
     /// within `since_days` days, run the LLM-backed decision-log
@@ -776,6 +984,12 @@ pub enum Request {
         account_id: AccountId,
         #[serde(default = "default_decision_log_since_days")]
         since_days: u32,
+    },
+    /// Fetch a single decision-log row by id. Returns
+    /// `ResponseData::DecisionDetail` with `Option<DecisionLogEntryData>`
+    /// — `None` means the id is unknown (not an error).
+    GetDecision {
+        id: String,
     },
     /// List entries from the decision log. Optional topic and
     /// since-days filters.
@@ -841,6 +1055,72 @@ pub enum Request {
     GetStatus,
     Ping,
     Shutdown,
+
+    // ============================================================
+    // Activity log — `user_activity` table queries and mutations.
+    // See `docs/activity-log.md`. Strictly local; never
+    // transmitted off-device.
+    // ============================================================
+    /// Paginated reverse-chron list of activity rows.
+    ListActivity {
+        filter: ActivityFilter,
+        limit: u32,
+        cursor: Option<ActivityCursor>,
+    },
+    /// Total matching rows (UI badge counts).
+    CountActivity {
+        filter: ActivityFilter,
+    },
+    /// Grouped counts over a time window.
+    ActivityStats {
+        since: i64,
+        until: i64,
+        group_by: ActivityStatGroupBy,
+    },
+    /// Export matching rows in CSV / JSON / NDJSON. When `path` is set the
+    /// daemon writes the file; otherwise it returns the body inline (capped).
+    ExportActivity {
+        filter: ActivityFilter,
+        format: ActivityExportFormat,
+        path: Option<String>,
+    },
+    /// Tombstone rows (set `redacted=1`, clear `context_json`). Either
+    /// `ids` is non-empty OR `filter` is `Some` — not both, not neither.
+    RedactActivity {
+        ids: Vec<i64>,
+        filter: Option<ActivityFilter>,
+        dry_run: bool,
+    },
+    /// Hard-delete rows older than `before_ts`. Retention pruner uses this.
+    PruneActivity {
+        before_ts: i64,
+        tier: Option<ActivityTier>,
+        dry_run: bool,
+    },
+    /// Stop recording new rows. `until_ts=None` is indefinite.
+    PauseActivity {
+        until_ts: Option<i64>,
+    },
+    /// Resume recording.
+    ResumeActivity,
+
+    // ----- Phase 8 — saved activity filters -----
+    /// List all saved filter presets, most-recently-used first.
+    ListSavedActivityFilters,
+    /// Fetch a single preset by slug.
+    GetSavedActivityFilter {
+        slug: String,
+    },
+    /// Create or update a preset (slug is the primary key).
+    UpsertSavedActivityFilter {
+        slug: String,
+        name: String,
+        filter: ActivityFilter,
+    },
+    /// Delete a preset by slug.
+    DeleteSavedActivityFilter {
+        slug: String,
+    },
 }
 
 impl Request {
@@ -924,6 +1204,7 @@ impl Request {
             | Self::ListOwedReplies { .. }
             | Self::ArchiveAsk { .. }
             | Self::ListDecisionLog { .. }
+            | Self::GetDecision { .. }
             | Self::RebuildDecisionLog { .. }
             | Self::SendTimeRecommendation { .. }
             | Self::WatchCadence { .. }
@@ -963,6 +1244,7 @@ impl Request {
             | Self::DeleteRule { .. }
             | Self::DryRunRules { .. }
             | Self::ListSavedSearches
+            | Self::ListSavedSearchUnreadCounts
             | Self::ListSubscriptions { .. }
             | Self::ListStorageBreakdown { .. }
             | Self::ListLargestMessages { .. }
@@ -997,7 +1279,21 @@ impl Request {
             | Self::GenerateBugReport { .. }
             | Self::GetStatus
             | Self::Ping
-            | Self::Shutdown => IpcCategory::AdminMaintenance,
+            | Self::Shutdown
+            | Self::ListActivity { .. }
+            | Self::CountActivity { .. }
+            | Self::ActivityStats { .. }
+            | Self::ExportActivity { .. }
+            | Self::RedactActivity { .. }
+            | Self::PruneActivity { .. }
+            | Self::PauseActivity { .. }
+            | Self::ResumeActivity
+            | Self::ListSavedActivityFilters
+            | Self::GetSavedActivityFilter { .. }
+            | Self::UpsertSavedActivityFilter { .. }
+            | Self::DeleteSavedActivityFilter { .. }
+            | Self::ListEventCategories
+            | Self::CountEvents { .. } => IpcCategory::AdminMaintenance,
         }
     }
 }
@@ -1311,6 +1607,12 @@ pub enum ResponseData {
     Senders {
         senders: Vec<SenderSummaryData>,
     },
+    /// Per-saved-search unread counts. Map shape so callers can do
+    /// fast id-keyed lookups when rendering the tab strip; missing
+    /// entries render as a bare label (no `(0)` clutter).
+    SavedSearchUnreadCounts {
+        counts: std::collections::HashMap<SavedSearchId, u32>,
+    },
     RelationshipProfile {
         profile: Option<RelationshipProfileData>,
     },
@@ -1497,6 +1799,11 @@ pub enum ResponseData {
     DecisionLog {
         decisions: Vec<DecisionLogEntryData>,
     },
+    /// Returned by `Request::GetDecision`. `None` when the id is
+    /// unknown — CLI surfaces that as "not found", not as an error.
+    DecisionDetail {
+        decision: Option<DecisionLogEntryData>,
+    },
     /// Returned by `Request::RebuildDecisionLog`.
     DecisionLogRebuildSummary {
         extracted: u32,
@@ -1539,6 +1846,57 @@ pub enum ResponseData {
     DraftSafetyReportResponse {
         report: DraftSafetyReport,
     },
+
+    // ------ activity log ------
+    /// Paginated activity rows. See `Request::ListActivity`.
+    ActivityEntries {
+        entries: Vec<ActivityEntry>,
+        next_cursor: Option<ActivityCursor>,
+    },
+    /// Returned by `Request::CountActivity`. (Distinct from the
+    /// `Count { count: u32 }` variant returned by the mail `Count`
+    /// request — different scale, different consumer.)
+    ActivityCount {
+        count: i64,
+    },
+    /// Returned by `Request::ActivityStats`. Buckets are pre-sorted.
+    ActivityStatBuckets {
+        buckets: Vec<ActivityStatBucket>,
+    },
+    /// Returned by `Request::ExportActivity`. Either `body` or `path` is set
+    /// depending on whether the export was inline or written to disk.
+    ActivityExportResult {
+        format: ActivityExportFormat,
+        count: i64,
+        size_bytes: u64,
+        body: Option<String>,
+        path: Option<String>,
+    },
+    /// Returned by mutating activity verbs. `count` is the row count
+    /// affected (or that *would* be affected when `dry_run=true`).
+    ActivityAffected {
+        count: i64,
+        dry_run: bool,
+    },
+    /// Generic acknowledgement for verbs that have no return payload
+    /// (`PauseActivity`, `ResumeActivity`).
+    Acknowledged,
+
+    // ----- Phase 8 — saved activity filters -----
+    SavedActivityFilters {
+        entries: Vec<SavedActivityFilterEntry>,
+    },
+    SavedActivityFilterDetail {
+        entry: Option<SavedActivityFilterEntry>,
+    },
+    /// Distinct event-log categories, recency-ordered.
+    EventCategories {
+        categories: Vec<String>,
+    },
+    /// Count for an event-log filter.
+    EventLogCount {
+        count: i64,
+    },
 }
 
 impl ResponseData {
@@ -1570,6 +1928,7 @@ impl ResponseData {
             | Self::ResolvedSignature { .. }
             | Self::SenderProfile { .. }
             | Self::Senders { .. }
+            | Self::SavedSearchUnreadCounts { .. }
             | Self::RelationshipProfile { .. }
             | Self::CommitmentList { .. }
             | Self::UserVoice { .. }
@@ -1587,6 +1946,7 @@ impl ResponseData {
             | Self::OwedReplies { .. }
             | Self::ArchiveAnswer { .. }
             | Self::DecisionLog { .. }
+            | Self::DecisionDetail { .. }
             | Self::SendTimeRecommendationResponse { .. }
             | Self::DecisionLogRebuildSummary { .. }
             | Self::CadenceWatchList { .. }
@@ -1627,7 +1987,17 @@ impl ResponseData {
             | Self::RuleHistory { .. }
             | Self::Status { .. }
             | Self::Pong
-            | Self::Ack => IpcCategory::AdminMaintenance,
+            | Self::Ack
+            | Self::ActivityEntries { .. }
+            | Self::ActivityCount { .. }
+            | Self::ActivityStatBuckets { .. }
+            | Self::ActivityExportResult { .. }
+            | Self::ActivityAffected { .. }
+            | Self::Acknowledged
+            | Self::SavedActivityFilters { .. }
+            | Self::SavedActivityFilterDetail { .. }
+            | Self::EventCategories { .. }
+            | Self::EventLogCount { .. } => IpcCategory::AdminMaintenance,
         }
     }
 }
@@ -2050,7 +2420,10 @@ pub struct ArchiveAskFiltersData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ArchiveCitationData {
-    pub msg_id: String,
+    pub message_id: MessageId,
+    pub thread_id: ThreadId,
+    pub subject: String,
+    pub date: chrono::DateTime<chrono::Utc>,
     pub quote: String,
 }
 
@@ -2183,17 +2556,42 @@ pub struct SendTimeBucketData {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct SendTimeRecommendationData {
-    pub recipient: String,
-    pub buckets: Vec<SendTimeBucketData>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub best_weekday: Option<u8>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub best_hour: Option<u8>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub best_p50_seconds: Option<i64>,
-    pub confidence: SendTimeConfidenceData,
+pub struct SendWindowData {
+    pub weekday: u8,
+    pub hour_start: u8,
+    pub hour_end: u8,
+    pub expected_reply_seconds: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RecipientSendTimeRowData {
+    pub email: String,
     pub sample_count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_expected_reply_seconds: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_expected_reply_seconds: Option<i64>,
+    pub best_windows: Vec<SendWindowData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SendTimeRecommendationData {
+    /// Slot the caller asked us to evaluate, echoed back so JSON
+    /// consumers don't have to rebuild it. Present only when the
+    /// caller passed `proposed_at` on the request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Weekday (0 = Monday) of `proposed_at` in UTC.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_weekday: Option<u8>,
+    /// Hour (0-23) of `proposed_at` in UTC.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_hour: Option<u8>,
+    pub recipient_rows: Vec<RecipientSendTimeRowData>,
+    pub best_windows: Vec<SendWindowData>,
+    pub confidence: SendTimeConfidenceData,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -373,6 +373,11 @@ mod tests {
                     limit: 10,
                     level: None,
                     category: None,
+                    since: None,
+                    until: None,
+                    search: None,
+                    category_prefix: None,
+                    offset: 0,
                 },
                 IpcCategory::AdminMaintenance,
             ),
@@ -380,6 +385,7 @@ mod tests {
                 Request::GetLogs {
                     limit: 10,
                     level: None,
+                    search: None,
                 },
                 IpcCategory::AdminMaintenance,
             ),
@@ -933,6 +939,7 @@ mod tests {
         for req in variants {
             let msg = IpcMessage {
                 id: 1,
+                source: crate::ClientKind::default(),
                 payload: IpcPayload::Request(req),
             };
             let json = serde_json::to_string(&msg).unwrap();
@@ -951,6 +958,7 @@ mod tests {
         for resp in [ok, err] {
             let msg = IpcMessage {
                 id: 2,
+                source: crate::ClientKind::default(),
                 payload: IpcPayload::Response(resp),
             };
             let json = serde_json::to_string(&msg).unwrap();
@@ -978,6 +986,7 @@ mod tests {
         for event in events {
             let msg = IpcMessage {
                 id: 0,
+                source: crate::ClientKind::default(),
                 payload: IpcPayload::Event(event),
             };
             let json = serde_json::to_string(&msg).unwrap();
@@ -990,6 +999,7 @@ mod tests {
         let mut codec = IpcCodec::new();
         let msg = IpcMessage {
             id: 42,
+            source: crate::ClientKind::default(),
             payload: IpcPayload::Request(Request::Ping),
         };
 
@@ -1008,6 +1018,7 @@ mod tests {
         for i in 0..3 {
             let msg = IpcMessage {
                 id: i,
+                source: crate::ClientKind::default(),
                 payload: IpcPayload::Request(Request::Ping),
             };
             codec.encode(msg, &mut buf).unwrap();
@@ -1251,6 +1262,7 @@ mod tests {
         };
         let req = IpcMessage {
             id: 1,
+            source: crate::ClientKind::default(),
             payload: IpcPayload::Request(Request::CheckDraftSafety {
                 draft: draft.clone(),
                 context: DraftSafetyContextData {
@@ -1279,23 +1291,22 @@ mod tests {
             allowed: false,
             verdict: DraftSafetyVerdict::Blocked,
             checked_at: Some(chrono::Utc::now()),
-            issues: vec![
-                DraftSafetyIssue::new(
-                    DraftSafetyIssueCode::PiiSecret,
-                    DraftSafetySeverity::Blocker,
-                    "PEM private key detected",
-                )
-                .with_detail("redacted")
-                .with_citations(vec![CitationRef {
-                    message_id: Some("msg-1".into()),
-                    thread_id: None,
-                    field: "body".into(),
-                    quote: "redacted".into(),
-                }]),
-            ],
+            issues: vec![DraftSafetyIssue::new(
+                DraftSafetyIssueCode::PiiSecret,
+                DraftSafetySeverity::Blocker,
+                "PEM private key detected",
+            )
+            .with_detail("redacted")
+            .with_citations(vec![CitationRef {
+                message_id: Some("msg-1".into()),
+                thread_id: None,
+                field: "body".into(),
+                quote: "redacted".into(),
+            }])],
         };
         let resp = IpcMessage {
             id: 1,
+            source: crate::ClientKind::default(),
             payload: IpcPayload::Response(Response::Ok {
                 data: ResponseData::DraftSafetyReportResponse {
                     report: report.clone(),
@@ -1336,6 +1347,7 @@ mod tests {
         ) {
             let msg = IpcMessage {
                 id,
+                source: crate::ClientKind::default(),
                 payload: IpcPayload::Request(Request::Search {
                     query: query.clone(),
                     limit,
@@ -1500,14 +1512,16 @@ mod tests {
             let account_id = AccountId::new();
             let req = Request::SendTimeRecommendation {
                 account_id: account_id.clone(),
-                recipient: recipient.clone(),
+                recipients: vec![recipient.clone()],
+                proposed_at: None,
             };
             let json = serde_json::to_string(&req)?;
             let parsed: Request = serde_json::from_str(&json)?;
             match parsed {
-                Request::SendTimeRecommendation { account_id: a, recipient: r } => {
+                Request::SendTimeRecommendation { account_id: a, recipients: r, proposed_at: at } => {
                     prop_assert_eq!(a, account_id);
-                    prop_assert_eq!(r, recipient);
+                    prop_assert_eq!(r, vec![recipient]);
+                    prop_assert!(at.is_none(), "default None roundtrips");
                 }
                 other => prop_assert!(false, "wrong variant: {other:?}"),
             }

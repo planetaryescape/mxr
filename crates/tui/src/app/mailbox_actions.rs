@@ -267,9 +267,10 @@ impl App {
                 self.search.active = false;
                 self.screen = Screen::Mailbox;
                 self.mailbox.active_pane = ActivePane::MailList;
-                self.mailbox.selected_index = self.mailbox.selected_index.min(
-                    self.mailbox.owed_page.entries.len().saturating_sub(1),
-                );
+                self.mailbox.selected_index = self
+                    .mailbox
+                    .selected_index
+                    .min(self.mailbox.owed_page.entries.len().saturating_sub(1));
                 self.mailbox.scroll_offset = 0;
                 self.mailbox.pending_owed_refresh = true;
             }
@@ -381,6 +382,19 @@ impl App {
                 );
                 self.mutation_snapshots.insert(mutation_id, snapshot);
             }
+            Action::CancelAutoReminder => {
+                let Some(env) = self.context_envelope() else {
+                    self.status_message = Some("No message selected".into());
+                    return;
+                };
+                self.queue_mutation(
+                    Request::CancelAutoReminder {
+                        sent_message_id: env.id.clone(),
+                    },
+                    MutationEffect::StatusOnly("Reminder cancelled".into()),
+                    "Cancelling reminder...".into(),
+                );
+            }
             Action::OpenReplyQueue => {
                 self.modals.reply_queue.open_loading();
                 self.pending_reply_queue_refresh = true;
@@ -394,6 +408,23 @@ impl App {
             }
             Action::ReplyQueueModalPrev => {
                 self.modals.reply_queue.select_prev();
+            }
+            Action::OpenActivityScreen => {
+                self.modals.activity.open_loading();
+                self.pending_activity_refresh = true;
+                self.status_message = Some("Loading activity log...".into());
+            }
+            Action::CloseActivityModal => {
+                self.modals.activity.close();
+            }
+            Action::ActivityModalNext => {
+                self.modals.activity.select_next();
+            }
+            Action::ActivityModalPrev => {
+                self.modals.activity.select_prev();
+            }
+            Action::ActivityTogglePause => {
+                self.pending_activity_pause_toggle = true;
             }
             Action::ReplyQueueModalReply => {
                 let Some(env) = self.modals.reply_queue.selected().cloned() else {
@@ -567,11 +598,8 @@ impl App {
                     return;
                 };
                 let email = env.from.email.clone();
-                self.modals
-                    .briefing
-                    .open_recipient_loading(email.clone());
-                self.pending_briefing_request =
-                    Some(BriefingRequest::Recipient { email });
+                self.modals.briefing.open_recipient_loading(email.clone());
+                self.pending_briefing_request = Some(BriefingRequest::Recipient { email });
                 self.status_message = Some("Loading briefing...".into());
             }
             Action::CloseBriefingModal => {

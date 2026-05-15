@@ -349,6 +349,7 @@ impl App {
             area,
             self.compose.pending_send_confirm.as_ref(),
             self.compose.pending_send_at_input.as_deref(),
+            self.compose.pending_remind_at_input.as_deref(),
             theme,
         );
 
@@ -416,6 +417,9 @@ impl App {
         // Reply-later queue modal.
         ui::reply_queue_modal::draw(frame, area, &self.modals.reply_queue, theme);
 
+        // Activity log modal (Phase 5).
+        ui::activity_modal::draw(frame, area, &self.modals.activity, theme);
+
         // Thread summary modal (LLM result).
         ui::summary_modal::draw(frame, area, &self.modals.summary, theme);
 
@@ -445,9 +449,13 @@ impl App {
             return area;
         }
 
+        // Height of 2 = 1 row for the labels + 1 row for the bottom
+        // border drawn by saved_search_tabs::draw (Borders::BOTTOM).
+        // Earlier this was Length(1), which produced an invisible strip
+        // because the border consumed the only row.
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Min(0)])
+            .constraints([Constraint::Length(2), Constraint::Min(0)])
             .split(area);
         let active_query = self.search.active.then_some(self.search.bar.query.as_str());
         ui::saved_search_tabs::draw(
@@ -457,6 +465,7 @@ impl App {
                 searches: &self.mailbox.saved_searches,
                 active_query,
                 active_mode: self.search.active.then_some(self.search.bar.mode),
+                unread_counts: &self.mailbox.saved_search_unread_counts,
             },
             theme,
         );

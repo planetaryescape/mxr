@@ -387,6 +387,9 @@ pub(crate) const WRAPPED_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 
 pub struct AppState {
     pub store: Arc<Store>,
+    /// User-activity recorder. Single seam between the IPC dispatcher and
+    /// the `user_activity` table. Failures here are observability-only.
+    pub activity: crate::activity::Recorder,
     pub search: SearchServiceHandle,
     pub semantic: SemanticServiceHandle,
     pub relationship: RelationshipServiceHandle,
@@ -415,6 +418,13 @@ pub struct AppState {
     idle_notifies: ParkingMutex<HashMap<AccountId, Arc<Notify>>>,
     pub event_tx: broadcast::Sender<IpcMessage>,
     pub start_time: Instant,
+    /// Memoized reply quoted-text per message. Bodies are immutable
+    /// post-sync, so this never needs invalidation. Lets `PrepareReply`
+    /// skip rendering on the second hit for the same message — drives
+    /// the "blazing fast `r`/`a`" UX in the TUI. Returned values are
+    /// shared via `Arc` so the cache lookup is O(1) and lock-free
+    /// after the first render.
+    pub reply_context_cache: ParkingMutex<HashMap<MessageId, Arc<String>>>,
     /// 60s in-memory cache for `Wrapped` summaries. See
     /// `WrappedCacheKey` and `WRAPPED_CACHE_TTL` above.
     wrapped_cache: ParkingMutex<HashMap<WrappedCacheKey, (Instant, Arc<types::WrappedSummary>)>>,
@@ -449,6 +459,7 @@ impl AppState {
         std::fs::create_dir_all(&index_path)?;
 
         let store = Arc::new(Store::new(&db_path).await?);
+        let activity = crate::activity::Recorder::spawn(store.clone());
         let runtime_tasks = RuntimeTasks::default();
         let (search, search_worker) =
             SearchServiceHandle::start(open_search_index(&index_path, &store).await?);
@@ -493,6 +504,7 @@ impl AppState {
 
         Ok(Self {
             store,
+            activity,
             search,
             semantic,
             relationship,
@@ -512,6 +524,7 @@ impl AppState {
             event_tx,
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
+            reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
@@ -1220,8 +1233,10 @@ impl AppState {
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
+        let activity = crate::activity::Recorder::spawn(store.clone());
         Ok(Self {
             store,
+            activity,
             search,
             semantic,
             relationship,
@@ -1241,6 +1256,7 @@ impl AppState {
             event_tx,
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
+            reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
@@ -1276,8 +1292,10 @@ impl AppState {
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
+        let activity = crate::activity::Recorder::spawn(store.clone());
         Ok(Self {
             store,
+            activity,
             search,
             semantic,
             relationship,
@@ -1297,6 +1315,7 @@ impl AppState {
             event_tx,
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
+            reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
@@ -1357,9 +1376,11 @@ impl AppState {
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
+        let activity = crate::activity::Recorder::spawn(store.clone());
         Ok((
             Self {
                 store,
+                activity,
                 search,
                 semantic,
                 relationship,
@@ -1379,6 +1400,7 @@ impl AppState {
                 event_tx,
                 start_time: Instant::now(),
                 wrapped_cache: ParkingMutex::new(HashMap::new()),
+                reply_context_cache: ParkingMutex::new(HashMap::new()),
                 analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
                 config: RwLock::new(config),
                 shutdown_tx,

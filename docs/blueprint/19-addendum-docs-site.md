@@ -130,7 +130,13 @@ node site/scripts/generate-cli-reference.mjs
 
 ### Writing guidelines
 
+The full writing principles — voice, page shape, recipe pattern, anti-
+patterns, reviewer checklist — live in [`docs/guides/writing-docs.md`](../guides/writing-docs.md).
+The headline rules are:
+
 - Use second person ("you") not third person ("the user").
 - Show the command first, explain after. Terminal users want to copy-paste.
-- Every guide should have a "what you'll need" section upfront.
-- Keep pages focused. One task per guide. Link to reference for exhaustive details.
+- Every section ends with at least one runnable `mxr` invocation.
+- Every CLI command, every flag, every config key gets a page.
+- Recipes are mandatory where composition is possible.
+- One Diátaxis quadrant per page (tutorial / how-to / reference / explanation).

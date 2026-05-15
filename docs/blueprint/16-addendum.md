@@ -752,7 +752,7 @@ use_tls = true
 
 ## A011: Opportunistic semantic and relationship-aware drafting
 
-**Affects**: 05-search.md, 12-config.md, sync-index-lifecycle-audit.md, phase-3-sender-as-unit.md
+**Affects**: 05-search.md, 12-config.md, sync-index-lifecycle-audit.md, docs/vision.md
 
 **What changed**: Semantic retrieval is now default-on in configuration, but remains opportunistic platform state. `lexical` is still the default search mode and the immediate correctness path. Relationship memory and humanizer scoring are wired into LLM draft/summarize flows without making them core mail dependencies.
 

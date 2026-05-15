@@ -599,6 +599,11 @@ const MIGRATIONS: &[Migration] = &[
             "../migrations/037_saved_activity_filters.sql"
         )),
     },
+    Migration {
+        version: 38,
+        name: "calendar_invites",
+        kind: MigrationKind::Sql(include_str!("../migrations/038_calendar_invites.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
@@ -739,6 +744,18 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
             "tier",
             "context_json",
             "redacted",
+        ],
+    ),
+    (
+        "calendar_invites",
+        &[
+            "id",
+            "account_id",
+            "message_id",
+            "method",
+            "uid",
+            "metadata_json",
+            "raw_ics",
         ],
     ),
 ];

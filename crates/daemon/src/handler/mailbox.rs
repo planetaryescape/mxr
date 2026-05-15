@@ -5,10 +5,13 @@ use super::{
 use crate::state::AppState;
 use mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
 use mxr_core::types::{
-    BodyPartSource, Envelope, HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind,
-    MessageBody,
+    Address, BodyPartSource, CalendarAttendee, CalendarMetadata, CalendarReplyMessage, Envelope,
+    HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind, MessageBody,
 };
-use mxr_protocol::{BodyFailure, ResponseData};
+use mxr_protocol::{
+    BodyFailure, CalendarInviteActionData, CalendarInviteData, CalendarInviteResponsePreview,
+    CalendarInviteResponseResult, ResponseData,
+};
 use scraper::{Html, Selector};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -121,6 +124,303 @@ pub(super) async fn get_envelope(state: &AppState, message_id: &MessageId) -> Ha
 pub(super) async fn get_body(state: &AppState, message_id: &MessageId) -> HandlerResult {
     let body = load_body_for_message(state, message_id).await?;
     Ok(ResponseData::Body { body })
+}
+
+pub(super) async fn get_invite(state: &AppState, message_id: &MessageId) -> HandlerResult {
+    let invite = state
+        .store
+        .get_calendar_invite_for_message(message_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Calendar invite not found: {message_id}"))?;
+    Ok(ResponseData::Invite {
+        invite: CalendarInviteData {
+            id: invite.id,
+            account_id: invite.account_id,
+            message_id: invite.message_id,
+            metadata: invite.metadata,
+            created_at: invite.created_at,
+            updated_at: invite.updated_at,
+        },
+    })
+}
+
+pub(super) async fn list_invites(state: &AppState, limit: u32) -> HandlerResult {
+    let invites = state
+        .store
+        .list_calendar_invites(limit)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|invite| CalendarInviteData {
+            id: invite.id,
+            account_id: invite.account_id,
+            message_id: invite.message_id,
+            metadata: invite.metadata,
+            created_at: invite.created_at,
+            updated_at: invite.updated_at,
+        })
+        .collect();
+    Ok(ResponseData::Invites { invites })
+}
+
+pub(super) async fn backfill_invites(state: &AppState) -> HandlerResult {
+    let backfilled = state
+        .store
+        .backfill_calendar_invites_from_bodies()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::CalendarInviteBackfill { backfilled })
+}
+
+pub(super) async fn respond_invite(
+    state: &AppState,
+    message_id: &MessageId,
+    action: CalendarInviteActionData,
+    dry_run: bool,
+) -> HandlerResult {
+    let preview = build_invite_response_preview(state, message_id, action).await?;
+    if dry_run {
+        return Ok(ResponseData::InviteResponsePreview { preview });
+    }
+
+    let account_id = preview_account_id(state, message_id).await?;
+    let account = state
+        .store
+        .get_account(&account_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Account not found for calendar invite".to_string())?;
+    let from = Address {
+        name: Some(account.name),
+        email: account.email,
+    };
+    let sender = state.send_provider_for_account(&account_id)?;
+    let rfc2822_message_id = mxr_outbound::email::generate_message_id(&from);
+    let reply = CalendarReplyMessage {
+        to: Address {
+            name: None,
+            email: preview.organizer_email.clone(),
+        },
+        subject: preview.subject.clone(),
+        body_text: preview.body_text.clone(),
+        ics: preview.ics.clone(),
+    };
+    let receipt = sender
+        .send_calendar_reply(&reply, &from, &rfc2822_message_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    state
+        .store
+        .update_calendar_invite_partstat(message_id, &preview.attendee_email, action.partstat())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ResponseData::InviteResponseSent {
+        result: CalendarInviteResponseResult {
+            message_id: message_id.clone(),
+            action,
+            provider_message_id: receipt.provider_message_id,
+            rfc2822_message_id: receipt.rfc2822_message_id,
+        },
+    })
+}
+
+async fn preview_account_id(state: &AppState, message_id: &MessageId) -> Result<AccountId, String> {
+    state
+        .store
+        .get_calendar_invite_for_message(message_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .map(|invite| invite.account_id)
+        .ok_or_else(|| format!("Calendar invite not found: {message_id}"))
+}
+
+async fn build_invite_response_preview(
+    state: &AppState,
+    message_id: &MessageId,
+    action: CalendarInviteActionData,
+) -> Result<CalendarInviteResponsePreview, String> {
+    let invite = state
+        .store
+        .get_calendar_invite_for_message(message_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Calendar invite not found: {message_id}"))?;
+    let account = state
+        .store
+        .get_account(&invite.account_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Account not found for calendar invite".to_string())?;
+
+    let mut calendar = invite.metadata;
+    if calendar
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("could not be parsed"))
+    {
+        return Err("Calendar invite has fatal parser warnings; cannot answer safely".to_string());
+    }
+    if !calendar
+        .method
+        .as_deref()
+        .is_some_and(|method| method.eq_ignore_ascii_case("REQUEST"))
+    {
+        return Err("Only METHOD:REQUEST invites can be answered".to_string());
+    }
+    let organizer = calendar
+        .organizer
+        .as_ref()
+        .ok_or_else(|| "Calendar invite has no organizer".to_string())?;
+    let organizer_email = organizer.email.clone();
+    let uid = calendar
+        .uid
+        .as_deref()
+        .ok_or_else(|| "Calendar invite has no UID".to_string())?
+        .to_string();
+    if state
+        .store
+        .calendar_invite_has_different_organizer(
+            &invite.account_id,
+            message_id,
+            &uid,
+            calendar.recurrence_id.as_deref(),
+            &organizer_email,
+        )
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        calendar.warnings.push(
+            "calendar invite has same UID as another invite with a different organizer".into(),
+        );
+    }
+    if state
+        .store
+        .calendar_invite_has_newer_sequence(
+            &invite.account_id,
+            message_id,
+            &uid,
+            calendar.recurrence_id.as_deref(),
+            calendar.sequence,
+        )
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        return Err("Calendar invite has a newer update; answer the latest invite".to_string());
+    }
+    let mut account_emails = state
+        .store
+        .list_account_addresses(&invite.account_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|address| address.email)
+        .collect::<Vec<_>>();
+    if !account_emails
+        .iter()
+        .any(|email| email.eq_ignore_ascii_case(&account.email))
+    {
+        account_emails.push(account.email.clone());
+    }
+    let attendee = matching_attendee(&calendar, &account_emails)?;
+
+    let subject = format!(
+        "{}: {}",
+        action.label(),
+        calendar.summary.as_deref().unwrap_or("calendar invite")
+    );
+    let body_text = format!(
+        "{} has {} this invitation.",
+        account.email,
+        action.label().to_ascii_lowercase()
+    );
+    let ics = build_reply_ics(&calendar, &uid, organizer_email.as_str(), attendee, action);
+
+    Ok(CalendarInviteResponsePreview {
+        message_id: message_id.clone(),
+        action,
+        attendee_email: attendee.email.clone(),
+        organizer_email,
+        subject,
+        body_text,
+        ics,
+        warnings: calendar.warnings,
+    })
+}
+
+fn matching_attendee<'a>(
+    calendar: &'a CalendarMetadata,
+    account_emails: &[String],
+) -> Result<&'a CalendarAttendee, String> {
+    let matches = calendar
+        .attendees
+        .iter()
+        .filter(|attendee| {
+            account_emails
+                .iter()
+                .any(|email| attendee.email.eq_ignore_ascii_case(email))
+        })
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [attendee] => Ok(*attendee),
+        [] => Err("No account address is an attendee on this invite".to_string()),
+        _ => Err("Calendar invite has multiple attendees matching account addresses".to_string()),
+    }
+}
+
+fn build_reply_ics(
+    calendar: &CalendarMetadata,
+    uid: &str,
+    organizer_email: &str,
+    attendee: &CalendarAttendee,
+    action: CalendarInviteActionData,
+) -> String {
+    let now = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+    let cn = attendee
+        .name
+        .as_deref()
+        .map(|name| format!(";CN={}", escape_param(name)))
+        .unwrap_or_default();
+    let mut lines = vec![
+        "BEGIN:VCALENDAR".to_string(),
+        "PRODID:-//mxr//calendar email//EN".to_string(),
+        "VERSION:2.0".to_string(),
+        "METHOD:REPLY".to_string(),
+        "BEGIN:VEVENT".to_string(),
+        format!("UID:{}", escape_text(uid)),
+        format!("DTSTAMP:{now}"),
+    ];
+    if let Some(sequence) = calendar.sequence {
+        lines.push(format!("SEQUENCE:{sequence}"));
+    }
+    if let Some(recurrence_id) = calendar.recurrence_id.as_deref() {
+        lines.push(format!("RECURRENCE-ID:{}", escape_text(recurrence_id)));
+    }
+    if let Some(summary) = calendar.summary.as_deref() {
+        lines.push(format!("SUMMARY:{}", escape_text(summary)));
+    }
+    lines.push(format!("ORGANIZER:mailto:{organizer_email}"));
+    lines.push(format!(
+        "ATTENDEE{cn};PARTSTAT={}:mailto:{}",
+        action.partstat(),
+        attendee.email
+    ));
+    lines.push("END:VEVENT".to_string());
+    lines.push("END:VCALENDAR".to_string());
+    lines.join("\r\n") + "\r\n"
+}
+
+fn escape_text(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace(';', "\\;")
+        .replace(',', "\\,")
+        .replace('\n', "\\n")
+}
+
+fn escape_param(value: &str) -> String {
+    value.replace('"', "'")
 }
 
 pub(super) async fn get_html_image_assets(

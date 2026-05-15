@@ -604,9 +604,7 @@ pub async fn run() -> anyhow::Result<()> {
                     &bg,
                     Request::ListActivity {
                         filter: mxr_protocol::ActivityFilter {
-                            since: Some(
-                                chrono::Utc::now().timestamp_millis() - 86_400_000,
-                            ),
+                            since: Some(chrono::Utc::now().timestamp_millis() - 86_400_000),
                             ..Default::default()
                         },
                         limit: 100,
@@ -1027,9 +1025,7 @@ pub async fn run() -> anyhow::Result<()> {
                     ReplaceableRequestKey::DiagnosticsActivity,
                     Request::ListActivity {
                         filter: mxr_protocol::ActivityFilter {
-                            since: Some(
-                                chrono::Utc::now().timestamp_millis() - 86_400_000,
-                            ),
+                            since: Some(chrono::Utc::now().timestamp_millis() - 86_400_000),
                             ..Default::default()
                         },
                         limit: 200,
@@ -1574,6 +1570,9 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::MutationResult { result },
                     }) => Err(MxrError::Ipc(format_mutation_failure(&result))),
+                    Ok(Response::Ok {
+                        data: ResponseData::InviteResponseSent { .. },
+                    }) => Ok(effect),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
@@ -3962,6 +3961,7 @@ mod tests {
                     calendar: Some(CalendarMetadata {
                         method: Some("REQUEST".into()),
                         summary: Some("Demo call".into()),
+                        ..Default::default()
                     }),
                     ..Default::default()
                 },
@@ -5062,6 +5062,106 @@ mod tests {
             app.pending_mutation_status.as_deref(),
             Some("Marking 3 messages as read and archiving...")
         );
+    }
+
+    #[test]
+    fn invite_response_action_requires_calendar_metadata() {
+        let mut app = App::new();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+
+        app.apply(Action::RespondInvite(
+            mxr_protocol::CalendarInviteActionData::Accept,
+        ));
+
+        assert!(app.pending_mutation_queue.is_empty());
+        assert!(app.modals.pending_bulk_confirm.is_none());
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("No calendar invite found for this message")
+        );
+    }
+
+    #[test]
+    fn invite_response_action_confirms_before_sending_imip_reply() {
+        let mut app = App::new();
+        let envelope = make_test_envelopes(1).remove(0);
+        app.mailbox.envelopes = vec![envelope.clone()];
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        app.mailbox.body_cache.insert(
+            envelope.id.clone(),
+            MessageBody {
+                message_id: envelope.id.clone(),
+                text_plain: Some("Join us".into()),
+                text_html: None,
+                attachments: Vec::new(),
+                fetched_at: chrono::Utc::now(),
+                metadata: MessageMetadata {
+                    calendar: Some(CalendarMetadata {
+                        method: Some("REQUEST".into()),
+                        summary: Some("Planning session".into()),
+                        starts_at: Some("2026-05-20T15:00:00Z".into()),
+                        organizer: Some(CalendarPerson {
+                            email: "organizer@example.com".into(),
+                            name: Some("Organizer".into()),
+                            uri: Some("mailto:organizer@example.com".into()),
+                        }),
+                        attendees: vec![CalendarAttendee {
+                            email: "user@example.com".into(),
+                            name: Some("User".into()),
+                            uri: Some("mailto:user@example.com".into()),
+                            partstat: Some("NEEDS-ACTION".into()),
+                            role: Some("REQ-PARTICIPANT".into()),
+                            rsvp: Some(true),
+                        }],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            },
+        );
+
+        app.apply(Action::RespondInvite(
+            mxr_protocol::CalendarInviteActionData::Accept,
+        ));
+
+        let pending = app
+            .modals
+            .pending_bulk_confirm
+            .as_ref()
+            .expect("invite response should require confirmation");
+        assert!(pending.detail.contains("Planning session"));
+        assert!(pending.detail.contains("organizer@example.com"));
+        match &pending.request {
+            Request::RespondInvite {
+                message_id,
+                action,
+                dry_run,
+            } => {
+                assert_eq!(message_id, &envelope.id);
+                assert_eq!(*action, mxr_protocol::CalendarInviteActionData::Accept);
+                assert!(!dry_run);
+            }
+            other => panic!("expected RespondInvite request, got {other:?}"),
+        }
+        assert!(app.pending_mutation_queue.is_empty());
+
+        app.apply(Action::OpenSelected);
+
+        assert!(app.modals.pending_bulk_confirm.is_none());
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+        match &app.pending_mutation_queue[0].request {
+            Request::RespondInvite {
+                message_id,
+                action,
+                dry_run,
+            } => {
+                assert_eq!(message_id, &envelope.id);
+                assert_eq!(*action, mxr_protocol::CalendarInviteActionData::Accept);
+                assert!(!dry_run);
+            }
+            other => panic!("expected queued RespondInvite request, got {other:?}"),
+        }
     }
 
     /// `format_mutation_failure` is what the runtime surfaces to the

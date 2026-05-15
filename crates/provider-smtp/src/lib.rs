@@ -151,6 +151,46 @@ impl MailSendProvider for SmtpSendProvider {
             rfc2822_message_id: rfc2822_message_id.to_string(),
         })
     }
+
+    async fn send_calendar_reply(
+        &self,
+        reply: &mxr_core::CalendarReplyMessage,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> Result<SendReceipt, MxrError> {
+        let message = mxr_outbound::email::build_calendar_reply_message_with_id(
+            reply,
+            from,
+            rfc2822_message_id,
+        )
+        .map_err(|e| MxrError::Provider(format!("Failed to build calendar reply: {e}")))?;
+
+        #[cfg(test)]
+        if let Some(sender) = &self.test_sender {
+            sender
+                .send(message)
+                .await
+                .map_err(|e| MxrError::Provider(format!("SMTP send failed: {e}")))?;
+        }
+
+        #[cfg(not(test))]
+        {
+            let transport = self
+                .build_transport()
+                .await
+                .map_err(|e| MxrError::Provider(e.to_string()))?;
+            transport
+                .send(message)
+                .await
+                .map_err(|e| MxrError::Provider(format!("SMTP send failed: {e}")))?;
+        }
+
+        Ok(SendReceipt {
+            provider_message_id: None,
+            sent_at: chrono::Utc::now(),
+            rfc2822_message_id: rfc2822_message_id.to_string(),
+        })
+    }
 }
 
 async fn load_attachments(paths: &[PathBuf]) -> Result<Vec<LoadedAttachment>, MxrError> {

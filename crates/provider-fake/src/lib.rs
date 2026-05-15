@@ -338,6 +338,34 @@ impl MailSendProvider for FakeProvider {
     ) -> Result<Option<String>, MxrError> {
         Ok(Some(format!("fake-draft-{}", uuid::Uuid::now_v7())))
     }
+
+    async fn send_calendar_reply(
+        &self,
+        reply: &mxr_core::CalendarReplyMessage,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> Result<SendReceipt, MxrError> {
+        self.sent_guard().push(Draft {
+            id: mxr_core::DraftId::new(),
+            account_id: self.account_id.clone(),
+            reply_headers: None,
+            intent: mxr_core::DraftIntent::Reply,
+            to: vec![reply.to.clone()],
+            cc: Vec::new(),
+            bcc: Vec::new(),
+            subject: reply.subject.clone(),
+            body_markdown: format!("{}\n\n{}", reply.body_text, reply.ics),
+            attachments: Vec::new(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        });
+        let _ = from;
+        Ok(SendReceipt {
+            provider_message_id: Some(format!("fake-calendar-sent-{}", uuid::Uuid::now_v7())),
+            sent_at: chrono::Utc::now(),
+            rfc2822_message_id: rfc2822_message_id.to_string(),
+        })
+    }
 }
 
 #[cfg(test)]

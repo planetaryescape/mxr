@@ -178,6 +178,7 @@ fn mail_router() -> Router<AppState> {
         .route("/actions/snooze/presets", get(snooze_presets))
         .route("/actions/snooze", post(snooze))
         .route("/actions/unsubscribe", post(unsubscribe))
+        .route("/actions/invite/reply", post(reply_to_invite))
         .route("/attachments/open", post(open_attachment))
         .route("/attachments/download", post(download_attachment))
         .route("/labels/create", post(create_label))
@@ -800,6 +801,14 @@ struct SnoozeRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct InviteReplyRequest {
+    message_id: String,
+    action: mxr_protocol::CalendarInviteActionData,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+#[derive(Debug, Deserialize)]
 struct LlmConfigRequest {
     enabled: bool,
     base_url: String,
@@ -979,6 +988,10 @@ async fn thread(
                 .iter()
                 .map(|body| body.attachments.len())
                 .sum::<usize>();
+            let invite_count = bodies
+                .iter()
+                .filter(|body| body.metadata.calendar.is_some())
+                .count();
 
             Ok(Json(json!({
                 "thread": thread,
@@ -1000,6 +1013,13 @@ async fn thread(
                             "No attachments".to_string()
                         } else {
                             format!("{attachment_count} attachments")
+                        },
+                        if invite_count == 0 {
+                            "No calendar invites".to_string()
+                        } else if invite_count == 1 {
+                            "1 calendar invite".to_string()
+                        } else {
+                            format!("{invite_count} calendar invites")
                         }
                     ],
                 }
@@ -1472,6 +1492,36 @@ async fn unsubscribe(
     )
     .await?;
     Ok(Json(json!({ "ok": true })))
+}
+
+async fn reply_to_invite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<InviteReplyRequest>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let message_id = parse_message_id(&request.message_id)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::RespondInvite {
+            message_id,
+            action: request.action,
+            dry_run: request.dry_run,
+        },
+    )
+    .await?
+    {
+        ResponseData::InviteResponsePreview { preview } => Ok(Json(json!({
+            "status": "preview",
+            "preview": preview,
+        }))),
+        ResponseData::InviteResponseSent { result } => Ok(Json(json!({
+            "status": "sent",
+            "result": result,
+        }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
 }
 
 async fn open_attachment(
@@ -3120,8 +3170,8 @@ mod tests {
     use mxr_core::{
         id::{AccountId, AttachmentId, MessageId, ThreadId},
         types::{
-            Address, AttachmentDisposition, AttachmentMeta, Draft, Envelope, Label, LabelKind,
-            MessageBody, MessageFlags, MessageMetadata, SavedSearch, SortOrder,
+            Address, AttachmentDisposition, AttachmentMeta, CalendarMetadata, Draft, Envelope,
+            Label, LabelKind, MessageBody, MessageFlags, MessageMetadata, SavedSearch, SortOrder,
             SubscriptionSummary, Thread, UnsubscribeMethod,
         },
     };
@@ -4551,7 +4601,12 @@ mod tests {
         let mut envelope = sample_envelope();
         envelope.label_provider_ids = vec!["INBOX".into(), "follow-up".into()];
         let thread = sample_thread(&envelope);
-        let body = sample_body(&envelope);
+        let mut body = sample_body(&envelope);
+        body.metadata.calendar = Some(CalendarMetadata {
+            method: Some("REQUEST".into()),
+            summary: Some("Planning session".into()),
+            ..Default::default()
+        });
         let labels = sample_labels(&envelope.account_id);
         let thread_id = thread.id.to_string();
         let message_id = envelope.id.to_string();
@@ -4613,6 +4668,15 @@ mod tests {
         assert!(json["messages"][0]["date_full"].as_str().is_some());
         assert!(json["messages"][0]["date_relative"].as_str().is_some());
         assert_eq!(json["bodies"][0]["text_html"], "<p>rich html</p>");
+        assert_eq!(
+            json["bodies"][0]["metadata"]["calendar"]["summary"],
+            "Planning session"
+        );
+        assert!(json["right_rail"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item == "1 calendar invite"));
     }
 
     #[tokio::test]
@@ -5674,6 +5738,75 @@ mod tests {
         let json: serde_json::Value = response.json().await.unwrap();
         assert_eq!(json["ok"], true);
         assert_eq!(*captured.lock().unwrap(), vec![expected.id.to_string()]);
+    }
+
+    #[tokio::test]
+    async fn invite_reply_endpoint_proxies_dry_run_request() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let expected = sample_envelope();
+        let expected_id = expected.id.to_string();
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let captured_request = captured.clone();
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            move |request| match request {
+                Request::RespondInvite {
+                    message_id,
+                    action,
+                    dry_run,
+                } => {
+                    *captured_request.lock().unwrap() =
+                        Some((message_id.to_string(), action, dry_run));
+                    Some(Response::Ok {
+                        data: ResponseData::InviteResponsePreview {
+                            preview: mxr_protocol::CalendarInviteResponsePreview {
+                                message_id,
+                                action,
+                                attendee_email: "user@example.com".into(),
+                                organizer_email: "organizer@example.com".into(),
+                                subject: "Accepted: Planning".into(),
+                                body_text: "user@example.com has accepted this invitation.".into(),
+                                ics: "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".into(),
+                                warnings: Vec::new(),
+                            },
+                        },
+                    })
+                }
+                _ => None,
+            },
+            None,
+        )
+        .await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let response = reqwest::Client::new()
+            .post(format!("http://{addr}/actions/invite/reply"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({
+                "message_id": expected_id,
+                "action": "accept",
+                "dry_run": true,
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(json["status"], "preview");
+        assert_eq!(json["preview"]["organizer_email"], "organizer@example.com");
+        let captured = captured.lock().unwrap().clone().unwrap();
+        assert_eq!(captured.0, expected.id.to_string());
+        assert_eq!(captured.1, mxr_protocol::CalendarInviteActionData::Accept);
+        assert!(captured.2);
     }
 
     #[tokio::test]

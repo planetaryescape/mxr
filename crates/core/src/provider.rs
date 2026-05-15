@@ -105,6 +105,17 @@ pub trait MailSendProvider: Send + Sync {
         rfc2822_message_id: &str,
     ) -> Result<SendReceipt>;
 
+    async fn send_calendar_reply(
+        &self,
+        _reply: &CalendarReplyMessage,
+        _from: &Address,
+        _rfc2822_message_id: &str,
+    ) -> Result<SendReceipt> {
+        Err(MxrError::Provider(
+            "Calendar RSVP sending not supported by this provider".to_string(),
+        ))
+    }
+
     /// Save a draft to the mail server. Returns the server-side draft ID if supported.
     /// Default: returns Ok(None) (provider doesn't support server drafts).
     async fn save_draft(&self, _draft: &Draft, _from: &Address) -> Result<Option<String>> {

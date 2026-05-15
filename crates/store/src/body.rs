@@ -126,8 +126,11 @@ impl super::Store {
             .bind(local_path)
             .bind(&att.provider_id)
             .execute(self.writer())
-            .await?;
+                .await?;
         }
+
+        self.replace_calendar_invite_for_body(&body.message_id, body.metadata.calendar.as_ref())
+            .await?;
 
         Ok(())
     }
@@ -159,7 +162,8 @@ mod tests {
     use super::super::Store;
     use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
     use mxr_core::{
-        AttachmentDisposition, AttachmentId, AttachmentMeta, MessageBody, MessageMetadata,
+        AttachmentDisposition, AttachmentId, AttachmentMeta, CalendarAttendee, CalendarMetadata,
+        CalendarPerson, MessageBody, MessageMetadata,
     };
 
     fn attachment(message_id: mxr_core::MessageId, provider_id: &str) -> AttachmentMeta {
@@ -225,5 +229,122 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(provider_ids, vec!["first"]);
+    }
+
+    #[tokio::test]
+    async fn insert_body_persists_calendar_invite_for_message() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        store.upsert_envelope(&envelope).await.unwrap();
+
+        let mut message_body = body(envelope.id.clone(), Vec::new());
+        message_body.metadata.calendar = Some(CalendarMetadata {
+            method: Some("REQUEST".into()),
+            summary: Some("Planning meeting".into()),
+            component_kind: Some("VEVENT".into()),
+            uid: Some("planning-123@example.com".into()),
+            sequence: Some(2),
+            recurrence_id: None,
+            dtstamp: Some("20240515T120000Z".into()),
+            starts_at: Some("20240520T090000Z".into()),
+            ends_at: Some("20240520T093000Z".into()),
+            description: None,
+            location: Some("Room 4".into()),
+            status: None,
+            rrule: None,
+            organizer: Some(CalendarPerson {
+                email: "alice@example.com".into(),
+                name: Some("Alice Smith".into()),
+                uri: Some("mailto:alice@example.com".into()),
+            }),
+            attendees: vec![CalendarAttendee {
+                email: "bob@example.com".into(),
+                name: Some("Bob Example".into()),
+                uri: Some("mailto:bob@example.com".into()),
+                partstat: Some("NEEDS-ACTION".into()),
+                role: None,
+                rsvp: Some(true),
+            }],
+            rsvp_requested: true,
+            raw_ics: Some("BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n".into()),
+            warnings: Vec::new(),
+        });
+
+        store.insert_body(&message_body).await.unwrap();
+
+        let invite = store
+            .get_calendar_invite_for_message(&envelope.id)
+            .await
+            .unwrap()
+            .expect("calendar invite row");
+        assert_eq!(invite.account_id, account.id);
+        assert_eq!(invite.message_id, envelope.id);
+        assert_eq!(invite.metadata.summary.as_deref(), Some("Planning meeting"));
+        assert_eq!(
+            invite.metadata.raw_ics.as_deref(),
+            Some("BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n")
+        );
+        assert_eq!(invite.metadata.attendees[0].email, "bob@example.com");
+    }
+
+    #[tokio::test]
+    async fn backfill_calendar_invites_restores_rows_from_existing_body_metadata() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        store.upsert_envelope(&envelope).await.unwrap();
+
+        let mut message_body = body(envelope.id.clone(), Vec::new());
+        message_body.metadata.calendar = Some(CalendarMetadata {
+            method: Some("REQUEST".into()),
+            summary: Some("Planning meeting".into()),
+            component_kind: Some("VEVENT".into()),
+            uid: Some("planning-123@example.com".into()),
+            sequence: Some(2),
+            starts_at: Some("20240520T090000Z".into()),
+            organizer: Some(CalendarPerson {
+                email: "alice@example.com".into(),
+                name: Some("Alice Smith".into()),
+                uri: Some("mailto:alice@example.com".into()),
+            }),
+            attendees: vec![CalendarAttendee {
+                email: "bob@example.com".into(),
+                name: Some("Bob Example".into()),
+                uri: Some("mailto:bob@example.com".into()),
+                partstat: Some("NEEDS-ACTION".into()),
+                role: None,
+                rsvp: Some(true),
+            }],
+            raw_ics: Some("BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n".into()),
+            ..Default::default()
+        });
+
+        store.insert_body(&message_body).await.unwrap();
+        sqlx::query("DELETE FROM calendar_invites WHERE message_id = ?")
+            .bind(envelope.id.as_str())
+            .execute(store.writer())
+            .await
+            .unwrap();
+        assert!(store
+            .get_calendar_invite_for_message(&envelope.id)
+            .await
+            .unwrap()
+            .is_none());
+
+        let backfilled = store.backfill_calendar_invites_from_bodies().await.unwrap();
+
+        assert_eq!(backfilled, 1);
+        assert!(store
+            .get_calendar_invite_for_message(&envelope.id)
+            .await
+            .unwrap()
+            .is_some());
     }
 }

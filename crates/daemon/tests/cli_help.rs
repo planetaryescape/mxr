@@ -88,15 +88,30 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_activity", &["activity", "--help"]),
         ("cli_help_activity_list", &["activity", "list", "--help"]),
         ("cli_help_activity_stats", &["activity", "stats", "--help"]),
-        ("cli_help_activity_export", &["activity", "export", "--help"]),
+        (
+            "cli_help_activity_export",
+            &["activity", "export", "--help"],
+        ),
         ("cli_help_activity_prune", &["activity", "prune", "--help"]),
-        ("cli_help_activity_redact", &["activity", "redact", "--help"]),
+        (
+            "cli_help_activity_redact",
+            &["activity", "redact", "--help"],
+        ),
         ("cli_help_activity_clear", &["activity", "clear", "--help"]),
         ("cli_help_activity_pause", &["activity", "pause", "--help"]),
-        ("cli_help_activity_resume", &["activity", "resume", "--help"]),
+        (
+            "cli_help_activity_resume",
+            &["activity", "resume", "--help"],
+        ),
         ("cli_help_activity_saved", &["activity", "saved", "--help"]),
-        ("cli_help_activity_recall", &["activity", "recall", "--help"]),
-        ("cli_help_activity_replay", &["activity", "replay", "--help"]),
+        (
+            "cli_help_activity_recall",
+            &["activity", "recall", "--help"],
+        ),
+        (
+            "cli_help_activity_replay",
+            &["activity", "replay", "--help"],
+        ),
         ("cli_help_activity_tail", &["activity", "tail", "--help"]),
         ("cli_help_logs", &["logs", "--help"]),
         ("cli_help_reset", &["reset", "--help"]),
@@ -176,6 +191,15 @@ fn cli_help_snapshots_cover_all_commands() {
         (
             "cli_help_attachments_open",
             &["attachments", "open", "--help"],
+        ),
+        ("cli_help_invite", &["invite", "--help"]),
+        ("cli_help_invite_show", &["invite", "show", "--help"]),
+        ("cli_help_invite_reply", &["invite", "reply", "--help"]),
+        ("cli_help_invites", &["invites", "--help"]),
+        ("cli_help_invites_list", &["invites", "list", "--help"]),
+        (
+            "cli_help_invites_backfill",
+            &["invites", "backfill", "--help"],
         ),
         ("cli_help_archive", &["archive", "--help"]),
         ("cli_help_read_archive", &["read-archive", "--help"]),
@@ -283,7 +307,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ),
     ];
 
-    assert_eq!(cases.len(), 164);
+    assert_eq!(cases.len(), 170);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

@@ -291,6 +291,7 @@ impl App {
                 .as_deref()
                 .is_some_and(Self::html_has_remote_content),
             remote_content_enabled: self.mailbox.remote_content_enabled,
+            calendar: body.metadata.calendar.clone(),
             original_lines: stats.map(|(original, _)| original),
             cleaned_lines: stats.map(|(_, cleaned)| cleaned),
         }

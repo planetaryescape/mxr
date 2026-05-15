@@ -37,6 +37,7 @@ export default defineConfig({
             { label: 'Triage Flow', slug: 'guides/triage-flow' },
             { label: 'Compose', slug: 'guides/compose' },
             { label: 'Pre-send Safety', slug: 'guides/pre-send-safety' },
+            { label: 'Calendar Invites', slug: 'guides/calendar-invites' },
             { label: 'Search Workflow', slug: 'guides/search' },
             { label: 'Labels and Saved Searches', slug: 'guides/labels-and-saved-searches' },
             { label: 'Sender View', slug: 'guides/sender-view' },

@@ -1,7 +1,7 @@
 use crate::attachments::{load_attachment_paths_sync, AttachmentLoadError, LoadedAttachment};
 use crate::render::render_markdown;
 use lettre::message::{header::ContentType, Attachment, Mailbox, Message, MultiPart, SinglePart};
-use mxr_core::types::{Address, Draft};
+use mxr_core::types::{Address, CalendarReplyMessage, Draft};
 
 /// Generate a stable RFC 5322 Message-ID header for an outgoing message.
 /// Daemon callers persist this on the draft before send so retries / failure
@@ -122,6 +122,42 @@ pub fn build_message_with_id(
         .map_err(|err| EmailBuildError::Message(err.to_string()))
 }
 
+pub fn build_calendar_reply_message_with_id(
+    reply: &CalendarReplyMessage,
+    from: &Address,
+    message_id: &str,
+) -> Result<Message, EmailBuildError> {
+    let builder = Message::builder()
+        .from(to_mailbox(from)?)
+        .to(to_mailbox(&reply.to)?)
+        .subject(&reply.subject)
+        .message_id(Some(message_id.to_string()));
+
+    let body = MultiPart::alternative()
+        .singlepart(
+            SinglePart::builder()
+                .header(
+                    ContentType::parse("text/plain; charset=utf-8")
+                        .expect("static text/plain content type should parse"),
+                )
+                .body(reply.body_text.clone()),
+        )
+        .singlepart(
+            SinglePart::builder()
+                .header(
+                    ContentType::parse(
+                        "text/calendar; method=REPLY; charset=utf-8; component=vevent",
+                    )
+                    .expect("static text/calendar content type should parse"),
+                )
+                .body(reply.ics.clone()),
+        );
+
+    builder
+        .multipart(body)
+        .map_err(|err| EmailBuildError::Message(err.to_string()))
+}
+
 pub fn format_message_for_gmail(message: &Message) -> Vec<u8> {
     message.formatted()
 }
@@ -144,4 +180,45 @@ pub enum EmailBuildError {
     Attachment(#[from] AttachmentLoadError),
     #[error("failed to build message: {0}")]
     Message(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn calendar_reply_message_contains_imip_reply_part() {
+        let reply = CalendarReplyMessage {
+            to: Address {
+                name: Some("Organizer".into()),
+                email: "organizer@example.com".into(),
+            },
+            subject: "Accepted: Demo".into(),
+            body_text: "user@example.com has accepted this invitation.".into(),
+            ics: concat!(
+                "BEGIN:VCALENDAR\r\n",
+                "VERSION:2.0\r\n",
+                "METHOD:REPLY\r\n",
+                "BEGIN:VEVENT\r\n",
+                "UID:demo-uid\r\n",
+                "ATTENDEE;PARTSTAT=ACCEPTED:mailto:user@example.com\r\n",
+                "END:VEVENT\r\n",
+                "END:VCALENDAR\r\n"
+            )
+            .into(),
+        };
+        let from = Address {
+            name: Some("User".into()),
+            email: "user@example.com".into(),
+        };
+
+        let message =
+            build_calendar_reply_message_with_id(&reply, &from, "<reply@example.com>").unwrap();
+        let raw = String::from_utf8(message.formatted()).unwrap();
+
+        assert!(raw.contains("Content-Type: multipart/alternative;"));
+        assert!(raw.contains("Content-Type: text/calendar; method=REPLY;"));
+        assert!(raw.contains("METHOD:REPLY"));
+        assert!(raw.contains("PARTSTAT=ACCEPTED"));
+    }
 }

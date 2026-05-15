@@ -105,4 +105,36 @@ impl MailSendProvider for OutlookSmtpSendProvider {
             rfc2822_message_id: rfc2822_message_id.to_string(),
         })
     }
+
+    async fn send_calendar_reply(
+        &self,
+        reply: &mxr_core::CalendarReplyMessage,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> Result<SendReceipt, MxrError> {
+        let _message = mxr_outbound::email::build_calendar_reply_message_with_id(
+            reply,
+            from,
+            rfc2822_message_id,
+        )
+        .map_err(|e| MxrError::Provider(format!("failed to build calendar reply: {e}")))?;
+
+        #[cfg(not(test))]
+        {
+            let transport = self
+                .build_transport()
+                .await
+                .map_err(|e| MxrError::Provider(e))?;
+            transport
+                .send(_message)
+                .await
+                .map_err(|e| MxrError::Provider(format!("SMTP send failed: {e}")))?;
+        }
+
+        Ok(SendReceipt {
+            provider_message_id: None,
+            sent_at: chrono::Utc::now(),
+            rfc2822_message_id: rfc2822_message_id.to_string(),
+        })
+    }
 }

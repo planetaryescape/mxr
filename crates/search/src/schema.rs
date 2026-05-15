@@ -24,6 +24,7 @@ pub struct MxrSchema {
     pub size_bytes: Field,
     pub flags: Field,
     pub has_attachments: Field,
+    pub has_calendar: Field,
     pub has_link: Field,
     pub link_density: Field,
     pub has_user_labels: Field,
@@ -65,6 +66,7 @@ impl MxrSchema {
         let size_bytes = builder.add_u64_field("size_bytes", INDEXED | STORED);
         let flags = builder.add_u64_field("flags", INDEXED);
         let has_attachments = builder.add_bool_field("has_attachments", INDEXED);
+        let has_calendar = builder.add_bool_field("has_calendar", INDEXED);
         // Link-density indexing: a boolean for the cheap `has:link` filter
         // (covers `Some` + `Heavy`) plus a u64 tier (0/1/2) for `has:link-heavy`
         // and `has:link-none`. See `LinkDensity::as_db_u8` for the encoding.
@@ -106,6 +108,7 @@ impl MxrSchema {
             size_bytes,
             flags,
             has_attachments,
+            has_calendar,
             has_link,
             link_density,
             has_user_labels,

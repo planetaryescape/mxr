@@ -72,6 +72,7 @@ pub struct BodyViewMetadata {
     pub inline_images: bool,
     pub remote_content_available: bool,
     pub remote_content_enabled: bool,
+    pub calendar: Option<CalendarMetadata>,
     pub original_lines: Option<usize>,
     pub cleaned_lines: Option<usize>,
 }

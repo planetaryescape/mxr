@@ -1297,6 +1297,16 @@ pub enum Command {
         #[command(subcommand)]
         action: AttachmentAction,
     },
+    /// Inspect and respond to calendar invites in email
+    Invite {
+        #[command(subcommand)]
+        action: InviteAction,
+    },
+    /// List calendar invites found in email
+    Invites {
+        #[command(subcommand)]
+        action: InvitesAction,
+    },
     /// Configuration management
     Config {
         #[command(subcommand)]
@@ -1564,6 +1574,59 @@ pub enum OutputFormat {
     Jsonl,
     Csv,
     Ids,
+}
+
+#[derive(Subcommand)]
+pub enum InviteAction {
+    /// Show the calendar invite attached to one message
+    Show {
+        message_id: String,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Reply to a calendar invite
+    Reply {
+        message_id: String,
+        #[arg(value_enum)]
+        action: InviteReplyActionArg,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum InvitesAction {
+    /// List recent calendar invites
+    List {
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Backfill invite rows from already stored message bodies
+    Backfill {
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum InviteReplyActionArg {
+    Accept,
+    Tentative,
+    Decline,
+}
+
+impl From<InviteReplyActionArg> for mxr_protocol::CalendarInviteActionData {
+    fn from(value: InviteReplyActionArg) -> Self {
+        match value {
+            InviteReplyActionArg::Accept => Self::Accept,
+            InviteReplyActionArg::Tentative => Self::Tentative,
+            InviteReplyActionArg::Decline => Self::Decline,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]

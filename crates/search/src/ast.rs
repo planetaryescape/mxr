@@ -57,6 +57,7 @@ pub enum FilterKind {
     ReplyLater,
     Anywhere,
     HasAttachment,
+    HasCalendar,
     HasUserLabels,
     NoUserLabels,
     HasDrive,

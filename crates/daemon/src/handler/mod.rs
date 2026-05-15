@@ -422,6 +422,14 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         }
         Request::GetEnvelope { message_id } => mailbox::get_envelope(state, message_id).await,
         Request::GetBody { message_id } => mailbox::get_body(state, message_id).await,
+        Request::GetInvite { message_id } => mailbox::get_invite(state, message_id).await,
+        Request::ListInvites { limit } => mailbox::list_invites(state, *limit).await,
+        Request::BackfillCalendarInvites => mailbox::backfill_invites(state).await,
+        Request::RespondInvite {
+            message_id,
+            action,
+            dry_run,
+        } => mailbox::respond_invite(state, message_id, *action, *dry_run).await,
         Request::GetHtmlImageAssets {
             message_id,
             allow_remote,
@@ -752,11 +760,9 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::ResumeActivity => activity::resume_activity(state).await,
         Request::ListSavedActivityFilters => activity::list_saved_filters(state).await,
         Request::GetSavedActivityFilter { slug } => activity::get_saved_filter(state, slug).await,
-        Request::UpsertSavedActivityFilter {
-            slug,
-            name,
-            filter,
-        } => activity::upsert_saved_filter(state, slug, name, filter).await,
+        Request::UpsertSavedActivityFilter { slug, name, filter } => {
+            activity::upsert_saved_filter(state, slug, name, filter).await
+        }
         Request::DeleteSavedActivityFilter { slug } => {
             activity::delete_saved_filter(state, slug).await
         }
@@ -1191,6 +1197,10 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListEnvelopesByIds { .. } => "list_envelopes_by_ids",
         Request::GetEnvelope { .. } => "get_envelope",
         Request::GetBody { .. } => "get_body",
+        Request::GetInvite { .. } => "get_invite",
+        Request::ListInvites { .. } => "list_invites",
+        Request::BackfillCalendarInvites => "backfill_calendar_invites",
+        Request::RespondInvite { .. } => "respond_invite",
         Request::GetHtmlImageAssets { .. } => "get_html_image_assets",
         Request::DownloadAttachment { .. } => "download_attachment",
         Request::OpenAttachment { .. } => "open_attachment",
@@ -1924,6 +1934,7 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
             | FilterKind::Anywhere
             | FilterKind::HasUserLabels
             | FilterKind::NoUserLabels
+            | FilterKind::HasCalendar
             | FilterKind::HasDrive
             | FilterKind::HasDocument
             | FilterKind::HasSpreadsheet
@@ -3041,10 +3052,7 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                 (&account.sync, auth.as_ref()),
                 (Some(AccountSyncConfigData::Gmail { .. }), Some(step)) if step.ok
             );
-            let has_gmail_sync = matches!(
-                account.sync,
-                Some(AccountSyncConfigData::Gmail { .. })
-            );
+            let has_gmail_sync = matches!(account.sync, Some(AccountSyncConfigData::Gmail { .. }));
             if gmail_sync_auth_ok {
                 send = Some(account_step(
                     true,
@@ -5852,6 +5860,7 @@ mod tests {
                 calendar: Some(mxr_core::types::CalendarMetadata {
                     method: Some("REQUEST".into()),
                     summary: Some("Demo call".into()),
+                    ..Default::default()
                 }),
                 ..Default::default()
             },
@@ -5886,6 +5895,456 @@ mod tests {
             .text_plain
             .as_deref()
             .is_some_and(|text| text.contains("Calendar invite")));
+    }
+
+    async fn insert_request_invite_body(state: &AppState) -> mxr_core::MessageId {
+        let account_id = state.default_account_id_opt().unwrap();
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .provider_id("calendar-request-1")
+            .subject("Planning session")
+            .from_address("Organizer", "organizer@example.com")
+            .to_address(Some("User"), "user@example.com")
+            .has_attachments(true)
+            .build();
+        let message_id = envelope.id.clone();
+        state.store.upsert_envelope(&envelope).await.unwrap();
+        state
+            .store
+            .insert_body(&mxr_core::types::MessageBody {
+                message_id: message_id.clone(),
+                text_plain: Some("Planning session invite".into()),
+                text_html: None,
+                attachments: Vec::new(),
+                fetched_at: chrono::Utc::now(),
+                metadata: mxr_core::types::MessageMetadata {
+                    calendar: Some(mxr_core::types::CalendarMetadata {
+                        method: Some("REQUEST".into()),
+                        summary: Some("Planning session".into()),
+                        uid: Some("planning-uid@example.com".into()),
+                        sequence: Some(3),
+                        organizer: Some(mxr_core::types::CalendarPerson {
+                            email: "organizer@example.com".into(),
+                            name: Some("Organizer".into()),
+                            uri: Some("mailto:organizer@example.com".into()),
+                        }),
+                        attendees: vec![mxr_core::types::CalendarAttendee {
+                            email: "user@example.com".into(),
+                            name: Some("User".into()),
+                            uri: Some("mailto:user@example.com".into()),
+                            partstat: Some("NEEDS-ACTION".into()),
+                            role: Some("REQ-PARTICIPANT".into()),
+                            rsvp: Some(true),
+                        }],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
+        message_id
+    }
+
+    #[tokio::test]
+    async fn dispatch_respond_invite_dry_run_builds_imip_preview_without_sending() {
+        let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+        let message_id = insert_request_invite_body(&state).await;
+        let state = Arc::new(state);
+
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 18,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::RespondInvite {
+                    message_id: message_id.clone(),
+                    action: mxr_protocol::CalendarInviteActionData::Accept,
+                    dry_run: true,
+                }),
+            },
+        )
+        .await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::InviteResponsePreview { preview },
+            }) => {
+                assert_eq!(preview.message_id, message_id);
+                assert_eq!(preview.organizer_email, "organizer@example.com");
+                assert_eq!(preview.attendee_email, "user@example.com");
+                assert!(preview.subject.contains("Accepted"));
+                assert!(preview.ics.contains("METHOD:REPLY"));
+                assert!(preview.ics.contains("UID:planning-uid@example.com"));
+                assert!(preview.ics.contains("SEQUENCE:3"));
+                assert!(preview.ics.contains("PARTSTAT=ACCEPTED"));
+            }
+            other => panic!("Expected InviteResponsePreview, got {:?}", other),
+        }
+        assert!(fake.sent_drafts().is_empty());
+    }
+
+    #[tokio::test]
+    async fn dispatch_respond_invite_sends_reply_and_updates_local_partstat() {
+        let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+        let message_id = insert_request_invite_body(&state).await;
+        let state = Arc::new(state);
+
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 19,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::RespondInvite {
+                    message_id: message_id.clone(),
+                    action: mxr_protocol::CalendarInviteActionData::Decline,
+                    dry_run: false,
+                }),
+            },
+        )
+        .await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::InviteResponseSent { result },
+            }) => {
+                assert_eq!(result.message_id, message_id);
+                assert_eq!(
+                    result.action,
+                    mxr_protocol::CalendarInviteActionData::Decline
+                );
+                assert!(result
+                    .provider_message_id
+                    .as_deref()
+                    .is_some_and(|id| id.starts_with("fake-calendar-sent-")));
+            }
+            other => panic!("Expected InviteResponseSent, got {:?}", other),
+        }
+
+        let sent = fake.sent_drafts();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].to[0].email, "organizer@example.com");
+        assert!(sent[0].body_markdown.contains("METHOD:REPLY"));
+        assert!(sent[0].body_markdown.contains("PARTSTAT=DECLINED"));
+
+        let stored = state
+            .store
+            .get_calendar_invite_for_message(&message_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            stored.metadata.attendees[0].partstat.as_deref(),
+            Some("DECLINED")
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_respond_invite_matches_account_alias_attendee() {
+        let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+        let account_id = state.default_account_id_opt().unwrap();
+        state
+            .store
+            .add_account_address(&account_id, "alias@example.com", false)
+            .await
+            .unwrap();
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .provider_id("calendar-alias")
+            .subject("Alias invite")
+            .from_address("Organizer", "organizer@example.com")
+            .to_address(Some("Alias"), "alias@example.com")
+            .has_attachments(true)
+            .build();
+        let message_id = envelope.id.clone();
+        state.store.upsert_envelope(&envelope).await.unwrap();
+        state
+            .store
+            .insert_body(&mxr_core::types::MessageBody {
+                message_id: message_id.clone(),
+                text_plain: Some("Alias invite".into()),
+                text_html: None,
+                attachments: Vec::new(),
+                fetched_at: chrono::Utc::now(),
+                metadata: mxr_core::types::MessageMetadata {
+                    calendar: Some(mxr_core::types::CalendarMetadata {
+                        method: Some("REQUEST".into()),
+                        summary: Some("Alias invite".into()),
+                        uid: Some("alias-uid@example.com".into()),
+                        organizer: Some(mxr_core::types::CalendarPerson {
+                            email: "organizer@example.com".into(),
+                            name: Some("Organizer".into()),
+                            uri: Some("mailto:organizer@example.com".into()),
+                        }),
+                        attendees: vec![mxr_core::types::CalendarAttendee {
+                            email: "alias@example.com".into(),
+                            name: Some("Alias".into()),
+                            uri: Some("mailto:alias@example.com".into()),
+                            partstat: Some("NEEDS-ACTION".into()),
+                            role: Some("REQ-PARTICIPANT".into()),
+                            rsvp: Some(true),
+                        }],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
+        let state = Arc::new(state);
+
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 20,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::RespondInvite {
+                    message_id: message_id.clone(),
+                    action: mxr_protocol::CalendarInviteActionData::Accept,
+                    dry_run: false,
+                }),
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::InviteResponseSent { .. }
+            })
+        ));
+        assert_eq!(fake.sent_drafts().len(), 1);
+        let stored = state
+            .store
+            .get_calendar_invite_for_message(&message_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            stored.metadata.attendees[0].partstat.as_deref(),
+            Some("ACCEPTED")
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_respond_invite_blocks_stale_sequence_when_newer_invite_exists() {
+        let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+        let stale_message_id = insert_request_invite_body(&state).await;
+        let account_id = state.default_account_id_opt().unwrap();
+        let newer = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .provider_id("calendar-request-2")
+            .subject("Planning session updated")
+            .from_address("Organizer", "organizer@example.com")
+            .to_address(Some("User"), "user@example.com")
+            .has_attachments(true)
+            .build();
+        state.store.upsert_envelope(&newer).await.unwrap();
+        state
+            .store
+            .insert_body(&mxr_core::types::MessageBody {
+                message_id: newer.id.clone(),
+                text_plain: Some("Updated planning session invite".into()),
+                text_html: None,
+                attachments: Vec::new(),
+                fetched_at: chrono::Utc::now(),
+                metadata: mxr_core::types::MessageMetadata {
+                    calendar: Some(mxr_core::types::CalendarMetadata {
+                        method: Some("REQUEST".into()),
+                        summary: Some("Planning session updated".into()),
+                        uid: Some("planning-uid@example.com".into()),
+                        sequence: Some(4),
+                        organizer: Some(mxr_core::types::CalendarPerson {
+                            email: "organizer@example.com".into(),
+                            name: Some("Organizer".into()),
+                            uri: Some("mailto:organizer@example.com".into()),
+                        }),
+                        attendees: vec![mxr_core::types::CalendarAttendee {
+                            email: "user@example.com".into(),
+                            name: Some("User".into()),
+                            uri: Some("mailto:user@example.com".into()),
+                            partstat: Some("NEEDS-ACTION".into()),
+                            role: Some("REQ-PARTICIPANT".into()),
+                            rsvp: Some(true),
+                        }],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
+        let state = Arc::new(state);
+
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 20,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::RespondInvite {
+                    message_id: stale_message_id,
+                    action: mxr_protocol::CalendarInviteActionData::Accept,
+                    dry_run: false,
+                }),
+            },
+        )
+        .await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Error { message, .. }) => {
+                assert!(message.contains("newer update"));
+            }
+            other => panic!("Expected stale invite error, got {:?}", other),
+        }
+        assert!(fake.sent_drafts().is_empty());
+    }
+
+    #[tokio::test]
+    async fn dispatch_respond_invite_warns_when_same_uid_has_different_organizer() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let message_id = insert_request_invite_body(&state).await;
+        let account_id = state.default_account_id_opt().unwrap();
+        let older = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .provider_id("calendar-organizer-change")
+            .subject("Planning session suspicious")
+            .from_address("Other Organizer", "other@example.com")
+            .to_address(Some("User"), "user@example.com")
+            .has_attachments(true)
+            .build();
+        state.store.upsert_envelope(&older).await.unwrap();
+        state
+            .store
+            .insert_body(&mxr_core::types::MessageBody {
+                message_id: older.id.clone(),
+                text_plain: Some("Suspicious planning session invite".into()),
+                text_html: None,
+                attachments: Vec::new(),
+                fetched_at: chrono::Utc::now(),
+                metadata: mxr_core::types::MessageMetadata {
+                    calendar: Some(mxr_core::types::CalendarMetadata {
+                        method: Some("REQUEST".into()),
+                        summary: Some("Planning session suspicious".into()),
+                        uid: Some("planning-uid@example.com".into()),
+                        sequence: Some(1),
+                        organizer: Some(mxr_core::types::CalendarPerson {
+                            email: "other@example.com".into(),
+                            name: Some("Other Organizer".into()),
+                            uri: Some("mailto:other@example.com".into()),
+                        }),
+                        attendees: vec![mxr_core::types::CalendarAttendee {
+                            email: "user@example.com".into(),
+                            name: Some("User".into()),
+                            uri: Some("mailto:user@example.com".into()),
+                            partstat: Some("NEEDS-ACTION".into()),
+                            role: Some("REQ-PARTICIPANT".into()),
+                            rsvp: Some(true),
+                        }],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
+        let state = Arc::new(state);
+
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 22,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::RespondInvite {
+                    message_id,
+                    action: mxr_protocol::CalendarInviteActionData::Accept,
+                    dry_run: true,
+                }),
+            },
+        )
+        .await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::InviteResponsePreview { preview },
+            }) => assert!(preview
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("different organizer"))),
+            other => panic!("Expected organizer warning preview, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_respond_invite_blocks_fatal_parser_warning() {
+        let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+        let account_id = state.default_account_id_opt().unwrap();
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .provider_id("calendar-bad-parse")
+            .subject("Broken invite")
+            .from_address("Organizer", "organizer@example.com")
+            .to_address(Some("User"), "user@example.com")
+            .has_attachments(true)
+            .build();
+        let message_id = envelope.id.clone();
+        state.store.upsert_envelope(&envelope).await.unwrap();
+        state
+            .store
+            .insert_body(&mxr_core::types::MessageBody {
+                message_id: message_id.clone(),
+                text_plain: Some("Broken invite".into()),
+                text_html: None,
+                attachments: Vec::new(),
+                fetched_at: chrono::Utc::now(),
+                metadata: mxr_core::types::MessageMetadata {
+                    calendar: Some(mxr_core::types::CalendarMetadata {
+                        method: Some("REQUEST".into()),
+                        summary: Some("Broken invite".into()),
+                        uid: Some("broken-uid@example.com".into()),
+                        organizer: Some(mxr_core::types::CalendarPerson {
+                            email: "organizer@example.com".into(),
+                            name: Some("Organizer".into()),
+                            uri: Some("mailto:organizer@example.com".into()),
+                        }),
+                        attendees: vec![mxr_core::types::CalendarAttendee {
+                            email: "user@example.com".into(),
+                            name: Some("User".into()),
+                            uri: Some("mailto:user@example.com".into()),
+                            partstat: Some("NEEDS-ACTION".into()),
+                            role: Some("REQ-PARTICIPANT".into()),
+                            rsvp: Some(true),
+                        }],
+                        warnings: vec!["calendar invite could not be parsed as RFC 5545".into()],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
+        let state = Arc::new(state);
+
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 21,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::RespondInvite {
+                    message_id,
+                    action: mxr_protocol::CalendarInviteActionData::Accept,
+                    dry_run: false,
+                }),
+            },
+        )
+        .await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Error { message, .. }) => {
+                assert!(message.contains("fatal parser warnings"));
+            }
+            other => panic!("Expected fatal parser warning error, got {:?}", other),
+        }
+        assert!(fake.sent_drafts().is_empty());
     }
 
     #[tokio::test]

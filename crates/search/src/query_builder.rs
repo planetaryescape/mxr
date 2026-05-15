@@ -32,6 +32,7 @@ pub struct QueryBuilder {
     is_answered: Field,
     is_reply_later: Field,
     has_attachments: Field,
+    has_calendar: Field,
     has_link: Field,
     link_density: Field,
     has_user_labels: Field,
@@ -63,6 +64,7 @@ impl QueryBuilder {
             is_answered: schema.is_answered,
             is_reply_later: schema.is_reply_later,
             has_attachments: schema.has_attachments,
+            has_calendar: schema.has_calendar,
             has_link: schema.has_link,
             link_density: schema.link_density,
             has_user_labels: schema.has_user_labels,
@@ -253,6 +255,10 @@ impl QueryBuilder {
             ])),
             FilterKind::HasAttachment => {
                 let term = Term::from_field_bool(self.has_attachments, true);
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic))
+            }
+            FilterKind::HasCalendar => {
+                let term = Term::from_field_bool(self.has_calendar, true);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
             FilterKind::HasUserLabels => {

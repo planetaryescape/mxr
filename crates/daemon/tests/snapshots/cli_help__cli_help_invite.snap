@@ -1,0 +1,15 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Inspect and respond to calendar invites in email
+
+Usage: mxr invite <COMMAND>
+
+Commands:
+  show   Show the calendar invite attached to one message
+  reply  Reply to a calendar invite
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help

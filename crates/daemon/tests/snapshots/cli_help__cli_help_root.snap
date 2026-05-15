@@ -89,6 +89,8 @@ Commands:
   unsubscribe         Unsubscribe from a mailing list
   open                Open message in browser. Pass a positional ID or `--search QUERY` (with `--first` for the latest match, or `--limit N` plus `--yes` to open many tabs at once)
   attachments         Manage message attachments
+  invite              Inspect and respond to calendar invites in email
+  invites             List calendar invites found in email
   config              Configuration management
   version             Show version
   completions         Generate shell completions

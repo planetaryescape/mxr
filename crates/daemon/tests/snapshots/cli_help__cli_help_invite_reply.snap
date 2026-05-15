@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Reply to a calendar invite
+
+Usage: mxr invite reply [OPTIONS] <MESSAGE_ID> <ACTION>
+
+Arguments:
+  <MESSAGE_ID>
+  <ACTION>      [possible values: accept, tentative, decline]
+
+Options:
+      --dry-run
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

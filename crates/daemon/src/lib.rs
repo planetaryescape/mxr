@@ -991,6 +991,33 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 }
             }
         }
+        Some(Command::Invite { action }) => {
+            crate::server::ensure_daemon_running().await?;
+            match action {
+                cli::InviteAction::Show { message_id, format } => {
+                    commands::invites::show(message_id, format).await?;
+                }
+                cli::InviteAction::Reply {
+                    message_id,
+                    action,
+                    dry_run,
+                    format,
+                } => {
+                    commands::invites::reply(message_id, action.into(), dry_run, format).await?;
+                }
+            }
+        }
+        Some(Command::Invites { action }) => {
+            crate::server::ensure_daemon_running().await?;
+            match action {
+                cli::InvitesAction::List { limit, format } => {
+                    commands::invites::list(limit, format).await?;
+                }
+                cli::InvitesAction::Backfill { format } => {
+                    commands::invites::backfill(format).await?;
+                }
+            }
+        }
 
         None => {
             crate::server::ensure_daemon_running().await?;

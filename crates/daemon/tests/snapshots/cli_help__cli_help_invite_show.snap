@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Show the calendar invite attached to one message
+
+Usage: mxr invite show [OPTIONS] <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

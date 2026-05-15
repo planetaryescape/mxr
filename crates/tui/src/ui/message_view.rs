@@ -6,7 +6,7 @@ use crate::terminal_images::{HtmlImageEntry, HtmlImageRenderState};
 use crate::theme::Theme;
 use html2text::render::RichAnnotation;
 use mxr_core::id::MessageId;
-use mxr_core::types::{Envelope, HtmlImageAssetStatus, HtmlImageSourceKind};
+use mxr_core::types::{CalendarMetadata, Envelope, HtmlImageAssetStatus, HtmlImageSourceKind};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use ratatui_image::{Resize, StatefulImage};
@@ -209,6 +209,11 @@ pub fn draw(
                     theme,
                     message.assets_loading,
                 ));
+                text_lines.extend(calendar_invite_lines(
+                    &metadata.calendar,
+                    label_width,
+                    theme,
+                ));
                 if metadata.mode == BodyViewMode::Html && *source == BodySource::Html {
                     blocks.push(RenderBlock::Text(text_lines));
                     blocks.extend(render_html_blocks(
@@ -322,7 +327,9 @@ mod tests {
     use crate::app::{BodySource, BodyViewMetadata, BodyViewMode};
     use chrono::{TimeZone, Utc};
     use mxr_core::id::{AccountId, MessageId, ThreadId};
-    use mxr_core::types::{Address, BodyPartSource, MessageFlags, UnsubscribeMethod};
+    use mxr_core::types::{
+        Address, BodyPartSource, CalendarMetadata, CalendarPerson, MessageFlags, UnsubscribeMethod,
+    };
     use mxr_test_support::render_to_string;
 
     fn envelope() -> Envelope {
@@ -571,6 +578,66 @@ mod tests {
 
         assert!(rendered.contains("One-click unsubscribe (D)"));
     }
+
+    #[test]
+    fn calendar_invite_metadata_renders_as_message_header_card() {
+        let block = ThreadMessageBlock {
+            envelope: envelope(),
+            body_state: BodyViewState::Ready {
+                raw: "Join us".into(),
+                rendered: "Join us".into(),
+                source: BodySource::Plain,
+                metadata: BodyViewMetadata {
+                    mode: BodyViewMode::Text,
+                    calendar: Some(CalendarMetadata {
+                        method: Some("REQUEST".into()),
+                        summary: Some("Planning session".into()),
+                        starts_at: Some("2026-05-20T15:00:00Z".into()),
+                        location: Some("Room 3".into()),
+                        organizer: Some(CalendarPerson {
+                            email: "organizer@example.com".into(),
+                            name: Some("Organizer".into()),
+                            uri: None,
+                        }),
+                        rsvp_requested: true,
+                        warnings: vec!["organizer changed for this UID".into()],
+                        ..Default::default()
+                    }),
+                    ..BodyViewMetadata::default()
+                },
+            },
+            labels: vec![],
+            attachments: vec![],
+            selected: true,
+            bulk_selected: false,
+            has_unsubscribe: false,
+            signature_expanded: false,
+            assets_loading: false,
+        };
+
+        let rendered = render_to_string(100, 24, |frame| {
+            let mut html_images = HashMap::new();
+            draw(
+                frame,
+                Rect::new(0, 0, 100, 24),
+                &[block],
+                None,
+                0,
+                &ActivePane::MessageView,
+                &Theme::default(),
+                &mut html_images,
+            );
+        });
+
+        assert!(rendered.contains("Invite:"));
+        assert!(rendered.contains("Planning session"));
+        assert!(rendered.contains("When:"));
+        assert!(rendered.contains("Room 3"));
+        assert!(rendered.contains("RSVP:"));
+        assert!(rendered.contains("requested"));
+        assert!(rendered.contains("Warn:"));
+        assert!(rendered.contains("organizer changed"));
+    }
 }
 
 fn body_metadata_lines(
@@ -610,6 +677,83 @@ fn body_chip(label: &str, theme: &Theme, fg: Color) -> Span<'static> {
         format!(" {label} "),
         Style::default().fg(fg).bg(theme.hint_bar_bg),
     )
+}
+
+fn calendar_invite_lines(
+    calendar: &Option<CalendarMetadata>,
+    label_width: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let Some(calendar) = calendar else {
+        return Vec::new();
+    };
+    let label_style = Style::default().fg(theme.text_muted);
+    let value_style = Style::default().fg(theme.text_primary);
+    let accent_style = Style::default().fg(theme.accent).bold();
+    let mut lines = vec![Line::from(vec![
+        Span::styled(format!("{:<label_width$}", "Invite:"), label_style),
+        Span::styled(
+            calendar
+                .summary
+                .clone()
+                .unwrap_or_else(|| "Calendar invite".into()),
+            accent_style,
+        ),
+        Span::styled(
+            calendar
+                .method
+                .as_deref()
+                .map(|method| format!(" ({method})"))
+                .unwrap_or_default(),
+            Style::default().fg(theme.text_muted),
+        ),
+    ])];
+    if let Some(starts_at) = calendar.starts_at.as_deref() {
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<label_width$}", "When:"), label_style),
+            Span::styled(starts_at.to_string(), value_style),
+        ]));
+    }
+    if let Some(location) = calendar.location.as_deref() {
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<label_width$}", "Where:"), label_style),
+            Span::styled(location.to_string(), value_style),
+        ]));
+    }
+    if let Some(rrule) = calendar.rrule.as_deref() {
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<label_width$}", "Repeats:"), label_style),
+            Span::styled(rrule.to_string(), value_style),
+        ]));
+    }
+    if let Some(organizer) = calendar.organizer.as_ref() {
+        let organizer_label = organizer
+            .name
+            .as_ref()
+            .map(|name| format!("{} <{}>", name, organizer.email))
+            .unwrap_or_else(|| organizer.email.clone());
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<label_width$}", "Org:"), label_style),
+            Span::styled(organizer_label, value_style),
+        ]));
+    }
+    if calendar.rsvp_requested {
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<label_width$}", "RSVP:"), label_style),
+            Span::styled("requested", Style::default().fg(theme.warning).bold()),
+        ]));
+    }
+    if !calendar.warnings.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<label_width$}", "Warn:"), label_style),
+            Span::styled(
+                calendar.warnings.join("; "),
+                Style::default().fg(theme.warning),
+            ),
+        ]));
+    }
+    lines.push(Line::from(""));
+    lines
 }
 
 fn process_body_lines(

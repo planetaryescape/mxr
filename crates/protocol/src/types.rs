@@ -343,6 +343,18 @@ pub enum Request {
     GetBody {
         message_id: MessageId,
     },
+    GetInvite {
+        message_id: MessageId,
+    },
+    ListInvites {
+        limit: u32,
+    },
+    BackfillCalendarInvites,
+    RespondInvite {
+        message_id: MessageId,
+        action: CalendarInviteActionData,
+        dry_run: bool,
+    },
     GetHtmlImageAssets {
         message_id: MessageId,
         allow_remote: bool,
@@ -1138,6 +1150,10 @@ impl Request {
             | Self::ListEnvelopesByIds { .. }
             | Self::GetEnvelope { .. }
             | Self::GetBody { .. }
+            | Self::GetInvite { .. }
+            | Self::ListInvites { .. }
+            | Self::BackfillCalendarInvites
+            | Self::RespondInvite { .. }
             | Self::GetHtmlImageAssets { .. }
             | Self::DownloadAttachment { .. }
             | Self::OpenAttachment { .. }
@@ -1523,6 +1539,21 @@ pub enum ResponseData {
     Body {
         body: MessageBody,
     },
+    Invite {
+        invite: CalendarInviteData,
+    },
+    Invites {
+        invites: Vec<CalendarInviteData>,
+    },
+    CalendarInviteBackfill {
+        backfilled: u64,
+    },
+    InviteResponsePreview {
+        preview: CalendarInviteResponsePreview,
+    },
+    InviteResponseSent {
+        result: CalendarInviteResponseResult,
+    },
     HtmlImageAssets {
         message_id: MessageId,
         assets: Vec<HtmlImageAsset>,
@@ -1905,6 +1936,11 @@ impl ResponseData {
             Self::Envelopes { .. }
             | Self::Envelope { .. }
             | Self::Body { .. }
+            | Self::Invite { .. }
+            | Self::Invites { .. }
+            | Self::CalendarInviteBackfill { .. }
+            | Self::InviteResponsePreview { .. }
+            | Self::InviteResponseSent { .. }
             | Self::HtmlImageAssets { .. }
             | Self::AttachmentFile { .. }
             | Self::Bodies { .. }
@@ -2017,6 +2053,66 @@ pub struct SearchResultItem {
 pub struct BodyFailure {
     pub message_id: MessageId,
     pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CalendarInviteData {
+    pub id: CalendarInviteId,
+    pub account_id: AccountId,
+    pub message_id: MessageId,
+    pub metadata: CalendarMetadata,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CalendarInviteActionData {
+    Accept,
+    Tentative,
+    Decline,
+}
+
+impl CalendarInviteActionData {
+    pub const fn partstat(self) -> &'static str {
+        match self {
+            Self::Accept => "ACCEPTED",
+            Self::Tentative => "TENTATIVE",
+            Self::Decline => "DECLINED",
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Accept => "Accepted",
+            Self::Tentative => "Tentative",
+            Self::Decline => "Declined",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CalendarInviteResponsePreview {
+    pub message_id: MessageId,
+    pub action: CalendarInviteActionData,
+    pub attendee_email: String,
+    pub organizer_email: String,
+    pub subject: String,
+    pub body_text: String,
+    pub ics: String,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CalendarInviteResponseResult {
+    pub message_id: MessageId,
+    pub action: CalendarInviteActionData,
+    pub provider_message_id: Option<String>,
+    pub rfc2822_message_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

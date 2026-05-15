@@ -898,11 +898,78 @@ pub enum TextPlainFormat {
     Flowed { delsp: bool },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CalendarMetadata {
     pub method: Option<String>,
     pub summary: Option<String>,
+    #[serde(default)]
+    pub component_kind: Option<String>,
+    #[serde(default)]
+    pub uid: Option<String>,
+    #[serde(default)]
+    pub sequence: Option<i64>,
+    #[serde(default)]
+    pub recurrence_id: Option<String>,
+    #[serde(default)]
+    pub dtstamp: Option<String>,
+    #[serde(default)]
+    pub starts_at: Option<String>,
+    #[serde(default)]
+    pub ends_at: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub location: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub rrule: Option<String>,
+    #[serde(default)]
+    pub organizer: Option<CalendarPerson>,
+    #[serde(default)]
+    pub attendees: Vec<CalendarAttendee>,
+    #[serde(default)]
+    pub rsvp_requested: bool,
+    #[serde(default)]
+    pub raw_ics: Option<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CalendarPerson {
+    pub email: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub uri: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CalendarAttendee {
+    pub email: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub uri: Option<String>,
+    #[serde(default)]
+    pub partstat: Option<String>,
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub rsvp: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CalendarReplyMessage {
+    pub to: Address,
+    pub subject: String,
+    pub body_text: String,
+    pub ics: String,
 }
 
 // -- MessageBody --------------------------------------------------------------

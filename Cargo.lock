@@ -158,7 +158,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -169,7 +169,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1652,7 +1652,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1852,7 +1852,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2725,6 +2725,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "icalendar"
+version = "0.17.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "264fe856964b7a84076dec2d8ea29fce7c9b422968c9a2f404d4aa3771ae2179"
+dependencies = [
+ "chrono",
+ "iso8601",
+ "nom 8.0.0",
+ "nom-language",
+ "uuid",
+]
+
+[[package]]
 name = "icu_collections"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3056,7 +3069,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3074,6 +3087,15 @@ name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+
+[[package]]
+name = "iso8601"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1082f0c48f143442a1ac6122f67e360ceee130b967af4d50996e5154a45df46"
+dependencies = [
+ "nom 8.0.0",
+]
 
 [[package]]
 name = "itertools"
@@ -3120,7 +3142,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3739,7 +3761,7 @@ checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
 
 [[package]]
 name = "mxr"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3864,7 +3886,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-compose"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "chrono",
  "comrak",
@@ -3891,7 +3913,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-config"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "chrono",
  "dirs",
@@ -3907,7 +3929,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-core"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "async-trait",
  "bitflags 2.11.0",
@@ -3923,7 +3945,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-export"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "chrono",
  "insta",
@@ -3937,7 +3959,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-humanizer"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "mxr-core",
  "serde",
@@ -3945,7 +3967,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-keychain"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "keyring",
  "security-framework 3.7.0",
@@ -3956,7 +3978,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-llm"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "async-trait",
  "reqwest",
@@ -3969,9 +3991,10 @@ dependencies = [
 
 [[package]]
 name = "mxr-mail-parse"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "chrono",
+ "icalendar",
  "insta",
  "mail-parser",
  "mxr-core",
@@ -3984,7 +4007,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-outbound"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "comrak",
  "dirs",
@@ -3998,7 +4021,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-protocol"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "bytes",
  "chrono",
@@ -4013,7 +4036,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-fake"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4024,7 +4047,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-gmail"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4055,7 +4078,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-imap"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "anyhow",
  "async-native-tls",
@@ -4080,7 +4103,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-outlook"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4099,7 +4122,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-smtp"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4118,7 +4141,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-reader"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "data-url",
  "html2text",
@@ -4136,7 +4159,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-relationship"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4154,7 +4177,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-rules"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "chrono",
  "glob-match",
@@ -4171,7 +4194,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-safety"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "chrono",
  "mxr-core",
@@ -4188,7 +4211,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-search"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "chrono",
  "mxr-core",
@@ -4203,7 +4226,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-semantic"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "anyhow",
  "calamine",
@@ -4226,7 +4249,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-store"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "chrono",
  "mxr-core",
@@ -4242,7 +4265,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-sync"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4259,7 +4282,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-test-support"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "assert_cmd",
  "dirs",
@@ -4271,7 +4294,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-tui"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4309,7 +4332,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-web"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -4422,6 +4445,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nom-language"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2de2bc5b451bfedaef92c90b8939a8fff5770bdcc1fafd6239d086aab8fa6b29"
+dependencies = [
+ "nom 8.0.0",
+]
+
+[[package]]
 name = "nom_locate"
 version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4450,7 +4482,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5845,7 +5877,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6334,7 +6366,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6911,7 +6943,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8199,7 +8231,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

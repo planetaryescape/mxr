@@ -246,6 +246,7 @@ impl App {
             | Action::ConfirmUnsubscribeAndArchiveSender
             | Action::CancelUnsubscribe
             | Action::Snooze
+            | Action::RespondInvite(_)
             | Action::ToggleSelect
             | Action::VisualLineMode
             | Action::PatternSelect(_) => self.apply_mutation_action(action),

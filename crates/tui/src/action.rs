@@ -233,6 +233,7 @@ pub enum Action {
     ConfirmUnsubscribeAndArchiveSender,
     CancelUnsubscribe,
     Snooze,
+    RespondInvite(mxr_protocol::CalendarInviteActionData),
     OpenInBrowser,
 
     // --- Phase 2: Reader mode ---

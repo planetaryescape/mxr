@@ -138,6 +138,7 @@ clients can reconcile optimistically.
 | `GET` | `/mail/actions/snooze/presets` | Available snooze presets |
 | `POST` | `/mail/actions/snooze` | Snooze messages |
 | `POST` | `/mail/actions/unsubscribe` | Unsubscribe from list mail |
+| `POST` | `/mail/actions/invite/reply` | Dry-run or send a calendar invite RSVP |
 | `POST` | `/mail/messages/{message_id}/flags` | Set message flags (bitmask in body) |
 
 ```bash
@@ -145,6 +146,15 @@ curl -X POST -H "Authorization: Bearer $MXR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"message_ids":["..."], "starred":true}' \
   "$MXR_BASE/api/v1/mail/mutations/star"
+```
+
+Dry-run calendar replies before sending the iMIP `METHOD:REPLY` email:
+
+```bash
+curl -X POST -H "Authorization: Bearer $MXR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message_id":"MESSAGE_ID","action":"accept","dry_run":true}' \
+  "$MXR_BASE/api/v1/mail/actions/invite/reply"
 ```
 
 ## `/api/v1/mail/*` — Productivity surfaces

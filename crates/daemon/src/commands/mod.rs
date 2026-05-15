@@ -21,6 +21,7 @@ pub mod export;
 pub mod headers;
 pub mod history;
 pub mod humanize;
+pub mod invites;
 pub mod labels;
 pub mod llm;
 pub mod logs;

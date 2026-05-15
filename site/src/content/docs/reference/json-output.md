@@ -108,6 +108,97 @@ Batch mutations return a summary object:
 
 Single-message mutation commands can return a command-specific `result` payload, but the stable fields are `action`, `dry_run`, and `message_ids`.
 
+## Calendar invite
+
+`mxr invite show MESSAGE_ID --format json` returns one invite object.
+`mxr invites list --format json` returns an array of the same shape;
+`--format jsonl` emits one object per line.
+
+```bash
+mxr invite show MESSAGE_ID --format json
+```
+
+```json
+{
+  "id": "018f8c0f-7b78-7c44-9f48-3e5a0ef4f7aa",
+  "account_id": "01JFQ7K3M2X8N5R0VYZA9CTBPE",
+  "message_id": "01JFQ8A2KRZ3F2HQ3V9T6QZJ7N",
+  "metadata": {
+    "method": "REQUEST",
+    "component_kind": "VEVENT",
+    "uid": "meeting-123@example.com",
+    "sequence": 2,
+    "recurrence_id": null,
+    "summary": "Planning session",
+    "starts_at": "20260518T140000Z",
+    "ends_at": "20260518T143000Z",
+    "location": "Room 3",
+    "organizer": {
+      "email": "alice@example.com",
+      "name": "Alice"
+    },
+    "attendees": [
+      {
+        "email": "you@example.com",
+        "name": "You",
+        "partstat": "NEEDS-ACTION",
+        "role": "REQ-PARTICIPANT",
+        "rsvp": true
+      }
+    ],
+    "warnings": []
+  },
+  "created_at": 1778832070,
+  "updated_at": 1778832070
+}
+```
+
+Important fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `message_id` | string | Pass to `mxr invite reply`, `mxr thread`, or `mxr cat`. |
+| `metadata.method` | string | Calendar method such as `REQUEST`, `CANCEL`, or `REPLY`. RSVP sending only supports actionable `REQUEST` invites. |
+| `metadata.uid` | string | iCalendar UID. Used with sequence and recurrence identity for update safety. |
+| `metadata.sequence` | number or null | Higher sequence means a newer invite update exists. |
+| `metadata.recurrence_id` | string or null | Identifies one instance of a recurring event. |
+| `metadata.raw_ics` | string or null | Raw local calendar text, useful for debugging and dry-run inspection. |
+| `metadata.warnings` | string[] | Parser or safety warnings to show before replying. |
+
+## Calendar invite RSVP
+
+`mxr invite reply MESSAGE_ID accept --dry-run --format json` returns the
+preview directly. Without `--dry-run`, it sends and returns the result
+directly.
+
+```bash
+mxr invite reply MESSAGE_ID accept --dry-run --format json
+```
+
+```json
+{
+  "message_id": "01JFQ8A2KRZ3F2HQ3V9T6QZJ7N",
+  "action": "accept",
+  "attendee_email": "you@example.com",
+  "organizer_email": "alice@example.com",
+  "subject": "Accepted: Planning session",
+  "body_text": "You accepted this invitation.",
+  "ics": "BEGIN:VCALENDAR\nMETHOD:REPLY\n...",
+  "warnings": []
+}
+```
+
+Successful sends return:
+
+```json
+{
+  "message_id": "01JFQ8A2KRZ3F2HQ3V9T6QZJ7N",
+  "action": "accept",
+  "provider_message_id": "provider-id-or-null",
+  "rfc2822_message_id": "<mxr-generated@example.local>"
+}
+```
+
 ## Common `jq` patterns
 
 ```bash
@@ -124,6 +215,10 @@ mxr search 'from:legal@' --format jsonl \
 
 # IDs from attachment-bearing matches
 mxr search 'has:attachment older_than:30d' --format ids
+
+# Invite IDs to inspect before replying
+mxr search 'has:calendar newer_than:30d' --format ids \
+  | xargs -I{} mxr invite show {} --format json
 ```
 
 ## See also

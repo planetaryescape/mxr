@@ -251,6 +251,7 @@ impl SearchIndex {
         doc.add_u64(s.size_bytes, envelope.size_bytes);
         doc.add_u64(s.flags, envelope.flags.bits() as u64);
         doc.add_bool(s.has_attachments, envelope.has_attachments);
+        doc.add_bool(s.has_calendar, false);
         doc.add_bool(s.has_link, envelope.link_count > 0);
         doc.add_u64(s.link_density, envelope.link_density().as_db_u8() as u64);
         doc.add_bool(
@@ -338,6 +339,7 @@ impl SearchIndex {
         doc.add_u64(s.size_bytes, envelope.size_bytes);
         doc.add_u64(s.flags, envelope.flags.bits() as u64);
         doc.add_bool(s.has_attachments, envelope.has_attachments);
+        doc.add_bool(s.has_calendar, body.metadata.calendar.is_some());
         doc.add_bool(s.has_link, envelope.link_count > 0);
         doc.add_u64(s.link_density, envelope.link_density().as_db_u8() as u64);
         doc.add_bool(

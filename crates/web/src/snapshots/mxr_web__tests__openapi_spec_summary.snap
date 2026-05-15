@@ -1,5 +1,6 @@
 ---
 source: crates/web/src/lib.rs
+assertion_line: 4005
 expression: summary
 ---
 {
@@ -43,7 +44,14 @@ expression: summary
     "BodyFailure",
     "BodyPartSource",
     "CadenceDriftRowData",
+    "CalendarAttendee",
+    "CalendarInviteActionData",
+    "CalendarInviteData",
+    "CalendarInviteId",
+    "CalendarInviteResponsePreview",
+    "CalendarInviteResponseResult",
     "CalendarMetadata",
+    "CalendarPerson",
     "CitationRef",
     "CitationRefData",
     "ClientKind",

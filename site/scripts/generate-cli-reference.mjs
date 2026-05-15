@@ -259,6 +259,23 @@ const COMMAND_EXAMPLES = {
   wrapped: { use: 'Generate year-to-date or yearly email analytics.', examples: ["mxr wrapped --ytd", "mxr wrapped --year 2025 --format json"] },
   export: { use: 'Turn threads into Markdown/JSON/LLM context.', examples: ["mxr export THREAD_ID --format markdown", "mxr export --search 'from:legal' --format markdown > legal.md"] },
   attachments: { use: 'List, open, or download message attachments.', examples: ["mxr attachments list MESSAGE_ID", "mxr attachments download MESSAGE_ID 1 --dir ~/Downloads/mxr"] },
+  invite: {
+    use: 'Inspect one email calendar invite and send an iMIP RSVP only after a dry-run preview. See [calendar invites](/guides/calendar-invites/) for the full flow.',
+    examples: [
+      "mxr invite show MESSAGE_ID --format json",
+      "mxr invite reply MESSAGE_ID accept --dry-run --format json",
+      "mxr invite reply MESSAGE_ID tentative --dry-run",
+      "mxr invite reply MESSAGE_ID decline --dry-run",
+    ],
+  },
+  invites: {
+    use: 'List calendar invites found in stored mail, or backfill invite rows after upgrading.',
+    examples: [
+      "mxr invites list --limit 20",
+      "mxr invites list --format jsonl | jq -r '.message_id'",
+      "mxr invites backfill --format json",
+    ],
+  },
   config: { use: 'Inspect or edit resolved config without hunting for the file.', examples: ["mxr config path", "mxr config show --format json"] },
   llm: { use: 'Check which LLM provider the daemon is using.', examples: ["mxr llm status", "mxr llm status --format json"] },
   semantic: { use: 'Manage local semantic search profiles and indexing.', examples: ["mxr semantic status", "mxr semantic profile install bge-small-en-v1.5"] },

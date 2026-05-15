@@ -2,6 +2,7 @@ mod account;
 mod analytics;
 mod auto_reminders;
 mod body;
+mod calendar;
 mod contact_commitments;
 mod contact_relationship_summary;
 mod contact_style;
@@ -45,6 +46,7 @@ mod user_activity;
 mod user_voice_profile;
 mod wrapped;
 
+pub use calendar::CalendarInviteRecord;
 pub use contact_commitments::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
 pub use contact_relationship_summary::ContactRelationshipSummaryRecord;
 pub use contact_style::{ContactStyleRecord, RelationshipMessageSample};
@@ -72,8 +74,8 @@ pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use undo::{UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 pub use user_activity::{
-    ActivityCursor, ActivityFilter, ActivityInsert, ActivityPage, ActivityRow,
-    SavedActivityFilter, Tier,
+    ActivityCursor, ActivityFilter, ActivityInsert, ActivityPage, ActivityRow, SavedActivityFilter,
+    Tier,
 };
 pub use user_voice_profile::{
     UserVoiceMessageSample, UserVoiceProfileRecord, UserVoiceRegisterMode,
@@ -1211,7 +1213,10 @@ mod tests {
         assert_eq!(page2.len(), 3);
         let ids1: std::collections::HashSet<i64> = page1.iter().map(|e| e.id).collect();
         let ids2: std::collections::HashSet<i64> = page2.iter().map(|e| e.id).collect();
-        assert!(ids1.is_disjoint(&ids2), "paging produces non-overlapping ids");
+        assert!(
+            ids1.is_disjoint(&ids2),
+            "paging produces non-overlapping ids"
+        );
 
         // Total count.
         let total = store

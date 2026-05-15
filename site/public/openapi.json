@@ -178,6 +178,21 @@
         }
       }
     },
+    "/api/v1/mail/actions/invite/reply": {
+      "post": {
+        "tags": [],
+        "summary": "Reply to a calendar invite",
+        "operationId": "action_invite_reply",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/actions/snooze": {
       "post": {
         "tags": [],
@@ -3340,16 +3355,290 @@
           }
         }
       },
+      "CalendarAttendee": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "partstat": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rsvp": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CalendarInviteActionData": {
+        "type": "string",
+        "enum": [
+          "accept",
+          "tentative",
+          "decline"
+        ]
+      },
+      "CalendarInviteData": {
+        "type": "object",
+        "required": [
+          "id",
+          "account_id",
+          "message_id",
+          "metadata",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "$ref": "#/components/schemas/CalendarInviteId"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/CalendarMetadata"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "CalendarInviteId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "CalendarInviteResponsePreview": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "action",
+          "attendee_email",
+          "organizer_email",
+          "subject",
+          "body_text",
+          "ics",
+          "warnings"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/CalendarInviteActionData"
+          },
+          "attendee_email": {
+            "type": "string"
+          },
+          "body_text": {
+            "type": "string"
+          },
+          "ics": {
+            "type": "string"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "organizer_email": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CalendarInviteResponseResult": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "action",
+          "rfc2822_message_id"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/CalendarInviteActionData"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "provider_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rfc2822_message_id": {
+            "type": "string"
+          }
+        }
+      },
       "CalendarMetadata": {
         "type": "object",
         "properties": {
+          "attendees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarAttendee"
+            }
+          },
+          "component_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dtstamp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ends_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "method": {
             "type": [
               "string",
               "null"
             ]
           },
+          "organizer": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CalendarPerson"
+              }
+            ]
+          },
+          "raw_ics": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recurrence_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rrule": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rsvp_requested": {
+            "type": "boolean"
+          },
+          "sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "starts_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CalendarPerson": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uri": {
             "type": [
               "string",
               "null"
@@ -6425,6 +6714,84 @@
                 "enum": [
                   "GetBody"
                 ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetInvite"
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "limit",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListInvites"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "BackfillCalendarInvites"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_id",
+              "action",
+              "dry_run",
+              "cmd"
+            ],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/CalendarInviteActionData"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RespondInvite"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
               },
               "message_id": {
                 "$ref": "#/components/schemas/MessageId"
@@ -10279,6 +10646,101 @@
                 "enum": [
                   "Body"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "invite",
+              "kind"
+            ],
+            "properties": {
+              "invite": {
+                "$ref": "#/components/schemas/CalendarInviteData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Invite"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "invites",
+              "kind"
+            ],
+            "properties": {
+              "invites": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CalendarInviteData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Invites"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "backfilled",
+              "kind"
+            ],
+            "properties": {
+              "backfilled": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CalendarInviteBackfill"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "InviteResponsePreview"
+                ]
+              },
+              "preview": {
+                "$ref": "#/components/schemas/CalendarInviteResponsePreview"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "result",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "InviteResponseSent"
+                ]
+              },
+              "result": {
+                "$ref": "#/components/schemas/CalendarInviteResponseResult"
               }
             }
           },

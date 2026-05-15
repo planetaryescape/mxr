@@ -1183,6 +1183,7 @@ mod tests {
                 calendar: Some(mxr_core::CalendarMetadata {
                     method: Some("REQUEST".into()),
                     summary: Some("Demo call".into()),
+                    ..Default::default()
                 }),
                 ..Default::default()
             },

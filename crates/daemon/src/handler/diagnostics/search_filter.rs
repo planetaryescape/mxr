@@ -113,6 +113,7 @@ fn matches_filter(filter: &FilterKind, envelope: &mxr_core::Envelope) -> bool {
                 && !envelope.flags.contains(mxr_core::MessageFlags::SPAM)
         }
         FilterKind::HasAttachment => envelope.has_attachments,
+        FilterKind::HasCalendar => true,
         FilterKind::Anywhere => true,
         FilterKind::ReplyLater => true,
         FilterKind::HasUserLabels => envelope

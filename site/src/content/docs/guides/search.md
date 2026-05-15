@@ -17,6 +17,7 @@ mxr search "unsubscribe"
 mxr search "label:inbox" --format ids
 mxr search "body:house of cards" --mode hybrid --explain
 mxr search "is:owed-reply"
+mxr search "has:calendar newer_than:30d"
 ```
 
 The `is:` filter has the usual suspects (`unread`, `read`, `starred`,
@@ -133,6 +134,7 @@ mxr saved run urgent
 - **Find a shared doc someone sent you:** `mxr search 'from:alice has:link newer_than:14d'` — `has:link` excludes trackers/unsubscribe URLs, so it surfaces real link-bearing replies.
 - **Work the owed-reply backlog:** `mxr search 'is:owed-reply' --format ids | mxr remind --when 'friday 16:00'` — pin a Friday-afternoon nudge on every thread you owe a reply on.
 - **Owed within the last two weeks only:** `mxr search 'is:owed-reply newer_than:14d'` — skip ancient threads you've implicitly already ignored.
+- **Review recent meeting invites:** `mxr search 'has:calendar newer_than:30d' --format ids | xargs -I{} mxr invite show {}` — inspect invite details before deciding whether to RSVP.
 
 ## Agent prompts that work
 

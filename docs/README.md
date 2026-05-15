@@ -5,6 +5,7 @@ Contributor- and agent-facing docs. User-facing docs live in [`site/src/content/
 | Area | Path | Purpose |
 |---|---|---|
 | Blueprint | [blueprint/README.md](./blueprint/README.md) | What to build: requirements, design, decisions. |
+| Calendar email | [calendar-email/README.md](./calendar-email/README.md) | Research and phased implementation plan for handling email calendar invites. |
 | Implementation journey | [implementation-journey.md](./implementation-journey.md) | Historical phased delivery, superseded plans, bridge/semantic context, future reauth + distro packaging. |
 | Web app | [web-app/README.md](./web-app/README.md) | Per-phase execution briefs for `apps/web/`. |
 | Vision | [vision.md](./vision.md) | Maintainer notes for the completed delight-plan work. |

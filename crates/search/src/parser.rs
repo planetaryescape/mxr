@@ -448,6 +448,7 @@ impl Parser {
             },
             "has" => match value.to_lowercase().as_str() {
                 "attachment" | "attachments" => Ok(QueryNode::Filter(FilterKind::HasAttachment)),
+                "calendar" | "invite" | "invites" => Ok(QueryNode::Filter(FilterKind::HasCalendar)),
                 "userlabels" => Ok(QueryNode::Filter(FilterKind::HasUserLabels)),
                 "nouserlabels" => Ok(QueryNode::Filter(FilterKind::NoUserLabels)),
                 "drive" => Ok(QueryNode::Filter(FilterKind::HasDrive)),
@@ -845,6 +846,12 @@ mod tests {
     fn parse_has_attachment() {
         let result = parse_query("has:attachment").unwrap();
         assert_eq!(result, QueryNode::Filter(FilterKind::HasAttachment));
+    }
+
+    #[test]
+    fn parse_has_calendar() {
+        let result = parse_query("has:calendar").unwrap();
+        assert_eq!(result, QueryNode::Filter(FilterKind::HasCalendar));
     }
 
     #[test]

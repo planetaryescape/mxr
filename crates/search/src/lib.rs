@@ -358,6 +358,58 @@ mod tests {
     }
 
     #[test]
+    fn e2e_filter_has_calendar_matches_calendar_bodies_only() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let invite = make_envelope_full(
+            "Planning meeting",
+            "Please join",
+            "Alice",
+            "alice@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        let plain = make_envelope_full(
+            "Plain meeting note",
+            "No invite here",
+            "Bob",
+            "bob@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        let invite_id = invite.id.as_str();
+        let body_with_invite = MessageBody {
+            message_id: invite.id.clone(),
+            text_plain: Some("Please join".into()),
+            text_html: None,
+            attachments: Vec::new(),
+            fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata {
+                calendar: Some(CalendarMetadata {
+                    method: Some("REQUEST".into()),
+                    summary: Some("Planning meeting".into()),
+                    uid: Some("planning@example.com".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        };
+        let body_without_invite = MessageBody {
+            message_id: plain.id.clone(),
+            text_plain: Some("No invite here".into()),
+            text_html: None,
+            attachments: Vec::new(),
+            fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata::default(),
+        };
+
+        idx.index_body(&invite, &body_with_invite).unwrap();
+        idx.index_body(&plain, &body_without_invite).unwrap();
+        idx.commit().unwrap();
+
+        assert_eq!(e2e_search(&idx, "has:calendar"), vec![invite_id]);
+    }
+
+    #[test]
     fn e2e_search_by_label() {
         let (idx, envelopes) = build_e2e_index();
         let results = e2e_search(&idx, "label:notifications");

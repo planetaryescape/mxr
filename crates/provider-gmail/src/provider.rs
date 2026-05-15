@@ -719,6 +719,34 @@ impl MailSendProvider for GmailProvider {
         })
     }
 
+    async fn send_calendar_reply(
+        &self,
+        reply: &mxr_core::CalendarReplyMessage,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> mxr_core::provider::Result<SendReceipt> {
+        let message = mxr_outbound::email::build_calendar_reply_message_with_id(
+            reply,
+            from,
+            rfc2822_message_id,
+        )
+        .map_err(|e| MxrError::Provider(e.to_string()))?;
+        let rfc2822 = mxr_outbound::email::format_message_for_gmail(&message);
+        let encoded = send::encode_for_gmail(&rfc2822);
+
+        let result = self
+            .client
+            .send_message(&encoded)
+            .await
+            .map_err(MxrError::from)?;
+
+        Ok(SendReceipt {
+            provider_message_id: result["id"].as_str().map(|s| s.to_string()),
+            sent_at: chrono::Utc::now(),
+            rfc2822_message_id: rfc2822_message_id.to_string(),
+        })
+    }
+
     async fn save_draft(
         &self,
         draft: &Draft,

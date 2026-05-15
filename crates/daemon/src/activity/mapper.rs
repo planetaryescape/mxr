@@ -102,10 +102,7 @@ pub fn map_request(
                     "target_ids": message_ids.iter().map(|m| m.as_str()).collect::<Vec<_>>(),
                 })),
             ),
-            MutationCommand::SetRead {
-                message_ids,
-                read,
-            } => (
+            MutationCommand::SetRead { message_ids, read } => (
                 if *read { "mail.read" } else { "mail.unread" },
                 Some("message"),
                 message_ids.first().map(|m| m.as_str().to_string()),
@@ -155,7 +152,10 @@ pub fn map_request(
         },
 
         // ----- low-level SetFlags (TUI/web sometimes calls directly) -----
-        Request::SetFlags { message_id, flags: _ } => (
+        Request::SetFlags {
+            message_id,
+            flags: _,
+        } => (
             "mail.read",
             Some("message"),
             Some(message_id.as_str().to_string()),
@@ -262,6 +262,19 @@ pub fn map_request(
             Some(draft_id.as_str().to_string()),
             None,
         ),
+        Request::RespondInvite {
+            message_id,
+            action,
+            dry_run,
+        } => (
+            "mail.calendar_rsvp",
+            Some("message"),
+            Some(message_id.as_str().to_string()),
+            Some(serde_json::json!({
+                "action": action.partstat(),
+                "dry_run": dry_run,
+            })),
+        ),
         Request::ScheduleSend { draft_id, send_at } => (
             "mail.send",
             Some("draft"),
@@ -279,9 +292,7 @@ pub fn map_request(
         ),
 
         // ----- search -----
-        Request::Search {
-            query, mode, ..
-        } => (
+        Request::Search { query, mode, .. } => (
             "search.run",
             Some("search"),
             None,
@@ -290,9 +301,7 @@ pub fn map_request(
                 "mode": mode.as_ref().map(|m| format!("{m:?}")),
             })),
         ),
-        Request::CreateSavedSearch {
-            name, query, ..
-        } => (
+        Request::CreateSavedSearch { name, query, .. } => (
             "search.save",
             Some("search"),
             None,
@@ -307,9 +316,7 @@ pub fn map_request(
             None,
             Some(serde_json::json!({ "name": name })),
         ),
-        Request::UpdateSavedSearch {
-            name, new_name, ..
-        } => (
+        Request::UpdateSavedSearch { name, new_name, .. } => (
             "search.rename",
             Some("search"),
             None,
@@ -460,12 +467,7 @@ pub fn map_request(
             Some(key.clone()),
             Some(serde_json::json!({ "key": key })),
         ),
-        Request::CompleteAuthSession { .. } => (
-            "account.signin",
-            Some("account"),
-            None,
-            None,
-        ),
+        Request::CompleteAuthSession { .. } => ("account.signin", Some("account"), None, None),
         Request::SyncNow {
             account_id: account,
         } => (
@@ -611,9 +613,31 @@ mod tests {
     }
 
     #[test]
+    fn invite_response_logs_calendar_rsvp_action() {
+        let mid = mxr_core::MessageId::new();
+        let req = Request::RespondInvite {
+            message_id: mid.clone(),
+            action: mxr_protocol::CalendarInviteActionData::Accept,
+            dry_run: false,
+        };
+        let entry = ok_map(&req).unwrap();
+
+        assert_eq!(entry.action, "mail.calendar_rsvp");
+        assert_eq!(entry.target_kind.as_deref(), Some("message"));
+        assert_eq!(entry.target_id.as_deref(), Some(mid.as_str().as_str()));
+        let ctx = entry.context.unwrap();
+        assert_eq!(ctx["action"], "ACCEPTED");
+        assert_eq!(ctx["dry_run"], false);
+    }
+
+    #[test]
     fn mutation_archive_includes_target_id_and_count() {
         let m1 = mxr_core::MessageId::new();
-        let ids = vec![m1.clone(), mxr_core::MessageId::new(), mxr_core::MessageId::new()];
+        let ids = vec![
+            m1.clone(),
+            mxr_core::MessageId::new(),
+            mxr_core::MessageId::new(),
+        ];
         let req = Request::Mutation {
             mutation: MutationCommand::Archive { message_ids: ids },
             client_correlation_id: None,

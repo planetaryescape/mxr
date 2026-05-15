@@ -120,6 +120,7 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
             | FilterKind::Anywhere
             | FilterKind::HasUserLabels
             | FilterKind::NoUserLabels
+            | FilterKind::HasCalendar
             | FilterKind::HasDrive
             | FilterKind::HasDocument
             | FilterKind::HasSpreadsheet

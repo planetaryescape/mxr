@@ -428,6 +428,9 @@ impl Parser {
                 "reply-later" | "reply_later" | "replylater" => {
                     Ok(QueryNode::Filter(FilterKind::ReplyLater))
                 }
+                "owed-reply" | "owed_reply" | "owed" => {
+                    Ok(QueryNode::Filter(FilterKind::OwedReply))
+                }
                 other => Err(ParseError::UnknownFilter(other.to_string())),
             },
             "in" => match value.to_lowercase().as_str() {
@@ -822,6 +825,20 @@ mod tests {
             parse_query("is:reply-later").unwrap(),
             QueryNode::Filter(FilterKind::ReplyLater)
         );
+    }
+
+    /// `is:owed-reply` is the canonical token (Track 2 spec / saved
+    /// search example). `is:owed` and `is:owed_reply` are accepted
+    /// aliases — typing convenience while preserving the explicit
+    /// hyphenated form in documentation.
+    #[test]
+    fn parse_is_owed_reply_and_aliases() {
+        let canonical = QueryNode::Filter(FilterKind::OwedReply);
+        for q in ["is:owed-reply", "is:owed_reply", "is:owed"] {
+            let parsed =
+                parse_query(q).unwrap_or_else(|err| panic!("expected parse for `{q}`: {err}"));
+            assert_eq!(parsed, canonical, "`{q}` should parse to OwedReply");
+        }
     }
 
     #[test]

@@ -15,24 +15,44 @@ pub enum Conditions {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "field", rename_all = "snake_case")]
 pub enum FieldCondition {
-    From { pattern: StringMatch },
-    To { pattern: StringMatch },
-    Subject { pattern: StringMatch },
-    HasLabel { label: String },
+    From {
+        pattern: StringMatch,
+    },
+    To {
+        pattern: StringMatch,
+    },
+    Subject {
+        pattern: StringMatch,
+    },
+    HasLabel {
+        label: String,
+    },
     HasAttachment,
-    SizeGreaterThan { bytes: u64 },
-    SizeLessThan { bytes: u64 },
-    DateAfter { date: DateTime<Utc> },
-    DateBefore { date: DateTime<Utc> },
+    SizeGreaterThan {
+        bytes: u64,
+    },
+    SizeLessThan {
+        bytes: u64,
+    },
+    DateAfter {
+        date: DateTime<Utc>,
+    },
+    DateBefore {
+        date: DateTime<Utc>,
+    },
     IsUnread,
     IsStarred,
     HasUnsubscribe,
-    BodyContains { pattern: StringMatch },
+    BodyContains {
+        pattern: StringMatch,
+    },
     /// Match on the tri-state link-density classification computed at sync
     /// time. `match_kind: "any"` covers `Some` and `Heavy`; `"heavy"` covers
     /// only `Heavy`; `"none"` covers the no-links tier. Lets users write
     /// rules like "auto-archive link-heavy mail from unknown senders".
-    LinkDensity { match_kind: LinkDensityMatch },
+    LinkDensity {
+        match_kind: LinkDensityMatch,
+    },
 }
 
 /// How to match the tri-state `LinkDensity` classification.
@@ -127,10 +147,8 @@ impl FieldCondition {
             }
             FieldCondition::LinkDensity { match_kind } => {
                 let (link_count, body_word_count) = msg.link_density_inputs();
-                let tier = mxr_core::types::Envelope::classify_link_density(
-                    link_count,
-                    body_word_count,
-                );
+                let tier =
+                    mxr_core::types::Envelope::classify_link_density(link_count, body_word_count);
                 match (match_kind, tier) {
                     (LinkDensityMatch::Any, mxr_core::types::LinkDensity::Some) => true,
                     (LinkDensityMatch::Any, mxr_core::types::LinkDensity::Heavy) => true,

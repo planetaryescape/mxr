@@ -299,6 +299,13 @@ impl QueryBuilder {
                 let term = Term::from_field_bool(self.has_link, false);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
+            // Owed-reply is computed dynamically against `messages` +
+            // `contacts` + `screener_decisions`, not indexed in Tantivy.
+            // Emit AllQuery so the caller pulls in every candidate; the
+            // daemon search executor intersects against the owed thread
+            // set as a post-filter (see `is_owed_reply` handling in
+            // `crates/daemon/src/handler/diagnostics/search_execute.rs`).
+            FilterKind::OwedReply => Box::new(AllQuery),
         }
     }
 

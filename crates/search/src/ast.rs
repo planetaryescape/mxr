@@ -74,6 +74,13 @@ pub enum FilterKind {
     /// `has:link-none` (or `is:link-none`) — no external links at all.
     /// Useful for "show me real conversations only".
     NoLinks,
+    /// `is:owed-reply` — the user is the bottleneck on this thread:
+    /// the latest message is inbound, the user has not replied since,
+    /// and the recipient isn't a list sender or screener-denied.
+    /// Computed dynamically against `messages` + `contacts` +
+    /// `screener_decisions` (no Tantivy index field); see
+    /// `mxr_store::Store::list_owed_replies`.
+    OwedReply,
 }
 
 #[derive(Debug, Clone, PartialEq)]

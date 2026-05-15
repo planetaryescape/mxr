@@ -210,7 +210,11 @@ mod tests {
             DraftSafetyIssueCode::WrongRecipient,
         ];
         let token = store.mint_safety_override(None, &kinds_in).await.unwrap();
-        let kinds_out = store.consume_safety_override(&token).await.unwrap().unwrap();
+        let kinds_out = store
+            .consume_safety_override(&token)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(kinds_out, kinds_in);
     }
 }

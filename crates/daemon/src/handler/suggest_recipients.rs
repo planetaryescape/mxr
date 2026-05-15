@@ -16,14 +16,12 @@ use std::collections::{HashMap, HashSet};
 
 const MIN_SUPPORT_THREADS: usize = 3;
 
-pub(crate) async fn suggest(
-    state: &AppState,
-    draft: &Draft,
-    limit: usize,
-) -> super::HandlerResult {
+pub(crate) async fn suggest(state: &AppState, draft: &Draft, limit: usize) -> super::HandlerResult {
     let query = topic_query(draft);
     if query.trim().is_empty() {
-        return Ok(ResponseData::SuggestedCollaborators { suggestions: vec![] });
+        return Ok(ResponseData::SuggestedCollaborators {
+            suggestions: vec![],
+        });
     }
     let page = state
         .search
@@ -86,9 +84,7 @@ pub(crate) async fn suggest(
             Some(SuggestedRecipientData {
                 email,
                 display_name: agg.display_name,
-                reason: format!(
-                    "co-participant on {support} similar prior thread(s)"
-                ),
+                reason: format!("co-participant on {support} similar prior thread(s)"),
                 confidence: confidence.into(),
                 evidence_msg_ids: agg.evidence_msg_ids,
             })
@@ -359,7 +355,12 @@ mod tests {
             );
             index(&state, &env, "rollout secret").await;
         }
-        let d = draft(&account, "rollout secret", "rollout secret", vec!["alice@example.com"]);
+        let d = draft(
+            &account,
+            "rollout secret",
+            "rollout secret",
+            vec!["alice@example.com"],
+        );
         let resp = suggest(&state, &d, 10).await.unwrap();
         let ResponseData::SuggestedCollaborators { suggestions } = resp else {
             panic!("unexpected");

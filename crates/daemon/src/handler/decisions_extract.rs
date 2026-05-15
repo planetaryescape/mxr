@@ -4,7 +4,8 @@
 //! cheap keyword/length prefilter, calls `LlmFeature::DecisionLog`
 //! with strict JSON, validates each citation against the retrieved
 //! msg_id set, and upserts via the existing `Store::upsert_decision`
-//! (which is idempotent on `source_hash`).
+//! (which is idempotent on the stable decision id and refreshes
+//! `source_hash` when thread content changes).
 //!
 //! `rebuild` walks every thread for an account whose latest message
 //! is within `since_days` and calls `extract_thread` for each
@@ -119,9 +120,7 @@ pub(crate) async fn extract_thread(
                  \"decided_at\" is RFC 3339 if a date is named in the thread, \
                  else null.",
             ),
-            ChatMessage::user(format!(
-                "THREAD:\n{transcript}\n\nReturn JSON only."
-            )),
+            ChatMessage::user(format!("THREAD:\n{transcript}\n\nReturn JSON only.")),
         ],
     };
 
@@ -202,8 +201,7 @@ pub(crate) async fn rebuild(
     account_id: &AccountId,
     since_days: u32,
 ) -> Result<RebuildSummary, String> {
-    let cutoff = chrono::Utc::now()
-        - chrono::Duration::days(since_days as i64);
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(since_days as i64);
     let cutoff_secs = cutoff.timestamp();
     let rows = sqlx::query(
         r#"SELECT DISTINCT thread_id
@@ -246,9 +244,7 @@ pub(crate) async fn rebuild(
 mod tests {
     use super::*;
     use mxr_core::types::*;
-    use mxr_llm::{
-        CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider,
-    };
+    use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
     use mxr_store::CommitmentStatus;
     use std::sync::{Arc, Mutex};
 
@@ -259,10 +255,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl LlmProvider for CannedLlm {
-        async fn complete(
-            &self,
-            _req: CompletionRequest,
-        ) -> Result<CompletionResponse, LlmError> {
+        async fn complete(&self, _req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
             *self.calls.lock().unwrap() += 1;
             Ok(CompletionResponse {
                 content: self.body.lock().unwrap().clone(),
@@ -377,7 +370,11 @@ mod tests {
         }));
         let n = extract_thread(&state, &account, &thread).await.unwrap();
         assert_eq!(n, 1, "exactly one decision row written");
-        let rows = state.store.list_decisions(&account, None, None, 10).await.unwrap();
+        let rows = state
+            .store
+            .list_decisions(&account, None, None, 10)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].decision, "Use Postgres");
         assert_eq!(rows[0].evidence_msg_ids, vec![ids[2].clone()]);
@@ -388,7 +385,11 @@ mod tests {
         let (state, account, thread, _ids, _) = fixture(r#"{"decisions":[]}"#).await;
         let n = extract_thread(&state, &account, &thread).await.unwrap();
         assert_eq!(n, 0);
-        let rows = state.store.list_decisions(&account, None, None, 10).await.unwrap();
+        let rows = state
+            .store
+            .list_decisions(&account, None, None, 10)
+            .await
+            .unwrap();
         assert!(rows.is_empty(), "no rows for brainstorming-only thread");
     }
 
@@ -431,7 +432,11 @@ mod tests {
         }));
         extract_thread(&state, &account, &thread).await.unwrap();
         extract_thread(&state, &account, &thread).await.unwrap();
-        let rows = state.store.list_decisions(&account, None, None, 10).await.unwrap();
+        let rows = state
+            .store
+            .list_decisions(&account, None, None, 10)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 1, "idempotent: same source_hash, same row");
     }
 

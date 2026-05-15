@@ -142,12 +142,7 @@ pub fn run_status_only(
 
 /// Run `mxr <args>` and parse stdout as JSON. Panics on non-zero
 /// exit OR JSON parse failure.
-pub fn run_json(
-    instance: &str,
-    data_dir: &Path,
-    config_dir: &Path,
-    args: &[&str],
-) -> Value {
+pub fn run_json(instance: &str, data_dir: &Path, config_dir: &Path, args: &[&str]) -> Value {
     let out = run_status_only(instance, data_dir, config_dir, args);
     serde_json::from_str(out.stdout.trim()).unwrap_or_else(|err| {
         panic!(

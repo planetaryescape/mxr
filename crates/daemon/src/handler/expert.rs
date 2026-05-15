@@ -46,7 +46,10 @@ pub(crate) async fn find(
         if env.account_id != *account_id {
             continue;
         }
-        by_thread.entry(env.thread_id.to_string()).or_default().push(env);
+        by_thread
+            .entry(env.thread_id.to_string())
+            .or_default()
+            .push(env);
     }
 
     let mut by_email: HashMap<String, Aggregate> = HashMap::new();
@@ -96,10 +99,7 @@ pub(crate) async fn find(
         .map(|(email, agg)| ExpertSuggestionData {
             email,
             display_name: agg.display_name,
-            reason: format!(
-                "answered in {} similar prior thread(s)",
-                agg.threads.len()
-            ),
+            reason: format!("answered in {} similar prior thread(s)", agg.threads.len()),
             answered_thread_count: agg.threads.len() as u32,
             evidence_msg_ids: agg.evidence_msg_ids,
         })

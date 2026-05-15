@@ -11,9 +11,11 @@ pub async fn run(action: CadenceAction) -> anyhow::Result<()> {
             email,
             account,
             expected_days,
+            every,
             note,
             allow_list_sender,
         } => {
+            let expected_days = resolve_expected_days(expected_days, every.as_deref())?;
             let account_id = resolve_account(&mut client, account.as_deref()).await?;
             let resp = client
                 .request(Request::WatchCadence {
@@ -77,7 +79,12 @@ fn print_list(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                         .expected_days
                         .map(|d| format!("{d:.1}d"))
                         .unwrap_or_else(|| "auto".into());
-                    println!("{:<32}  expected={}  added={}", e.email, exp, e.added_at.format("%Y-%m-%d"));
+                    println!(
+                        "{:<32}  expected={}  added={}",
+                        e.email,
+                        exp,
+                        e.added_at.format("%Y-%m-%d")
+                    );
                 }
             }
         },
@@ -85,6 +92,61 @@ fn print_list(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
+}
+
+fn resolve_expected_days(
+    expected_days: Option<f64>,
+    every: Option<&str>,
+) -> anyhow::Result<Option<f64>> {
+    match (expected_days, every) {
+        (Some(_), Some(_)) => anyhow::bail!("use either --expected-days or --every, not both"),
+        (Some(days), None) => Ok(Some(days)),
+        (None, Some(value)) => parse_every_days(value).map(Some),
+        (None, None) => Ok(None),
+    }
+}
+
+fn parse_every_days(value: &str) -> anyhow::Result<f64> {
+    let trimmed = value.trim().to_ascii_lowercase();
+    if trimmed.is_empty() {
+        anyhow::bail!("--every cannot be empty");
+    }
+    let split_at = trimmed
+        .char_indices()
+        .find_map(|(idx, ch)| {
+            if !(ch.is_ascii_digit() || ch == '.') {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(trimmed.len());
+    let (number, unit) = trimmed.split_at(split_at);
+    let count: f64 = number
+        .trim()
+        .parse()
+        .map_err(|_| anyhow::anyhow!("--every must start with a number, e.g. 14d"))?;
+    if count <= 0.0 {
+        anyhow::bail!("--every must be positive");
+    }
+    let unit = unit.trim();
+    match unit {
+        "" | "d" | "day" | "days" => Ok(count),
+        "w" | "week" | "weeks" => Ok(count * 7.0),
+        _ => anyhow::bail!("unsupported --every unit `{unit}`; use days or weeks"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_every_days_accepts_days_and_weeks() {
+        assert_eq!(parse_every_days("14d").unwrap(), 14.0);
+        assert_eq!(parse_every_days("2w").unwrap(), 14.0);
+        assert_eq!(parse_every_days("30 days").unwrap(), 30.0);
+    }
 }
 
 fn print_drift(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {

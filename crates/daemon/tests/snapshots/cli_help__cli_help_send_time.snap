@@ -3,14 +3,25 @@ source: crates/daemon/tests/cli_help.rs
 assertion_line: 14
 expression: stdout
 ---
-Show the recipient's typical reply-time bucket
+Show the recipient's typical reply-time bucket.
 
-Usage: mxr send-time [OPTIONS] <RECIPIENT>
+When `--at` is given, also reports the expected reply time for that slot so you can compare a proposed send time against the recipient's fastest bucket. Same time forms as `mxr remind --when`: `tomorrow 9am`, `fri 19:00`, `in 2h`, or RFC3339.
+
+Usage: mxr send-time [OPTIONS] <RECIPIENTS>...
 
 Arguments:
-  <RECIPIENT>
+  <RECIPIENTS>...
+
 
 Options:
       --account <ACCOUNT>
-      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
-  -h, --help               Print help
+
+
+      --at <AT>
+          Proposed send time to evaluate against the recipient's historical buckets
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

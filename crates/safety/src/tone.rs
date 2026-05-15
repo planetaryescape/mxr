@@ -76,8 +76,8 @@ pub fn check(draft: &Draft, ctx: &SafetyContext, cfg: &SafetyToneConfig) -> Vec<
 mod tests {
     use super::*;
     use chrono::Utc;
-    use mxr_core::{AccountId, DraftId};
     use mxr_core::types::{Address, Draft, DraftIntent};
+    use mxr_core::{AccountId, DraftId};
     use mxr_relationship::StylometryMetrics;
 
     use crate::ContactStyleBaseline;
@@ -121,7 +121,12 @@ mod tests {
     #[test]
     fn no_baseline_no_warning() {
         let ctx = SafetyContext::default();
-        assert!(check(&d("yo", vec![addr("alice@x.com")]), &ctx, &SafetyToneConfig::default()).is_empty());
+        assert!(check(
+            &d("yo", vec![addr("alice@x.com")]),
+            &ctx,
+            &SafetyToneConfig::default()
+        )
+        .is_empty());
     }
 
     #[test]
@@ -131,11 +136,17 @@ mod tests {
             ..Default::default()
         };
         let issues = check(
-            &d("Hi Alice. Could you please review the proposal at your earliest convenience?", vec![addr("alice@x.com")]),
+            &d(
+                "Hi Alice. Could you please review the proposal at your earliest convenience?",
+                vec![addr("alice@x.com")],
+            ),
             &ctx,
             &SafetyToneConfig::default(),
         );
-        assert!(issues.is_empty(), "below threshold sample count should suppress");
+        assert!(
+            issues.is_empty(),
+            "below threshold sample count should suppress"
+        );
     }
 
     #[test]
@@ -155,7 +166,10 @@ mod tests {
             ctx.contact_styles[0].baseline_sample_count,
         );
         assert!(
-            matches!(report.confidence, mxr_relationship::VoiceMatchConfidence::High),
+            matches!(
+                report.confidence,
+                mxr_relationship::VoiceMatchConfidence::High
+            ),
             "fixture must produce High confidence (got {:?})",
             report.confidence
         );
@@ -180,7 +194,10 @@ mod tests {
             ..Default::default()
         };
         let issues = check(
-            &d("hey alice, sounds good. let me know.", vec![addr("alice@x.com")]),
+            &d(
+                "hey alice, sounds good. let me know.",
+                vec![addr("alice@x.com")],
+            ),
             &ctx,
             &SafetyToneConfig::default(),
         );

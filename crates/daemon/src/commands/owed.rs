@@ -64,10 +64,7 @@ fn print(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                     "score", "from", "wait", "exp", "days", "subject"
                 );
                 for row in rows {
-                    let from = truncate(
-                        row.from_name.as_deref().unwrap_or(&row.from_email),
-                        28,
-                    );
+                    let from = truncate(row.from_name.as_deref().unwrap_or(&row.from_email), 28);
                     println!(
                         "{:>5.2}  {:<28}  {:>5.1}d  {:>5.1}d  {:>5.0}  {}",
                         row.overdue_score,

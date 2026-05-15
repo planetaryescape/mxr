@@ -1,11 +1,10 @@
 //! Slice 3.2 of docs/ai-email/03-archive-intelligence.md.
 //!
 //! Decision log: stable, citation-backed records of "we agreed on X"
-//! moments extracted from threads. The unique key is
-//! (account_id, thread_id, source_hash); re-extraction with the
-//! same prompt content is idempotent. When the source content
-//! changes the source_hash changes too, producing an updated row
-//! through the upsert.
+//! moments extracted from threads. The unique key is a stable decision
+//! id derived from account, thread, normalized decision text, and
+//! evidence ids. Re-extraction with changed source content refreshes
+//! the same decision row by updating `source_hash`.
 
 use crate::{decode_id, decode_optional_timestamp, decode_timestamp};
 use chrono::{DateTime, Utc};
@@ -28,11 +27,8 @@ pub struct DecisionLogEntry {
 }
 
 impl super::Store {
-    /// Idempotent upsert keyed on (account, thread, source_hash).
-    pub async fn upsert_decision(
-        &self,
-        entry: &DecisionLogEntry,
-    ) -> Result<(), sqlx::Error> {
+    /// Idempotent upsert keyed on stable decision id.
+    pub async fn upsert_decision(&self, entry: &DecisionLogEntry) -> Result<(), sqlx::Error> {
         let evidence_json = serde_json::to_string(
             &entry
                 .evidence_msg_ids
@@ -46,13 +42,16 @@ impl super::Store {
                (id, account_id, thread_id, topic, decision, rationale,
                 evidence_msg_ids, decided_at, extracted_at, source_hash)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(account_id, thread_id, source_hash) DO UPDATE SET
+               ON CONFLICT(id) DO UPDATE SET
+                 account_id = excluded.account_id,
+                 thread_id = excluded.thread_id,
                  topic = excluded.topic,
                  decision = excluded.decision,
                  rationale = excluded.rationale,
                  evidence_msg_ids = excluded.evidence_msg_ids,
                  decided_at = excluded.decided_at,
-                 extracted_at = excluded.extracted_at"#,
+                 extracted_at = excluded.extracted_at,
+                 source_hash = excluded.source_hash"#,
         )
         .bind(&entry.id)
         .bind(entry.account_id.as_str())
@@ -69,6 +68,40 @@ impl super::Store {
         Ok(())
     }
 
+    /// Fetch a single decision by primary-key id. Returns `Ok(None)`
+    /// when the id is unknown; reserved for actual storage errors.
+    pub async fn get_decision(&self, id: &str) -> Result<Option<DecisionLogEntry>, sqlx::Error> {
+        let row = sqlx::query(
+            r#"SELECT id, account_id, thread_id, topic, decision, rationale,
+                      evidence_msg_ids, decided_at, extracted_at, source_hash
+               FROM decision_log
+               WHERE id = ?"#,
+        )
+        .bind(id)
+        .fetch_optional(self.reader())
+        .await?;
+        let row = match row {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+        let evidence_json: String = row.try_get("evidence_msg_ids")?;
+        let evidence_strs: Vec<String> = serde_json::from_str(&evidence_json).unwrap_or_default();
+        let evidence_msg_ids: Result<Vec<MessageId>, sqlx::Error> =
+            evidence_strs.into_iter().map(|s| decode_id(&s)).collect();
+        Ok(Some(DecisionLogEntry {
+            id: row.try_get("id")?,
+            account_id: decode_id(row.try_get::<&str, _>("account_id")?)?,
+            thread_id: decode_id(row.try_get::<&str, _>("thread_id")?)?,
+            topic: row.try_get("topic")?,
+            decision: row.try_get("decision")?,
+            rationale: row.try_get("rationale")?,
+            evidence_msg_ids: evidence_msg_ids?,
+            decided_at: decode_optional_timestamp(row.try_get("decided_at")?)?,
+            extracted_at: decode_timestamp(row.try_get("extracted_at")?)?,
+            source_hash: row.try_get("source_hash")?,
+        }))
+    }
+
     pub async fn list_decisions(
         &self,
         account_id: &AccountId,
@@ -76,8 +109,8 @@ impl super::Store {
         since_days: Option<u32>,
         limit: u32,
     ) -> Result<Vec<DecisionLogEntry>, sqlx::Error> {
-        let cutoff = since_days
-            .map(|d| (Utc::now() - chrono::Duration::days(d as i64)).timestamp());
+        let cutoff =
+            since_days.map(|d| (Utc::now() - chrono::Duration::days(d as i64)).timestamp());
         let rows = sqlx::query(
             r#"SELECT id, account_id, thread_id, topic, decision, rationale,
                       evidence_msg_ids, decided_at, extracted_at, source_hash
@@ -100,10 +133,8 @@ impl super::Store {
                 let evidence_json: String = row.try_get("evidence_msg_ids")?;
                 let evidence_strs: Vec<String> =
                     serde_json::from_str(&evidence_json).unwrap_or_default();
-                let evidence_msg_ids: Result<Vec<MessageId>, sqlx::Error> = evidence_strs
-                    .into_iter()
-                    .map(|s| decode_id(&s))
-                    .collect();
+                let evidence_msg_ids: Result<Vec<MessageId>, sqlx::Error> =
+                    evidence_strs.into_iter().map(|s| decode_id(&s)).collect();
                 Ok(DecisionLogEntry {
                     id: row.try_get("id")?,
                     account_id: decode_id(row.try_get::<&str, _>("account_id")?)?,
@@ -216,11 +247,7 @@ mod tests {
         let (store, account, thread, msg) = fixture().await;
         let e = entry(&account, &thread, &msg, "Use Postgres");
         store.upsert_decision(&e).await.unwrap();
-        let mut e2 = e.clone();
-        // Same source_hash -- must NOT create a new row even if id
-        // differs (which it doesn't here, but in real flows might).
-        e2.id = "different-id".into();
-        store.upsert_decision(&e2).await.unwrap();
+        store.upsert_decision(&e).await.unwrap();
         let rows = store
             .list_decisions(&account, None, None, 10)
             .await
@@ -229,17 +256,67 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upsert_with_changed_source_hash_creates_new_row() {
+    async fn changed_source_hash_updates_same_decision_row() {
         let (store, account, thread, msg) = fixture().await;
-        let e1 = entry(&account, &thread, &msg, "Use Postgres");
+        let mut e1 = entry(&account, &thread, &msg, "Use Postgres");
+        e1.source_hash = "hash-v1".into();
         store.upsert_decision(&e1).await.unwrap();
-        let e2 = entry(&account, &thread, &msg, "Use SQLite");
+        let mut e2 = e1.clone();
+        e2.source_hash = "hash-v2".into();
+        e2.rationale = Some("thread changed".into());
         store.upsert_decision(&e2).await.unwrap();
         let rows = store
             .list_decisions(&account, None, None, 10)
             .await
             .unwrap();
-        assert_eq!(rows.len(), 2, "different source_hash must yield distinct rows");
+        assert_eq!(rows.len(), 1, "stable decision id must refresh in place");
+        assert_eq!(rows[0].source_hash, "hash-v2");
+        assert_eq!(rows[0].rationale.as_deref(), Some("thread changed"));
+    }
+
+    #[tokio::test]
+    async fn multiple_decisions_from_same_thread_and_source_are_preserved() {
+        let (store, account, thread, msg) = fixture().await;
+        let msg2 = MessageId::new();
+        let mut first = entry(&account, &thread, &msg, "Use Postgres");
+        let mut second = entry(&account, &thread, &msg2, "Launch in June");
+        first.source_hash = "same-thread-source".into();
+        second.source_hash = "same-thread-source".into();
+
+        store.upsert_decision(&first).await.unwrap();
+        store.upsert_decision(&second).await.unwrap();
+
+        let rows = store
+            .list_decisions(&account, None, None, 10)
+            .await
+            .unwrap();
+        let decisions: std::collections::HashSet<_> =
+            rows.iter().map(|row| row.decision.as_str()).collect();
+        assert_eq!(rows.len(), 2, "thread can contain more than one decision");
+        assert!(decisions.contains("Use Postgres"));
+        assert!(decisions.contains("Launch in June"));
+    }
+
+    /// `get_decision` is the primary-key lookup that backs
+    /// `mxr decisions show <id>`. Must return the full row when the
+    /// id exists and `None` otherwise — callers distinguish "no such
+    /// decision" from "lookup failed" by the Result variant.
+    #[tokio::test]
+    async fn get_decision_returns_row_or_none() {
+        let (store, account, thread, msg) = fixture().await;
+        let e = entry(&account, &thread, &msg, "Use Postgres");
+        let id = e.id.clone();
+        store.upsert_decision(&e).await.unwrap();
+
+        let found = store.get_decision(&id).await.unwrap();
+        let found = found.expect("present id returns Some");
+        assert_eq!(found.id, id);
+        assert_eq!(found.decision, "Use Postgres");
+        assert_eq!(found.evidence_msg_ids, vec![msg]);
+        assert_eq!(found.topic.as_deref(), Some("pricing"));
+
+        let missing = store.get_decision("does-not-exist").await.unwrap();
+        assert!(missing.is_none(), "absent id returns None, not error");
     }
 
     #[tokio::test]

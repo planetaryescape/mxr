@@ -1,17 +1,30 @@
 ---
 source: crates/daemon/tests/cli_help.rs
+assertion_line: 14
 expression: stdout
 ---
-Unsubscribe from a mailing list
+Unsubscribe from a mailing list.
 
-Usage: mxr unsubscribe [OPTIONS] [MESSAGE_ID]...
+Positional argument accepts either a message id (uses the List-Unsubscribe header on that exact message) or an email address (`alice@example.com`), which is rewritten to `--search "from:alice@example.com"` and acts on the most recent match. Combine with `--search` to scope an address-wide unsubscribe to a label or date range.
+
+Usage: mxr unsubscribe [OPTIONS] [MESSAGE_ID_OR_ADDRESS]...
 
 Arguments:
-  [MESSAGE_ID]...
+  [MESSAGE_ID_OR_ADDRESS]...
+
 
 Options:
       --yes
+
+
       --search <SEARCH>
+
+
       --dry-run
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

@@ -14,12 +14,12 @@ use regex::Regex;
 
 use crate::SafetyContext;
 
-static GROUP_LANG: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?im)^\s*(hi|hey|hello|dear)?\s*(team|all|folks|everyone|y'?all|guys)\b").unwrap());
+static GROUP_LANG: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?im)^\s*(hi|hey|hello|dear)?\s*(team|all|folks|everyone|y'?all|guys)\b").unwrap()
+});
 static VOCATIVE: Lazy<Regex> = Lazy::new(|| {
     // "Hi Alice,", "Hey Alice -", "Alice,", "Hello Alice"
-    Regex::new(r"(?m)^\s*(?i:hi|hey|hello|dear)?\s*([A-Z][a-zA-Z'’\-]{1,30})\s*[,\-:!]")
-        .unwrap()
+    Regex::new(r"(?m)^\s*(?i:hi|hey|hello|dear)?\s*([A-Z][a-zA-Z'’\-]{1,30})\s*[,\-:!]").unwrap()
 });
 
 pub fn check(draft: &Draft, ctx: &SafetyContext) -> Vec<DraftSafetyIssue> {
@@ -63,17 +63,13 @@ pub fn check(draft: &Draft, ctx: &SafetyContext) -> Vec<DraftSafetyIssue> {
 
     // Find the address that this name resolves to (best-effort), so the
     // warning can name the singular addressee.
-    let display_match = draft
-        .to
-        .iter()
-        .chain(draft.cc.iter())
-        .find(|addr| {
-            addr.name
-                .as_deref()
-                .map(|d| name_matches(d, target))
-                .unwrap_or(false)
-                || name_matches(addr.email.split('@').next().unwrap_or(""), target)
-        });
+    let display_match = draft.to.iter().chain(draft.cc.iter()).find(|addr| {
+        addr.name
+            .as_deref()
+            .map(|d| name_matches(d, target))
+            .unwrap_or(false)
+            || name_matches(addr.email.split('@').next().unwrap_or(""), target)
+    });
 
     let addressee = match display_match {
         Some(addr) => addr.name.clone().unwrap_or_else(|| addr.email.clone()),
@@ -128,8 +124,8 @@ fn reader_clean(body: &str) -> String {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use mxr_core::{AccountId, DraftId};
     use mxr_core::types::{Address, Draft, DraftIntent};
+    use mxr_core::{AccountId, DraftId};
 
     fn addr(email: &str, display: Option<&str>) -> Address {
         Address {
@@ -251,7 +247,10 @@ mod tests {
             .collect();
         let body = "Hi Alice and Bob,\n\nLet's sync.";
         let issues = check(&draft(to, vec![], body), &ctx_reply_all());
-        assert!(issues.is_empty(), "two-person greeting must not warn (got {issues:?})");
+        assert!(
+            issues.is_empty(),
+            "two-person greeting must not warn (got {issues:?})"
+        );
     }
 
     #[test]

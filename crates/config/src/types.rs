@@ -25,6 +25,63 @@ pub struct MxrConfig {
     pub bridge: BridgeConfig,
     pub llm: LlmConfig,
     pub humanizer: HumanizerConfig,
+    pub activity: ActivityConfig,
+}
+
+/// Configuration for the user-activity log. Strictly local; see
+/// `docs/activity-log.md`. Every field here is opt-out from
+/// recording, never opt-in to transmission — the log never leaves the
+/// device.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ActivityConfig {
+    /// Global enable. When `false`, the recorder is spawned but every
+    /// `record()` call is dropped silently. Equivalent to setting
+    /// `MXR_ACTIVITY=off` at startup, but persists in config.
+    pub enabled: bool,
+    pub retention: ActivityRetentionConfig,
+    /// Opt-in: record `link.click` actions with the URL in `context_json`.
+    /// Default `false` because URL history reveals a lot.
+    pub track_link_clicks: bool,
+    /// Record subjects in `context_json`. Default `true`.
+    pub track_subjects: bool,
+    /// Record recipient handles in `context_json`. Default `true`.
+    pub track_recipient_handles: bool,
+    /// Record search query text verbatim in `context_json`. Default `true`.
+    pub track_search_queries: bool,
+}
+
+impl Default for ActivityConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            retention: ActivityRetentionConfig::default(),
+            track_link_clicks: false,
+            track_subjects: true,
+            track_recipient_handles: true,
+            track_search_queries: true,
+        }
+    }
+}
+
+/// Per-tier retention windows in days. Daily prune sweep hard-deletes rows
+/// older than these.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ActivityRetentionConfig {
+    pub ephemeral_days: u32,
+    pub standard_days: u32,
+    pub important_days: u32,
+}
+
+impl Default for ActivityRetentionConfig {
+    fn default() -> Self {
+        Self {
+            ephemeral_days: 30,
+            standard_days: 90,
+            important_days: 365,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

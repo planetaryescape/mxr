@@ -66,7 +66,10 @@ pub(crate) async fn check_answer_coverage(
         .iter()
         .filter(|e| {
             matches!(
-                directions.get(&e.id).copied().unwrap_or(MessageDirection::Unknown),
+                directions
+                    .get(&e.id)
+                    .copied()
+                    .unwrap_or(MessageDirection::Unknown),
                 MessageDirection::Inbound
             )
         })
@@ -104,12 +107,7 @@ pub(crate) async fn check_answer_coverage(
         ));
     }
 
-    let cleaned_draft = clean(
-        Some(&draft.body_markdown),
-        None,
-        &ReaderConfig::default(),
-    )
-    .content;
+    let cleaned_draft = clean(Some(&draft.body_markdown), None, &ReaderConfig::default()).content;
 
     let runtime = state.llm.for_feature(LlmFeature::AnswerCoverage);
     let req = CompletionRequest {
@@ -135,12 +133,13 @@ pub(crate) async fn check_answer_coverage(
         Ok(r) => r,
         Err(LlmError::Disabled) | Err(LlmError::PrivacyBlocked(_)) => {
             return vec![degradation(
-                "answer-coverage skipped: LLM disabled or blocked by privacy policy"
-                    .to_string(),
+                "answer-coverage skipped: LLM disabled or blocked by privacy policy".to_string(),
             )]
         }
         Err(e) => {
-            return vec![degradation(format!("answer-coverage skipped: LLM error: {e}"))];
+            return vec![degradation(format!(
+                "answer-coverage skipped: LLM error: {e}"
+            ))];
         }
     };
 
@@ -257,10 +256,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl LlmProvider for StubLlm {
-        async fn complete(
-            &self,
-            req: CompletionRequest,
-        ) -> Result<CompletionResponse, LlmError> {
+        async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
             *self.last_request.lock().unwrap() = Some(req);
             if *self.force_disabled.lock().unwrap() {
                 return Err(LlmError::Disabled);

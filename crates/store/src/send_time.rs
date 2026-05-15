@@ -2,8 +2,9 @@
 //!
 //! Send-time optimizer: bucket `reply_pairs WHERE direction='they_replied'`
 //! by recipient + (local weekday, hour) of the parent's `parent_received_at`,
-//! and report median reply latency per bucket. Returns `low` confidence
-//! when there are fewer than 8 samples for the recipient.
+//! and report median reply latency per bucket. Returns `high` confidence
+//! only when there are at least 20 samples across at least 3 populated
+//! buckets; `medium` starts at 8 samples.
 
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use mxr_core::id::AccountId;
@@ -35,6 +36,19 @@ pub struct SendTimeRecommendation {
     pub sample_count: u32,
 }
 
+impl SendTimeRecommendation {
+    /// p50 for the (weekday, hour) bucket if the recipient has any
+    /// historical reply pairs there. Returns `None` when the bucket
+    /// has never been observed, so callers can distinguish "fast
+    /// bucket" from "unknown slot".
+    pub fn bucket_p50(&self, weekday: u8, hour: u8) -> Option<i64> {
+        self.buckets
+            .iter()
+            .find(|b| b.weekday == weekday && b.hour == hour)
+            .map(|b| b.p50_seconds)
+    }
+}
+
 impl super::Store {
     /// Compute a recommendation for `recipient`.
     pub async fn send_time_recommendation(
@@ -64,8 +78,8 @@ impl super::Store {
         for row in rows {
             let parent_received: i64 = row.try_get("parent_received_at")?;
             let latency: i64 = row.try_get("latency_seconds")?;
-            let dt = DateTime::<Utc>::from_timestamp(parent_received, 0)
-                .unwrap_or_else(|| Utc::now());
+            let dt =
+                DateTime::<Utc>::from_timestamp(parent_received, 0).unwrap_or_else(|| Utc::now());
             let weekday = dt.weekday().num_days_from_monday() as u8;
             let hour = dt.hour() as u8;
             by_bucket.entry((weekday, hour)).or_default().push(latency);
@@ -87,15 +101,14 @@ impl super::Store {
             .collect();
         buckets.sort_by(|a, b| a.weekday.cmp(&b.weekday).then(a.hour.cmp(&b.hour)));
 
-        let best = buckets
-            .iter()
-            .min_by_key(|b| b.p50_seconds)
-            .cloned();
+        let best = buckets.iter().min_by_key(|b| b.p50_seconds).cloned();
 
-        let confidence = match total {
-            n if n >= 20 => SendTimeConfidence::High,
-            n if n >= 8 => SendTimeConfidence::Medium,
-            _ => SendTimeConfidence::Low,
+        let confidence = if total >= 20 && buckets.len() >= 3 {
+            SendTimeConfidence::High
+        } else if total >= 8 {
+            SendTimeConfidence::Medium
+        } else {
+            SendTimeConfidence::Low
         };
 
         Ok(SendTimeRecommendation {
@@ -249,7 +262,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn high_confidence_at_twenty_samples() {
+    async fn high_confidence_requires_twenty_samples_and_three_buckets() {
+        let (store, account) = fixture().await;
+        for (count, t) in [
+            (8, Utc.with_ymd_and_hms(2026, 5, 1, 14, 0, 0).unwrap()),
+            (6, Utc.with_ymd_and_hms(2026, 5, 4, 9, 0, 0).unwrap()),
+            (6, Utc.with_ymd_and_hms(2026, 5, 5, 11, 0, 0).unwrap()),
+        ] {
+            for _ in 0..count {
+                insert_they_replied(&store, &account, "alice@example.com", t, 600).await;
+            }
+        }
+        let rec = store
+            .send_time_recommendation(&account, "alice@example.com")
+            .await
+            .unwrap();
+        assert_eq!(rec.confidence, SendTimeConfidence::High);
+    }
+
+    #[tokio::test]
+    async fn twenty_samples_in_one_bucket_stays_medium_confidence() {
         let (store, account) = fixture().await;
         for _ in 0..20 {
             let t = Utc.with_ymd_and_hms(2026, 5, 1, 14, 0, 0).unwrap();
@@ -259,7 +291,40 @@ mod tests {
             .send_time_recommendation(&account, "alice@example.com")
             .await
             .unwrap();
-        assert_eq!(rec.confidence, SendTimeConfidence::High);
+        assert_eq!(rec.confidence, SendTimeConfidence::Medium);
+    }
+
+    /// `bucket_p50` lets a proposed send time be evaluated against
+    /// the recommendation without re-querying the store. Returns the
+    /// matching bucket's p50, or `None` if the recipient has no
+    /// history in that (weekday, hour) slot.
+    #[tokio::test]
+    async fn bucket_p50_returns_matching_slot_or_none() {
+        let (store, account) = fixture().await;
+        // Friday 14:00 fast (60s), Monday 09:00 slow (3 days).
+        for _ in 0..3 {
+            let t = Utc.with_ymd_and_hms(2026, 5, 1, 14, 0, 0).unwrap();
+            insert_they_replied(&store, &account, "alice@example.com", t, 60).await;
+        }
+        for _ in 0..3 {
+            let t = Utc.with_ymd_and_hms(2026, 4, 27, 9, 0, 0).unwrap();
+            insert_they_replied(&store, &account, "alice@example.com", t, 3 * 86_400).await;
+        }
+        let rec = store
+            .send_time_recommendation(&account, "alice@example.com")
+            .await
+            .unwrap();
+        assert_eq!(rec.bucket_p50(4, 14), Some(60), "Fri 14:00 bucket present");
+        assert_eq!(
+            rec.bucket_p50(0, 9),
+            Some(3 * 86_400),
+            "Mon 09:00 bucket present"
+        );
+        assert_eq!(
+            rec.bucket_p50(2, 3),
+            None,
+            "Wed 03:00 has no history -> None"
+        );
     }
 
     #[tokio::test]

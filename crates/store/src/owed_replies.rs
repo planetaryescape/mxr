@@ -193,7 +193,12 @@ mod tests {
         acct.id
     }
 
-    fn envelope(account_id: &AccountId, thread_id: &ThreadId, from: &str, days_ago: i64) -> Envelope {
+    fn envelope(
+        account_id: &AccountId,
+        thread_id: &ThreadId,
+        from: &str,
+        days_ago: i64,
+    ) -> Envelope {
         Envelope {
             id: MessageId::new(),
             account_id: account_id.clone(),

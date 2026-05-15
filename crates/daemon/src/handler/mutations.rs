@@ -1,5 +1,5 @@
 use super::{
-    apply_snooze, build_reply_references, reconcile_label_mutation, render_message_context,
+    apply_snooze, build_reply_references, get_or_render_reply_context, reconcile_label_mutation,
     restore_snoozed_message, HandlerResult,
 };
 use crate::state::AppState;
@@ -193,9 +193,10 @@ async fn enforce_draft_safety_with_override(
     Err(format!("draft safety blocked send: {messages}"))
 }
 
-/// Build a `mxr_safety::SafetyContext` from store data (self addresses,
-/// reply-all flag from context). Slice 1.2 keeps the contact/style
-/// loaders empty; Slice 1.3 wires them up.
+/// Build a `mxr_safety::SafetyContext` from store data: self addresses,
+/// known contacts for typo/first-time-external detection, per-recipient
+/// style baselines for tone-mismatch, and the parent thread's display
+/// names for reply-all vocative filtering.
 async fn build_safety_context(
     state: &AppState,
     draft: &Draft,
@@ -218,15 +219,114 @@ async fn build_safety_context(
     {
         self_addresses.push(address.email.to_ascii_lowercase());
     }
+
+    let known_contacts = state
+        .store
+        .list_known_contacts(&draft.account_id, KNOWN_CONTACTS_LIMIT)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|row| mxr_safety::KnownContact {
+            email: row.email,
+            display_name: row.display_name,
+            total_inbound: row.total_inbound as u64,
+            total_outbound: row.total_outbound as u64,
+        })
+        .collect();
+
+    let mut contact_styles = Vec::new();
+    let mut seen_style = HashSet::new();
+    for addr in draft
+        .to
+        .iter()
+        .chain(&draft.cc)
+        .take(CONTACT_STYLE_LOOKUP_CAP)
+    {
+        let email = addr.email.to_ascii_lowercase();
+        if email.is_empty() || !seen_style.insert(email.clone()) {
+            continue;
+        }
+        let style = state
+            .store
+            .get_contact_style(&draft.account_id, &email)
+            .await
+            .map_err(|e| e.to_string())?;
+        let Some(style) = style else { continue };
+        if style.msg_count_used_theirs == 0 {
+            continue;
+        }
+        let baseline: mxr_relationship::StylometryMetrics = match serde_json::from_str(
+            &style.metrics_json_theirs,
+        ) {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!(email = %email, "skip contact_style: parse metrics_json_theirs: {e}");
+                continue;
+            }
+        };
+        contact_styles.push(mxr_safety::ContactStyleBaseline {
+            email,
+            baseline,
+            baseline_sample_count: style.msg_count_used_theirs,
+        });
+    }
+
+    let mut thread_display_names = Vec::new();
+    if let Some(thread_id) = context.thread_id.as_ref() {
+        let envelopes = state
+            .store
+            .get_thread_envelopes(thread_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut seen = HashSet::new();
+        for envelope in envelopes {
+            for participant in std::iter::once(&envelope.from)
+                .chain(envelope.to.iter())
+                .chain(envelope.cc.iter())
+                .chain(envelope.bcc.iter())
+            {
+                if let Some(name) = participant.name.as_deref() {
+                    // Push the full display ("Sam Carter") and each alpha
+                    // token ("Sam", "Carter"). The reply-all vocative
+                    // regex matches a single capitalized word, so we need
+                    // tokens; full-name pushes future-proof callers that
+                    // match exact display.
+                    let trimmed = name.trim();
+                    if !trimmed.is_empty() && seen.insert(trimmed.to_ascii_lowercase()) {
+                        thread_display_names.push(trimmed.to_string());
+                    }
+                    for token in trimmed.split(|c: char| !c.is_alphabetic()) {
+                        if token.len() < 2 {
+                            continue;
+                        }
+                        let key = token.to_ascii_lowercase();
+                        if seen.insert(key) {
+                            thread_display_names.push(token.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Ok(mxr_safety::SafetyContext {
         mode_reply_all: context.reply_all
             || matches!(draft.intent, mxr_core::types::DraftIntent::ReplyAll),
         self_addresses,
-        known_contacts: Vec::new(),
-        contact_styles: Vec::new(),
-        thread_display_names: Vec::new(),
+        known_contacts,
+        contact_styles,
+        thread_display_names,
     })
 }
+
+/// Cap how many contacts we pull into safety context. The typo check is
+/// O(recipients * contacts) with a damerau-levenshtein early-exit, so a
+/// few hundred rows is fine; large mailboxes don't get penalized.
+const KNOWN_CONTACTS_LIMIT: u32 = 200;
+/// Cap how many recipients we look up baselines for. Drafts with many
+/// recipients are almost always replies-to-list; the tone check is most
+/// useful for direct correspondence.
+const CONTACT_STYLE_LOOKUP_CAP: usize = 10;
 
 /// Run the full safety pipeline: existing daemon checks (recipients,
 /// reply-all parent diff) + new `mxr-safety` deterministic checks.
@@ -369,6 +469,7 @@ fn emit_mutation_reconciliation_failed_if_needed(
     };
     let event = IpcMessage {
         id: 0,
+        source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Event(DaemonEvent::MutationReconciliationFailed {
             client_correlation_id: cid.to_string(),
             error_summary,
@@ -1123,7 +1224,7 @@ pub(super) async fn prepare_reply(
         .unwrap_or_default();
 
     let thread_context = match state.sync_engine.get_body(message_id).await {
-        Ok(body) => render_message_context(&body),
+        Ok(body) => (*get_or_render_reply_context(state, message_id, &body)).clone(),
         Err(_) => String::new(),
     };
 
@@ -1189,7 +1290,7 @@ pub(super) async fn prepare_forward(
         .unwrap_or_default();
 
     let forwarded_content = match state.sync_engine.get_body(message_id).await {
-        Ok(body) => render_message_context(&body),
+        Ok(body) => (*get_or_render_reply_context(state, message_id, &body)).clone(),
         Err(_) => String::new(),
     };
 
@@ -1559,10 +1660,25 @@ async fn ingest_sent_message(
         .await
         .map_err(|e| e.to_string())?;
 
-    if let Err(error) =
-        crate::handler::summarize::refresh_thread_summary_if_enabled(state, &thread_id).await
-    {
-        tracing::warn!(%thread_id, error = %error, "failed to refresh sent thread summary");
+    // Refresh the now-stale thread summary in the background. Sends
+    // are rare enough that the LLM cost doesn't matter, but we spawn
+    // fire-and-forget so the user's "sent" confirmation lands
+    // immediately rather than waiting on the LLM round-trip.
+    if state.config_snapshot().llm.enabled {
+        let summary_store = state.store.clone();
+        let summary_llm = state.llm.clone();
+        let summary_thread_id = thread_id.clone();
+        tokio::spawn(async move {
+            if let Err(error) = crate::handler::summarize::summarize_thread_cached(
+                summary_store,
+                summary_llm,
+                &summary_thread_id,
+            )
+            .await
+            {
+                tracing::warn!(%summary_thread_id, error = %error, "post-send summary refresh failed");
+            }
+        });
     }
 
     Ok(message_id)
@@ -1624,6 +1740,21 @@ pub(super) async fn unsubscribe(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Message not found".to_string())?;
+
+    // Idempotency: if we already logged a successful unsubscribe for
+    // this message, return Ack without re-firing the side effect. The
+    // event-log entries written by this same handler ("Unsubscribed
+    // from …" / "Sent unsubscribe request for …") both contain the
+    // substring "unsubscrib", which is what we match on.
+    if state
+        .store
+        .has_event_for_message_with_summary(&message_id.as_str(), "mutation", "unsubscrib")
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        return Ok(ResponseData::Ack);
+    }
+
     match &envelope.unsubscribe {
         UnsubscribeMethod::Mailto { address, subject } => {
             let sender = state.send_provider_for_account(&envelope.account_id)?;
@@ -1839,6 +1970,272 @@ mod reconciliation_failed_emit_tests {
         assert!(
             timeout(Duration::from_millis(30), rx.recv()).await.is_err(),
             "no event when succeeded >= requested"
+        );
+    }
+}
+
+#[cfg(test)]
+mod safety_context_wiring_tests {
+    //! Slice 1.3 integration tests for `build_safety_context`.
+    //!
+    //! These exercise the daemon through the public IPC handler
+    //! `check_draft_safety_request`. They assert the *observable*
+    //! consequence of populating each `SafetyContext` field: the safety
+    //! report contains the issue that the field's data should trigger.
+    //! If any of these regress, the deterministic check (recipients /
+    //! reply-all / tone) is running on an empty context.
+    use super::*;
+    use crate::state::AppState;
+    use chrono::Utc;
+    use mxr_core::types::{Address, ContactRow, DraftIntent};
+    use mxr_core::{AccountId, DraftId, MessageId, ThreadId};
+    use mxr_protocol::{DraftSafetyContextData, DraftSafetyModeData};
+    use std::sync::Arc;
+
+    fn draft_to(account_id: AccountId, to: Vec<Address>, body: &str) -> Draft {
+        Draft {
+            id: DraftId::new(),
+            account_id,
+            reply_headers: None,
+            intent: DraftIntent::New,
+            to,
+            cc: Vec::new(),
+            bcc: Vec::new(),
+            subject: "subject".into(),
+            body_markdown: body.into(),
+            attachments: Vec::new(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    fn addr(email: &str, name: Option<&str>) -> Address {
+        Address {
+            email: email.into(),
+            name: name.map(str::to_string),
+        }
+    }
+
+    fn check_context() -> DraftSafetyContextData {
+        DraftSafetyContextData {
+            mode: DraftSafetyModeData::Check,
+            reply_all: false,
+            original_message_id: None,
+            thread_id: None,
+            allow_llm: false,
+            proposed_send_at: None,
+        }
+    }
+
+    fn report(resp: ResponseData) -> DraftSafetyReport {
+        match resp {
+            ResponseData::DraftSafetyReportResponse { report } => report,
+            other => panic!("expected DraftSafetyReportResponse, got {other:?}"),
+        }
+    }
+
+    /// known_contacts wiring: seed a strong contact for `alice@example.com`,
+    /// draft to `alcie@example.com` (one-edit transposition). The
+    /// recipient typo check must see the strong contact and emit a
+    /// WrongRecipient warning naming both addresses.
+    ///
+    /// FAILS today: build_safety_context returns `known_contacts =
+    /// Vec::new()` so `best_typo_candidate` finds no candidates.
+    #[tokio::test]
+    async fn known_contacts_loaded_emits_typo_warning() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let now = Utc::now();
+
+        state
+            .store
+            .upsert_contact(&ContactRow {
+                account_id: account_id.clone(),
+                email: "alice@example.com".into(),
+                display_name: Some("Alice".into()),
+                first_seen_at: now,
+                last_seen_at: now,
+                last_inbound_at: Some(now),
+                last_outbound_at: Some(now),
+                total_inbound: 12,
+                total_outbound: 6,
+                replied_count: 6,
+                cadence_days_p50: None,
+            })
+            .await
+            .unwrap();
+
+        let draft = draft_to(
+            account_id.clone(),
+            vec![addr("alcie@example.com", None)],
+            "Hi,\n\nFollowing up.",
+        );
+        let resp = check_draft_safety_request(&state, &draft, &check_context())
+            .await
+            .expect("check_draft_safety_request");
+        let r = report(resp);
+        let typo = r.issues.iter().find(|i| {
+            i.code == DraftSafetyIssueCode::WrongRecipient
+                && i.severity == DraftSafetySeverity::Warning
+        });
+        let typo = typo.expect(&format!(
+            "expected WrongRecipient warning, got issues: {:?}",
+            r.issues
+        ));
+        assert!(
+            typo.message.contains("alcie@example.com"),
+            "warning omits typed recipient: {}",
+            typo.message
+        );
+        assert!(
+            typo.message.contains("alice@example.com"),
+            "warning omits suggested candidate: {}",
+            typo.message
+        );
+    }
+
+    /// thread_display_names wiring: seed a thread whose envelope's
+    /// `from.name` is "Sam", then issue a reply-all draft of size >2
+    /// with body "Hi Sam,". The reply-all check should treat Sam as
+    /// thread context (ambiguous) and NOT warn.
+    ///
+    /// FAILS today: build_safety_context returns `thread_display_names
+    /// = Vec::new()`, so the reply_all check fires the warning.
+    #[tokio::test]
+    async fn thread_display_names_loaded_suppresses_reply_all_warning() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+
+        let thread_id = ThreadId::new();
+        let envelope = mxr_core::types::Envelope {
+            id: MessageId::new(),
+            account_id: account_id.clone(),
+            provider_id: "sam-1".into(),
+            thread_id: thread_id.clone(),
+            message_id_header: Some("<sam-1@example.com>".into()),
+            in_reply_to: None,
+            references: vec![],
+            from: Address {
+                email: "sam@example.com".into(),
+                name: Some("Sam Carter".into()),
+            },
+            to: vec![Address {
+                email: "user@example.com".into(),
+                name: None,
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "let's sync".into(),
+            date: Utc::now(),
+            flags: mxr_core::types::MessageFlags::empty(),
+            snippet: "ping".into(),
+            has_attachments: false,
+            size_bytes: 256,
+            unsubscribe: mxr_core::types::UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
+            label_provider_ids: vec![],
+        };
+        state
+            .store
+            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let draft = draft_to(
+            account_id.clone(),
+            vec![
+                addr("sam@example.com", Some("Sam Carter")),
+                addr("dave@example.com", Some("Dave")),
+                addr("eve@example.com", Some("Eve")),
+                addr("frank@example.com", Some("Frank")),
+            ],
+            "Hi Sam,\n\nThanks, that works.",
+        );
+        let mut context = check_context();
+        context.reply_all = true;
+        context.thread_id = Some(thread_id);
+
+        let resp = check_draft_safety_request(&state, &draft, &context)
+            .await
+            .expect("check_draft_safety_request");
+        let r = report(resp);
+        let reply_all_warns: Vec<_> = r
+            .issues
+            .iter()
+            .filter(|i| i.code == DraftSafetyIssueCode::ReplyAll)
+            .collect();
+        assert!(
+            reply_all_warns.is_empty(),
+            "Sam is a thread participant; reply-all warning should be suppressed, got {:?}",
+            reply_all_warns
+        );
+    }
+
+    /// contact_styles wiring: seed a high-confidence baseline for
+    /// `alice@example.com` skewed casual, draft her in formal voice.
+    /// The tone check should fire a ToneMismatch warning.
+    ///
+    /// FAILS today: build_safety_context returns `contact_styles =
+    /// Vec::new()`, so the tone check short-circuits at the top.
+    #[tokio::test]
+    async fn contact_styles_loaded_emits_tone_warning() {
+        use mxr_relationship::StylometryMetrics;
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+
+        // Seed a casual baseline (low formality_score) with high sample.
+        let their_baseline = StylometryMetrics {
+            formality_score: 0.1,
+            avg_sentence_len: 6.0,
+            sentence_count: 10,
+            word_count: 60,
+            ..Default::default()
+        };
+        let metrics_json_theirs = serde_json::to_string(&their_baseline).unwrap();
+        state
+            .store
+            .upsert_contact_style(&mxr_store::ContactStyleRecord {
+                account_id: account_id.clone(),
+                email: "alice@example.com".into(),
+                formality_score: 0.0,
+                formality_score_theirs: 0.1,
+                avg_sentence_len: 0.0,
+                avg_sentence_len_theirs: 6.0,
+                msg_count_used: 0,
+                msg_count_used_theirs: 30,
+                metrics_json: "{}".into(),
+                metrics_json_theirs,
+                computed_at: Utc::now(),
+                source_hash: "test".into(),
+                drift_detected: false,
+                drift_reason: None,
+                drift_detected_at: None,
+            })
+            .await
+            .unwrap();
+
+        let very_formal = "Dear Alice,\n\nFurthermore, I would respectfully request that you kindly furnish the aforementioned documentation at your earliest convenience.\n\nSincerely,\nMe";
+        let draft = draft_to(
+            account_id.clone(),
+            vec![addr("alice@example.com", None)],
+            very_formal,
+        );
+        let resp = check_draft_safety_request(&state, &draft, &check_context())
+            .await
+            .expect("check_draft_safety_request");
+        let r = report(resp);
+        let tone = r
+            .issues
+            .iter()
+            .find(|i| i.code == DraftSafetyIssueCode::ToneMismatch);
+        assert!(
+            tone.is_some(),
+            "expected ToneMismatch warning, got issues: {:?}",
+            r.issues
         );
     }
 }

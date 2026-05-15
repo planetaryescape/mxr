@@ -14,6 +14,8 @@ Options:
       --dry-run                  Show what would be sent (sender, recipients, subject, byte count) without sending
       --format <FORMAT>          [possible values: table, json, jsonl, csv, ids]
       --at <TIME>                Schedule the draft to be sent later instead of sending now. Same forms as `mxr snooze --until`: `in 2h`, `tomorrow 9am`, `monday 17:00`, RFC3339. Use `mxr unsend <draft-id>` to cancel
+      --remind-after <TIME>      After sending now, remind if no reply has arrived by this time. Same forms as `mxr remind --when`: `in 2h`, `tomorrow 9am`, `monday 17:00`, RFC3339
       --check                    Run the safety pipeline against the draft and exit without sending. Exit non-zero only if a Blocker issue is present
-      --override-safety <TOKEN>  Single-use override token (issued by a previous failed `--check`) to bypass a Blocker. Slice 1.3 wires this up
+      --override-safety <TOKEN>  Single-use override token (issued by a previous failed `--check`) to bypass a Blocker
+      --no-llm                   Skip LLM-backed safety checks (answer-coverage). Useful when the daemon's LLM is a rate-limited cloud model. Only honored with `--check`
   -h, --help                     Print help

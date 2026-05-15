@@ -309,6 +309,103 @@ impl super::Store {
             })
             .collect()
     }
+
+    /// Upsert a single `contacts` row. Production refreshes the table
+    /// in bulk via `refresh_contacts`; this helper exists for callers
+    /// (and tests) that need to materialize a known contact directly.
+    pub async fn upsert_contact(&self, row: &ContactRow) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"INSERT INTO contacts (
+                account_id, email, display_name,
+                first_seen_at, last_seen_at,
+                last_inbound_at, last_outbound_at,
+                total_inbound, total_outbound,
+                replied_count, cadence_days_p50,
+                is_list_sender, list_id,
+                refreshed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)
+            ON CONFLICT(account_id, email) DO UPDATE SET
+              display_name = excluded.display_name,
+              first_seen_at = excluded.first_seen_at,
+              last_seen_at = excluded.last_seen_at,
+              last_inbound_at = excluded.last_inbound_at,
+              last_outbound_at = excluded.last_outbound_at,
+              total_inbound = excluded.total_inbound,
+              total_outbound = excluded.total_outbound,
+              replied_count = excluded.replied_count,
+              cadence_days_p50 = excluded.cadence_days_p50,
+              refreshed_at = excluded.refreshed_at"#,
+        )
+        .bind(row.account_id.as_str())
+        .bind(&row.email)
+        .bind(&row.display_name)
+        .bind(row.first_seen_at.timestamp())
+        .bind(row.last_seen_at.timestamp())
+        .bind(row.last_inbound_at.map(|d| d.timestamp()))
+        .bind(row.last_outbound_at.map(|d| d.timestamp()))
+        .bind(row.total_inbound as i64)
+        .bind(row.total_outbound as i64)
+        .bind(row.replied_count as i64)
+        .bind(row.cadence_days_p50)
+        .bind(chrono::Utc::now().timestamp())
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
+    /// Return the top-N contacts for an account, ranked by combined
+    /// inbound+outbound volume (descending). Used by the pre-send
+    /// safety pipeline to drive typo-distance and first-time-external
+    /// checks. Excludes the account's own addresses.
+    pub async fn list_known_contacts(
+        &self,
+        account_id: &AccountId,
+        limit: u32,
+    ) -> Result<Vec<ContactRow>, sqlx::Error> {
+        let started_at = Instant::now();
+        let lim = limit as i64;
+        let rows = sqlx::query(
+            r#"SELECT
+                account_id, email, display_name,
+                first_seen_at, last_seen_at,
+                last_inbound_at, last_outbound_at,
+                total_inbound, total_outbound,
+                replied_count, cadence_days_p50
+              FROM contacts
+              WHERE account_id = ?1
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM account_addresses self_addr
+                    WHERE LOWER(self_addr.email) = LOWER(contacts.email)
+                )
+              ORDER BY (total_inbound + total_outbound) DESC
+              LIMIT ?2"#,
+        )
+        .bind(account_id.as_str())
+        .bind(lim)
+        .fetch_all(self.reader())
+        .await?;
+        trace_query("contacts.list_known", started_at, rows.len());
+
+        use sqlx::Row;
+        rows.into_iter()
+            .map(|row| {
+                Ok(ContactRow {
+                    account_id: decode_id(row.get::<String, _>("account_id").as_str())?,
+                    email: row.get("email"),
+                    display_name: row.get("display_name"),
+                    first_seen_at: decode_timestamp(row.get::<i64, _>("first_seen_at"))?,
+                    last_seen_at: decode_timestamp(row.get::<i64, _>("last_seen_at"))?,
+                    last_inbound_at: decode_optional_timestamp(row.get("last_inbound_at"))?,
+                    last_outbound_at: decode_optional_timestamp(row.get("last_outbound_at"))?,
+                    total_inbound: row.get::<i64, _>("total_inbound").max(0) as u32,
+                    total_outbound: row.get::<i64, _>("total_outbound").max(0) as u32,
+                    replied_count: row.get::<i64, _>("replied_count").max(0) as u32,
+                    cadence_days_p50: row.get("cadence_days_p50"),
+                })
+            })
+            .collect()
+    }
 }
 
 #[allow(dead_code)]

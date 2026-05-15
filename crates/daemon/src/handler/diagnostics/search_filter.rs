@@ -4,6 +4,30 @@ use chrono::Datelike;
 use mxr_core::types::{system_labels, SemanticChunkSourceKind};
 use mxr_search::ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp};
 
+/// Returns true if `node` (or any descendant) is an
+/// `is:owed-reply` filter. Used by the search executor to decide
+/// whether to pre-compute the owed-thread set and apply it as a
+/// post-filter (the filter itself is computed across messages +
+/// contacts + screener_decisions and so can't be expressed as a
+/// per-envelope Tantivy field).
+pub(super) fn ast_contains_owed_reply(node: &QueryNode) -> bool {
+    match node {
+        QueryNode::Filter(FilterKind::OwedReply) => true,
+        QueryNode::Filter(_)
+        | QueryNode::Text(_)
+        | QueryNode::Phrase(_)
+        | QueryNode::Near { .. }
+        | QueryNode::Field { .. }
+        | QueryNode::Label(_)
+        | QueryNode::DateRange { .. }
+        | QueryNode::Size { .. } => false,
+        QueryNode::And(left, right) | QueryNode::Or(left, right) => {
+            ast_contains_owed_reply(left) || ast_contains_owed_reply(right)
+        }
+        QueryNode::Not(inner) => ast_contains_owed_reply(inner),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct SemanticQueryPlan {
     pub text: String,
@@ -110,6 +134,12 @@ fn matches_filter(filter: &FilterKind, envelope: &mxr_core::Envelope) -> bool {
             matches!(envelope.link_density(), mxr_core::types::LinkDensity::Heavy)
         }
         FilterKind::NoLinks => envelope.link_count == 0,
+        // Owed-reply is computed at the thread level against
+        // `messages` + `contacts` + `screener_decisions`. The
+        // executor applies an explicit thread-set membership test
+        // before this per-envelope filter runs; here we default to
+        // `true` so it never independently drops candidates.
+        FilterKind::OwedReply => true,
     }
 }
 

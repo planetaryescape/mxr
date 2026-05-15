@@ -4,7 +4,7 @@
 
 use super::{relationship_profile, HandlerResult};
 use crate::state::AppState;
-use mxr_core::id::{MessageId, ThreadId};
+use mxr_core::id::ThreadId;
 use mxr_core::types::{AccountAddress, Address, Envelope};
 use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime};
 use mxr_protocol::{ResponseData, ThreadSummaryData};
@@ -62,45 +62,7 @@ pub(crate) async fn valid_cached_summary(
     })
 }
 
-pub(crate) async fn summarize_changed_message_threads(
-    state: Arc<AppState>,
-    message_ids: Vec<MessageId>,
-) {
-    if !state.config_snapshot().llm.enabled {
-        return;
-    }
-    let thread_ids = match state.store.thread_ids_for_message_ids(&message_ids).await {
-        Ok(thread_ids) => thread_ids,
-        Err(error) => {
-            tracing::warn!(error = %error, "failed to resolve changed message threads for summaries");
-            return;
-        }
-    };
-    for thread_id in thread_ids {
-        match summarize_thread_cached(state.store.clone(), state.llm.clone(), &thread_id).await {
-            Ok(_) => {
-                tracing::debug!(%thread_id, "thread summary refreshed after sync");
-            }
-            Err(error) => {
-                tracing::warn!(%thread_id, error = %error, "thread summary refresh failed");
-            }
-        }
-    }
-}
-
-pub(crate) async fn refresh_thread_summary_if_enabled(
-    state: &AppState,
-    thread_id: &ThreadId,
-) -> Result<(), String> {
-    if !state.config_snapshot().llm.enabled {
-        return Ok(());
-    }
-    summarize_thread_cached(state.store.clone(), state.llm.clone(), thread_id)
-        .await
-        .map(|_| ())
-}
-
-async fn summarize_thread_cached(
+pub(crate) async fn summarize_thread_cached(
     store: Arc<Store>,
     llm: Arc<LlmRuntime>,
     thread_id: &ThreadId,

@@ -528,10 +528,7 @@ async fn seed_demo_snippets(client: &mut IpcClient) -> anyhow::Result<()> {
 
 async fn seed_demo_signatures(client: &mut IpcClient) -> anyhow::Result<()> {
     let signatures: &[(&str, &str)] = &[
-        (
-            "formal",
-            "Best regards,\nAlex Demo\nDemo Co. — Engineering",
-        ),
+        ("formal", "Best regards,\nAlex Demo\nDemo Co. — Engineering"),
         ("casual", "—\nAlex"),
     ];
     for (name, body) in signatures {
@@ -570,8 +567,7 @@ async fn seed_demo_labels(client: &mut IpcClient) -> anyhow::Result<()> {
             // Soft-tolerate "already exists" since CreateLabel is not always
             // idempotent at the provider layer (the fake provider should be,
             // but real providers reject duplicates).
-            Response::Error { message, .. }
-                if message.to_ascii_lowercase().contains("exist") => {}
+            Response::Error { message, .. } if message.to_ascii_lowercase().contains("exist") => {}
             Response::Error { message, .. } => {
                 anyhow::bail!("failed to seed label `{name}`: {message}");
             }
@@ -615,7 +611,12 @@ async fn seed_demo_screener(client: &mut IpcClient) -> anyhow::Result<()> {
     // pulled from the fake provider's generator pool — see
     // `crates/provider-fake/` for the source list.
     let personal = AccountId::from_provider_id("fake", DEMO_PERSONAL_EMAIL);
-    let entries: &[(&AccountId, &str, mxr_protocol::ScreenerDispositionData, Option<&str>)] = &[
+    let entries: &[(
+        &AccountId,
+        &str,
+        mxr_protocol::ScreenerDispositionData,
+        Option<&str>,
+    )] = &[
         (
             &personal,
             "alice@work.com",
@@ -1037,9 +1038,9 @@ fn write_demo_message_count(paths: &DemoPaths, messages: usize) -> anyhow::Resul
 mod tests {
     use super::{
         demo_account_ids, demo_paths, is_active, prepare_environment, read_active_marker,
-        read_demo_message_count, remove_active_marker, write_active_marker, write_demo_message_count,
-        DemoPaths, DEMO_COUNT_MARKER, DEMO_INSTANCE, DEMO_PERSONAL_EMAIL, DEMO_SEED_VERSION,
-        DEMO_WORK_EMAIL,
+        read_demo_message_count, remove_active_marker, write_active_marker,
+        write_demo_message_count, DemoPaths, DEMO_COUNT_MARKER, DEMO_INSTANCE, DEMO_PERSONAL_EMAIL,
+        DEMO_SEED_VERSION, DEMO_WORK_EMAIL,
     };
     use mxr_core::id::AccountId;
 

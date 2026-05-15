@@ -1,5 +1,6 @@
 ---
 source: crates/daemon/tests/cli_help.rs
+assertion_line: 14
 expression: stdout
 ---
 Reply to all recipients
@@ -16,5 +17,6 @@ Options:
       --no-signature           Do not insert any signature
       --yes                    Skip confirmation
       --dry-run                Show what would be sent
+      --remind-after <TIME>    After sending, remind if no reply has arrived by this time. Same forms as `mxr remind --when`: `in 2h`, `tomorrow 9am`, `monday 17:00`, RFC3339
       --format <FORMAT>        [possible values: table, json, jsonl, csv, ids]
   -h, --help                   Print help

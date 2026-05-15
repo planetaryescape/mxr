@@ -26,9 +26,7 @@ pub async fn run(
             let id = mxr_core::MessageId::from_str(&id_str)
                 .map_err(|e| anyhow::anyhow!("invalid message id: {e}"))?;
             // Pull the body to use as the query corpus.
-            let resp = client
-                .request(Request::GetBody { message_id: id })
-                .await?;
+            let resp = client.request(Request::GetBody { message_id: id }).await?;
             match resp {
                 Response::Ok {
                     data: ResponseData::Body { body },

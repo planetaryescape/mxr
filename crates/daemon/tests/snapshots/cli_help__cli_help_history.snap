@@ -8,7 +8,22 @@ Usage: mxr history [OPTIONS]
 
 Options:
       --category <CATEGORY>
+          Exact category match (e.g. `mutation`, `sync`)
+      --category-prefix <CATEGORY_PREFIX>
+          Category prefix (e.g. `sync.`). Matches `category LIKE prefix%`
       --level <LEVEL>
-      --limit <LIMIT>        [default: 50]
-      --format <FORMAT>      [possible values: table, json, jsonl, csv, ids]
-  -h, --help                 Print help
+
+      --search <SEARCH>
+          Free-text substring match against `summary` and `details`. Case-insensitive
+      --since <SINCE>
+          Lower-bound timestamp. Accepts `1h`/`3d`/`2w` or ISO date
+      --until <UNTIL>
+          Upper-bound timestamp. Accepts `1h`/`3d`/`2w` or ISO date
+      --offset <OFFSET>
+          Result offset for paging [default: 0]
+      --limit <LIMIT>
+          [default: 50]
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+  -h, --help
+          Print help

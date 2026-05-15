@@ -66,7 +66,13 @@ fn print(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                     println!();
                     println!("Citations:");
                     for c in &answer.citations {
-                        println!("  - msg={} \"{}\"", c.msg_id, truncate(&c.quote, 80));
+                        println!(
+                            "  - msg={} thread={} {} \"{}\"",
+                            c.message_id,
+                            c.thread_id,
+                            c.date.format("%Y-%m-%d"),
+                            truncate(&c.quote, 80)
+                        );
                     }
                 }
                 println!(

@@ -13,6 +13,7 @@ Arguments:
 Options:
       --account <ACCOUNT>
       --expected-days <EXPECTED_DAYS>
+      --every <EVERY>                  Expected cadence as a duration, e.g. `14d`, `2w`, or `30 days`
       --note <NOTE>
       --allow-list-sender              Watch the contact even if it looks like a list sender
   -h, --help                           Print help

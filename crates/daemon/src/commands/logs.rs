@@ -45,10 +45,13 @@ fn purge_events(retention_days: u32) -> anyhow::Result<u64> {
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     no_follow: bool,
     level: Option<String>,
     since: Option<String>,
+    search: Option<String>,
+    limit: u32,
     purge: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
@@ -101,12 +104,20 @@ pub fn run(
 
     let file = std::fs::File::open(&log_path)?;
     let reader = BufReader::new(file);
-
+    // Pre-scan into a buffer so we can apply the limit from the tail.
+    // For very large log files this is fine because tracing-subscriber's
+    // file appender rotates on size; the live `mxr.log` is bounded.
+    let mut buffer: Vec<String> = Vec::new();
     for line in reader.lines() {
         let line = line?;
-        if !line_passes(&line, level.as_deref(), since_cutoff) {
+        if !line_passes(&line, level.as_deref(), search.as_deref(), since_cutoff) {
             continue;
         }
+        buffer.push(line);
+    }
+    let limit_usize = limit as usize;
+    let start = buffer.len().saturating_sub(limit_usize.max(1));
+    for line in buffer.into_iter().skip(start) {
         emit_line(&line, json_mode);
     }
 
@@ -127,7 +138,7 @@ pub fn run(
                 let reader = BufReader::new(file);
                 for line in reader.lines() {
                     let line = line?;
-                    if !line_passes(&line, level.as_deref(), since_cutoff) {
+                    if !line_passes(&line, level.as_deref(), search.as_deref(), since_cutoff) {
                         continue;
                     }
                     emit_line(&line, json_mode);
@@ -162,9 +173,19 @@ fn emit_line(line: &str, json_mode: bool) {
     );
 }
 
-fn line_passes(line: &str, level: Option<&str>, since: Option<DateTime<Utc>>) -> bool {
+fn line_passes(
+    line: &str,
+    level: Option<&str>,
+    search: Option<&str>,
+    since: Option<DateTime<Utc>>,
+) -> bool {
     if let Some(lvl) = level {
         if !line.to_lowercase().contains(&lvl.to_lowercase()) {
+            return false;
+        }
+    }
+    if let Some(needle) = search {
+        if !line.to_lowercase().contains(&needle.to_lowercase()) {
             return false;
         }
     }

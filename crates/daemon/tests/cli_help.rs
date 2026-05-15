@@ -85,6 +85,19 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_events", &["events", "--help"]),
         ("cli_help_history", &["history", "--help"]),
         ("cli_help_notify", &["notify", "--help"]),
+        ("cli_help_activity", &["activity", "--help"]),
+        ("cli_help_activity_list", &["activity", "list", "--help"]),
+        ("cli_help_activity_stats", &["activity", "stats", "--help"]),
+        ("cli_help_activity_export", &["activity", "export", "--help"]),
+        ("cli_help_activity_prune", &["activity", "prune", "--help"]),
+        ("cli_help_activity_redact", &["activity", "redact", "--help"]),
+        ("cli_help_activity_clear", &["activity", "clear", "--help"]),
+        ("cli_help_activity_pause", &["activity", "pause", "--help"]),
+        ("cli_help_activity_resume", &["activity", "resume", "--help"]),
+        ("cli_help_activity_saved", &["activity", "saved", "--help"]),
+        ("cli_help_activity_recall", &["activity", "recall", "--help"]),
+        ("cli_help_activity_replay", &["activity", "replay", "--help"]),
+        ("cli_help_activity_tail", &["activity", "tail", "--help"]),
         ("cli_help_logs", &["logs", "--help"]),
         ("cli_help_reset", &["reset", "--help"]),
         ("cli_help_burn", &["burn", "--help"]),
@@ -239,25 +252,38 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_owed", &["owed", "--help"]),
         ("cli_help_ask", &["ask", "--help"]),
         ("cli_help_decisions", &["decisions", "--help"]),
-        ("cli_help_decisions_rebuild", &["decisions", "rebuild", "--help"]),
+        (
+            "cli_help_decisions_rebuild",
+            &["decisions", "rebuild", "--help"],
+        ),
+        ("cli_help_decisions_show", &["decisions", "show", "--help"]),
         ("cli_help_send_time", &["send-time", "--help"]),
         ("cli_help_whois", &["whois", "--help"]),
-        ("cli_help_suggest_recipients", &["suggest-recipients", "--help"]),
+        (
+            "cli_help_suggest_recipients",
+            &["suggest-recipients", "--help"],
+        ),
         ("cli_help_expert", &["expert", "--help"]),
         ("cli_help_cadence", &["cadence", "--help"]),
         ("cli_help_cadence_watch", &["cadence", "watch", "--help"]),
-        ("cli_help_cadence_unwatch", &["cadence", "unwatch", "--help"]),
+        (
+            "cli_help_cadence_unwatch",
+            &["cadence", "unwatch", "--help"],
+        ),
         ("cli_help_cadence_list", &["cadence", "list", "--help"]),
         ("cli_help_cadence_drift", &["cadence", "drift", "--help"]),
         ("cli_help_briefing", &["briefing", "--help"]),
-        ("cli_help_briefing_thread", &["briefing", "thread", "--help"]),
+        (
+            "cli_help_briefing_thread",
+            &["briefing", "thread", "--help"],
+        ),
         (
             "cli_help_briefing_recipient",
             &["briefing", "recipient", "--help"],
         ),
     ];
 
-    assert_eq!(cases.len(), 150);
+    assert_eq!(cases.len(), 164);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

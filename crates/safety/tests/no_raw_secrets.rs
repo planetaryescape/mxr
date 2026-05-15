@@ -9,9 +9,7 @@
 //! assertions in this file fail (the "raw absent" assertion AND the
 //! "preview present" assertion for that kind).
 
-use mxr_core::types::{
-    Address, Draft, DraftIntent, DraftSafetyReport, DraftSafetySeverity,
-};
+use mxr_core::types::{Address, Draft, DraftIntent, DraftSafetyReport, DraftSafetySeverity};
 use mxr_safety::{check_draft_deterministic, SafetyConfig, SafetyContext};
 use mxr_store::Store;
 
@@ -142,12 +140,7 @@ fn json_serialization_never_contains_raw_secrets() {
         let pii_issues: Vec<_> = report
             .issues
             .iter()
-            .filter(|i| {
-                matches!(
-                    i.code,
-                    mxr_core::DraftSafetyIssueCode::PiiSecret
-                )
-            })
+            .filter(|i| matches!(i.code, mxr_core::DraftSafetyIssueCode::PiiSecret))
             .collect();
         if pii_issues.is_empty() {
             failures.push(format!(
@@ -172,7 +165,11 @@ fn json_serialization_never_contains_raw_secrets() {
             ));
         }
     }
-    assert!(failures.is_empty(), "leaks:\n  - {}", failures.join("\n  - "));
+    assert!(
+        failures.is_empty(),
+        "leaks:\n  - {}",
+        failures.join("\n  - ")
+    );
 }
 
 #[tokio::test]
@@ -216,7 +213,11 @@ async fn audit_table_never_persists_raw_secrets() {
             ));
         }
     }
-    assert!(failures.is_empty(), "audit leaks:\n  - {}", failures.join("\n  - "));
+    assert!(
+        failures.is_empty(),
+        "audit leaks:\n  - {}",
+        failures.join("\n  - ")
+    );
 }
 
 #[test]

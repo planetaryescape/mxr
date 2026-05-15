@@ -17,7 +17,16 @@ pub(super) async fn set_reply_later(
     message_id: &MessageId,
     flag: bool,
 ) -> HandlerResult {
-    let now = Utc::now();
+    set_reply_later_at(state, message_id, flag, Utc::now()).await?;
+    Ok(ResponseData::Ack)
+}
+
+pub(crate) async fn set_reply_later_at(
+    state: &AppState,
+    message_id: &MessageId,
+    flag: bool,
+    now: DateTime<Utc>,
+) -> Result<(), String> {
     if flag {
         state
             .store
@@ -31,8 +40,7 @@ pub(super) async fn set_reply_later(
             .await
             .map_err(|e| e.to_string())?;
     }
-    refresh_reply_later_search_marker(state, message_id, flag).await?;
-    Ok(ResponseData::Ack)
+    refresh_reply_later_search_marker(state, message_id, flag).await
 }
 
 async fn refresh_reply_later_search_marker(

@@ -121,7 +121,10 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     if options.yes {
         let receipt = expect_send_receipt(
             client
-                .request(Request::SendDraft { draft: draft.clone(), override_safety_token: None })
+                .request(Request::SendDraft {
+                    draft: draft.clone(),
+                    override_safety_token: None,
+                })
                 .await?,
         )?;
         if let Some(path) = draft_file {
@@ -156,6 +159,7 @@ pub async fn reply(
     no_signature: bool,
     yes: bool,
     dry_run: bool,
+    remind_after: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     reply_inner(
@@ -166,6 +170,7 @@ pub async fn reply(
         no_signature,
         yes,
         dry_run,
+        remind_after,
         false,
         format,
     )
@@ -180,6 +185,7 @@ pub async fn reply_all(
     no_signature: bool,
     yes: bool,
     dry_run: bool,
+    remind_after: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     reply_inner(
@@ -190,6 +196,7 @@ pub async fn reply_all(
         no_signature,
         yes,
         dry_run,
+        remind_after,
         true,
         format,
     )
@@ -204,6 +211,7 @@ async fn reply_inner(
     no_signature: bool,
     yes: bool,
     dry_run: bool,
+    remind_after: Option<String>,
     reply_all: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
@@ -272,6 +280,7 @@ async fn reply_inner(
         draft_file,
         yes,
         dry_run,
+        remind_after,
         format,
     )
     .await
@@ -342,6 +351,7 @@ pub async fn forward(
         draft_file,
         yes,
         dry_run,
+        None,
         format,
     )
     .await
@@ -393,9 +403,13 @@ async fn finalize_compose(
     draft_file: Option<PathBuf>,
     yes: bool,
     dry_run: bool,
+    remind_after: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    let body = expand_compose_snippets(client, body).await?;
+    // Recipient + thread context is only meaningful at the
+    // post-$EDITOR stage where the user has filled in `to:` / `subject:`.
+    let snippet_ctx = snippet_context_from_frontmatter(&frontmatter);
+    let body = expand_compose_snippets_with_context(client, body, Some(&snippet_ctx)).await?;
     let draft = draft_from_frontmatter(account_id, intent, &frontmatter, body)?;
     validate_compose_draft(&frontmatter, &draft.body_markdown, yes)?;
 
@@ -404,12 +418,20 @@ async fn finalize_compose(
         return Ok(());
     }
 
+    if !yes && remind_after.is_some() {
+        anyhow::bail!("--remind-after requires --yes; saved drafts can be sent later with `mxr send <draft-id> --remind-after <time>`");
+    }
+
     if yes {
         let receipt = expect_send_receipt(
             client
-                .request(Request::SendDraft { draft: draft.clone(), override_safety_token: None })
+                .request(Request::SendDraft {
+                    draft: draft.clone(),
+                    override_safety_token: None,
+                })
                 .await?,
         )?;
+        set_auto_reminder_after_send(client, receipt.as_ref(), remind_after.as_deref()).await?;
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
@@ -581,6 +603,7 @@ pub async fn send_draft(
     dry_run: bool,
     format: Option<OutputFormat>,
     override_safety_token: Option<String>,
+    remind_after: Option<String>,
 ) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
@@ -621,6 +644,7 @@ pub async fn send_draft(
         })
         .await?;
     let receipt = expect_send_receipt(resp)?;
+    set_auto_reminder_after_send(&mut client, receipt.as_ref(), remind_after.as_deref()).await?;
     println!("Sent draft {}", draft_id);
     if let Some(info) = receipt.as_ref() {
         println!("Local message id: {}", info.local_message_id);
@@ -628,10 +652,40 @@ pub async fn send_draft(
     Ok(())
 }
 
+/// Build the safety-check context for a CLI `--check` invocation. Pulls
+/// `thread_id` from the draft's reply headers so the answer-coverage
+/// check (and any future thread-scoped check) has the parent thread to
+/// load. `no_llm` short-circuits LLM-backed checks.
+pub(crate) fn build_check_context(
+    draft: &Draft,
+    no_llm: bool,
+    now: chrono::DateTime<chrono::Utc>,
+) -> DraftSafetyContextData {
+    let thread_id = draft
+        .reply_headers
+        .as_ref()
+        .and_then(|h| h.thread_id.as_deref())
+        .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        .map(mxr_core::ThreadId::from_uuid);
+    DraftSafetyContextData {
+        mode: DraftSafetyModeData::Check,
+        reply_all: matches!(draft.intent, mxr_core::DraftIntent::ReplyAll),
+        original_message_id: None,
+        thread_id,
+        allow_llm: !no_llm,
+        // CLI `--check` defaults to "send now" timing.
+        proposed_send_at: Some(now),
+    }
+}
+
 /// Run `mxr send <draft-id> --check`. Loads the draft from the daemon
 /// and submits it through the safety pipeline without sending. Exits
 /// non-zero when at least one Blocker issue is present.
-pub async fn check_send(draft_id: String, format: Option<OutputFormat>) -> anyhow::Result<()> {
+pub async fn check_send(
+    draft_id: String,
+    format: Option<OutputFormat>,
+    no_llm: bool,
+) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
     let resp = client.request(Request::ListDrafts).await?;
@@ -647,15 +701,7 @@ pub async fn check_send(draft_id: String, format: Option<OutputFormat>) -> anyho
         .find(|d| d.id == draft_id)
         .ok_or_else(|| anyhow::anyhow!("Draft not found: {draft_id}"))?;
 
-    let context = DraftSafetyContextData {
-        mode: DraftSafetyModeData::Check,
-        reply_all: matches!(draft.intent, mxr_core::DraftIntent::ReplyAll),
-        original_message_id: None,
-        thread_id: None,
-        allow_llm: false,
-        // CLI `--check` defaults to "send now" timing.
-        proposed_send_at: Some(chrono::Utc::now()),
-    };
+    let context = build_check_context(&draft, no_llm, chrono::Utc::now());
     let resp = client
         .request(Request::CheckDraftSafety {
             draft: draft.clone(),
@@ -671,6 +717,68 @@ pub async fn check_send(draft_id: String, format: Option<OutputFormat>) -> anyho
     };
 
     let resolved = resolve_format(format);
+    if matches!(resolved, OutputFormat::Json) {
+        let json = serde_json::to_string_pretty(&report)?;
+        println!("{json}");
+    } else if matches!(resolved, OutputFormat::Jsonl) {
+        let lines = jsonl(std::slice::from_ref(&report))?;
+        print!("{lines}");
+    } else {
+        print_safety_report_table(&draft, &report);
+    }
+
+    if !report.allowed {
+        std::process::exit(2);
+    }
+    Ok(())
+}
+
+/// Run `mxr compose ... --check`. Builds a transient draft from CLI
+/// args (NOT persisted; no daemon-side draft row created) and runs the
+/// safety pipeline against it. Exits non-zero when at least one
+/// Blocker issue is present. Mirrors `check_send` but for the inline
+/// compose path used by ad-hoc scripts and pipelines.
+pub async fn compose_check(options: ComposeOptions, no_llm: bool) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    let account = resolve_compose_account(&mut client, options.from.as_deref()).await?;
+    let body_text = read_body_input(options.body, options.body_stdin)?.unwrap_or_default();
+
+    let frontmatter = mxr_compose::frontmatter::ComposeFrontmatter {
+        to: options.to.clone().unwrap_or_default(),
+        cc: options.cc.clone().unwrap_or_default(),
+        bcc: options.bcc.clone().unwrap_or_default(),
+        subject: options.subject.clone().unwrap_or_default(),
+        from: account.email.clone(),
+        attach: attachment_strings(&options.attach),
+        signature: None,
+        ..Default::default()
+    };
+    let snippet_ctx = snippet_context_from_frontmatter(&frontmatter);
+    let body =
+        expand_compose_snippets_with_context(&mut client, body_text, Some(&snippet_ctx)).await?;
+    let draft = draft_from_frontmatter(
+        account.account_id,
+        mxr_core::DraftIntent::New,
+        &frontmatter,
+        body,
+    )?;
+
+    let context = build_check_context(&draft, no_llm, chrono::Utc::now());
+    let resp = client
+        .request(Request::CheckDraftSafety {
+            draft: draft.clone(),
+            context,
+        })
+        .await?;
+    let report = match resp {
+        Response::Ok {
+            data: ResponseData::DraftSafetyReportResponse { report },
+        } => report,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response from CheckDraftSafety"),
+    };
+
+    let resolved = resolve_format(options.format);
     if matches!(resolved, OutputFormat::Json) {
         let json = serde_json::to_string_pretty(&report)?;
         println!("{json}");
@@ -879,7 +987,15 @@ fn apply_signature_to_body(
 }
 
 async fn expand_compose_snippets(client: &mut IpcClient, body: String) -> anyhow::Result<String> {
-    if !body.contains(';') {
+    expand_compose_snippets_with_context(client, body, None).await
+}
+
+async fn expand_compose_snippets_with_context(
+    client: &mut IpcClient,
+    body: String,
+    context: Option<&SnippetContext>,
+) -> anyhow::Result<String> {
+    if !body.contains(';') && !body.contains('{') {
         return Ok(body);
     }
 
@@ -890,17 +1006,133 @@ async fn expand_compose_snippets(client: &mut IpcClient, body: String) -> anyhow
         } => Some(snippets),
         _ => None,
     })?;
-    Ok(expand_snippet_keywords(&body, &snippets))
+    Ok(expand_snippet_keywords_with_context(
+        &body, &snippets, context,
+    ))
+}
+
+/// Contextual values surfaced to snippets at expansion time.
+///
+/// Built-in tokens like `{first_name}` and `{thread_subject}` resolve
+/// against this context. Tokens with no value (or with `context = None`)
+/// are left as-is so the unresolved-token warning at send-time can still
+/// fire if the user forgot to fill them in manually.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct SnippetContext {
+    pub first_name: Option<String>,
+    pub full_name: Option<String>,
+    pub thread_subject: Option<String>,
+}
+
+impl SnippetContext {
+    fn is_empty(&self) -> bool {
+        self.first_name.is_none() && self.full_name.is_none() && self.thread_subject.is_none()
+    }
+}
+
+/// Build a snippet expansion context from a compose frontmatter.
+///
+/// We use the FIRST address in `to:` for `{first_name}` / `{full_name}`
+/// — the user's "primary" recipient. A reply with the original sender
+/// in `to:` is the common shape, so this captures the intent without
+/// guessing. CC/BCC are deliberately ignored: those are observers, not
+/// the person you're addressing.
+pub(crate) fn snippet_context_from_frontmatter(
+    frontmatter: &mxr_compose::frontmatter::ComposeFrontmatter,
+) -> SnippetContext {
+    let recipients = parse_addresses(&frontmatter.to);
+    let primary = recipients.first();
+    let full_name = primary.and_then(|addr| addr.name.clone()).map(|name| {
+        // Strip surrounding quotes ("Last, First" style) and trim.
+        name.trim().trim_matches('"').to_string()
+    });
+    let first_name = full_name
+        .as_ref()
+        .and_then(|name| first_name_from_full(name))
+        .or_else(|| {
+            // Fall back to the email local-part if there's no display
+            // name at all. Better to fill in `alice` than to leave a
+            // raw `{first_name}` token in someone's draft.
+            primary.and_then(|addr| {
+                addr.email
+                    .split('@')
+                    .next()
+                    .filter(|local| !local.is_empty())
+                    .map(|local| local.to_string())
+            })
+        });
+    let thread_subject = strip_reply_forward_prefix(&frontmatter.subject);
+    SnippetContext {
+        first_name,
+        full_name,
+        thread_subject,
+    }
+}
+
+fn first_name_from_full(name: &str) -> Option<String> {
+    // Handle "Last, First" (with optional trailing extras) — the comma
+    // form is common in directory exports. Take the first whitespace-
+    // delimited token AFTER the comma as the first name.
+    if let Some((_last, after_comma)) = name.split_once(',') {
+        let candidate = after_comma
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .trim_matches('"');
+        if !candidate.is_empty() {
+            return Some(candidate.to_string());
+        }
+    }
+    name.split_whitespace()
+        .next()
+        .map(|s| s.trim_matches('"').to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn strip_reply_forward_prefix(subject: &str) -> Option<String> {
+    let trimmed = subject.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut current = trimmed;
+    loop {
+        let lower = current.to_ascii_lowercase();
+        if let Some(rest) = lower
+            .strip_prefix("re:")
+            .or_else(|| lower.strip_prefix("fwd:"))
+            .or_else(|| lower.strip_prefix("fw:"))
+        {
+            current = current[current.len() - rest.len()..].trim_start();
+            continue;
+        }
+        break;
+    }
+    if current.is_empty() {
+        None
+    } else {
+        Some(current.to_string())
+    }
 }
 
 fn expand_snippet_keywords(body: &str, snippets: &[SnippetData]) -> String {
+    expand_snippet_keywords_with_context(body, snippets, None)
+}
+
+fn expand_snippet_keywords_with_context(
+    body: &str,
+    snippets: &[SnippetData],
+    context: Option<&SnippetContext>,
+) -> String {
+    // Fast path: no `;name` keywords to process. Still run the
+    // builtin-var pass so bare `{first_name}` / `{today}` tokens the
+    // user typed directly get resolved.
+    if snippets.is_empty() {
+        return expand_builtin_snippet_vars(body, context);
+    }
     let by_name = snippets
         .iter()
         .map(|snippet| (snippet.name.as_str(), snippet.body.as_str()))
         .collect::<HashMap<_, _>>();
-    if by_name.is_empty() {
-        return body.to_string();
-    }
 
     let mut output = String::with_capacity(body.len());
     let mut index = 0;
@@ -931,7 +1163,7 @@ fn expand_snippet_keywords(body: &str, snippets: &[SnippetData]) -> String {
 
         let name = &body[name_start..name_end];
         if let Some(replacement) = by_name.get(name) {
-            output.push_str(&expand_builtin_snippet_vars(replacement));
+            output.push_str(&expand_builtin_snippet_vars(replacement, context));
             index = name_end;
         } else {
             output.push_str(&body[index..name_end]);
@@ -939,15 +1171,31 @@ fn expand_snippet_keywords(body: &str, snippets: &[SnippetData]) -> String {
         }
     }
 
-    output
+    // Second pass: also resolve bare `{first_name}` / `{thread_subject}`
+    // / `{today}` tokens the user typed directly (i.e. not introduced by
+    // a snippet keyword). Unresolved tokens are left intact so the
+    // send-time validator can warn about them.
+    expand_builtin_snippet_vars(&output, context)
 }
 
-fn expand_builtin_snippet_vars(template: &str) -> String {
+fn expand_builtin_snippet_vars(template: &str, context: Option<&SnippetContext>) -> String {
     let now = chrono::Local::now();
-    template
+    let mut out = template
         .replace("{today}", &now.format("%Y-%m-%d").to_string())
         .replace("{date}", &now.format("%Y-%m-%d").to_string())
-        .replace("{year}", &now.format("%Y").to_string())
+        .replace("{year}", &now.format("%Y").to_string());
+    if let Some(ctx) = context.filter(|ctx| !ctx.is_empty()) {
+        if let Some(name) = ctx.first_name.as_deref() {
+            out = out.replace("{first_name}", name);
+        }
+        if let Some(name) = ctx.full_name.as_deref() {
+            out = out.replace("{full_name}", name);
+        }
+        if let Some(subject) = ctx.thread_subject.as_deref() {
+            out = out.replace("{thread_subject}", subject);
+        }
+    }
+    out
 }
 
 fn is_snippet_boundary(body: &str, semicolon_index: usize) -> bool {
@@ -1101,6 +1349,52 @@ struct SendReceiptInfo {
     provider_message_id: Option<String>,
     #[allow(dead_code)]
     rfc2822_message_id: String,
+}
+
+fn auto_reminder_request_after_send(
+    receipt: Option<&SendReceiptInfo>,
+    remind_after: Option<&str>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> anyhow::Result<Option<Request>> {
+    let Some(remind_after) = remind_after else {
+        return Ok(None);
+    };
+    let Some(receipt) = receipt else {
+        anyhow::bail!("daemon did not return a sent message id; cannot set reminder");
+    };
+    let remind_at = mxr_core::parse_relative_time(remind_after, now).map_err(|e| {
+        anyhow::anyhow!(
+            "Cannot parse --remind-after value '{remind_after}': {e}. Try: `in 2h`, `tomorrow 9am`, `monday 17:00`, or ISO 8601."
+        )
+    })?;
+    Ok(Some(Request::SetAutoReminder {
+        sent_message_id: receipt.local_message_id.clone(),
+        remind_at,
+    }))
+}
+
+async fn set_auto_reminder_after_send(
+    client: &mut IpcClient,
+    receipt: Option<&SendReceiptInfo>,
+    remind_after: Option<&str>,
+) -> anyhow::Result<()> {
+    let Some(request) =
+        auto_reminder_request_after_send(receipt, remind_after, chrono::Utc::now())?
+    else {
+        return Ok(());
+    };
+    match client.request(request).await? {
+        Response::Ok {
+            data: ResponseData::Ack,
+        } => {
+            if let Some(when) = remind_after {
+                println!("Reminder set for {when}");
+            }
+            Ok(())
+        }
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response setting reminder"),
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -1349,6 +1643,120 @@ mod tests {
         assert_eq!(expanded, "value;ok but (done)");
     }
 
+    fn frontmatter_with(to: &str, subject: &str) -> mxr_compose::frontmatter::ComposeFrontmatter {
+        mxr_compose::frontmatter::ComposeFrontmatter {
+            to: to.into(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: subject.into(),
+            from: "me@example.com".into(),
+            attach: Vec::new(),
+            signature: None,
+            ..Default::default()
+        }
+    }
+
+    /// Phase 3.1: `{first_name}` resolves to the recipient's display
+    /// name's first token. The user is replying to "Alice Smith" — the
+    /// salutation should read "Hi Alice", not "Hi Alice Smith" or worse,
+    /// the literal token.
+    #[test]
+    fn first_name_resolves_from_recipient_display_name() {
+        let fm = frontmatter_with("Alice Smith <alice@example.com>", "Q3 plans");
+        let ctx = snippet_context_from_frontmatter(&fm);
+
+        let body = "Hi {first_name},\n\nLet's chat.";
+        let expanded = expand_snippet_keywords_with_context(body, &[], Some(&ctx));
+
+        assert_eq!(expanded, "Hi Alice,\n\nLet's chat.");
+    }
+
+    /// Phase 3.1: when the recipient has no display name (just an
+    /// email), fall back to the email's local part so `{first_name}`
+    /// still produces something useful instead of a literal token.
+    /// Filling in "alice" is better than shipping "{first_name}".
+    #[test]
+    fn first_name_falls_back_to_email_local_part_when_no_display_name() {
+        let fm = frontmatter_with("alice@example.com", "kickoff");
+        let ctx = snippet_context_from_frontmatter(&fm);
+
+        let body = "Hi {first_name}!".to_string();
+        let expanded = expand_snippet_keywords_with_context(&body, &[], Some(&ctx));
+
+        assert_eq!(expanded, "Hi alice!");
+    }
+
+    /// "Last, First" is a common directory-export display format. We
+    /// must pick `First`, not `Last`, so contacts imported from CSVs
+    /// don't end up addressed by their last name.
+    #[test]
+    fn first_name_handles_last_comma_first_display_order() {
+        let fm = frontmatter_with(r#""Smith, Alice" <alice@example.com>"#, "Q3 plans");
+        let ctx = snippet_context_from_frontmatter(&fm);
+
+        let body = "Hi {first_name}!";
+        let expanded = expand_snippet_keywords_with_context(body, &[], Some(&ctx));
+
+        assert_eq!(expanded, "Hi Alice!");
+    }
+
+    /// Phase 3.1: `{thread_subject}` resolves to the subject the user
+    /// is replying about, with `Re:` / `Fwd:` chains stripped so a
+    /// snippet like "About: {thread_subject}" reads "About: Q3 plans"
+    /// even when the frontmatter subject is "Re: Re: Q3 plans".
+    #[test]
+    fn thread_subject_strips_reply_and_forward_prefixes() {
+        let fm = frontmatter_with("alice@example.com", "Re: Re: Fwd: Q3 plans");
+        let ctx = snippet_context_from_frontmatter(&fm);
+
+        let body = "About: {thread_subject}";
+        let expanded = expand_snippet_keywords_with_context(body, &[], Some(&ctx));
+
+        assert_eq!(expanded, "About: Q3 plans");
+    }
+
+    /// When context is `None` (no recipient yet, e.g. the initial pre-
+    /// editor pass), built-in tokens must remain literal. The send-time
+    /// validator still warns about unresolved `{var}` tokens; we must
+    /// not silently strip them or swap them for blanks.
+    #[test]
+    fn unresolved_context_tokens_remain_literal() {
+        let body = "Hi {first_name}, thanks for {thread_subject}.";
+        let expanded = expand_snippet_keywords_with_context(body, &[], None);
+
+        assert_eq!(expanded, body);
+    }
+
+    /// The recipient's email-local-part fallback shouldn't fire when
+    /// the recipient address itself is missing. Otherwise `{first_name}`
+    /// would silently turn into an empty string, which is worse than
+    /// leaving the token visible for the user to fill in.
+    #[test]
+    fn missing_recipient_leaves_first_name_token_literal() {
+        let fm = frontmatter_with("", "no recipient yet");
+        let ctx = snippet_context_from_frontmatter(&fm);
+
+        let body = "Hi {first_name}!";
+        let expanded = expand_snippet_keywords_with_context(body, &[], Some(&ctx));
+
+        assert_eq!(expanded, "Hi {first_name}!");
+    }
+
+    /// Smart vars also fire when reached via a snippet body (not just
+    /// when typed directly in the message). Snippet `;greeting` whose
+    /// body contains `{first_name}` should land as the resolved name.
+    #[test]
+    fn snippet_body_can_reference_smart_vars() {
+        let fm = frontmatter_with("Alice Smith <alice@example.com>", "");
+        let ctx = snippet_context_from_frontmatter(&fm);
+        let snippets = vec![snippet("greeting", "Hi {first_name},")];
+
+        let body = ";greeting let me know.".to_string();
+        let expanded = expand_snippet_keywords_with_context(&body, &snippets, Some(&ctx));
+
+        assert_eq!(expanded, "Hi Alice, let me know.");
+    }
+
     fn test_envelope(subject: &str) -> Envelope {
         crate::test_fixtures::TestEnvelopeBuilder::new()
             .subject(subject)
@@ -1385,5 +1793,140 @@ mod tests {
         assert!(lines[0].contains("Would archive 10 message(s)"));
         assert!(lines.iter().any(|line| line.contains("Subject 0")));
         assert!(lines.iter().any(|line| line.contains("... and 2 more")));
+    }
+
+    mod check_context_tests {
+        use super::super::build_check_context;
+        use chrono::Utc;
+        use mxr_core::types::Draft;
+        use mxr_core::{AccountId, DraftId, DraftIntent, ReplyHeaders, ThreadId};
+
+        fn draft_with(reply_headers: Option<ReplyHeaders>, intent: DraftIntent) -> Draft {
+            Draft {
+                id: DraftId::new(),
+                account_id: AccountId::new(),
+                reply_headers,
+                intent,
+                to: vec![],
+                cc: vec![],
+                bcc: vec![],
+                subject: "subj".into(),
+                body_markdown: "body".into(),
+                attachments: vec![],
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            }
+        }
+
+        /// CLI `--check` must forward the draft's thread_id so the
+        /// answer-coverage LLM check (and any thread-scoped check) can
+        /// load the parent thread.
+        #[test]
+        fn build_check_context_plumbs_thread_id_from_reply_headers() {
+            let uuid = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000123").unwrap();
+            let draft = draft_with(
+                Some(ReplyHeaders {
+                    in_reply_to: "<abc@example.com>".into(),
+                    references: vec![],
+                    thread_id: Some(uuid.to_string()),
+                }),
+                DraftIntent::Reply,
+            );
+            let ctx = build_check_context(&draft, false, Utc::now());
+            assert_eq!(
+                ctx.thread_id,
+                Some(ThreadId::from_uuid(uuid)),
+                "thread_id should be parsed from reply_headers"
+            );
+        }
+
+        /// Default behavior: LLM-backed checks are enabled. Users opt
+        /// out with --no-llm (e.g., to skip rate-limited cloud models
+        /// or save tokens).
+        #[test]
+        fn build_check_context_no_llm_flag_disables_llm() {
+            let draft = draft_with(None, DraftIntent::New);
+            let with_llm = build_check_context(&draft, false, Utc::now());
+            let without_llm = build_check_context(&draft, true, Utc::now());
+            assert!(with_llm.allow_llm, "default should allow LLM");
+            assert!(!without_llm.allow_llm, "--no-llm must disable LLM");
+        }
+
+        /// Drafts without reply context (fresh compose) should still
+        /// produce a valid context; just no thread.
+        #[test]
+        fn build_check_context_handles_draft_without_reply_headers() {
+            let draft = draft_with(None, DraftIntent::New);
+            let ctx = build_check_context(&draft, false, Utc::now());
+            assert_eq!(ctx.thread_id, None);
+            assert_eq!(ctx.original_message_id, None);
+        }
+
+        /// Reply-all intent must propagate so the reply-all sanity
+        /// check actually runs (vs. a normal reply that should skip it).
+        #[test]
+        fn build_check_context_reply_all_intent_propagates() {
+            let draft = draft_with(None, DraftIntent::ReplyAll);
+            let ctx = build_check_context(&draft, false, Utc::now());
+            assert!(ctx.reply_all);
+
+            let draft_reply = draft_with(None, DraftIntent::Reply);
+            let ctx_reply = build_check_context(&draft_reply, false, Utc::now());
+            assert!(!ctx_reply.reply_all);
+        }
+    }
+
+    mod remind_after_tests {
+        use super::super::{auto_reminder_request_after_send, SendReceiptInfo};
+        use chrono::{TimeZone, Utc};
+        use mxr_core::MessageId;
+        use mxr_protocol::Request;
+
+        #[test]
+        fn remind_after_builds_set_auto_reminder_request_from_send_receipt() {
+            let message_id = MessageId::new();
+            let receipt = SendReceiptInfo {
+                local_message_id: message_id.clone(),
+                provider_message_id: Some("provider-1".into()),
+                rfc2822_message_id: "<sent@example.com>".into(),
+            };
+            let now = Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap();
+
+            let request =
+                auto_reminder_request_after_send(Some(&receipt), Some("in 1h"), now).unwrap();
+
+            match request {
+                Some(Request::SetAutoReminder {
+                    sent_message_id,
+                    remind_at,
+                }) => {
+                    assert_eq!(sent_message_id, message_id);
+                    assert_eq!(remind_at, now + chrono::Duration::hours(1));
+                }
+                other => panic!("Expected SetAutoReminder request, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn remind_after_requires_send_receipt_message_id() {
+            let now = Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap();
+
+            let error = auto_reminder_request_after_send(None, Some("in 1h"), now)
+                .expect_err("missing receipt must be rejected");
+
+            assert!(
+                error.to_string().contains("sent message id"),
+                "error should explain missing sent id: {error}"
+            );
+        }
+
+        #[test]
+        fn remind_after_absent_does_not_build_request() {
+            let now = Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap();
+
+            let request = auto_reminder_request_after_send(None, None, now).unwrap();
+
+            assert!(request.is_none());
+        }
     }
 }

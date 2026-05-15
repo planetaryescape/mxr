@@ -142,16 +142,17 @@ impl super::Store {
         let now = Utc::now();
         let mut out = Vec::new();
         for r in rows {
-            let last_secs: Option<i64> = r.try_get("last_contact_at").ok();
-            let last_contact_at = last_secs.and_then(|s| decode_optional_timestamp(Some(s)).ok().flatten());
-            let expected_days: f64 = r.try_get::<f64, _>("expected_days").unwrap_or(DEFAULT_EXPECTED_DAYS);
-            let drift_days = match last_contact_at {
-                Some(when) => {
-                    let elapsed = (now - when).num_seconds() as f64 / 86_400.0;
-                    elapsed - expected_days
-                }
-                None => f64::INFINITY,
+            let last_secs: Option<i64> = r.try_get("last_contact_at")?;
+            let last_contact_at =
+                last_secs.and_then(|s| decode_optional_timestamp(Some(s)).ok().flatten());
+            let expected_days: f64 = r
+                .try_get::<f64, _>("expected_days")
+                .unwrap_or(DEFAULT_EXPECTED_DAYS);
+            let Some(last_contact_at) = last_contact_at else {
+                continue;
             };
+            let elapsed = (now - last_contact_at).num_seconds() as f64 / 86_400.0;
+            let drift_days = elapsed - expected_days;
             if drift_days <= 0.0 {
                 continue;
             }
@@ -160,7 +161,7 @@ impl super::Store {
             out.push(CadenceDriftRow {
                 email: r.try_get("email")?,
                 display_name,
-                last_contact_at,
+                last_contact_at: Some(last_contact_at),
                 expected_days,
                 drift_days,
                 total_volume: volume.max(0) as u32,
@@ -306,5 +307,20 @@ mod tests {
         assert_eq!(drift.len(), 1);
         assert_eq!(drift[0].email, "bob@example.com");
         assert!(drift[0].drift_days >= 50.0);
+    }
+
+    #[tokio::test]
+    async fn unknown_watched_contact_does_not_drift_until_first_contact() {
+        let (store, account) = fixture().await;
+        store
+            .watch_cadence(&entry(&account, "unknown@example.com"), false)
+            .await
+            .unwrap();
+
+        let drift = store.list_cadence_drift(&account).await.unwrap();
+        assert!(
+            drift.is_empty(),
+            "watched contacts with no observed contact must not appear overdue"
+        );
     }
 }

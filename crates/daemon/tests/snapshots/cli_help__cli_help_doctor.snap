@@ -1,5 +1,6 @@
 ---
 source: crates/daemon/tests/cli_help.rs
+assertion_line: 14
 expression: stdout
 ---
 Run diagnostics
@@ -9,13 +10,14 @@ Usage: mxr doctor [OPTIONS]
 Options:
       --reindex
       --reindex-semantic
-      --backfill-semantic  Backfill semantic chunks/embeddings for existing messages
+      --backfill-semantic      Backfill semantic chunks/embeddings for existing messages
       --check
       --semantic-status
       --verbose
       --index-stats
       --store-stats
-      --rebuild-analytics  Reclassify Unknown directions, backfill list_ids, resolve reply pair pending, refresh contacts, fill business-hours latency. Idempotent
-      --refresh-contacts   Force a full refresh of the materialized contacts table
-      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
-  -h, --help               Print help
+      --rebuild-analytics      Reclassify Unknown directions, backfill list_ids, resolve reply pair pending, refresh contacts, fill business-hours latency. Idempotent
+      --refresh-contacts       Force a full refresh of the materialized contacts table
+      --recompute-link-counts  Recompute the `link_count` + `body_word_count` for every message so the tri-state link indicator and `has:link*` filters populate on rows synced before the link-extractor existed
+      --format <FORMAT>        [possible values: table, json, jsonl, csv, ids]
+  -h, --help                   Print help

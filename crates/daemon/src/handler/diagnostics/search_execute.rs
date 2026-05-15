@@ -1,5 +1,6 @@
 use super::search_filter::{
-    has_negated_semantic_terms, matches_structured_filters, semantic_query_plan,
+    ast_contains_owed_reply, has_negated_semantic_terms, matches_structured_filters,
+    semantic_query_plan,
 };
 use super::{build_execution, ExecutionExplainInput, SearchExecution};
 use crate::state::AppState;
@@ -7,6 +8,7 @@ use mxr_core::types::{SearchMode, SortOrder};
 use mxr_search::{ast::QueryNode, parse_query, MxrSchema, QueryBuilder, SearchPage, SearchResult};
 use mxr_semantic::{should_use_semantic, SemanticHit};
 use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
 
 use super::{paginate_results, sort_results};
 use crate::handler::should_fallback_to_tantivy;
@@ -37,6 +39,11 @@ pub(super) async fn execute_search(
         sort,
         explain,
     };
+    let parsed_ast = parse_query(query).ok();
+    let needs_owed_filter = parsed_ast
+        .as_ref()
+        .map(ast_contains_owed_reply)
+        .unwrap_or(false);
     let mut execution = match parse_query(query) {
         Ok(ast) => execute_search_ast(state, query, &ast, &options).await?,
         Err(error) => {
@@ -75,8 +82,87 @@ pub(super) async fn execute_search(
         }
     };
     filter_disabled_accounts(state, &mut execution).await?;
+    if needs_owed_filter {
+        filter_to_owed_threads(state, &mut execution).await?;
+    }
     Ok(execution)
 }
+
+/// Reduce `execution.results` to the set of messages whose thread is
+/// owed-reply right now. Owed-reply is dynamic (depends on current
+/// time and cadence) so this is computed inline rather than indexed.
+/// Spans every enabled account that produced a hit.
+async fn filter_to_owed_threads(
+    state: &AppState,
+    execution: &mut SearchExecution,
+) -> Result<(), String> {
+    if execution.results.is_empty() {
+        return Ok(());
+    }
+    // Collect the unique account IDs from the current result set so we
+    // only run owed-reply computation for accounts that produced hits.
+    let mut account_ids: Vec<String> = execution
+        .results
+        .iter()
+        .map(|r| r.account_id.clone())
+        .collect();
+    account_ids.sort();
+    account_ids.dedup();
+
+    let mut owed_thread_ids: HashSet<String> = HashSet::new();
+    for account_id_str in account_ids {
+        let account_id = match mxr_core::AccountId::from_str(&account_id_str) {
+            Ok(id) => id,
+            Err(_) => continue,
+        };
+        match state
+            .store
+            .list_owed_replies(&account_id, None, None, OWED_REPLY_FETCH_CAP)
+            .await
+        {
+            Ok(rows) => {
+                for row in rows {
+                    owed_thread_ids.insert(row.thread_id.as_str().to_string());
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    account_id = %account_id_str,
+                    "owed-reply filter: list_owed_replies failed: {e}"
+                );
+            }
+        }
+    }
+
+    execution
+        .results
+        .retain(|r| owed_thread_ids.contains(&r.thread_id));
+    if let Some(explain) = execution.explain.as_mut() {
+        let retained_ids: HashSet<_> = execution
+            .results
+            .iter()
+            .map(|r| r.message_id.clone())
+            .collect();
+        explain
+            .results
+            .retain(|r| retained_ids.contains(&r.message_id.as_str()));
+        for (idx, r) in explain.results.iter_mut().enumerate() {
+            r.rank = idx as u32 + 1;
+        }
+        explain.final_results = execution.results.len() as u32;
+    }
+    if execution.results.is_empty() {
+        execution.has_more = false;
+        execution.next_offset = None;
+    }
+    Ok(())
+}
+
+/// Pull at most this many owed-reply rows per account when serving an
+/// `is:owed-reply` query. The owed-reply lens is intended for human
+/// triage; capping at a few thousand keeps the filter cheap even on
+/// inboxes with very long backlogs of unanswered threads.
+const OWED_REPLY_FETCH_CAP: u32 = 5_000;
 
 async fn filter_disabled_accounts(
     state: &AppState,
@@ -440,6 +526,187 @@ pub(super) async fn filter_dense_hits(
         });
     }
     Ok(results)
+}
+
+#[cfg(test)]
+mod owed_reply_filter_tests {
+    //! Slice 2's `is:owed-reply` search operator. Verifies that the
+    //! search executor intersects Tantivy results with the dynamic
+    //! owed-reply thread set, so the lens is reachable as a saved
+    //! search and matches `list_owed_replies`.
+    use super::*;
+    use crate::state::AppState;
+    use mxr_core::types::{Address, Envelope, MessageDirection, MessageFlags, UnsubscribeMethod};
+    use mxr_core::{AccountId, MessageId, ThreadId};
+    use mxr_search::{SearchIndexEntry, SearchUpdateBatch};
+    use std::sync::Arc;
+
+    async fn index_envelope(state: &AppState, envelope: &Envelope) {
+        state
+            .search
+            .apply_batch(SearchUpdateBatch {
+                entries: vec![SearchIndexEntry {
+                    envelope: envelope.clone(),
+                    body: None,
+                    reply_later: false,
+                }],
+                removed_message_ids: vec![],
+            })
+            .await
+            .unwrap();
+        state.search.commit().await.unwrap();
+    }
+
+    fn envelope_inbound(
+        account_id: &AccountId,
+        thread_id: &ThreadId,
+        from_email: &str,
+        days_ago: i64,
+    ) -> Envelope {
+        Envelope {
+            id: MessageId::new(),
+            account_id: account_id.clone(),
+            provider_id: format!("p-{}", uuid::Uuid::now_v7()),
+            thread_id: thread_id.clone(),
+            message_id_header: Some(format!("<{}@example.com>", uuid::Uuid::now_v7())),
+            in_reply_to: None,
+            references: vec![],
+            from: Address {
+                name: Some("Alice".into()),
+                email: from_email.into(),
+            },
+            to: vec![Address {
+                name: None,
+                email: "user@example.com".into(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "are we still on for friday?".into(),
+            date: chrono::Utc::now() - chrono::Duration::days(days_ago),
+            flags: MessageFlags::empty(),
+            snippet: "are we still on".into(),
+            has_attachments: false,
+            size_bytes: 512,
+            unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 16,
+            label_provider_ids: vec![],
+        }
+    }
+
+    /// The acceptance criterion from
+    /// `docs/ai-email/02-follow-up-work.md`: "`is:owed-reply` matches
+    /// daemon list." After seeding a thread where the user is the
+    /// bottleneck, both `list_owed_replies` and `Search { query:
+    /// "is:owed-reply" }` must return the same thread set.
+    #[tokio::test]
+    async fn is_owed_reply_search_matches_list_owed_replies() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+
+        let thread_id = ThreadId::new();
+        let envelope = envelope_inbound(&account_id, &thread_id, "alice@example.com", 10);
+        state
+            .store
+            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        index_envelope(&state, &envelope).await;
+        state.store.refresh_contacts().await.unwrap();
+
+        let listed: Vec<_> = state
+            .store
+            .list_owed_replies(&account_id, None, None, 100)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|r| r.thread_id.as_str().to_string())
+            .collect();
+        assert!(
+            listed.contains(&thread_id.as_str().to_string()),
+            "test setup: list_owed_replies should include the seeded thread, got {listed:?}"
+        );
+
+        let execution = execute_search(
+            &state,
+            "is:owed-reply",
+            100,
+            0,
+            SearchMode::Lexical,
+            SortOrder::DateDesc,
+            false,
+        )
+        .await
+        .unwrap();
+        let searched_threads: Vec<_> = execution
+            .results
+            .iter()
+            .map(|r| r.thread_id.clone())
+            .collect();
+        assert!(
+            searched_threads.contains(&thread_id.as_str().to_string()),
+            "is:owed-reply search must include the same thread; got {searched_threads:?}"
+        );
+    }
+
+    /// Sending a reply moves the thread out of owed. Models the spec
+    /// "Sending reply removes row." After we upsert an outbound after
+    /// the inbound, neither surface should list the thread.
+    #[tokio::test]
+    async fn is_owed_reply_excludes_thread_after_outbound_reply() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+
+        let thread_id = ThreadId::new();
+        let inbound = envelope_inbound(&account_id, &thread_id, "bob@example.com", 5);
+        state
+            .store
+            .upsert_envelope_with_direction(&inbound, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        index_envelope(&state, &inbound).await;
+
+        // Now upsert an outbound reply newer than the inbound.
+        let mut outbound = envelope_inbound(&account_id, &thread_id, "user@example.com", 1);
+        outbound.from = Address {
+            name: None,
+            email: "user@example.com".into(),
+        };
+        outbound.to = vec![Address {
+            name: None,
+            email: "bob@example.com".into(),
+        }];
+        state
+            .store
+            .upsert_envelope_with_direction(&outbound, MessageDirection::Outbound)
+            .await
+            .unwrap();
+        index_envelope(&state, &outbound).await;
+        state.store.refresh_contacts().await.unwrap();
+
+        let execution = execute_search(
+            &state,
+            "is:owed-reply",
+            100,
+            0,
+            SearchMode::Lexical,
+            SortOrder::DateDesc,
+            false,
+        )
+        .await
+        .unwrap();
+        let searched_threads: Vec<_> = execution
+            .results
+            .iter()
+            .map(|r| r.thread_id.clone())
+            .collect();
+        assert!(
+            !searched_threads.contains(&thread_id.as_str().to_string()),
+            "thread with later outbound reply must not match is:owed-reply, got {searched_threads:?}"
+        );
+    }
 }
 
 #[cfg(all(test, feature = "semantic-local"))]

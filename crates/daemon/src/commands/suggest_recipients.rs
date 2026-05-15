@@ -35,9 +35,7 @@ async fn build_draft(
     if let Some(id_str) = draft_id {
         let id = mxr_core::DraftId::from_str(&id_str)
             .map_err(|e| anyhow::anyhow!("invalid draft id: {e}"))?;
-        let resp = client
-            .request(Request::ListDrafts)
-            .await?;
+        let resp = client.request(Request::ListDrafts).await?;
         let drafts = match resp {
             Response::Ok {
                 data: ResponseData::Drafts { drafts },

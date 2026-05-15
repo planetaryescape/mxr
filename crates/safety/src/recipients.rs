@@ -124,9 +124,7 @@ pub(crate) fn damerau_levenshtein(a: &str, b: &str) -> usize {
         let mut row_min = curr[0];
         for j in 1..=m {
             let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
-            curr[j] = (curr[j - 1] + 1)
-                .min(prev[j] + 1)
-                .min(prev[j - 1] + cost);
+            curr[j] = (curr[j - 1] + 1).min(prev[j] + 1).min(prev[j - 1] + cost);
             if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
                 curr[j] = curr[j].min(prev_prev[j - 2] + 1);
             }
@@ -145,8 +143,8 @@ pub(crate) fn damerau_levenshtein(a: &str, b: &str) -> usize {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use mxr_core::{AccountId, DraftId};
     use mxr_core::types::{Address, Draft, DraftIntent};
+    use mxr_core::{AccountId, DraftId};
 
     fn d(addrs: Vec<Address>) -> Draft {
         Draft {
@@ -195,7 +193,11 @@ mod tests {
             known_contacts: vec![contact("alice@example.com", 12, 6)],
             ..Default::default()
         };
-        let issues = check(&d(vec![addr("alcie@example.com")]), &ctx, &Default::default());
+        let issues = check(
+            &d(vec![addr("alcie@example.com")]),
+            &ctx,
+            &Default::default(),
+        );
         assert_eq!(issues.len(), 1, "expected typo warning, got {issues:?}");
         // message must name BOTH the typed address and the candidate.
         assert!(
@@ -223,8 +225,12 @@ mod tests {
             ..Default::default()
         };
         assert!(
-            check(&d(vec![addr("alcie@example.com")]), &ctx_typed_strong, &Default::default())
-                .is_empty(),
+            check(
+                &d(vec![addr("alcie@example.com")]),
+                &ctx_typed_strong,
+                &Default::default()
+            )
+            .is_empty(),
             "sum==3 must count as strong"
         );
 
@@ -236,7 +242,12 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            check(&d(vec![addr("alcie@example.com")]), &ctx_typed_weak, &Default::default()).len(),
+            check(
+                &d(vec![addr("alcie@example.com")]),
+                &ctx_typed_weak,
+                &Default::default()
+            )
+            .len(),
             1,
             "sum==2 must still trigger the typo warn"
         );
@@ -251,7 +262,11 @@ mod tests {
             ],
             ..Default::default()
         };
-        let issues = check(&d(vec![addr("alcie@example.com")]), &ctx, &Default::default());
+        let issues = check(
+            &d(vec![addr("alcie@example.com")]),
+            &ctx,
+            &Default::default(),
+        );
         assert!(
             issues.is_empty(),
             "both addresses have prior history; should not warn"
@@ -264,7 +279,11 @@ mod tests {
             sensitive_domains: vec!["competitor.com".into()],
             ..Default::default()
         };
-        let issues = check(&d(vec![addr("ceo@competitor.com")]), &Default::default(), &cfg);
+        let issues = check(
+            &d(vec![addr("ceo@competitor.com")]),
+            &Default::default(),
+            &cfg,
+        );
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].severity, DraftSafetySeverity::Blocker);
     }
@@ -275,7 +294,11 @@ mod tests {
             sensitive_domains: vec!["Competitor.COM".into()],
             ..Default::default()
         };
-        let issues = check(&d(vec![addr("CEO@COMPETITOR.com")]), &Default::default(), &cfg);
+        let issues = check(
+            &d(vec![addr("CEO@COMPETITOR.com")]),
+            &Default::default(),
+            &cfg,
+        );
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].severity, DraftSafetySeverity::Blocker);
     }
@@ -303,7 +326,11 @@ mod tests {
             warn_on_first_time_external: false,
             ..Default::default()
         };
-        let issues = check(&d(vec![addr("stranger@external.com")]), &Default::default(), &cfg);
+        let issues = check(
+            &d(vec![addr("stranger@external.com")]),
+            &Default::default(),
+            &cfg,
+        );
         assert!(issues.is_empty());
     }
 

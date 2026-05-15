@@ -441,16 +441,35 @@ impl super::Store {
     }
 
     pub async fn list_top_senders(&self, limit: u32) -> Result<Vec<SenderSummary>, sqlx::Error> {
+        self.list_top_senders_since(limit, None).await
+    }
+
+    /// Like [`Self::list_top_senders`] but only counts (and ranks)
+    /// inbound messages with `date >= since_unix`. Pass `None` for
+    /// the un-bounded form. Used by `mxr senders --since 90d` to
+    /// answer "who's been emailing me lately" rather than "who has
+    /// emailed me ever".
+    pub async fn list_top_senders_since(
+        &self,
+        limit: u32,
+        since_unix: Option<i64>,
+    ) -> Result<Vec<SenderSummary>, sqlx::Error> {
         let started_at = std::time::Instant::now();
         let limit = i64::from(limit.clamp(1, 500));
-        let rows = sqlx::query(
+        let mut sql = String::from(
             r#"WITH grouped AS (
                    SELECT account_id, LOWER(from_email) AS sender_key,
                           MAX(date) AS latest_at,
                           COUNT(*) AS message_count,
                           SUM(CASE WHEN (flags & 1) = 0 THEN 1 ELSE 0 END) AS unread_count
                    FROM messages
-                   WHERE direction = 'inbound' AND from_email != ''
+                   WHERE direction = 'inbound' AND from_email != ''"#,
+        );
+        if since_unix.is_some() {
+            sql.push_str(" AND date >= ?");
+        }
+        sql.push_str(
+            r#"
                    GROUP BY account_id, LOWER(from_email)
                )
                SELECT g.account_id, latest.from_name AS display_name,
@@ -465,10 +484,14 @@ impl super::Store {
                 AND latest.date = g.latest_at
                ORDER BY g.message_count DESC, g.latest_at DESC
                LIMIT ?"#,
-        )
-        .bind(limit)
-        .fetch_all(self.reader())
-        .await?;
+        );
+
+        let mut query = sqlx::query(&sql);
+        if let Some(since) = since_unix {
+            query = query.bind(since);
+        }
+        query = query.bind(limit);
+        let rows = query.fetch_all(self.reader()).await?;
         trace_query("sender_profile.list_top_senders", started_at, rows.len());
 
         rows.into_iter()
@@ -707,5 +730,249 @@ mod tests {
                 .sum::<u32>(),
             3
         );
+    }
+
+    /// Phase 2.6: `list_top_senders` orders strictly by message count
+    /// descending. Equal-count senders break ties by `latest_at`
+    /// descending so the most recently active sender ranks first.
+    /// The user-facing `mxr senders --top N` command depends on this
+    /// for the "who's filling my inbox" workflow.
+    #[tokio::test]
+    async fn list_top_senders_orders_by_message_count_desc() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        // Alice: 3 messages
+        // Bob:   1 message
+        // Carol: 2 messages
+        // Expected ranking: Alice (3), Carol (2), Bob (1).
+        let senders = [
+            ("alice@example.com", "Alice", 3),
+            ("bob@example.com", "Bob", 1),
+            ("carol@example.com", "Carol", 2),
+        ];
+
+        for (email, name, count) in senders {
+            for i in 0..count {
+                let mut env = TestEnvelopeBuilder::new()
+                    .account_id(account.id.clone())
+                    .build();
+                env.provider_id = format!("{email}-{i}");
+                env.message_id_header = Some(format!("<{email}-{i}@example.com>"));
+                env.from = Address {
+                    name: Some(name.into()),
+                    email: email.into(),
+                };
+                env.subject = format!("from {name} #{i}");
+                env.date = Utc
+                    .with_ymd_and_hms(2026, 5, 10 + i as u32, 9, 0, 0)
+                    .unwrap();
+                store
+                    .upsert_envelope_with_direction(&env, MessageDirection::Inbound)
+                    .await
+                    .unwrap();
+            }
+        }
+
+        let rows = store.list_top_senders(10).await.unwrap();
+
+        assert_eq!(rows.len(), 3, "all three senders present");
+        assert_eq!(rows[0].sender_email, "alice@example.com");
+        assert_eq!(rows[0].message_count, 3);
+        assert_eq!(rows[1].sender_email, "carol@example.com");
+        assert_eq!(rows[1].message_count, 2);
+        assert_eq!(rows[2].sender_email, "bob@example.com");
+        assert_eq!(rows[2].message_count, 1);
+    }
+
+    /// Phase 2.6: `latest_at` carries the most recent inbound date.
+    /// Two senders with the same message count must order by who
+    /// emailed most recently — that's what the user means by "top".
+    #[tokio::test]
+    async fn list_top_senders_breaks_ties_by_latest_message() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        // Two senders, one message each. The one with the more-recent
+        // `date` must come first.
+        for (email, slug, date) in [
+            (
+                "old@example.com",
+                "old-1",
+                Utc.with_ymd_and_hms(2026, 5, 1, 9, 0, 0).unwrap(),
+            ),
+            (
+                "fresh@example.com",
+                "fresh-1",
+                Utc.with_ymd_and_hms(2026, 5, 12, 9, 0, 0).unwrap(),
+            ),
+        ] {
+            let mut env = TestEnvelopeBuilder::new()
+                .account_id(account.id.clone())
+                .build();
+            env.provider_id = slug.into();
+            env.message_id_header = Some(format!("<{slug}@example.com>"));
+            env.from = Address {
+                name: Some("Counter Party".into()),
+                email: email.into(),
+            };
+            env.subject = format!("from {email}");
+            env.date = date;
+            store
+                .upsert_envelope_with_direction(&env, MessageDirection::Inbound)
+                .await
+                .unwrap();
+        }
+
+        let rows = store.list_top_senders(10).await.unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            rows[0].sender_email, "fresh@example.com",
+            "more-recent sender breaks the tie at message_count == 1"
+        );
+        assert_eq!(rows[1].sender_email, "old@example.com");
+    }
+
+    /// Phase 2.6: only INBOUND messages are counted. Outbound messages
+    /// the user sent must not pollute the "top senders" list — those
+    /// belong to the *user*, not to a sender. A subtle but important
+    /// boundary case.
+    #[tokio::test]
+    async fn list_top_senders_excludes_outbound_messages() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        // Outbound: this should never appear in the top-senders list.
+        let mut sent = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        sent.provider_id = "outbound-1".into();
+        sent.message_id_header = Some("<outbound-1@example.com>".into());
+        sent.from = Address {
+            name: Some("Me".into()),
+            email: "me@example.com".into(),
+        };
+        sent.subject = "Outbound reply".into();
+        sent.date = Utc.with_ymd_and_hms(2026, 5, 11, 9, 0, 0).unwrap();
+        store
+            .upsert_envelope_with_direction(&sent, MessageDirection::Outbound)
+            .await
+            .unwrap();
+
+        // Inbound: should appear.
+        let mut received = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        received.provider_id = "inbound-1".into();
+        received.message_id_header = Some("<inbound-1@example.com>".into());
+        received.from = Address {
+            name: Some("Alice".into()),
+            email: "alice@example.com".into(),
+        };
+        received.subject = "Hello".into();
+        received.date = Utc.with_ymd_and_hms(2026, 5, 12, 9, 0, 0).unwrap();
+        store
+            .upsert_envelope_with_direction(&received, MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let rows = store.list_top_senders(10).await.unwrap();
+        assert_eq!(rows.len(), 1, "only the inbound sender appears");
+        assert_eq!(rows[0].sender_email, "alice@example.com");
+        assert!(
+            !rows.iter().any(|row| row.sender_email == "me@example.com"),
+            "outbound 'me@example.com' must not appear as a top sender"
+        );
+    }
+
+    /// Phase 2.6: `--since` bounds the count window. A sender whose
+    /// last message landed outside the window must NOT appear in the
+    /// list; this is the difference between "who's emailed me ever"
+    /// and "who's emailing me lately."
+    #[tokio::test]
+    async fn list_top_senders_since_excludes_older_messages() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        // Three months apart so any reasonable cutoff in between
+        // catches one and rejects the other.
+        let old_date = Utc.with_ymd_and_hms(2025, 12, 1, 9, 0, 0).unwrap();
+        let fresh_date = Utc.with_ymd_and_hms(2026, 5, 1, 9, 0, 0).unwrap();
+
+        for (slug, email, name, date) in [
+            ("ancient-1", "ancient@example.com", "Ancient", old_date),
+            ("recent-1", "recent@example.com", "Recent", fresh_date),
+        ] {
+            let mut env = TestEnvelopeBuilder::new()
+                .account_id(account.id.clone())
+                .build();
+            env.provider_id = slug.into();
+            env.message_id_header = Some(format!("<{slug}@example.com>"));
+            env.from = Address {
+                name: Some(name.into()),
+                email: email.into(),
+            };
+            env.subject = format!("from {name}");
+            env.date = date;
+            store
+                .upsert_envelope_with_direction(&env, MessageDirection::Inbound)
+                .await
+                .unwrap();
+        }
+
+        // No bound: both senders appear.
+        let unbounded = store.list_top_senders_since(10, None).await.unwrap();
+        assert_eq!(unbounded.len(), 2, "unbounded list returns both");
+
+        // Cutoff between the two dates: only the recent one.
+        let cutoff = Utc
+            .with_ymd_and_hms(2026, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
+        let bounded = store
+            .list_top_senders_since(10, Some(cutoff))
+            .await
+            .unwrap();
+        assert_eq!(bounded.len(), 1, "since-cutoff drops the older sender");
+        assert_eq!(bounded[0].sender_email, "recent@example.com");
+    }
+
+    /// Phase 2.6: a cutoff in the future returns an empty list rather
+    /// than panicking or returning all-time. Safety net for off-by-one
+    /// errors in CLI-driven date math.
+    #[tokio::test]
+    async fn list_top_senders_since_future_cutoff_returns_empty() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let mut env = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        env.provider_id = "any".into();
+        env.message_id_header = Some("<any@example.com>".into());
+        env.from = Address {
+            name: Some("Any".into()),
+            email: "any@example.com".into(),
+        };
+        env.date = Utc.with_ymd_and_hms(2026, 5, 1, 9, 0, 0).unwrap();
+        store
+            .upsert_envelope_with_direction(&env, MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let cutoff = Utc
+            .with_ymd_and_hms(2099, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
+        let rows = store
+            .list_top_senders_since(10, Some(cutoff))
+            .await
+            .unwrap();
+        assert!(rows.is_empty(), "future cutoff filters everything out");
     }
 }

@@ -100,8 +100,8 @@ async fn walk_reply_queue(client: &mut IpcClient) -> anyhow::Result<()> {
 
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
-        match input.trim().to_ascii_lowercase().as_str() {
-            "r" | "reply" => {
+        match parse_walk_action(input.trim()) {
+            WalkAction::Reply => {
                 crate::commands::mutations::reply(
                     env.id.to_string(),
                     None,
@@ -111,29 +111,70 @@ async fn walk_reply_queue(client: &mut IpcClient) -> anyhow::Result<()> {
                     false,
                     false,
                     None,
+                    None,
                 )
                 .await?;
                 clear_reply_later(client, &env.id).await?;
-                messages.remove(index);
+                apply_walk_action(&mut messages, &mut index, WalkAction::Reply);
             }
-            "c" | "clear" => {
+            WalkAction::Clear => {
                 clear_reply_later(client, &env.id).await?;
                 println!("Cleared reply-later flag");
-                messages.remove(index);
+                apply_walk_action(&mut messages, &mut index, WalkAction::Clear);
             }
-            "" | "s" | "skip" => {
-                index += 1;
-            }
-            "q" | "quit" => {
-                break;
-            }
-            other => {
+            WalkAction::Skip => apply_walk_action(&mut messages, &mut index, WalkAction::Skip),
+            WalkAction::Quit => break,
+            WalkAction::Unknown(other) => {
                 println!("Unknown action `{other}`");
             }
         }
     }
 
     Ok(())
+}
+
+/// Decoded user input for an iteration of `mxr replies walk`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum WalkAction {
+    Reply,
+    Clear,
+    Skip,
+    Quit,
+    Unknown(String),
+}
+
+pub(crate) fn parse_walk_action(input: &str) -> WalkAction {
+    match input.to_ascii_lowercase().as_str() {
+        "r" | "reply" => WalkAction::Reply,
+        "c" | "clear" => WalkAction::Clear,
+        "" | "s" | "skip" => WalkAction::Skip,
+        "q" | "quit" => WalkAction::Quit,
+        other => WalkAction::Unknown(other.to_string()),
+    }
+}
+
+/// Apply one walk-mode action to the local queue snapshot.
+///
+/// `Reply` and `Clear` remove the current entry — the daemon-side
+/// flag clear is the source of truth for the queue, but the local
+/// snapshot must reflect it so the user keeps walking forward instead
+/// of re-prompting on the same message. `Skip` leaves the entry but
+/// advances the cursor so the user can come back to it later (the
+/// flag stays set in the store). `Quit` and `Unknown` are no-ops on
+/// the queue.
+pub(crate) fn apply_walk_action(queue: &mut Vec<Envelope>, index: &mut usize, action: WalkAction) {
+    if *index >= queue.len() {
+        return;
+    }
+    match action {
+        WalkAction::Reply | WalkAction::Clear => {
+            queue.remove(*index);
+        }
+        WalkAction::Skip => {
+            *index += 1;
+        }
+        WalkAction::Quit | WalkAction::Unknown(_) => {}
+    }
 }
 
 async fn clear_reply_later(client: &mut IpcClient, message_id: &MessageId) -> anyhow::Result<()> {
@@ -169,5 +210,131 @@ fn ack_or_bail(resp: Response, success_message: &str) -> anyhow::Result<()> {
         }
         Response::Error { message, .. } => anyhow::bail!("{}", message),
         _ => anyhow::bail!("Unexpected response"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+    use mxr_core::id::{AccountId, ThreadId};
+    use mxr_core::types::{Address, MessageFlags, UnsubscribeMethod};
+
+    fn walk_envelope(slug: &str) -> Envelope {
+        Envelope {
+            id: MessageId::new(),
+            account_id: AccountId::new(),
+            provider_id: slug.into(),
+            thread_id: ThreadId::new(),
+            message_id_header: Some(format!("<{slug}@example.com>")),
+            in_reply_to: None,
+            references: vec![],
+            from: Address {
+                name: Some(format!("Sender {slug}")),
+                email: format!("{slug}@example.com"),
+            },
+            to: vec![Address {
+                name: Some("Me".into()),
+                email: "me@example.com".into(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: format!("subject {slug}"),
+            date: Utc.with_ymd_and_hms(2024, 3, 15, 9, 0, 0).unwrap(),
+            flags: MessageFlags::READ,
+            snippet: format!("snippet {slug}"),
+            has_attachments: false,
+            size_bytes: 100,
+            unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
+            label_provider_ids: vec!["INBOX".into()],
+        }
+    }
+
+    /// Phase 2.1: after a send, walk mode drops the entry from the
+    /// local queue snapshot so the next prompt targets the NEXT
+    /// message, not the one we just replied to. The store-side flag
+    /// clear is handled separately; this tests the local-state
+    /// invariant.
+    #[test]
+    fn walk_mode_advances_after_send() {
+        let mut queue = vec![
+            walk_envelope("first"),
+            walk_envelope("second"),
+            walk_envelope("third"),
+        ];
+        let mut index = 0;
+
+        apply_walk_action(&mut queue, &mut index, WalkAction::Reply);
+
+        assert_eq!(queue.len(), 2, "the replied-to message is removed");
+        assert_eq!(
+            queue[0].provider_id, "second",
+            "walking forward lands on the next queued message"
+        );
+        assert_eq!(
+            index, 0,
+            "index stays at 0 — the removed slot is now occupied by what was next"
+        );
+    }
+
+    /// Phase 2.1: skipping leaves the message in the queue (so the
+    /// user can return) but advances the cursor so the same message
+    /// isn't re-prompted on the next loop iteration.
+    #[test]
+    fn walk_mode_advances_after_skip() {
+        let mut queue = vec![walk_envelope("first"), walk_envelope("second")];
+        let mut index = 0;
+
+        apply_walk_action(&mut queue, &mut index, WalkAction::Skip);
+
+        assert_eq!(queue.len(), 2, "skip preserves the message in the queue");
+        assert_eq!(index, 1, "cursor advanced to the next message");
+        assert_eq!(
+            queue[index].provider_id, "second",
+            "after skip, the next prompt is for the next message"
+        );
+    }
+
+    /// Phase 2.1: a Clear action (user said "actually, never mind on
+    /// this one") drops the entry the same as a Reply. The daemon-
+    /// side clear is logged separately; local state must reflect
+    /// reality.
+    #[test]
+    fn walk_mode_advances_after_clear() {
+        let mut queue = vec![walk_envelope("first"), walk_envelope("second")];
+        let mut index = 0;
+
+        apply_walk_action(&mut queue, &mut index, WalkAction::Clear);
+
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].provider_id, "second");
+        assert_eq!(index, 0);
+    }
+
+    /// Out-of-range index is a safe no-op — the walk loop exits
+    /// naturally on the next iteration when `index >= queue.len()`.
+    #[test]
+    fn walk_mode_action_at_out_of_range_index_is_noop() {
+        let mut queue = vec![walk_envelope("only")];
+        let mut index = 5;
+
+        apply_walk_action(&mut queue, &mut index, WalkAction::Reply);
+
+        assert_eq!(queue.len(), 1);
+        assert_eq!(index, 5);
+    }
+
+    #[test]
+    fn parse_walk_action_recognizes_each_form() {
+        assert_eq!(parse_walk_action("r"), WalkAction::Reply);
+        assert_eq!(parse_walk_action("reply"), WalkAction::Reply);
+        assert_eq!(parse_walk_action("c"), WalkAction::Clear);
+        assert_eq!(parse_walk_action("clear"), WalkAction::Clear);
+        assert_eq!(parse_walk_action(""), WalkAction::Skip);
+        assert_eq!(parse_walk_action("s"), WalkAction::Skip);
+        assert_eq!(parse_walk_action("q"), WalkAction::Quit);
+        assert_eq!(parse_walk_action("?"), WalkAction::Unknown("?".to_string()));
     }
 }

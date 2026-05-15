@@ -43,7 +43,7 @@ pub(crate) async fn check_send_time(
         if !is_eligible(&rec) {
             continue;
         }
-        let proposed_p50 = match bucket_p50(&rec, weekday, hour) {
+        let proposed_p50 = match rec.bucket_p50(weekday, hour) {
             Some(v) => v,
             None => continue,
         };
@@ -60,10 +60,7 @@ pub(crate) async fn check_send_time(
         return Vec::new();
     }
 
-    let names: Vec<String> = slow
-        .iter()
-        .map(|(email, _, _)| email.clone())
-        .collect();
+    let names: Vec<String> = slow.iter().map(|(email, _, _)| email.clone()).collect();
     let summary_recipients = names.join(", ");
     let (best_label, faster_window) = slow
         .iter()
@@ -99,17 +96,6 @@ fn is_eligible(rec: &mxr_store::SendTimeRecommendation) -> bool {
         rec.confidence,
         SendTimeConfidence::Medium | SendTimeConfidence::High
     )
-}
-
-fn bucket_p50(
-    rec: &mxr_store::SendTimeRecommendation,
-    weekday: u8,
-    hour: u8,
-) -> Option<i64> {
-    rec.buckets
-        .iter()
-        .find(|b| b.weekday == weekday && b.hour == hour)
-        .map(|b| b.p50_seconds)
 }
 
 const WEEKDAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];

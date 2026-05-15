@@ -1216,5 +1216,149 @@ fn first_prompt_message_id(prompt: &str) -> Option<String> {
     })
 }
 
+/// Phase 2.1 acceptance: the `reply_later` flag is persisted to
+/// SQLite and survives a daemon restart. The TUI shows the flag as
+/// an overlay on the inbox row; if it didn't persist, every restart
+/// would wipe the user's reply queue.
+#[test]
+fn cli_journey_reply_later_flag_persists_across_daemon_restart() {
+    let _guard = cli_journey_guard();
+    let temp = TempDir::new().expect("temp dir");
+    let instance = unique_instance_name();
+    let data_dir = temp.path().join("data");
+    let config_dir = temp.path().join("config");
+    let socket_path = instance_socket_path(&instance);
+    let pid_path = data_dir.join("daemon.pid");
+    std::fs::create_dir_all(&data_dir).expect("data dir");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    write_fake_config(&config_dir);
+
+    let mut daemon = DaemonGuard {
+        socket_path: socket_path.clone(),
+        pid_path: pid_path.clone(),
+        pid: None,
+    };
+
+    // Boot the daemon (status auto-starts it).
+    let status = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["status", "--format", "json"],
+    );
+    daemon.pid = status["daemon_pid"].as_u64();
+    let original_pid = daemon.pid.expect("daemon pid");
+
+    // Sync so we have at least one envelope to flag.
+    run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["sync", "--wait", "--wait-timeout-secs", "30"],
+    );
+
+    // Pick the first message id from a non-empty search.
+    let search = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["search", "deployment", "--format", "json", "--limit", "5"],
+    );
+    let message_id = search
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|hit| hit["message_id"].as_str())
+        .expect("at least one fixture matches `deployment`")
+        .to_string();
+
+    // Flag for reply-later.
+    run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["replies", "add", &message_id],
+    );
+
+    let queue_before = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["replies", "--format", "json", "list"],
+    );
+    let in_queue_before = queue_before
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .any(|env| env["id"].as_str() == Some(message_id.as_str()))
+        })
+        .unwrap_or(false);
+    assert!(
+        in_queue_before,
+        "flagged message must be visible in the reply queue before restart; got: {queue_before:#}"
+    );
+
+    // Stop the daemon. SIGTERM + wait for exit; the improved shutdown
+    // path in `shutdown_daemon_for_maintenance` handles socket
+    // cleanup but we go straight to the process here.
+    std::process::Command::new("kill")
+        .arg(original_pid.to_string())
+        .status()
+        .expect("kill daemon");
+    // Wait for the process to actually exit before re-starting; otherwise
+    // the next CLI call could race the same socket path.
+    for _ in 0..120 {
+        let alive = std::process::Command::new("kill")
+            .arg("-0")
+            .arg(original_pid.to_string())
+            .stderr(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map(|status: std::process::ExitStatus| status.success())
+            .unwrap_or(false);
+        if !alive {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    daemon.pid = None;
+    let _ = std::fs::remove_file(&socket_path);
+
+    // Auto-start a fresh daemon via the next CLI invocation. The
+    // status response carries the new pid for the guard.
+    let status_after = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["status", "--format", "json"],
+    );
+    let new_pid = status_after["daemon_pid"]
+        .as_u64()
+        .expect("auto-started daemon should report its pid");
+    assert_ne!(
+        new_pid, original_pid,
+        "daemon must be a fresh process; got the same pid back"
+    );
+    daemon.pid = Some(new_pid);
+
+    // The flag must still be present.
+    let queue_after = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["replies", "--format", "json", "list"],
+    );
+    let in_queue_after = queue_after
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .any(|env| env["id"].as_str() == Some(message_id.as_str()))
+        })
+        .unwrap_or(false);
+    assert!(
+        in_queue_after,
+        "reply-later flag must survive a daemon restart; got: {queue_after:#}"
+    );
+}
+
 // Daemon-spawning + run_* + write_fake_account_config helpers live in
 // `mxr_test_support::daemon` (shared with other integration tests).

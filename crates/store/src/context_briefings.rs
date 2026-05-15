@@ -79,12 +79,8 @@ impl super::Store {
         }
     }
 
-    pub async fn upsert_context_briefing(
-        &self,
-        b: &ContextBriefing,
-    ) -> Result<(), sqlx::Error> {
-        let citations_json =
-            serde_json::to_string(&b.citations).unwrap_or_else(|_| "[]".into());
+    pub async fn upsert_context_briefing(&self, b: &ContextBriefing) -> Result<(), sqlx::Error> {
+        let citations_json = serde_json::to_string(&b.citations).unwrap_or_else(|_| "[]".into());
         sqlx::query(
             r#"INSERT INTO context_briefings
                (id, account_id, kind, subject_key, content_hash, body_markdown,

@@ -128,6 +128,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scheduled_send_survives_store_reopen() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("mxr.db");
+        let send_at = anchor() + Duration::hours(1);
+
+        let id = {
+            let store = Store::new(&db_path).await.unwrap();
+            let id = seed_draft(&store).await;
+            store.schedule_send(&id, send_at).await.unwrap();
+            id
+        };
+
+        let reopened = Store::new(&db_path).await.unwrap();
+        assert_eq!(
+            reopened.get_scheduled_send(&id).await.unwrap(),
+            Some(send_at),
+            "scheduled send time must survive daemon/store restart"
+        );
+    }
+
+    #[tokio::test]
     async fn cancel_scheduled_send_clears_send_at() {
         let store = Store::in_memory().await.unwrap();
         let id = seed_draft(&store).await;

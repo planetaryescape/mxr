@@ -132,6 +132,7 @@ mod tests {
                 let state = Arc::new(AppState::in_memory_without_accounts().await.expect("state"));
                 let msg = IpcMessage {
                     id: 1,
+                    source: ::mxr_protocol::ClientKind::default(),
                     payload: IpcPayload::Request(Request::RemoveAccountConfig {
                         key: "work".into(),
                         purge_local_data: false,
@@ -198,6 +199,7 @@ mod tests {
                         Arc::new(AppState::in_memory_without_accounts().await.expect("state"));
                     let msg = IpcMessage {
                         id: 1,
+                        source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Request(Request::DisableAccountConfig {
                             key: "work".into(),
                         }),
@@ -233,6 +235,7 @@ mod tests {
             let state = Arc::new(AppState::in_memory_without_accounts().await.expect("state"));
             let msg = IpcMessage {
                 id: 1,
+                source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::RepairAccountConfig {
                     account: AccountConfigData {
                         key: "gmail".into(),

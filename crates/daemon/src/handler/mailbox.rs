@@ -155,11 +155,9 @@ pub(super) async fn download_attachment(
     destination: Option<&std::path::Path>,
 ) -> HandlerResult {
     let file = match destination {
-        Some(path) => {
-            super::materialize_attachment_to_path(state, message_id, attachment_id, path)
-                .await
-                .map_err(|e| e.to_string())?
-        }
+        Some(path) => super::materialize_attachment_to_path(state, message_id, attachment_id, path)
+            .await
+            .map_err(|e| e.to_string())?,
         None => materialize_attachment_file(state, message_id, attachment_id)
             .await
             .map_err(|e| e.to_string())?,

@@ -100,8 +100,7 @@ fn classify(req: &CompletionRequest) -> FeatureKind {
         FeatureKind::RelationshipSummary
     } else if system.contains("expert") || system.contains("who answers") {
         FeatureKind::Expert
-    } else if system.contains("ask") || system.contains("question") || system.contains("citation")
-    {
+    } else if system.contains("ask") || system.contains("question") || system.contains("citation") {
         FeatureKind::ArchiveAsk
     } else {
         FeatureKind::Generic
@@ -286,7 +285,10 @@ mod tests {
     async fn classify_commitments_returns_json_array() {
         let provider = DemoLlmProvider::new();
         let resp = provider
-            .complete(req("Extract commitments from this thread.", "Subject: budget"))
+            .complete(req(
+                "Extract commitments from this thread.",
+                "Subject: budget",
+            ))
             .await
             .expect("complete ok");
         let parsed: serde_json::Value =

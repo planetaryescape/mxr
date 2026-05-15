@@ -49,7 +49,9 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
         let response = client.request(Request::RecomputeLinkCounts).await?;
         let elapsed = started_at.elapsed();
         match response {
-            Response::Ok { data: ResponseData::Ack } => {
+            Response::Ok {
+                data: ResponseData::Ack,
+            } => {
                 println!(
                     "Recomputed link counts across all messages ({:.1}s).",
                     elapsed.as_secs_f64()

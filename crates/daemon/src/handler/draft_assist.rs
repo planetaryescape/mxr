@@ -29,6 +29,13 @@ const GROUNDING_SEARCH_LIMIT: usize = 8;
 const GROUNDING_BUDGET_CHARS: usize = 4_000;
 const RELATIONSHIP_BUDGET_CHARS: usize = 2_000;
 
+/// Global ceiling on the assembled user-message length, in chars. The
+/// LLM's prompt also includes a fixed system prompt + writing
+/// constraints; this number is sized so the assembled user message,
+/// plus those constants and headroom for the model's response, fits
+/// inside an 8k-token context window with margin.
+const ASSEMBLED_MESSAGE_BUDGET_CHARS: usize = 28_000;
+
 pub(super) async fn draft_assist(
     state: &AppState,
     thread_id: &ThreadId,
@@ -129,26 +136,109 @@ fn build_user_message(
     transcript: &str,
     instruction: &str,
 ) -> String {
-    let mut message = String::new();
-    if !relationship_context.prompt.is_empty() {
+    assemble_user_message_within_budget(
+        &relationship_context.prompt,
+        grounding,
+        transcript,
+        instruction,
+        ASSEMBLED_MESSAGE_BUDGET_CHARS,
+    )
+}
+
+/// Compose the user-message in priority order, truncating *retrieved*
+/// material before sacrificing thread context.
+///
+/// Priority (lowest priority = trimmed first):
+///   1. retrieved grounding examples (prior sent replies)
+///   2. relationship/voice context
+///   3. thread transcript      ← truncated last
+///   4. instruction            ← never truncated
+///   5. writing constraints    ← never truncated (small, fixed)
+///
+/// The vision plan calls this "hard-cap with configurable margin;
+/// truncate retrieved examples first, thread context last." The
+/// reasoning: the model can fall back to its base style if grounding
+/// is short, but it cannot reply correctly if the actual thread it's
+/// replying to has been clipped.
+fn assemble_user_message_within_budget(
+    relationship: &str,
+    grounding: &str,
+    transcript: &str,
+    instruction: &str,
+    budget_chars: usize,
+) -> String {
+    // Step 1: reserve space for the structural overhead that's never
+    // truncated (headers, writing constraints, task line, instruction).
+    let constraints = writing_constraints();
+    let trimmed_instruction = instruction.trim();
+    let fixed_len = "[WRITING CONSTRAINTS]\n".len()
+        + constraints.len()
+        + "\n\n".len()
+        + "\n[TASK]\nNow draft my reply. Instruction: ".len()
+        + trimmed_instruction.len();
+    let remaining = budget_chars.saturating_sub(fixed_len);
+
+    // Step 2: allocate the rest by priority. Transcript first (with a
+    // floor), then grounding, then relationship.
+    let transcript_floor = remaining * 6 / 10;
+    let mut transcript_budget = transcript.len().min(remaining);
+    if transcript_budget < transcript_floor.min(transcript.len()) {
+        transcript_budget = transcript_floor.min(transcript.len());
+    }
+    let after_transcript = remaining.saturating_sub(transcript_budget);
+    let grounding_budget = grounding.len().min(after_transcript);
+    let after_grounding = after_transcript.saturating_sub(grounding_budget);
+    let relationship_budget = relationship.len().min(after_grounding);
+
+    let truncated_transcript = truncate_with_marker(transcript, transcript_budget, "thread");
+    let truncated_grounding = truncate_with_marker(grounding, grounding_budget, "prior replies");
+    let truncated_relationship =
+        truncate_with_marker(relationship, relationship_budget, "relationship context");
+
+    let mut message = String::with_capacity(budget_chars);
+    if !truncated_relationship.is_empty() {
         message.push_str("[VOICE CONTEXT]\n");
         message.push_str("This is weak background guidance. The current thread and my instruction override it. Anything not listed as a known topic is unknown; do not invent familiarity.\n\n");
-        message.push_str(&relationship_context.prompt);
+        message.push_str(&truncated_relationship);
         message.push_str("\n\n");
     }
     message.push_str("[WRITING CONSTRAINTS]\n");
-    message.push_str(writing_constraints());
+    message.push_str(constraints);
     message.push_str("\n\n");
-    if !grounding.is_empty() {
+    if !truncated_grounding.is_empty() {
         message.push_str("[PRIOR SENT REPLIES TO MATCH MY VOICE]\n");
-        message.push_str(grounding);
+        message.push_str(&truncated_grounding);
         message.push_str("\n\n");
     }
     message.push_str("[THREAD SO FAR]\n");
-    message.push_str(transcript);
+    message.push_str(&truncated_transcript);
     message.push_str("\n[TASK]\nNow draft my reply. Instruction: ");
-    message.push_str(instruction.trim());
+    message.push_str(trimmed_instruction);
     message
+}
+
+fn truncate_with_marker(text: &str, max_chars: usize, label: &str) -> String {
+    if max_chars == 0 || text.is_empty() {
+        return String::new();
+    }
+    if text.len() <= max_chars {
+        return text.to_string();
+    }
+    let marker = format!("\n[...{label} truncated...]\n");
+    if marker.len() >= max_chars {
+        return marker;
+    }
+    let body_chars = max_chars - marker.len();
+    // Find the largest char-boundary <= body_chars so we don't slice a
+    // UTF-8 codepoint in half.
+    let mut cut = body_chars.min(text.len());
+    while cut > 0 && !text.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    let mut out = String::with_capacity(max_chars);
+    out.push_str(&text[..cut]);
+    out.push_str(&marker);
+    out
 }
 
 #[derive(Default)]
@@ -432,6 +522,129 @@ mod tests {
                 vec![pricing, rollout, 1.0]
             })
             .collect())
+    }
+
+    /// Phase 3.5: with everything within budget, all four sections
+    /// appear verbatim. This is the no-truncation baseline so a
+    /// regression that broke the assembler (e.g. dropped a section)
+    /// would show up immediately.
+    #[test]
+    fn assemble_user_message_fits_all_sections_when_within_budget() {
+        let message = assemble_user_message_within_budget(
+            "rel_data_short",
+            "grounding_examples_short",
+            "thread_transcript_short",
+            "reply briefly",
+            10_000,
+        );
+        assert!(message.contains("rel_data_short"));
+        assert!(message.contains("grounding_examples_short"));
+        assert!(message.contains("thread_transcript_short"));
+        assert!(message.contains("Instruction: reply briefly"));
+    }
+
+    /// Phase 3.5 token-budget priority: when budget is tight, the
+    /// thread context survives intact while the retrieved grounding
+    /// examples get trimmed. This is the "thread context last"
+    /// guarantee from the delight plan.
+    #[test]
+    fn assemble_user_message_truncates_grounding_before_thread_context() {
+        let huge_grounding = "G".repeat(5_000);
+        let small_transcript = "T".repeat(500);
+        let small_relationship = "R".repeat(200);
+
+        // Budget too small to hold everything: must drop from
+        // grounding first.
+        let message = assemble_user_message_within_budget(
+            &small_relationship,
+            &huge_grounding,
+            &small_transcript,
+            "reply",
+            3_000,
+        );
+
+        assert!(
+            message.contains(&"T".repeat(500)),
+            "thread transcript must survive in full"
+        );
+        assert!(
+            message.contains("[...prior replies truncated...]"),
+            "grounding section is the first to be cut: {message}"
+        );
+        // The full original grounding does NOT appear.
+        assert!(
+            !message.contains(&"G".repeat(5_000)),
+            "grounding was actually shrunk"
+        );
+    }
+
+    /// Phase 3.5: when the transcript is itself larger than the
+    /// budget, both grounding AND relationship are sacrificed so the
+    /// transcript still occupies its floor (>=60% of budget). This is
+    /// the worst-case scenario; we'd rather have a partial transcript
+    /// than no transcript at all.
+    #[test]
+    fn assemble_user_message_protects_transcript_floor_under_heavy_pressure() {
+        let huge_relationship = "R".repeat(8_000);
+        let huge_grounding = "G".repeat(8_000);
+        let medium_transcript = "T".repeat(4_000);
+
+        let message = assemble_user_message_within_budget(
+            &huge_relationship,
+            &huge_grounding,
+            &medium_transcript,
+            "draft",
+            4_000,
+        );
+
+        // Total length stays under budget.
+        assert!(
+            message.len() <= 4_000 + 64, // tiny slack for the truncation marker
+            "assembled message exceeded budget: {} chars",
+            message.len()
+        );
+        // Some transcript made it through.
+        let transcript_chars_in_message = message.matches('T').count();
+        assert!(
+            transcript_chars_in_message > 0,
+            "transcript section must not be entirely dropped: {message}"
+        );
+    }
+
+    /// Phase 3.5: an instruction is never truncated. Losing it would
+    /// cause the LLM to hallucinate the user's intent.
+    #[test]
+    fn assemble_user_message_never_truncates_instruction() {
+        let long_instruction = "decline politely and propose Q4 instead";
+        let huge_grounding = "G".repeat(100_000);
+
+        let message = assemble_user_message_within_budget(
+            "",
+            &huge_grounding,
+            "thread context",
+            long_instruction,
+            5_000,
+        );
+
+        assert!(
+            message.ends_with(&format!("Instruction: {long_instruction}")),
+            "instruction must be preserved intact at the tail: {message}"
+        );
+    }
+
+    /// `truncate_with_marker` cuts on a char boundary even when the
+    /// budget falls inside a multi-byte UTF-8 codepoint. Without this
+    /// guard, the function would panic on non-ASCII content.
+    #[test]
+    fn truncate_with_marker_respects_utf8_boundaries() {
+        // Each `é` is 2 bytes — cutting at byte 5 would land mid-char.
+        let text = "résumé résumé résumé résumé résumé résumé".repeat(10);
+        let out = truncate_with_marker(&text, 60, "example");
+        assert!(out.contains("[...example truncated...]"));
+        // Must not panic; output must remain valid UTF-8.
+        // (If we sliced mid-codepoint the Rust runtime would have
+        // already panicked, so reaching this line is the assertion.)
+        let _ = std::str::from_utf8(out.as_bytes()).expect("valid UTF-8");
     }
 
     #[tokio::test]

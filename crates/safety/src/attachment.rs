@@ -81,8 +81,8 @@ fn reader_clean(body: &str) -> String {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use mxr_core::{AccountId, DraftId};
     use mxr_core::types::{Draft, DraftIntent};
+    use mxr_core::{AccountId, DraftId};
     use std::path::PathBuf;
 
     fn draft_with(body: &str, attachments: Vec<PathBuf>) -> Draft {

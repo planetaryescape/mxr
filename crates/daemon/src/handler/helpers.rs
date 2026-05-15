@@ -20,6 +20,17 @@ pub(crate) fn recent_log_lines_sync(
     limit: usize,
     level: Option<&str>,
 ) -> Result<Vec<String>, std::io::Error> {
+    recent_log_lines_filtered_sync(limit, level, None)
+}
+
+/// Like `recent_log_lines_sync` but also substring-filters each line by
+/// `search` (case-insensitive). Diagnostics surfaces use this for
+/// past-log search.
+pub(crate) fn recent_log_lines_filtered_sync(
+    limit: usize,
+    level: Option<&str>,
+    search: Option<&str>,
+) -> Result<Vec<String>, std::io::Error> {
     let log_path = mxr_config::data_dir().join("logs").join("mxr.log");
     if !log_path.exists() {
         return Ok(Vec::new());
@@ -30,8 +41,16 @@ pub(crate) fn recent_log_lines_sync(
         .lines()
         .collect::<Result<Vec<_>, _>>()?;
     if let Some(level) = level {
-        let level = level.to_ascii_lowercase();
-        lines.retain(|line| line.to_ascii_lowercase().contains(&level));
+        // Tracing JSON logs use the upper-case literal `"level":"INFO"`.
+        // Match either that exact key/value pair (precise) or fall back
+        // to a case-insensitive substring (covers plaintext lines).
+        let needle = format!("\"level\":\"{}\"", level.to_uppercase());
+        let fallback = level.to_ascii_lowercase();
+        lines.retain(|line| line.contains(&needle) || line.to_ascii_lowercase().contains(&fallback));
+    }
+    if let Some(search) = search {
+        let needle = search.to_ascii_lowercase();
+        lines.retain(|line| line.to_ascii_lowercase().contains(&needle));
     }
     let start = lines.len().saturating_sub(limit.max(1));
     Ok(lines.split_off(start))
@@ -42,9 +61,20 @@ pub(super) async fn recent_log_lines(
     limit: usize,
     level: Option<&str>,
 ) -> Result<Vec<String>, String> {
+    recent_log_lines_filtered(state, limit, level, None).await
+}
+
+pub(super) async fn recent_log_lines_filtered(
+    state: &AppState,
+    limit: usize,
+    level: Option<&str>,
+    search: Option<&str>,
+) -> Result<Vec<String>, String> {
     let level = level.map(str::to_string);
+    let search = search.map(str::to_string);
     let mut lines = run_admin_blocking(state, "recent_log_lines", move || {
-        recent_log_lines_sync(limit, level.as_deref()).map_err(|error| error.to_string())
+        recent_log_lines_filtered_sync(limit, level.as_deref(), search.as_deref())
+            .map_err(|error| error.to_string())
     })
     .await?;
     if lines.is_empty() {

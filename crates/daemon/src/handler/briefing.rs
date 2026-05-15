@@ -127,8 +127,7 @@ pub(crate) async fn get_thread_briefing(
     let parsed: LlmBriefing = serde_json::from_str(response.content.trim())
         .map_err(|e| format!("Briefing: LLM returned non-JSON ({e})"))?;
 
-    let allowed_set: std::collections::HashSet<&str> =
-        allowed.iter().map(|s| s.as_str()).collect();
+    let allowed_set: std::collections::HashSet<&str> = allowed.iter().map(|s| s.as_str()).collect();
     let mut citations = Vec::new();
     for c in parsed.citations {
         if !allowed_set.contains(c.msg_id.as_str()) {
@@ -179,8 +178,7 @@ fn deterministic_thread_fallback(envelopes: &[mxr_core::types::Envelope]) -> Str
     let participants: std::collections::BTreeSet<String> = envelopes
         .iter()
         .flat_map(|e| {
-            std::iter::once(e.from.email.clone())
-                .chain(e.to.iter().map(|a| a.email.clone()))
+            std::iter::once(e.from.email.clone()).chain(e.to.iter().map(|a| a.email.clone()))
         })
         .collect();
     let last = envelopes.last();
@@ -360,8 +358,18 @@ fn recipient_content_hash(
     h.update(email.as_bytes());
     if let Some(c) = contact {
         h.update(b"|");
-        h.update(c.last_inbound_at.map(|d| d.timestamp()).unwrap_or(0).to_le_bytes());
-        h.update(c.last_outbound_at.map(|d| d.timestamp()).unwrap_or(0).to_le_bytes());
+        h.update(
+            c.last_inbound_at
+                .map(|d| d.timestamp())
+                .unwrap_or(0)
+                .to_le_bytes(),
+        );
+        h.update(
+            c.last_outbound_at
+                .map(|d| d.timestamp())
+                .unwrap_or(0)
+                .to_le_bytes(),
+        );
         h.update((c.total_inbound as u64).to_le_bytes());
         h.update((c.total_outbound as u64).to_le_bytes());
     }
@@ -378,16 +386,10 @@ fn recipient_baseline(email: &str, contact: Option<&ContactSummary>) -> String {
                 c.total_inbound, c.total_outbound
             ));
             if let Some(when) = c.last_inbound_at {
-                out.push_str(&format!(
-                    "- Last inbound: {}.\n",
-                    when.format("%Y-%m-%d")
-                ));
+                out.push_str(&format!("- Last inbound: {}.\n", when.format("%Y-%m-%d")));
             }
             if let Some(when) = c.last_outbound_at {
-                out.push_str(&format!(
-                    "- Last outbound: {}.\n",
-                    when.format("%Y-%m-%d")
-                ));
+                out.push_str(&format!("- Last outbound: {}.\n", when.format("%Y-%m-%d")));
             }
             if let Some(p50) = c.cadence_days_p50 {
                 out.push_str(&format!("- Reply cadence p50: {p50:.1}d.\n"));

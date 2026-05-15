@@ -1,5 +1,6 @@
 ---
 source: crates/daemon/tests/cli_help.rs
+assertion_line: 14
 expression: stdout
 ---
 Compose a new email
@@ -20,4 +21,6 @@ Options:
       --yes                    Skip confirmation prompt
       --dry-run                Show what would be sent without sending
       --format <FORMAT>        [possible values: table, json, jsonl, csv, ids]
+      --check                  Build a transient draft from these args and run the pre-send safety pipeline against it without sending or saving. Exit non-zero only on Blocker issues. Useful for CI/pre-commit hooks: pipe a body in and assert the JSON report
+      --no-llm                 With `--check`: skip LLM-backed checks (answer-coverage). Has no effect on a real send
   -h, --help                   Print help

@@ -13,13 +13,13 @@
 
 use crate::state::AppState;
 use mxr_core::id::AccountId;
+use mxr_core::SortOrder;
 use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
 use mxr_protocol::{
     ArchiveAnswerData, ArchiveAskFiltersData, ArchiveAskMode, ArchiveCitationData,
     ArchiveRetrievalData, ResponseData,
 };
 use mxr_reader::{clean, ReaderConfig};
-use mxr_core::SortOrder;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -38,6 +38,27 @@ struct LlmCitation {
     quote: String,
 }
 
+#[derive(Debug, Clone)]
+struct RetrievedCitation {
+    message_id: mxr_core::id::MessageId,
+    thread_id: mxr_core::id::ThreadId,
+    subject: String,
+    date: chrono::DateTime<chrono::Utc>,
+    excerpt: String,
+}
+
+impl RetrievedCitation {
+    fn with_quote(&self, quote: String) -> ArchiveCitationData {
+        ArchiveCitationData {
+            message_id: self.message_id.clone(),
+            thread_id: self.thread_id.clone(),
+            subject: self.subject.clone(),
+            date: self.date,
+            quote,
+        }
+    }
+}
+
 pub(crate) async fn ask(
     state: &AppState,
     question: &str,
@@ -51,9 +72,10 @@ pub(crate) async fn ask(
     let requested_mode = filters.mode;
     let candidate_pool = (limit * 4).max(1);
     let (candidate_ids, executed_mode) =
-        retrieve_candidates(state, question, candidate_pool, requested_mode).await?;
+        retrieve_candidates(state, question, filters, candidate_pool, requested_mode).await?;
 
     let mut allowed = Vec::new();
+    let mut citation_sources = std::collections::HashMap::new();
     let mut transcript = String::new();
     for id in candidate_ids.into_iter() {
         if allowed.len() >= limit {
@@ -90,7 +112,18 @@ pub(crate) async fn ask(
             envelope.date.to_rfc3339(),
             cleaned,
         ));
-        allowed.push(envelope.id.to_string());
+        let msg_id = envelope.id.to_string();
+        citation_sources.insert(
+            msg_id.clone(),
+            RetrievedCitation {
+                message_id: envelope.id.clone(),
+                thread_id: envelope.thread_id.clone(),
+                subject: envelope.subject.clone(),
+                date: envelope.date,
+                excerpt: excerpt(&cleaned, 160),
+            },
+        );
+        allowed.push(msg_id);
     }
 
     let runtime = state.llm.for_feature(LlmFeature::ArchiveAsk);
@@ -118,8 +151,13 @@ pub(crate) async fn ask(
         Err(LlmError::Disabled) | Err(LlmError::PrivacyBlocked(_)) => {
             return Ok(ResponseData::ArchiveAnswer {
                 answer: ArchiveAnswerData {
-                    text: "Archive ask is disabled or blocked by privacy policy.".into(),
-                    citations: vec![],
+                    text: "Synthesis unavailable; showing retrieved archive evidence instead."
+                        .into(),
+                    citations: allowed
+                        .iter()
+                        .filter_map(|id| citation_sources.get(id))
+                        .map(|source| source.with_quote(source.excerpt.clone()))
+                        .collect(),
                     retrieval: ArchiveRetrievalData {
                         requested_mode,
                         executed_mode,
@@ -134,8 +172,11 @@ pub(crate) async fn ask(
     let parsed: LlmAsk = serde_json::from_str(response.content.trim())
         .map_err(|e| format!("ArchiveAsk: LLM returned non-JSON ({e})"))?;
 
-    let allowed_set: std::collections::HashSet<&str> =
-        allowed.iter().map(|s| s.as_str()).collect();
+    if parsed.citations.is_empty() && !is_insufficient_evidence_answer(&parsed.answer) {
+        return Err("ArchiveAsk: answer requires at least one citation".into());
+    }
+
+    let allowed_set: std::collections::HashSet<&str> = allowed.iter().map(|s| s.as_str()).collect();
     let mut citations = Vec::new();
     for citation in parsed.citations {
         if !allowed_set.contains(citation.msg_id.as_str()) {
@@ -144,10 +185,15 @@ pub(crate) async fn ask(
                 citation.msg_id
             ));
         }
-        citations.push(ArchiveCitationData {
-            msg_id: citation.msg_id,
-            quote: citation.quote,
-        });
+        let source = citation_sources
+            .get(citation.msg_id.as_str())
+            .ok_or_else(|| {
+                format!(
+                    "ArchiveAsk: missing citation metadata for {}",
+                    citation.msg_id
+                )
+            })?;
+        citations.push(source.with_quote(citation.quote));
     }
 
     Ok(ResponseData::ArchiveAnswer {
@@ -163,6 +209,23 @@ pub(crate) async fn ask(
     })
 }
 
+fn is_insufficient_evidence_answer(answer: &str) -> bool {
+    let answer = answer.trim().to_ascii_lowercase();
+    answer.contains("not enough evidence")
+        || answer.contains("insufficient evidence")
+        || answer.contains("no local evidence")
+}
+
+fn excerpt(text: &str, max_chars: usize) -> String {
+    let text = text.trim();
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(max_chars.saturating_sub(1)).collect();
+    out.push('\u{2026}');
+    out
+}
+
 /// Hybrid candidate retrieval. Returns the merged candidate list AND
 /// the mode that actually executed (which may differ from the
 /// requested mode — e.g. Hybrid downgrades to Lexical when semantic
@@ -175,6 +238,7 @@ pub(crate) async fn ask(
 async fn retrieve_candidates(
     state: &AppState,
     question: &str,
+    filters: &ArchiveAskFiltersData,
     pool_size: usize,
     requested: ArchiveAskMode,
 ) -> Result<(Vec<mxr_core::MessageId>, ArchiveAskMode), String> {
@@ -185,21 +249,29 @@ async fn retrieve_candidates(
         .map(|s| s.enabled)
         .unwrap_or(false);
 
-    let want_lexical = matches!(
-        requested,
-        ArchiveAskMode::Lexical | ArchiveAskMode::Hybrid
-    ) || !semantic_enabled;
-    let want_semantic = matches!(
-        requested,
-        ArchiveAskMode::Semantic | ArchiveAskMode::Hybrid
-    ) && semantic_enabled;
+    let want_lexical =
+        matches!(requested, ArchiveAskMode::Lexical | ArchiveAskMode::Hybrid) || !semantic_enabled;
+    let want_semantic =
+        matches!(requested, ArchiveAskMode::Semantic | ArchiveAskMode::Hybrid) && semantic_enabled;
 
     let lexical_ids: Vec<mxr_core::MessageId> = if want_lexical {
-        let page = state
-            .search
-            .search(question, pool_size, 0, SortOrder::Relevance)
-            .await
-            .map_err(|e| e.to_string())?;
+        let query = lexical_query_with_filters(question, filters);
+        let page = if has_structured_filters(filters) {
+            let ast = mxr_search::parse_query(&query).map_err(|e| e.to_string())?;
+            let schema = mxr_search::MxrSchema::build();
+            let query = mxr_search::QueryBuilder::new(&schema).build(&ast);
+            state
+                .search
+                .search_ast(query, pool_size, 0, SortOrder::Relevance)
+                .await
+                .map_err(|e| e.to_string())?
+        } else {
+            state
+                .search
+                .search(&query, pool_size, 0, SortOrder::Relevance)
+                .await
+                .map_err(|e| e.to_string())?
+        };
         page.results
             .iter()
             .filter_map(|h| h.message_id.parse().ok())
@@ -251,6 +323,43 @@ async fn retrieve_candidates(
     Ok((merged, executed_mode))
 }
 
+fn has_structured_filters(filters: &ArchiveAskFiltersData) -> bool {
+    filters
+        .from
+        .as_deref()
+        .is_some_and(|v| !v.trim().is_empty())
+        || filters.to.as_deref().is_some_and(|v| !v.trim().is_empty())
+        || filters.after.is_some()
+        || filters.before.is_some()
+}
+
+fn lexical_query_with_filters(question: &str, filters: &ArchiveAskFiltersData) -> String {
+    let mut parts = vec![question.trim().to_string()];
+    if let Some(from) = filters.from.as_deref().filter(|v| !v.trim().is_empty()) {
+        parts.push(format!("from:{}", quote_query_value(from)));
+    }
+    if let Some(to) = filters.to.as_deref().filter(|v| !v.trim().is_empty()) {
+        parts.push(format!("to:{}", quote_query_value(to)));
+    }
+    if let Some(after) = filters.after {
+        parts.push(format!("after:{}", after.format("%Y-%m-%d")));
+    }
+    if let Some(before) = filters.before {
+        parts.push(format!("before:{}", before.format("%Y-%m-%d")));
+    }
+    parts.retain(|part| !part.trim().is_empty());
+    parts.join(" ")
+}
+
+fn quote_query_value(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.chars().any(char::is_whitespace) {
+        format!("\"{}\"", trimmed.replace('"', ""))
+    } else {
+        trimmed.to_string()
+    }
+}
+
 /// Reciprocal Rank Fusion (k=60 per the standard RRF paper).
 fn reciprocal_rank_fuse(
     lexical: &[mxr_core::MessageId],
@@ -287,6 +396,11 @@ fn pass_filter(env: &mxr_core::types::Envelope, f: &ArchiveAskFiltersData) -> bo
             return false;
         }
     }
+    if let Some(to) = f.to.as_deref() {
+        if !env.to.iter().any(|a| a.email.eq_ignore_ascii_case(to)) {
+            return false;
+        }
+    }
     if let Some(after) = f.after {
         if env.date < after {
             return false;
@@ -312,9 +426,7 @@ mod tests {
     use super::*;
     use mxr_core::id::{AccountId, MessageId, ThreadId};
     use mxr_core::types::*;
-    use mxr_llm::{
-        CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider,
-    };
+    use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
     use mxr_search::{SearchIndexEntry, SearchUpdateBatch};
     use std::sync::{Arc, Mutex};
 
@@ -325,10 +437,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl LlmProvider for CannedLlm {
-        async fn complete(
-            &self,
-            req: CompletionRequest,
-        ) -> Result<CompletionResponse, LlmError> {
+        async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
             if let Some(last) = req.messages.last() {
                 *self.last_user.lock().unwrap() = last.content.clone();
             }
@@ -465,11 +574,84 @@ mod tests {
             ResponseData::ArchiveAnswer { answer } => {
                 assert!(!answer.text.is_empty());
                 assert_eq!(answer.citations.len(), 1);
-                assert_eq!(answer.citations[0].msg_id, ids[0].to_string());
+                assert_eq!(answer.citations[0].message_id, ids[0]);
                 assert!(answer.retrieval.candidate_count > 0);
             }
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn citations_include_thread_subject_and_date_for_open_thread_actions() {
+        let stub = Arc::new(CannedLlm {
+            body: String::new(),
+            last_user: Mutex::new(String::new()),
+        });
+        let (state, account_id, ids) = fixture(stub).await;
+        let env = state
+            .store
+            .get_envelope(&ids[0])
+            .await
+            .unwrap()
+            .expect("fixture envelope exists");
+        let body = format!(
+            r#"{{"answer":"They confirmed the price.","citations":[{{"msg_id":"{}","quote":"price"}}]}}"#,
+            ids[0]
+        );
+        let stub = Arc::new(CannedLlm {
+            body,
+            last_user: Mutex::new(String::new()),
+        });
+        state.llm.replace(stub);
+
+        let resp = ask(
+            &state,
+            "what was the status update?",
+            &ArchiveAskFiltersData {
+                account_id: Some(account_id),
+                ..Default::default()
+            },
+            5,
+        )
+        .await
+        .unwrap();
+
+        let ResponseData::ArchiveAnswer { answer } = resp else {
+            panic!("unexpected response");
+        };
+        assert_eq!(answer.citations.len(), 1);
+        let citation = &answer.citations[0];
+        assert_eq!(citation.message_id, env.id);
+        assert_eq!(citation.thread_id, env.thread_id);
+        assert_eq!(citation.subject, env.subject);
+        assert_eq!(citation.date, env.date);
+        assert_eq!(citation.quote, "price");
+    }
+
+    #[tokio::test]
+    async fn synthesized_answer_without_citations_is_rejected() {
+        let stub = Arc::new(CannedLlm {
+            body: r#"{"answer":"Alice approved the price increase.","citations":[]}"#.into(),
+            last_user: Mutex::new(String::new()),
+        });
+        let (state, account_id, _ids) = fixture(stub).await;
+
+        let err = ask(
+            &state,
+            "what was approved?",
+            &ArchiveAskFiltersData {
+                account_id: Some(account_id),
+                ..Default::default()
+            },
+            5,
+        )
+        .await
+        .expect_err("answers without evidence must be rejected");
+
+        assert!(
+            err.contains("citation") || err.contains("evidence"),
+            "error must explain missing evidence: {err}"
+        );
     }
 
     #[tokio::test]
@@ -503,14 +685,9 @@ mod tests {
             last_user: Mutex::new(String::new()),
         });
         let (state, _, _) = fixture(stub).await;
-        let err = ask(
-            &state,
-            "   ",
-            &ArchiveAskFiltersData::default(),
-            5,
-        )
-        .await
-        .expect_err("blank question must be rejected before LLM");
+        let err = ask(&state, "   ", &ArchiveAskFiltersData::default(), 5)
+            .await
+            .expect_err("blank question must be rejected before LLM");
         assert!(err.contains("question cannot be empty"));
     }
 
@@ -521,7 +698,7 @@ mod tests {
     #[tokio::test]
     async fn semantic_disabled_reports_executed_mode_lexical() {
         let stub = Arc::new(CannedLlm {
-            body: r#"{"answer":"ok","citations":[]}"#.into(),
+            body: r#"{"answer":"Not enough evidence in archive","citations":[]}"#.into(),
             last_user: Mutex::new(String::new()),
         });
         let (state, account_id, _ids) = fixture(stub).await;
@@ -563,7 +740,7 @@ mod tests {
     #[tokio::test]
     async fn explicit_lexical_mode_reports_lexical() {
         let stub = Arc::new(CannedLlm {
-            body: r#"{"answer":"ok","citations":[]}"#.into(),
+            body: r#"{"answer":"Not enough evidence in archive","citations":[]}"#.into(),
             last_user: Mutex::new(String::new()),
         });
         let (state, account_id, _) = fixture(stub).await;
@@ -603,16 +780,129 @@ mod tests {
         assert_eq!(merged[0], id_a, "double-source candidate ranks first");
     }
 
+    /// Build an envelope addressed to a specific recipient. Mirrors
+    /// `envelope()` but lets the test set the To: list, which the
+    /// default fixture hard-codes to user@example.com.
+    fn envelope_to_recipient(
+        account_id: &AccountId,
+        from: &str,
+        to: &str,
+        subject: &str,
+    ) -> Envelope {
+        let mut env = envelope(account_id, from, subject, 0);
+        env.to = vec![Address {
+            name: None,
+            email: to.into(),
+        }];
+        env
+    }
+
+    /// `pass_filter` must honor `filters.to` -- a CLI user running
+    /// `mxr ask "..." --to alice@example.com` is asking for messages
+    /// addressed to alice, not messages from her. The filter struct
+    /// has had this field for a while (`ArchiveAskFiltersData::to`)
+    /// but the handler was ignoring it, so junk messages addressed
+    /// to other recipients were leaking into the LLM prompt and
+    /// poisoning the answer.
+    #[tokio::test]
+    async fn to_filter_drops_envelopes_not_addressed_to_recipient() {
+        let (state, _) = crate::state::AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+
+        // Three messages, all mentioning "status update" so search
+        // retrieves all three, but only one is addressed to alice.
+        let env_alice = envelope_to_recipient(
+            &account_id,
+            "team@example.com",
+            "alice@example.com",
+            "status update for alice",
+        );
+        let env_bob = envelope_to_recipient(
+            &account_id,
+            "team@example.com",
+            "bob@example.com",
+            "status update for bob",
+        );
+        let env_carol = envelope_to_recipient(
+            &account_id,
+            "team@example.com",
+            "carol@example.com",
+            "status update for carol",
+        );
+
+        let mut entries = Vec::new();
+        for env in [&env_alice, &env_bob, &env_carol] {
+            state
+                .store
+                .upsert_envelope_with_direction(env, MessageDirection::Inbound)
+                .await
+                .unwrap();
+            let body = MessageBody {
+                message_id: env.id.clone(),
+                text_plain: Some(format!("{}: status update content", env.subject)),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+                metadata: MessageMetadata::default(),
+            };
+            state.store.insert_body(&body).await.unwrap();
+            entries.push(SearchIndexEntry {
+                envelope: env.clone(),
+                body: Some(body),
+                reply_later: false,
+            });
+        }
+        state
+            .search
+            .apply_batch(SearchUpdateBatch {
+                entries,
+                removed_message_ids: vec![],
+            })
+            .await
+            .unwrap();
+        state.search.commit().await.unwrap();
+
+        let stub = Arc::new(CannedLlm {
+            body: format!(
+                r#"{{"answer":"Bob has the status update.","citations":[{{"msg_id":"{}","quote":"status"}}]}}"#,
+                env_bob.id
+            ),
+            last_user: Mutex::new(String::new()),
+        });
+        state.llm.replace(stub);
+
+        let err = ask(
+            &state,
+            "status update",
+            &ArchiveAskFiltersData {
+                account_id: Some(account_id),
+                to: Some("alice@example.com".into()),
+                ..Default::default()
+            },
+            5,
+        )
+        .await
+        .expect_err("out-of-scope Bob citation must be rejected");
+        assert!(
+            err.contains(&env_bob.id.to_string()),
+            "error must name the out-of-scope cited message: {err}"
+        );
+    }
+
     #[tokio::test]
     async fn date_filter_drops_out_of_range_envelopes_from_prompt() {
         let stub = Arc::new(CannedLlm {
-            body: r#"{"answer":"ok","citations":[]}"#.into(),
+            body: r#"{"answer":"Not enough evidence in archive","citations":[]}"#.into(),
             last_user: Mutex::new(String::new()),
         });
         let (state, account_id, ids) = fixture(stub.clone()).await;
         // Re-stub the same way to keep the prompt-capture mutex stable.
         let stub2 = Arc::new(CannedLlm {
-            body: r#"{"answer":"ok","citations":[]}"#.into(),
+            body: format!(
+                r#"{{"answer":"The old message had the status.","citations":[{{"msg_id":"{}","quote":"status"}}]}}"#,
+                ids[2]
+            ),
             last_user: Mutex::new(String::new()),
         });
         state.llm.replace(stub2.clone());
@@ -621,7 +911,7 @@ mod tests {
         // Filter `after` = 1.5 days ago in the past should keep ids[0]
         // and ids[1] but drop ids[2].
         let after = chrono::Utc::now() - chrono::Duration::hours(36);
-        let _ = ask(
+        let err = ask(
             &state,
             "status",
             &ArchiveAskFiltersData {
@@ -632,14 +922,104 @@ mod tests {
             5,
         )
         .await
-        .unwrap();
-        let prompt = stub2.last_user.lock().unwrap().clone();
-        // ids[2] (2 days old) must NOT be in the prompt.
+        .expect_err("out-of-range old citation must be rejected");
         assert!(
-            !prompt.contains(&ids[2].to_string()),
-            "filter must keep out-of-range messages out of the LLM prompt"
+            err.contains(&ids[2].to_string()),
+            "error must name the out-of-range cited message: {err}"
         );
-        // ids[0] (today) MUST be in the prompt.
-        assert!(prompt.contains(&ids[0].to_string()), "in-range message missing");
+    }
+
+    #[tokio::test]
+    async fn structured_filters_are_applied_to_candidate_retrieval() {
+        let (state, _) = crate::state::AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+
+        let mut entries = Vec::new();
+        for i in 0..6 {
+            let env = envelope(
+                &account_id,
+                "bob@example.com",
+                &format!("pricing update {i}"),
+                i,
+            );
+            state
+                .store
+                .upsert_envelope_with_direction(&env, MessageDirection::Inbound)
+                .await
+                .unwrap();
+            let body = MessageBody {
+                message_id: env.id.clone(),
+                text_plain: Some("high-ranking out-of-scope pricing note".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+                metadata: MessageMetadata::default(),
+            };
+            state.store.insert_body(&body).await.unwrap();
+            entries.push(SearchIndexEntry {
+                envelope: env,
+                body: Some(body),
+                reply_later: false,
+            });
+        }
+
+        let alice = envelope(&account_id, "alice@example.com", "q2 decision", 0);
+        state
+            .store
+            .upsert_envelope_with_direction(&alice, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        let alice_body = MessageBody {
+            message_id: alice.id.clone(),
+            text_plain: Some("pricing decision from Alice".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata::default(),
+        };
+        state.store.insert_body(&alice_body).await.unwrap();
+        entries.push(SearchIndexEntry {
+            envelope: alice.clone(),
+            body: Some(alice_body),
+            reply_later: false,
+        });
+
+        state
+            .search
+            .apply_batch(SearchUpdateBatch {
+                entries,
+                removed_message_ids: vec![],
+            })
+            .await
+            .unwrap();
+        state.search.commit().await.unwrap();
+
+        let stub = Arc::new(CannedLlm {
+            body: format!(
+                r#"{{"answer":"Alice made the pricing decision.","citations":[{{"msg_id":"{}","quote":"pricing decision"}}]}}"#,
+                alice.id
+            ),
+            last_user: Mutex::new(String::new()),
+        });
+        state.llm.replace(stub);
+
+        let resp = ask(
+            &state,
+            "pricing",
+            &ArchiveAskFiltersData {
+                account_id: Some(account_id),
+                from: Some("alice@example.com".into()),
+                ..Default::default()
+            },
+            1,
+        )
+        .await
+        .unwrap();
+        let ResponseData::ArchiveAnswer { answer } = resp else {
+            panic!("unexpected response");
+        };
+        assert_eq!(answer.citations.len(), 1);
+        assert_eq!(answer.citations[0].message_id, alice.id);
     }
 }

@@ -9,9 +9,7 @@
 use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_core::SortOrder;
-use mxr_protocol::{
-    EntityCandidateData, EntityExplanationData, ResponseData, WhoisCitationData,
-};
+use mxr_protocol::{EntityCandidateData, EntityExplanationData, ResponseData, WhoisCitationData};
 use std::collections::HashMap;
 
 const MAX_CANDIDATES: usize = 5;
@@ -196,10 +194,7 @@ fn looks_like_email(s: &str) -> bool {
     let s = s.trim();
     if let Some(at) = s.find('@') {
         let (lhs, rhs) = s.split_at(at);
-        return !lhs.is_empty()
-            && rhs.len() > 1
-            && rhs[1..].contains('.')
-            && !s.contains(' ');
+        return !lhs.is_empty() && rhs.len() > 1 && rhs[1..].contains('.') && !s.contains(' ');
     }
     false
 }
@@ -289,8 +284,12 @@ mod tests {
         index(&state, &e, "hi").await;
         // Refresh contacts so the row exists.
         state.store.refresh_contacts().await.unwrap();
-        let resp = explain(&state, &account, "alice@example.com", 10).await.unwrap();
-        let ResponseData::EntityExplanation { entity } = resp else { panic!("unexpected") };
+        let resp = explain(&state, &account, "alice@example.com", 10)
+            .await
+            .unwrap();
+        let ResponseData::EntityExplanation { entity } = resp else {
+            panic!("unexpected")
+        };
         assert_eq!(entity.kind, "person");
         assert!(entity.summary.contains("inbound"), "{}", entity.summary);
         assert!(entity.candidates.is_empty());
@@ -299,23 +298,43 @@ mod tests {
     #[tokio::test]
     async fn term_query_returns_citations_from_local_messages() {
         let (state, account) = fixture().await;
-        let e = env(&account, "alice@example.com", "Project Apollo update", "apollo details");
+        let e = env(
+            &account,
+            "alice@example.com",
+            "Project Apollo update",
+            "apollo details",
+        );
         let id = e.id.to_string();
         index(&state, &e, "apollo details").await;
-        let resp = explain(&state, &account, "Project Apollo", 10).await.unwrap();
-        let ResponseData::EntityExplanation { entity } = resp else { panic!("unexpected") };
-        assert!(entity.citations.iter().any(|c| c.msg_id == id), "expected citation, got {:?}", entity.citations);
+        let resp = explain(&state, &account, "Project Apollo", 10)
+            .await
+            .unwrap();
+        let ResponseData::EntityExplanation { entity } = resp else {
+            panic!("unexpected")
+        };
+        assert!(
+            entity.citations.iter().any(|c| c.msg_id == id),
+            "expected citation, got {:?}",
+            entity.citations
+        );
     }
 
     #[tokio::test]
     async fn ambiguous_query_returns_candidates_not_synthesized_answer() {
         let (state, account) = fixture().await;
         for sender in ["alice@example.com", "bob@example.com", "carol@example.com"] {
-            let e = env(&account, sender, "fizzbuzz update", "fizzbuzz update content");
+            let e = env(
+                &account,
+                sender,
+                "fizzbuzz update",
+                "fizzbuzz update content",
+            );
             index(&state, &e, "fizzbuzz update content").await;
         }
         let resp = explain(&state, &account, "fizzbuzz", 10).await.unwrap();
-        let ResponseData::EntityExplanation { entity } = resp else { panic!("unexpected") };
+        let ResponseData::EntityExplanation { entity } = resp else {
+            panic!("unexpected")
+        };
         assert_eq!(entity.kind, "ambiguous");
         assert!(entity.candidates.len() >= 2, "{:?}", entity.candidates);
     }
@@ -325,15 +344,23 @@ mod tests {
         let (state, account) = fixture().await;
         // No documents indexed -- just an empty search index.
         let resp = explain(&state, &account, "ghost-term", 10).await.unwrap();
-        let ResponseData::EntityExplanation { entity } = resp else { panic!("unexpected") };
+        let ResponseData::EntityExplanation { entity } = resp else {
+            panic!("unexpected")
+        };
         assert_eq!(entity.kind, "unknown");
-        assert!(entity.summary.contains("No local evidence"), "{}", entity.summary);
+        assert!(
+            entity.summary.contains("No local evidence"),
+            "{}",
+            entity.summary
+        );
     }
 
     #[tokio::test]
     async fn empty_query_is_rejected() {
         let (state, account) = fixture().await;
-        let err = explain(&state, &account, "   ", 10).await.expect_err("must reject blank");
+        let err = explain(&state, &account, "   ", 10)
+            .await
+            .expect_err("must reject blank");
         assert!(err.contains("cannot be empty"));
     }
 }

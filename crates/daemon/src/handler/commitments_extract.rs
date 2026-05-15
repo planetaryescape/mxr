@@ -94,7 +94,10 @@ pub(crate) async fn extract_and_store(
 
     let parsed: LlmCommitmentsBatch =
         serde_json::from_str(response.content.trim()).map_err(|e| {
-            format!("commitments: LLM returned non-JSON ({e}); raw={}", response.content)
+            format!(
+                "commitments: LLM returned non-JSON ({e}); raw={}",
+                response.content
+            )
         })?;
 
     let primary_recipient = first_email(&draft.to);
@@ -135,17 +138,11 @@ pub(crate) async fn extract_and_store(
 }
 
 fn first_email(addrs: &[mxr_core::types::Address]) -> String {
-    addrs
-        .first()
-        .map(|a| a.email.clone())
-        .unwrap_or_default()
+    addrs.first().map(|a| a.email.clone()).unwrap_or_default()
 }
 
 /// IPC dispatch entry point for `Request::ExtractDraftCommitments`.
-pub(crate) async fn extract_request(
-    state: &AppState,
-    draft: &Draft,
-) -> super::HandlerResult {
+pub(crate) async fn extract_request(state: &AppState, draft: &Draft) -> super::HandlerResult {
     let candidates = extract_and_store(state, draft).await?;
     Ok(mxr_protocol::ResponseData::DraftCommitments {
         candidates: candidates
@@ -221,9 +218,7 @@ pub(crate) async fn promote_after_send(
 mod tests {
     use super::*;
     use mxr_core::types::{Address, DraftIntent};
-    use mxr_llm::{
-        CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider,
-    };
+    use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
     use std::sync::{Arc, Mutex};
 
     #[test]
@@ -248,10 +243,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl LlmProvider for CannedLlm {
-        async fn complete(
-            &self,
-            _req: CompletionRequest,
-        ) -> Result<CompletionResponse, LlmError> {
+        async fn complete(&self, _req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
             *self.calls.lock().unwrap() += 1;
             Ok(CompletionResponse {
                 content: self.body.clone(),
@@ -308,7 +300,11 @@ mod tests {
         let draft = draft_with_body(&account_id, "Thanks for the deck. Looks good.");
         let stored = extract_and_store(&state, &draft).await.unwrap();
         assert!(stored.is_empty());
-        assert_eq!(*stub.calls.lock().unwrap(), 0, "LLM must not be called when prefilter fails");
+        assert_eq!(
+            *stub.calls.lock().unwrap(),
+            0,
+            "LLM must not be called when prefilter fails"
+        );
     }
 
     #[tokio::test]
@@ -317,8 +313,7 @@ mod tests {
             {"who_owes":"me@example.com","what":"send the deck","by_when":null,"direction":"yours"}
         ]}"#;
         let (state, account_id, stub) = fixture(body).await;
-        let draft =
-            draft_with_body(&account_id, "I'll send the deck Friday. Thanks!");
+        let draft = draft_with_body(&account_id, "I'll send the deck Friday. Thanks!");
         let stored = extract_and_store(&state, &draft).await.unwrap();
         assert_eq!(stored.len(), 1);
         assert_eq!(*stub.calls.lock().unwrap(), 1);

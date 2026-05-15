@@ -1271,14 +1271,12 @@ impl super::Store {
         link_count: u32,
         body_word_count: u32,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE messages SET link_count = ?, body_word_count = ? WHERE id = ?",
-        )
-        .bind(link_count as i64)
-        .bind(body_word_count as i64)
-        .bind(message_id.as_str())
-        .execute(self.writer())
-        .await?;
+        sqlx::query("UPDATE messages SET link_count = ?, body_word_count = ? WHERE id = ?")
+            .bind(link_count as i64)
+            .bind(body_word_count as i64)
+            .bind(message_id.as_str())
+            .execute(self.writer())
+            .await?;
         Ok(())
     }
 

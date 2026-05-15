@@ -43,15 +43,31 @@ struct ExecutionExplainInput<'a> {
     notes: Vec<String>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn list_events(
     state: &AppState,
     limit: u32,
+    offset: u32,
     level: Option<&str>,
     category: Option<&str>,
+    category_prefix: Option<&str>,
+    since: Option<i64>,
+    until: Option<i64>,
+    search: Option<&str>,
 ) -> HandlerResult {
+    let filter = mxr_store::EventLogFilter {
+        limit,
+        offset,
+        level,
+        category,
+        category_prefix,
+        since,
+        until,
+        search,
+    };
     let entries = state
         .store
-        .list_events(limit, level, category)
+        .list_events_filtered(filter)
         .await
         .map_err(|e| e.to_string())?;
     Ok(ResponseData::EventLogEntries {
@@ -59,8 +75,14 @@ pub(crate) async fn list_events(
     })
 }
 
-pub(crate) async fn get_logs(state: &AppState, limit: u32, level: Option<&str>) -> HandlerResult {
-    let lines = recent_log_lines(state, limit as usize, level).await?;
+pub(crate) async fn get_logs(
+    state: &AppState,
+    limit: u32,
+    level: Option<&str>,
+    search: Option<&str>,
+) -> HandlerResult {
+    let lines =
+        super::helpers::recent_log_lines_filtered(state, limit as usize, level, search).await?;
     Ok(ResponseData::LogLines { lines })
 }
 
@@ -125,6 +147,19 @@ pub(crate) async fn count(state: &AppState, query: &str, mode: SearchMode) -> Ha
     Ok(ResponseData::Count {
         count: results.map_err(|e| e.to_string())?.results.len() as u32,
     })
+}
+
+/// Return just the count of matches for a query — used by surfaces
+/// that need a number, not the results themselves (e.g. saved-search
+/// unread badges).
+pub(crate) async fn count_search_matches(
+    state: &AppState,
+    query: &str,
+    mode: SearchMode,
+) -> Result<u32, String> {
+    let execution =
+        execute_search(state, query, 10_000, 0, mode, SortOrder::DateDesc, false).await?;
+    Ok(execution.results.len() as u32)
 }
 
 pub(crate) async fn get_headers(state: &AppState, message_id: &MessageId) -> HandlerResult {
@@ -1193,6 +1228,7 @@ pub(crate) async fn incremental_analytics_backfill(state: &AppState) -> Analytic
 fn emit_operation_event(state: &AppState, event: DaemonEvent) {
     let _ = state.event_tx.send(IpcMessage {
         id: 0,
+        source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Event(event),
     });
 }

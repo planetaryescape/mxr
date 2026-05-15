@@ -17,8 +17,9 @@ static FIRST_PERSON_PROMISE: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
-static FOLLOW_UP_PHRASE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)\bI\s*(?:'?ll|will)\s+(follow\s+up|get\s+back|circle\s+back|send|share|file|review|update|ping|reach\s+out)\b").unwrap());
+static FOLLOW_UP_PHRASE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)\bI\s*(?:'?ll|will)\s+(follow\s+up|get\s+back|circle\s+back|send|share|file|review|update|ping|reach\s+out)\b").unwrap()
+});
 
 pub fn detect_candidates(draft: &Draft) -> Vec<DraftSafetyIssue> {
     let cleaned = reader_clean(&draft.body_markdown);
@@ -62,8 +63,8 @@ fn reader_clean(body: &str) -> String {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use mxr_core::{AccountId, DraftId};
     use mxr_core::types::{Draft, DraftIntent};
+    use mxr_core::{AccountId, DraftId};
 
     fn draft_with(body: &str) -> Draft {
         Draft {
@@ -98,8 +99,7 @@ mod tests {
 
     #[test]
     fn quoted_promise_is_ignored() {
-        let body =
-            "Got it.\n\nOn Mon, Alice wrote:\n> I'll send the deck Friday.\n";
+        let body = "Got it.\n\nOn Mon, Alice wrote:\n> I'll send the deck Friday.\n";
         let issues = detect_candidates(&draft_with(body));
         assert!(
             issues.is_empty(),

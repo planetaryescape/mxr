@@ -93,6 +93,157 @@ fn status_autostarted_daemon_stays_resident() {
     );
 }
 
+/// Locks in the property that the demo daemon (`mxr demo`) cannot poison the
+/// real daemon's state. The real demo flow sets `MXR_INSTANCE=mxr-demo` plus
+/// `MXR_DATA_DIR` / `MXR_CONFIG_DIR` pointing at demo-only paths, and the
+/// daemon resolves every on-disk resource (socket, SQLite store, Tantivy
+/// index, semantic vectors, PID file, bridge port/token) through those env
+/// vars. This test spawns two daemons concurrently under different
+/// instance/data/config triples and asserts their state is fully disjoint.
+#[test]
+fn demo_instance_and_real_instance_coexist_with_separate_state() {
+    let _guard = daemon_lifecycle_guard();
+
+    let temp_real = TempDir::new().expect("real temp dir");
+    let temp_demo = TempDir::new().expect("demo temp dir");
+
+    let real_instance = unique_instance_name("mxr-test-real");
+    let demo_instance = unique_instance_name("mxr-test-demo");
+    assert_ne!(
+        real_instance, demo_instance,
+        "test setup must use distinct instance names"
+    );
+
+    let real_data_dir = temp_real.path().join("data");
+    let real_config_dir = temp_real.path().join("config");
+    let demo_data_dir = temp_demo.path().join("data");
+    let demo_config_dir = temp_demo.path().join("config");
+    std::fs::create_dir_all(&real_data_dir).expect("real data dir");
+    std::fs::create_dir_all(&real_config_dir).expect("real config dir");
+    std::fs::create_dir_all(&demo_data_dir).expect("demo data dir");
+    std::fs::create_dir_all(&demo_config_dir).expect("demo config dir");
+
+    let real_socket = instance_socket_path(&real_instance);
+    let demo_socket = instance_socket_path(&demo_instance);
+    assert_ne!(
+        real_socket, demo_socket,
+        "MXR_INSTANCE must namespace the IPC socket path"
+    );
+
+    let real_pid_path = real_data_dir.join("daemon.pid");
+    let demo_pid_path = demo_data_dir.join("daemon.pid");
+
+    let mut real_daemon = TestDaemon::new(real_socket.clone(), real_pid_path.clone());
+    let mut demo_daemon = TestDaemon::new(demo_socket.clone(), demo_pid_path.clone());
+
+    // Start the "real" daemon first.
+    let (real_stdout, real_stderr) = run_status(&real_instance, &real_data_dir, &real_config_dir);
+    let real_status = parse_status(&real_stdout);
+    let real_daemon_pid = real_status["daemon_pid"]
+        .as_u64()
+        .expect("real daemon pid present");
+    real_daemon.set_pid(real_daemon_pid);
+    assert!(
+        real_stderr.contains("Starting daemon... ready."),
+        "expected real daemon to autostart, stderr={real_stderr:?}"
+    );
+
+    // Start the "demo" daemon while the real one is still running.
+    let (demo_stdout, demo_stderr) = run_status(&demo_instance, &demo_data_dir, &demo_config_dir);
+    let demo_status = parse_status(&demo_stdout);
+    let demo_daemon_pid = demo_status["daemon_pid"]
+        .as_u64()
+        .expect("demo daemon pid present");
+    demo_daemon.set_pid(demo_daemon_pid);
+    assert!(
+        demo_stderr.contains("Starting daemon... ready."),
+        "expected demo daemon to autostart, stderr={demo_stderr:?}"
+    );
+
+    // Distinct processes.
+    assert_ne!(
+        real_daemon_pid, demo_daemon_pid,
+        "real and demo daemons must run as distinct processes"
+    );
+
+    // Data directories must be disjoint — neither nested under the other.
+    assert!(
+        !real_data_dir.starts_with(&demo_data_dir),
+        "real data dir must not live under demo data dir"
+    );
+    assert!(
+        !demo_data_dir.starts_with(&real_data_dir),
+        "demo data dir must not live under real data dir"
+    );
+
+    // Each daemon owns a PID file inside its own data dir.
+    assert!(
+        real_pid_path.exists(),
+        "real daemon must write its pid file at {}",
+        real_pid_path.display()
+    );
+    assert!(
+        demo_pid_path.exists(),
+        "demo daemon must write its pid file at {}",
+        demo_pid_path.display()
+    );
+
+    // The Tantivy search index lives at `<data_dir>/search_index` (see
+    // `crates/daemon/src/state.rs`). Each daemon must materialize its own
+    // index dir, at distinct paths, so seeding the demo can never write into
+    // the real index.
+    let real_index = real_data_dir.join("search_index");
+    let demo_index = demo_data_dir.join("search_index");
+    assert_ne!(
+        real_index, demo_index,
+        "real and demo Tantivy indexes must live at different paths"
+    );
+    assert!(
+        real_index.is_dir(),
+        "real daemon must create its search_index dir at {}",
+        real_index.display()
+    );
+    assert!(
+        demo_index.is_dir(),
+        "demo daemon must create its search_index dir at {}",
+        demo_index.display()
+    );
+
+    assert_ne!(
+        real_pid_path, demo_pid_path,
+        "real and demo daemons must own distinct pid files"
+    );
+
+    // Both daemons remain independently responsive after the other started.
+    let (real_stdout2, real_stderr2) = run_status(&real_instance, &real_data_dir, &real_config_dir);
+    let real_status2 = parse_status(&real_stdout2);
+    let real_pid2 = real_status2["daemon_pid"]
+        .as_u64()
+        .expect("real daemon still up");
+    assert_eq!(
+        real_pid2, real_daemon_pid,
+        "real daemon pid changed after demo daemon came up: real should not have been restarted"
+    );
+    assert!(
+        real_stderr2.trim().is_empty(),
+        "second real status should reuse the running real daemon, stderr={real_stderr2:?}"
+    );
+
+    let (demo_stdout2, demo_stderr2) = run_status(&demo_instance, &demo_data_dir, &demo_config_dir);
+    let demo_status2 = parse_status(&demo_stdout2);
+    let demo_pid2 = demo_status2["daemon_pid"]
+        .as_u64()
+        .expect("demo daemon still up");
+    assert_eq!(
+        demo_pid2, demo_daemon_pid,
+        "demo daemon pid changed unexpectedly"
+    );
+    assert!(
+        demo_stderr2.trim().is_empty(),
+        "second demo status should reuse the running demo daemon, stderr={demo_stderr2:?}"
+    );
+}
+
 #[test]
 fn status_recovers_running_daemon_when_socket_path_disappears() {
     let _guard = daemon_lifecycle_guard();

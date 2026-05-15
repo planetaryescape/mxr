@@ -122,7 +122,11 @@ mod tests {
         (store, account.id, DraftId::new())
     }
 
-    fn candidate(account_id: &AccountId, draft_id: &DraftId, what: &str) -> DraftCommitmentCandidate {
+    fn candidate(
+        account_id: &AccountId,
+        draft_id: &DraftId,
+        what: &str,
+    ) -> DraftCommitmentCandidate {
         DraftCommitmentCandidate {
             id: new_candidate_id(),
             draft_id: draft_id.clone(),

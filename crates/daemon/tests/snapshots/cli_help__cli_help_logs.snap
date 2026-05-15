@@ -10,6 +10,8 @@ Options:
       --no-follow
       --level <LEVEL>
       --since <SINCE>
+      --search <SEARCH>  Free-text substring filter applied to each log line. Case-insensitive
+      --limit <LIMIT>    Maximum lines to return when not following. Default 200 [default: 200]
       --purge
       --format <FORMAT>  Output format. `json`/`jsonl` emit one JSON object per line with `{ timestamp, level, message }` fields parsed from the log line [possible values: table, json, jsonl, csv, ids]
   -h, --help             Print help

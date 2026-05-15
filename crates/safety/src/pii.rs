@@ -12,8 +12,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 static SSN: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b(\d{3})-(\d{2})-(\d{4})\b").unwrap());
-static CC_DIGITS: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\b(\d[ -]?){11,18}\d\b").unwrap());
+static CC_DIGITS: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b(\d[ -]?){11,18}\d\b").unwrap());
 static SK_PREFIX: Lazy<Regex> = Lazy::new(|| Regex::new(r"\bsk-[A-Za-z0-9_-]{16,}\b").unwrap());
 static GH_PREFIX: Lazy<Regex> = Lazy::new(|| Regex::new(r"\bghp_[A-Za-z0-9]{20,}\b").unwrap());
 static SLACK_PREFIX: Lazy<Regex> =
@@ -30,8 +29,9 @@ static AWS_KEY_LABEL: Lazy<Regex> = Lazy::new(|| {
     )
     .unwrap()
 });
-static GENERIC_API_KEY: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"(?i)\bapi[_-]?key\s*[:=]\s*['"]?[A-Za-z0-9_\-]{12,}['"]?"#).unwrap());
+static GENERIC_API_KEY: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?i)\bapi[_-]?key\s*[:=]\s*['"]?[A-Za-z0-9_\-]{12,}['"]?"#).unwrap()
+});
 static CLIENT_SECRET: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"(?i)\bclient[_-]?secret\s*[:=]\s*['"]?[A-Za-z0-9_\-]{12,}['"]?"#).unwrap()
 });
@@ -190,8 +190,8 @@ fn reader_clean(body: &str) -> String {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use mxr_core::{AccountId, DraftId};
     use mxr_core::types::{Draft, DraftIntent};
+    use mxr_core::{AccountId, DraftId};
 
     fn d(body: &str) -> Draft {
         Draft {
@@ -292,7 +292,10 @@ mod tests {
     fn no_raw_secret_leaks_for_any_kind() {
         let cases: &[(&str, &str)] = &[
             ("token sk-abcdefghijklmnopqrstuv", "abcdefghijklmnopqrstuv"),
-            ("aws_access_key_id=AKIAIOSFODNN7EXAMPLE", "AKIAIOSFODNN7EXAMPLE"),
+            (
+                "aws_access_key_id=AKIAIOSFODNN7EXAMPLE",
+                "AKIAIOSFODNN7EXAMPLE",
+            ),
             (
                 "config api_key=secret_value_long_enough_to_match",
                 "secret_value_long_enough_to_match",
@@ -382,6 +385,9 @@ mod tests {
     fn json_serialization_omits_raw_secret() {
         let issues = check(&d("token sk-supersecretkeyvalueXYZ"));
         let json = serde_json::to_string(&issues).unwrap();
-        assert!(!json.contains("supersecretkeyvalueXYZ"), "json leaked: {json}");
+        assert!(
+            !json.contains("supersecretkeyvalueXYZ"),
+            "json leaked: {json}"
+        );
     }
 }

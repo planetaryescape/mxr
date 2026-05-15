@@ -35,10 +35,7 @@ fn print(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                 if !entity.candidates.is_empty() {
                     println!("\nCandidates:");
                     for c in &entity.candidates {
-                        println!(
-                            "  - {} ({}, {} mentions)",
-                            c.value, c.kind, c.mention_count
-                        );
+                        println!("  - {} ({}, {} mentions)", c.value, c.kind, c.mention_count);
                     }
                 }
                 if !entity.citations.is_empty() {

@@ -5462,6 +5462,10 @@ mod tests {
     #[tokio::test]
     async fn dispatch_fielded_semantic_query_explains_disabled_fallback() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
+        let mut config = state.config_snapshot();
+        config.search.semantic.enabled = false;
+        state.set_config_for_test(config).await;
+
         state
             .sync_engine
             .sync_account(state.default_provider().as_ref())

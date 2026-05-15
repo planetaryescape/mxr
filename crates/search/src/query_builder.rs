@@ -711,10 +711,22 @@ mod tests {
         );
     }
 
+    fn is_reserved_query_operator(word: &str) -> bool {
+        matches!(
+            word.to_ascii_uppercase().as_str(),
+            "AND" | "OR" | "NOT" | "AROUND"
+        )
+    }
+
     proptest! {
         #[test]
         fn simple_text_queries_parse_and_execute(
             words in prop::collection::vec("[A-Za-z0-9]{1,12}", 1..5)
+                .prop_filter("reserved query operators are grammar tokens", |words| {
+                    words
+                        .iter()
+                        .all(|word| !is_reserved_query_operator(word))
+                })
         ) {
             let query_text = words.join(" ");
             let ast = parse_query(&query_text)

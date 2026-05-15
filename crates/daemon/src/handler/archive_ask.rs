@@ -495,6 +495,9 @@ mod tests {
     ) -> (Arc<crate::state::AppState>, AccountId, Vec<MessageId>) {
         let (state, _) = crate::state::AppState::in_memory_with_fake().await.unwrap();
         let state = Arc::new(state);
+        let mut config = state.config_snapshot();
+        config.search.semantic.enabled = false;
+        state.set_config_for_test(config).await;
         state.llm.replace(llm);
         let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
 

@@ -60,6 +60,12 @@ async fn run_local_detached(args: Args) -> anyhow::Result<()> {
             present_launch_url(&bridge_url, &display_url, args.print_url, args.no_open);
             return Ok(());
         }
+        // The cached port no longer responds — the daemon-managed bridge
+        // died (e.g. it lost its port on a previous startup and got
+        // disabled). Clear the stale file so subsequent invocations
+        // don't keep probing a dead port, then fall through to spawn a
+        // fresh detached child.
+        mxr_config::clear_bridge_port();
     }
 
     if let Some(pid) = live_web_pid() {
@@ -348,6 +354,17 @@ fn present_launch_url(bridge_url: &str, display_url: &str, print_url: bool, no_o
 fn spawn_detached_web_child(args: &Args) -> anyhow::Result<u32> {
     let exe = std::env::current_exe()?;
     let mut command = std::process::Command::new(exe);
+    // Capture stderr so a child that fails to bind / connect can still
+    // surface its error after the parent times out. Previously this
+    // went to /dev/null, leaving "timed out waiting for mxr web bridge
+    // to start" as the only signal — and no way to tell why.
+    let stderr_path = web_child_stderr_path();
+    let stderr_target = std::fs::File::options()
+        .append(true)
+        .create(true)
+        .open(&stderr_path)
+        .map(std::process::Stdio::from)
+        .unwrap_or_else(|_| std::process::Stdio::null());
     command
         .arg("web")
         .arg("--foreground")
@@ -359,7 +376,7 @@ fn spawn_detached_web_child(args: &Args) -> anyhow::Result<u32> {
         .arg(args.port.to_string())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+        .stderr(stderr_target);
 
     if args.strict_port {
         command.arg("--strict-port");
@@ -378,6 +395,27 @@ fn spawn_detached_web_child(args: &Args) -> anyhow::Result<u32> {
         .spawn()
         .map(|child| child.id())
         .map_err(|error| anyhow::anyhow!("failed to start mxr web bridge: {error}"))
+}
+
+fn web_child_stderr_path() -> PathBuf {
+    mxr_config::data_dir().join("logs").join("mxr-web.log")
+}
+
+/// Read the last few lines of the detached child's stderr log so a
+/// startup failure can be surfaced to the user instead of swallowed as
+/// a bare timeout. Returns `None` if the log is missing or empty.
+fn read_recent_web_child_stderr() -> Option<String> {
+    let contents = std::fs::read_to_string(web_child_stderr_path()).ok()?;
+    let trimmed = contents.trim_end();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let tail: Vec<&str> = trimmed.lines().rev().take(8).collect();
+    if tail.is_empty() {
+        None
+    } else {
+        Some(tail.into_iter().rev().collect::<Vec<_>>().join("\n"))
+    }
 }
 
 async fn wait_for_detached_web_ready(
@@ -403,7 +441,13 @@ async fn wait_for_detached_web_ready(
 
     let _ = terminate_web_pid(pid).await;
     clear_web_state();
-    anyhow::bail!("timed out waiting for mxr web bridge to start")
+    let detail = read_recent_web_child_stderr()
+        .map(|tail| format!("\nLast detached-child stderr lines:\n{tail}"))
+        .unwrap_or_default();
+    anyhow::bail!(
+        "timed out waiting for mxr web bridge to start. Check `{}` for the child's logs; common cause is the bridge port being held by another process — try `mxr web --auto-port` or change `[bridge].port` in `~/.config/mxr/config.toml`.{detail}",
+        web_child_stderr_path().display()
+    )
 }
 
 async fn terminate_web_pid(pid: u32) -> anyhow::Result<()> {

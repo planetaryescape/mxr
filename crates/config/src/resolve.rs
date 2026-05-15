@@ -164,6 +164,14 @@ pub fn write_bridge_port(port: u16) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Remove the bridge-port file. Called when the bridge fails to start or
+/// shuts down, so a subsequent `mxr web` invocation doesn't probe a port
+/// that's no longer ours and then time out waiting for a detached child
+/// it would have spawned faster if it knew the cached port was stale.
+pub fn clear_bridge_port() {
+    let _ = std::fs::remove_file(bridge_port_path());
+}
+
 /// Read the bridge port the daemon last bound to. Returns `None` if the
 /// file is missing or unparseable.
 pub fn read_bridge_port() -> Option<u16> {

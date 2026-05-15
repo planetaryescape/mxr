@@ -14,19 +14,29 @@ import {
   readAndArchiveMessages,
   unsubscribeFromSender,
 } from "@/features/mailbox/api";
+import type { ThreadResponse } from "@/features/mailbox/types";
 import type { Action } from "@/lib/actions/types";
+import { getActiveQueryClient } from "@/lib/queryClient";
 import { or, withFocusedThread, withSelection } from "@/lib/actions/when";
 import { useModals } from "@/state/modalStore";
 import { useSelection } from "@/state/selectionStore";
 
+function focusedThreadId(): string | null {
+  if (typeof window === "undefined") return null;
+  const match = window.location.pathname.match(/^\/m\/[^/]+\/([^/]+)/);
+  return match?.[1] ?? null;
+}
+
+function cachedThreadMessageIds(threadId: string): string[] {
+  const cached = getActiveQueryClient()?.getQueryData<ThreadResponse>(["thread", threadId]);
+  return cached?.messages.map((message) => message.id) ?? [];
+}
+
 function targetMessageIds(): string[] {
   const ids = Array.from(useSelection.getState().ids);
   if (ids.length > 0) return ids;
-  // Fall back to focused thread id from URL: /m/<lens>/<threadId>
-  if (typeof window === "undefined") return [];
-  const match = window.location.pathname.match(/^\/m\/[^/]+\/([^/]+)/);
-  if (!match || !match[1]) return [];
-  return [match[1]];
+  const threadId = focusedThreadId();
+  return threadId ? cachedThreadMessageIds(threadId) : [];
 }
 
 const visible = or(withSelection(1), withFocusedThread());
@@ -98,13 +108,11 @@ export const mailboxActions: Action[] = [
     paletteOnly: true,
     when: withFocusedThread(),
     run: () => {
-      const ids = targetMessageIds();
-      if (ids.length === 0) {
+      const threadId = focusedThreadId();
+      if (!threadId) {
         toast.error("Open a thread first");
         return;
       }
-      const threadId = ids[0];
-      if (!threadId) return;
       useModals.getState().setCommandPaletteOpen(false);
       useModals.getState().openRightRail("draft-assist", { threadId });
     },
@@ -120,7 +128,7 @@ export const mailboxActions: Action[] = [
     run: () => {
       const ids = targetMessageIds();
       if (ids.length === 0) {
-        toast.error("Open a thread first");
+        toast.error("Open a loaded thread first");
         return;
       }
       useModals.getState().setCommandPaletteOpen(false);

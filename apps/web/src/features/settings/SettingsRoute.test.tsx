@@ -5,14 +5,24 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { LlmSettingsSection } from "./SettingsRoute";
+import { ComposeSettingsSection, LlmSettingsSection } from "./SettingsRoute";
 
 const api = vi.hoisted(() => ({
   fetch: vi.fn<(path: string, opts?: unknown) => Promise<unknown>>(),
 }));
 
+const accountsApi = vi.hoisted(() => ({
+  fetchAccounts: vi.fn<() => Promise<unknown>>(),
+  setDefaultAccount: vi.fn<(key: string) => Promise<unknown>>(),
+}));
+
 vi.mock("@/api/client", () => ({
   apiFetch: api.fetch,
+}));
+
+vi.mock("@/features/accounts/api", () => ({
+  fetchAccounts: accountsApi.fetchAccounts,
+  setDefaultAccount: accountsApi.setDefaultAccount,
 }));
 
 vi.mock("sonner", () => ({
@@ -177,5 +187,100 @@ describe("LlmSettingsSection", () => {
     expect(screen.getByText(/not editable llm config yet/i)).toBeVisible();
     expect(screen.getByRole("button", { name: /daemon update required/i })).toBeDisabled();
     expect(screen.queryByText(/could not load llm config/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("ComposeSettingsSection", () => {
+  beforeEach(() => {
+    accountsApi.fetchAccounts.mockResolvedValue({
+      accounts: [
+        {
+          account_id: "account-1",
+          key: "work",
+          name: "Work",
+          email: "work@example.com",
+          provider_kind: "gmail",
+          enabled: true,
+          is_default: true,
+        },
+        {
+          account_id: "account-2",
+          key: "personal",
+          name: "Personal",
+          email: "me@example.com",
+          provider_kind: "imap",
+          enabled: true,
+          is_default: false,
+        },
+      ],
+    });
+    accountsApi.setDefaultAccount.mockResolvedValue({ ok: true });
+    api.fetch.mockImplementation((path, opts) => {
+      if (path === "/api/v1/mail/signatures" && !opts) {
+        return Promise.resolve({
+          signatures: [
+            {
+              id: "sig-1",
+              name: "sig",
+              body: "Best,\nB",
+              created_at: "2026-05-14T12:00:00Z",
+              updated_at: "2026-05-14T12:00:00Z",
+            },
+          ],
+        });
+      }
+      if (path === "/api/v1/mail/signature-defaults") {
+        return Promise.resolve({ defaults: [] });
+      }
+      if (path === "/api/v1/mail/signatures" && opts) {
+        return Promise.resolve({ signature: { id: "sig-2", name: "formal", body: "Regards" } });
+      }
+      if (path === "/api/v1/mail/signatures/default") {
+        return Promise.resolve({ ok: true });
+      }
+      throw new Error(`unexpected request: ${path}`);
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("sets the default compose account and global signature defaults", async () => {
+    renderWithQueryClient(<ComposeSettingsSection />);
+
+    expect(await screen.findByText("Work")).toBeVisible();
+    expect(screen.getByText("sig")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: /use personal as compose default/i }));
+    await waitFor(() => expect(accountsApi.setDefaultAccount.mock.calls[0]?.[0]).toBe("personal"));
+
+    fireEvent.click(screen.getByRole("button", { name: /use sig for new messages/i }));
+    await waitFor(() => {
+      expect(api.fetch).toHaveBeenCalledWith("/api/v1/mail/signatures/default", {
+        method: "POST",
+        body: { name: "sig", kind: "new" },
+      });
+    });
+  });
+
+  test("saves a signature block through the bridge", async () => {
+    renderWithQueryClient(<ComposeSettingsSection />);
+
+    await screen.findByText("sig");
+    fireEvent.change(screen.getByLabelText(/signature name/i), {
+      target: { value: "formal" },
+    });
+    fireEvent.change(screen.getByLabelText(/signature body/i), {
+      target: { value: "Regards" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save signature/i }));
+
+    await waitFor(() => {
+      expect(api.fetch).toHaveBeenCalledWith("/api/v1/mail/signatures", {
+        method: "POST",
+        body: { name: "formal", body: "Regards" },
+      });
+    });
   });
 });

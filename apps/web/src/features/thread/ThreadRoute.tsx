@@ -411,8 +411,18 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
       return;
     }
     if (autoSummaryThreadRef.current === data.thread.id) return;
-    autoSummaryThreadRef.current = data.thread.id;
-    summaryMutateRef.current({ silent: true });
+    // Trailing-edge debounce: scrolling through a list and briefly
+    // landing on threads shouldn't fire an LLM call for each one.
+    // Only the thread the user actually stays on for ~250ms triggers
+    // the request. Switching threads before the timer elapses cancels
+    // this pending fire; in-flight requests already sent are left to
+    // complete so the daemon can cache their result.
+    const threadId = data.thread.id;
+    const handle = window.setTimeout(() => {
+      autoSummaryThreadRef.current = threadId;
+      summaryMutateRef.current({ silent: true });
+    }, 250);
+    return () => window.clearTimeout(handle);
   }, [data.thread.id, data.summary]);
 
   const overflowActions = useMemo<ReaderOverflowAction[]>(

@@ -12,12 +12,75 @@ export function fetchBugReport() {
   return apiFetch<{ content: string }>("/api/v1/admin/diagnostics/bug-report");
 }
 
-export function fetchLogs(limit = 100) {
-  return apiFetch<{ lines?: string[]; entries?: unknown[] }>(`/api/v1/admin/logs?limit=${limit}`);
+export interface LogsParams {
+  limit?: number;
+  level?: string;
+  search?: string;
 }
 
-export function fetchEvents(limit = 50) {
-  return apiFetch<{ entries?: unknown[] }>(`/api/v1/admin/events?limit=${limit}`);
+export function fetchLogs(arg: number | LogsParams = 100) {
+  const params: LogsParams = typeof arg === "number" ? { limit: arg } : arg;
+  const search = new URLSearchParams();
+  if (params.limit !== undefined) search.set("limit", String(params.limit));
+  if (params.level) search.set("level", params.level);
+  if (params.search) search.set("search", params.search);
+  const qs = search.toString();
+  return apiFetch<{ lines?: string[]; entries?: unknown[] }>(
+    `/api/v1/admin/logs${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export interface EventLogEntry {
+  timestamp: number;
+  level: string;
+  category: string;
+  account_id?: string | null;
+  message_id?: string | null;
+  rule_id?: string | null;
+  summary: string;
+  details?: string | null;
+}
+
+export interface EventsParams {
+  limit?: number;
+  offset?: number;
+  level?: string;
+  category?: string;
+  category_prefix?: string;
+  since?: number;
+  until?: number;
+  search?: string;
+}
+
+export function fetchEvents(arg: number | EventsParams = 50) {
+  const params: EventsParams = typeof arg === "number" ? { limit: arg } : arg;
+  const search = new URLSearchParams();
+  if (params.limit !== undefined) search.set("limit", String(params.limit));
+  if (params.offset !== undefined) search.set("offset", String(params.offset));
+  if (params.level) search.set("level", params.level);
+  if (params.category) search.set("category", params.category);
+  if (params.category_prefix) search.set("category_prefix", params.category_prefix);
+  if (params.since !== undefined) search.set("since", String(params.since));
+  if (params.until !== undefined) search.set("until", String(params.until));
+  if (params.search) search.set("search", params.search);
+  const qs = search.toString();
+  return apiFetch<{ entries: EventLogEntry[] }>(`/api/v1/admin/events${qs ? `?${qs}` : ""}`);
+}
+
+export function fetchEventCount(params: EventsParams = {}) {
+  const search = new URLSearchParams();
+  if (params.level) search.set("level", params.level);
+  if (params.category) search.set("category", params.category);
+  if (params.category_prefix) search.set("category_prefix", params.category_prefix);
+  if (params.since !== undefined) search.set("since", String(params.since));
+  if (params.until !== undefined) search.set("until", String(params.until));
+  if (params.search) search.set("search", params.search);
+  const qs = search.toString();
+  return apiFetch<{ count: number }>(`/api/v1/admin/events/count${qs ? `?${qs}` : ""}`);
+}
+
+export function fetchEventCategories() {
+  return apiFetch<{ categories: string[] }>(`/api/v1/admin/events/categories`);
 }
 
 export function fetchSyncStatus(accountId: string) {

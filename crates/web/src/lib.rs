@@ -2091,6 +2091,7 @@ async fn ipc_request_with_id(
     let mut framed = Framed::new(stream, IpcCodec::new());
     let message = IpcMessage {
         id: request_id,
+        source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(request),
     };
     framed
@@ -2887,10 +2888,11 @@ async fn update_saved_search(
     )
     .await?;
     match response {
-        ResponseData::SavedSearchData { search } => Ok(Json(
-            serde_json::to_value(search)
-                .map_err(|err| BridgeError::Ipc(format!("serialize saved search: {err}")))?,
-        )),
+        ResponseData::SavedSearchData { search } => {
+            Ok(Json(serde_json::to_value(search).map_err(|err| {
+                BridgeError::Ipc(format!("serialize saved search: {err}"))
+            })?))
+        }
         ResponseData::Ack => Ok(Json(json!({ "ok": true }))),
         _ => Err(BridgeError::UnexpectedResponse),
     }
@@ -3158,6 +3160,7 @@ mod tests {
                         let _ = framed
                             .send(IpcMessage {
                                 id: 0,
+                                source: ::mxr_protocol::ClientKind::default(),
                                 payload: IpcPayload::Event(event),
                             })
                             .await;
@@ -3173,6 +3176,7 @@ mod tests {
                             };
                             let response = IpcMessage {
                                 id: message.id,
+                                source: ::mxr_protocol::ClientKind::default(),
                                 payload: IpcPayload::Response(response),
                             };
                             let _ = framed.send(response).await;

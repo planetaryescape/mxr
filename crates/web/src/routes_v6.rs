@@ -98,6 +98,16 @@ struct EventsQuery {
     level: Option<String>,
     #[serde(default)]
     category: Option<String>,
+    #[serde(default)]
+    category_prefix: Option<String>,
+    #[serde(default)]
+    since: Option<i64>,
+    #[serde(default)]
+    until: Option<i64>,
+    #[serde(default)]
+    search: Option<String>,
+    #[serde(default)]
+    offset: u32,
 }
 
 fn default_log_limit() -> u32 {
@@ -117,6 +127,11 @@ async fn list_events(
             limit: query.limit,
             level: query.level,
             category: query.category,
+            category_prefix: query.category_prefix,
+            since: query.since,
+            until: query.until,
+            search: query.search,
+            offset: query.offset,
         },
     )
     .await?;
@@ -131,6 +146,8 @@ struct LogsQuery {
     limit: u32,
     #[serde(default)]
     level: Option<String>,
+    #[serde(default)]
+    search: Option<String>,
 }
 
 async fn get_logs(
@@ -145,6 +162,44 @@ async fn get_logs(
         Request::GetLogs {
             limit: query.limit,
             level: query.level,
+            search: query.search,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn list_event_categories(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenOnlyQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::ListEventCategories,
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn count_events(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<EventsQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::CountEvents {
+            level: query.level,
+            category: query.category,
+            category_prefix: query.category_prefix,
+            since: query.since,
+            until: query.until,
+            search: query.search,
         },
     )
     .await?;
@@ -1134,7 +1189,10 @@ async fn contacts_autocomplete(
         &state,
         &headers,
         query.token.as_deref(),
-        Request::ListSenders { limit: scan_limit },
+        Request::ListSenders {
+            limit: scan_limit,
+            since_unix: None,
+        },
     )
     .await?;
     let q = query.q.unwrap_or_default().to_lowercase();
@@ -2007,6 +2065,389 @@ async fn authorize_account_config(
     passthrough(response)
 }
 
+// ===========================================================================
+// Activity log routes (Phase 6 — `docs/activity-log.md`).
+// Strictly local: routes are bridge-gated like the rest. No new auth surface.
+// ===========================================================================
+
+#[derive(Debug, Deserialize, Default)]
+struct ActivityListQuery {
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default)]
+    since: Option<i64>,
+    #[serde(default)]
+    until: Option<i64>,
+    #[serde(default)]
+    account: Option<String>,
+    #[serde(default)]
+    source: Vec<String>,
+    #[serde(default)]
+    action: Vec<String>,
+    #[serde(default)]
+    prefix: Option<String>,
+    #[serde(default)]
+    target_kind: Option<String>,
+    #[serde(default)]
+    target_id: Option<String>,
+    #[serde(default)]
+    tier: Vec<String>,
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    include_redacted: bool,
+    #[serde(default = "default_activity_limit")]
+    limit: u32,
+    #[serde(default)]
+    cursor: Option<String>,
+}
+
+fn default_activity_limit() -> u32 {
+    50
+}
+
+fn parse_source(s: &str) -> Option<mxr_protocol::ClientKind> {
+    match s {
+        "tui" => Some(mxr_protocol::ClientKind::Tui),
+        "cli" => Some(mxr_protocol::ClientKind::Cli),
+        "web" => Some(mxr_protocol::ClientKind::Web),
+        "daemon" => Some(mxr_protocol::ClientKind::Daemon),
+        _ => None,
+    }
+}
+
+fn parse_tier(s: &str) -> Option<mxr_protocol::ActivityTier> {
+    match s {
+        "ephemeral" => Some(mxr_protocol::ActivityTier::Ephemeral),
+        "standard" => Some(mxr_protocol::ActivityTier::Standard),
+        "important" => Some(mxr_protocol::ActivityTier::Important),
+        _ => None,
+    }
+}
+
+fn query_to_filter(q: &ActivityListQuery) -> mxr_protocol::ActivityFilter {
+    mxr_protocol::ActivityFilter {
+        since: q.since,
+        until: q.until,
+        account_id: q.account.clone(),
+        sources: q.source.iter().filter_map(|s| parse_source(s)).collect(),
+        actions: q.action.clone(),
+        action_prefix: q.prefix.clone(),
+        target_kind: q.target_kind.clone(),
+        target_id: q.target_id.clone(),
+        tiers: q.tier.iter().filter_map(|t| parse_tier(t)).collect(),
+        query: q.query.clone(),
+        include_redacted: q.include_redacted,
+    }
+}
+
+fn parse_cursor_str(s: &str) -> Option<mxr_protocol::ActivityCursor> {
+    let (ts, id) = s.split_once(',')?;
+    Some(mxr_protocol::ActivityCursor {
+        ts: ts.trim().parse().ok()?,
+        id: id.trim().parse().ok()?,
+    })
+}
+
+async fn list_activity(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<ActivityListQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let filter = query_to_filter(&q);
+    let cursor = q.cursor.as_deref().and_then(parse_cursor_str);
+    let response = dispatch(
+        &state,
+        &headers,
+        q.token.as_deref(),
+        Request::ListActivity {
+            filter,
+            limit: q.limit,
+            cursor,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn count_activity(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<ActivityListQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let filter = query_to_filter(&q);
+    let response = dispatch(
+        &state,
+        &headers,
+        q.token.as_deref(),
+        Request::CountActivity { filter },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct ActivityStatsQuery {
+    #[serde(default)]
+    token: Option<String>,
+    since: i64,
+    until: i64,
+    group_by: String,
+}
+
+async fn activity_stats(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<ActivityStatsQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let group_by = match q.group_by.as_str() {
+        "action" => mxr_protocol::ActivityStatGroupBy::Action,
+        "day" => mxr_protocol::ActivityStatGroupBy::Day,
+        "source" => mxr_protocol::ActivityStatGroupBy::Source,
+        "target_kind" | "target-kind" | "targetkind" => {
+            mxr_protocol::ActivityStatGroupBy::TargetKind
+        }
+        "hour" => mxr_protocol::ActivityStatGroupBy::Hour,
+        other => return Err(BridgeError::Ipc(format!("unknown group_by '{other}'"))),
+    };
+    let response = dispatch(
+        &state,
+        &headers,
+        q.token.as_deref(),
+        Request::ActivityStats {
+            since: q.since,
+            until: q.until,
+            group_by,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct ExportActivityBody {
+    #[serde(default)]
+    token: Option<String>,
+    filter: mxr_protocol::ActivityFilter,
+    format: String,
+    #[serde(default)]
+    path: Option<String>,
+}
+
+async fn export_activity(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<ExportActivityBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let format = match body.format.as_str() {
+        "csv" => mxr_protocol::ActivityExportFormat::Csv,
+        "json" => mxr_protocol::ActivityExportFormat::Json,
+        "ndjson" => mxr_protocol::ActivityExportFormat::Ndjson,
+        other => return Err(BridgeError::Ipc(format!("unknown format '{other}'"))),
+    };
+    let response = dispatch(
+        &state,
+        &headers,
+        body.token.as_deref(),
+        Request::ExportActivity {
+            filter: body.filter,
+            format,
+            path: body.path,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct RedactBody {
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default)]
+    ids: Vec<i64>,
+    #[serde(default)]
+    filter: Option<mxr_protocol::ActivityFilter>,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn redact_activity(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<RedactBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        body.token.as_deref(),
+        Request::RedactActivity {
+            ids: body.ids,
+            filter: body.filter,
+            dry_run: body.dry_run,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct PruneBody {
+    #[serde(default)]
+    token: Option<String>,
+    before_ts: i64,
+    #[serde(default)]
+    tier: Option<String>,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn prune_activity(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<PruneBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let tier = body.tier.as_deref().and_then(parse_tier);
+    let response = dispatch(
+        &state,
+        &headers,
+        body.token.as_deref(),
+        Request::PruneActivity {
+            before_ts: body.before_ts,
+            tier,
+            dry_run: body.dry_run,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct PauseBody {
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default)]
+    until_ts: Option<i64>,
+}
+
+async fn pause_activity(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<PauseBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        body.token.as_deref(),
+        Request::PauseActivity {
+            until_ts: body.until_ts,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct ResumeBody {
+    #[serde(default)]
+    token: Option<String>,
+}
+
+async fn resume_activity(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<ResumeBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        body.token.as_deref(),
+        Request::ResumeActivity,
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn list_saved_activity_filters(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<TokenOnlyQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        q.token.as_deref(),
+        Request::ListSavedActivityFilters,
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn get_saved_activity_filter(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+    Query(q): Query<TokenOnlyQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        q.token.as_deref(),
+        Request::GetSavedActivityFilter { slug },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct UpsertSavedBody {
+    #[serde(default)]
+    token: Option<String>,
+    slug: String,
+    name: String,
+    filter: mxr_protocol::ActivityFilter,
+}
+
+async fn upsert_saved_activity_filter(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<UpsertSavedBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        body.token.as_deref(),
+        Request::UpsertSavedActivityFilter {
+            slug: body.slug,
+            name: body.name,
+            filter: body.filter,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn delete_saved_activity_filter(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+    Query(q): Query<TokenOnlyQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        q.token.as_deref(),
+        Request::DeleteSavedActivityFilter { slug },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct TokenOnlyQuery {
+    #[serde(default)]
+    token: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // router builders — extend the bucket sub-routers in lib.rs
 
@@ -2015,7 +2456,23 @@ pub fn extend_admin(router: Router<AppState>) -> Router<AppState> {
         .route("/ping", post(ping))
         .route("/shutdown", post(shutdown))
         .route("/events", get(list_events))
+        .route("/events/count", get(count_events))
+        .route("/events/categories", get(list_event_categories))
         .route("/logs", get(get_logs))
+        // ---- activity log (Phase 6) ----
+        .route("/activity", get(list_activity))
+        .route("/activity/count", get(count_activity))
+        .route("/activity/stats", get(activity_stats))
+        .route("/activity/export", post(export_activity))
+        .route("/activity/redact", post(redact_activity))
+        .route("/activity/prune", post(prune_activity))
+        .route("/activity/pause", post(pause_activity))
+        .route("/activity/resume", post(resume_activity))
+        .route("/activity/saved", get(list_saved_activity_filters).post(upsert_saved_activity_filter))
+        .route(
+            "/activity/saved/{slug}",
+            get(get_saved_activity_filter).delete(delete_saved_activity_filter),
+        )
 }
 
 pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {

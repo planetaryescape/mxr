@@ -1,6 +1,5 @@
 ---
 source: crates/web/src/lib.rs
-assertion_line: 3900
 expression: summary
 ---
 {
@@ -20,6 +19,13 @@ expression: summary
     "AccountSummaryData",
     "AccountSyncConfigData",
     "AccountSyncStatus",
+    "ActivityCursor",
+    "ActivityEntry",
+    "ActivityExportFormat",
+    "ActivityFilter",
+    "ActivityStatBucket",
+    "ActivityStatGroupBy",
+    "ActivityTier",
     "Address",
     "ArchiveAnswerData",
     "ArchiveAskFiltersData",
@@ -40,6 +46,7 @@ expression: summary
     "CalendarMetadata",
     "CitationRef",
     "CitationRefData",
+    "ClientKind",
     "CommitmentData",
     "CommitmentDirectionData",
     "CommitmentStatusData",
@@ -100,6 +107,7 @@ expression: summary
     "MutationCommand",
     "MutationResultData",
     "OwedReplyRowData",
+    "RecipientSendTimeRowData",
     "RelationshipDriftData",
     "RelationshipProfileData",
     "RelationshipWatchEntryData",
@@ -112,6 +120,7 @@ expression: summary
     "ResponseTimeDirection",
     "ResponseTimeSummary",
     "RuleFormData",
+    "SavedActivityFilterEntry",
     "SavedSearch",
     "SavedSearchId",
     "ScreenerDecisionData",
@@ -127,9 +136,9 @@ expression: summary
     "SemanticProfileStatus",
     "SemanticRuntimeMetrics",
     "SemanticStatusSnapshot",
-    "SendTimeBucketData",
     "SendTimeConfidenceData",
     "SendTimeRecommendationData",
+    "SendWindowData",
     "SenderEmailReferenceData",
     "SenderProfileData",
     "SenderSummaryData",

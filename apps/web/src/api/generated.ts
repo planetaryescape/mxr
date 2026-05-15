@@ -2466,8 +2466,12 @@ export interface components {
         /** @enum {string} */
         ArchiveAskMode: "hybrid" | "lexical" | "semantic";
         ArchiveCitationData: {
-            msg_id: string;
+            /** Format: date-time */
+            date: string;
+            message_id: components["schemas"]["MessageId"];
             quote: string;
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
         };
         ArchiveRetrievalData: {
             /** Format: int32 */
@@ -2939,6 +2943,14 @@ export interface components {
         Envelope: {
             account_id: components["schemas"]["AccountId"];
             bcc: components["schemas"]["Address"][];
+            /**
+             * Format: int32
+             * @description Word count of the rendered body, snapshot at sync time. Used together
+             *     with `link_count` to classify newsletter-shaped mail into
+             *     `LinkDensity::Heavy`. `0` if the body word count wasn't computed
+             *     (older rows pre-backfill).
+             */
+            body_word_count?: number;
             cc: components["schemas"]["Address"][];
             /** Format: date-time */
             date: string;
@@ -2953,6 +2965,14 @@ export interface components {
              *     Transient: used during sync to populate the message_labels junction table.
              */
             label_provider_ids?: string[];
+            /**
+             * Format: int32
+             * @description Count of external links in the body after filtering out tracker /
+             *     unsubscribe / list-management hostnames. Drives the tri-state
+             *     "link" indicator on the mail list and the `has:link` search filter.
+             *     `0` means no link indicator.
+             */
+            link_count?: number;
             message_id_header?: string | null;
             /**
              * @description Provider-instance identity used for sync and mutations.
@@ -3252,6 +3272,16 @@ export interface components {
             /** Format: double */
             waiting_days: number;
         };
+        RecipientSendTimeRowData: {
+            /** Format: int64 */
+            best_expected_reply_seconds?: number | null;
+            best_windows: components["schemas"]["SendWindowData"][];
+            email: string;
+            /** Format: int64 */
+            proposed_expected_reply_seconds?: number | null;
+            /** Format: int32 */
+            sample_count: number;
+        };
         RelationshipDriftData: {
             /** Format: date-time */
             detected_at: string;
@@ -3326,6 +3356,14 @@ export interface components {
             attachment_id: components["schemas"]["AttachmentId"];
             /** @enum {string} */
             cmd: "DownloadAttachment";
+            /**
+             * @description Optional user-chosen destination path. When `None`, the daemon
+             *     materializes into its internal attachment cache (used by the
+             *     open-in-app flow). When `Some`, the daemon writes the bytes
+             *     directly to this exact path (parent dirs are created; caller
+             *     owns the filename in the path).
+             */
+            destination?: string | null;
             message_id: components["schemas"]["MessageId"];
         } | {
             attachment_id: components["schemas"]["AttachmentId"];
@@ -3520,6 +3558,9 @@ export interface components {
         } | {
             /** @enum {string} */
             cmd: "RebuildAnalytics";
+        } | {
+            /** @enum {string} */
+            cmd: "RecomputeLinkCounts";
         } | {
             account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
@@ -3952,13 +3993,19 @@ export interface components {
             account_id: components["schemas"]["AccountId"];
             /** @enum {string} */
             cmd: "SendTimeRecommendation";
-            recipient: string;
+            /** Format: date-time */
+            proposed_at?: string | null;
+            recipients: string[];
         } | {
             account_id: components["schemas"]["AccountId"];
             /** @enum {string} */
             cmd: "RebuildDecisionLog";
             /** Format: int32 */
             since_days?: number;
+        } | {
+            /** @enum {string} */
+            cmd: "GetDecision";
+            id: string;
         } | {
             account_id: components["schemas"]["AccountId"];
             /** @enum {string} */
@@ -4380,6 +4427,10 @@ export interface components {
             /** @enum {string} */
             kind: "DecisionLog";
         } | {
+            decision?: null | components["schemas"]["DecisionLogEntryData"];
+            /** @enum {string} */
+            kind: "DecisionDetail";
+        } | {
             /** Format: int32 */
             errors: number;
             /** Format: int32 */
@@ -4598,30 +4649,39 @@ export interface components {
             profiles: components["schemas"]["SemanticProfileRecord"][];
             runtime?: components["schemas"]["SemanticRuntimeMetrics"];
         };
-        SendTimeBucketData: {
-            /** Format: int32 */
-            hour: number;
-            /** Format: int64 */
-            p50_seconds: number;
-            /** Format: int32 */
-            sample_count: number;
-            /** Format: int32 */
-            weekday: number;
-        };
         /** @enum {string} */
         SendTimeConfidenceData: "low" | "medium" | "high";
         SendTimeRecommendationData: {
-            /** Format: int32 */
-            best_hour?: number | null;
-            /** Format: int64 */
-            best_p50_seconds?: number | null;
-            /** Format: int32 */
-            best_weekday?: number | null;
-            buckets: components["schemas"]["SendTimeBucketData"][];
+            best_windows: components["schemas"]["SendWindowData"][];
             confidence: components["schemas"]["SendTimeConfidenceData"];
-            recipient: string;
+            /**
+             * Format: date-time
+             * @description Slot the caller asked us to evaluate, echoed back so JSON
+             *     consumers don't have to rebuild it. Present only when the
+             *     caller passed `proposed_at` on the request.
+             */
+            proposed_at?: string | null;
+            /**
+             * Format: int32
+             * @description Hour (0-23) of `proposed_at` in UTC.
+             */
+            proposed_hour?: number | null;
+            /**
+             * Format: int32
+             * @description Weekday (0 = Monday) of `proposed_at` in UTC.
+             */
+            proposed_weekday?: number | null;
+            recipient_rows: components["schemas"]["RecipientSendTimeRowData"][];
+        };
+        SendWindowData: {
+            /** Format: int64 */
+            expected_reply_seconds: number;
             /** Format: int32 */
-            sample_count: number;
+            hour_end: number;
+            /** Format: int32 */
+            hour_start: number;
+            /** Format: int32 */
+            weekday: number;
         };
         SenderEmailReferenceData: {
             /** Format: date-time */

@@ -58,6 +58,7 @@ where
                     let _ = framed
                         .send(IpcMessage {
                             id: 0,
+                            source: ::mxr_protocol::ClientKind::default(),
                             payload: IpcPayload::Event(event.clone()),
                         })
                         .await;
@@ -69,6 +70,7 @@ where
                             let _ = framed
                                 .send(IpcMessage {
                                     id: message.id,
+                                    source: ::mxr_protocol::ClientKind::default(),
                                     payload: IpcPayload::Response(response),
                                 })
                                 .await;

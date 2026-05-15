@@ -3,13 +3,13 @@ import { Activity, Bug, Clipboard, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 
+import { EventsPanel } from "./EventsPanel";
+import { LogsPanel } from "./LogsPanel";
 import {
   backfillSemantic,
   fetchAdminStatus,
   fetchBugReport,
   fetchDiagnostics,
-  fetchEvents,
-  fetchLogs,
   fetchSemanticStatus,
   fetchSyncStatus,
   installSemanticProfile,
@@ -21,8 +21,10 @@ import {
   type SemanticProfile,
   type SemanticStatusSnapshot,
 } from "./api";
+import { ActivityBrowser } from "@/features/activity/ActivityRoute";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fetchAccounts } from "@/features/accounts/api";
 
 export function DiagnosticsRoute() {
@@ -32,16 +34,6 @@ export function DiagnosticsRoute() {
     refetchInterval: 10_000,
   });
   const doctor = useQuery({ queryKey: ["diagnostics", "doctor"], queryFn: fetchDiagnostics });
-  const logs = useQuery({
-    queryKey: ["diagnostics", "logs"],
-    queryFn: () => fetchLogs(120),
-    refetchInterval: 5_000,
-  });
-  const events = useQuery({
-    queryKey: ["diagnostics", "events"],
-    queryFn: () => fetchEvents(50),
-    refetchInterval: 5_000,
-  });
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
   const accountId = accounts.data?.accounts[0]?.account_id;
   const sync = useQuery({
@@ -135,36 +127,71 @@ export function DiagnosticsRoute() {
           Copy bug report
         </Button>
       </header>
-      <main className="grid min-h-0 gap-4 overflow-auto p-6 xl:grid-cols-2">
-        <Panel title="Daemon status" icon={Activity} value={status.data} />
-        <Panel
-          title="Feature health"
-          icon={Activity}
-          value={status.data?.feature_health ?? doctor.data?.report?.feature_health}
-        />
-        <Panel title="Doctor report" icon={Clipboard} value={doctor.data?.report} />
-        <Panel title="Sync status" icon={RefreshCw} value={sync.data} />
-        <SemanticPanel
-          status={semanticStatus}
-          loading={semantic.isLoading}
-          enablePending={semanticEnable.isPending}
-          backfillPending={semanticBackfill.isPending}
-          reindexPending={semanticReindex.isPending}
-          installPending={semanticInstall.isPending}
-          usePending={semanticUse.isPending}
-          onSetEnabled={(enabled) => semanticEnable.mutate(enabled)}
-          onBackfill={() => semanticBackfill.mutate()}
-          onReindex={() => semanticReindex.mutate()}
-          onInstall={(profile) => semanticInstall.mutate(profile)}
-          onUse={(profile) => semanticUse.mutate(profile)}
-        />
-        <Panel title="Recent logs" icon={Clipboard} value={logs.data?.lines ?? logs.data} wide />
-        <Panel
-          title="Recent events"
-          icon={Activity}
-          value={events.data?.entries ?? events.data}
-          wide
-        />
+      <main className="min-h-0 flex-1 overflow-auto p-6">
+        <Tabs defaultValue="overview" className="flex flex-col gap-4">
+          <TabsList className="h-9 self-start">
+            <TabsTrigger value="overview" className="text-2xs">
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="logs" className="text-2xs">
+              Logs
+            </TabsTrigger>
+            <TabsTrigger value="events" className="text-2xs">
+              Events
+            </TabsTrigger>
+            <TabsTrigger value="activity" className="text-2xs">
+              Activity
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview">
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Panel title="Daemon status" icon={Activity} value={status.data} />
+              <Panel
+                title="Feature health"
+                icon={Activity}
+                value={status.data?.feature_health ?? doctor.data?.report?.feature_health}
+              />
+              <Panel title="Doctor report" icon={Clipboard} value={doctor.data?.report} />
+              <Panel title="Sync status" icon={RefreshCw} value={sync.data} />
+              <SemanticPanel
+                status={semanticStatus}
+                loading={semantic.isLoading}
+                enablePending={semanticEnable.isPending}
+                backfillPending={semanticBackfill.isPending}
+                reindexPending={semanticReindex.isPending}
+                installPending={semanticInstall.isPending}
+                usePending={semanticUse.isPending}
+                onSetEnabled={(enabled) => semanticEnable.mutate(enabled)}
+                onBackfill={() => semanticBackfill.mutate()}
+                onReindex={() => semanticReindex.mutate()}
+                onInstall={(profile) => semanticInstall.mutate(profile)}
+                onUse={(profile) => semanticUse.mutate(profile)}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="logs">
+            <LogsPanel />
+          </TabsContent>
+
+          <TabsContent value="events">
+            <EventsPanel />
+          </TabsContent>
+
+          <TabsContent value="activity">
+            <div className="rounded-xl border border-border bg-surface p-4">
+              <div className="mb-2">
+                <h2 className="text-sm font-semibold">Activity log</h2>
+                <p className="text-2xs text-muted-foreground">
+                  Local-only record of every user-initiated action across TUI, CLI, and web.
+                  Strictly never transmitted off-device.
+                </p>
+              </div>
+              <ActivityBrowser embedded />
+            </div>
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );

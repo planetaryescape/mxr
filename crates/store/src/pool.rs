@@ -575,6 +575,30 @@ const MIGRATIONS: &[Migration] = &[
             sql: "ALTER TABLE messages ADD COLUMN link_count INTEGER NOT NULL DEFAULT 0",
         },
     },
+    Migration {
+        version: 34,
+        name: "decision_log_stable_id",
+        kind: MigrationKind::Sql(include_str!(
+            "../migrations/034_decision_log_stable_id.sql"
+        )),
+    },
+    Migration {
+        version: 35,
+        name: "user_activity",
+        kind: MigrationKind::Sql(include_str!("../migrations/035_user_activity.sql")),
+    },
+    Migration {
+        version: 36,
+        name: "user_activity_fts",
+        kind: MigrationKind::Sql(include_str!("../migrations/036_user_activity_fts.sql")),
+    },
+    Migration {
+        version: 37,
+        name: "saved_activity_filters",
+        kind: MigrationKind::Sql(include_str!(
+            "../migrations/037_saved_activity_filters.sql"
+        )),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
@@ -700,6 +724,21 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
             "is_list_sender",
             "list_id",
             "refreshed_at",
+        ],
+    ),
+    (
+        "user_activity",
+        &[
+            "id",
+            "ts",
+            "account_id",
+            "source",
+            "action",
+            "target_kind",
+            "target_id",
+            "tier",
+            "context_json",
+            "redacted",
         ],
     ),
 ];

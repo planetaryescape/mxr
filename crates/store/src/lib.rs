@@ -23,12 +23,12 @@ mod owed_replies;
 mod pool;
 mod relationship_watchlist;
 mod reply_pairs;
-mod send_time;
 mod rules;
 mod scheduled_sends;
 mod screener;
 mod search;
 mod semantic;
+mod send_time;
 mod sender_profile;
 mod signatures;
 mod snippets;
@@ -41,6 +41,7 @@ mod test_fixtures;
 mod thread;
 mod thread_summary;
 mod undo;
+mod user_activity;
 mod user_voice_profile;
 mod wrapped;
 
@@ -48,18 +49,18 @@ pub use contact_commitments::{CommitmentDirection, CommitmentStatus, ContactComm
 pub use contact_relationship_summary::ContactRelationshipSummaryRecord;
 pub use contact_style::{ContactStyleRecord, RelationshipMessageSample};
 pub use contacts_refresh_handle::ContactsRefreshHandle;
-pub use diagnostics::StoreRecordCounts;
 pub use context_briefings::{new_briefing_id, BriefingKind, ContextBriefing};
 pub use decision_log::{decision_id, source_hash as decision_source_hash, DecisionLogEntry};
+pub use diagnostics::StoreRecordCounts;
 pub use draft_commitments::{new_candidate_id, DraftCommitmentCandidate};
-pub use owed_replies::OwedReplyRow;
-pub use relationship_watchlist::{CadenceDriftRow, RelationshipWatchEntry};
-pub use send_time::{SendTimeBucket, SendTimeConfidence, SendTimeRecommendation};
 pub use draft_safety::{DraftSafetyOverrideRecord, DraftSafetyRunRecord};
-pub use event_log::{EventLogEntry, EventLogRefs};
+pub use event_log::{EventLogEntry, EventLogFilter, EventLogRefs};
+pub use owed_replies::OwedReplyRow;
 pub use pool::Store;
+pub use relationship_watchlist::{CadenceDriftRow, RelationshipWatchEntry};
 pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput};
 pub use screener::{ScreenerDecision, ScreenerDisposition, ScreenerQueueEntry};
+pub use send_time::{SendTimeBucket, SendTimeConfidence, SendTimeRecommendation};
 pub use sender_profile::{
     SenderEmailReference, SenderProfile, SenderSummary, SenderUnansweredQuestion,
     SenderWeeklyActivity,
@@ -70,6 +71,10 @@ pub use sync_log::{SyncLogEntry, SyncStatus};
 pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use undo::{UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
+pub use user_activity::{
+    ActivityCursor, ActivityFilter, ActivityInsert, ActivityPage, ActivityRow,
+    SavedActivityFilter, Tier,
+};
 pub use user_voice_profile::{
     UserVoiceMessageSample, UserVoiceProfileRecord, UserVoiceRegisterMode,
 };
@@ -1127,6 +1132,98 @@ mod tests {
             .await
             .unwrap();
         assert!(latest_sync.is_some());
+    }
+
+    #[tokio::test]
+    async fn event_log_filter_search_and_offset() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        for i in 0..6 {
+            store
+                .insert_event(
+                    "info",
+                    "sync",
+                    &format!("Sync batch {i}"),
+                    Some(&account.id),
+                    Some(&format!("messages={}", i + 1)),
+                )
+                .await
+                .unwrap();
+        }
+        store
+            .insert_event("warn", "rule", "Rule misfired", Some(&account.id), None)
+            .await
+            .unwrap();
+
+        // Free-text search hits summary substring; no level constraint.
+        let hits = store
+            .list_events_filtered(EventLogFilter {
+                limit: 10,
+                search: Some("batch 3"),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].summary, "Sync batch 3");
+
+        // Free-text search hits the `details` column too.
+        let detail_hits = store
+            .list_events_filtered(EventLogFilter {
+                limit: 10,
+                search: Some("messages=5"),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(detail_hits.len(), 1);
+
+        // Category prefix.
+        let sync_only = store
+            .list_events_filtered(EventLogFilter {
+                limit: 10,
+                category_prefix: Some("syn"),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(sync_only.len(), 6);
+
+        // Offset for paging.
+        let page1 = store
+            .list_events_filtered(EventLogFilter {
+                limit: 3,
+                offset: 0,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let page2 = store
+            .list_events_filtered(EventLogFilter {
+                limit: 3,
+                offset: 3,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(page1.len(), 3);
+        assert_eq!(page2.len(), 3);
+        let ids1: std::collections::HashSet<i64> = page1.iter().map(|e| e.id).collect();
+        let ids2: std::collections::HashSet<i64> = page2.iter().map(|e| e.id).collect();
+        assert!(ids1.is_disjoint(&ids2), "paging produces non-overlapping ids");
+
+        // Total count.
+        let total = store
+            .count_events_filtered(EventLogFilter::default())
+            .await
+            .unwrap();
+        assert_eq!(total, 7);
+
+        // Distinct categories sorted by recency.
+        let cats = store.list_event_categories().await.unwrap();
+        assert!(cats.contains(&"sync".to_string()));
+        assert!(cats.contains(&"rule".to_string()));
     }
 
     #[tokio::test]

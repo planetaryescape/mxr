@@ -33,13 +33,14 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 
 use crate::account_workflow::{
-    daemon_socket_path, request_account_operation, run_account_save_workflow,
+    daemon_socket_path, ipc_get_auth_session, ipc_start_auth_session, request_account_operation,
+    run_account_save_workflow,
 };
 use crate::accounts_helpers::load_accounts_page_accounts;
 use crate::async_result::{AsyncResult, UnsubscribeResultData};
 use crate::compose_flow::{handle_compose_action, handle_compose_editor_status};
 use crate::editor::{edit_tui_config, open_diagnostics_pane_details, open_tui_log_file};
-use crate::ipc::{ipc_call, spawn_ipc_worker};
+use crate::ipc::{ipc_call, spawn_ipc_worker, IpcRequest};
 use crate::local_io::{handle_result as handle_local_io_result, submit_bug_report_write};
 use crate::runtime::{
     spawn_replaceable_request_worker, spawn_task_worker, submit_task, ReplaceableRequest,
@@ -89,6 +90,61 @@ fn run_with_terminal_suspended<R>(
         EventStream::new,
         action,
     )
+}
+
+/// Drives the Outlook device-code flow in a background task, forwarding each
+/// `GetAuthSession` state update as an `AsyncResult::AuthSession` event so the
+/// TUI can render the device-code overlay and react to terminal states.
+async fn spawn_outlook_auth_session(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    result_tx: mpsc::UnboundedSender<AsyncResult>,
+    account: mxr_protocol::AccountConfigData,
+    reauthorize: bool,
+) {
+    use mxr_protocol::AuthSessionStateData;
+
+    let session = match ipc_start_auth_session(bg, account, reauthorize).await {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = result_tx.send(AsyncResult::AccountOperation(Err(e)));
+            return;
+        }
+    };
+
+    let is_terminal = |s: &AuthSessionStateData| {
+        matches!(
+            s,
+            AuthSessionStateData::Authorized
+                | AuthSessionStateData::Failed
+                | AuthSessionStateData::Cancelled
+        )
+    };
+
+    if is_terminal(&session.state) {
+        let _ = result_tx.send(AsyncResult::AuthSession(session));
+        return;
+    }
+
+    let session_id = session.session_id.clone();
+    let poll_interval = std::time::Duration::from_secs(session.poll_interval_secs.unwrap_or(5));
+
+    loop {
+        tokio::time::sleep(poll_interval).await;
+
+        match ipc_get_auth_session(bg, session_id.clone()).await {
+            Ok(updated) => {
+                let done = is_terminal(&updated.state);
+                let _ = result_tx.send(AsyncResult::AuthSession(updated));
+                if done {
+                    break;
+                }
+            }
+            Err(e) => {
+                let _ = result_tx.send(AsyncResult::AccountOperation(Err(e)));
+                break;
+            }
+        }
+    }
 }
 
 pub async fn run() -> anyhow::Result<()> {
@@ -812,11 +868,26 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         if let Some(account) = app.accounts.pending_save.take() {
-            let bg = bg.clone();
-            let _ = submit_task(&queued, async move {
-                let result = run_account_save_workflow(&bg, account).await;
-                AsyncResult::AccountOperation(result)
-            });
+            let is_outlook = matches!(
+                account.sync,
+                Some(mxr_protocol::AccountSyncConfigData::OutlookPersonal { .. })
+                    | Some(mxr_protocol::AccountSyncConfigData::OutlookWork { .. })
+            );
+            if is_outlook {
+                app.accounts.pending_auth_session_account = Some(account.clone());
+                app.accounts.page.operation_in_flight = true;
+                let bg2 = bg.clone();
+                let result_tx2 = result_tx.clone();
+                tokio::spawn(async move {
+                    spawn_outlook_auth_session(&bg2, result_tx2, account, false).await;
+                });
+            } else {
+                let bg = bg.clone();
+                let _ = submit_task(&queued, async move {
+                    let result = run_account_save_workflow(&bg, account).await;
+                    AsyncResult::AccountOperation(result)
+                });
+            }
         }
 
         if let Some(account) = app.accounts.pending_test.take() {
@@ -829,18 +900,33 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         if let Some((account, reauthorize)) = app.accounts.pending_authorize.take() {
-            let bg = bg.clone();
-            let _ = submit_task(&queued, async move {
-                let result = request_account_operation(
-                    &bg,
-                    Request::AuthorizeAccountConfig {
-                        account,
-                        reauthorize,
-                    },
-                )
-                .await;
-                AsyncResult::AccountOperation(result)
-            });
+            let is_outlook = matches!(
+                account.sync,
+                Some(mxr_protocol::AccountSyncConfigData::OutlookPersonal { .. })
+                    | Some(mxr_protocol::AccountSyncConfigData::OutlookWork { .. })
+            );
+            if is_outlook {
+                app.accounts.pending_auth_session_account = Some(account.clone());
+                app.accounts.page.operation_in_flight = true;
+                let bg2 = bg.clone();
+                let result_tx2 = result_tx.clone();
+                tokio::spawn(async move {
+                    spawn_outlook_auth_session(&bg2, result_tx2, account, reauthorize).await;
+                });
+            } else {
+                let bg = bg.clone();
+                let _ = submit_task(&queued, async move {
+                    let result = request_account_operation(
+                        &bg,
+                        Request::AuthorizeAccountConfig {
+                            account,
+                            reauthorize,
+                        },
+                    )
+                    .await;
+                    AsyncResult::AccountOperation(result)
+                });
+            }
         }
 
         if let Some(key) = app.accounts.pending_set_default.take() {
@@ -1117,7 +1203,27 @@ pub async fn run() -> anyhow::Result<()> {
             event = events.as_mut().expect("event stream").next() => {
                 if let Some(Ok(Event::Key(key))) = event {
                     if let Some(action) = app.handle_key(key) {
-                        app.apply(action);
+                        if matches!(action, crate::action::Action::CancelOutlookAuth) {
+                            if let Some(session) =
+                                app.accounts.page.active_auth_session.take()
+                            {
+                                app.accounts.pending_auth_session_account = None;
+                                app.accounts.page.operation_in_flight = false;
+                                app.accounts.page.throbber = Default::default();
+                                let bg2 = bg.clone();
+                                tokio::spawn(async move {
+                                    let _ = ipc_call(
+                                        &bg2,
+                                        Request::CancelAuthSession {
+                                            session_id: session.session_id,
+                                        },
+                                    )
+                                    .await;
+                                });
+                            }
+                        } else {
+                            app.apply(action);
+                        }
                     }
                 }
             }
@@ -1545,6 +1651,52 @@ pub async fn run() -> anyhow::Result<()> {
                                 "Account Operation Failed",
                                 format!("The account test or save request failed.\n\n{e}"),
                             ));
+                        }
+                        AsyncResult::AuthSession(session) => {
+                            use mxr_protocol::AuthSessionStateData;
+                            match session.state {
+                                AuthSessionStateData::WaitingForUser => {
+                                    app.accounts.page.active_auth_session = Some(session);
+                                }
+                                AuthSessionStateData::Authorized => {
+                                    app.accounts.page.active_auth_session = None;
+                                    if let Some(account) =
+                                        app.accounts.pending_auth_session_account.take()
+                                    {
+                                        let bg2 = bg.clone();
+                                        let _ = submit_task(&queued, async move {
+                                            use crate::account_workflow::run_post_auth_save_workflow;
+                                            let result =
+                                                run_post_auth_save_workflow(&bg2, account).await;
+                                            AsyncResult::AccountOperation(result)
+                                        });
+                                    } else {
+                                        app.accounts.page.operation_in_flight = false;
+                                        app.accounts.page.throbber = Default::default();
+                                    }
+                                }
+                                AuthSessionStateData::Failed => {
+                                    let err = session
+                                        .error
+                                        .unwrap_or_else(|| "Authorization failed".into());
+                                    app.accounts.page.active_auth_session = None;
+                                    app.accounts.pending_auth_session_account = None;
+                                    app.accounts.page.operation_in_flight = false;
+                                    app.accounts.page.throbber = Default::default();
+                                    app.accounts.page.status = Some(format!("Auth error: {err}"));
+                                    app.modals.error = Some(app::ErrorModalState::new(
+                                        "Outlook Authorization Failed",
+                                        format!("Microsoft authorization failed.\n\n{err}"),
+                                    ));
+                                }
+                                AuthSessionStateData::Cancelled => {
+                                    app.accounts.page.active_auth_session = None;
+                                    app.accounts.pending_auth_session_account = None;
+                                    app.accounts.page.operation_in_flight = false;
+                                    app.accounts.page.throbber = Default::default();
+                                }
+                                AuthSessionStateData::Starting => {}
+                            }
                         }
                         AsyncResult::BugReport(Ok(content)) => {
                             submit_bug_report_write(&local_io, content);

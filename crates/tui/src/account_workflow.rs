@@ -2,8 +2,8 @@ use crate::ipc::{ipc_call, IpcRequest};
 use mxr_config::socket_path as config_socket_path;
 use mxr_core::MxrError;
 use mxr_protocol::{
-    AccountConfigData, AccountOperationResult, AccountSyncConfigData, Request, Response,
-    ResponseData,
+    AccountConfigData, AccountOperationResult, AccountSyncConfigData, AuthSessionData,
+    AuthSessionId, Request, Response, ResponseData,
 };
 use tokio::sync::mpsc;
 
@@ -20,6 +20,45 @@ pub(crate) async fn request_account_operation(
         Ok(Response::Ok {
             data: ResponseData::AccountOperation { result },
         }) => Ok(result),
+        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+        Err(e) => Err(e),
+        _ => Err(MxrError::Ipc("unexpected response".into())),
+    }
+}
+
+pub(crate) async fn ipc_start_auth_session(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    account: AccountConfigData,
+    reauthorize: bool,
+) -> Result<AuthSessionData, MxrError> {
+    let resp = ipc_call(
+        bg,
+        Request::StartAuthSession {
+            account,
+            reauthorize,
+            flow: mxr_protocol::AuthFlowData::Device,
+        },
+    )
+    .await;
+    match resp {
+        Ok(Response::Ok {
+            data: ResponseData::AuthSession { session },
+        }) => Ok(session),
+        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+        Err(e) => Err(e),
+        _ => Err(MxrError::Ipc("unexpected response".into())),
+    }
+}
+
+pub(crate) async fn ipc_get_auth_session(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    session_id: AuthSessionId,
+) -> Result<AuthSessionData, MxrError> {
+    let resp = ipc_call(bg, Request::GetAuthSession { session_id }).await;
+    match resp {
+        Ok(Response::Ok {
+            data: ResponseData::AuthSession { session },
+        }) => Ok(session),
         Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
         Err(e) => Err(e),
         _ => Err(MxrError::Ipc("unexpected response".into())),
@@ -51,6 +90,37 @@ pub(crate) async fn run_account_save_workflow(
     if result.auth.as_ref().is_some_and(|step| !step.ok) {
         return Ok(result);
     }
+
+    let save_result = request_account_operation(
+        bg,
+        Request::UpsertAccountConfig {
+            account: account.clone(),
+        },
+    )
+    .await?;
+    merge_account_operation_result(&mut result, save_result);
+
+    if result.save.as_ref().is_some_and(|step| !step.ok) {
+        return Ok(result);
+    }
+
+    let test_result = request_account_operation(bg, Request::TestAccountConfig { account }).await?;
+    merge_account_operation_result(&mut result, test_result);
+
+    Ok(result)
+}
+
+/// Run upsert + test after Outlook device-code auth already completed.
+/// Marks auth step as successful and proceeds with save + connectivity test.
+pub(crate) async fn run_post_auth_save_workflow(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    account: AccountConfigData,
+) -> Result<AccountOperationResult, MxrError> {
+    let mut result = empty_account_operation_result();
+    result.auth = Some(mxr_protocol::AccountOperationStep {
+        ok: true,
+        detail: String::new(),
+    });
 
     let save_result = request_account_operation(
         bg,

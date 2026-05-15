@@ -103,6 +103,8 @@ pub struct AccountsPageState {
     pub new_account_draft: Option<AccountFormState>,
     pub resume_new_account_draft_prompt_open: bool,
     pub form: AccountFormState,
+    /// In-flight Outlook device-code session; shown as overlay while user completes browser auth.
+    pub active_auth_session: Option<mxr_protocol::AuthSessionData>,
 }
 
 #[derive(Default)]
@@ -112,6 +114,8 @@ pub struct AccountsState {
     pub pending_test: Option<mxr_protocol::AccountConfigData>,
     pub pending_authorize: Option<(mxr_protocol::AccountConfigData, bool)>,
     pub pending_set_default: Option<String>,
+    /// Account awaiting completion of a StartAuthSession device-code flow.
+    pub pending_auth_session_account: Option<mxr_protocol::AccountConfigData>,
     /// Phase 2.3: pending account-repair dispatch. Mirrors the
     /// `pending_save`/`pending_test` pattern; the dispatcher takes
     /// it on the next tick and fires `Request::RepairAccountConfig`.

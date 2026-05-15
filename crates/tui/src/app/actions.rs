@@ -101,7 +101,8 @@ impl App {
             | Action::OpenTab5
             | Action::OpenTab6
             | Action::SyncNow
-            | Action::Noop => self.apply_screen_action(action),
+            | Action::Noop
+            | Action::CancelOutlookAuth => self.apply_screen_action(action),
             Action::OpenAnalyticsScreen
             | Action::OpenAnalyticsView(_)
             | Action::NextAnalyticsView

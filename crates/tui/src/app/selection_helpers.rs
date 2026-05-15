@@ -37,7 +37,33 @@ impl App {
     }
 
     fn with_pending_mutation_markers(&self, mut rows: Vec<MailListRow>) -> Vec<MailListRow> {
+        // Pre-compute the set of thread_ids that have any pending or
+        // reply-later message in one pass over the envelope lists,
+        // then mark rows via O(1) HashSet lookups. The previous
+        // implementation iterated every envelope per row inside two
+        // `any()` calls — O(rows × envelopes) per render, hit on every
+        // J keystroke because the renderer rebuilds rows three times
+        // per frame. For a mailbox with hundreds of threads this
+        // dominates the per-frame budget and turns scroll into a
+        // queue-and-drain experience.
         let pending_ids = self.pending_mutation_message_ids();
+        let mut pending_thread_ids: HashSet<mxr_core::ThreadId> = HashSet::new();
+        let mut reply_later_thread_ids: HashSet<mxr_core::ThreadId> = HashSet::new();
+        if !pending_ids.is_empty() || !self.mailbox.reply_later_message_ids.is_empty() {
+            for envelope in self
+                .mailbox
+                .envelopes
+                .iter()
+                .chain(self.search.page.results.iter())
+            {
+                if pending_ids.contains(&envelope.id) {
+                    pending_thread_ids.insert(envelope.thread_id.clone());
+                }
+                if self.mailbox.reply_later_message_ids.contains(&envelope.id) {
+                    reply_later_thread_ids.insert(envelope.thread_id.clone());
+                }
+            }
+        }
         for row in &mut rows {
             row.open_commitment_count = self
                 .mailbox
@@ -45,21 +71,8 @@ impl App {
                 .get(&(row.representative.account_id.clone(), row.thread_id.clone()))
                 .copied()
                 .unwrap_or(0);
-            row.pending_mutation = self
-                .mailbox
-                .envelopes
-                .iter()
-                .chain(self.search.page.results.iter())
-                .any(|env| env.thread_id == row.thread_id && pending_ids.contains(&env.id));
-            row.reply_later = self
-                .mailbox
-                .envelopes
-                .iter()
-                .chain(self.search.page.results.iter())
-                .any(|env| {
-                    env.thread_id == row.thread_id
-                        && self.mailbox.reply_later_message_ids.contains(&env.id)
-                });
+            row.pending_mutation = pending_thread_ids.contains(&row.thread_id);
+            row.reply_later = reply_later_thread_ids.contains(&row.thread_id);
         }
         rows
     }

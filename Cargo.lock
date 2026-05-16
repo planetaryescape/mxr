@@ -3563,13 +3563,11 @@ dependencies = [
 [[package]]
 name = "mailbox-formats"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a643b0f3bad69d80d55dd751782545622bd3ce657dff2a6dd08b1e55dc0110c"
 dependencies = [
  "bitflags 2.11.0",
  "libc",
- "proptest",
- "serde",
- "serde_json",
- "tempfile",
  "thiserror 2.0.18",
  "windows-sys 0.59.0",
 ]

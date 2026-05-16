@@ -1,10 +1,28 @@
 ---
 candidate: gmail-query
-status: tier-1
-decision: ship
-mxr_source: crates/search/src/parser.rs, crates/search/src/ast.rs
-last_reviewed: 2026-05-15
+status: published
+decision: shipped
+crate_name: mail-query
+external_repo: https://github.com/planetaryescape/mail-query
+crates_io: https://crates.io/crates/mail-query
+mxr_source: crates/search/src/parser.rs, crates/search/src/ast.rs (carved out; now consumed via mxr-search re-export)
+last_reviewed: 2026-05-16
 ---
+
+> **Status: Shipped.** Published as
+> [`mail-query v0.1.0`](https://crates.io/crates/mail-query) at
+> [`planetaryescape/mail-query`](https://github.com/planetaryescape/mail-query).
+> mxr now consumes the registry version. `mxr-search` re-exports the
+> AST via `pub use mail_query::*` so existing `mxr_search::QueryNode`
+> call sites kept working with zero churn; mxr-specific filters
+> (`is:owed-reply`, `is:reply-later`) route through
+> `FilterKind::Custom(_)` at the boundary. The migration runbook is in
+> [`docs/extracted-crates/implementation/04-mail-query-external-repo.md`](../../extracted-crates/implementation/04-mail-query-external-repo.md).
+> The original proposal below is kept as historical context.
+
+> **Note on the crate name.** The candidate proposal considered both
+> `gmail-query` and `mail-query`; we shipped as `mail-query`
+> (vendor-neutral) per the proposal's own recommendation.
 
 # `gmail-query` (proposed name)
 

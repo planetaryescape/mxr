@@ -104,8 +104,7 @@ assumptions change.
 | # | Candidate | Decision | One-line rationale |
 |---|---|---|---|
 | 00 | [Publishing strategy](./00-publishing-strategy.md) | **Read first** | Cross-cutting framework: port vs WASM, drift, shared corpus, effort estimates |
-| 03 | [gmail-query](./03-gmail-query.md) | **Tier 1 — ship next** | Comprehensive Gmail-style operator parser with typed AST; no comparable library on either registry. |
-| 05 | [mailbox-formats](./05-mailbox-formats.md) | **Tier 2 — ship after gmail-query** | mbox + Maildir reader/writer; multi-variant escaping and atomic delivery clear the publishing bar |
+| 05 | [mailbox-formats](./05-mailbox-formats.md) | **Tier 2 — ship next** | mbox + Maildir reader/writer; multi-variant escaping and atomic delivery clear the publishing bar |
 | 07 | [sync-engine](./07-sync-engine.md) | **Investigate later** | Highest ecosystem impact but highest extraction risk; 2-3 day discovery before commit; do not start until mxr's sync surface stabilises |
 
 > **Bar test for new candidates:** see
@@ -121,6 +120,7 @@ assumptions change.
 |---|---|---|---|
 | 01 | [list-unsubscribe](./done/01-list-unsubscribe.md) | **Shipped** | RFC 2369 + RFC 8058 one-click parser. Published as [`list-unsubscribe`](https://crates.io/crates/list-unsubscribe); source at [planetaryescape/list-unsubscribe](https://github.com/planetaryescape/list-unsubscribe). |
 | 02 | [mail-threading](./done/02-jwz-threading.md) | **Shipped** | Full RFC 5256 / JWZ impl. Published to crates.io as [`mail-threading`](https://crates.io/crates/mail-threading); source at [planetaryescape/mail-threading](https://github.com/planetaryescape/mail-threading). |
+| 03 | [gmail-query](./done/03-gmail-query.md) | **Shipped (as `mail-query`)** | Parser + typed AST for Gmail-style email search queries. Published as [`mail-query`](https://crates.io/crates/mail-query); source at [planetaryescape/mail-query](https://github.com/planetaryescape/mail-query). |
 
 ## Won't do
 

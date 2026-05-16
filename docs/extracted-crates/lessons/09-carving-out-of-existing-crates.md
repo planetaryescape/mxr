@@ -127,3 +127,77 @@ because the spec is about header strings, and `BodyLink` is policy.
 
 If the cleaner public shape isn't obvious, defer the carve until you can
 state it in one sentence.
+
+## Re-export bridges keep internal consumers compiling
+
+`mail-query` (carved out of `mxr-search`) needed eight files in the
+daemon to keep importing `mxr_search::ast::QueryNode`. Touching each was
+unnecessary friction. `mxr-search/src/lib.rs` solved it with:
+
+```rust
+mod index;
+pub mod query_builder;
+
+pub mod ast {
+    pub use mail_query::{
+        DateBound, DateValue, FilterKind, ParseError, ParserOptions,
+        QueryField, QueryNode, RelativeUnit, SizeOp, Visitor,
+    };
+}
+
+pub use mail_query::{
+    DateBound, DateValue, FilterKind, ParseError, ParserOptions,
+    QueryField, QueryNode, RelativeUnit, SizeOp, Visitor,
+};
+```
+
+Every existing `use mxr_search::ast::*` import compiles. Every
+`mxr_search::QueryNode` path resolves. The crate-side change cost is
+zero outside the four files that *pattern-match* on `FilterKind` (which
+needed the new `Custom(_)` arms anyway).
+
+**Rule:** when carving leaves behind in-tree consumers, add re-export
+shims at the original crate boundary first. Defer per-call-site
+refactors to a follow-up.
+
+## Behaviour-changing carve-outs are real
+
+The `mail-query` extraction shipped three Phase 0 behaviour changes:
+
+1. **`older_than:5d` AST shape.** Old parser resolved to a
+   `NaiveDate` at parse time; the published crate emits `Relative
+   { amount, unit }`. Downstream resolution code in
+   `query_builder.rs` and `search_filter.rs` needed updates.
+2. **OR precedence fix.** mxr's parser had `a b OR c` produce
+   `And(a, Or(b, c))` — opposite of Gmail/Lucene. Fixed to
+   `Or(And(a, b), c)`. No existing test exercised the broken
+   combination, but a public Gmail-vocabulary crate could not ship
+   with non-Gmail precedence.
+3. **Brace-group regression caught by the OR fix.** Switching
+   `parse_or` from "single atom" semantics to "and-group" semantics
+   broke `parse_brace_group`'s implicit-OR. Caught by mxr's
+   `e2e_search_gmail_or_braces_and_field_groups` test, fixed by
+   making the brace parser call `parse_unary` directly.
+
+**Rule:** budget for behaviour fixes when carving — not just code moves.
+A public crate can't ship known bugs the internal version got away with.
+Run the consumer test suite carefully between every behaviour change so
+you catch the secondary breakage immediately.
+
+## `#[non_exhaustive]` cascades downstream
+
+Applying `#[non_exhaustive]` to every public enum (the tantivy-regret
+fix) means every internal mxr `match` on those enums needs a `_ => …`
+arm. For `mail-query`'s carve-out that touched seven files in
+`crates/daemon/` and one in `crates/search/`. The wildcard is usually
+benign (degrade to AllQuery, return error, treat as no-op) but it must
+be considered for each match.
+
+Some authors prefer to apply `#[non_exhaustive]` only at the outer enum
+(QueryNode) where new variants are expected, and leave inner enums
+exhaustive for ergonomics. We chose universal `#[non_exhaustive]` for
+safety; the cost is mechanical wildcard additions per match site.
+
+**Rule:** when applying `#[non_exhaustive]` from the start, plan for the
+downstream wildcard pass to take 20–30 minutes of grunt work per carve-
+out. Worth it.

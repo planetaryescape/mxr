@@ -516,35 +516,31 @@ If the answer is mostly no, defer.
 - See [`09-carving-out-of-existing-crates.md`](./09-carving-out-of-existing-crates.md)
   for the new-shape lessons (this extraction was a carve-out, not a lift).
 
+`mail-query` (née gmail-query):
+
+- Shipped on 2026-05-16 as
+  [`mail-query v0.1.0`](https://crates.io/crates/mail-query) at
+  [`planetaryescape/mail-query`](https://github.com/planetaryescape/mail-query).
+- The largest carve-out so far (~1200 LoC). Lesson 09 grew with three
+  new sections: re-export bridges keep internal consumers compiling,
+  behaviour-changing carve-outs are real, and `#[non_exhaustive]`
+  discipline cascades downstream.
+- The runbook is at
+  [`../implementation/04-mail-query-external-repo.md`](../implementation/04-mail-query-external-repo.md).
+
 ### Strong next candidates
 
-`format-flowed`:
+`mailbox-formats`:
 
-- RFC-backed
-- narrow behavior
-- fixture-friendly
-- low dependency surface
-
-Start with:
-
-```bash
-sed -n '1,240p' docs/extractable-crates/04-format-flowed.md
-```
-
-### Good but needs careful boundary work
-
-`gmail-query`:
-
-- useful
-- likely real ecosystem gap
-- strong candidate for shared JSON tests
-- more product-shaped than `mail-threading`
-- needs careful AST and option design
+- mbox + Maildir reader/writer
+- multi-variant escaping is non-trivial
+- atomic Maildir delivery clears the bar
+- audience wider than format-flowed
 
 Start with:
 
 ```bash
-sed -n '1,280p' docs/extractable-crates/03-gmail-query.md
+sed -n '1,240p' docs/extractable-crates/05-mailbox-formats.md
 ```
 
 ### High-risk or not now
@@ -554,16 +550,15 @@ sed -n '1,280p' docs/extractable-crates/03-gmail-query.md
 - real ecosystem gap
 - high coupling risk
 - hard to define a small public contract
-- likely too expensive now
+- 2-3 day discovery before commit; wait until mxr's sync surface stabilises
 
-`outbound`:
+### Won't do
 
-- overlaps with established crates
-- needs stronger differentiation
-
-`compose`, `humanizer`, `llm`, `keychain`:
-
-- weak package rationale or already served by existing libraries
+Audited and rejected against the publishing bar
+([`10-publishing-bar.md`](./10-publishing-bar.md)) on 2026-05-16.
+Listed in [`../../extractable-crates/wont-do/`](../../extractable-crates/wont-do/):
+`format-flowed`, `reader-quote-sig`, `outbound`, `rules`, `compose`,
+`humanizer`, `llm`, `keychain`.
 
 ## Standard extraction artifact checklist
 

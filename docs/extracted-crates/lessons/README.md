@@ -17,6 +17,7 @@ This README is the conceptual playbook (15 lessons + checklists). The numbered f
 - [`07-plan-template-refinements.md`](./07-plan-template-refinements.md) — Specific edits to apply to `02-mail-threading-external-repo.md` when copying as the next crate's plan.
 - [`08-incidents-and-near-misses.md`](./08-incidents-and-near-misses.md) — Honest log of what broke during `mail-threading` and `list-unsubscribe`. Read before the next extraction.
 - [`09-carving-out-of-existing-crates.md`](./09-carving-out-of-existing-crates.md) — Patterns that only show up when the new crate is scaffolded out of an existing one (rather than splitting an already-standalone workspace member). Captured from `list-unsubscribe`.
+- [`10-publishing-bar.md`](./10-publishing-bar.md) — The three-test bar a candidate must clear before it's nominated for extraction. Re-read before adding a new file to `docs/extractable-crates/`. Captured 2026-05-16 after almost extracting `format-flowed` (a 4-page RFC, an afternoon's work) as the third crate.
 
 ## The short version
 

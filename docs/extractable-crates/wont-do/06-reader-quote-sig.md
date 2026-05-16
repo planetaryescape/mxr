@@ -1,10 +1,20 @@
 ---
 candidate: reader-quote-sig
-status: tier-3
-decision: defer
+status: wont-do
+decision: wont-do
 mxr_source: crates/reader/src/quotes.rs, crates/reader/src/signatures.rs
-last_reviewed: 2026-05-15
+last_reviewed: 2026-05-16
 ---
+
+> **Status: won't-do.** Fails the publishing bar
+> ([`docs/extracted-crates/lessons/10-publishing-bar.md`](../../extracted-crates/lessons/10-publishing-bar.md)):
+> the ecosystem gap is real (Mailgun's Talon and `email_reply_parser` are
+> Python/Ruby; the Rust port is abandoned), but mxr's implementation is
+> English-only heuristics — credibly closing the gap would require ~1-2
+> weeks of corpus work (multilingual quotes, Outlook variants,
+> classifier-grade signature detection). Shipping the current code as a
+> v0.1.0 would mislead users. Revisit only if mxr's own product needs force
+> the hardening — then the extraction is free.
 
 # `reader-quote-sig` (proposed name, not final)
 

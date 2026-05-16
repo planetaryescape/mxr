@@ -1,10 +1,19 @@
 ---
 candidate: rules
-status: defer
-decision: defer
+status: wont-do
+decision: wont-do
 mxr_source: crates/rules/
-last_reviewed: 2026-05-15
+last_reviewed: 2026-05-16
 ---
+
+> **Status: won't-do.** Fails the publishing bar
+> ([`docs/extracted-crates/lessons/10-publishing-bar.md`](../../extracted-crates/lessons/10-publishing-bar.md)):
+> the natural rival is Sieve (RFC 5228) — a non-Sieve email-rule DSL
+> competes confusingly with the established standard. mxr's actions
+> (`Snooze`, `ReplyLater`) are also product-shaped, not policy-neutral.
+> If anything in this space is ever worth publishing it's a Sieve
+> interpreter (~6 weeks), not a custom DSL adapter. `mxr-rules` stays
+> internal.
 
 # `mxr-rules` — **Defer**
 

@@ -104,17 +104,16 @@ assumptions change.
 | # | Candidate | Decision | One-line rationale |
 |---|---|---|---|
 | 00 | [Publishing strategy](./00-publishing-strategy.md) | **Read first** | Cross-cutting framework: port vs WASM, drift, shared corpus, effort estimates |
-| 03 | [gmail-query](./03-gmail-query.md) | **Tier 1 — ship** | Comprehensive Gmail-style operator parser with typed AST; no comparable library on either registry. |
-| 04 | [format-flowed](./04-format-flowed.md) | **Tier 2 — later** | RFC 3676 decoder; useful, niche, easy weekend extraction |
-| 05 | [mailbox-formats](./05-mailbox-formats.md) | **Tier 2 — later** | mbox writer is solid seed; needs maildir writer to be a complete library |
-| 06 | [reader-quote-sig](./06-reader-quote-sig.md) | **Tier 3 — defer** | Real ecosystem gap (`email_reply_parser` is dead) but our impl is too lightweight |
-| 07 | [sync-engine](./07-sync-engine.md) | **Tier 3 — investigate** | Biggest ecosystem gap by impact; extraction risk is high; needs dedicated investigation |
-| 08 | [outbound](./08-outbound.md) | **Defer** | Complements lettre but small audience; bundle later |
-| 09 | [rules](./09-rules.md) | **Defer** | Generic rule engines exist; ours has email-shaped verbs baked in (Sieve is the real prize) |
-| 10 | [compose](./10-compose.md) | **Skip** | Thin `$EDITOR` wrapper; many similar utilities exist |
-| 11 | [humanizer](./11-humanizer.md) | **Skip** | No demand signal, hard to brand, too niche |
-| 12 | [llm](./12-llm.md) | **Skip** | Many existing options (`async-openai`, `genai`, `rig`) |
-| 13 | [keychain](./13-keychain.md) | **Skip** | `keyring` crate covers this fully |
+| 03 | [gmail-query](./03-gmail-query.md) | **Tier 1 — ship next** | Comprehensive Gmail-style operator parser with typed AST; no comparable library on either registry. |
+| 05 | [mailbox-formats](./05-mailbox-formats.md) | **Tier 2 — ship after gmail-query** | mbox + Maildir reader/writer; multi-variant escaping and atomic delivery clear the publishing bar |
+| 07 | [sync-engine](./07-sync-engine.md) | **Investigate later** | Highest ecosystem impact but highest extraction risk; 2-3 day discovery before commit; do not start until mxr's sync surface stabilises |
+
+> **Bar test for new candidates:** see
+> [`docs/extracted-crates/lessons/10-publishing-bar.md`](../extracted-crates/lessons/10-publishing-bar.md).
+> Three rules established 2026-05-16: (1) crates.io is not npm — micro-packages
+> hurt the ecosystem; (2) "afternoon RFC implementation" fails the bar; (3) the
+> mxr seed must be production-credible, not a v0.1.0 placeholder users would
+> outgrow.
 
 ## Done
 
@@ -122,6 +121,24 @@ assumptions change.
 |---|---|---|---|
 | 01 | [list-unsubscribe](./done/01-list-unsubscribe.md) | **Shipped** | RFC 2369 + RFC 8058 one-click parser. Published as [`list-unsubscribe`](https://crates.io/crates/list-unsubscribe); source at [planetaryescape/list-unsubscribe](https://github.com/planetaryescape/list-unsubscribe). |
 | 02 | [mail-threading](./done/02-jwz-threading.md) | **Shipped** | Full RFC 5256 / JWZ impl. Published to crates.io as [`mail-threading`](https://crates.io/crates/mail-threading); source at [planetaryescape/mail-threading](https://github.com/planetaryescape/mail-threading). |
+
+## Won't do
+
+Candidates that failed the publishing bar
+([`lessons/10-publishing-bar.md`](../extracted-crates/lessons/10-publishing-bar.md))
+on the 2026-05-16 audit. Each frontmatter records why and what would have to
+change to revisit.
+
+| # | Candidate | Reason |
+|---|---|---|
+| 04 | [format-flowed](./wont-do/04-format-flowed.md) | RFC 3676 is a 4-page spec; encoder mechanical, decoder ~30 lines. Afternoon-from-spec. Audience too narrow. |
+| 06 | [reader-quote-sig](./wont-do/06-reader-quote-sig.md) | Real ecosystem gap, but mxr's English-only heuristics need ~1-2 weeks of corpus work to be credible. Shipping the current code would mislead users. |
+| 08 | [outbound](./wont-do/08-outbound.md) | Real-but-modest gap, small effort (3-5 days mostly polish), narrow audience (only senders). Stays internal. |
+| 09 | [rules](./wont-do/09-rules.md) | The natural rival is Sieve (RFC 5228); a custom DSL competes confusingly. mxr's verbs (`Snooze`, `ReplyLater`) are product-shaped. |
+| 10 | [compose](./10-compose.md) | Thin `$EDITOR` wrapper; the `edit` crate covers this. |
+| 11 | [humanizer](./11-humanizer.md) | No demand signal, no clear brand, too niche. |
+| 12 | [llm](./12-llm.md) | Crowded space (`async-openai`, `genai`, `rig`). |
+| 13 | [keychain](./13-keychain.md) | `keyring` crate covers this fully. |
 
 ## How to use these docs
 

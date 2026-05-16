@@ -1,9 +1,15 @@
 ---
 candidate: mailbox-formats
 status: tier-2
-decision: later
+decision: ship-after-gmail-query
 mxr_source: crates/export/src/mbox.rs (mbox writer only)
-last_reviewed: 2026-05-15
+last_reviewed: 2026-05-16
+audit_notes: |
+  Passes the publishing bar (lessons/10): real ecosystem gap, multi-variant
+  escaping + atomic Maildir delivery are non-trivial, audience is wider
+  than format-flowed (archive tools, migration utilities, forensic
+  analysis). Effort is meaningful (~1-2 days agent-assisted) but not "an
+  afternoon." Ship after gmail-query.
 ---
 
 # `mailbox-formats` (proposed name)

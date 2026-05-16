@@ -1,10 +1,19 @@
 ---
 candidate: format-flowed
-status: tier-2
-decision: later
+status: wont-do
+decision: wont-do
 mxr_source: crates/mail-parse/src/lib.rs (decode_format_flowed)
-last_reviewed: 2026-05-15
+last_reviewed: 2026-05-16
 ---
+
+> **Status: won't-do.** Fails the publishing bar
+> ([`docs/extracted-crates/lessons/10-publishing-bar.md`](../../extracted-crates/lessons/10-publishing-bar.md)):
+> RFC 3676 is a 4-page spec, the encoder is mechanical, the decoder is
+> ~30 lines, and the audience is narrow (Mutt/Alpine/mailing-list tooling).
+> "Implement in an afternoon from the spec" is true. The mxr decoder stays
+> internal in `mxr-mail-parse`. Kept for reference; do not revisit unless
+> the ecosystem signal changes (e.g. a popular dependency suddenly needs
+> this and no standalone exists).
 
 # `format-flowed` (proposed name)
 

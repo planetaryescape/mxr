@@ -1,9 +1,17 @@
 ---
 candidate: sync-engine
 status: tier-3
-decision: investigate
+decision: investigate-later
 mxr_source: crates/sync/, crates/store/, crates/provider-gmail/, crates/provider-imap/, crates/provider-outlook/
-last_reviewed: 2026-05-15
+last_reviewed: 2026-05-16
+audit_notes: |
+  Held as investigate (not won't-do) because impact is highest of any
+  candidate — every Rust mail client reinvents this. But extraction risk
+  is also highest: tight coupling to mxr's MailSyncProvider trait, store
+  schema, and search indexing. Do not commit until extraction boundaries
+  are proven via a 2-3 day discovery. The right trigger is "mxr's own sync
+  refactor has stabilised and the trait surface is clean enough that
+  carving doesn't fight the architecture."
 ---
 
 # `mail-sync-engine` (proposed name, very provisional)

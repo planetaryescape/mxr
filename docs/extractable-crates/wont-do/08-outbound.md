@@ -1,10 +1,17 @@
 ---
 candidate: outbound
-status: defer
-decision: defer
+status: wont-do
+decision: wont-do
 mxr_source: crates/outbound/
-last_reviewed: 2026-05-15
+last_reviewed: 2026-05-16
 ---
+
+> **Status: won't-do.** Fails the publishing bar
+> ([`docs/extracted-crates/lessons/10-publishing-bar.md`](../../extracted-crates/lessons/10-publishing-bar.md)):
+> the gap is real but modest, the effort is small (3-5 days, mostly API
+> polish on existing code), and the audience is narrower than Tier 1 —
+> only people sending mail, not every mail project. No deliverability
+> mandate, no non-trivial algorithm. `mxr-outbound` stays internal.
 
 # `mxr-outbound` — **Defer**
 

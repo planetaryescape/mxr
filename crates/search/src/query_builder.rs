@@ -1,4 +1,7 @@
-use crate::ast::*;
+use crate::{
+    DateBound, DateValue, FilterKind, QueryField, QueryNode, RelativeUnit, SizeOp,
+    FILTER_OWED_REPLY, FILTER_REPLY_LATER,
+};
 use crate::schema::MxrSchema;
 use chrono::{Datelike, Local, NaiveDate};
 use std::ops::Bound;
@@ -74,6 +77,12 @@ impl QueryBuilder {
     pub fn build(&self, node: &QueryNode) -> Box<dyn Query> {
         match node {
             QueryNode::Text(text) => self.build_text_query(text),
+            // `+word` (Exact) means "no stemming". Tantivy's default
+            // analyzer already does light stemming on indexed terms, so
+            // there's no precise way to disable it post-index; we treat
+            // Exact like Text for now and document the limitation. A
+            // future schema change could index a non-stemmed mirror.
+            QueryNode::Exact(text) => self.build_text_query(text),
             QueryNode::Phrase(phrase) => self.build_phrase_query(phrase),
             QueryNode::Field { field, value } => self.build_field_query(field, value),
             QueryNode::Filter(filter) => self.build_filter_query(filter),
@@ -109,6 +118,8 @@ impl QueryBuilder {
                     (Occur::Should, Box::new(AllQuery)),
                 ]))
             }
+            // Forward-compat for #[non_exhaustive] mail-query additions.
+            _ => Box::new(AllQuery),
         }
     }
 
@@ -178,6 +189,9 @@ impl QueryBuilder {
             QueryField::List => self.list_id,
             QueryField::DeliveredTo => self.delivered_to,
             QueryField::Rfc822MsgId => self.message_id_header,
+            // Forward-compat: unknown QueryField variants degrade to a
+            // full-text search over the subject field.
+            _ => self.subject,
         };
 
         match field {
@@ -196,6 +210,7 @@ impl QueryBuilder {
                 let term = Term::from_field_text(tantivy_field, &normalize_message_id(value));
                 Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))
             }
+            _ => self.build_text_field_query(tantivy_field, value),
         }
     }
 
@@ -233,7 +248,10 @@ impl QueryBuilder {
                 let term = Term::from_field_bool(self.is_answered, true);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
-            FilterKind::ReplyLater => {
+            // Mxr-specific `is:reply-later` filter routes through
+            // FilterKind::Custom now that the parser lives in the
+            // standalone mail-query crate.
+            FilterKind::Custom(name) if name == FILTER_REPLY_LATER => {
                 let term = Term::from_field_bool(self.is_reply_later, true);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
@@ -311,7 +329,19 @@ impl QueryBuilder {
             // daemon search executor intersects against the owed thread
             // set as a post-filter (see `is_owed_reply` handling in
             // `crates/daemon/src/handler/diagnostics/search_execute.rs`).
-            FilterKind::OwedReply => Box::new(AllQuery),
+            FilterKind::Custom(name) if name == FILTER_OWED_REPLY => Box::new(AllQuery),
+
+            // Unknown custom filters (a name was registered but no
+            // tantivy mapping exists) degrade to AllQuery so the daemon
+            // can either ignore them or post-filter. Future Gmail
+            // additions land here until the builder learns about them.
+            FilterKind::Custom(_) => Box::new(AllQuery),
+
+            // Forward-compat: mail-query may add variants in patch
+            // releases. Treat unknowns as no-op (match everything) so
+            // mxr never panics; the daemon's tests would flag any new
+            // variant that needs real handling.
+            _ => Box::new(AllQuery),
         }
     }
 
@@ -345,6 +375,7 @@ impl QueryBuilder {
                     Bound::Excluded(end),
                 ))
             }
+            _ => Box::new(AllQuery),
         }
     }
 
@@ -376,6 +407,7 @@ impl QueryBuilder {
                 Bound::Included(bytes),
                 Bound::Unbounded,
             )),
+            _ => Box::new(AllQuery),
         }
     }
 
@@ -500,6 +532,21 @@ fn resolve_date(date_val: &DateValue) -> NaiveDate {
         DateValue::ThisMonth => {
             NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap_or(today)
         }
+        // mail-query carries `older_than:5d` as `Relative` so the AST is
+        // `now`-pure. Resolve to a concrete date here using the local
+        // calendar.
+        DateValue::Relative { amount, unit } => {
+            let days = match unit {
+                RelativeUnit::Day => i64::from(*amount),
+                RelativeUnit::Week => i64::from(*amount) * 7,
+                RelativeUnit::Month => i64::from(*amount) * 30,
+                RelativeUnit::Year => i64::from(*amount) * 365,
+                _ => i64::from(*amount),
+            };
+            today - chrono::Duration::days(days)
+        }
+        // Forward-compat: degrade unknown DateValue variants to today.
+        _ => today,
     }
 }
 
@@ -525,7 +572,7 @@ mod tests {
 
     use super::*;
     use crate::index::SearchIndex;
-    use crate::parser::parse_query;
+    use crate::{parse_query, ParseError};
     use crate::test_fixtures::TestEnvelopeBuilder;
     use mxr_core::types::*;
     use proptest::prelude::*;
@@ -730,7 +777,7 @@ mod tests {
         ) {
             let query_text = words.join(" ");
             let ast = parse_query(&query_text)
-                .map_err(|error| TestCaseError::fail(error.to_string()))?;
+                .map_err(|error: ParseError| TestCaseError::fail(error.to_string()))?;
             let (idx, _) = build_test_index();
             let schema = MxrSchema::build();
             let qb = QueryBuilder::new(&schema);

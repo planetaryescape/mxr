@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 mxr-core = { workspace = true }
 chrono = { workspace = true }
+mail-query = { workspace = true }
 serde = { workspace = true }
 tantivy = { workspace = true }
 thiserror = { workspace = true }

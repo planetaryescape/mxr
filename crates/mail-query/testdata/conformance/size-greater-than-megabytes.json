@@ -1,0 +1,13 @@
+{
+  "name": "size-greater-than-megabytes",
+  "description": "size:>5mb parses with the comparison op and bytes value, normalising the unit.",
+  "spec": {
+    "source": "Gmail search operators",
+    "url": "https://support.google.com/mail/answer/7190",
+    "behavior": "size: takes an optional comparison op (>, >=, <, <=, =) and a value with an optional unit suffix (b, k, kb, m, mb, g, gb). Bytes are 1024-based."
+  },
+  "input": "size:>5mb",
+  "expected_ast": {
+    "Size": { "op": "greater_than", "bytes": 5242880 }
+  }
+}

@@ -1,18 +1,49 @@
-pub mod ast;
 mod index;
-pub mod parser;
 pub mod query_builder;
 mod schema;
 mod service;
 #[cfg(test)]
 mod test_fixtures;
 
-pub use ast::*;
+// The parser and AST live in the public `mail-query` crate. The `ast`
+// module re-export preserves the existing `mxr_search::ast::QueryNode`
+// path used by daemon/rules/search_filter consumers, and the top-level
+// re-exports preserve `mxr_search::QueryNode`. Internal mxr-specific
+// filters (`is:owed-reply`, `is:reply-later`) parse through
+// `FilterKind::Custom(_)` — the parser entry point below registers
+// them.
+pub mod ast {
+    pub use mail_query::{
+        DateBound, DateValue, FilterKind, ParseError, ParserOptions, QueryField, QueryNode,
+        RelativeUnit, SizeOp, Visitor,
+    };
+}
+
+pub use mail_query::{
+    DateBound, DateValue, FilterKind, ParseError, ParserOptions, QueryField, QueryNode,
+    RelativeUnit, SizeOp, Visitor,
+};
+
 pub use index::{SearchIndex, SearchPage, SearchResult};
-pub use parser::{parse_query, ParseError};
 pub use query_builder::QueryBuilder;
 pub use schema::MxrSchema;
 pub use service::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};
+
+/// Canonical name for the mxr-specific `is:owed-reply` filter.
+pub const FILTER_OWED_REPLY: &str = "owed-reply";
+
+/// Canonical name for the mxr-specific `is:reply-later` filter.
+pub const FILTER_REPLY_LATER: &str = "reply-later";
+
+/// Parse an mxr query string, with mxr-specific custom filters
+/// (`is:owed-reply`, `is:reply-later`) pre-registered so they parse
+/// through `FilterKind::Custom(...)` instead of returning
+/// `ParseError::UnknownFilter`.
+pub fn parse_query(input: &str) -> Result<QueryNode, ParseError> {
+    let mut options = ParserOptions::new();
+    options.register_custom_filters([FILTER_OWED_REPLY, FILTER_REPLY_LATER]);
+    mail_query::parse_with(input, &options)
+}
 
 #[cfg(test)]
 mod tests {
@@ -286,7 +317,7 @@ mod tests {
     }
 
     fn e2e_search(idx: &SearchIndex, query_str: &str) -> Vec<String> {
-        let ast = parser::parse_query(query_str).unwrap();
+        let ast = parse_query(query_str).unwrap();
         let schema = MxrSchema::build();
         let qb = QueryBuilder::new(&schema);
         let query = qb.build(&ast);

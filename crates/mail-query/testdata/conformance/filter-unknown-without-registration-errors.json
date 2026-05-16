@@ -1,0 +1,10 @@
+{
+  "name": "filter-unknown-without-registration-errors",
+  "description": "Filters not in the built-in set and not registered via ParserOptions return UnknownFilter rather than silently parsing.",
+  "spec": {
+    "source": "mail-query extension point",
+    "behavior": "Default-strict: unknown operator values do NOT route through Custom without explicit caller opt-in."
+  },
+  "input": "is:owed-reply",
+  "expected_error": "UnknownFilter"
+}

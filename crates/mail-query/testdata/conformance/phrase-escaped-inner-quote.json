@@ -1,0 +1,11 @@
+{
+  "name": "phrase-escaped-inner-quote",
+  "description": "Backslash-escaped inner double quotes are preserved as literal quotes inside the phrase.",
+  "spec": {
+    "source": "Gmail search operators + observed in production",
+    "url": "https://support.google.com/mail/answer/7190",
+    "behavior": "Gmail accepts `\\\"` inside a quoted phrase to embed a literal double quote. We unescape into the AST string so the phrase value is the user-intended text."
+  },
+  "input": "\"foo \\\"bar\\\"\"",
+  "expected_ast": { "Phrase": "foo \"bar\"" }
+}

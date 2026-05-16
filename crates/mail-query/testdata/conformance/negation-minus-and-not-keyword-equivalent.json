@@ -1,0 +1,13 @@
+{
+  "name": "negation-minus-and-not-keyword-equivalent",
+  "description": "Both `-X` and `NOT X` produce QueryNode::Not(...). The keyword form is case-insensitive.",
+  "spec": {
+    "source": "Gmail search operators",
+    "url": "https://support.google.com/mail/answer/7190",
+    "behavior": "Negation is the same regardless of which form was used; the AST does not preserve the source token."
+  },
+  "input": "-spam",
+  "expected_ast": {
+    "Not": { "Text": "spam" }
+  }
+}

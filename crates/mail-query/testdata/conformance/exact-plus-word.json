@@ -1,0 +1,11 @@
+{
+  "name": "exact-plus-word",
+  "description": "+word is exact-match (no stemming). Mirrors Gmail's +word semantics.",
+  "spec": {
+    "source": "Gmail search operators",
+    "url": "https://support.google.com/mail/answer/7190",
+    "behavior": "Prefix +word disables stemming/synonym expansion for that term. The backend should pass the term through to its index as an exact term."
+  },
+  "input": "+stripe",
+  "expected_ast": { "Exact": "stripe" }
+}

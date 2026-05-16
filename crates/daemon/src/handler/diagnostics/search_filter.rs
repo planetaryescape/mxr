@@ -12,19 +12,16 @@ use mxr_search::ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, S
 /// per-envelope Tantivy field).
 pub(super) fn ast_contains_owed_reply(node: &QueryNode) -> bool {
     match node {
-        QueryNode::Filter(FilterKind::OwedReply) => true,
-        QueryNode::Filter(_)
-        | QueryNode::Text(_)
-        | QueryNode::Phrase(_)
-        | QueryNode::Near { .. }
-        | QueryNode::Field { .. }
-        | QueryNode::Label(_)
-        | QueryNode::DateRange { .. }
-        | QueryNode::Size { .. } => false,
+        QueryNode::Filter(FilterKind::Custom(name))
+            if name == mxr_search::FILTER_OWED_REPLY =>
+        {
+            true
+        }
         QueryNode::And(left, right) | QueryNode::Or(left, right) => {
             ast_contains_owed_reply(left) || ast_contains_owed_reply(right)
         }
         QueryNode::Not(inner) => ast_contains_owed_reply(inner),
+        _ => false,
     }
 }
 
@@ -36,7 +33,10 @@ pub(super) struct SemanticQueryPlan {
 
 pub(super) fn matches_structured_filters(node: &QueryNode, envelope: &mxr_core::Envelope) -> bool {
     match node {
-        QueryNode::Text(_) | QueryNode::Phrase(_) | QueryNode::Near { .. } => true,
+        QueryNode::Text(_)
+        | QueryNode::Exact(_)
+        | QueryNode::Phrase(_)
+        | QueryNode::Near { .. } => true,
         QueryNode::Field { field, value } => match field {
             QueryField::Subject
             | QueryField::Body
@@ -59,6 +59,7 @@ pub(super) fn matches_structured_filters(node: &QueryNode, envelope: &mxr_core::
                 .bcc
                 .iter()
                 .any(|addr| address_matches(&addr.email, addr.name.as_deref(), value)),
+            _ => true,
         },
         QueryNode::Filter(filter) => matches_filter(filter, envelope),
         QueryNode::Label(label) => envelope
@@ -76,6 +77,7 @@ pub(super) fn matches_structured_filters(node: &QueryNode, envelope: &mxr_core::
                 || matches_structured_filters(right, envelope)
         }
         QueryNode::Not(inner) => !matches_structured_filters(inner, envelope),
+        _ => true,
     }
 }
 
@@ -115,7 +117,6 @@ fn matches_filter(filter: &FilterKind, envelope: &mxr_core::Envelope) -> bool {
         FilterKind::HasAttachment => envelope.has_attachments,
         FilterKind::HasCalendar => true,
         FilterKind::Anywhere => true,
-        FilterKind::ReplyLater => true,
         FilterKind::HasUserLabels => envelope
             .label_provider_ids
             .iter()
@@ -135,12 +136,23 @@ fn matches_filter(filter: &FilterKind, envelope: &mxr_core::Envelope) -> bool {
             matches!(envelope.link_density(), mxr_core::types::LinkDensity::Heavy)
         }
         FilterKind::NoLinks => envelope.link_count == 0,
-        // Owed-reply is computed at the thread level against
-        // `messages` + `contacts` + `screener_decisions`. The
-        // executor applies an explicit thread-set membership test
-        // before this per-envelope filter runs; here we default to
-        // `true` so it never independently drops candidates.
-        FilterKind::OwedReply => true,
+        // Mxr-specific custom filters: owed-reply is computed at the
+        // thread level (see ast_contains_owed_reply above) and the
+        // per-envelope test defaults to true so it never independently
+        // drops candidates. reply-later is an indexed boolean handled
+        // by the QueryBuilder; here we default true for the same
+        // reason.
+        FilterKind::Custom(name)
+            if name == mxr_search::FILTER_OWED_REPLY
+                || name == mxr_search::FILTER_REPLY_LATER =>
+        {
+            true
+        }
+        // Unknown custom filter: default to true (no-op filter) so
+        // future Gmail additions don't break searches.
+        FilterKind::Custom(_) => true,
+        // Forward-compat for #[non_exhaustive] mail-query additions.
+        _ => true,
     }
 }
 
@@ -176,6 +188,7 @@ fn matches_date(bound: &DateBound, date: &DateValue, envelope: &mxr_core::Envelo
         DateBound::After => message_date >= resolved,
         DateBound::Before => message_date < resolved,
         DateBound::Exact => message_date == resolved,
+        _ => true,
     }
 }
 
@@ -192,6 +205,17 @@ fn resolve_date_value(value: &DateValue) -> chrono::NaiveDate {
         DateValue::ThisMonth => {
             chrono::NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap_or(today)
         }
+        DateValue::Relative { amount, unit } => {
+            let days = match unit {
+                mxr_search::RelativeUnit::Day => i64::from(*amount),
+                mxr_search::RelativeUnit::Week => i64::from(*amount) * 7,
+                mxr_search::RelativeUnit::Month => i64::from(*amount) * 30,
+                mxr_search::RelativeUnit::Year => i64::from(*amount) * 365,
+                _ => i64::from(*amount),
+            };
+            today - chrono::Duration::days(days)
+        }
+        _ => today,
     }
 }
 
@@ -202,6 +226,7 @@ fn matches_size(op: &SizeOp, bytes: u64, actual: u64) -> bool {
         SizeOp::Equal => actual == bytes,
         SizeOp::GreaterThan => actual > bytes,
         SizeOp::GreaterThanOrEqual => actual >= bytes,
+        _ => true,
     }
 }
 
@@ -325,6 +350,7 @@ fn source_kinds_for_field(field: &QueryField) -> &'static [SemanticChunkSourceKi
         | QueryField::List
         | QueryField::DeliveredTo
         | QueryField::Rfc822MsgId => &[],
+        _ => &[],
     }
 }
 

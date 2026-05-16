@@ -1,0 +1,11 @@
+{
+  "name": "label-bare",
+  "description": "label: emits a Label node with the literal label value.",
+  "spec": {
+    "source": "Gmail search operators",
+    "url": "https://support.google.com/mail/answer/7190",
+    "behavior": "label:work restricts results to messages with the 'work' user label."
+  },
+  "input": "label:work",
+  "expected_ast": { "Label": "work" }
+}

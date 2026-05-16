@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "mail-query conformance fixture",
+  "type": "object",
+  "required": ["name", "description", "spec", "input"],
+  "properties": {
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "spec": {
+      "type": "object",
+      "required": ["source", "behavior"],
+      "properties": {
+        "source": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "behavior": { "type": "string" }
+      }
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "custom_filters": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "input": { "type": "string" },
+    "expected_ast": {
+      "description": "The parsed QueryNode in serde-default (externally tagged) form. Mutually exclusive with expected_error.",
+      "type": "object"
+    },
+    "expected_error": {
+      "description": "Variant name of mail_query::ParseError. Mutually exclusive with expected_ast.",
+      "type": "string"
+    }
+  }
+}

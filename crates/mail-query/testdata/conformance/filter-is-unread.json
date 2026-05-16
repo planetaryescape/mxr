@@ -1,0 +1,11 @@
+{
+  "name": "filter-is-unread",
+  "description": "Built-in is: filter parses as a typed FilterKind variant.",
+  "spec": {
+    "source": "Gmail search operators",
+    "url": "https://support.google.com/mail/answer/7190",
+    "behavior": "is:unread matches messages that have not been read by the account."
+  },
+  "input": "is:unread",
+  "expected_ast": { "Filter": "unread" }
+}

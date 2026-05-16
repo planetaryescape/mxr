@@ -92,6 +92,7 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
             | QueryField::Rfc822MsgId => {
                 return Err("field is not supported in rules form".to_string())
             }
+            _ => return Err("unknown field is not supported in rules form".to_string()),
         }),
         QueryNode::Label(label) => Conditions::Field(FieldCondition::HasLabel { label }),
         QueryNode::Filter(FilterKind::Unread) => Conditions::Field(FieldCondition::IsUnread),
@@ -134,6 +135,14 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
         ) => {
             return Err("search filter is not supported in rules form".to_string())
         }
+        QueryNode::Filter(FilterKind::Custom(_)) => {
+            return Err("custom search filters are not supported in rules form".to_string())
+        }
+        // Defensive: HasCalendar/HasLink/HasLinkHeavy/NoLinks weren't
+        // in the original guard list; treat as unsupported for now.
+        QueryNode::Filter(_) => {
+            return Err("search filter is not supported in rules form".to_string())
+        }
         QueryNode::Text(value) | QueryNode::Phrase(value) => {
             Conditions::Field(FieldCondition::BodyContains {
                 pattern: StringMatch::Contains(value),
@@ -161,6 +170,7 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
                         }),
                     ],
                 },
+                _ => return Err("unknown date bound is not supported in rules form".to_string()),
             }
         }
         QueryNode::Size { op, bytes } => match op {
@@ -182,10 +192,15 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
                     }),
                 ],
             },
+            _ => return Err("unknown size op is not supported in rules form".to_string()),
         },
         QueryNode::Near { .. } => {
             return Err("AROUND is not supported in rules form".to_string())
         }
+        QueryNode::Exact(_) => {
+            return Err("+word exact-match is not supported in rules form".to_string())
+        }
+        _ => return Err("unknown query node is not supported in rules form".to_string()),
     })
 }
 

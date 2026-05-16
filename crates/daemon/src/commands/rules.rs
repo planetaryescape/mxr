@@ -75,6 +75,7 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
             | QueryField::Rfc822MsgId => {
                 anyhow::bail!("field is not supported in rules conditions yet")
             }
+            _ => anyhow::bail!("unknown field is not supported in rules conditions yet"),
         }),
         QueryNode::Label(label) => Conditions::Field(FieldCondition::HasLabel { label }),
         QueryNode::Filter(FilterKind::Unread) => Conditions::Field(FieldCondition::IsUnread),
@@ -116,7 +117,6 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
         }),
         QueryNode::Filter(
             FilterKind::Answered
-            | FilterKind::ReplyLater
             | FilterKind::Anywhere
             | FilterKind::HasUserLabels
             | FilterKind::NoUserLabels
@@ -126,10 +126,12 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
             | FilterKind::HasSpreadsheet
             | FilterKind::HasPresentation
             | FilterKind::HasYoutube
-            | FilterKind::HasInlineImage
-            | FilterKind::OwedReply,
+            | FilterKind::HasInlineImage,
         ) => {
             anyhow::bail!("this search filter is not supported in rules conditions yet")
+        }
+        QueryNode::Filter(FilterKind::Custom(_)) => {
+            anyhow::bail!("custom search filters are not supported in rules conditions yet")
         }
         QueryNode::Text(value) | QueryNode::Phrase(value) => {
             Conditions::Field(FieldCondition::BodyContains {
@@ -162,6 +164,7 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
                         }),
                     ],
                 },
+                _ => anyhow::bail!("unknown date bound is not supported in rules conditions yet"),
             }
         }
         QueryNode::Size { op, bytes } => match op {
@@ -183,10 +186,16 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
                     }),
                 ],
             },
+            _ => anyhow::bail!("unknown size op is not supported in rules conditions yet"),
         },
         QueryNode::Near { .. } => {
             anyhow::bail!("AROUND is not supported in rules conditions yet")
         }
+        // Forward-compat: any future mail-query AST variant.
+        QueryNode::Exact(_) => {
+            anyhow::bail!("+word exact-match is not supported in rules conditions yet")
+        }
+        _ => anyhow::bail!("unknown query node is not supported in rules conditions yet"),
     })
 }
 

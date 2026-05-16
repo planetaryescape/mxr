@@ -3542,6 +3542,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mail-query"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "mail-threading"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4233,6 +4244,7 @@ name = "mxr-search"
 version = "0.5.18"
 dependencies = [
  "chrono",
+ "mail-query",
  "mxr-core",
  "proptest",
  "serde",

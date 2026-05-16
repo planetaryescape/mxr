@@ -1,9 +1,10 @@
 ---
 candidate: mail-threading
-status: implemented-in-repo
-decision: ship
-mxr_source: crates/mail-threading
-last_reviewed: 2026-05-15
+status: published
+decision: shipped
+external_repo: https://github.com/planetaryescape/mail-threading
+crates_io: https://crates.io/crates/mail-threading
+last_reviewed: 2026-05-16
 ---
 
 # `mail-threading`
@@ -12,17 +13,17 @@ last_reviewed: 2026-05-15
 > stream of messages using `References`, `In-Reply-To`, and subject-based
 > fallback merging.
 
-## Decision: **Tier 1 — ship**
+## Status: **Shipped**
 
-This is the single highest-value extraction we can make. The implementation
-now lives as an independently publishable in-repo crate at
-`crates/mail-threading`, with a shared JSON conformance corpus at
-`crates/mail-threading/testdata`. `mxr-sync` consumes that crate instead of
-carrying its own internal threading module.
+Published as [`mail-threading`](https://crates.io/crates/mail-threading)
+v0.1.0 on crates.io. The source of truth is
+[`planetaryescape/mail-threading`](https://github.com/planetaryescape/mail-threading);
+the shared JSON conformance corpus lives in that repo under `testdata/`.
+`mxr-sync` consumes the published crate.
 
 ## What mxr has today
 
-**Source:** `crates/mail-threading`
+**Source:** [`planetaryescape/mail-threading`](https://github.com/planetaryescape/mail-threading) (external repo, crates.io)
 
 The implementation is a focused, mxr-independent crate for the Jamie
 Zawinski/RFC 5256 threading algorithm. Specifically:
@@ -65,8 +66,9 @@ pub struct Thread {
 
 There is no `mxr-store`, `mxr-core`, provider type, SQL, or async dependency.
 
-**Conformance coverage** lives in `crates/mail-threading/testdata/conformance`
-and is loaded by `crates/mail-threading/tests/conformance.rs`. It covers:
+**Conformance coverage** lives in the standalone repo at
+`planetaryescape/mail-threading/testdata/conformance` and is loaded by
+`tests/conformance.rs`. It covers:
 
 - Basic two-message chain
 - Two disjoint threads
@@ -117,8 +119,8 @@ That is the gap we'd fill.
 - **No mxr coupling.** The module imports `chrono`, `std::collections`,
   and nothing from `mxr-core`, `mxr-store`, or `mxr-protocol`.
 - **Shared conformance corpus.** Rust tests load JSON fixtures from
-  `crates/mail-threading/testdata`, and the future JS package must use the same
-  corpus.
+  `testdata/` in the published package, and the future JS package must use the
+  same corpus pulled from `planetaryescape/mail-threading`.
 - **Small surface.** One input struct, one entry-point function, one flat
   output type, and options. No lifetimes, no async, no I/O.
 
@@ -159,24 +161,22 @@ small, stable, and matches `mxr-sync`'s real integration point.
 
 ## Implementation plan
 
-The implementation plan is tracked at
-`docs/extracted-crates/implementation/01-jwz-threading.md`.
+Tracked at
+[`docs/extracted-crates/implementation/01-jwz-threading.md`](../extracted-crates/implementation/01-jwz-threading.md)
+(in-repo phase) and
+[`docs/extracted-crates/implementation/02-mail-threading-external-repo.md`](../extracted-crates/implementation/02-mail-threading-external-repo.md)
+(extraction to standalone repo). Both phases complete.
 
-Completed locally:
+Shipped:
 
-- Created `crates/mail-threading`.
-- Added a comprehensive README with spec links, examples, caveats, semver
-  policy, and conformance policy.
-- Added shared JSON corpus at `crates/mail-threading/testdata`.
-- Added Rust conformance tests loading that corpus.
-- Replaced `mxr-sync`'s internal module with a dependency on `mail-threading`.
-
-Before crates.io publishing:
-
-- Run `scripts/cargo-test -p mail-threading --tests`.
-- Run `cargo test -p mail-threading --doc`.
-- Run `cargo publish --dry-run -p mail-threading`.
-- Decide whether to add benchmarks before first publish or immediately after.
+- `mail-threading` v0.1.0 published to crates.io.
+- Source moved to `planetaryescape/mail-threading`.
+- CI on the standalone repo runs fmt, tests, doctests, clippy, and
+  `cargo publish --dry-run` on every push.
+- Tag-driven publish workflow handles `v*.*.*` releases via crates.io token.
+- `mxr-sync` depends on `mail-threading = "0.1.0"` from the registry.
+- Comprehensive README with spec links, examples, caveats, semver and
+  conformance policy.
 
 ## Estimated effort
 
@@ -210,9 +210,10 @@ audience for this problem.
 - Native TS gives users source-map debugging and a JS-native feel,
   which the algorithm-shaped audience appreciates.
 
-**Corpus shape.** The shared corpus now lives in
-`crates/mail-threading/testdata/conformance`. Each JSON file is an
-implementation-neutral fixture used by Rust now and by the future TS package:
+**Corpus shape.** The shared corpus lives in
+[`planetaryescape/mail-threading/testdata/conformance`](https://github.com/planetaryescape/mail-threading/tree/main/testdata/conformance).
+Each JSON file is an implementation-neutral fixture used by Rust now and by
+the future TS package:
 
 ```json
 {

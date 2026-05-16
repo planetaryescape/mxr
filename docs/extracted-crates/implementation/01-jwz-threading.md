@@ -1,11 +1,20 @@
 ---
 candidate: mail-threading
 source_doc: ../../extractable-crates/02-jwz-threading.md
-status: implemented-rust-release-ready
-last_reviewed: 2026-05-15
+status: complete-extracted-and-published
+external_repo: https://github.com/planetaryescape/mail-threading
+crates_io: https://crates.io/crates/mail-threading
+last_reviewed: 2026-05-16
 ---
 
 # `mail-threading` implementation plan
+
+> **Status: complete.** This document captured the in-repo phase. The crate
+> was subsequently extracted to its own repository at
+> [`planetaryescape/mail-threading`](https://github.com/planetaryescape/mail-threading)
+> and published to crates.io. See
+> [`02-mail-threading-external-repo.md`](./02-mail-threading-external-repo.md)
+> for the extraction phase. Kept here as historical context.
 
 ## Decision
 

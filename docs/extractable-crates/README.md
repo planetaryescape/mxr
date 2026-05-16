@@ -105,7 +105,7 @@ assumptions change.
 |---|---|---|---|
 | 00 | [Publishing strategy](./00-publishing-strategy.md) | **Read first** | Cross-cutting framework: port vs WASM, drift, shared corpus, effort estimates |
 | 01 | [list-unsubscribe](./01-list-unsubscribe.md) | **Tier 1 — ship** | RFC 2369 + RFC 8058 one-click; deliverability-mandated, no focused crate. Smallest Tier 1 — start here. |
-| 02 | [mail-threading](./02-jwz-threading.md) | **Implemented in repo** | Full RFC 5256 / JWZ impl; now an independently publishable workspace crate with shared JSON conformance corpus. |
+| 02 | [mail-threading](./02-jwz-threading.md) | **Shipped** | Full RFC 5256 / JWZ impl. Published to crates.io as [`mail-threading`](https://crates.io/crates/mail-threading); source at [planetaryescape/mail-threading](https://github.com/planetaryescape/mail-threading). |
 | 03 | [gmail-query](./03-gmail-query.md) | **Tier 1 — ship** | Comprehensive Gmail-style operator parser with typed AST; no comparable library on either registry. |
 | 04 | [format-flowed](./04-format-flowed.md) | **Tier 2 — later** | RFC 3676 decoder; useful, niche, easy weekend extraction |
 | 05 | [mailbox-formats](./05-mailbox-formats.md) | **Tier 2 — later** | mbox writer is solid seed; needs maildir writer to be a complete library |

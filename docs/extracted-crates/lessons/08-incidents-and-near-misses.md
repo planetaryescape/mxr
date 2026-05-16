@@ -130,6 +130,59 @@ For ~5 minutes I treated them as separate, planning to run `cargo publish` local
 
 **Lesson:** when the user picks an alternative approach mid-plan, re-read the affected phases before executing. The plan was written for one workflow; we used another.
 
+## Incident: `git stash push -m ... -- <path>` swept up staged work
+
+**Symptom:** during the `list-unsubscribe` cutover I tried to stash just
+`crates/outbound/Cargo.toml` to get a clean lock regeneration:
+
+```bash
+git stash push -m "temp outbound for clean lock" -- crates/outbound/Cargo.toml
+```
+
+The output said "Saved working directory and index state…". But
+`git stash show stash@{0}` then listed the entire staged content (1270
+insertions across 25 files) — including my staged list-unsubscribe files.
+
+**Root cause:** the index was already staged with my list-unsubscribe work
+when the pathspec stash ran. `git stash push` with a pathspec stashes the
+union of working-tree-and-index changes that touch the path *and* the
+currently-staged index in general. The mental model "this only touches the
+file I named" is wrong when the index is dirty.
+
+**Fix:** I dropped the stash content for the surgical part I wanted by
+saving the full stash to a patch, extracting only the outbound hunk, and
+applying it back:
+
+```bash
+git stash show -p stash@{0} > /tmp/full-stash.patch
+# Find the outbound region
+grep -n "diff --git" /tmp/full-stash.patch
+# sed it out and re-apply
+sed -n '<start>,<end>p' /tmp/full-stash.patch | git apply
+git stash drop stash@{0}
+```
+
+**Lesson:** pathspec stash + dirty index is a footgun. Either commit first
+(so the index is clean before stashing), or rely on `git add -p` to
+surgically stage instead of reaching for stash. The plan template's
+clean-branch advice (lessons/01 branch posture, lessons/08 Cargo.lock
+collateral) is the real defense.
+
+## Stall: GitHub PreToolUse security hook fires twice on workflow writes
+
+**Symptom:** during `list-unsubscribe` extraction, writing
+`.github/workflows/ci.yml` produced an informational security warning from
+the Claude Code PreToolUse hook. Same for `publish.yml`.
+
+**Status:** identical to the `mail-threading` near-miss (recorded earlier
+in this file). The warning is advisory; retry the write. The published
+workflows use `env:` injection and are safe.
+
+**New observation:** the hook fires on every workflow write, not just the
+first one. Each retry succeeds. Don't restructure the workflow to "avoid"
+the warning — it's a heuristic that can't distinguish safe from unsafe
+patterns.
+
 ## Wasted time: ran broader-than-needed validation
 
 **What happened:** after Phase 6 cutover, I ran `scripts/cargo-test -p mxr-sync --tests` (correct per plan) but also considered running daemon/store/tui tests "for safety."

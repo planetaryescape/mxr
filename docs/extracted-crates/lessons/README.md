@@ -15,7 +15,8 @@ This README is the conceptual playbook (15 lessons + checklists). The numbered f
 - [`05-documentation-and-status-surfaces.md`](./05-documentation-and-status-surfaces.md) — The two/three-doc structure, three status surfaces to update on ship, planning-doc preservation.
 - [`06-reusable-artifacts.md`](./06-reusable-artifacts.md) — Verbatim copy-paste templates: standalone `Cargo.toml`, `clippy.toml`, `.gitignore`, both workflows, license files, testdata schema, conformance test skeleton, commit messages.
 - [`07-plan-template-refinements.md`](./07-plan-template-refinements.md) — Specific edits to apply to `02-mail-threading-external-repo.md` when copying as the next crate's plan.
-- [`08-incidents-and-near-misses.md`](./08-incidents-and-near-misses.md) — Honest log of what broke during `mail-threading`. Read before the next extraction.
+- [`08-incidents-and-near-misses.md`](./08-incidents-and-near-misses.md) — Honest log of what broke during `mail-threading` and `list-unsubscribe`. Read before the next extraction.
+- [`09-carving-out-of-existing-crates.md`](./09-carving-out-of-existing-crates.md) — Patterns that only show up when the new crate is scaffolded out of an existing one (rather than splitting an already-standalone workspace member). Captured from `list-unsubscribe`.
 
 ## The short version
 
@@ -504,21 +505,17 @@ If the answer is mostly no, defer.
 
 ## Applying this to current candidates
 
-### Strong next candidates
+### Shipped
 
 `list-unsubscribe`:
 
-- RFC-backed
-- small surface
-- clear ecosystem gap
-- conformance-friendly
-- likely dual-publishable
+- Shipped on 2026-05-16 as
+  [`list-unsubscribe v0.1.0`](https://crates.io/crates/list-unsubscribe)
+  at [`planetaryescape/list-unsubscribe`](https://github.com/planetaryescape/list-unsubscribe).
+- See [`09-carving-out-of-existing-crates.md`](./09-carving-out-of-existing-crates.md)
+  for the new-shape lessons (this extraction was a carve-out, not a lift).
 
-Start with:
-
-```bash
-sed -n '1,240p' docs/extractable-crates/01-list-unsubscribe.md
-```
+### Strong next candidates
 
 `format-flowed`:
 

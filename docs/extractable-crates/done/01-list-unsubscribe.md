@@ -1,10 +1,23 @@
 ---
 candidate: list-unsubscribe
-status: tier-1
-decision: ship
-mxr_source: crates/mail-parse/src/lib.rs (parse_list_unsubscribe + UnsubscribeMethod)
-last_reviewed: 2026-05-15
+status: published
+decision: shipped
+external_repo: https://github.com/planetaryescape/list-unsubscribe
+crates_io: https://crates.io/crates/list-unsubscribe
+mxr_source: crates/mail-parse/src/lib.rs (parse_list_unsubscribe + UnsubscribeMethod) — now consumed from crates.io
+last_reviewed: 2026-05-16
 ---
+
+> **Status: Shipped.** Published as
+> [`list-unsubscribe v0.1.0`](https://crates.io/crates/list-unsubscribe) at
+> [`planetaryescape/list-unsubscribe`](https://github.com/planetaryescape/list-unsubscribe).
+> mxr now consumes the registry version through `mxr-mail-parse`, which
+> converts the 4-variant public enum into `mxr-core`'s 5-variant
+> `UnsubscribeMethod` at the boundary so the `BodyLink` HTML-body-scraping
+> fallback stays local. The migration runbook is in
+> [`docs/extracted-crates/implementation/03-list-unsubscribe-external-repo.md`](../../extracted-crates/implementation/03-list-unsubscribe-external-repo.md).
+> The document below is kept as historical context for the original
+> rationale and design decisions.
 
 # `list-unsubscribe` (proposed name)
 

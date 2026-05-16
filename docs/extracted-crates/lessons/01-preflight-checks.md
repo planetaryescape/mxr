@@ -57,11 +57,20 @@ Decide explicitly per crate. Don't blindly copy 1.88.
 
 ## Categories must be valid crates.io slugs
 
+The original lesson cited `https://crates.io/category_slugs` (an HTML
+endpoint). As of 2026-05 it returns 404 — confirmed during the
+`list-unsubscribe` extraction. Use the JSON API instead:
+
 ```bash
-curl -s https://crates.io/category_slugs | grep -i email
+curl -s "https://crates.io/api/v1/categories?per_page=100" \
+  | python3 -c "import sys,json; print('\n'.join(c['slug'] for c in json.load(sys.stdin)['categories']))"
 ```
 
-`mail-threading` used `["algorithms", "email"]` — both valid. Bad slugs reject publish at the dry-run gate.
+Pipe through `grep -i email` (or whatever).
+
+`mail-threading` used `["algorithms", "email"]`; `list-unsubscribe` uses
+`["email", "parser-implementations"]`. Both valid. Bad slugs reject
+publish at the dry-run gate.
 
 Update the candidate doc's intended `categories = [...]` before the plan locks them in.
 

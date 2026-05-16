@@ -104,8 +104,6 @@ assumptions change.
 | # | Candidate | Decision | One-line rationale |
 |---|---|---|---|
 | 00 | [Publishing strategy](./00-publishing-strategy.md) | **Read first** | Cross-cutting framework: port vs WASM, drift, shared corpus, effort estimates |
-| 01 | [list-unsubscribe](./01-list-unsubscribe.md) | **Tier 1 — ship** | RFC 2369 + RFC 8058 one-click; deliverability-mandated, no focused crate. Smallest Tier 1 — start here. |
-| 02 | [mail-threading](./02-jwz-threading.md) | **Shipped** | Full RFC 5256 / JWZ impl. Published to crates.io as [`mail-threading`](https://crates.io/crates/mail-threading); source at [planetaryescape/mail-threading](https://github.com/planetaryescape/mail-threading). |
 | 03 | [gmail-query](./03-gmail-query.md) | **Tier 1 — ship** | Comprehensive Gmail-style operator parser with typed AST; no comparable library on either registry. |
 | 04 | [format-flowed](./04-format-flowed.md) | **Tier 2 — later** | RFC 3676 decoder; useful, niche, easy weekend extraction |
 | 05 | [mailbox-formats](./05-mailbox-formats.md) | **Tier 2 — later** | mbox writer is solid seed; needs maildir writer to be a complete library |
@@ -118,6 +116,13 @@ assumptions change.
 | 12 | [llm](./12-llm.md) | **Skip** | Many existing options (`async-openai`, `genai`, `rig`) |
 | 13 | [keychain](./13-keychain.md) | **Skip** | `keyring` crate covers this fully |
 
+## Done
+
+| # | Candidate | Result | One-line rationale |
+|---|---|---|---|
+| 01 | [list-unsubscribe](./done/01-list-unsubscribe.md) | **Shipped** | RFC 2369 + RFC 8058 one-click parser. Published as [`list-unsubscribe`](https://crates.io/crates/list-unsubscribe); source at [planetaryescape/list-unsubscribe](https://github.com/planetaryescape/list-unsubscribe). |
+| 02 | [mail-threading](./done/02-jwz-threading.md) | **Shipped** | Full RFC 5256 / JWZ impl. Published to crates.io as [`mail-threading`](https://crates.io/crates/mail-threading); source at [planetaryescape/mail-threading](https://github.com/planetaryescape/mail-threading). |
+
 ## How to use these docs
 
 When you want to act on a candidate:
@@ -125,15 +130,20 @@ When you want to act on a candidate:
 1. Read **[00-publishing-strategy.md](./00-publishing-strategy.md)** if
    you haven't yet — it sets effort expectations and distribution
    recommendations.
-2. Open the per-candidate doc.
-3. Re-read the **Assumptions / When to re-evaluate** section. Are the
+2. Read the lessons from the first extraction:
+   **[../extracted-crates/lessons/README.md](../extracted-crates/lessons/README.md)**.
+   That file captures the higher bar created by `mail-threading`:
+   conformance corpus, coverage matrix, honest divergences, standalone
+   ownership, and registry cutover discipline.
+3. Open the per-candidate doc.
+4. Re-read the **Assumptions / When to re-evaluate** section. Are the
    ecosystem assumptions still true? (Libraries appear and die; a "Skip"
    can flip to "Ship" if the alternative becomes unmaintained.)
-4. Follow the **Extraction plan** section. It lists the files to lift,
+5. Follow the **Extraction plan** section. It lists the files to lift,
    the API surface to expose, the gaps to fill before publishing.
-5. For Tier 1 candidates, follow the **TS/npm distribution** section to
+6. For Tier 1 candidates, follow the **TS/npm distribution** section to
    decide port vs WASM and set up the shared corpus.
-6. If you decide to ship, update this README's table and the candidate's
+7. If you decide to ship, update this README's table and the candidate's
    frontmatter to reflect the new status.
 
 When new candidates emerge (a new mxr crate is added, a new ecosystem gap

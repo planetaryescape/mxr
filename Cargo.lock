@@ -3534,10 +3534,10 @@ dependencies = [
 [[package]]
 name = "mail-threading"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "257d5a767ef80f62473ed8538ed536bcb07aafa8988d9e91693085a581c6e083"
 dependencies = [
  "chrono",
- "serde",
- "serde_json",
 ]
 
 [[package]]

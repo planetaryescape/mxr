@@ -93,7 +93,6 @@ members = [
     "crates/humanizer",
     "crates/llm",
     "crates/mail-parse",
-    "crates/mail-threading",
     "crates/outbound",
     "crates/protocol",
     "crates/provider-fake",
@@ -147,7 +146,7 @@ mxr-keychain = { path = "crates/keychain", version = "0.5.18" }
 mxr-humanizer = { path = "crates/humanizer", version = "0.5.18" }
 mxr-llm = { path = "crates/llm", version = "0.5.18" }
 mxr-mail-parse = { path = "crates/mail-parse", version = "0.5.18" }
-mail-threading = { path = "crates/mail-threading", version = "0.1.0" }
+mail-threading = "0.1.0"
 mxr-outbound = { path = "crates/outbound", version = "0.5.18" }
 mxr-protocol = { path = "crates/protocol", version = "0.5.18" }
 mxr-provider-fake = { path = "crates/provider-fake", version = "0.5.18" }

@@ -3544,11 +3544,10 @@ dependencies = [
 [[package]]
 name = "mail-query"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fcd63af7c73b11345e18d62599424ada3c8f4256be7f282b953956e96acf6c8"
 dependencies = [
  "chrono",
- "proptest",
- "serde",
- "serde_json",
  "thiserror 2.0.18",
 ]
 

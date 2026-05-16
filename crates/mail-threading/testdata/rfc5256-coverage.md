@@ -39,7 +39,7 @@ Status meanings:
 | `References` reconstruct ancestry | covered | `basic-references-chain`, `multi-level-missing-phantom-chain` | Covers multi-hop parent/child linking. |
 | Missing referenced ancestors become dummy messages | covered | `missing-top-reference`, `in-reply-to-only-parent-missing`, `multi-level-missing-phantom-chain` | Public output prunes phantoms by default. |
 | `References` takes precedence over `In-Reply-To` | covered | `conflicting-references-beat-in-reply-to` | RFC says use `References` when valid. |
-| Invalid or absent `References` falls back to first valid `In-Reply-To` | covered | `in-reply-to-only-parent-present`, `in-reply-to-only-parent-missing`, `invalid-references-fall-back-to-in-reply-to` | This crate accepts one parsed `In-Reply-To` value. |
+| Invalid or absent `References` falls back to first valid `In-Reply-To` | covered | `in-reply-to-only-parent-present`, `in-reply-to-only-parent-missing`, `invalid-references-fall-back-to-in-reply-to`, `invalid-threading-headers-allow-subject-fallback` | This crate accepts one parsed `In-Reply-To` value. |
 | No valid reference means NIL parent | covered | `single-message`, `no-replies`, `two-independent-threads` | Current message becomes a root unless subject fallback merges it. |
 | Message-ID quoting normalization | covered | `message-id-quoted-local-normalization` | Quoted and unquoted local parts match. |
 | Message-ID comparisons are case-sensitive | covered | `message-id-case-sensitive` | Case is preserved after normalization. |
@@ -50,7 +50,7 @@ Status meanings:
 | Do not create loops | covered | `cycle-in-references`, `self-reference` | Self-links and ancestor loops are ignored. |
 | Reply arrives before parent | covered | `reply-arrives-before-parent` | Phantom container is filled when the real message appears later. |
 | Phantom pruning | covered | `prune-phantoms-disabled`, `missing-top-reference`, `multi-level-missing-phantom-chain` | Default public output prunes phantoms; option can expose them. |
-| Sort top-level threads and members by sent date | covered | `stable-thread-ordering-by-date`, `canonical-root-preserved-with-earlier-child` | Exact IMAP sequence-number tie-break is not modeled. |
+| Sort top-level threads and members by sent date | covered | `stable-thread-ordering-by-date`, `stable-thread-ordering-with-caller-ids`, `canonical-root-preserved-with-earlier-child` | Exact IMAP sequence-number tie-break is not modeled. |
 
 ## Base subject extraction
 
@@ -72,7 +72,7 @@ Status meanings:
 
 | RFC behavior | Status | Fixtures | Notes |
 |---|---|---|---|
-| Headerless messages with same base subject can merge | covered | `subject-fallback-groups-headerless` | Practical subject fallback. |
+| Headerless messages with same base subject can merge | covered | `subject-fallback-groups-headerless`, `invalid-threading-headers-allow-subject-fallback` | Practical subject fallback. |
 | Headerless reply can attach to a header-backed thread | covered | `subject-fallback-attaches-to-header-thread` | Common degraded-header case. |
 | Subject merge can be disabled | covered | `subject-merge-disabled` | Public option. |
 | Same-subject header-backed roots are not force-merged | intentional divergence | `same-subject-header-threads-not-merged` | The crate favors avoiding false merges for local clients. |
@@ -82,7 +82,7 @@ Status meanings:
 
 | RFC behavior | Status | Fixtures | Notes |
 |---|---|---|---|
-| Thread grouping | covered | `basic-references-chain`, `two-independent-threads`, `stable-thread-ordering-by-date` | Public output is flat `Thread { root_message_id, messages }`. |
+| Thread grouping | covered | `basic-references-chain`, `two-independent-threads`, `stable-thread-ordering-by-date`, `stable-thread-ordering-with-caller-ids` | Public output is flat `Thread { root_message_id, messages }`. |
 | Nested IMAP `THREAD` response | out of scope | none | A future tree API would need separate fixtures. |
 | Message sequence numbers / UIDs | out of scope | none | Callers provide stable IDs; the crate does not know mailbox sequence numbers. |
 
@@ -100,6 +100,7 @@ Every fixture must appear in this matrix so coverage drift is visible:
 - `in-reply-to-only-parent-missing`
 - `in-reply-to-only-parent-present`
 - `invalid-references-fall-back-to-in-reply-to`
+- `invalid-threading-headers-allow-subject-fallback`
 - `localized-subject-prefixes`
 - `message-id-case-sensitive`
 - `message-id-quoted-local-normalization`
@@ -115,6 +116,7 @@ Every fixture must appear in this matrix so coverage drift is visible:
 - `self-reference`
 - `single-message`
 - `stable-thread-ordering-by-date`
+- `stable-thread-ordering-with-caller-ids`
 - `subject-blob-normalization`
 - `subject-blob-only-preserved`
 - `subject-fallback-attaches-to-header-thread`

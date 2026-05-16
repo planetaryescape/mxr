@@ -16,6 +16,7 @@ const REQUIRED_FIXTURES: &[&str] = &[
     "in-reply-to-only-parent-missing",
     "in-reply-to-only-parent-present",
     "invalid-references-fall-back-to-in-reply-to",
+    "invalid-threading-headers-allow-subject-fallback",
     "localized-subject-prefixes",
     "message-id-case-sensitive",
     "message-id-quoted-local-normalization",
@@ -31,6 +32,7 @@ const REQUIRED_FIXTURES: &[&str] = &[
     "self-reference",
     "single-message",
     "stable-thread-ordering-by-date",
+    "stable-thread-ordering-with-caller-ids",
     "subject-fallback-attaches-to-header-thread",
     "subject-fallback-groups-headerless",
     "subject-blob-normalization",
@@ -215,9 +217,8 @@ impl FixtureOptions {
 
 impl FixtureMessage {
     fn into_message(self) -> Message {
-        let _fixture_id = self.id;
         Message {
-            id: _fixture_id,
+            id: self.id,
             message_id: self.message_id,
             in_reply_to: self.in_reply_to,
             references: self.references,

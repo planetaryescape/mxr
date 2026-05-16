@@ -166,11 +166,11 @@ impl Container {
 }
 
 fn ensure_container(table: &mut HashMap<String, Container>, id: &str, next_order: &mut usize) {
-    if !table.contains_key(id) {
+    table.entry(id.to_string()).or_insert_with(|| {
         let order = *next_order;
         *next_order += 1;
-        table.insert(id.to_string(), Container::empty(order));
-    }
+        Container::empty(order)
+    });
 }
 
 fn message_container_key(table: &HashMap<String, Container>, message: &Message) -> String {
@@ -296,10 +296,8 @@ fn collect_thread_messages(table: &HashMap<String, Container>, id: &str, out: &m
         return;
     };
 
-    if container.message.is_some() {
-        if let Some(message) = &container.message {
-            out.push(message.id.clone());
-        }
+    if let Some(message) = &container.message {
+        out.push(message.id.clone());
     }
 
     let mut children = container.children.clone();
@@ -348,21 +346,27 @@ fn compare_threads(
 }
 
 fn earliest_date(table: &HashMap<String, Container>, root_id: &str) -> DateTime<Utc> {
-    let mut messages = Vec::new();
-    collect_thread_messages(table, root_id, &mut messages);
-    messages
-        .iter()
-        .map(|id| message_date_by_key(table, id))
-        .min()
-        .unwrap_or_default()
+    earliest_message_date(table, root_id).unwrap_or_default()
 }
 
-fn message_date_by_key(table: &HashMap<String, Container>, id: &str) -> DateTime<Utc> {
-    table
-        .get(id)
-        .and_then(|container| container.message.as_ref())
+fn earliest_message_date(
+    table: &HashMap<String, Container>,
+    root_id: &str,
+) -> Option<DateTime<Utc>> {
+    let container = table.get(root_id)?;
+
+    container
+        .message
+        .as_ref()
         .map(|message| message.date)
-        .unwrap_or_default()
+        .into_iter()
+        .chain(
+            container
+                .children
+                .iter()
+                .filter_map(|child_id| earliest_message_date(table, child_id)),
+        )
+        .min()
 }
 
 fn message_date(
@@ -457,8 +461,20 @@ fn thread_has_headers(
             .get(id)
             .and_then(|key| table.get(key))
             .and_then(|container| container.message.as_ref())
-            .is_some_and(|message| message.in_reply_to.is_some() || !message.references.is_empty())
+            .is_some_and(has_valid_threading_header)
     })
+}
+
+fn has_valid_threading_header(message: &Message) -> bool {
+    message
+        .in_reply_to
+        .as_deref()
+        .and_then(normalize_message_id)
+        .is_some()
+        || message
+            .references
+            .iter()
+            .any(|reference| normalize_message_id(reference).is_some())
 }
 
 fn normalize_message_id(raw: &str) -> Option<String> {

@@ -1,0 +1,18 @@
+{
+  "name": "mailto-with-subject-and-body-drops-body",
+  "description": "mailto with both subject and body query params; body is dropped intentionally.",
+  "spec": {
+    "source": "RFC 6068",
+    "url": "https://www.rfc-editor.org/rfc/rfc6068#section-5",
+    "behavior": "Intentional divergence: senders sometimes encode the unsubscribe message in ?body=. Including it would let clients silently send pre-canned text on the user's behalf; we drop it. Documented in the crate README under 'Intentional divergences'."
+  },
+  "input": {
+    "list_unsubscribe": "<mailto:list@example.com?subject=unsubscribe&body=please%20remove%20me>",
+    "list_unsubscribe_post": null
+  },
+  "expected": {
+    "kind": "Mailto",
+    "address": "list@example.com",
+    "subject": "unsubscribe"
+  }
+}

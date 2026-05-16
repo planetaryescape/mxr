@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "list-unsubscribe conformance fixture",
+  "type": "object",
+  "required": ["name", "description", "spec", "input", "expected"],
+  "properties": {
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "spec": {
+      "type": "object",
+      "required": ["source", "behavior"],
+      "properties": {
+        "source": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "behavior": { "type": "string" }
+      }
+    },
+    "input": {
+      "type": "object",
+      "required": ["list_unsubscribe"],
+      "properties": {
+        "list_unsubscribe": { "type": "string" },
+        "list_unsubscribe_post": { "type": ["string", "null"] }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["OneClick", "HttpLink", "Mailto", "None"]
+        },
+        "url": { "type": "string" },
+        "address": { "type": "string" },
+        "subject": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

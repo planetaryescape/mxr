@@ -1,0 +1,16 @@
+{
+  "name": "malformed-url-returns-none",
+  "description": "Sole candidate is an unparseable URL; falls through to None.",
+  "spec": {
+    "source": "url crate",
+    "url": "https://docs.rs/url/latest/url/",
+    "behavior": "We do not invent URL fallbacks for inputs the url crate rejects. The crate's contract is parse-or-skip; unparseable entries are dropped, and if no candidate parses we return None."
+  },
+  "input": {
+    "list_unsubscribe": "<https://>",
+    "list_unsubscribe_post": null
+  },
+  "expected": {
+    "kind": "None"
+  }
+}

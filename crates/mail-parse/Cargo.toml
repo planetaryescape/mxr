@@ -16,10 +16,10 @@ workspace = true
 mxr-core = { workspace = true }
 chrono = { workspace = true }
 icalendar = { workspace = true }
+list-unsubscribe = { workspace = true, features = ["mail-parser"] }
 mail-parser = { workspace = true }
 regex = { workspace = true }
 thiserror = { workspace = true }
-url = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

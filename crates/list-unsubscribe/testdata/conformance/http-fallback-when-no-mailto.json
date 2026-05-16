@@ -1,0 +1,17 @@
+{
+  "name": "http-fallback-when-no-mailto",
+  "description": "Only http scheme available; returns HttpLink (no https required).",
+  "spec": {
+    "source": "RFC 2369",
+    "url": "https://www.rfc-editor.org/rfc/rfc2369#section-3.2",
+    "behavior": "Plain http URIs are accepted, though RFC 8058 one-click requires https. Without a Post header, an http URI is just an HttpLink."
+  },
+  "input": {
+    "list_unsubscribe": "<http://example.com/unsub>",
+    "list_unsubscribe_post": null
+  },
+  "expected": {
+    "kind": "HttpLink",
+    "url": "http://example.com/unsub"
+  }
+}

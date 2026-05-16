@@ -1,0 +1,18 @@
+{
+  "name": "rfc8058-post-without-https-falls-back",
+  "description": "Post header requests one-click but the main header only offers mailto. Falls back to Mailto.",
+  "spec": {
+    "source": "RFC 8058",
+    "url": "https://www.rfc-editor.org/rfc/rfc8058#section-3.2",
+    "behavior": "RFC 8058 one-click requires a https URL; without one the Post header is ignored and standard RFC 2369 preference applies."
+  },
+  "input": {
+    "list_unsubscribe": "<mailto:u@example.com>",
+    "list_unsubscribe_post": "List-Unsubscribe=One-Click"
+  },
+  "expected": {
+    "kind": "Mailto",
+    "address": "u@example.com",
+    "subject": null
+  }
+}

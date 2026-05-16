@@ -1,0 +1,16 @@
+{
+  "name": "empty-header",
+  "description": "Empty List-Unsubscribe header. Returns None.",
+  "spec": {
+    "source": "RFC 2369",
+    "url": "https://www.rfc-editor.org/rfc/rfc2369#section-3.2",
+    "behavior": "An empty header is treated as 'no method offered'."
+  },
+  "input": {
+    "list_unsubscribe": "",
+    "list_unsubscribe_post": null
+  },
+  "expected": {
+    "kind": "None"
+  }
+}

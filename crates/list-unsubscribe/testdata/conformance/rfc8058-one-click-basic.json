@@ -1,0 +1,17 @@
+{
+  "name": "rfc8058-one-click-basic",
+  "description": "Both headers present, Post requests one-click, https URL is available. Returns OneClick.",
+  "spec": {
+    "source": "RFC 8058",
+    "url": "https://www.rfc-editor.org/rfc/rfc8058#section-3.2",
+    "behavior": "When List-Unsubscribe-Post contains 'List-Unsubscribe=One-Click' and a https URL is in the main header, the caller may POST to that URL with body List-Unsubscribe=One-Click."
+  },
+  "input": {
+    "list_unsubscribe": "<mailto:u@example.com>, <https://example.com/unsub?u=abc>",
+    "list_unsubscribe_post": "List-Unsubscribe=One-Click"
+  },
+  "expected": {
+    "kind": "OneClick",
+    "url": "https://example.com/unsub?u=abc"
+  }
+}

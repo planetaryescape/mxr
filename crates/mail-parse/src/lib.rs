@@ -9,7 +9,6 @@ use mxr_core::types::{
 };
 use regex::Regex;
 use std::sync::OnceLock;
-use url::Url;
 
 #[derive(Debug, Clone)]
 pub struct ParsedHeaders {
@@ -335,7 +334,7 @@ pub fn extract_parsed_headers(
             .as_text_list()
             .map(|ids| ids.iter().map(|id| format!("<{id}>")).collect())
             .unwrap_or_default(),
-        unsubscribe: parse_list_unsubscribe(message),
+        unsubscribe: convert_unsubscribe(list_unsubscribe::parse_from_message(message)),
         metadata: extract_metadata(message, raw_headers),
     }
 }
@@ -398,79 +397,23 @@ fn parse_text_plain_format(content_type: &mail_parser::ContentType<'_>) -> Optio
     }
 }
 
-fn parse_list_unsubscribe(message: &Message<'_>) -> UnsubscribeMethod {
-    let entries: Vec<String> = match message.list_unsubscribe().as_address() {
-        Some(mail_parser::Address::List(list)) => list
-            .iter()
-            .filter_map(|addr| addr.address.as_ref().map(|value| value.to_string()))
-            .collect(),
-        Some(mail_parser::Address::Group(groups)) => groups
-            .iter()
-            .flat_map(|group| group.addresses.iter())
-            .filter_map(|addr| addr.address.as_ref().map(|value| value.to_string()))
-            .collect(),
-        None => Vec::new(),
-    };
-    if entries.is_empty() {
-        return UnsubscribeMethod::None;
-    }
-
-    let one_click = message
-        .header_raw("List-Unsubscribe-Post")
-        .map(|value| value.to_ascii_lowercase())
-        .map(|value| value.contains("list-unsubscribe=one-click"))
-        .unwrap_or(false);
-
-    if one_click {
-        if let Some(url) = entries
-            .iter()
-            .find(|entry| entry.starts_with("https://") || entry.starts_with("http://"))
-        {
-            return UnsubscribeMethod::OneClick {
-                url: url.to_string(),
-            };
+/// Bridge between the public `list-unsubscribe` crate's enum and mxr's
+/// 5-variant `UnsubscribeMethod`. The `BodyLink` variant is produced
+/// elsewhere by HTML body scraping; this path only converts the four
+/// header-derived variants.
+fn convert_unsubscribe(method: list_unsubscribe::UnsubscribeMethod) -> UnsubscribeMethod {
+    match method {
+        list_unsubscribe::UnsubscribeMethod::OneClick { url } => UnsubscribeMethod::OneClick {
+            url: url.into(),
+        },
+        list_unsubscribe::UnsubscribeMethod::HttpLink { url } => UnsubscribeMethod::HttpLink {
+            url: url.into(),
+        },
+        list_unsubscribe::UnsubscribeMethod::Mailto { address, subject } => {
+            UnsubscribeMethod::Mailto { address, subject }
         }
+        list_unsubscribe::UnsubscribeMethod::None => UnsubscribeMethod::None,
     }
-
-    for entry in &entries {
-        if let Some(mailto) = entry.strip_prefix("mailto:") {
-            return parse_mailto_unsubscribe(mailto);
-        }
-    }
-
-    if let Some(url) = entries
-        .iter()
-        .find(|entry| entry.starts_with("https://") || entry.starts_with("http://"))
-    {
-        return UnsubscribeMethod::HttpLink {
-            url: url.to_string(),
-        };
-    }
-
-    UnsubscribeMethod::None
-}
-
-fn parse_mailto_unsubscribe(mailto: &str) -> UnsubscribeMethod {
-    let mut subject = None;
-    let address = if let Some((address, query)) = mailto.split_once('?') {
-        for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
-            if key.eq_ignore_ascii_case("subject") {
-                subject = Some(value.to_string());
-            }
-        }
-        address.to_string()
-    } else if let Ok(url) = Url::parse(&format!("mailto:{mailto}")) {
-        for (key, value) in url.query_pairs() {
-            if key.eq_ignore_ascii_case("subject") {
-                subject = Some(value.to_string());
-            }
-        }
-        url.path().to_string()
-    } else {
-        mailto.to_string()
-    };
-
-    UnsubscribeMethod::Mailto { address, subject }
 }
 
 fn extract_first_addr(addr: &mail_parser::Address<'_>) -> Option<Address> {

@@ -1,0 +1,17 @@
+{
+  "name": "http-scheme-case-insensitive",
+  "description": "Uppercase scheme HTTPS:// is recognised; url::Url normalises to lowercase.",
+  "spec": {
+    "source": "RFC 3986 §3.1",
+    "url": "https://www.rfc-editor.org/rfc/rfc3986#section-3.1",
+    "behavior": "Scheme matching is case-insensitive; the url crate stores the canonical lowercase form."
+  },
+  "input": {
+    "list_unsubscribe": "<HTTPS://example.com/unsub>",
+    "list_unsubscribe_post": null
+  },
+  "expected": {
+    "kind": "HttpLink",
+    "url": "https://example.com/unsub"
+  }
+}

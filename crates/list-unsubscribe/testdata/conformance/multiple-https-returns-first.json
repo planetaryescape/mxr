@@ -1,0 +1,17 @@
+{
+  "name": "multiple-https-returns-first",
+  "description": "Two https URIs (e.g. desktop and mobile variants); returns the first.",
+  "spec": {
+    "source": "RFC 2369",
+    "url": "https://www.rfc-editor.org/rfc/rfc2369#section-3.2",
+    "behavior": "Intentional divergence: RFC 2369 does not specify ordering among multiple URIs of the same scheme. We return the first to give callers a deterministic single choice. Documented in the crate README."
+  },
+  "input": {
+    "list_unsubscribe": "<https://example.com/desktop/unsub>, <https://example.com/mobile/unsub>",
+    "list_unsubscribe_post": null
+  },
+  "expected": {
+    "kind": "HttpLink",
+    "url": "https://example.com/desktop/unsub"
+  }
+}

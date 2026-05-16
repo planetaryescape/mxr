@@ -1,0 +1,18 @@
+{
+  "name": "angle-bracket-whitespace-quirks",
+  "description": "Producers in the wild sometimes pad inside the angle brackets and around commas. Padding is tolerated.",
+  "spec": {
+    "source": "RFC 2369 + observed in production",
+    "url": "https://www.rfc-editor.org/rfc/rfc2369#section-3.2",
+    "behavior": "We strip the < > envelope then trim the URI. Padded inputs are still recognized; mailto wins per preference."
+  },
+  "input": {
+    "list_unsubscribe": "  < mailto:u@example.com > ,  < https://example.com/unsub > ",
+    "list_unsubscribe_post": null
+  },
+  "expected": {
+    "kind": "Mailto",
+    "address": "u@example.com",
+    "subject": null
+  }
+}

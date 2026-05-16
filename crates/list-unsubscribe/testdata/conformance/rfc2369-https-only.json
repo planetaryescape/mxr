@@ -1,0 +1,17 @@
+{
+  "name": "rfc2369-https-only",
+  "description": "Single https URI in List-Unsubscribe, no Post header. Returns HttpLink.",
+  "spec": {
+    "source": "RFC 2369",
+    "url": "https://www.rfc-editor.org/rfc/rfc2369#section-3.2",
+    "behavior": "A plain https URI without a one-click Post header is an HttpLink for the user to open."
+  },
+  "input": {
+    "list_unsubscribe": "<https://example.com/unsub?u=abc>",
+    "list_unsubscribe_post": null
+  },
+  "expected": {
+    "kind": "HttpLink",
+    "url": "https://example.com/unsub?u=abc"
+  }
+}

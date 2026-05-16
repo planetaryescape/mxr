@@ -1,0 +1,18 @@
+{
+  "name": "rfc2369-mailto-only",
+  "description": "Single mailto URI in List-Unsubscribe, no Post header. Returns Mailto.",
+  "spec": {
+    "source": "RFC 2369",
+    "url": "https://www.rfc-editor.org/rfc/rfc2369#section-3.2",
+    "behavior": "List-Unsubscribe may contain one or more URIs separated by commas; bare mailto: yields a Mailto action."
+  },
+  "input": {
+    "list_unsubscribe": "<mailto:u@example.com>",
+    "list_unsubscribe_post": null
+  },
+  "expected": {
+    "kind": "Mailto",
+    "address": "u@example.com",
+    "subject": null
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "mailto-with-subject",
+  "description": "mailto with ?subject= query is parsed; subject is captured.",
+  "spec": {
+    "source": "RFC 6068",
+    "url": "https://www.rfc-editor.org/rfc/rfc6068#section-2",
+    "behavior": "mailto query string supports a 'subject' parameter; the crate extracts it for the caller to pre-fill."
+  },
+  "input": {
+    "list_unsubscribe": "<mailto:list@example.com?subject=unsubscribe>",
+    "list_unsubscribe_post": null
+  },
+  "expected": {
+    "kind": "Mailto",
+    "address": "list@example.com",
+    "subject": "unsubscribe"
+  }
+}

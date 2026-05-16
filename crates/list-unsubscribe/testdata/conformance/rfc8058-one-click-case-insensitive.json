@@ -1,0 +1,17 @@
+{
+  "name": "rfc8058-one-click-case-insensitive",
+  "description": "Post header in uppercase is treated as one-click.",
+  "spec": {
+    "source": "RFC 8058",
+    "url": "https://www.rfc-editor.org/rfc/rfc8058#section-3.2",
+    "behavior": "RFC field bodies are case-preserving for the protocol but case-insensitive in semantics; we match 'list-unsubscribe=one-click' case-insensitively."
+  },
+  "input": {
+    "list_unsubscribe": "<https://example.com/unsub>",
+    "list_unsubscribe_post": "LIST-UNSUBSCRIBE=ONE-CLICK"
+  },
+  "expected": {
+    "kind": "OneClick",
+    "url": "https://example.com/unsub"
+  }
+}

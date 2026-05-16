@@ -1,0 +1,49 @@
+[package]
+name = "list-unsubscribe"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.74"
+repository = "https://github.com/planetaryescape/list-unsubscribe"
+homepage = "https://github.com/planetaryescape/list-unsubscribe"
+documentation = "https://docs.rs/list-unsubscribe"
+description = "Parse RFC 2369 List-Unsubscribe and RFC 8058 List-Unsubscribe-Post headers into a typed action enum."
+readme = "README.md"
+keywords = ["email", "unsubscribe", "rfc8058", "rfc2369", "mime"]
+categories = ["email", "parser-implementations"]
+include = [
+    "Cargo.toml",
+    "README.md",
+    "src/**",
+    "testdata/**",
+    "tests/**",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+]
+
+[lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+unwrap_used = "warn"
+panic = "warn"
+todo = "warn"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = []
+serde = ["dep:serde", "url/serde"]
+mail-parser = ["dep:mail-parser"]
+
+[dependencies]
+url = "2"
+serde = { version = "1", features = ["derive"], optional = true }
+mail-parser = { version = "0.9", optional = true }
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

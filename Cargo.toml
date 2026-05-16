@@ -93,6 +93,7 @@ members = [
     "crates/humanizer",
     "crates/llm",
     "crates/mail-parse",
+    "crates/mailbox-formats",
     "crates/outbound",
     "crates/protocol",
     "crates/provider-fake",
@@ -149,6 +150,7 @@ mxr-mail-parse = { path = "crates/mail-parse", version = "0.5.18" }
 mail-threading = "0.1.0"
 list-unsubscribe = "0.1.0"
 mail-query = "0.1.0"
+mailbox-formats = { path = "crates/mailbox-formats", version = "0.1.0" }
 mxr-outbound = { path = "crates/outbound", version = "0.5.18" }
 mxr-protocol = { path = "crates/protocol", version = "0.5.18" }
 mxr-provider-fake = { path = "crates/provider-fake", version = "0.5.18" }

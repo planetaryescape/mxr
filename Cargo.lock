@@ -3561,6 +3561,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "mailbox-formats"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.11.0",
+ "libc",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3978,6 +3992,7 @@ version = "0.5.18"
 dependencies = [
  "chrono",
  "insta",
+ "mailbox-formats",
  "mxr-core",
  "mxr-reader",
  "mxr-test-support",

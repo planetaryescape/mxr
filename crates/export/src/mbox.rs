@@ -1,49 +1,94 @@
+use std::time::SystemTime;
+
+use mailbox_formats::{MboxVariant, MboxWriter, RawMessage};
+
 use crate::ExportThread;
 
-/// Export thread as RFC 4155 mbox format.
-/// Each message starts with "From " line followed by RFC 2822 headers + body.
+/// Export thread as RFC 4155 mbox format (mboxrd variant).
+///
+/// Thin adapter over [`mailbox-formats`](https://crates.io/crates/mailbox-formats):
+/// convert each `ExportMessage` into a `RawMessage` and let
+/// `MboxWriter` handle From-line escaping, CRLF normalisation, and the
+/// `From ` envelope line.
 pub fn export_mbox(thread: &ExportThread) -> String {
-    let mut out = String::new();
-
-    for msg in &thread.messages {
-        // Mbox "From " line: From sender@email.com Tue Mar 17 09:45:00 2026
-        let mbox_date = msg.date.format("%a %b %e %H:%M:%S %Y");
-        out.push_str(&format!("From {} {}\r\n", msg.from_email, mbox_date));
-
-        // Headers
-        if let Some(raw) = &msg.headers_raw {
-            let raw = raw.replace("\r\n", "\n").replace('\n', "\r\n");
-            out.push_str(raw.trim_end_matches("\r\n"));
-            out.push_str("\r\n");
-        } else {
-            // Reconstruct minimal headers
-            if let Some(name) = &msg.from_name {
-                out.push_str(&format!("From: {} <{}>\r\n", name, msg.from_email));
-            } else {
-                out.push_str(&format!("From: {}\r\n", msg.from_email));
-            }
-            out.push_str(&format!("Subject: {}\r\n", msg.subject));
-            out.push_str(&format!("Date: {}\r\n", msg.date.to_rfc2822()));
-            if !msg.to.is_empty() {
-                out.push_str(&format!("To: {}\r\n", msg.to.join(", ")));
-            }
+    let mut buf: Vec<u8> = Vec::new();
+    {
+        let mut writer = MboxWriter::new(&mut buf, MboxVariant::Mboxrd);
+        for msg in &thread.messages {
+            let raw = export_message_to_raw(msg);
+            writer
+                .write_message(&raw)
+                .expect("writing to Vec<u8> cannot fail");
         }
-        out.push_str("\r\n");
-
-        // Body (escape lines starting with "From " per mbox convention)
-        if let Some(text) = &msg.body_text {
-            for line in text.lines() {
-                if line.starts_with("From ") {
-                    out.push('>');
-                }
-                out.push_str(line);
-                out.push_str("\r\n");
-            }
-        }
-        out.push_str("\r\n");
+        writer.finish().expect("finish writes to Vec<u8>");
     }
+    String::from_utf8(buf).expect("mbox output is ASCII-clean")
+}
 
-    out
+fn export_message_to_raw(msg: &crate::ExportMessage) -> RawMessage {
+    let headers = if let Some(raw) = &msg.headers_raw {
+        // Parse the caller-provided raw header block (already in
+        // RFC 5322 shape) into our (name, value) pairs.
+        parse_raw_headers(raw)
+    } else {
+        // Reconstruct minimal headers.
+        reconstruct_headers(msg)
+    };
+
+    let body = msg
+        .body_text
+        .as_deref()
+        .map(|s| {
+            // Normalise to LF; the writer canonicalises to CRLF.
+            s.replace("\r\n", "\n").into_bytes()
+        })
+        .unwrap_or_default();
+
+    let timestamp: SystemTime = msg.date.into();
+
+    RawMessage::new(headers, body)
+        .with_envelope_from(msg.from_email.clone())
+        .with_timestamp(timestamp)
+}
+
+fn parse_raw_headers(raw: &str) -> Vec<(String, Vec<u8>)> {
+    let mut headers: Vec<(String, Vec<u8>)> = Vec::new();
+    // Normalise line endings to LF for splitting.
+    let normalised = raw.replace("\r\n", "\n");
+    for line in normalised.split('\n') {
+        if line.is_empty() {
+            continue;
+        }
+        // Folded continuation.
+        if line.starts_with(' ') || line.starts_with('\t') {
+            if let Some((_, value)) = headers.last_mut() {
+                value.push(b' ');
+                value.extend_from_slice(line.trim_start().as_bytes());
+            }
+            continue;
+        }
+        if let Some(colon) = line.find(':') {
+            let name = line[..colon].to_string();
+            let value = line[colon + 1..].trim_start().as_bytes().to_vec();
+            headers.push((name, value));
+        }
+    }
+    headers
+}
+
+fn reconstruct_headers(msg: &crate::ExportMessage) -> Vec<(String, Vec<u8>)> {
+    let mut headers: Vec<(String, Vec<u8>)> = Vec::new();
+    let from_value = match &msg.from_name {
+        Some(name) => format!("{} <{}>", name, msg.from_email),
+        None => msg.from_email.clone(),
+    };
+    headers.push(("From".to_string(), from_value.into_bytes()));
+    headers.push(("Subject".to_string(), msg.subject.clone().into_bytes()));
+    headers.push(("Date".to_string(), msg.date.to_rfc2822().into_bytes()));
+    if !msg.to.is_empty() {
+        headers.push(("To".to_string(), msg.to.join(", ").into_bytes()));
+    }
+    headers
 }
 
 #[cfg(test)]
@@ -87,7 +132,6 @@ mod tests {
             Some("From: custom@header.com\r\nX-Custom: yes\r\n".into());
         let result = export_mbox(&thread);
         assert!(result.contains("X-Custom: yes"));
-        // Should NOT contain reconstructed headers
         assert!(!result.contains("From: Alice <alice@example.com>"));
     }
 
@@ -107,7 +151,6 @@ mod tests {
         let mut thread = sample_thread();
         thread.messages[0].body_text = Some("This is From the meeting".into());
         let result = export_mbox(&thread);
-        // "From" not at start of line — no escaping needed
         assert!(result.contains("This is From the meeting"));
     }
 
@@ -124,7 +167,6 @@ mod tests {
     #[test]
     fn mbox_handles_empty_body() {
         let result = export_mbox(&empty_body_thread());
-        // Should still produce valid mbox with From line and headers
         assert!(result.starts_with("From ghost@void.com"));
         assert!(result.contains("Subject: No body"));
     }
@@ -154,7 +196,6 @@ mod tests {
             }],
         };
         let result = export_mbox(&thread);
-        // Should be "From: plain@example.com" not "From:  <plain@example.com>"
         assert!(result.contains("From: plain@example.com\r\n"));
         assert!(!result.contains("From:  <"));
     }

@@ -18,6 +18,7 @@ This README is the conceptual playbook (15 lessons + checklists). The numbered f
 - [`08-incidents-and-near-misses.md`](./08-incidents-and-near-misses.md) — Honest log of what broke during `mail-threading` and `list-unsubscribe`. Read before the next extraction.
 - [`09-carving-out-of-existing-crates.md`](./09-carving-out-of-existing-crates.md) — Patterns that only show up when the new crate is scaffolded out of an existing one (rather than splitting an already-standalone workspace member). Captured from `list-unsubscribe`.
 - [`10-publishing-bar.md`](./10-publishing-bar.md) — The three-test bar a candidate must clear before it's nominated for extraction. Re-read before adding a new file to `docs/extractable-crates/`. Captured 2026-05-16 after almost extracting `format-flowed` (a 4-page RFC, an afternoon's work) as the third crate.
+- [`11-build-from-spec-carve-outs.md`](./11-build-from-spec-carve-outs.md) — The case where the mxr seed is thin and Phase 0 is mostly new code anchored to specs. Distinguishes from lesson 09's "carve out of existing crate" pattern (which assumed production-credible code being lifted). Captured 2026-05-17 from `mailbox-formats`.
 
 ## The short version
 
@@ -528,20 +529,28 @@ If the answer is mostly no, defer.
 - The runbook is at
   [`../implementation/04-mail-query-external-repo.md`](../implementation/04-mail-query-external-repo.md).
 
-### Strong next candidates
-
 `mailbox-formats`:
 
-- mbox + Maildir reader/writer
-- multi-variant escaping is non-trivial
-- atomic Maildir delivery clears the bar
-- audience wider than format-flowed
+- Shipped on 2026-05-17 as
+  [`mailbox-formats v0.1.0`](https://crates.io/crates/mailbox-formats)
+  at
+  [`planetaryescape/mailbox-formats`](https://github.com/planetaryescape/mailbox-formats).
+- First **build-from-spec** carve-out — mxr's seed was a single
+  195-line writer; the shipped crate is ~1400 LoC of spec-anchored
+  new code (mbox reader + writer for 4 variants, Maildir reader +
+  writer, full `LockStrategy` enum). Captured as new lesson 11.
+- The runbook is at
+  [`../implementation/05-mailbox-formats-external-repo.md`](../implementation/05-mailbox-formats-external-repo.md).
 
-Start with:
+### Strong next candidates
 
-```bash
-sed -n '1,240p' docs/extractable-crates/05-mailbox-formats.md
-```
+`sync-engine`:
+
+- See [07-sync-engine](../../extractable-crates/07-sync-engine.md) —
+  marked investigate-later
+- Real ecosystem gap; highest impact of any remaining candidate
+- 2-3 day discovery before commit; wait for mxr's sync surface to
+  stabilise
 
 ### High-risk or not now
 

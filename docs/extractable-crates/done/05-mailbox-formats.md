@@ -1,16 +1,24 @@
 ---
 candidate: mailbox-formats
-status: tier-2
-decision: ship-after-gmail-query
-mxr_source: crates/export/src/mbox.rs (mbox writer only)
-last_reviewed: 2026-05-16
-audit_notes: |
-  Passes the publishing bar (lessons/10): real ecosystem gap, multi-variant
-  escaping + atomic Maildir delivery are non-trivial, audience is wider
-  than format-flowed (archive tools, migration utilities, forensic
-  analysis). Effort is meaningful (~1-2 days agent-assisted) but not "an
-  afternoon." Ship after gmail-query.
+status: published
+decision: shipped
+external_repo: https://github.com/planetaryescape/mailbox-formats
+crates_io: https://crates.io/crates/mailbox-formats
+mxr_source: crates/export/src/mbox.rs (mboxrd writer was the seed; consumed via mxr-export adapter)
+last_reviewed: 2026-05-17
 ---
+
+> **Status: Shipped.** Published as
+> [`mailbox-formats v0.1.0`](https://crates.io/crates/mailbox-formats) at
+> [`planetaryescape/mailbox-formats`](https://github.com/planetaryescape/mailbox-formats).
+> The mxr seed was thin (single 195-line `export_mbox()` function); the
+> shipped crate is mostly spec-anchored new code: streaming mbox reader,
+> all four variants (mboxo/rd/cl/cl2), full Maildir reader+writer with
+> atomic tmp→new delivery, and a `LockStrategy` enum covering the
+> Dovecot-documented mbox lock conventions. mxr now consumes the
+> registry version; `mxr-export`'s `mbox.rs` is a thin adapter. The
+> migration runbook is in
+> [`docs/extracted-crates/implementation/05-mailbox-formats-external-repo.md`](../../extracted-crates/implementation/05-mailbox-formats-external-repo.md).
 
 # `mailbox-formats` (proposed name)
 

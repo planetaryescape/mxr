@@ -1,10 +1,16 @@
 ---
 candidate: compose
-status: skip
-decision: skip
+status: wont-do
+decision: wont-do
 mxr_source: crates/compose/
-last_reviewed: 2026-05-15
+last_reviewed: 2026-05-16
 ---
+
+> **Status: won't-do.** Fails the publishing bar
+> ([`docs/extracted-crates/lessons/10-publishing-bar.md`](../../extracted-crates/lessons/10-publishing-bar.md)):
+> the `edit` crate already covers `$EDITOR` spawning. mxr's value-add
+> here is the frontmatter convention, which is mxr-specific product
+> policy. `mxr-compose` stays internal.
 
 # `mxr-compose` — **Skip**
 

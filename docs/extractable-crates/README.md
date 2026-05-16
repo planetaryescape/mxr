@@ -135,10 +135,10 @@ change to revisit.
 | 06 | [reader-quote-sig](./wont-do/06-reader-quote-sig.md) | Real ecosystem gap, but mxr's English-only heuristics need ~1-2 weeks of corpus work to be credible. Shipping the current code would mislead users. |
 | 08 | [outbound](./wont-do/08-outbound.md) | Real-but-modest gap, small effort (3-5 days mostly polish), narrow audience (only senders). Stays internal. |
 | 09 | [rules](./wont-do/09-rules.md) | The natural rival is Sieve (RFC 5228); a custom DSL competes confusingly. mxr's verbs (`Snooze`, `ReplyLater`) are product-shaped. |
-| 10 | [compose](./10-compose.md) | Thin `$EDITOR` wrapper; the `edit` crate covers this. |
-| 11 | [humanizer](./11-humanizer.md) | No demand signal, no clear brand, too niche. |
-| 12 | [llm](./12-llm.md) | Crowded space (`async-openai`, `genai`, `rig`). |
-| 13 | [keychain](./13-keychain.md) | `keyring` crate covers this fully. |
+| 10 | [compose](./wont-do/10-compose.md) | Thin `$EDITOR` wrapper; the `edit` crate covers this. |
+| 11 | [humanizer](./wont-do/11-humanizer.md) | No demand signal, no clear brand, too niche. |
+| 12 | [llm](./wont-do/12-llm.md) | Crowded space (`async-openai`, `genai`, `rig`). |
+| 13 | [keychain](./wont-do/13-keychain.md) | `keyring` crate covers this fully. |
 
 ## How to use these docs
 

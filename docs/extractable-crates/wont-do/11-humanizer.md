@@ -1,10 +1,15 @@
 ---
 candidate: humanizer
-status: skip
-decision: skip
+status: wont-do
+decision: wont-do
 mxr_source: crates/humanizer/
-last_reviewed: 2026-05-15
+last_reviewed: 2026-05-16
 ---
+
+> **Status: won't-do.** Fails the publishing bar
+> ([`docs/extracted-crates/lessons/10-publishing-bar.md`](../../extracted-crates/lessons/10-publishing-bar.md)):
+> no demand signal, no clear brand, audience too niche. `mxr-humanizer`
+> stays internal.
 
 # `mxr-humanizer` — **Skip**
 

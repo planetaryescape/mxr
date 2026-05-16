@@ -1,10 +1,15 @@
 ---
 candidate: llm
-status: skip
-decision: skip
+status: wont-do
+decision: wont-do
 mxr_source: crates/llm/
-last_reviewed: 2026-05-15
+last_reviewed: 2026-05-16
 ---
+
+> **Status: won't-do.** Fails the publishing bar
+> ([`docs/extracted-crates/lessons/10-publishing-bar.md`](../../extracted-crates/lessons/10-publishing-bar.md)):
+> crowded space — `async-openai`, `genai`, and `rig` already cover the
+> OpenAI-compatible-provider abstraction. `mxr-llm` stays internal.
 
 # `mxr-llm` — **Skip**
 

@@ -3353,10 +3353,10 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 [[package]]
 name = "list-unsubscribe"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05d0a1f2f1ddc518607dd1e8b03157c19cbbf65667ece93f87a9d06c93372665"
 dependencies = [
  "mail-parser",
- "serde",
- "serde_json",
  "url",
 ]
 
@@ -7732,7 +7732,6 @@ dependencies = [
  "idna",
  "percent-encoding",
  "serde",
- "serde_derive",
 ]
 
 [[package]]

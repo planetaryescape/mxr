@@ -91,7 +91,6 @@ members = [
     "crates/export",
     "crates/keychain",
     "crates/humanizer",
-    "crates/list-unsubscribe",
     "crates/llm",
     "crates/mail-parse",
     "crates/outbound",
@@ -148,7 +147,7 @@ mxr-humanizer = { path = "crates/humanizer", version = "0.5.18" }
 mxr-llm = { path = "crates/llm", version = "0.5.18" }
 mxr-mail-parse = { path = "crates/mail-parse", version = "0.5.18" }
 mail-threading = "0.1.0"
-list-unsubscribe = { path = "crates/list-unsubscribe", version = "0.1.0" }
+list-unsubscribe = "0.1.0"
 mxr-outbound = { path = "crates/outbound", version = "0.5.18" }
 mxr-protocol = { path = "crates/protocol", version = "0.5.18" }
 mxr-provider-fake = { path = "crates/provider-fake", version = "0.5.18" }

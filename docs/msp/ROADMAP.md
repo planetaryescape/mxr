@@ -1,7 +1,7 @@
 # MSP roadmap
 
-> **Current focus:** Step 1 — land spike artifacts. Step 2 (mxr
-> alignment Phase A) is queued and ready to start.
+> **Current focus:** Step 3 — mxr alignment Phase B (opaque
+> `SyncCursor`). Steps 1 and 2 landed 2026-05-17.
 >
 > _Last updated: 2026-05-17._
 
@@ -14,8 +14,8 @@ sessions can pick up without losing context.
 
 | Step | What | Status | Est. effort | Blocked on |
 |------|------|--------|-------------|------------|
-| 1 | Land spike artifacts in mxr | **In progress** | Done | — |
-| 2 | mxr alignment Phase A — cheap wins | Not started | ~1 day | Step 1 |
+| 1 | Land spike artifacts in mxr | **Done** | — | — |
+| 2 | mxr alignment Phase A — cheap wins | **Done** | ~1 day | — |
 | 3 | mxr alignment Phase B — opaque SyncCursor | Not started | ~2 days | Step 2 |
 | 4 | Publish-or-hold decision | Not started | ~1 hour | Step 3 |
 | 5 | Reference IMAP adapter as separate crate | Not started | ~1-2 weeks | Step 4 (if publish) |
@@ -30,40 +30,41 @@ captures the meta-pattern.
 
 **Exit gate met:** All files committed and referenced.
 
-## Step 2 — mxr alignment Phase A (cheap wins)
+## Step 2 — mxr alignment Phase A (cheap wins) ✅
 
 The "cheap wins" from `mxr-alignment.md`. Pure clean-ups; no
 behaviour change; mxr is strictly better afterwards.
 
-**Tasks:**
+**Tasks landed:**
 
-1. **Namespaced `SyncCapabilities` restructure.** Replace the flat
-   boolean soup in `crates/core/src/types.rs:1833-1843` with a
-   nested struct (`{sync: {...}, mutate: {...}, push: {...},
-   search: {...}}`). Same information, MSP-shaped.
-2. **Typed `SyncCursorExpired` error variant.** Add to `MxrError`;
-   adapters return it instead of `NotFound`; the daemon's recovery
-   code in `crates/sync/src/engine.rs:243-264` becomes provider-
-   agnostic (removes the Gmail special case).
-3. **`Role` enum on Folder/Label.** Add a `role: Option<Role>`
-   field to `Label`; populate from the existing `special_use`
-   strings in `crates/provider-imap/src/session.rs:796-820` and
-   Gmail's system labels.
+1. ✅ **Namespaced `SyncCapabilities` restructure** —
+   `37b771f refactor: namespace SyncCapabilities into sync/mutate/search/push`.
+   Flat boolean soup replaced with `{sync, mutate, search, push}`
+   sub-structs; each derives `Default`, so providers only spell out
+   non-default flags. IPC-facing `AccountCapabilitiesData` stays
+   flat for now — wire reshape is a Phase B+ concern.
+2. ✅ **Typed `SyncCursorExpired` error variant** —
+   `b31d006 refactor: add typed SyncCursorExpired error variant`.
+   Gmail provider surfaces the typed error instead of falling back
+   to `initial_sync()` internally; daemon's engine recovery is
+   provider-agnostic (no Gmail-only match). Maps cleanly to MSP §5's
+   `msp.sync.cannot_calculate_changes`.
+3. ✅ **`Role` enum on Folder/Label** —
+   `aa29c46 refactor: add Role enum + Label.role field for MSP §2.3 alignment`.
+   `Role` enum (`#[non_exhaustive]`) plus `Label.role: Option<Role>`
+   populated from IMAP SPECIAL-USE attrs and Gmail system label ids.
+   Store doesn't persist role yet (defaults to `None` on hydrate);
+   persistence + backfill queued for Phase B+.
 
-**Entry gate:** Step 1 done.
+**Entry gate met:** Step 1 done.
 
-**Exit gate:**
-- Three commits land (one per task), each green on `cargo test
-  -p <touched-crate> --tests`.
-- Daemon smoke test passes against the fake provider via CLI (per
-  AGENTS.md workflow): `mxr daemon --foreground &; mxr sync <fake>;
-  mxr search ... --json`.
-- No daemon regression for Gmail or IMAP if real credentials are
-  convenient.
-
-**Status:** Not started. Reading material: section "MSP §4 —
-Capabilities," "MSP §5 — Resumability," and "MSP §2.3 — Folder" in
-`mxr-alignment.md`.
+**Exit gate met:**
+- Three commits landed, each green on `cargo test -p <touched-crate>
+  --tests`. Workspace-wide `cargo check --tests` clean.
+- Daemon smoke test (per AGENTS.md): `mxr daemon --foreground` boots
+  cleanly, `mxr doctor`, `mxr accounts --format json`, `mxr count`,
+  `mxr search --limit 2 --format json` all return correct JSON.
+  Real Gmail sync cycle ran end-to-end (cursor saved, no regression).
 
 ## Step 3 — mxr alignment Phase B (opaque `SyncCursor`)
 
@@ -198,6 +199,14 @@ sustainable.
 ## Roadmap revisions / changelog
 
 Append below as the roadmap evolves. Most recent first.
+
+### 2026-05-17 — Phase A landed
+- All three Phase A tasks shipped in three commits (37b771f,
+  b31d006, aa29c46).
+- Daemon smoke test passed via CLI. No regression in real Gmail
+  sync. Workspace `cargo check --tests` clean.
+- Phase A exit gate met; Step 3 (Phase B opaque `SyncCursor`) is
+  the next unblocked step.
 
 ### 2026-05-17 — Roadmap created
 - Six-step plan defined from the spike verdict.

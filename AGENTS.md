@@ -35,6 +35,92 @@ TUI / CLI / Web / Scripts  <--- Unix socket (JSON) --->  Daemon
 
 Single unified binary: `mxr` with subcommands (`mxr` = TUI, `mxr daemon`, `mxr sync`, `mxr search`, etc.).
 
+## How AI Agents Work on mxr (READ FIRST)
+
+**You are an agent. mxr is your tool. Use mxr to build mxr.**
+
+The contract is non-negotiable: every capability is reachable from the
+CLI. That means every feature you build is also testable, debuggable,
+and verifiable by you — through the same surface a human power-user
+hits. There is no "agents are second-class" path. If the CLI can't do
+it, the feature is incomplete.
+
+### The agent build-and-verify loop
+
+When you ship any feature, follow this loop:
+
+1. **Build** — implement the feature in the appropriate crate(s).
+2. **Compile** — `scripts/cargo-test -p <crate> --tests` for fast unit
+   feedback; full build with `cargo build -p mxr`.
+3. **Restart the daemon** — your in-progress daemon is stale.
+   ```bash
+   pkill -f 'mxr daemon' 2>/dev/null
+   cargo run --bin mxr -- daemon --foreground &
+   # wait for "daemon listening" in stderr
+   ```
+4. **Drive the feature via the CLI** — never assume tests prove the
+   integration works. Hit the actual subcommand:
+   ```bash
+   mxr <new-subcommand> --your --flags
+   mxr <related-subcommand> --json | jq .  # verify structured output
+   ```
+5. **Watch the daemon's view** — use mxr's own observability surfaces:
+   ```bash
+   mxr events --tail              # live IPC events
+   mxr logs --tail                # daemon logs
+   mxr doctor                     # system state
+   mxr activity --since "5m ago"  # what your test commands recorded
+   ```
+6. **Inspect persisted state** — if your feature writes to the store
+   or search index, query it back via the CLI:
+   ```bash
+   mxr search '<query that should hit your new field>' --json
+   mxr <get-subcommand> <id> --json | jq .
+   ```
+7. **Only then is the feature done.** If any of the above failed,
+   loop back to step 1.
+
+### What this means in practice
+
+- **`cargo test` passing is necessary but not sufficient.** 212 unit
+  tests passed while a label-filtering bug shipped because no test
+  exercised the real sync→store→junction→query path. The CLI loop
+  above is the gate.
+- **You can drive mxr without a human.** Spawn the daemon as a
+  background process, hit it via the CLI, parse the JSON output, take
+  the next action. The CLI is your API.
+- **JSON output is for you.** Every list/get/status/search surface
+  emits stable structured output (`--json` flag or JSONL streams).
+  Read it, parse it, act on it. Don't scrape human-formatted tables.
+- **When something breaks, use mxr to debug mxr.** `mxr events`,
+  `mxr logs`, `mxr doctor`, `mxr activity` all expose internal state.
+  Reach for them before adding `eprintln!` or extra logging.
+- **Adding a feature means adding both the CLI subcommand and the TUI
+  action handler.** See "Wire both clients or wire neither" below.
+  The TUI is then verified by humans; the CLI is verified by you.
+
+### When the daemon is broken
+
+If `mxr daemon` won't start, the loop short-circuits. Tools:
+
+- `cargo build -p mxr 2>&1 | head -50` — find the compile error.
+- `pgrep -af 'mxr|cargo'` — find stuck processes from prior runs.
+- `mxr daemon --foreground` (not backgrounded) — see startup errors
+  directly.
+- `rm ~/Library/Application\ Support/mxr/daemon.sock` (macOS) or the
+  XDG runtime equivalent if the socket is stale.
+
+### Why this matters
+
+mxr is designed for power users and agents. You ARE one of those
+agents. Working through the CLI keeps the project honest: every
+feature must serve a non-TUI user. Every test you do with the CLI is
+also a test that the contract holds.
+
+If you find yourself reaching for an internal API directly because
+"the CLI doesn't expose this yet," the answer is: add the CLI
+subcommand first.
+
 ## IPC Contract Boundary
 
 The transport is settled: length-delimited JSON over a Unix socket using `IpcMessage { id, payload }`.

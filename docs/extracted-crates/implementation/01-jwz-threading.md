@@ -1,6 +1,6 @@
 ---
 candidate: mail-threading
-source_doc: ../../extractable-crates/02-jwz-threading.md
+source_doc: ../../extractable-crates/done/02-jwz-threading.md
 status: complete-extracted-and-published
 external_repo: https://github.com/planetaryescape/mail-threading
 crates_io: https://crates.io/crates/mail-threading
@@ -326,7 +326,7 @@ Fixed:
 - Decided flat output is enough for v0.1. Nested tree output can be added later
   if external users need it.
 
-The source audit doc `docs/extractable-crates/02-jwz-threading.md` has been
+The source audit doc `docs/extractable-crates/done/02-jwz-threading.md` has been
 updated to point at the in-repo crate and shared corpus.
 
 ## mxr integration
@@ -349,7 +349,7 @@ Likely affected files:
 - `crates/sync/src/engine.rs`
 - `crates/sync/src/lib.rs`
 - `crates/sync/src/threading.rs` (removed)
-- `docs/extractable-crates/02-jwz-threading.md`
+- `docs/extractable-crates/done/02-jwz-threading.md`
 
 ## JS package plan
 

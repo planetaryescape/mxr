@@ -381,7 +381,7 @@ rg -n "crates/mail-threading|in-tree|workspace crate|mail-threading" docs README
 
 Expected updates:
 
-- `docs/extractable-crates/02-jwz-threading.md` should say the crate now lives
+- `docs/extractable-crates/done/02-jwz-threading.md` should say the crate now lives
   at `planetaryescape/mail-threading`.
 - `docs/extracted-crates/implementation/01-jwz-threading.md` should mark the
   in-repo implementation phase complete and point to the standalone repo.

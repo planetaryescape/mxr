@@ -14,7 +14,11 @@ docs/extracted-crates/implementation/<NN>-<topic>.md
   → in-tree implementation plan: target layout, public contract, tests, milestones
 ```
 
-For `mail-threading`, those are `02-jwz-threading.md` and `01-jwz-threading.md` respectively.
+After publishing, move the candidate doc to `docs/extractable-crates/done/`
+so the active candidate list stays readable.
+
+For `mail-threading`, those are `done/02-jwz-threading.md` and
+`01-jwz-threading.md` respectively.
 
 Once the crate is split to its own repo, a *third* doc joins them:
 
@@ -27,7 +31,8 @@ For `mail-threading`, that's `02-mail-threading-external-repo.md`. This doc is t
 
 Keep all three. They serve different audiences:
 
-- Audit (why we extracted): `extractable-crates/`
+- Audit (why we extracted): `extractable-crates/` or
+  `extractable-crates/done/` after publish
 - Architecture (what we built): `extracted-crates/implementation/<NN>-<topic>`
 - Process (how we shipped it): `extracted-crates/implementation/<NN>-<topic>-external-repo`
 

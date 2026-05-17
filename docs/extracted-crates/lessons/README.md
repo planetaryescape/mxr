@@ -19,6 +19,7 @@ This README is the conceptual playbook (15 lessons + checklists). The numbered f
 - [`09-carving-out-of-existing-crates.md`](./09-carving-out-of-existing-crates.md) — Patterns that only show up when the new crate is scaffolded out of an existing one (rather than splitting an already-standalone workspace member). Captured from `list-unsubscribe`.
 - [`10-publishing-bar.md`](./10-publishing-bar.md) — The three-test bar a candidate must clear before it's nominated for extraction. Re-read before adding a new file to `docs/extractable-crates/`. Captured 2026-05-16 after almost extracting `format-flowed` (a 4-page RFC, an afternoon's work) as the third crate.
 - [`11-build-from-spec-carve-outs.md`](./11-build-from-spec-carve-outs.md) — The case where the mxr seed is thin and Phase 0 is mostly new code anchored to specs. Distinguishes from lesson 09's "carve out of existing crate" pattern (which assumed production-credible code being lifted). Captured 2026-05-17 from `mailbox-formats`.
+- [`12-protocol-first-design.md`](./12-protocol-first-design.md) — When the obvious framing is "extract this as a library," ask if it should be a wire protocol instead. The spec-drafting exercise pays off for the seed system's architecture whether or not the protocol ships. Captured 2026-05-17 from the Mail Sync Protocol (MSP) spike.
 
 ## The short version
 

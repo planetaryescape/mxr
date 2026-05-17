@@ -237,6 +237,7 @@ mod tests {
             subject: "Test Subject".into(),
             body_markdown: "Hello **world**!".into(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         }

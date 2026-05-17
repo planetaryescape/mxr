@@ -12,17 +12,36 @@ use mxr_store::{thread_summary_content_hash, Store, ThreadSummaryRecord};
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-const SYSTEM_PROMPT: &str = r#"You summarize email conversation threads for a busy reader.
+const SUMMARY_PROMPT_VERSION: &str = "v2";
 
-You will receive the complete thread in chronological order. Every message includes From, To, Cc, and Bcc. Use those fields to understand who is speaking to whom. Do not assume every inbound-looking message was sent to the account owner. Use "you" only for addresses listed under Account owner addresses.
+const SYSTEM_PROMPT: &str = r#"You write thread summaries for a terminal email client. The reader already sees subject, sender, recipient, date, and full thread structure on screen — never restate those.
 
-Return concise Markdown:
-- Start with "Summary:".
-- Then one bullet per message in chronological order. Each bullet must name the sender, the recipient scope, and the point of that specific message.
-- Preserve concrete dates, deadlines, decisions, and asks.
-- End with "Next steps:" and either bullets for actions the account owner should take or "No clear action needed."
+Output must be PLAIN TEXT. No markdown. No asterisks. No bold. No headers. No emoji. No bullet symbols unless the rules below require them.
 
-Do not invent context. If a message is informational, say so plainly."#;
+Step 1 — Classify silently (do not output the type): newsletter, transactional, personal, reply, notification.
+
+Step 2 — Write the summary by type:
+
+- newsletter: one or two short sentences (≤220 chars total) naming the 2–3 most concrete stories with their key facts (numbers, names, decisions). Lead with the most newsworthy. Do not preface with "this newsletter covers" or similar.
+- transactional: one sentence stating amount, date, account/entity, and action ("$24.53 autopay from acct ...1111 on Jul 31"). Skip the preamble.
+- personal / reply (single message): one or two sentences stating the actual point — the ask, the answer, the decision, the concrete content. Not "Alice writes about X."
+- personal / reply (multi-message thread, 2+ messages with back-and-forth): chronological bullets, one per substantive turn, prefixed with "- ". Each bullet names the speaker (first name or "you") and states what they said or decided. Skip routine acknowledgements. Maximum 6 bullets — collapse older turns if longer.
+- notification: one sentence stating the event and the affected entity.
+
+Step 3 — Action line (conditional):
+
+If, and only if, the latest inbound message contains an explicit, unambiguous ask directed at the account owner that has not already been answered, append on its own line:
+
+Action: <one short clause naming what you owe and any deadline>
+
+If there is no such ask, omit the line entirely. Do NOT write "no action needed", "FYI only", or any equivalent.
+
+Rules:
+- Say what the email SAYS, not what it IS. Concrete facts beat meta-descriptions.
+- Preserve names, numbers, dates, deadlines, decisions verbatim from the source.
+- Use "you" only for the account owner addresses listed in the user message.
+- Do not invent context. If a message is purely informational, just state the information.
+- Do not repeat the subject line, sender name, recipient address, or message date in the summary body."#;
 
 pub(super) async fn summarize_thread(state: &AppState, thread_id: &ThreadId) -> HandlerResult {
     let summary =
@@ -51,7 +70,7 @@ pub(crate) async fn valid_cached_summary(
         None => String::new(),
     };
     let content_hash = format!(
-        "{}:{relationship_hash}",
+        "{}:{relationship_hash}:{SUMMARY_PROMPT_VERSION}",
         thread_summary_content_hash(envelopes)
     );
     let record = store.get_thread_summary(thread_id).await.ok().flatten()?;
@@ -213,7 +232,7 @@ async fn load_summary_context(
     Ok(SummaryContext {
         account_id: thread.account_id,
         content_hash: format!(
-            "{}:{relationship_hash}",
+            "{}:{relationship_hash}:{SUMMARY_PROMPT_VERSION}",
             thread_summary_content_hash(&envelopes)
         ),
         message_count: envelopes.len().try_into().unwrap_or(u32::MAX),
@@ -343,9 +362,8 @@ mod tests {
         async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
             self.requests.lock().expect("requests").push(req);
             Ok(CompletionResponse {
-                content:
-                    "Summary:\n- Alice -> Bob: asks for approval.\n\nNext steps:\n- Reply to Alice."
-                        .to_string(),
+                content: "Alice asks you to approve the launch plan.\nAction: reply with approval or pushback by Fri."
+                    .to_string(),
                 model: "test-llm".to_string(),
                 finish_reason: Some("stop".to_string()),
             })

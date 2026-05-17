@@ -31,6 +31,7 @@ mod tests {
             subject: "Hello".into(),
             body_markdown: "hello".into(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         }

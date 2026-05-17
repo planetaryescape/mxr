@@ -10,6 +10,7 @@ impl Default for GeneralConfig {
             attachment_dir: crate::resolve::data_dir().join("attachments"),
             download_dir: crate::resolve::default_download_dir(),
             safety_policy: SafetyPolicy::Full,
+            locale: "en".to_string(),
         }
     }
 }

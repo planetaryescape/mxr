@@ -272,6 +272,9 @@ mod tests {
             rsvp_requested: true,
             raw_ics: Some("BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n".into()),
             warnings: Vec::new(),
+            viewer_partstat: None,
+            viewer_attendee_email: None,
+            is_update: false,
         });
 
         store.insert_body(&message_body).await.unwrap();

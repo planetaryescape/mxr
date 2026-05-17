@@ -256,6 +256,7 @@ fn send_confirm_snapshot() {
         safety_report: None,
         override_token: None,
         suggested_collaborators: vec![],
+        invite_reply: None,
     };
 
     let snapshot = render_to_string(70, 20, |frame| {

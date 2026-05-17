@@ -788,7 +788,10 @@ pub(crate) fn auto_summary_eligible(
 }
 
 fn count_words(text: &str) -> u32 {
-    text.split_whitespace().count().try_into().unwrap_or(u32::MAX)
+    text.split_whitespace()
+        .count()
+        .try_into()
+        .unwrap_or(u32::MAX)
 }
 
 fn is_automated_sender(addr: &Address) -> bool {

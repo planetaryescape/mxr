@@ -116,6 +116,61 @@ export interface MessageBodyView {
   text_html?: string | null;
   reader_text?: string | null;
   attachments?: AttachmentView[];
+  metadata?: MessageMetadataView;
+}
+
+export type CalendarPartstatView =
+  | "needs_action"
+  | "accepted"
+  | "tentative"
+  | "declined"
+  | "delegated";
+
+export interface CalendarPersonView {
+  email: string;
+  name?: string | null;
+  uri?: string | null;
+}
+
+export interface CalendarAttendeeView extends CalendarPersonView {
+  partstat?: string | null;
+  role?: string | null;
+  rsvp?: boolean | null;
+}
+
+export interface CalendarMetadataView {
+  method?: string | null;
+  summary?: string | null;
+  component_kind?: string | null;
+  uid?: string | null;
+  sequence?: number | null;
+  recurrence_id?: string | null;
+  dtstamp?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  description?: string | null;
+  location?: string | null;
+  status?: string | null;
+  rrule?: string | null;
+  organizer?: CalendarPersonView | null;
+  attendees?: CalendarAttendeeView[];
+  rsvp_requested?: boolean;
+  raw_ics?: string | null;
+  warnings?: string[];
+  viewer_partstat?: CalendarPartstatView | null;
+  viewer_attendee_email?: string | null;
+  is_update?: boolean;
+}
+
+export interface MessageMetadataView {
+  calendar?: CalendarMetadataView | null;
+  list_id?: string | null;
+  auth_results?: string | null;
+  content_language?: string[] | null;
+  text_plain_format?: unknown;
+  text_plain_source?: string | null;
+  text_html_source?: string | null;
+  raw_headers?: string | null;
 }
 
 export interface ThreadView {

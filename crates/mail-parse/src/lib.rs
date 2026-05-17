@@ -135,6 +135,69 @@ pub fn calendar_metadata_from_text(calendar_text: &str) -> Option<CalendarMetada
         .or_else(|| legacy_calendar_metadata_from_text(calendar_text))
 }
 
+/// Strict viewer-attendee match used by the send path. Errors when no
+/// attendee matches an account address, or when multiple match (ambiguous
+/// account aliases — send path refuses to guess).
+pub fn matching_attendee_strict<'a>(
+    calendar: &'a CalendarMetadata,
+    account_emails: &[String],
+) -> Result<&'a CalendarAttendee, MatchingAttendeeError> {
+    let matches = calendar
+        .attendees
+        .iter()
+        .filter(|attendee| {
+            account_emails
+                .iter()
+                .any(|email| attendee.email.eq_ignore_ascii_case(email))
+        })
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [attendee] => Ok(*attendee),
+        [] => Err(MatchingAttendeeError::NoMatch),
+        _ => Err(MatchingAttendeeError::Ambiguous),
+    }
+}
+
+/// Lenient viewer-attendee match used by read-path body views (`viewer_partstat`
+/// derivation). Returns `None` instead of erroring on multi-match so the UI
+/// renders the three action buttons rather than failing to load. Only the
+/// strict send path errors on ambiguity.
+pub fn matching_attendee_lenient<'a>(
+    calendar: &'a CalendarMetadata,
+    account_emails: &[String],
+) -> Option<&'a CalendarAttendee> {
+    let mut iter = calendar.attendees.iter().filter(|attendee| {
+        account_emails
+            .iter()
+            .any(|email| attendee.email.eq_ignore_ascii_case(email))
+    });
+    let first = iter.next()?;
+    if iter.next().is_some() {
+        return None;
+    }
+    Some(first)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchingAttendeeError {
+    NoMatch,
+    Ambiguous,
+}
+
+impl std::fmt::Display for MatchingAttendeeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoMatch => write!(f, "No account address is an attendee on this invite"),
+            Self::Ambiguous => write!(
+                f,
+                "Calendar invite has multiple attendees matching account addresses"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for MatchingAttendeeError {}
+
 fn parse_calendar_metadata_from_text(calendar_text: &str) -> Option<CalendarMetadata> {
     let unfolded = unfold(calendar_text);
     let calendar = read_calendar(&unfolded).ok()?;
@@ -192,6 +255,9 @@ fn parse_calendar_metadata_from_text(calendar_text: &str) -> Option<CalendarMeta
             rsvp_requested,
             raw_ics: Some(calendar_text.to_string()),
             warnings,
+            viewer_partstat: None,
+            viewer_attendee_email: None,
+            is_update: false,
         })
     } else {
         None
@@ -239,6 +305,9 @@ fn legacy_calendar_metadata_from_text(calendar_text: &str) -> Option<CalendarMet
             rsvp_requested: false,
             raw_ics: Some(calendar_text.to_string()),
             warnings: vec!["calendar invite could not be parsed as RFC 5545".to_string()],
+            viewer_partstat: None,
+            viewer_attendee_email: None,
+            is_update: false,
         })
     } else {
         None
@@ -611,6 +680,99 @@ mod tests {
             "{:?}",
             parsed.warnings
         );
+    }
+
+    #[test]
+    fn matching_attendee_strict_errors_on_zero_or_multiple_matches() {
+        let mut calendar = CalendarMetadata::default();
+        calendar.attendees = vec![
+            CalendarAttendee {
+                email: "alice@example.com".into(),
+                name: None,
+                uri: None,
+                partstat: None,
+                role: None,
+                rsvp: None,
+            },
+            CalendarAttendee {
+                email: "bob@example.com".into(),
+                name: None,
+                uri: None,
+                partstat: None,
+                role: None,
+                rsvp: None,
+            },
+        ];
+
+        let no_match = matching_attendee_strict(&calendar, &["zzz@example.com".into()]);
+        assert!(matches!(no_match, Err(MatchingAttendeeError::NoMatch)));
+
+        let single = matching_attendee_strict(&calendar, &["bob@example.com".into()]);
+        assert_eq!(single.unwrap().email, "bob@example.com");
+
+        let ambiguous = matching_attendee_strict(
+            &calendar,
+            &["alice@example.com".into(), "bob@example.com".into()],
+        );
+        assert!(matches!(ambiguous, Err(MatchingAttendeeError::Ambiguous)));
+    }
+
+    #[test]
+    fn matching_attendee_lenient_returns_none_for_ambiguous() {
+        let mut calendar = CalendarMetadata::default();
+        calendar.attendees = vec![
+            CalendarAttendee {
+                email: "alice@example.com".into(),
+                name: None,
+                uri: None,
+                partstat: None,
+                role: None,
+                rsvp: None,
+            },
+            CalendarAttendee {
+                email: "bob@example.com".into(),
+                name: None,
+                uri: None,
+                partstat: None,
+                role: None,
+                rsvp: None,
+            },
+        ];
+
+        let none = matching_attendee_lenient(&calendar, &["zzz@example.com".into()]);
+        assert!(none.is_none());
+
+        let single = matching_attendee_lenient(&calendar, &["bob@example.com".into()]);
+        assert_eq!(single.map(|a| a.email.as_str()), Some("bob@example.com"));
+
+        let ambiguous = matching_attendee_lenient(
+            &calendar,
+            &["alice@example.com".into(), "bob@example.com".into()],
+        );
+        assert!(
+            ambiguous.is_none(),
+            "lenient path soft-fails on multi-match, unlike strict"
+        );
+    }
+
+    #[test]
+    fn calendar_metadata_backwards_compat_without_viewer_fields() {
+        // Old JSON (no viewer_partstat, viewer_attendee_email, is_update)
+        // must still deserialize successfully — verifies the additive serde
+        // contract that lets a v3 daemon talk to a v2 client.
+        let json = r#"{
+            "method": "REQUEST",
+            "summary": "Demo",
+            "component_kind": "VEVENT",
+            "uid": "abc",
+            "attendees": [],
+            "rsvp_requested": true,
+            "warnings": []
+        }"#;
+        let parsed: CalendarMetadata = serde_json::from_str(json).expect("must deserialize");
+        assert_eq!(parsed.viewer_partstat, None);
+        assert_eq!(parsed.viewer_attendee_email, None);
+        assert!(!parsed.is_update);
     }
 
     #[test]

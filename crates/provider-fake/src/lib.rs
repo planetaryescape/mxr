@@ -356,6 +356,7 @@ impl MailSendProvider for FakeProvider {
             subject: reply.subject.clone(),
             body_markdown: format!("{}\n\n{}", reply.body_text, reply.ics),
             attachments: Vec::new(),
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         });
@@ -539,6 +540,7 @@ mod tests {
             subject: "Test".to_string(),
             body_markdown: "Hello".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };

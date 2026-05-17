@@ -387,6 +387,10 @@ pub(crate) const WRAPPED_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 
 pub struct AppState {
     pub store: Arc<Store>,
+    /// Static locale resolved once at daemon startup from `MXR_LOCALE` env
+    /// var or config `locale` key. Handlers reference this for subject and
+    /// body construction in iCal REPLY emails. Default `&EN`.
+    pub locale: &'static mxr_core::i18n::Locale,
     /// User-activity recorder. Single seam between the IPC dispatcher and
     /// the `user_activity` table. Failures here are observability-only.
     pub activity: crate::activity::Recorder,
@@ -448,6 +452,16 @@ pub(crate) struct AuthSessionRuntime {
     pub handle: JoinHandle<()>,
 }
 
+/// Resolve the active locale at startup. Honors `MXR_LOCALE` first, falls
+/// back to the config `general.locale` key, then to `"en"`. Trimmed +
+/// lowercased so `EN`/` en `/`en` all resolve identically.
+fn resolve_locale_code(config: &mxr_config::MxrConfig) -> String {
+    std::env::var("MXR_LOCALE")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| config.general.locale.clone())
+}
+
 impl AppState {
     pub async fn new() -> anyhow::Result<Self> {
         let config = mxr_config::load_config().unwrap_or_default();
@@ -502,8 +516,11 @@ impl AppState {
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
+        let locale = mxr_core::i18n::select(&resolve_locale_code(&config));
+
         Ok(Self {
             store,
+            locale,
             activity,
             search,
             semantic,
@@ -1236,6 +1253,7 @@ impl AppState {
         let activity = crate::activity::Recorder::spawn(store.clone());
         Ok(Self {
             store,
+            locale: mxr_core::i18n::DEFAULT_LOCALE,
             activity,
             search,
             semantic,
@@ -1295,6 +1313,7 @@ impl AppState {
         let activity = crate::activity::Recorder::spawn(store.clone());
         Ok(Self {
             store,
+            locale: mxr_core::i18n::DEFAULT_LOCALE,
             activity,
             search,
             semantic,
@@ -1380,6 +1399,7 @@ impl AppState {
         Ok((
             Self {
                 store,
+                locale: mxr_core::i18n::DEFAULT_LOCALE,
                 activity,
                 search,
                 semantic,

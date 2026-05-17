@@ -1,6 +1,6 @@
 ---
 source: crates/web/src/lib.rs
-assertion_line: 4005
+assertion_line: 4101
 expression: summary
 ---
 {
@@ -51,6 +51,7 @@ expression: summary
     "CalendarInviteResponsePreview",
     "CalendarInviteResponseResult",
     "CalendarMetadata",
+    "CalendarPartstat",
     "CalendarPerson",
     "CitationRef",
     "CitationRefData",
@@ -99,6 +100,7 @@ expression: summary
     "HumanizerHitData",
     "HumanizerReportSummaryData",
     "IndexFreshness",
+    "InlineCalendarReply",
     "IpcErrorKind",
     "Label",
     "LabelCount",

@@ -1008,6 +1008,7 @@ mod tests {
             subject: "Draft subject".to_string(),
             body_markdown: "# Hello".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };

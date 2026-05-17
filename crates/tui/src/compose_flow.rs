@@ -62,6 +62,7 @@ pub(crate) async fn handle_compose_action(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     action: ComposeAction,
 ) -> Result<ComposeReadyData, MxrError> {
+    let mut invite_reply: Option<mxr_core::types::InlineCalendarReply> = None;
     let (account_id, intent, from, kind, signature_kind) = match action {
         ComposeAction::EditDraft { path, account_id } => {
             // Re-edit existing draft — skip creating a new file
@@ -74,6 +75,7 @@ pub(crate) async fn handle_compose_action(
                 initial_content: mxr_compose::read_draft_file_async(&path)
                     .await
                     .map_err(|e| MxrError::Ipc(e.to_string()))?,
+                invite_reply: None,
             });
         }
         ComposeAction::New { to, subject } => {
@@ -166,6 +168,38 @@ pub(crate) async fn handle_compose_action(
                 SignatureContextData::Reply,
             )
         }
+        ComposeAction::InviteReplyWithComment {
+            message_id,
+            account_id,
+            action: invite_action,
+        } => {
+            let account = resolve_compose_account(bg, Some(&account_id)).await?;
+            let preview =
+                fetch_invite_response_preview(bg, message_id.clone(), invite_action).await?;
+            invite_reply = Some(mxr_core::types::InlineCalendarReply {
+                source_message_id: message_id,
+                attendee_email: preview.attendee_email.clone(),
+                partstat: invite_action_to_partstat(invite_action),
+                ics_body: preview.ics.clone(),
+            });
+            let kind = mxr_compose::ComposeKind::Reply {
+                reply_all: false,
+                in_reply_to: String::new(),
+                references: Vec::new(),
+                thread_id: None,
+                to: preview.organizer_email,
+                cc: String::new(),
+                subject: preview.subject,
+                thread_context: String::new(),
+            };
+            (
+                account_id,
+                mxr_core::DraftIntent::Reply,
+                account.email,
+                kind,
+                SignatureContextData::Reply,
+            )
+        }
     };
 
     let signature = resolve_default_signature(bg, &account_id, &from, signature_kind).await?;
@@ -182,7 +216,37 @@ pub(crate) async fn handle_compose_action(
         initial_content: mxr_compose::read_draft_file_async(&path)
             .await
             .map_err(|e| MxrError::Ipc(e.to_string()))?,
+        invite_reply,
     })
+}
+
+fn invite_action_to_partstat(
+    action: mxr_protocol::CalendarInviteActionData,
+) -> mxr_core::types::CalendarPartstat {
+    use mxr_core::types::CalendarPartstat;
+    use mxr_protocol::CalendarInviteActionData;
+    match action {
+        CalendarInviteActionData::Accept => CalendarPartstat::Accepted,
+        CalendarInviteActionData::Tentative => CalendarPartstat::Tentative,
+        CalendarInviteActionData::Decline => CalendarPartstat::Declined,
+    }
+}
+
+async fn fetch_invite_response_preview(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    message_id: MessageId,
+    action: mxr_protocol::CalendarInviteActionData,
+) -> Result<mxr_protocol::CalendarInviteResponsePreview, MxrError> {
+    let resp = ipc_call(bg, Request::PrepareInviteResponse { message_id, action }).await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::InviteResponsePreview { preview },
+        } => Ok(preview),
+        Response::Error { message, .. } => Err(MxrError::Ipc(message)),
+        _ => Err(MxrError::Ipc(
+            "unexpected response to PrepareInviteResponse".into(),
+        )),
+    }
 }
 
 pub(crate) async fn resolve_compose_account(
@@ -351,6 +415,7 @@ pub(crate) async fn pending_send_from_edited_draft(
         safety_report: None,
         override_token: None,
         suggested_collaborators: vec![],
+        invite_reply: data.invite_reply.clone(),
     }))
 }
 
@@ -469,6 +534,7 @@ fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
             .iter()
             .map(std::path::PathBuf::from)
             .collect(),
+        inline_calendar_reply: pending.invite_reply.clone(),
         created_at: now,
         updated_at: now,
     }

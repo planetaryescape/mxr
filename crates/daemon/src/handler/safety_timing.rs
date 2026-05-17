@@ -206,6 +206,7 @@ mod tests {
             subject: "test".into(),
             body_markdown: "hi".into(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

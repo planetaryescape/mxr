@@ -47,7 +47,10 @@ impl PendingOptimisticState {
                 self.removed_lookup.insert(mid.clone());
             }
             MutationEffect::RemoveFromListMany(ids) => {
-                self.removed.entry(id).or_default().extend(ids.iter().cloned());
+                self.removed
+                    .entry(id)
+                    .or_default()
+                    .extend(ids.iter().cloned());
                 for mid in ids {
                     self.removed_lookup.insert(mid.clone());
                 }
@@ -187,7 +190,10 @@ mod tests {
         let id = MutationId::from_raw(1);
         state.record(id, &MutationEffect::RemoveFromList(mid.clone()));
 
-        let mut envelopes = vec![fixture_envelope(mid.clone()), fixture_envelope(other.clone())];
+        let mut envelopes = vec![
+            fixture_envelope(mid.clone()),
+            fixture_envelope(other.clone()),
+        ];
         state.apply(&mut envelopes);
         assert_eq!(envelopes.len(), 1);
         assert_eq!(envelopes[0].id, other);

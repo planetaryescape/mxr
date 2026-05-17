@@ -163,6 +163,75 @@ impl InputHandler {
                 Some(Action::CenterCurrent)
             }
 
+            // Multi-key: i-prefix for iCal invite responses.
+            //
+            // Plain-suffix arms (`ia`/`im`/`id`) fire the auto-confirm + 1s
+            // undo flow; SHIFT-suffix arms (`iA`/`iM`/`iD`) route to the
+            // compose-with-comment path. The card hint text in
+            // `message_view.rs` references these chords — keep in sync if
+            // either side moves.
+            (KeyState::Normal, KeyCode::Char('i'), KeyModifiers::NONE) => {
+                self.state = KeyState::WaitingForSecond {
+                    first: 'i',
+                    deadline: Instant::now() + MULTI_KEY_TIMEOUT,
+                };
+                None
+            }
+            (
+                KeyState::WaitingForSecond { first: 'i', .. },
+                KeyCode::Char('a'),
+                KeyModifiers::NONE,
+            ) => {
+                self.state = KeyState::Normal;
+                Some(Action::RespondInvite(
+                    mxr_protocol::CalendarInviteActionData::Accept,
+                ))
+            }
+            (
+                KeyState::WaitingForSecond { first: 'i', .. },
+                KeyCode::Char('m'),
+                KeyModifiers::NONE,
+            ) => {
+                self.state = KeyState::Normal;
+                Some(Action::RespondInvite(
+                    mxr_protocol::CalendarInviteActionData::Tentative,
+                ))
+            }
+            (
+                KeyState::WaitingForSecond { first: 'i', .. },
+                KeyCode::Char('d'),
+                KeyModifiers::NONE,
+            ) => {
+                self.state = KeyState::Normal;
+                Some(Action::RespondInvite(
+                    mxr_protocol::CalendarInviteActionData::Decline,
+                ))
+            }
+            (KeyState::WaitingForSecond { first: 'i', .. }, KeyCode::Char('A'), modifiers)
+                if plain_or_shift(modifiers) =>
+            {
+                self.state = KeyState::Normal;
+                Some(Action::RespondInviteWithComment(
+                    mxr_protocol::CalendarInviteActionData::Accept,
+                ))
+            }
+            (KeyState::WaitingForSecond { first: 'i', .. }, KeyCode::Char('M'), modifiers)
+                if plain_or_shift(modifiers) =>
+            {
+                self.state = KeyState::Normal;
+                Some(Action::RespondInviteWithComment(
+                    mxr_protocol::CalendarInviteActionData::Tentative,
+                ))
+            }
+            (KeyState::WaitingForSecond { first: 'i', .. }, KeyCode::Char('D'), modifiers)
+                if plain_or_shift(modifiers) =>
+            {
+                self.state = KeyState::Normal;
+                Some(Action::RespondInviteWithComment(
+                    mxr_protocol::CalendarInviteActionData::Decline,
+                ))
+            }
+
             (KeyState::WaitingForSecond { .. }, _, _) => {
                 self.state = KeyState::Normal;
                 self.handle_key(key)
@@ -333,5 +402,64 @@ mod tests {
         let mut input = InputHandler::new();
         let action = input.handle_key(key(KeyCode::Char('1')));
         assert_eq!(action, Some(Action::OpenTab1));
+    }
+
+    /// `i` followed by `a`/`m`/`d` fires the auto-confirm invite RSVP path.
+    /// The chord-prefix wiring is the load-bearing fix for the original bug
+    /// where `ia` fell through to ReplyAll. See `calendar-email` docs.
+    #[test]
+    fn chord_i_then_a_responds_invite_accept() {
+        let mut input = InputHandler::new();
+        let first = input.handle_key(key(KeyCode::Char('i')));
+        assert_eq!(first, None, "i alone must wait");
+        let action = input.handle_key(key(KeyCode::Char('a')));
+        assert_eq!(
+            action,
+            Some(Action::RespondInvite(
+                mxr_protocol::CalendarInviteActionData::Accept
+            ))
+        );
+    }
+
+    #[test]
+    fn chord_i_then_m_responds_invite_tentative() {
+        let mut input = InputHandler::new();
+        let _ = input.handle_key(key(KeyCode::Char('i')));
+        let action = input.handle_key(key(KeyCode::Char('m')));
+        assert_eq!(
+            action,
+            Some(Action::RespondInvite(
+                mxr_protocol::CalendarInviteActionData::Tentative
+            ))
+        );
+    }
+
+    #[test]
+    fn chord_i_then_d_responds_invite_decline() {
+        let mut input = InputHandler::new();
+        let _ = input.handle_key(key(KeyCode::Char('i')));
+        let action = input.handle_key(key(KeyCode::Char('d')));
+        assert_eq!(
+            action,
+            Some(Action::RespondInvite(
+                mxr_protocol::CalendarInviteActionData::Decline
+            ))
+        );
+    }
+
+    /// Shift-suffix routes to the compose-with-comment path. Crossterm
+    /// distinguishes `Char('a'), NONE` from `Char('A'), SHIFT` so the same
+    /// `i` prefix can dispatch two different actions cleanly.
+    #[test]
+    fn chord_i_then_shift_a_responds_invite_with_comment_accept() {
+        let mut input = InputHandler::new();
+        let _ = input.handle_key(key(KeyCode::Char('i')));
+        let action = input.handle_key(key_with(KeyCode::Char('A'), KeyModifiers::SHIFT));
+        assert_eq!(
+            action,
+            Some(Action::RespondInviteWithComment(
+                mxr_protocol::CalendarInviteActionData::Accept
+            ))
+        );
     }
 }

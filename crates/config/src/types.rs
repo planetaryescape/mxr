@@ -296,6 +296,15 @@ pub struct GeneralConfig {
     /// is the daemon's internal cache for opened/inline attachments.
     pub download_dir: PathBuf,
     pub safety_policy: SafetyPolicy,
+    /// IETF language tag for user-facing strings. Resolved against
+    /// `mxr_core::i18n::AVAILABLE_LOCALES`; unknown values fall back to `en`.
+    /// Override at runtime with the `MXR_LOCALE` environment variable.
+    #[serde(default = "default_locale")]
+    pub locale: String,
+}
+
+fn default_locale() -> String {
+    "en".to_string()
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]

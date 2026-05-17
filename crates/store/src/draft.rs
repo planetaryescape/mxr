@@ -13,12 +13,17 @@ impl super::Store {
         let attachments = encode_json(&draft.attachments)?;
         let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
         let intent = draft.intent.as_db_str();
+        let inline_calendar_reply_json = draft
+            .inline_calendar_reply
+            .as_ref()
+            .map(encode_json)
+            .transpose()?;
         let created_at = draft.created_at.timestamp();
         let updated_at = draft.updated_at.timestamp();
 
         sqlx::query(
-            "INSERT INTO drafts (id, account_id, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, attachments, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO drafts (id, account_id, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, attachments, inline_calendar_reply_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(account_id)
@@ -30,6 +35,7 @@ impl super::Store {
         .bind(&draft.subject)
         .bind(&draft.body_markdown)
         .bind(attachments)
+        .bind(inline_calendar_reply_json)
         .bind(created_at)
         .bind(updated_at)
         .execute(self.writer())
@@ -44,7 +50,8 @@ impl super::Store {
         let row = sqlx::query(
             r#"SELECT id, account_id, in_reply_to, intent,
                       to_addrs, cc_addrs, bcc_addrs, subject, body_markdown,
-                      attachments, created_at, updated_at
+                      attachments, inline_calendar_reply_json,
+                      created_at, updated_at
                FROM drafts WHERE id = ?"#,
         )
         .bind(id_str)
@@ -64,6 +71,11 @@ impl super::Store {
                 subject: r.get::<String, _>("subject"),
                 body_markdown: r.get::<String, _>("body_markdown"),
                 attachments: decode_json(&r.get::<String, _>("attachments"))?,
+                inline_calendar_reply: r
+                    .get::<Option<String>, _>("inline_calendar_reply_json")
+                    .as_deref()
+                    .map(decode_json)
+                    .transpose()?,
                 created_at: decode_timestamp(r.get::<i64, _>("created_at"))?,
                 updated_at: decode_timestamp(r.get::<i64, _>("updated_at"))?,
             })
@@ -77,7 +89,8 @@ impl super::Store {
         let rows = sqlx::query(
             r#"SELECT id, account_id, in_reply_to, intent,
                       to_addrs, cc_addrs, bcc_addrs, subject, body_markdown,
-                      attachments, created_at, updated_at
+                      attachments, inline_calendar_reply_json,
+                      created_at, updated_at
                FROM drafts WHERE account_id = ? ORDER BY updated_at DESC"#,
         )
         .bind(aid)
@@ -98,6 +111,11 @@ impl super::Store {
                     subject: r.get::<String, _>("subject"),
                     body_markdown: r.get::<String, _>("body_markdown"),
                     attachments: decode_json(&r.get::<String, _>("attachments"))?,
+                    inline_calendar_reply: r
+                        .get::<Option<String>, _>("inline_calendar_reply_json")
+                        .as_deref()
+                        .map(decode_json)
+                        .transpose()?,
                     created_at: decode_timestamp(r.get::<i64, _>("created_at"))?,
                     updated_at: decode_timestamp(r.get::<i64, _>("updated_at"))?,
                 })

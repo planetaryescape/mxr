@@ -199,6 +199,7 @@ mod tests {
             safety_report: None,
             override_token: None,
             suggested_collaborators: vec![],
+            invite_reply: None,
         }
     }
 

@@ -94,6 +94,7 @@ mod tests {
             subject: "subject".into(),
             body_markdown: body.into(),
             attachments: Vec::new(),
+            inline_calendar_reply: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

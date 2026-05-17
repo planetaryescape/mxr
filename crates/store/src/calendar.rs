@@ -110,6 +110,38 @@ impl super::Store {
         Ok(count > 0)
     }
 
+    /// True iff a stored invite exists for the same `(account_id, uid,
+    /// recurrence_id)` with a *lower* sequence than the one given — i.e.
+    /// this invite is an update/reschedule of a prior REQUEST. Used to fill
+    /// `CalendarMetadata.is_update`.
+    pub async fn calendar_invite_has_earlier_sequence(
+        &self,
+        account_id: &AccountId,
+        message_id: &MessageId,
+        uid: &str,
+        recurrence_id: Option<&str>,
+        sequence: Option<i64>,
+    ) -> Result<bool, sqlx::Error> {
+        let current_sequence = sequence.unwrap_or(0);
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*)
+             FROM calendar_invites
+             WHERE account_id = ?
+               AND message_id != ?
+               AND uid = ?
+               AND COALESCE(recurrence_id, '') = COALESCE(?, '')
+               AND COALESCE(sequence, 0) < ?",
+        )
+        .bind(account_id.as_str())
+        .bind(message_id.as_str())
+        .bind(uid)
+        .bind(recurrence_id)
+        .bind(current_sequence)
+        .fetch_one(self.reader())
+        .await?;
+        Ok(count > 0)
+    }
+
     pub async fn calendar_invite_has_different_organizer(
         &self,
         account_id: &AccountId,

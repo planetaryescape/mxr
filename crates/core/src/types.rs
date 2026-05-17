@@ -935,6 +935,59 @@ pub struct CalendarMetadata {
     pub raw_ics: Option<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
+    /// Derived: the PARTSTAT of the attendee whose address matches one of the
+    /// viewing account's addresses. `None` if no attendee matched or if
+    /// multiple matched ambiguously (the strict send path errors instead).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewer_partstat: Option<CalendarPartstat>,
+    /// Derived: the email of the matched viewer attendee, as it appears in
+    /// the iCal `ATTENDEE` property. Used by the comment-compose path so the
+    /// REPLY's `ATTENDEE` matches exactly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewer_attendee_email: Option<String>,
+    /// Derived: true when the daemon has seen a prior REQUEST with the same
+    /// UID and a lower SEQUENCE — i.e. this is a rescheduled / amended
+    /// invite.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_update: bool,
+}
+
+/// Typed view of an iCalendar `PARTSTAT` value, derived for the viewing
+/// account's own attendee row. Maps 1:1 to the strings defined in RFC 5545.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CalendarPartstat {
+    NeedsAction,
+    Accepted,
+    Tentative,
+    Declined,
+    Delegated,
+}
+
+impl CalendarPartstat {
+    /// Parse the raw iCal `PARTSTAT=…` value (case-insensitive).
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_uppercase().as_str() {
+            "NEEDS-ACTION" => Some(Self::NeedsAction),
+            "ACCEPTED" => Some(Self::Accepted),
+            "TENTATIVE" => Some(Self::Tentative),
+            "DECLINED" => Some(Self::Declined),
+            "DELEGATED" => Some(Self::Delegated),
+            _ => None,
+        }
+    }
+
+    /// The wire iCal representation.
+    pub fn as_ical(self) -> &'static str {
+        match self {
+            Self::NeedsAction => "NEEDS-ACTION",
+            Self::Accepted => "ACCEPTED",
+            Self::Tentative => "TENTATIVE",
+            Self::Declined => "DECLINED",
+            Self::Delegated => "DELEGATED",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1242,6 +1295,23 @@ pub struct Draft {
     pub attachments: Vec<PathBuf>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Set when this draft is the user-comment compose path for an iCal
+    /// invite REPLY. The outbound builder emits the special
+    /// `multipart/alternative` (text/plain + text/calendar;method=REPLY)
+    /// layout when this is `Some`. The daemon's send-completion hook reads
+    /// `source_message_id`+`partstat` to update the local store's PARTSTAT
+    /// after the email lands in Sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inline_calendar_reply: Option<InlineCalendarReply>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct InlineCalendarReply {
+    pub source_message_id: MessageId,
+    pub attendee_email: String,
+    pub partstat: CalendarPartstat,
+    pub ics_body: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

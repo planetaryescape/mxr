@@ -21,3 +21,6 @@ lettre = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
+
+[dev-dependencies]
+chrono = { workspace = true }

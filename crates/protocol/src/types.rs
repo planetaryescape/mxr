@@ -355,6 +355,22 @@ pub enum Request {
         action: CalendarInviteActionData,
         dry_run: bool,
     },
+    /// Build (without sending) the iCal REPLY for an invite — used by the
+    /// "respond with comment" compose path so the SPA / TUI receive the same
+    /// `CalendarInviteResponsePreview` the auto-send path uses internally.
+    PrepareInviteResponse {
+        message_id: MessageId,
+        action: CalendarInviteActionData,
+    },
+    /// Mark a previously-received invite as answered in the local store.
+    /// Called by the daemon's send-completion hook after a comment-compose
+    /// draft (`Draft.inline_calendar_reply.is_some()`) finishes sending, since
+    /// that path bypasses `RespondInvite`.
+    MarkInviteAnswered {
+        message_id: MessageId,
+        attendee_email: String,
+        partstat: mxr_core::CalendarPartstat,
+    },
     GetHtmlImageAssets {
         message_id: MessageId,
         allow_remote: bool,
@@ -1154,6 +1170,8 @@ impl Request {
             | Self::ListInvites { .. }
             | Self::BackfillCalendarInvites
             | Self::RespondInvite { .. }
+            | Self::PrepareInviteResponse { .. }
+            | Self::MarkInviteAnswered { .. }
             | Self::GetHtmlImageAssets { .. }
             | Self::DownloadAttachment { .. }
             | Self::OpenAttachment { .. }
@@ -2093,7 +2111,7 @@ impl CalendarInviteActionData {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CalendarInviteResponsePreview {
     pub message_id: MessageId,

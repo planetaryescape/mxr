@@ -129,6 +129,44 @@ async fn health() -> Json<serde_json::Value> {
     }))
 }
 
+/// Returns the SPA-relevant locale bundle for the daemon's active locale.
+/// The SPA fetches this once at startup and caches in TanStack Query, so the
+/// `InviteCard` and other components can render localized strings without
+/// shipping translations in the JS bundle. To add a language, append a new
+/// `Locale` to `mxr_core::i18n::AVAILABLE_LOCALES` and configure
+/// `MXR_LOCALE`. The structure mirrors `InviteStrings`/`StatusStrings` from
+/// `mxr_core::i18n`.
+async fn i18n_bundle() -> Json<serde_json::Value> {
+    let locale = mxr_core::i18n::DEFAULT_LOCALE;
+    let i = locale.invite;
+    let s = locale.status;
+    Json(json!({
+        "code": locale.code,
+        "invite": {
+            "card_title": i.card_title,
+            "chip_label_accept": i.chip_label_accept,
+            "chip_label_tentative": i.chip_label_tentative,
+            "chip_label_decline": i.chip_label_decline,
+            "state_label_accepted": i.state_label_accepted,
+            "state_label_tentative": i.state_label_tentative,
+            "state_label_declined": i.state_label_declined,
+            "hint_change_response": i.hint_change_response,
+            "hint_comment": i.hint_comment,
+            "banner_cancelled": i.banner_cancelled,
+            "banner_publish": i.banner_publish,
+            "banner_parse_warning": i.banner_parse_warning,
+            "banner_updated": i.banner_updated,
+            "banner_counter": i.banner_counter,
+        },
+        "status": {
+            "invite_pending_accept": s.invite_pending_accept,
+            "invite_pending_tentative": s.invite_pending_tentative,
+            "invite_pending_decline": s.invite_pending_decline,
+            "invite_cancelled": s.invite_cancelled,
+        }
+    }))
+}
+
 /// Same-machine handshake. Returns the bridge token to callers whose
 /// TCP peer is a loopback address, gated by `[bridge].auto_local_token`.
 ///
@@ -248,6 +286,7 @@ pub fn app(config: WebServerConfig) -> Router {
     let v1 = Router::new()
         .route("/health", get(health))
         .route("/auth/local-token", get(local_token_handshake))
+        .route("/i18n", get(i18n_bundle))
         .nest("/admin", routes_v6::extend_admin(admin_router()))
         .nest("/mail", routes_v6::extend_mail(mail_router()))
         .nest("/platform", routes_v6::extend_platform(platform_router()))
@@ -673,6 +712,10 @@ enum ComposeSessionKindRequest {
     Reply,
     ReplyAll,
     Forward,
+    /// "Reply with comment" path for a calendar invite. Triggers the daemon's
+    /// `Request::PrepareInviteResponse` and seeds the draft with the inline
+    /// REPLY ICS so the outbound builder emits the correct MIME layout.
+    InviteReply,
 }
 
 #[derive(Debug, Deserialize)]
@@ -682,6 +725,10 @@ struct ComposeSessionStartRequest {
     message_id: Option<String>,
     #[serde(default)]
     to: Option<String>,
+    /// Required when `kind == InviteReply`. One of `accept`, `tentative`,
+    /// `decline`. Ignored for other kinds.
+    #[serde(default)]
+    action: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2320,6 +2367,48 @@ async fn create_compose_session(
                 None,
             )
         }
+        ComposeSessionKindRequest::InviteReply => {
+            let message_id = request.message_id.as_deref().ok_or_else(|| {
+                BridgeError::Ipc("compose invite_reply missing message_id".into())
+            })?;
+            let action_str = request
+                .action
+                .as_deref()
+                .ok_or_else(|| BridgeError::Ipc("compose invite_reply missing action".into()))?;
+            let action = match action_str.to_ascii_lowercase().as_str() {
+                "accept" => mxr_protocol::CalendarInviteActionData::Accept,
+                "tentative" | "maybe" => mxr_protocol::CalendarInviteActionData::Tentative,
+                "decline" => mxr_protocol::CalendarInviteActionData::Decline,
+                other => return Err(BridgeError::Ipc(format!("invalid invite action: {other}"))),
+            };
+            let envelope = envelope_for_message(socket_path, message_id).await?;
+            let response = ipc_request(
+                socket_path,
+                Request::PrepareInviteResponse {
+                    message_id: envelope.id.clone(),
+                    action,
+                },
+            )
+            .await?;
+            let preview = match response {
+                ResponseData::InviteResponsePreview { preview } => preview,
+                _ => return Err(BridgeError::UnexpectedResponse),
+            };
+            (
+                ComposeKind::Reply {
+                    reply_all: false,
+                    in_reply_to: String::new(),
+                    references: Vec::new(),
+                    thread_id: None,
+                    to: preview.organizer_email,
+                    cc: String::new(),
+                    subject: preview.subject,
+                    thread_context: String::new(),
+                },
+                envelope.account_id,
+                None,
+            )
+        }
     };
 
     let account = account_summary(socket_path, &account_id).await?;
@@ -2350,6 +2439,7 @@ fn compose_kind_name(kind: &ComposeSessionKindRequest) -> &'static str {
         ComposeSessionKindRequest::Reply => "reply",
         ComposeSessionKindRequest::ReplyAll => "reply_all",
         ComposeSessionKindRequest::Forward => "forward",
+        ComposeSessionKindRequest::InviteReply => "invite_reply",
     }
 }
 
@@ -2460,6 +2550,7 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
         subject: frontmatter.subject,
         body_markdown: body,
         attachments: frontmatter.attach.into_iter().map(PathBuf::from).collect(),
+        inline_calendar_reply: None,
         created_at: now,
         updated_at: now,
     })
@@ -4942,6 +5033,7 @@ mod tests {
             subject: "Draft".into(),
             body_markdown: "Body".into(),
             attachments: Vec::new(),
+            inline_calendar_reply: None,
             created_at: updated_at,
             updated_at,
         };

@@ -1,7 +1,8 @@
 use crate::ui::compose_picker::ComposePicker;
 use mxr_core::id::AccountId;
+use mxr_core::types::InlineCalendarReply;
 use mxr_core::{DraftIntent, MessageId};
-use mxr_protocol::ReplyContext;
+use mxr_protocol::{CalendarInviteActionData, ReplyContext};
 use std::collections::HashMap;
 
 /// Draft waiting for user confirmation after editor closes.
@@ -22,6 +23,11 @@ pub struct PendingSend {
     /// a discoverable list; the user can press [Ctrl-A] to add the
     /// first one to Cc.
     pub suggested_collaborators: Vec<mxr_protocol::SuggestedRecipientData>,
+    /// Populated for the invite-reply-with-comment compose path. When set,
+    /// the resulting `Draft` carries the inline iCal REPLY payload so the
+    /// outbound builder emits the proper `multipart/alternative` MIME layout
+    /// and the daemon's post-send hook updates the local PARTSTAT.
+    pub invite_reply: Option<InlineCalendarReply>,
 }
 
 impl PendingSend {
@@ -70,6 +76,16 @@ pub enum ComposeAction {
     Forward {
         message_id: mxr_core::MessageId,
         account_id: AccountId,
+    },
+    /// Compose a comment on an iCal invite REPLY. `handle_compose_action`
+    /// dispatches `Request::PrepareInviteResponse`, gets the daemon-built
+    /// preview, and pre-fills To, Subject, and the inline
+    /// `text/calendar; method=REPLY` part. The user types a free-text comment
+    /// which becomes the `text/plain` alternative.
+    InviteReplyWithComment {
+        message_id: mxr_core::MessageId,
+        account_id: AccountId,
+        action: CalendarInviteActionData,
     },
 }
 

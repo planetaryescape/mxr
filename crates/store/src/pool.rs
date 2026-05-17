@@ -604,6 +604,15 @@ const MIGRATIONS: &[Migration] = &[
         name: "calendar_invites",
         kind: MigrationKind::Sql(include_str!("../migrations/038_calendar_invites.sql")),
     },
+    Migration {
+        version: 39,
+        name: "draft_inline_calendar_reply",
+        kind: MigrationKind::AddColumn {
+            table: "drafts",
+            column: "inline_calendar_reply_json",
+            sql: "ALTER TABLE drafts ADD COLUMN inline_calendar_reply_json TEXT",
+        },
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

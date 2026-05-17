@@ -1271,6 +1271,7 @@ fn draft_from_frontmatter(
         subject: frontmatter.subject.clone(),
         body_markdown: body,
         attachments: frontmatter.attach.iter().map(PathBuf::from).collect(),
+        inline_calendar_reply: None,
         created_at: now,
         updated_at: now,
     })
@@ -1814,6 +1815,7 @@ mod tests {
                 subject: "subj".into(),
                 body_markdown: "body".into(),
                 attachments: vec![],
+                inline_calendar_reply: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             }

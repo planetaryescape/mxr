@@ -513,8 +513,13 @@ async fn post_sync_fanout(
         }
     }
 
-    if let Err(error) =
-        apply_rules_to_messages(&state, &account_id, provider.as_ref(), &upserted_message_ids).await
+    if let Err(error) = apply_rules_to_messages(
+        &state,
+        &account_id,
+        provider.as_ref(),
+        &upserted_message_ids,
+    )
+    .await
     {
         tracing::error!(account = %account_id, %error, "rule execution failed");
     }

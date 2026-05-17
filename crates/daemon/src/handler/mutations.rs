@@ -1500,6 +1500,19 @@ pub(crate) async fn send_stored_draft(
         .store
         .update_draft_status(draft_id, DraftStatus::Sent)
         .await;
+    if let Some(inline_reply) = draft.inline_calendar_reply.as_ref() {
+        if let Err(error) = state
+            .store
+            .update_calendar_invite_partstat(
+                &inline_reply.source_message_id,
+                &inline_reply.attendee_email,
+                inline_reply.partstat.as_ical(),
+            )
+            .await
+        {
+            tracing::warn!(%error, "inline invite-reply PARTSTAT update failed after send_stored_draft");
+        }
+    }
     if let Err(e) =
         super::commitments_extract::promote_after_send(state, &draft, &local_message_id).await
     {
@@ -1786,6 +1799,7 @@ pub(super) async fn unsubscribe(
                 subject: subject.clone().unwrap_or_else(|| "unsubscribe".to_string()),
                 body_markdown: "unsubscribe".to_string(),
                 attachments: vec![],
+                inline_calendar_reply: None,
                 created_at: now,
                 updated_at: now,
             };
@@ -2004,6 +2018,7 @@ mod safety_context_wiring_tests {
             subject: "subject".into(),
             body_markdown: body.into(),
             attachments: Vec::new(),
+            inline_calendar_reply: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

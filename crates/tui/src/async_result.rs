@@ -209,6 +209,10 @@ pub(crate) struct ComposeReadyData {
     pub(crate) draft_path: std::path::PathBuf,
     pub(crate) cursor_line: usize,
     pub(crate) initial_content: String,
+    /// Set when this compose flow was initiated from the iCal invite
+    /// "respond with comment" path. Carried into `PendingSend.invite_reply`
+    /// so the outgoing builder emits the multipart/alternative MIME layout.
+    pub(crate) invite_reply: Option<mxr_core::types::InlineCalendarReply>,
 }
 
 pub(crate) struct SearchResultData {

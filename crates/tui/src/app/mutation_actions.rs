@@ -103,7 +103,10 @@ impl App {
                 }
             }
             Action::UndoLastMutation => {
-                if let Some(undo) = self.take_pending_undo() {
+                if self.pending_invite_send.take().is_some() {
+                    self.status_message =
+                        Some(mxr_core::i18n::EN.status.invite_cancelled.to_string());
+                } else if let Some(undo) = self.take_pending_undo() {
                     self.queue_mutation(
                         Request::UndoMutation {
                             mutation_id: undo.mutation_id,
@@ -384,30 +387,50 @@ impl App {
                     self.status_message = Some("No message selected".into());
                     return;
                 };
-                let Some(calendar) = self
+                if self
                     .mailbox
                     .body_cache
                     .get(&env.id)
-                    .and_then(|body| body.metadata.calendar.clone())
-                else {
+                    .and_then(|body| body.metadata.calendar.as_ref())
+                    .is_none()
+                {
                     self.status_message = Some("No calendar invite found for this message".into());
                     return;
-                };
-                self.modals.pending_bulk_confirm = Some(PendingBulkConfirm {
-                    title: format!("{} invite", action.label()),
-                    detail: invite_response_confirm_detail(&calendar, action),
-                    request: Request::RespondInvite {
-                        message_id: env.id,
-                        action,
-                        dry_run: false,
-                    },
-                    effect: MutationEffect::StatusOnly(format!(
-                        "{} calendar invite",
-                        action.label()
-                    )),
-                    optimistic_effect: None,
-                    status_message: format!("{} calendar invite...", action.label()),
+                }
+                let partstat = invite_action_partstat(action);
+                let status_label = mxr_core::i18n::EN
+                    .invite_status_pending_for(partstat)
+                    .to_string();
+                self.status_message = Some(status_label.clone());
+                self.pending_invite_send = Some(crate::app::PendingInviteSend {
+                    message_id: env.id,
+                    action,
+                    dispatch_at: std::time::Instant::now() + std::time::Duration::from_secs(1),
+                    status_label,
                 });
+            }
+            Action::RespondInviteWithComment(action) => {
+                let Some(env) = self.context_envelope().cloned() else {
+                    self.status_message = Some("No message selected".into());
+                    return;
+                };
+                if self
+                    .mailbox
+                    .body_cache
+                    .get(&env.id)
+                    .and_then(|body| body.metadata.calendar.as_ref())
+                    .is_none()
+                {
+                    self.status_message = Some("No calendar invite found for this message".into());
+                    return;
+                }
+                self.status_message = Some("Preparing invite reply...".into());
+                self.compose.pending_compose =
+                    Some(crate::app::ComposeAction::InviteReplyWithComment {
+                        message_id: env.id,
+                        account_id: env.account_id.clone(),
+                        action,
+                    });
             }
             Action::ToggleSelect => {
                 if let Some(env) = self.context_envelope() {
@@ -515,26 +538,14 @@ impl App {
     }
 }
 
-fn invite_response_confirm_detail(
-    calendar: &mxr_core::CalendarMetadata,
+fn invite_action_partstat(
     action: mxr_protocol::CalendarInviteActionData,
-) -> String {
-    let summary = calendar.summary.as_deref().unwrap_or("calendar invite");
-    let organizer = calendar
-        .organizer
-        .as_ref()
-        .map(|organizer| organizer.email.as_str())
-        .unwrap_or("the organizer");
-    let when = calendar
-        .starts_at
-        .as_deref()
-        .map(|starts_at| format!(" at {starts_at}"))
-        .unwrap_or_default();
-    format!(
-        "{} \"{}\"{} and send an iMIP reply to {}.",
-        action.label(),
-        summary,
-        when,
-        organizer
-    )
+) -> mxr_core::types::CalendarPartstat {
+    use mxr_core::types::CalendarPartstat;
+    use mxr_protocol::CalendarInviteActionData;
+    match action {
+        CalendarInviteActionData::Accept => CalendarPartstat::Accepted,
+        CalendarInviteActionData::Tentative => CalendarPartstat::Tentative,
+        CalendarInviteActionData::Decline => CalendarPartstat::Declined,
+    }
 }

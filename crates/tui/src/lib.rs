@@ -2663,6 +2663,7 @@ pub async fn run() -> anyhow::Result<()> {
                 let now = std::time::Instant::now();
                 app.tick_connection_state(now);
                 app.tick_pending_undo(now);
+                app.tick_pending_invite_send(now);
             }
         }
 
@@ -3168,6 +3169,7 @@ mod tests {
             draft_path: temp.clone(),
             cursor_line: 1,
             initial_content: String::new(),
+            invite_reply: None,
         };
         let mut app = App::new();
         let (bg, mut bg_rx) = mpsc::unbounded_channel::<crate::ipc::IpcRequest>();
@@ -3211,6 +3213,7 @@ mod tests {
             draft_path: temp.clone(),
             cursor_line: 1,
             initial_content: String::new(),
+            invite_reply: None,
         };
         let mut app = App::new();
         // Editor exited non-zero, so the safety-check path is never
@@ -3243,6 +3246,7 @@ mod tests {
             draft_path: temp.clone(),
             cursor_line: 1,
             initial_content: String::new(),
+            invite_reply: None,
         };
         let mut app = App::new();
 
@@ -3326,6 +3330,7 @@ mod tests {
             safety_report: Some(report),
             override_token: Some("tok-1".into()),
             suggested_collaborators: vec![],
+            invite_reply: None,
         });
         let mutations_before = app.pending_mutation_queue.len();
 
@@ -3378,6 +3383,7 @@ mod tests {
             safety_report: Some(report),
             override_token: Some("tok-override-9".into()),
             suggested_collaborators: vec![],
+            invite_reply: None,
         });
 
         let key = KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL);
@@ -3545,6 +3551,7 @@ mod tests {
             mode: PendingSendMode::SendOrSave,
             safety_report: None,
             override_token: None,
+            invite_reply: None,
             suggested_collaborators: vec![mxr_protocol::SuggestedRecipientData {
                 email: "bob@example.com".into(),
                 display_name: None,
@@ -5173,8 +5180,13 @@ mod tests {
         );
     }
 
+    /// `Action::RespondInvite` no longer opens a modal — it arms
+    /// `pending_invite_send` with a 1s hold window. The tick loop later
+    /// drains it into `pending_mutation_queue`. Pressing `u` within the
+    /// window cancels without ever talking to the daemon, so no email is
+    /// sent on a mistaken keystroke.
     #[test]
-    fn invite_response_action_confirms_before_sending_imip_reply() {
+    fn invite_response_action_arms_pending_send_with_undo_window() {
         let mut app = App::new();
         let envelope = make_test_envelopes(1).remove(0);
         app.mailbox.envelopes = vec![envelope.clone()];
@@ -5216,30 +5228,30 @@ mod tests {
             mxr_protocol::CalendarInviteActionData::Accept,
         ));
 
+        assert!(
+            app.modals.pending_bulk_confirm.is_none(),
+            "auto-confirm flow must not open the bulk confirm modal"
+        );
         let pending = app
-            .modals
-            .pending_bulk_confirm
+            .pending_invite_send
             .as_ref()
-            .expect("invite response should require confirmation");
-        assert!(pending.detail.contains("Planning session"));
-        assert!(pending.detail.contains("organizer@example.com"));
-        match &pending.request {
-            Request::RespondInvite {
-                message_id,
-                action,
-                dry_run,
-            } => {
-                assert_eq!(message_id, &envelope.id);
-                assert_eq!(*action, mxr_protocol::CalendarInviteActionData::Accept);
-                assert!(!dry_run);
-            }
-            other => panic!("expected RespondInvite request, got {other:?}"),
-        }
-        assert!(app.pending_mutation_queue.is_empty());
+            .expect("RSVP must arm pending_invite_send slot");
+        assert_eq!(pending.message_id, envelope.id);
+        assert_eq!(
+            pending.action,
+            mxr_protocol::CalendarInviteActionData::Accept
+        );
+        assert!(
+            app.pending_mutation_queue.is_empty(),
+            "the daemon RPC must not fire until the 1s window elapses"
+        );
 
-        app.apply(Action::OpenSelected);
+        // Tick past the dispatch deadline and confirm the request drains
+        // into the mutation queue.
+        let future = pending.dispatch_at + std::time::Duration::from_millis(1);
+        app.tick_pending_invite_send(future);
 
-        assert!(app.modals.pending_bulk_confirm.is_none());
+        assert!(app.pending_invite_send.is_none());
         assert_eq!(app.pending_mutation_queue.len(), 1);
         match &app.pending_mutation_queue[0].request {
             Request::RespondInvite {
@@ -5253,6 +5265,50 @@ mod tests {
             }
             other => panic!("expected queued RespondInvite request, got {other:?}"),
         }
+    }
+
+    /// Pressing `u` while `pending_invite_send` is armed cancels the RSVP
+    /// before any daemon RPC fires — no email goes out.
+    #[test]
+    fn invite_response_undo_within_window_prevents_send() {
+        let mut app = App::new();
+        let envelope = make_test_envelopes(1).remove(0);
+        app.mailbox.envelopes = vec![envelope.clone()];
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        app.mailbox.body_cache.insert(
+            envelope.id.clone(),
+            MessageBody {
+                message_id: envelope.id.clone(),
+                text_plain: Some("Join us".into()),
+                text_html: None,
+                attachments: Vec::new(),
+                fetched_at: chrono::Utc::now(),
+                metadata: MessageMetadata {
+                    calendar: Some(CalendarMetadata {
+                        method: Some("REQUEST".into()),
+                        summary: Some("Planning session".into()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            },
+        );
+
+        app.apply(Action::RespondInvite(
+            mxr_protocol::CalendarInviteActionData::Accept,
+        ));
+        assert!(app.pending_invite_send.is_some());
+
+        app.apply(Action::UndoLastMutation);
+
+        assert!(
+            app.pending_invite_send.is_none(),
+            "undo must clear the pending invite send"
+        );
+        assert!(
+            app.pending_mutation_queue.is_empty(),
+            "undo must prevent the daemon RPC entirely"
+        );
     }
 
     /// `format_mutation_failure` is what the runtime surfaces to the
@@ -7397,6 +7453,7 @@ mod tests {
             draft_path: temp.clone(),
             cursor_line: 1,
             initial_content: content.to_string(),
+            invite_reply: None,
         })
         .await
         .unwrap()
@@ -7432,6 +7489,7 @@ mod tests {
             safety_report: None,
             override_token: None,
             suggested_collaborators: vec![],
+            invite_reply: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -7475,6 +7533,7 @@ mod tests {
             safety_report: None,
             override_token: None,
             suggested_collaborators: vec![],
+            invite_reply: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -7517,6 +7576,7 @@ mod tests {
             safety_report: None,
             override_token: None,
             suggested_collaborators: vec![],
+            invite_reply: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
@@ -7576,6 +7636,7 @@ mod tests {
             safety_report: None,
             override_token: None,
             suggested_collaborators: vec![],
+            invite_reply: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
@@ -7771,6 +7832,7 @@ mod tests {
             draft_path: temp.clone(),
             cursor_line: 1,
             initial_content: String::new(),
+            invite_reply: None,
         })
         .await
         .unwrap()
@@ -7806,6 +7868,7 @@ mod tests {
             safety_report: None,
             override_token: None,
             suggested_collaborators: vec![],
+            invite_reply: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -7846,6 +7909,7 @@ mod tests {
             safety_report: None,
             override_token: None,
             suggested_collaborators: vec![],
+            invite_reply: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
@@ -7892,6 +7956,7 @@ mod tests {
             safety_report: None,
             override_token: None,
             suggested_collaborators: vec![],
+            invite_reply: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
@@ -7940,6 +8005,7 @@ mod tests {
             safety_report: None,
             override_token: None,
             suggested_collaborators: vec![],
+            invite_reply: None,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -9445,6 +9511,7 @@ mod tests {
             safety_report: None,
             override_token: None,
             suggested_collaborators: vec![],
+            invite_reply: None,
         });
 
         app.apply(Action::RefinePendingDraft);

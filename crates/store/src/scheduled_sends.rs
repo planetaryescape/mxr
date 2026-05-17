@@ -109,6 +109,7 @@ mod tests {
             subject: "Test".into(),
             body_markdown: "Body".into(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: anchor(),
             updated_at: anchor(),
         };
@@ -231,6 +232,7 @@ mod tests {
                 subject: format!("S{i}").into(),
                 body_markdown: "Body".into(),
                 attachments: vec![],
+                inline_calendar_reply: None,
                 created_at: anchor(),
                 updated_at: anchor(),
             };

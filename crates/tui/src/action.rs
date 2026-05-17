@@ -234,6 +234,10 @@ pub enum Action {
     CancelUnsubscribe,
     Snooze,
     RespondInvite(mxr_protocol::CalendarInviteActionData),
+    /// Respond to a calendar invite with a free-text comment. Opens compose
+    /// pre-seeded with the daemon-built REPLY ICS so the user can type a note
+    /// before sending. Fires from the chord `i` + Shift-A/M/D.
+    RespondInviteWithComment(mxr_protocol::CalendarInviteActionData),
     OpenInBrowser,
 
     // --- Phase 2: Reader mode ---

@@ -73,6 +73,7 @@ async fn build_draft(
         subject,
         body_markdown: body,
         attachments: vec![],
+        inline_calendar_reply: None,
         created_at: now,
         updated_at: now,
     })

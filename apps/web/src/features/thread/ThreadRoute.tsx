@@ -45,6 +45,7 @@ import {
 } from "@/features/mailbox/api";
 import { SnoozeDialog } from "@/features/mailbox/SnoozeDialog";
 import { AttachmentActions } from "@/features/thread/AttachmentActions";
+import { InviteCard } from "@/features/thread/InviteCard";
 import { MailboxRoute } from "@/features/mailbox/MailboxRoute";
 import { MessageBody } from "@/features/thread/MessageBody";
 import type {
@@ -664,6 +665,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
               mode={mode}
               remoteImages={remoteImages}
               emailHtmlTheme={emailHtmlTheme}
+              threadId={data.thread.id}
             />
           ))}
         </div>
@@ -945,16 +947,19 @@ function ThreadMessage({
   mode,
   remoteImages,
   emailHtmlTheme,
+  threadId,
 }: {
   message: MessageRowView;
   body?: MessageBodyView;
   mode: "reader" | "plain" | "html";
   remoteImages: boolean;
   emailHtmlTheme: "dark" | "original";
+  threadId: string;
 }) {
   const plain = body?.reader_text ?? body?.text_plain ?? message.snippet;
   const html = body?.text_html;
   const attachments = body?.attachments ?? [];
+  const calendar = body?.metadata?.calendar;
   return (
     <section
       className={cn(
@@ -990,6 +995,13 @@ function ThreadMessage({
           ) : null}
         </time>
       </div>
+      {calendar && (
+        <InviteCard
+          messageId={message.id}
+          threadId={threadId}
+          metadata={calendar}
+        />
+      )}
       <div className="pb-6 text-[15px] leading-7">
         {mode === "html" && html ? (
           <MessageBody html={html} allowRemoteImages={remoteImages} theme={emailHtmlTheme} />

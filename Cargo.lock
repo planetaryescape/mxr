@@ -4051,6 +4051,7 @@ dependencies = [
 name = "mxr-outbound"
 version = "0.5.18"
 dependencies = [
+ "chrono",
  "comrak",
  "dirs",
  "futures",

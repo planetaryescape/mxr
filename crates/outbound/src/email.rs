@@ -82,23 +82,51 @@ pub fn build_message_with_id(
     }
 
     let rendered = render_markdown(&draft.body_markdown);
-    let alternative = MultiPart::alternative()
-        .singlepart(
-            SinglePart::builder()
-                .header(
-                    ContentType::parse("text/plain; charset=utf-8")
-                        .expect("static text/plain content type should parse"),
-                )
-                .body(rendered.plain),
-        )
-        .singlepart(
-            SinglePart::builder()
-                .header(
-                    ContentType::parse("text/html; charset=utf-8")
-                        .expect("static text/html content type should parse"),
-                )
-                .body(rendered.html),
-        );
+    let alternative = if let Some(inline_reply) = draft.inline_calendar_reply.as_ref() {
+        // Invite-reply-with-comment path: the alternative carries text/plain
+        // (the user's comment) + text/calendar; method=REPLY (the pre-built
+        // ICS). RFC 6047 §2.4 — the `method` parameter MUST match the iCal
+        // METHOD property. We deliberately omit the text/html half because
+        // calendar-server-side processors (Exchange, Google, iCloud) match on
+        // the calendar part and never the HTML alternative.
+        MultiPart::alternative()
+            .singlepart(
+                SinglePart::builder()
+                    .header(
+                        ContentType::parse("text/plain; charset=utf-8")
+                            .expect("static text/plain content type should parse"),
+                    )
+                    .body(rendered.plain),
+            )
+            .singlepart(
+                SinglePart::builder()
+                    .header(
+                        ContentType::parse(
+                            "text/calendar; method=REPLY; charset=utf-8; component=vevent",
+                        )
+                        .expect("static text/calendar content type should parse"),
+                    )
+                    .body(inline_reply.ics_body.clone()),
+            )
+    } else {
+        MultiPart::alternative()
+            .singlepart(
+                SinglePart::builder()
+                    .header(
+                        ContentType::parse("text/plain; charset=utf-8")
+                            .expect("static text/plain content type should parse"),
+                    )
+                    .body(rendered.plain),
+            )
+            .singlepart(
+                SinglePart::builder()
+                    .header(
+                        ContentType::parse("text/html; charset=utf-8")
+                            .expect("static text/html content type should parse"),
+                    )
+                    .body(rendered.html),
+            )
+    };
 
     let body = if attachments.is_empty() {
         alternative
@@ -220,5 +248,71 @@ mod tests {
         assert!(raw.contains("Content-Type: text/calendar; method=REPLY;"));
         assert!(raw.contains("METHOD:REPLY"));
         assert!(raw.contains("PARTSTAT=ACCEPTED"));
+    }
+
+    /// A draft with `inline_calendar_reply` must emit the
+    /// `multipart/alternative(text/plain + text/calendar;method=REPLY)`
+    /// layout instead of the regular `text/plain + text/html` alternative.
+    /// This is what makes the comment-compose path interop with
+    /// CalDAV-aware organizers.
+    #[test]
+    fn build_message_inline_calendar_reply_emits_imip_alternative() {
+        use mxr_core::id::MessageId;
+        use mxr_core::types::{CalendarPartstat, DraftIntent, InlineCalendarReply};
+
+        let from = Address {
+            name: Some("User".into()),
+            email: "user@example.com".into(),
+        };
+        let now = chrono::Utc::now();
+        let draft = Draft {
+            id: mxr_core::id::DraftId::new(),
+            account_id: mxr_core::id::AccountId::new(),
+            reply_headers: None,
+            intent: DraftIntent::Reply,
+            to: vec![Address {
+                name: None,
+                email: "organizer@example.com".into(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Accepted: Demo".into(),
+            body_markdown: "Looking forward to it.".into(),
+            attachments: vec![],
+            inline_calendar_reply: Some(InlineCalendarReply {
+                source_message_id: MessageId::new(),
+                attendee_email: "user@example.com".into(),
+                partstat: CalendarPartstat::Accepted,
+                ics_body: concat!(
+                    "BEGIN:VCALENDAR\r\n",
+                    "VERSION:2.0\r\n",
+                    "METHOD:REPLY\r\n",
+                    "BEGIN:VEVENT\r\n",
+                    "UID:demo-uid\r\n",
+                    "ATTENDEE;PARTSTAT=ACCEPTED:mailto:user@example.com\r\n",
+                    "END:VEVENT\r\n",
+                    "END:VCALENDAR\r\n"
+                )
+                .into(),
+            }),
+            created_at: now,
+            updated_at: now,
+        };
+
+        let message = build_message_with_id(&draft, &from, false, &[], "<msg@example.com>")
+            .expect("build_message_with_id must succeed for inline calendar reply");
+        let raw = String::from_utf8(message.formatted()).unwrap();
+
+        assert!(raw.contains("Content-Type: multipart/alternative;"));
+        assert!(raw.contains("Content-Type: text/calendar; method=REPLY;"));
+        assert!(raw.contains("METHOD:REPLY"));
+        assert!(raw.contains("PARTSTAT=ACCEPTED"));
+        // The user's typed comment must round-trip into the text/plain half.
+        assert!(raw.contains("Looking forward to it."));
+        // We deliberately *don't* emit a text/html alternative for invite replies.
+        assert!(
+            !raw.contains("Content-Type: text/html;"),
+            "invite-reply MIME should omit text/html alternative"
+        );
     }
 }

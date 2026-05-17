@@ -37,6 +37,7 @@ fn draft_from_pending(
             .iter()
             .map(std::path::PathBuf::from)
             .collect(),
+        inline_calendar_reply: pending.invite_reply.clone(),
         created_at: now,
         updated_at: now,
     }
@@ -683,6 +684,7 @@ impl App {
                                 .iter()
                                 .map(std::path::PathBuf::from)
                                 .collect(),
+                            inline_calendar_reply: pending.invite_reply.clone(),
                             created_at: now,
                             updated_at: now,
                         };

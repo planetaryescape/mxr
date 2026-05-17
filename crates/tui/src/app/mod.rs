@@ -160,6 +160,18 @@ pub struct PendingUndo {
     pub applied_at: std::time::Instant,
 }
 
+/// Hold-and-undo window for an iCal invite RSVP. Differs from `PendingUndo`
+/// in that the daemon RPC has not fired yet — pressing `u` within the window
+/// cancels it outright, so no email reaches the organizer. The status bar
+/// rendering reads `status_label` directly while this is `Some`.
+#[derive(Debug, Clone)]
+pub struct PendingInviteSend {
+    pub message_id: mxr_core::MessageId,
+    pub action: mxr_protocol::CalendarInviteActionData,
+    pub dispatch_at: std::time::Instant,
+    pub status_label: String,
+}
+
 /// Pending `SetScreenerDecision` request queued by the screener
 /// modal. Drained by the runtime each tick.
 #[derive(Debug, Clone)]
@@ -257,6 +269,11 @@ pub struct App {
     /// Recent undoable mutation, if any. Cleared by `tick_pending_undo`
     /// once the daemon-side window expires.
     pub pending_undo: Option<PendingUndo>,
+    /// iCal invite RSVP queued for send after a 1s hold window. While set,
+    /// pressing `u` cancels without ever dispatching to the daemon (no email
+    /// goes out). `tick_pending_invite_send` promotes it into the mutation
+    /// queue once `dispatch_at` arrives.
+    pub pending_invite_send: Option<PendingInviteSend>,
     /// Default destination for the "save attachment as..." modal,
     /// mirrored from `config.general.download_dir`. Falls back to
     /// `dirs::download_dir()` when no config is available.
@@ -352,6 +369,7 @@ impl App {
             pending_screener_refresh: None,
             pending_screener_decisions: Vec::new(),
             pending_undo: None,
+            pending_invite_send: None,
             download_dir: dirs::download_dir().unwrap_or_else(|| {
                 dirs::home_dir()
                     .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -512,6 +530,29 @@ impl App {
                 self.pending_undo = None;
             }
         }
+    }
+
+    /// Promote a held iCal RSVP into the mutation queue once its 1s hold
+    /// window expires. Until then the slot stays armed so pressing `u`
+    /// cancels without ever talking to the daemon.
+    pub fn tick_pending_invite_send(&mut self, now: std::time::Instant) {
+        let should_dispatch = self
+            .pending_invite_send
+            .as_ref()
+            .is_some_and(|p| now >= p.dispatch_at);
+        if !should_dispatch {
+            return;
+        }
+        let pending = self.pending_invite_send.take().expect("checked above");
+        self.queue_mutation(
+            mxr_protocol::Request::RespondInvite {
+                message_id: pending.message_id,
+                action: pending.action,
+                dry_run: false,
+            },
+            MutationEffect::StatusOnly(String::new()),
+            String::new(),
+        );
     }
 
     /// Status-bar text for the active undo affordance, e.g.

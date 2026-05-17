@@ -277,6 +277,7 @@ mod tests {
             subject: "Re: deck".into(),
             body_markdown: body.into(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         }

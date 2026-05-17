@@ -4,7 +4,7 @@ mod types;
 pub use codec::IpcCodec;
 pub use types::*;
 
-pub const IPC_PROTOCOL_VERSION: u32 = 2;
+pub const IPC_PROTOCOL_VERSION: u32 = 3;
 
 #[cfg(test)]
 mod tests {
@@ -48,6 +48,7 @@ mod tests {
             subject: "hello".into(),
             body_markdown: "body".into(),
             attachments: Vec::new(),
+            inline_calendar_reply: None,
             created_at: now,
             updated_at: now,
         }
@@ -1257,6 +1258,7 @@ mod tests {
             subject: "see attached".into(),
             body_markdown: "yo".into(),
             attachments: Vec::<PathBuf>::new(),
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -1715,6 +1717,7 @@ mod tests {
                 subject: "test".into(),
                 body_markdown: body.into(),
                 attachments: vec![],
+                inline_calendar_reply: None,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             }

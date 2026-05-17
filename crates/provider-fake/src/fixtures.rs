@@ -55,6 +55,7 @@ pub fn sample_draft(account_id: AccountId) -> Draft {
         subject: "Conformance test draft".to_string(),
         body_markdown: "Hello from conformance test.".to_string(),
         attachments: vec![],
+        inline_calendar_reply: None,
         created_at: Utc::now(),
         updated_at: Utc::now(),
     }

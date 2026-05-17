@@ -512,6 +512,14 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             action,
             dry_run,
         } => mailbox::respond_invite(state, message_id, *action, *dry_run).await,
+        Request::PrepareInviteResponse { message_id, action } => {
+            mailbox::prepare_invite_response(state, message_id, *action).await
+        }
+        Request::MarkInviteAnswered {
+            message_id,
+            attendee_email,
+            partstat,
+        } => mailbox::mark_invite_answered(state, message_id, attendee_email, *partstat).await,
         Request::GetHtmlImageAssets {
             message_id,
             allow_remote,
@@ -1283,6 +1291,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListInvites { .. } => "list_invites",
         Request::BackfillCalendarInvites => "backfill_calendar_invites",
         Request::RespondInvite { .. } => "respond_invite",
+        Request::PrepareInviteResponse { .. } => "prepare_invite_response",
+        Request::MarkInviteAnswered { .. } => "mark_invite_answered",
         Request::GetHtmlImageAssets { .. } => "get_html_image_assets",
         Request::DownloadAttachment { .. } => "download_attachment",
         Request::OpenAttachment { .. } => "open_attachment",
@@ -7158,6 +7168,7 @@ mod tests {
             subject: "scheduled".into(),
             body_markdown: "Body".into(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -7249,6 +7260,7 @@ mod tests {
             subject: "scheduled-then-cancelled".into(),
             body_markdown: "Body".into(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -8484,6 +8496,7 @@ mod tests {
             subject: "Test subject".to_string(),
             body_markdown: "Test body".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -8526,6 +8539,7 @@ mod tests {
             subject: "Draft-only policy".to_string(),
             body_markdown: "Test body".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -8628,6 +8642,7 @@ mod tests {
             subject: "Test subject".to_string(),
             body_markdown: "Test body".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -9162,6 +9177,7 @@ mod tests {
             subject: "Default account draft".to_string(),
             body_markdown: "older".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now() - chrono::Duration::minutes(5),
             updated_at: chrono::Utc::now() - chrono::Duration::minutes(5),
         };
@@ -9176,6 +9192,7 @@ mod tests {
             subject: "Other account draft".to_string(),
             body_markdown: "newer".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -9227,6 +9244,7 @@ mod tests {
             subject: "Stored draft".to_string(),
             body_markdown: "Test body".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -9304,6 +9322,7 @@ mod tests {
             subject: "key transfer".to_string(),
             body_markdown: "Here is the key:\n-----BEGIN RSA PRIVATE KEY-----\n...\n".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -9432,6 +9451,7 @@ mod tests {
             subject: "again".into(),
             body_markdown: "-----BEGIN RSA PRIVATE KEY-----\nzz\n".into(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -9563,6 +9583,7 @@ mod tests {
             subject: "Heartbeat probe".to_string(),
             body_markdown: "Body".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -9636,6 +9657,7 @@ mod tests {
             subject: "No recipients".to_string(),
             body_markdown: "Body".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -9695,6 +9717,7 @@ mod tests {
             subject: "Invalid recipient".to_string(),
             body_markdown: "Body".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -9775,6 +9798,7 @@ mod tests {
             subject: "Re: parent".to_string(),
             body_markdown: "reply".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -9851,6 +9875,7 @@ mod tests {
             subject: "Re: parent".to_string(),
             body_markdown: "reply".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -9914,6 +9939,7 @@ mod tests {
             subject: "Local fallback".to_string(),
             body_markdown: "body".to_string(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -10228,6 +10254,7 @@ mod tests {
             subject: "Saved draft".into(),
             body_markdown: "Body".into(),
             attachments: vec![],
+            inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };

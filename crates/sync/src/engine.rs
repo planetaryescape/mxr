@@ -537,9 +537,10 @@ impl SyncEngine {
             .await
             .map_err(|e| MxrError::Store(e.to_string()))?;
 
-        let by_threading_id: HashMap<String, Envelope> = envelopes
+        let by_threading_id: HashMap<String, usize> = envelopes
             .iter()
-            .map(|envelope| (envelope.id.to_string(), envelope.clone()))
+            .enumerate()
+            .map(|(index, envelope)| (envelope.id.to_string(), index))
             .collect();
 
         let threading_input: Vec<ThreadingMessage> = envelopes
@@ -555,30 +556,28 @@ impl SyncEngine {
             .collect();
 
         for thread in thread_messages(&threading_input) {
-            let thread_members: Vec<Envelope> = thread
+            let member_indices: Vec<usize> = thread
                 .messages
                 .iter()
-                .filter_map(|message_id| by_threading_id.get(message_id).cloned())
+                .filter_map(|message_id| by_threading_id.get(message_id).copied())
                 .collect();
 
-            if thread_members.is_empty() {
+            let Some(first_member_index) = member_indices.first() else {
                 continue;
-            }
+            };
 
-            let canonical_thread_id = by_threading_id
+            let canonical_thread_index = by_threading_id
                 .get(&thread.root_message_id)
-                .map(|root| root.thread_id.clone())
-                .or_else(|| {
-                    thread_members
-                        .first()
-                        .map(|member| member.thread_id.clone())
-                })
-                .unwrap_or_default();
+                .copied()
+                .unwrap_or(*first_member_index);
+            let canonical_thread_id = envelopes[canonical_thread_index].thread_id.clone();
 
-            for member in thread_members {
+            for member_index in member_indices {
+                let member = &envelopes[member_index];
                 if member.thread_id != canonical_thread_id {
+                    let message_id = member.id.clone();
                     self.store
-                        .update_message_thread_id(&member.id, &canonical_thread_id)
+                        .update_message_thread_id(&message_id, &canonical_thread_id)
                         .await
                         .map_err(|e| MxrError::Store(e.to_string()))?;
                 }

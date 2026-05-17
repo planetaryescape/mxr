@@ -5,8 +5,9 @@ use super::{
 use crate::state::AppState;
 use mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
 use mxr_core::types::{
-    Address, BodyPartSource, CalendarAttendee, CalendarMetadata, CalendarReplyMessage, Envelope,
-    HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind, MessageBody,
+    Address, BodyPartSource, CalendarAttendee, CalendarMetadata, CalendarPartstat,
+    CalendarReplyMessage, Envelope, HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind,
+    MessageBody,
 };
 use mxr_protocol::{
     BodyFailure, CalendarInviteActionData, CalendarInviteData, CalendarInviteResponsePreview,
@@ -226,6 +227,29 @@ pub(super) async fn respond_invite(
     })
 }
 
+pub(super) async fn prepare_invite_response(
+    state: &AppState,
+    message_id: &MessageId,
+    action: CalendarInviteActionData,
+) -> HandlerResult {
+    let preview = build_invite_response_preview(state, message_id, action).await?;
+    Ok(ResponseData::InviteResponsePreview { preview })
+}
+
+pub(super) async fn mark_invite_answered(
+    state: &AppState,
+    message_id: &MessageId,
+    attendee_email: &str,
+    partstat: CalendarPartstat,
+) -> HandlerResult {
+    state
+        .store
+        .update_calendar_invite_partstat(message_id, attendee_email, partstat.as_ical())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::Acknowledged)
+}
+
 async fn preview_account_id(state: &AppState, message_id: &MessageId) -> Result<AccountId, String> {
     state
         .store
@@ -323,18 +347,20 @@ async fn build_invite_response_preview(
     {
         account_emails.push(account.email.clone());
     }
-    let attendee = matching_attendee(&calendar, &account_emails)?;
+    let attendee = mxr_mail_parse::matching_attendee_strict(&calendar, &account_emails)
+        .map_err(|err| err.to_string())?;
 
+    let partstat = match action {
+        CalendarInviteActionData::Accept => CalendarPartstat::Accepted,
+        CalendarInviteActionData::Tentative => CalendarPartstat::Tentative,
+        CalendarInviteActionData::Decline => CalendarPartstat::Declined,
+    };
     let subject = format!(
-        "{}: {}",
-        action.label(),
-        calendar.summary.as_deref().unwrap_or("calendar invite")
+        "{}{}",
+        state.locale.invite_subject_prefix_for(partstat),
+        calendar.summary.as_deref().unwrap_or("calendar invite"),
     );
-    let body_text = format!(
-        "{} has {} this invitation.",
-        account.email,
-        action.label().to_ascii_lowercase()
-    );
+    let body_text = state.locale.invite_body_for(partstat, &account.email);
     let ics = build_reply_ics(&calendar, &uid, organizer_email.as_str(), attendee, action);
 
     Ok(CalendarInviteResponsePreview {
@@ -347,26 +373,6 @@ async fn build_invite_response_preview(
         ics,
         warnings: calendar.warnings,
     })
-}
-
-fn matching_attendee<'a>(
-    calendar: &'a CalendarMetadata,
-    account_emails: &[String],
-) -> Result<&'a CalendarAttendee, String> {
-    let matches = calendar
-        .attendees
-        .iter()
-        .filter(|attendee| {
-            account_emails
-                .iter()
-                .any(|email| attendee.email.eq_ignore_ascii_case(email))
-        })
-        .collect::<Vec<_>>();
-    match matches.as_slice() {
-        [attendee] => Ok(*attendee),
-        [] => Err("No account address is an attendee on this invite".to_string()),
-        _ => Err("Calendar invite has multiple attendees matching account addresses".to_string()),
-    }
 }
 
 fn build_reply_ics(
@@ -500,16 +506,77 @@ async fn load_body_for_message(
     state: &AppState,
     message_id: &MessageId,
 ) -> Result<MessageBody, String> {
-    if let Some(body) = state
+    let body = if let Some(body) = state
         .store
         .get_body(message_id)
         .await
         .map_err(|error| error.to_string())?
     {
-        return normalize_body_if_needed(state, message_id, body).await;
+        normalize_body_if_needed(state, message_id, body).await?
+    } else {
+        hydrate_body_from_provider(state, message_id).await?
+    };
+    enrich_calendar_viewer_fields(state, message_id, body).await
+}
+
+/// Derive `viewer_partstat`, `viewer_attendee_email`, and `is_update` on the
+/// body's `metadata.calendar` so every client (TUI, web SPA) renders the
+/// invite card consistently without re-walking attendees or stored invites.
+async fn enrich_calendar_viewer_fields(
+    state: &AppState,
+    message_id: &MessageId,
+    mut body: MessageBody,
+) -> Result<MessageBody, String> {
+    let Some(calendar) = body.metadata.calendar.as_mut() else {
+        return Ok(body);
+    };
+
+    let envelope = state
+        .store
+        .get_envelope(message_id)
+        .await
+        .map_err(|err| err.to_string())?;
+    let Some(envelope) = envelope else {
+        return Ok(body);
+    };
+
+    let addresses = state
+        .store
+        .list_account_addresses(&envelope.account_id)
+        .await
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .map(|a| a.email)
+        .collect::<Vec<_>>();
+
+    if let Some((email, partstat)) = mxr_mail_parse::matching_attendee_lenient(calendar, &addresses)
+        .map(|a| {
+            (
+                a.email.clone(),
+                a.partstat.as_deref().and_then(CalendarPartstat::parse),
+            )
+        })
+    {
+        calendar.viewer_attendee_email = Some(email);
+        calendar.viewer_partstat = partstat;
     }
 
-    hydrate_body_from_provider(state, message_id).await
+    if let Some(uid) = calendar.uid.as_deref() {
+        let earlier = state
+            .store
+            .calendar_invite_has_earlier_sequence(
+                &envelope.account_id,
+                message_id,
+                uid,
+                calendar.recurrence_id.as_deref(),
+                calendar.sequence,
+            )
+            .await
+            .map_err(|err| err.to_string())?;
+        calendar.is_update = earlier;
+    }
+
+    Ok(body)
 }
 
 async fn normalize_body_if_needed(

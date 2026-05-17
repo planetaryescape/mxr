@@ -629,7 +629,9 @@ mod tests {
             );
         });
 
-        assert!(rendered.contains("Invite:"));
+        // Card title comes from the locale provider ("Calendar invite") and
+        // replaces the older "Invite:" label.
+        assert!(rendered.contains("Calendar invite"));
         assert!(rendered.contains("Planning session"));
         assert!(rendered.contains("When:"));
         assert!(rendered.contains("Room 3"));
@@ -687,37 +689,81 @@ fn calendar_invite_lines(
     let Some(calendar) = calendar else {
         return Vec::new();
     };
+    let locale = mxr_core::i18n::DEFAULT_LOCALE;
     let label_style = Style::default().fg(theme.text_muted);
     let value_style = Style::default().fg(theme.text_primary);
     let accent_style = Style::default().fg(theme.accent).bold();
+    let method = calendar.method.as_deref().map(str::to_ascii_uppercase);
+    let is_cancelled = matches!(method.as_deref(), Some("CANCEL"))
+        || calendar
+            .status
+            .as_deref()
+            .map(|s| s.eq_ignore_ascii_case("CANCELLED"))
+            .unwrap_or(false);
+    let parse_failed = calendar
+        .warnings
+        .iter()
+        .any(|w| w.to_lowercase().contains("could not be parsed"));
+    let summary_value = calendar
+        .summary
+        .clone()
+        .unwrap_or_else(|| "Calendar invite".into());
+    let summary_style = if is_cancelled {
+        accent_style.add_modifier(ratatui::style::Modifier::CROSSED_OUT)
+    } else {
+        accent_style
+    };
+
     let mut lines = vec![Line::from(vec![
-        Span::styled(format!("{:<label_width$}", "Invite:"), label_style),
         Span::styled(
-            calendar
-                .summary
-                .clone()
-                .unwrap_or_else(|| "Calendar invite".into()),
-            accent_style,
+            format!("{:<label_width$}", locale.invite.card_title),
+            label_style,
         ),
-        Span::styled(
-            calendar
-                .method
-                .as_deref()
-                .map(|method| format!(" ({method})"))
-                .unwrap_or_default(),
-            Style::default().fg(theme.text_muted),
-        ),
+        Span::styled(summary_value, summary_style),
     ])];
+
+    if is_cancelled {
+        lines.push(Line::from(Span::styled(
+            locale.invite.banner_cancelled.to_string(),
+            Style::default().fg(theme.error).bold(),
+        )));
+    } else if calendar.is_update {
+        lines.push(Line::from(Span::styled(
+            locale.invite.banner_updated.to_string(),
+            Style::default().fg(theme.warning).bold(),
+        )));
+    } else if matches!(method.as_deref(), Some("COUNTER")) {
+        lines.push(Line::from(Span::styled(
+            locale.invite.banner_counter.to_string(),
+            Style::default().fg(theme.warning).bold(),
+        )));
+    }
+
+    if parse_failed {
+        lines.push(Line::from(Span::styled(
+            locale.invite.banner_parse_warning.to_string(),
+            Style::default().fg(theme.error).bold(),
+        )));
+    }
+
     if let Some(starts_at) = calendar.starts_at.as_deref() {
+        let mut style = value_style;
+        if is_cancelled {
+            style = style.add_modifier(ratatui::style::Modifier::CROSSED_OUT);
+        }
         lines.push(Line::from(vec![
             Span::styled(format!("{:<label_width$}", "When:"), label_style),
-            Span::styled(starts_at.to_string(), value_style),
+            Span::styled(starts_at.to_string(), style),
         ]));
     }
     if let Some(location) = calendar.location.as_deref() {
+        let mut style = value_style;
+        if is_cancelled {
+            style = style.add_modifier(ratatui::style::Modifier::CROSSED_OUT);
+        }
         lines.push(Line::from(vec![
             Span::styled(format!("{:<label_width$}", "Where:"), label_style),
-            Span::styled(location.to_string(), value_style),
+            Span::styled(location.to_string(), style),
         ]));
     }
     if let Some(rrule) = calendar.rrule.as_deref() {
@@ -737,35 +783,99 @@ fn calendar_invite_lines(
             Span::styled(organizer_label, value_style),
         ]));
     }
-    if calendar.rsvp_requested {
+    if calendar.rsvp_requested && !is_cancelled {
         lines.push(Line::from(vec![
             Span::styled(format!("{:<label_width$}", "RSVP:"), label_style),
             Span::styled("requested", Style::default().fg(theme.warning).bold()),
         ]));
     }
-    if !calendar.warnings.is_empty() {
+    let actionable_warnings: Vec<&String> = calendar
+        .warnings
+        .iter()
+        .filter(|w| !w.to_lowercase().contains("could not be parsed"))
+        .collect();
+    if !actionable_warnings.is_empty() {
         lines.push(Line::from(vec![
             Span::styled(format!("{:<label_width$}", "Warn:"), label_style),
             Span::styled(
-                calendar.warnings.join("; "),
+                actionable_warnings
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join("; "),
                 Style::default().fg(theme.warning),
             ),
         ]));
     }
-    let method = calendar.method.as_deref().map(str::to_ascii_uppercase);
-    if matches!(method.as_deref(), Some("REQUEST") | Some("PUBLISH") | None) {
-        let key_style = Style::default().fg(theme.text_primary).bold();
-        let sep_style = Style::default().fg(theme.text_muted);
-        lines.push(Line::from(vec![
-            Span::styled(format!("{:<label_width$}", "Respond:"), label_style),
-            Span::styled("ia", key_style),
-            Span::styled(" Accept   ", sep_style),
-            Span::styled("im", key_style),
-            Span::styled(" Maybe   ", sep_style),
-            Span::styled("id", key_style),
-            Span::styled(" Decline", sep_style),
-        ]));
+
+    let is_request = matches!(method.as_deref(), Some("REQUEST") | None);
+    let is_publish = matches!(method.as_deref(), Some("PUBLISH"));
+
+    if is_request && !is_cancelled && !parse_failed {
+        match calendar.viewer_partstat {
+            Some(mxr_core::types::CalendarPartstat::Accepted) => {
+                lines.push(Line::from(Span::styled(
+                    locale.invite.state_label_accepted.to_string(),
+                    Style::default().fg(theme.success).bold(),
+                )));
+                lines.push(Line::from(Span::styled(
+                    locale.invite.hint_change_response.to_string(),
+                    Style::default().fg(theme.text_muted),
+                )));
+            }
+            Some(mxr_core::types::CalendarPartstat::Tentative) => {
+                lines.push(Line::from(Span::styled(
+                    locale.invite.state_label_tentative.to_string(),
+                    Style::default().fg(theme.warning).bold(),
+                )));
+                lines.push(Line::from(Span::styled(
+                    locale.invite.hint_change_response.to_string(),
+                    Style::default().fg(theme.text_muted),
+                )));
+            }
+            Some(mxr_core::types::CalendarPartstat::Declined) => {
+                lines.push(Line::from(Span::styled(
+                    locale.invite.state_label_declined.to_string(),
+                    Style::default().fg(theme.error).bold(),
+                )));
+                lines.push(Line::from(Span::styled(
+                    locale.invite.hint_change_response.to_string(),
+                    Style::default().fg(theme.text_muted),
+                )));
+            }
+            None
+            | Some(mxr_core::types::CalendarPartstat::NeedsAction)
+            | Some(mxr_core::types::CalendarPartstat::Delegated) => {
+                let key_style = Style::default().fg(theme.text_primary).bold();
+                let sep_style = Style::default().fg(theme.text_muted);
+                lines.push(Line::from(vec![
+                    Span::styled(format!("{:<label_width$}", "Respond:"), label_style),
+                    Span::styled("ia", key_style),
+                    Span::styled(
+                        format!(" {}   ", locale.invite.chip_label_accept),
+                        sep_style,
+                    ),
+                    Span::styled("im", key_style),
+                    Span::styled(
+                        format!(" {}   ", locale.invite.chip_label_tentative),
+                        sep_style,
+                    ),
+                    Span::styled("id", key_style),
+                    Span::styled(format!(" {}", locale.invite.chip_label_decline), sep_style),
+                ]));
+                lines.push(Line::from(Span::styled(
+                    locale.invite.hint_comment.to_string(),
+                    Style::default().fg(theme.text_muted),
+                )));
+            }
+        }
+    } else if is_publish {
+        lines.push(Line::from(Span::styled(
+            locale.invite.banner_publish.to_string(),
+            Style::default().fg(theme.text_muted),
+        )));
     }
+
     lines.push(Line::from(""));
     lines
 }

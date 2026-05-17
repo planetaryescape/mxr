@@ -465,11 +465,14 @@ mod tests {
         store.insert_account(&first).await.unwrap();
         store.insert_account(&second).await.unwrap();
 
-        let first_cursor = SyncCursor::Gmail { history_id: 42 };
-        let second_cursor = SyncCursor::GmailBackfill {
-            history_id: 77,
-            page_token: "page-2".into(),
-        };
+        // Opaque-cursor persistence: the store round-trips bytes
+        // verbatim. Adapter-specific schema is tested in each provider's
+        // own cursor tests; here we just confirm bytes-in, bytes-out.
+        let first_cursor =
+            SyncCursor::from_bytes(br#"{"v":"1","history_id":42}"#.to_vec());
+        let second_cursor = SyncCursor::from_bytes(
+            br#"{"v":"1","history_id":77,"page_token":"page-2"}"#.to_vec(),
+        );
         store
             .set_sync_cursor(&first.id, &first_cursor)
             .await
@@ -481,17 +484,14 @@ mod tests {
 
         let cursors = store.list_sync_cursors().await.unwrap();
 
-        assert!(matches!(
-            cursors.get(&first.id),
-            Some(SyncCursor::Gmail { history_id: 42 })
-        ));
-        assert!(matches!(
-            cursors.get(&second.id),
-            Some(SyncCursor::GmailBackfill {
-                history_id: 77,
-                page_token
-            }) if page_token == "page-2"
-        ));
+        assert_eq!(
+            cursors.get(&first.id).map(SyncCursor::as_bytes),
+            Some(first_cursor.as_bytes())
+        );
+        assert_eq!(
+            cursors.get(&second.id).map(SyncCursor::as_bytes),
+            Some(second_cursor.as_bytes())
+        );
     }
 
     #[tokio::test]
@@ -1745,15 +1745,15 @@ mod tests {
         let cursor = store.get_sync_cursor(&account.id).await.unwrap();
         assert!(cursor.is_none());
 
-        let new_cursor = SyncCursor::Gmail { history_id: 12345 };
+        let new_cursor =
+            SyncCursor::from_bytes(br#"{"v":"1","history_id":12345}"#.to_vec());
         store
             .set_sync_cursor(&account.id, &new_cursor)
             .await
             .unwrap();
 
         let fetched = store.get_sync_cursor(&account.id).await.unwrap().unwrap();
-        let json = serde_json::to_string(&fetched).unwrap();
-        assert!(json.contains("12345"));
+        assert_eq!(fetched.as_bytes(), new_cursor.as_bytes());
     }
 
     #[tokio::test]

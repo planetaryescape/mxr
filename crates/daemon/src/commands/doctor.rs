@@ -820,32 +820,16 @@ fn shell_escape_path(path: &std::path::Path) -> String {
     path.display().to_string().replace(' ', "\\ ")
 }
 
+/// Fallback cursor summary for the doctor report. The store doesn't
+/// hold a live provider, so we can't decode adapter-specific shape
+/// here; the loops module caches richer descriptions on
+/// `SyncRuntimeStatus.current_cursor_summary` via `provider.describe_cursor`
+/// for the normal display path.
 fn describe_cursor(cursor: Option<&mxr_core::types::SyncCursor>) -> String {
     match cursor {
-        Some(mxr_core::types::SyncCursor::Initial) | None => "initial".to_string(),
-        Some(mxr_core::types::SyncCursor::Gmail { history_id }) => {
-            format!("gmail history_id={history_id}")
-        }
-        Some(mxr_core::types::SyncCursor::GmailBackfill {
-            history_id,
-            page_token,
-        }) => {
-            let short: String = page_token.chars().take(24).collect();
-            if page_token.chars().count() > 24 {
-                format!("gmail_backfill history_id={history_id} page_token={short}...")
-            } else {
-                format!("gmail_backfill history_id={history_id} page_token={short}")
-            }
-        }
-        Some(mxr_core::types::SyncCursor::Imap {
-            uid_validity,
-            uid_next,
-            mailboxes,
-            ..
-        }) => format!(
-            "imap uid_validity={uid_validity} uid_next={uid_next} mailboxes={}",
-            mailboxes.len()
-        ),
+        None => "initial".to_string(),
+        Some(c) if c.is_empty() => "initial".to_string(),
+        Some(c) => format!("opaque len={}", c.as_bytes().len()),
     }
 }
 

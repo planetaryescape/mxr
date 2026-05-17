@@ -1,6 +1,7 @@
 pub mod auth;
 mod auth_storage;
 pub mod client;
+mod cursor;
 pub mod error;
 pub mod parse;
 pub mod provider;

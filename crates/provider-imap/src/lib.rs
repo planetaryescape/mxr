@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
 
 pub mod config;
+mod cursor;
 pub mod error;
 pub mod folders;
 pub mod parse;
@@ -9,6 +10,7 @@ pub mod types;
 
 use async_trait::async_trait;
 use config::ImapConfig;
+use cursor::ImapCursor;
 use futures::stream::{self, StreamExt, TryStreamExt};
 use mxr_core::id::AccountId;
 use mxr_core::provider::MailSyncProvider;
@@ -73,16 +75,14 @@ impl ImapProvider {
         mailboxes: Vec<ImapMailboxCursor>,
         capabilities: &ImapCapabilities,
     ) -> SyncCursor {
-        let fallback = mailboxes
-            .iter()
-            .find(|mailbox| mailbox.mailbox.eq_ignore_ascii_case("INBOX"))
-            .or_else(|| mailboxes.first());
-
-        SyncCursor::Imap {
-            uid_validity: fallback.map(|mailbox| mailbox.uid_validity).unwrap_or(0),
-            uid_next: fallback.map(|mailbox| mailbox.uid_next).unwrap_or(0),
+        // The opaque-cursor refactor (MSP Phase B) moved the per-folder
+        // state plus the capability snapshot into a private versioned
+        // envelope owned by this crate. The legacy scalar fallback
+        // (uid_validity/uid_next reflecting INBOX) is now only relevant
+        // when decoding pre-Phase-B persisted cursors — see cursor.rs.
+        ImapCursor::new(
             mailboxes,
-            capabilities: Some(ImapCapabilityState {
+            Some(ImapCapabilityState {
                 move_ext: capabilities.move_ext,
                 uidplus: capabilities.uidplus,
                 idle: capabilities.idle,
@@ -93,7 +93,8 @@ impl ImapProvider {
                 utf8_accept: capabilities.utf8_accept,
                 imap4rev2: capabilities.imap4rev2,
             }),
-        }
+        )
+        .encode()
     }
 
     fn syncable_folders(folders: &[FolderInfo]) -> Vec<FolderInfo> {
@@ -720,6 +721,14 @@ impl MailSyncProvider for ImapProvider {
         }
     }
 
+    fn describe_cursor(&self, cursor: &SyncCursor) -> String {
+        match ImapCursor::decode(cursor) {
+            Ok(None) => "initial".to_string(),
+            Ok(Some(c)) => c.describe(),
+            Err(_) => format!("expired len={}", cursor.as_bytes().len()),
+        }
+    }
+
     /// Phase 3.1: open a dedicated IDLE watcher on a fresh
     /// authenticated session. Delegates to the session factory's
     /// `create_idle_watcher`, which checks the IDLE capability and
@@ -779,29 +788,12 @@ impl MailSyncProvider for ImapProvider {
     }
 
     async fn sync_messages(&self, cursor: &SyncCursor) -> mxr_core::provider::Result<SyncBatch> {
-        match cursor {
-            SyncCursor::Initial => self.initial_sync().await,
-            SyncCursor::Imap {
-                uid_validity,
-                uid_next,
-                mailboxes,
-                ..
-            } => {
-                let legacy_mailboxes = if mailboxes.is_empty() {
-                    vec![ImapMailboxCursor {
-                        mailbox: "INBOX".to_string(),
-                        uid_validity: *uid_validity,
-                        uid_next: *uid_next,
-                        highest_modseq: None,
-                    }]
-                } else {
-                    mailboxes.clone()
-                };
-                self.delta_sync(&legacy_mailboxes).await
+        match ImapCursor::decode(cursor)? {
+            None => self.initial_sync().await,
+            Some(decoded) => {
+                let mailboxes = decoded.into_mailboxes();
+                self.delta_sync(&mailboxes).await
             }
-            other => Err(mxr_core::error::MxrError::Provider(format!(
-                "IMAP provider received incompatible cursor: {other:?}"
-            ))),
         }
     }
 
@@ -1388,17 +1380,37 @@ mod tests {
     }
 
     fn imap_cursor(uid_validity: u32, uid_next: u32) -> SyncCursor {
-        SyncCursor::Imap {
-            uid_validity,
-            uid_next,
-            mailboxes: vec![ImapMailboxCursor {
+        ImapCursor::new(
+            vec![ImapMailboxCursor {
                 mailbox: "INBOX".into(),
                 uid_validity,
                 uid_next,
                 highest_modseq: None,
             }],
-            capabilities: None,
-        }
+            None,
+        )
+        .encode()
+    }
+
+    fn imap_cursor_mailboxes(mailboxes: Vec<ImapMailboxCursor>) -> SyncCursor {
+        ImapCursor::new(mailboxes, None).encode()
+    }
+
+    fn decoded_imap_inbox(cursor: &SyncCursor) -> ImapMailboxCursor {
+        let crate::cursor::ImapCursor::V1(v) = crate::cursor::ImapCursor::decode(cursor)
+            .expect("test cursor must decode")
+            .expect("test cursor must not be Initial");
+        v.mailboxes
+            .into_iter()
+            .find(|m| m.mailbox.eq_ignore_ascii_case("INBOX"))
+            .expect("INBOX entry missing")
+    }
+
+    fn decoded_imap_mailboxes(cursor: &SyncCursor) -> Vec<ImapMailboxCursor> {
+        let crate::cursor::ImapCursor::V1(v) = crate::cursor::ImapCursor::decode(cursor)
+            .expect("test cursor must decode")
+            .expect("test cursor must not be Initial");
+        v.mailboxes
     }
 
     // -- sync_labels ----------------------------------------------------------
@@ -1489,7 +1501,7 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
 
         assert_eq!(batch.upserted.len(), 3);
         assert_eq!(batch.upserted[0].envelope.subject, "Hello");
@@ -1497,17 +1509,9 @@ mod tests {
         assert_eq!(batch.upserted[2].envelope.subject, "Report");
         assert!(batch.deleted_provider_ids.is_empty());
 
-        match batch.next_cursor {
-            SyncCursor::Imap {
-                uid_validity,
-                uid_next,
-                ..
-            } => {
-                assert_eq!(uid_validity, 1);
-                assert_eq!(uid_next, 4);
-            }
-            other => panic!("Expected Imap cursor, got: {other:?}"),
-        }
+        let inbox = decoded_imap_inbox(&batch.next_cursor);
+        assert_eq!(inbox.uid_validity, 1);
+        assert_eq!(inbox.uid_next, 4);
     }
 
     #[tokio::test]
@@ -1517,7 +1521,7 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
         assert!(batch.upserted.is_empty());
     }
 
@@ -1547,18 +1551,14 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
         assert_eq!(batch.upserted.len(), 2);
         assert_eq!(batch.upserted[0].envelope.provider_id, "INBOX:1");
         assert_eq!(batch.upserted[1].envelope.provider_id, "Archive:1");
-        match batch.next_cursor {
-            SyncCursor::Imap { mailboxes, .. } => {
-                assert_eq!(mailboxes.len(), 2);
-                assert!(mailboxes.iter().any(|mailbox| mailbox.mailbox == "INBOX"));
-                assert!(mailboxes.iter().any(|mailbox| mailbox.mailbox == "Archive"));
-            }
-            other => panic!("Expected Imap cursor, got: {other:?}"),
-        }
+        let mailboxes = decoded_imap_mailboxes(&batch.next_cursor);
+        assert_eq!(mailboxes.len(), 2);
+        assert!(mailboxes.iter().any(|mailbox| mailbox.mailbox == "INBOX"));
+        assert!(mailboxes.iter().any(|mailbox| mailbox.mailbox == "Archive"));
     }
 
     #[tokio::test]
@@ -1597,7 +1597,7 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
 
         assert_eq!(batch.upserted.len(), 2);
         assert!(
@@ -1624,10 +1624,7 @@ mod tests {
         assert_eq!(batch.upserted.len(), 1);
         assert_eq!(batch.upserted[0].envelope.subject, "New message");
 
-        match batch.next_cursor {
-            SyncCursor::Imap { uid_next, .. } => assert_eq!(uid_next, 5),
-            other => panic!("Expected Imap cursor, got: {other:?}"),
-        }
+        assert_eq!(decoded_imap_inbox(&batch.next_cursor).uid_next, 5);
     }
 
     #[tokio::test]
@@ -1659,25 +1656,20 @@ mod tests {
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         let batch = provider
-            .sync_messages(&SyncCursor::Imap {
-                uid_validity: 1,
-                uid_next: 1,
-                mailboxes: vec![
-                    ImapMailboxCursor {
-                        mailbox: "INBOX".to_string(),
-                        uid_validity: 1,
-                        uid_next: 1,
-                        highest_modseq: None,
-                    },
-                    ImapMailboxCursor {
-                        mailbox: "Archive".to_string(),
-                        uid_validity: 1,
-                        uid_next: 1,
-                        highest_modseq: None,
-                    },
-                ],
-                capabilities: None,
-            })
+            .sync_messages(&imap_cursor_mailboxes(vec![
+                ImapMailboxCursor {
+                    mailbox: "INBOX".to_string(),
+                    uid_validity: 1,
+                    uid_next: 1,
+                    highest_modseq: None,
+                },
+                ImapMailboxCursor {
+                    mailbox: "Archive".to_string(),
+                    uid_validity: 1,
+                    uid_next: 1,
+                    highest_modseq: None,
+                },
+            ]))
             .await
             .unwrap();
 
@@ -1732,10 +1724,7 @@ mod tests {
         assert_eq!(batch.upserted.len(), 1);
         assert_eq!(batch.upserted[0].envelope.subject, "After reset");
 
-        match batch.next_cursor {
-            SyncCursor::Imap { uid_validity, .. } => assert_eq!(uid_validity, 2),
-            other => panic!("Expected Imap cursor, got: {other:?}"),
-        }
+        assert_eq!(decoded_imap_inbox(&batch.next_cursor).uid_validity, 2);
     }
 
     #[tokio::test]
@@ -1794,17 +1783,7 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        let cursor = SyncCursor::Imap {
-            uid_validity: 1,
-            uid_next: 5,
-            mailboxes: vec![ImapMailboxCursor {
-                mailbox: "INBOX".into(),
-                uid_validity: 1,
-                uid_next: 5,
-                highest_modseq: None,
-            }],
-            capabilities: None,
-        };
+        let cursor = imap_cursor(1, 5);
 
         let batch = provider.sync_messages(&cursor).await.unwrap();
 
@@ -1858,17 +1837,12 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        let cursor = SyncCursor::Imap {
+        let cursor = imap_cursor_mailboxes(vec![ImapMailboxCursor {
+            mailbox: "INBOX".into(),
             uid_validity: 1,
             uid_next: 4,
-            mailboxes: vec![ImapMailboxCursor {
-                mailbox: "INBOX".into(),
-                uid_validity: 1,
-                uid_next: 4,
-                highest_modseq: Some(10),
-            }],
-            capabilities: None,
-        };
+            highest_modseq: Some(10),
+        }]);
 
         let batch = provider.sync_messages(&cursor).await.unwrap();
 
@@ -1919,17 +1893,12 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        let cursor = SyncCursor::Imap {
+        let cursor = imap_cursor_mailboxes(vec![ImapMailboxCursor {
+            mailbox: "INBOX".into(),
             uid_validity: 1,
             uid_next: 4,
-            mailboxes: vec![ImapMailboxCursor {
-                mailbox: "INBOX".into(),
-                uid_validity: 1,
-                uid_next: 4,
-                highest_modseq: Some(10),
-            }],
-            capabilities: None,
-        };
+            highest_modseq: Some(10),
+        }]);
 
         let batch = provider.sync_messages(&cursor).await.unwrap();
 
@@ -2189,10 +2158,18 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
+        // Gmail-shaped legacy cursor reaching the IMAP adapter must
+        // surface as SyncCursorExpired so the daemon's Phase A.2
+        // recovery path runs a clean full sync.
         let result = provider
-            .sync_messages(&SyncCursor::Gmail { history_id: 1 })
+            .sync_messages(&SyncCursor::from_bytes(
+                br#"{"Gmail":{"history_id":1}}"#.to_vec(),
+            ))
             .await;
-        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(mxr_core::MxrError::SyncCursorExpired { .. })
+        ));
     }
 
     // -- integration: full sync flow ------------------------------------------
@@ -2218,7 +2195,7 @@ mod tests {
             Box::new(factory),
         );
 
-        let batch1 = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
+        let batch1 = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
         assert_eq!(batch1.upserted.len(), 3);
 
         let cursor1 = batch1.next_cursor;

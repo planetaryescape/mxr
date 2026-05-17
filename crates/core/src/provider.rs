@@ -11,6 +11,30 @@ pub trait MailSyncProvider: Send + Sync {
     fn account_id(&self) -> &AccountId;
     fn capabilities(&self) -> SyncCapabilities;
 
+    /// Render an opaque cursor as a one-line human-readable string for
+    /// daemon logs, `mxr doctor` output, and the status surface clients
+    /// see. Adapters that own a structured private cursor (Gmail
+    /// history_id, IMAP UIDVALIDITY+mailboxes, …) should decode and
+    /// summarise it; the default impl reports the byte length.
+    ///
+    /// Contract: one short line, ideally < 80 chars.
+    fn describe_cursor(&self, cursor: &SyncCursor) -> String {
+        if cursor.is_empty() {
+            "initial".to_string()
+        } else {
+            format!("opaque len={}", cursor.as_bytes().len())
+        }
+    }
+
+    /// True iff this cursor represents the middle of a multi-page
+    /// initial backfill — the daemon uses this to defer relationship
+    /// indexing, skip label re-sync, and shorten its requeue interval
+    /// while a provider walks the archive. Default `false` is correct
+    /// for any adapter that completes initial sync in one shot.
+    fn is_backfill_cursor(&self, _cursor: &SyncCursor) -> bool {
+        false
+    }
+
     async fn authenticate(&mut self) -> Result<()>;
     async fn refresh_auth(&mut self) -> Result<()>;
 

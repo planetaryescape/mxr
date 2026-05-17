@@ -20,7 +20,7 @@ where
     );
 
     let batch = provider
-        .sync_messages(&SyncCursor::Initial)
+        .sync_messages(&SyncCursor::empty())
         .await
         .expect("initial sync should succeed");
     assert!(
@@ -28,7 +28,7 @@ where
         "initial sync should return at least one message"
     );
     assert!(
-        !matches!(batch.next_cursor, SyncCursor::Initial),
+        !batch.next_cursor.is_empty(),
         "initial sync should advance the cursor"
     );
 
@@ -113,7 +113,7 @@ where
         .await
         .expect("delta sync should succeed");
     assert!(
-        !matches!(delta.next_cursor, SyncCursor::Initial),
+        !delta.next_cursor.is_empty(),
         "delta sync should preserve a non-initial cursor"
     );
     assert!(

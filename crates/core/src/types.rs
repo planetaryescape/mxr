@@ -2,6 +2,7 @@ use crate::id::*;
 use bitflags::bitflags;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::path::PathBuf;
 
 // -- System Labels ------------------------------------------------------------
@@ -1775,25 +1776,49 @@ pub struct ImapCapabilityState {
     pub imap4rev2: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Opaque resume token for `MailSyncProvider::sync_messages`. MSP §2.2:
+/// the daemon persists and replays this without inspecting its contents.
+/// Adapters own the serialisation — typically a versioned JSON envelope
+/// like `{"v":1,"history_id":12345}` encoded as UTF-8 bytes. An empty
+/// `Vec<u8>` is the initial-sync sentinel (no prior cursor).
+///
+/// The store column stays TEXT; the bytes round-trip as a UTF-8 string.
+/// Adapters MUST emit valid UTF-8 (typically via `serde_json::to_vec`).
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum SyncCursor {
-    Gmail {
-        history_id: u64,
-    },
-    GmailBackfill {
-        history_id: u64,
-        page_token: String,
-    },
-    Imap {
-        uid_validity: u32,
-        uid_next: u32,
-        #[serde(default)]
-        mailboxes: Vec<ImapMailboxCursor>,
-        #[serde(default)]
-        capabilities: Option<ImapCapabilityState>,
-    },
-    Initial,
+#[serde(transparent)]
+pub struct SyncCursor(pub Vec<u8>);
+
+impl SyncCursor {
+    pub const fn empty() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.0
+    }
+
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        Self(bytes)
+    }
+}
+
+// Custom Debug keeps logs bounded and avoids leaking account-scoped
+// tokens that some adapters embed in their cursor payload (e.g. Gmail
+// page tokens). Use `provider.describe_cursor(&cursor)` when a richer
+// representation is wanted.
+impl fmt::Debug for SyncCursor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SyncCursor(len={})", self.0.len())
+    }
 }
 
 // -- SyncedMessage ------------------------------------------------------------

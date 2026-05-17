@@ -187,7 +187,7 @@ mod tests {
                 upserted: self.messages.clone(),
                 deleted_provider_ids: vec![],
                 label_changes: vec![],
-                next_cursor: SyncCursor::Initial,
+                next_cursor: SyncCursor::empty(),
             })
         }
 
@@ -251,17 +251,17 @@ mod tests {
 
         async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
             self.calls.lock().unwrap().push(cursor.clone());
-            match cursor {
-                SyncCursor::Gmail { .. } => Err(MxrError::SyncCursorExpired {
-                    reason: "test: history cursor past retention".into(),
-                }),
-                SyncCursor::Initial => Ok(SyncBatch {
+            if cursor.is_empty() {
+                Ok(SyncBatch {
                     upserted: vec![self.message.clone()],
                     deleted_provider_ids: vec![],
                     label_changes: vec![],
-                    next_cursor: SyncCursor::Gmail { history_id: 22 },
-                }),
-                other => panic!("unexpected cursor in test: {other:?}"),
+                    next_cursor: SyncCursor::from_bytes(b"recovered-cursor".to_vec()),
+                })
+            } else {
+                Err(MxrError::SyncCursorExpired {
+                    reason: "test: history cursor past retention".into(),
+                })
             }
         }
 
@@ -333,19 +333,20 @@ mod tests {
             Ok(self.labels.clone())
         }
         async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
-            match cursor {
-                SyncCursor::Initial => Ok(SyncBatch {
+            if cursor.is_empty() {
+                Ok(SyncBatch {
                     upserted: self.messages.clone(),
                     deleted_provider_ids: vec![],
                     label_changes: vec![],
-                    next_cursor: SyncCursor::Gmail { history_id: 100 },
-                }),
-                _ => Ok(SyncBatch {
+                    next_cursor: SyncCursor::from_bytes(b"delta-initial".to_vec()),
+                })
+            } else {
+                Ok(SyncBatch {
                     upserted: vec![],
                     deleted_provider_ids: vec![],
                     label_changes: self.label_changes.clone(),
-                    next_cursor: SyncCursor::Gmail { history_id: 200 },
-                }),
+                    next_cursor: SyncCursor::from_bytes(b"delta-follow-up".to_vec()),
+                })
             }
         }
         async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
@@ -996,12 +997,17 @@ mod tests {
         let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
-        // After sync, cursor should match FakeProvider's next_cursor (Gmail { history_id: 1 })
+        // After sync, the store must hold whatever non-empty opaque cursor
+        // the FakeProvider returned — the daemon doesn't decode it.
         let cursor_after = store.get_sync_cursor(&account_id).await.unwrap();
-        match cursor_after {
-            Some(SyncCursor::Gmail { history_id }) => assert_eq!(history_id, 1),
-            other => panic!("expected Gmail cursor with history_id=1, got: {other:?}"),
-        }
+        let cursor_bytes = cursor_after
+            .as_ref()
+            .map(SyncCursor::as_bytes)
+            .expect("cursor should be persisted after sync");
+        assert!(
+            !cursor_bytes.is_empty(),
+            "fake provider should advance the cursor past initial"
+        );
     }
 
     #[tokio::test]
@@ -1685,12 +1691,12 @@ mod tests {
             .insert_account(&test_account(account_id.clone()))
             .await
             .unwrap();
+        // Seed the store with an opaque cursor the mock provider will
+        // treat as "stale" (any non-empty bytes trigger SyncCursorExpired).
         store
             .set_sync_cursor(
                 &account_id,
-                &SyncCursor::Gmail {
-                    history_id: 27_697_494,
-                },
+                &SyncCursor::from_bytes(b"stale-history".to_vec()),
             )
             .await
             .unwrap();
@@ -1736,19 +1742,14 @@ mod tests {
         {
             let calls = provider.calls.lock().unwrap();
             assert_eq!(calls.len(), 2);
-            assert!(matches!(
-                calls[0],
-                SyncCursor::Gmail {
-                    history_id: 27_697_494
-                }
-            ));
-            assert!(matches!(calls[1], SyncCursor::Initial));
+            assert_eq!(calls[0].as_bytes(), b"stale-history");
+            assert!(calls[1].is_empty(), "recovery dispatches an empty cursor");
         }
         let stored_cursor = store.get_sync_cursor(&account_id).await.unwrap();
-        assert!(matches!(
-            stored_cursor,
-            Some(SyncCursor::Gmail { history_id: 22 })
-        ));
+        assert_eq!(
+            stored_cursor.as_ref().map(SyncCursor::as_bytes),
+            Some(b"recovered-cursor".as_slice())
+        );
     }
 
     #[tokio::test]

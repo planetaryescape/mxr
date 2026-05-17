@@ -84,32 +84,16 @@ pub(super) async fn build_account_sync_status(
     Ok(account_sync_status(account, runtime, cursor))
 }
 
+/// Fallback cursor summary for status reports built from the store alone
+/// (no live provider in scope). When a richer description exists from the
+/// last sync cycle, it's cached on `SyncRuntimeStatus.current_cursor_summary`
+/// and used in preference — see `loops.rs::describe_sync_cursor` for the
+/// provider-aware version.
 pub(super) fn describe_cursor_for_status(cursor: Option<&mxr_core::types::SyncCursor>) -> String {
     match cursor {
-        Some(mxr_core::types::SyncCursor::Initial) | None => "initial".to_string(),
-        Some(mxr_core::types::SyncCursor::Gmail { history_id }) => {
-            format!("gmail history_id={history_id}")
-        }
-        Some(mxr_core::types::SyncCursor::GmailBackfill {
-            history_id,
-            page_token,
-        }) => {
-            let short: String = page_token.chars().take(24).collect();
-            if page_token.chars().count() > 24 {
-                format!("gmail_backfill history_id={history_id} page_token={short}...")
-            } else {
-                format!("gmail_backfill history_id={history_id} page_token={short}")
-            }
-        }
-        Some(mxr_core::types::SyncCursor::Imap {
-            uid_validity,
-            uid_next,
-            mailboxes,
-            ..
-        }) => format!(
-            "imap uid_validity={uid_validity} uid_next={uid_next} mailboxes={}",
-            mailboxes.len()
-        ),
+        None => "initial".to_string(),
+        Some(c) if c.is_empty() => "initial".to_string(),
+        Some(c) => format!("opaque len={}", c.as_bytes().len()),
     }
 }
 

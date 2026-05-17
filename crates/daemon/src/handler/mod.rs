@@ -4496,7 +4496,7 @@ mod tests {
                 upserted: self.synced_messages(),
                 deleted_provider_ids,
                 label_changes: vec![],
-                next_cursor: mxr_core::SyncCursor::Initial,
+                next_cursor: mxr_core::SyncCursor::empty(),
             })
         }
 

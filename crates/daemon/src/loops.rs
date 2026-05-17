@@ -192,6 +192,7 @@ async fn sync_loop_for_account(
                     failure_class: Some(None),
                     sync_in_progress: Some(true),
                     current_cursor_summary: Some(Some(describe_sync_cursor(
+                        provider.as_ref(),
                         pre_sync_cursor.as_ref(),
                     ))),
                     ..Default::default()
@@ -229,6 +230,7 @@ async fn sync_loop_for_account(
                             backoff_until: Some(None),
                             sync_in_progress: Some(false),
                             current_cursor_summary: Some(Some(describe_sync_cursor(
+                                provider.as_ref(),
                                 post_sync_cursor.as_ref(),
                             ))),
                             last_synced_count: Some(count),
@@ -251,19 +253,17 @@ async fn sync_loop_for_account(
                         Some(&account_id),
                         Some(&format!(
                             "messages_synced={count}; cursor={}",
-                            describe_sync_cursor(post_sync_cursor.as_ref())
+                            describe_sync_cursor(provider.as_ref(), post_sync_cursor.as_ref())
                         )),
                     )
                     .await;
                 if count > 0 {
-                    let was_initial_backfill = matches!(
-                        pre_sync_cursor.as_ref(),
-                        Some(SyncCursor::GmailBackfill { .. })
-                    );
-                    let initial_backfill_in_progress = matches!(
-                        post_sync_cursor.as_ref(),
-                        Some(SyncCursor::GmailBackfill { .. })
-                    );
+                    let was_initial_backfill = pre_sync_cursor
+                        .as_ref()
+                        .is_some_and(|c| provider.is_backfill_cursor(c));
+                    let initial_backfill_in_progress = post_sync_cursor
+                        .as_ref()
+                        .is_some_and(|c| provider.is_backfill_cursor(c));
 
                     // Critical: the post-sync fan-out (semantic ingest,
                     // contacts refresh, relationship profile, rules
@@ -386,7 +386,7 @@ async fn sync_loop_for_account(
                 }
 
                 if let Ok(Some(cursor)) = state.store.get_sync_cursor(&account_id).await {
-                    if matches!(cursor, SyncCursor::GmailBackfill { .. }) {
+                    if provider.is_backfill_cursor(&cursor) {
                         tracing::info!(account = %account_id, "Backfill in progress, re-syncing in 2s");
                         tokio::time::sleep(Duration::from_secs(2)).await;
                         skip_sleep = true;
@@ -426,6 +426,7 @@ async fn sync_loop_for_account(
                             backoff_until: Some(backoff_until),
                             sync_in_progress: Some(false),
                             current_cursor_summary: Some(Some(describe_sync_cursor(
+                                provider.as_ref(),
                                 post_error_cursor.as_ref(),
                             ))),
                             ..Default::default()
@@ -447,7 +448,7 @@ async fn sync_loop_for_account(
                         Some(&account_id),
                         Some(&format!(
                             "class={failure_class}; error={err_str}; cursor={}",
-                            describe_sync_cursor(post_error_cursor.as_ref())
+                            describe_sync_cursor(provider.as_ref(), post_error_cursor.as_ref())
                         )),
                     )
                     .await;
@@ -586,36 +587,14 @@ mod classify_sync_error_tests {
     }
 }
 
-fn describe_sync_cursor(cursor: Option<&SyncCursor>) -> String {
-    match cursor {
-        Some(SyncCursor::Initial) | None => "initial".to_string(),
-        Some(SyncCursor::Gmail { history_id }) => format!("gmail history_id={history_id}"),
-        Some(SyncCursor::GmailBackfill {
-            history_id,
-            page_token,
-        }) => format!(
-            "gmail_backfill history_id={history_id} page_token={}",
-            truncate_token(page_token)
-        ),
-        Some(SyncCursor::Imap {
-            uid_validity,
-            uid_next,
-            mailboxes,
-            ..
-        }) => format!(
-            "imap uid_validity={uid_validity} uid_next={uid_next} mailboxes={}",
-            mailboxes.len()
-        ),
-    }
-}
-
-fn truncate_token(token: &str) -> String {
-    let truncated: String = token.chars().take(24).collect();
-    if token.chars().count() > 24 {
-        format!("{truncated}...")
-    } else {
-        truncated
-    }
+/// Delegate cursor display to the provider — each adapter owns its
+/// cursor schema (MSP Phase B).
+fn describe_sync_cursor(
+    provider: &dyn mxr_core::MailSyncProvider,
+    cursor: Option<&SyncCursor>,
+) -> String {
+    let empty = SyncCursor::empty();
+    provider.describe_cursor(cursor.unwrap_or(&empty))
 }
 
 async fn apply_rules_to_messages(

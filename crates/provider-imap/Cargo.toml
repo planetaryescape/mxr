@@ -25,6 +25,7 @@ futures = { workspace = true }
 mail-parser = { workspace = true }
 once_cell = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -33,5 +34,4 @@ tracing = { workspace = true }
 insta = { workspace = true }
 mxr-provider-fake = { workspace = true }
 mxr-test-support = { workspace = true }
-serde_json = { workspace = true }
 tokio = { workspace = true }

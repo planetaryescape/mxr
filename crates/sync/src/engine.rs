@@ -224,10 +224,10 @@ impl SyncEngine {
                 .get_sync_cursor(account_id)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?
-                .unwrap_or(SyncCursor::Initial);
+                .unwrap_or_default();
 
             // Sync labels — skip during backfill to avoid slowing down pagination
-            if !matches!(cursor, SyncCursor::GmailBackfill { .. }) {
+            if !provider.is_backfill_cursor(&cursor) {
                 let labels = provider.sync_labels().await?;
                 tracing::debug!(count = labels.len(), "synced labels from provider");
                 for label in &labels {
@@ -252,7 +252,7 @@ impl SyncEngine {
                         "provider sync cursor expired; resetting to initial sync"
                     );
                     self.store
-                        .set_sync_cursor(account_id, &SyncCursor::Initial)
+                        .set_sync_cursor(account_id, &SyncCursor::empty())
                         .await
                         .map_err(|e| MxrError::Store(e.to_string()))?;
                     recovered_expired_cursor = true;
@@ -472,7 +472,7 @@ impl SyncEngine {
                     "Junction table empty — resetting sync cursor for full re-sync"
                 );
                 self.store
-                    .set_sync_cursor(account_id, &SyncCursor::Initial)
+                    .set_sync_cursor(account_id, &SyncCursor::empty())
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
                 continue;

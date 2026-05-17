@@ -122,19 +122,20 @@ impl MailSyncProvider for DeltaLabelProvider {
         Ok(self.labels.clone())
     }
     async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
-        match cursor {
-            SyncCursor::Initial => Ok(SyncBatch {
+        if cursor.is_empty() {
+            Ok(SyncBatch {
                 upserted: self.messages.clone(),
                 deleted_provider_ids: vec![],
                 label_changes: vec![],
-                next_cursor: SyncCursor::Gmail { history_id: 100 },
-            }),
-            _ => Ok(SyncBatch {
+                next_cursor: SyncCursor::from_bytes(b"delta-label-initial".to_vec()),
+            })
+        } else {
+            Ok(SyncBatch {
                 upserted: vec![],
                 deleted_provider_ids: vec![],
                 label_changes: self.label_changes.clone(),
-                next_cursor: SyncCursor::Gmail { history_id: 200 },
-            }),
+                next_cursor: SyncCursor::from_bytes(b"delta-label-follow-up".to_vec()),
+            })
         }
     }
     async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
@@ -195,7 +196,7 @@ impl MailSyncProvider for ThreadingProvider {
             upserted: self.messages.clone(),
             deleted_provider_ids: vec![],
             label_changes: vec![],
-            next_cursor: SyncCursor::Initial,
+            next_cursor: SyncCursor::empty(),
         })
     }
 

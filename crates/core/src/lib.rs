@@ -154,35 +154,35 @@ mod tests {
     }
 
     #[test]
-    fn sync_cursor_variants() {
-        let cursors = vec![
-            SyncCursor::Gmail { history_id: 12345 },
-            SyncCursor::Imap {
-                uid_validity: 1,
-                uid_next: 100,
-                mailboxes: vec![ImapMailboxCursor {
-                    mailbox: "INBOX".into(),
-                    uid_validity: 1,
-                    uid_next: 100,
-                    highest_modseq: Some(123),
-                }],
-                capabilities: Some(ImapCapabilityState {
-                    move_ext: true,
-                    uidplus: true,
-                    idle: true,
-                    condstore: false,
-                    qresync: false,
-                    namespace: true,
-                    list_status: false,
-                    utf8_accept: false,
-                    imap4rev2: false,
-                }),
-            },
-            SyncCursor::Initial,
-        ];
-        for c in cursors {
+    fn sync_cursor_empty_is_default() {
+        let c = SyncCursor::default();
+        assert!(c.is_empty());
+        assert_eq!(c.as_bytes(), &[] as &[u8]);
+        assert_eq!(SyncCursor::empty().as_bytes(), c.as_bytes());
+    }
+
+    #[test]
+    fn sync_cursor_round_trips_arbitrary_bytes() {
+        // The struct is opaque — any byte sequence the adapter produces
+        // must round-trip through serde unchanged.
+        for payload in [
+            br#"{"v":1,"history_id":12345}"#.to_vec(),
+            br#"{"v":2,"mailboxes":[]}"#.to_vec(),
+            b"random non-json bytes".to_vec(),
+            vec![],
+        ] {
+            let c = SyncCursor::from_bytes(payload.clone());
             let json = serde_json::to_string(&c).unwrap();
-            let _parsed: SyncCursor = serde_json::from_str(&json).unwrap();
+            let parsed: SyncCursor = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed.as_bytes(), payload.as_slice());
         }
+    }
+
+    #[test]
+    fn sync_cursor_debug_does_not_leak_bytes() {
+        let c = SyncCursor::from_bytes(b"sensitive-page-token-xyz".to_vec());
+        let dbg = format!("{c:?}");
+        assert_eq!(dbg, "SyncCursor(len=24)");
+        assert!(!dbg.contains("sensitive"));
     }
 }

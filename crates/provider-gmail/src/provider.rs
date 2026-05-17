@@ -10,6 +10,7 @@ use mxr_core::{
 use tracing::{debug, warn};
 
 use crate::client::{GmailApi, GmailClient, MessageFormat};
+use crate::cursor::GmailCursor;
 use crate::error::GmailError;
 use crate::parse::{extract_message_body_for_account, gmail_message_to_envelope};
 use crate::send;
@@ -286,10 +287,7 @@ impl GmailProvider {
                     history_id = hid,
                     "Initial sync producing GmailBackfill cursor for background sync"
                 );
-                SyncCursor::GmailBackfill {
-                    history_id: hid,
-                    page_token: token.clone(),
-                }
+                GmailCursor::backfill(hid, token.clone()).encode()
             }
             (Some(hid), None) => {
                 tracing::info!(
@@ -297,9 +295,9 @@ impl GmailProvider {
                     total = all_messages.len(),
                     "Initial sync complete — all messages fetched, delta-ready"
                 );
-                SyncCursor::Gmail { history_id: hid }
+                GmailCursor::delta(hid).encode()
             }
-            _ => SyncCursor::Initial,
+            _ => SyncCursor::empty(),
         };
 
         Ok(SyncBatch {
@@ -333,7 +331,7 @@ impl GmailProvider {
                 upserted: vec![],
                 deleted_provider_ids: vec![],
                 label_changes: vec![],
-                next_cursor: SyncCursor::Gmail { history_id },
+                next_cursor: GmailCursor::delta(history_id).encode(),
             });
         }
 
@@ -349,11 +347,8 @@ impl GmailProvider {
 
         let has_more = resp.next_page_token.is_some();
         let next_cursor = match resp.next_page_token {
-            Some(token) => SyncCursor::GmailBackfill {
-                history_id,
-                page_token: token,
-            },
-            None => SyncCursor::Gmail { history_id },
+            Some(token) => GmailCursor::backfill(history_id, token).encode(),
+            None => GmailCursor::delta(history_id).encode(),
         };
 
         tracing::info!(fetched = synced.len(), has_more, "Backfill batch complete");
@@ -468,9 +463,7 @@ impl GmailProvider {
             upserted: synced,
             deleted_provider_ids: deleted_ids,
             label_changes,
-            next_cursor: SyncCursor::Gmail {
-                history_id: latest_history_id,
-            },
+            next_cursor: GmailCursor::delta(latest_history_id).encode(),
         })
     }
 }
@@ -537,6 +530,18 @@ impl MailSyncProvider for GmailProvider {
         }
     }
 
+    fn describe_cursor(&self, cursor: &SyncCursor) -> String {
+        match GmailCursor::decode(cursor) {
+            Ok(None) => "initial".to_string(),
+            Ok(Some(c)) => c.describe(),
+            Err(_) => format!("expired len={}", cursor.as_bytes().len()),
+        }
+    }
+
+    fn is_backfill_cursor(&self, cursor: &SyncCursor) -> bool {
+        matches!(GmailCursor::decode(cursor), Ok(Some(c)) if c.is_backfill())
+    }
+
     async fn authenticate(&mut self) -> mxr_core::provider::Result<()> {
         // Auth is managed by GmailAuth externally before constructing the provider
         Ok(())
@@ -561,16 +566,15 @@ impl MailSyncProvider for GmailProvider {
     }
 
     async fn sync_messages(&self, cursor: &SyncCursor) -> mxr_core::provider::Result<SyncBatch> {
-        match cursor {
-            SyncCursor::Initial => self.initial_sync().await,
-            SyncCursor::Gmail { history_id } => self.delta_sync(*history_id).await,
-            SyncCursor::GmailBackfill {
-                history_id,
-                page_token,
-            } => self.backfill_sync(*history_id, page_token).await,
-            other => Err(MxrError::Provider(format!(
-                "Gmail provider received incompatible cursor: {other:?}"
-            ))),
+        match GmailCursor::decode(cursor)? {
+            None => self.initial_sync().await,
+            Some(decoded) => {
+                let GmailCursor::V1(v) = decoded;
+                match v.page_token {
+                    Some(token) => self.backfill_sync(v.history_id, &token).await,
+                    None => self.delta_sync(v.history_id).await,
+                }
+            }
         }
     }
 
@@ -1267,7 +1271,7 @@ mod tests {
     async fn gmail_delta_sync_tracks_history_changes() {
         let provider = gmail_provider();
         let batch = provider
-            .sync_messages(&SyncCursor::Gmail { history_id: 22 })
+            .sync_messages(&GmailCursor::delta(22).encode())
             .await
             .unwrap();
 
@@ -1275,10 +1279,10 @@ mod tests {
         assert_eq!(batch.label_changes.len(), 1);
         assert_eq!(batch.upserted.len(), 1);
         assert_eq!(batch.upserted[0].envelope.provider_id, "msg-3");
-        assert!(matches!(
-            batch.next_cursor,
-            SyncCursor::Gmail { history_id: 23 }
-        ));
+        let next = GmailCursor::decode(&batch.next_cursor).unwrap().unwrap();
+        let GmailCursor::V1(v) = next;
+        assert_eq!(v.history_id, 23);
+        assert!(v.page_token.is_none());
     }
 
     #[tokio::test]
@@ -1288,9 +1292,7 @@ mod tests {
         // uniformly across providers (MSP alignment, see docs/msp/spec.md §5).
         let provider = gmail_provider_with_stale_history(true);
         let err = provider
-            .sync_messages(&SyncCursor::Gmail {
-                history_id: 27_672_073,
-            })
+            .sync_messages(&GmailCursor::delta(27_672_073).encode())
             .await
             .expect_err("stale history cursor should surface SyncCursorExpired");
 
@@ -1309,7 +1311,7 @@ mod tests {
         let parse_observer = ParseObserver::new(Duration::from_millis(10));
         let provider = bulk_gmail_provider(64, parse_observer.clone());
 
-        let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
 
         assert_eq!(batch.upserted.len(), 64);
         assert!(
@@ -1324,7 +1326,7 @@ mod tests {
         let parse_observer = ParseObserver::new(Duration::from_millis(10));
         let provider = bulk_gmail_provider(63, parse_observer.clone());
 
-        let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
 
         assert_eq!(batch.upserted.len(), 63);
         assert_eq!(parse_observer.max_concurrency(), 1);

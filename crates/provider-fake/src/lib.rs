@@ -140,43 +140,45 @@ impl MailSyncProvider for FakeProvider {
     }
 
     async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
-        match cursor {
-            SyncCursor::Initial => {
-                let synced = self
-                    .messages
-                    .iter()
-                    .map(|env| {
-                        let body =
-                            self.bodies
-                                .get(&env.provider_id)
-                                .cloned()
-                                .unwrap_or_else(|| MessageBody {
-                                    message_id: env.id.clone(),
-                                    text_plain: None,
-                                    text_html: None,
-                                    attachments: vec![],
-                                    fetched_at: chrono::Utc::now(),
-                                    metadata: Default::default(),
-                                });
-                        SyncedMessage {
-                            envelope: env.clone(),
-                            body,
-                        }
-                    })
-                    .collect();
-                Ok(SyncBatch {
-                    upserted: synced,
-                    deleted_provider_ids: vec![],
-                    label_changes: vec![],
-                    next_cursor: SyncCursor::Gmail { history_id: 1 },
+        if cursor.is_empty() {
+            let synced = self
+                .messages
+                .iter()
+                .map(|env| {
+                    let body =
+                        self.bodies
+                            .get(&env.provider_id)
+                            .cloned()
+                            .unwrap_or_else(|| MessageBody {
+                                message_id: env.id.clone(),
+                                text_plain: None,
+                                text_html: None,
+                                attachments: vec![],
+                                fetched_at: chrono::Utc::now(),
+                                metadata: Default::default(),
+                            });
+                    SyncedMessage {
+                        envelope: env.clone(),
+                        body,
+                    }
                 })
-            }
-            _ => Ok(SyncBatch {
+                .collect();
+            // Any non-empty cursor signals "initial sync complete";
+            // subsequent calls take the steady-state branch below and
+            // return empty batches.
+            Ok(SyncBatch {
+                upserted: synced,
+                deleted_provider_ids: vec![],
+                label_changes: vec![],
+                next_cursor: SyncCursor::from_bytes(b"fake-synced".to_vec()),
+            })
+        } else {
+            Ok(SyncBatch {
                 upserted: vec![],
                 deleted_provider_ids: vec![],
                 label_changes: vec![],
                 next_cursor: cursor.clone(),
-            }),
+            })
         }
     }
 
@@ -498,7 +500,7 @@ mod tests {
     #[tokio::test]
     async fn sync_initial_returns_all_with_bodies() {
         let provider = FakeProvider::new(AccountId::new());
-        let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
         assert_eq!(batch.upserted.len(), 55);
         // Bodies are eagerly fetched during sync
         assert!(batch.upserted[0].body.text_plain.is_some());
@@ -508,7 +510,7 @@ mod tests {
     async fn sync_delta_returns_empty() {
         let provider = FakeProvider::new(AccountId::new());
         let batch = provider
-            .sync_messages(&SyncCursor::Gmail { history_id: 1 })
+            .sync_messages(&SyncCursor::from_bytes(b"any-non-empty".to_vec()))
             .await
             .unwrap();
         assert_eq!(batch.upserted.len(), 0);

@@ -1,6 +1,5 @@
 ---
 source: crates/web/src/lib.rs
-assertion_line: 4101
 expression: summary
 ---
 {
@@ -129,6 +128,7 @@ expression: summary
     "ResponseTimeBucket",
     "ResponseTimeDirection",
     "ResponseTimeSummary",
+    "Role",
     "RuleFormData",
     "SavedActivityFilterEntry",
     "SavedSearch",

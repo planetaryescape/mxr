@@ -3,9 +3,9 @@ title: MSP spike — verdict
 status: complete
 date: 2026-05-17
 companions:
-  - msp-spec-draft.md
-  - msp-mxr-alignment.md
-  - msp-blog-post-draft.md
+  - spec.md
+  - mxr-alignment.md
+  - blog-post-draft.md
 ---
 
 # MSP spike — verdict
@@ -49,11 +49,11 @@ In order, with explicit gates between each step:
 
 ### Step 1 (next session): land the spike artifacts in mxr
 
-- Commit `msp-spec-draft.md`, `msp-mxr-alignment.md`,
-  `msp-blog-post-draft.md`, and this verdict to mxr's repo.
+- Commit `spec.md`, `mxr-alignment.md`, `blog-post-draft.md`, and
+  this verdict to `docs/msp/` in mxr's repo.
 - Update `docs/extractable-crates/07-sync-engine.md` frontmatter to
   reflect the protocol reframing: status `pursue-as-protocol`,
-  point to these proposal docs.
+  point to `docs/msp/`.
 - **Gate before Step 2:** internal review / sleep on it / re-read
   the blog draft 24h later. If it still feels honest, proceed.
 
@@ -175,9 +175,10 @@ Two things worth flagging back to lesson 10 (publishing bar):
 
 ## File map
 
-- Spec: `docs/extracted-crates/proposals/msp-spec-draft.md`
-- mxr alignment: `docs/extracted-crates/proposals/msp-mxr-alignment.md`
-- Blog post draft: `docs/extracted-crates/proposals/msp-blog-post-draft.md`
-- This verdict: `docs/extracted-crates/proposals/msp-spike-verdict.md`
+- Spec: `docs/msp/spec.md`
+- mxr alignment: `docs/msp/mxr-alignment.md`
+- Blog post draft: `docs/msp/blog-post-draft.md`
+- This verdict: `docs/msp/spike-verdict.md`
+- Roadmap (current status): `docs/msp/ROADMAP.md`
 - Existing candidate doc (to be reframed):
   `docs/extractable-crates/07-sync-engine.md`

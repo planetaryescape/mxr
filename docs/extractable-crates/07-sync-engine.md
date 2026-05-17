@@ -5,17 +5,20 @@ decision: spec-and-align-mxr
 mxr_source: crates/sync/, crates/store/, crates/provider-gmail/, crates/provider-imap/, crates/provider-outlook/
 last_reviewed: 2026-05-17
 companion_docs:
-  - ../extracted-crates/proposals/msp-spec-draft.md
-  - ../extracted-crates/proposals/msp-mxr-alignment.md
-  - ../extracted-crates/proposals/msp-blog-post-draft.md
-  - ../extracted-crates/proposals/msp-spike-verdict.md
+  - ../msp/README.md
+  - ../msp/ROADMAP.md
+  - ../msp/spec.md
+  - ../msp/mxr-alignment.md
+  - ../msp/blog-post-draft.md
+  - ../msp/spike-verdict.md
 audit_notes: |
   Reframed 2026-05-17 from "Rust sync-engine library" to
   "Mail Sync Protocol (MSP) — wire spec, with mxr as reference
-  implementation." DAP for email. See companion docs in
-  ../extracted-crates/proposals/ for the v0.1 spec draft, the mxr
-  alignment audit (~10 days of mxr-side refactor work to reach
-  MSP-shape), the blog post draft, and the spike verdict.
+  implementation." DAP for email. See `docs/msp/` for the canonical
+  initiative directory: README + roadmap (with status table),
+  v0.1 spec draft, mxr alignment audit (~10 days of mxr-side
+  refactor work to reach MSP-shape), the blog post draft, and the
+  spike verdict.
 
   The Rust-library framing was too small. The protocol framing has
   immediate value for mxr architecture even if no external adopter
@@ -24,11 +27,12 @@ audit_notes: |
 ---
 
 > **Status: reframed.** Now pursued as a wire protocol (MSP) rather
-> than a Rust library. See
-> [`docs/extracted-crates/proposals/`](../extracted-crates/proposals/)
-> for the v0.1 spec draft, mxr alignment audit, blog post draft,
-> and spike verdict. The text below is the original library-framed
-> proposal, kept as historical context.
+> than a Rust library. The canonical home for this initiative is
+> [`docs/msp/`](../msp/) — start with
+> [`docs/msp/README.md`](../msp/README.md) for the overview and
+> [`docs/msp/ROADMAP.md`](../msp/ROADMAP.md) for current status.
+> The text below is the original library-framed proposal, kept as
+> historical context.
 
 # `mail-sync-engine` (proposed name, very provisional)
 

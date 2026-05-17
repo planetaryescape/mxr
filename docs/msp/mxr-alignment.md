@@ -2,7 +2,7 @@
 title: MSP ↔ mxr alignment audit
 status: discovery
 last_updated: 2026-05-17
-companion: msp-spec-draft.md
+companion: spec.md
 ---
 
 # MSP ↔ mxr alignment audit

@@ -237,8 +237,7 @@ for what the protocol should look like that I haven't covered,
 please open an issue.
 
 The draft spec, the mxr alignment audit, and this post all live
-at [planetaryescape/mxr/docs/extracted-crates/proposals]. The
-spec is at v0.1.
+at [planetaryescape/mxr/docs/msp]. The spec is at v0.1.
 
 ---
 

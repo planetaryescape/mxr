@@ -1,7 +1,7 @@
 # MSP roadmap
 
-> **Current focus:** Step 3 — mxr alignment Phase B (opaque
-> `SyncCursor`). Steps 1 and 2 landed 2026-05-17.
+> **Current focus:** Step 4 — Publish-or-hold decision. Steps 1, 2,
+> and 3 landed 2026-05-17.
 >
 > _Last updated: 2026-05-17._
 
@@ -16,8 +16,8 @@ sessions can pick up without losing context.
 |------|------|--------|-------------|------------|
 | 1 | Land spike artifacts in mxr | **Done** | — | — |
 | 2 | mxr alignment Phase A — cheap wins | **Done** | ~1 day | — |
-| 3 | mxr alignment Phase B — opaque SyncCursor | Not started | ~2 days | Step 2 |
-| 4 | Publish-or-hold decision | Not started | ~1 hour | Step 3 |
+| 3 | mxr alignment Phase B — opaque SyncCursor | **Done** | ~1 day | — |
+| 4 | Publish-or-hold decision | Not started | ~1 hour | — |
 | 5 | Reference IMAP adapter as separate crate | Not started | ~1-2 weeks | Step 4 (if publish) |
 | 6 | Further scope based on response | Not started | open-ended | Step 5 |
 | 7 | Maintenance + v0.2 spec | Not started | ongoing | Step 6 |
@@ -66,34 +66,54 @@ behaviour change; mxr is strictly better afterwards.
   `mxr search --limit 2 --format json` all return correct JSON.
   Real Gmail sync cycle ran end-to-end (cursor saved, no regression).
 
-## Step 3 — mxr alignment Phase B (opaque `SyncCursor`)
+## Step 3 — mxr alignment Phase B (opaque `SyncCursor`) ✅
 
-The biggest single architectural win. The `SyncCursor` enum at
-`crates/core/src/types.rs:1751-1768` is a tagged union the daemon
-pattern-matches on; the daemon's pattern-match couples it to
-"which providers exist." MSP's opaque-cursor rule fixes this.
+The biggest single architectural win. The `SyncCursor` enum was a
+tagged union the daemon pattern-matched on; the daemon's pattern-match
+coupled it to "which providers exist." MSP's opaque-cursor rule fixes
+this.
 
-**Refactor sketch:**
+**Landed:** `0588142 refactor: opaque SyncCursor (MSP Phase B)`.
 
-- Change `SyncCursor` to `pub struct SyncCursor(Vec<u8>)` (or a
-  thin wrapper around `serde_json::Value`).
-- Move the variant-specific logic into each provider crate.
-- Update `crates/store/src/sync_cursor.rs` to persist opaque bytes
-  (no schema change — it's already JSON).
-- The daemon's "Gmail cursor not-found, reset to Initial" recovery
-  becomes "adapter returns `SyncCursorExpired`, daemon clears
-  state and re-syncs." (Builds on Step 2's typed error.)
+- `SyncCursor` is now `pub struct SyncCursor(Vec<u8>)` with a custom
+  Debug impl that prints only `len=N` (cursors may embed
+  account-scoped tokens).
+- Two new trait methods on `MailSyncProvider`: `describe_cursor()` for
+  human display, `is_backfill_cursor()` for daemon backfill heuristics.
+  Both have safe defaults.
+- New private cursor schemas: `provider-gmail/src/cursor.rs` and
+  `provider-imap/src/cursor.rs`, each with a versioned JSON envelope
+  (`{"v":"1",...}`) and a legacy-shape shim that accepts the old
+  tagged-enum format for one release.
+- Anything unrecognised → `MxrError::SyncCursorExpired` →
+  daemon-side reset-to-empty + full resync (the Phase A.2 path).
+- Daemon's three duplicated `describe_cursor` helpers collapse: the
+  loops version becomes a thin wrapper around the provider trait
+  method; the two store-only callers (status_helpers, doctor) become
+  `opaque len=N` fallbacks since they have no live provider in scope.
+- `accounts.sync_cursor` column stays TEXT (no schema migration).
 
-**Entry gate:** Step 2 done.
+**Entry gate met:** Step 2 done.
 
-**Exit gate:**
-- mxr-search, mxr-sync, mxr-store tests all green.
-- Daemon smoke test against fake provider passes.
-- If feasible, smoke test against real Gmail + IMAP accounts.
-- mxr's daemon no longer pattern-matches on `SyncCursor` variants
-  anywhere outside the provider adapters.
+**Exit gate met:**
+- mxr-core, mxr-sync, mxr-store, mxr-protocol, all three provider
+  crates: tests green.
+- Workspace `cargo test --tests` + `cargo clippy --tests
+  --all-targets` clean.
+- CLI smoke against the new binary (`target-cli/debug/mxr daemon`):
+  daemon boots, `doctor` / `count` / `search` return correct JSON.
+- Daemon source has zero `SyncCursor::(Gmail|GmailBackfill|Imap|Initial)`
+  references outside provider adapters (only comments in the legacy
+  shim mention them).
 
-**Status:** Not started.
+**Verification gap to flag for follow-up:** a live end-to-end Gmail
+sync exercising the legacy-cursor migration code path on real on-disk
+cursors was *not* driven in this session — the dev-profile binary's
+account config is empty. The migration is covered by 6 per-adapter
+unit tests (legacy tagged-enum + missing-mailboxes + "Initial" string
+shapes). The runtime path will fire the first time a user upgrades
+a real install. Worth a manual sanity check on the user's `personal`
+Gmail account before publishing Step 4.
 
 ## Step 4 — Publish-or-hold decision
 
@@ -199,6 +219,19 @@ sustainable.
 ## Roadmap revisions / changelog
 
 Append below as the roadmap evolves. Most recent first.
+
+### 2026-05-17 — Phase B landed
+- Single atomic commit (0588142) per the audit's medium-cost budget.
+  ~500 LOC net change across 18 files + 2 new cursor modules.
+- All targeted tests + workspace tests + clippy clean.
+- Verification gap noted: live-Gmail end-to-end against legacy on-disk
+  cursors not driven this session (dev-profile config empty); unit
+  tests cover the migration paths.
+- Discovered during verification that cargo's `target-dir =
+  "target-cli"` config means earlier Phase A "smoke tests" against
+  `./target/debug/mxr` were running a stale May-13 pre-Phase-A binary.
+  The Phase A code changes pass unit + workspace tests but were never
+  exercised at runtime in this branch. Flagged for the user.
 
 ### 2026-05-17 — Phase A landed
 - All three Phase A tasks shipped in three commits (37b771f,

@@ -20,6 +20,16 @@ pub enum MxrError {
     #[error("Not found: {0}")]
     NotFound(String),
 
+    /// Adapter's sync cursor is no longer usable (Gmail historyId past
+    /// the server's retention window, IMAP UIDVALIDITY changed, JMAP
+    /// `cannotCalculateChanges`). The daemon catches this, clears the
+    /// stored cursor, and retries with a full sync — the same recovery
+    /// path MSP §5 prescribes via `msp.sync.cannot_calculate_changes`.
+    /// Adapters MUST return this instead of `NotFound` so the daemon's
+    /// recovery code stays provider-agnostic.
+    #[error("Sync cursor expired: {reason}")]
+    SyncCursorExpired { reason: String },
+
     /// Provider asked us to back off. `retry_after_secs` is the wait the
     /// provider suggested (Retry-After header for Gmail, server hint for IMAP).
     /// Surfaced as a typed variant so the daemon's sync loop can size its

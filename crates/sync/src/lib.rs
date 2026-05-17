@@ -150,7 +150,7 @@ mod tests {
         messages: Vec<SyncedMessage>,
     }
 
-    struct RecoveringNotFoundProvider {
+    struct RecoveringExpiredCursorProvider {
         account_id: AccountId,
         message: SyncedMessage,
         calls: std::sync::Mutex<Vec<SyncCursor>>,
@@ -218,9 +218,9 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl MailSyncProvider for RecoveringNotFoundProvider {
+    impl MailSyncProvider for RecoveringExpiredCursorProvider {
         fn name(&self) -> &str {
-            "recovering-not-found"
+            "recovering-expired-cursor"
         }
 
         fn account_id(&self) -> &AccountId {
@@ -252,9 +252,9 @@ mod tests {
         async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
             self.calls.lock().unwrap().push(cursor.clone());
             match cursor {
-                SyncCursor::Gmail { .. } => {
-                    Err(MxrError::NotFound("Requested entity was not found.".into()))
-                }
+                SyncCursor::Gmail { .. } => Err(MxrError::SyncCursorExpired {
+                    reason: "test: history cursor past retention".into(),
+                }),
                 SyncCursor::Initial => Ok(SyncBatch {
                     upserted: vec![self.message.clone()],
                     deleted_provider_ids: vec![],
@@ -1674,7 +1674,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gmail_not_found_cursor_resets_to_initial_and_recovers() {
+    async fn expired_sync_cursor_resets_to_initial_and_recovers() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
@@ -1695,7 +1695,7 @@ mod tests {
             .unwrap();
 
         let message_id = MessageId::new();
-        let provider = RecoveringNotFoundProvider {
+        let provider = RecoveringExpiredCursorProvider {
             account_id: account_id.clone(),
             message: SyncedMessage {
                 envelope: Envelope {

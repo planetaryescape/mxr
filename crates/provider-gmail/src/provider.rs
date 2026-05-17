@@ -374,9 +374,11 @@ impl GmailProvider {
                         history_id,
                         account = %self.account_id,
                         error = %body,
-                        "Gmail history cursor stale, falling back to initial sync"
+                        "Gmail history cursor stale; surfacing SyncCursorExpired for daemon-side reset"
                     );
-                    return self.initial_sync().await;
+                    return Err(MxrError::SyncCursorExpired {
+                        reason: format!("Gmail history cursor {history_id} past retention: {body}"),
+                    });
                 }
                 Err(error) => return Err(MxrError::from(error)),
             };
@@ -1264,22 +1266,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gmail_delta_sync_recovers_from_stale_history_cursor() {
+    async fn gmail_delta_sync_surfaces_sync_cursor_expired_when_history_is_stale() {
+        // Adapters no longer self-recover from stale cursors; they surface
+        // SyncCursorExpired so the daemon's reset-to-Initial path runs
+        // uniformly across providers (MSP alignment, see docs/msp/spec.md §5).
         let provider = gmail_provider_with_stale_history(true);
-        let batch = provider
+        let err = provider
             .sync_messages(&SyncCursor::Gmail {
                 history_id: 27_672_073,
             })
             .await
-            .unwrap();
+            .expect_err("stale history cursor should surface SyncCursorExpired");
 
-        assert_eq!(batch.upserted.len(), 3);
-        assert!(batch.deleted_provider_ids.is_empty());
-        assert!(batch.label_changes.is_empty());
-        assert!(matches!(
-            batch.next_cursor,
-            SyncCursor::Gmail { history_id: 22 }
-        ));
+        let reason = match err {
+            MxrError::SyncCursorExpired { reason } => reason,
+            other => panic!("expected SyncCursorExpired, got {other:?}"),
+        };
+        assert!(
+            reason.contains("27672073"),
+            "reason should carry the expired history id: {reason}"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

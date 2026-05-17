@@ -145,6 +145,7 @@ mod tests {
             provider_id: "INBOX".into(),
             unread_count: 0,
             total_count: 0,
+            role: None,
         };
         store.upsert_label(&label).await.unwrap();
 

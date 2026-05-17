@@ -614,6 +614,7 @@ mod tests {
             provider_id: "INBOX".to_string(),
             unread_count: 5,
             total_count: 20,
+            role: None,
         };
         store.upsert_label(&label).await.unwrap();
 
@@ -643,6 +644,7 @@ mod tests {
             provider_id: "INBOX".to_string(),
             unread_count: 4,
             total_count: 7,
+            role: None,
         };
         store.upsert_label(&legacy_label).await.unwrap();
 
@@ -666,6 +668,7 @@ mod tests {
             provider_id: "INBOX".to_string(),
             unread_count: 99,
             total_count: 99,
+            role: None,
         };
 
         store.upsert_label(&regenerated_label).await.unwrap();
@@ -707,6 +710,7 @@ mod tests {
             provider_id: "INBOX".to_string(),
             unread_count: 1,
             total_count: 1,
+            role: None,
         };
         store.upsert_label(&label).await.unwrap();
         store
@@ -861,6 +865,7 @@ mod tests {
             provider_id: "INBOX".to_string(),
             unread_count: 0,
             total_count: 0,
+            role: None,
         };
         store.upsert_label(&label).await.unwrap();
 
@@ -1306,6 +1311,7 @@ mod tests {
             provider_id: "INBOX".to_string(),
             unread_count: 0,
             total_count: 0,
+            role: None,
         };
         store.upsert_label(&label).await.unwrap();
 
@@ -1347,6 +1353,7 @@ mod tests {
             provider_id: "Projects".to_string(),
             unread_count: 0,
             total_count: 0,
+            role: None,
         };
         store.upsert_label(&original).await.unwrap();
 
@@ -1370,6 +1377,7 @@ mod tests {
             provider_id: "Client Work".to_string(),
             unread_count: 0,
             total_count: 0,
+            role: None,
         };
         store.replace_label(&original.id, &renamed).await.unwrap();
 
@@ -1415,6 +1423,7 @@ mod tests {
             provider_id: "WorkA".to_string(),
             unread_count: 0,
             total_count: 0,
+            role: None,
         };
         let label_b = Label {
             id: LabelId::from_provider_id("imap", &format!("B-{}", account_b.id.as_str())),
@@ -1425,6 +1434,7 @@ mod tests {
             provider_id: "WorkB".to_string(),
             unread_count: 0,
             total_count: 0,
+            role: None,
         };
         store.upsert_label(&label_a).await.unwrap();
         store.upsert_label(&label_b).await.unwrap();
@@ -1503,6 +1513,7 @@ mod tests {
             provider_id: "A".to_string(),
             unread_count: 0,
             total_count: 0,
+            role: None,
         };
         let label_b = Label {
             id: LabelId::from_provider_id("imap", "B"),
@@ -1513,6 +1524,7 @@ mod tests {
             provider_id: "B".to_string(),
             unread_count: 0,
             total_count: 0,
+            role: None,
         };
         store.upsert_label(&label_a).await.unwrap();
         store.upsert_label(&label_b).await.unwrap();
@@ -1845,6 +1857,7 @@ mod tests {
             provider_id: "provider-Important".to_string(),
             unread_count: 0,
             total_count: 0,
+            role: None,
         };
         store.upsert_label(&label).await.unwrap();
 
@@ -1917,6 +1930,7 @@ mod tests {
             provider_id: "provider-Work".to_string(),
             unread_count: 0,
             total_count: 0,
+            role: None,
         };
         store.upsert_label(&label_work).await.unwrap();
 
@@ -3342,6 +3356,7 @@ mod tests {
             provider_id: "provider-Pinned".to_string(),
             unread_count: 0,
             total_count: 0,
+            role: None,
         };
         store.upsert_label(&label).await.unwrap();
 

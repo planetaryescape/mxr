@@ -4202,6 +4202,7 @@ mod tests {
                 provider_id: "INBOX".into(),
                 unread_count: 12,
                 total_count: 144,
+                role: None,
             },
             Label {
                 id: mxr_core::LabelId::new(),
@@ -4212,6 +4213,7 @@ mod tests {
                 provider_id: "ALL_MAIL".into(),
                 unread_count: 24,
                 total_count: 8124,
+                role: None,
             },
             Label {
                 id: mxr_core::LabelId::new(),
@@ -4222,6 +4224,7 @@ mod tests {
                 provider_id: "follow-up".into(),
                 unread_count: 2,
                 total_count: 18,
+                role: None,
             },
         ]
     }

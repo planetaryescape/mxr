@@ -200,6 +200,14 @@ pub struct Label {
     pub provider_id: String,
     pub unread_count: u32,
     pub total_count: u32,
+    /// Well-known semantic role this label/folder plays in the provider's
+    /// mailbox model (Inbox, Sent, Drafts, …). Derived from IMAP SPECIAL-USE
+    /// attributes (RFC 6154) or Gmail system labels at mapping time, and
+    /// surfaced to clients so they can render the right icon/affordance
+    /// without re-parsing names. `None` for user-defined labels/folders.
+    /// Matches MSP §2.3 Folder.role.
+    #[serde(default)]
+    pub role: Option<Role>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -208,6 +216,27 @@ pub enum LabelKind {
     System,
     Folder,
     User,
+}
+
+/// Well-known role for a `Label`/folder, mirroring MSP §2.3. The set
+/// covers the roles every consumer-mail provider exposes; provider-specific
+/// roles outside this set are represented as `None` so clients fall back
+/// to generic styling. New variants land additively under
+/// `#[non_exhaustive]` to keep wire compatibility cheap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Role {
+    Inbox,
+    Sent,
+    Drafts,
+    Trash,
+    Spam,
+    Archive,
+    AllMail,
+    Important,
+    Starred,
 }
 
 // -- MessageFlags -------------------------------------------------------------

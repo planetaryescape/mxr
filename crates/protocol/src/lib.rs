@@ -108,6 +108,7 @@ mod tests {
             provider_id: "INBOX".into(),
             unread_count: 1,
             total_count: 2,
+            role: None,
         }
     }
 

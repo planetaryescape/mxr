@@ -6840,6 +6840,7 @@ mod tests {
             color: None,
             unread_count: 1,
             total_count: 3,
+            role: None,
         }];
         app.mailbox.saved_searches = vec![SavedSearch {
             id: SavedSearchId::new(),

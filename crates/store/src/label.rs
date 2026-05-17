@@ -249,5 +249,9 @@ fn row_to_label(row: sqlx::sqlite::SqliteRow) -> Result<Label, sqlx::Error> {
         provider_id: row.get::<String, _>("provider_id"),
         unread_count: row.get::<i64, _>("unread_count") as u32,
         total_count: row.get::<i64, _>("total_count") as u32,
+        // role is provider-derived; the store doesn't persist it yet.
+        // Re-derivation happens on the next sync. Persistence + lazy
+        // backfill is queued for MSP alignment Phase B+.
+        role: None,
     })
 }

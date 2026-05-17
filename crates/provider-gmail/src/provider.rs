@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::stream::{self, StreamExt};
 use mxr_core::{
     AccountId, Address, Draft, Label, LabelChange, LabelId, LabelKind, MailSendProvider,
-    MailSyncProvider, MutateCaps, MxrError, PushCaps, SearchCaps, SendReceipt, SyncBatch,
+    MailSyncProvider, MutateCaps, MxrError, PushCaps, Role, SearchCaps, SendReceipt, SyncBatch,
     SyncCapabilities, SyncCaps, SyncCursor,
 };
 use tracing::{debug, warn};
@@ -134,6 +134,21 @@ impl GmailProvider {
             _ => LabelKind::User,
         };
 
+        // Gmail system label ids are stable strings (RFC-style). Map the
+        // well-known ones to MSP roles so clients get typed semantics
+        // without parsing names. Unknown system labels (e.g. CATEGORY_*)
+        // stay role-less.
+        let role = match gl.id.as_str() {
+            "INBOX" => Some(Role::Inbox),
+            "SENT" => Some(Role::Sent),
+            "DRAFT" => Some(Role::Drafts),
+            "TRASH" => Some(Role::Trash),
+            "SPAM" => Some(Role::Spam),
+            "IMPORTANT" => Some(Role::Important),
+            "STARRED" => Some(Role::Starred),
+            _ => None,
+        };
+
         let color = gl.color.as_ref().and_then(|c| c.background_color.clone());
 
         Label {
@@ -145,6 +160,7 @@ impl GmailProvider {
             provider_id: gl.id,
             unread_count: gl.messages_unread.unwrap_or(0),
             total_count: gl.messages_total.unwrap_or(0),
+            role,
         }
     }
 

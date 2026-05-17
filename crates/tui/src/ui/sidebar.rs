@@ -415,6 +415,7 @@ mod tests {
             provider_id: name.into(),
             unread_count: 0,
             total_count: 1,
+            role: None,
         }
     }
 

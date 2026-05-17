@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use mxr_core::id::{AccountId, LabelId};
-use mxr_core::types::{Label, LabelKind};
+use mxr_core::types::{Label, LabelKind, Role};
 
 /// Map IMAP folders to mxr labels using RFC 6154 SPECIAL-USE attributes.
 pub fn map_folder_to_label(
@@ -9,16 +9,26 @@ pub fn map_folder_to_label(
     special_use: Option<&str>,
     account_id: &AccountId,
 ) -> Label {
-    let (name, kind) = match special_use {
-        Some("\\Inbox") => ("INBOX".to_string(), LabelKind::System),
-        Some("\\Sent") => ("SENT".to_string(), LabelKind::System),
-        Some("\\Drafts") => ("DRAFT".to_string(), LabelKind::System),
-        Some("\\Trash") => ("TRASH".to_string(), LabelKind::System),
-        Some("\\Junk") | Some("\\Spam") => ("SPAM".to_string(), LabelKind::System),
-        Some("\\Archive") => ("ARCHIVE".to_string(), LabelKind::System),
-        Some("\\All") => ("ALL".to_string(), LabelKind::System),
-        Some("\\Flagged") => ("STARRED".to_string(), LabelKind::System),
-        _ => (folder_name.to_string(), LabelKind::Folder),
+    let (name, kind, role) = match special_use {
+        Some("\\Inbox") => ("INBOX".to_string(), LabelKind::System, Some(Role::Inbox)),
+        Some("\\Sent") => ("SENT".to_string(), LabelKind::System, Some(Role::Sent)),
+        Some("\\Drafts") => ("DRAFT".to_string(), LabelKind::System, Some(Role::Drafts)),
+        Some("\\Trash") => ("TRASH".to_string(), LabelKind::System, Some(Role::Trash)),
+        Some("\\Junk") | Some("\\Spam") => {
+            ("SPAM".to_string(), LabelKind::System, Some(Role::Spam))
+        }
+        Some("\\Archive") => (
+            "ARCHIVE".to_string(),
+            LabelKind::System,
+            Some(Role::Archive),
+        ),
+        Some("\\All") => ("ALL".to_string(), LabelKind::System, Some(Role::AllMail)),
+        Some("\\Flagged") => (
+            "STARRED".to_string(),
+            LabelKind::System,
+            Some(Role::Starred),
+        ),
+        _ => (folder_name.to_string(), LabelKind::Folder, None),
     };
 
     Label {
@@ -30,6 +40,7 @@ pub fn map_folder_to_label(
         provider_id: folder_name.to_string(),
         unread_count: 0,
         total_count: 0,
+        role,
     }
 }
 

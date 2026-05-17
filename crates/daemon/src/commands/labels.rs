@@ -196,6 +196,7 @@ mod tests {
                 provider_id: "INBOX".to_string(),
                 unread_count: 3,
                 total_count: 12,
+                role: None,
             },
             Label {
                 id: LabelId::new(),
@@ -206,6 +207,7 @@ mod tests {
                 provider_id: "Projects".to_string(),
                 unread_count: 1,
                 total_count: 4,
+                role: None,
             },
         ]
     }

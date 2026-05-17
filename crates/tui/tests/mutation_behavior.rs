@@ -36,6 +36,7 @@ fn set_active_inbox_for_tests(app: &mut App) {
         provider_id: "INBOX".into(),
         unread_count: 1,
         total_count: 1,
+        role: None,
     }];
     app.mailbox.active_label = Some(inbox_id);
 }

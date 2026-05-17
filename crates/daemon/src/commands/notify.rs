@@ -75,6 +75,7 @@ mod tests {
                 provider_id: "INBOX".into(),
                 unread_count: 7,
                 total_count: 10,
+                role: None,
             },
             Label {
                 id: LabelId::new(),
@@ -85,6 +86,7 @@ mod tests {
                 provider_id: "STARRED".into(),
                 unread_count: 99,
                 total_count: 99,
+                role: None,
             },
         ];
 

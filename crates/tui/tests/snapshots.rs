@@ -76,6 +76,7 @@ fn sample_label(name: &str, kind: LabelKind, unread_count: u32, total_count: u32
         provider_id: name.into(),
         unread_count,
         total_count,
+        role: None,
     }
 }
 
@@ -205,6 +206,7 @@ fn label_picker_snapshot() {
                 provider_id: "INBOX".into(),
                 unread_count: 4,
                 total_count: 10,
+                role: None,
             },
             Label {
                 id: mxr_core::id::LabelId::from_provider_id("test", "Projects"),
@@ -215,6 +217,7 @@ fn label_picker_snapshot() {
                 provider_id: "Projects".into(),
                 unread_count: 0,
                 total_count: 2,
+                role: None,
             },
         ],
         LabelPickerMode::Move,

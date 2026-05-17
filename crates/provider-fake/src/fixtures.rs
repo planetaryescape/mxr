@@ -1382,6 +1382,16 @@ fn demo_html_body(subject: &str, body_text: &str, category: usize, current_num: 
 }
 
 fn make_label(account_id: &AccountId, name: &str, kind: LabelKind, provider_id: &str) -> Label {
+    let role = match provider_id {
+        "INBOX" => Some(Role::Inbox),
+        "SENT" => Some(Role::Sent),
+        "DRAFT" => Some(Role::Drafts),
+        "TRASH" => Some(Role::Trash),
+        "SPAM" => Some(Role::Spam),
+        "IMPORTANT" => Some(Role::Important),
+        "STARRED" => Some(Role::Starred),
+        _ => None,
+    };
     Label {
         id: LabelId::new(),
         account_id: account_id.clone(),
@@ -1391,6 +1401,7 @@ fn make_label(account_id: &AccountId, name: &str, kind: LabelKind, provider_id: 
         provider_id: provider_id.to_string(),
         unread_count: 0,
         total_count: 0,
+        role,
     }
 }
 

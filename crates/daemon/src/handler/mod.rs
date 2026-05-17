@@ -4309,6 +4309,7 @@ mod tests {
                         provider_id: name.to_string(),
                         unread_count: 0,
                         total_count: count,
+                        role: None,
                     }
                 })
                 .collect()

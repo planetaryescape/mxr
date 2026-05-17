@@ -241,6 +241,7 @@ impl MailSyncProvider for FakeProvider {
             provider_id: name.to_string(),
             unread_count: 0,
             total_count: 0,
+            role: None,
         };
         self.labels_guard().push(label.clone());
         Ok(label)

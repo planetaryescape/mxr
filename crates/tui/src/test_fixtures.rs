@@ -160,6 +160,7 @@ pub(crate) fn test_system_labels(account_id: &AccountId) -> Vec<Label> {
         provider_id: pid.to_string(),
         unread_count: unread,
         total_count: total,
+        role: None,
     };
     vec![
         sys("INBOX", "INBOX", 3, 10),
@@ -180,6 +181,7 @@ pub(crate) fn test_system_labels(account_id: &AccountId) -> Vec<Label> {
             provider_id: "Label_1".to_string(),
             unread_count: 2,
             total_count: 10,
+            role: None,
         },
         Label {
             id: LabelId::from_provider_id("test", "Personal"),
@@ -190,6 +192,7 @@ pub(crate) fn test_system_labels(account_id: &AccountId) -> Vec<Label> {
             provider_id: "Label_2".to_string(),
             unread_count: 0,
             total_count: 3,
+            role: None,
         },
         Label {
             id: LabelId::from_provider_id("test", "CATEGORY_UPDATES"),
@@ -200,6 +203,7 @@ pub(crate) fn test_system_labels(account_id: &AccountId) -> Vec<Label> {
             provider_id: "CATEGORY_UPDATES".to_string(),
             unread_count: 0,
             total_count: 50,
+            role: None,
         },
     ]
 }

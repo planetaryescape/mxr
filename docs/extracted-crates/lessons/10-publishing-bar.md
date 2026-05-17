@@ -147,3 +147,101 @@ If a new function emerges inside mxr that feels extractable:
 4. Only if all three pass, propose extraction.
 
 The bar exists to prevent reflexive yes. Use it.
+
+## Naming: pick a name a Rust dev would want to type
+
+Captured 2026-05-17 after four crates shipped. Of the four, three are
+defensible and one (`mailbox-formats`) is the kind of bureaucratic
+descriptive name that ages into "what was that crate again?"
+
+### The two Rust naming traditions
+
+Successful Rust crates split roughly into two camps:
+
+**Playful / evocative**: `reqwest`, `anyhow`, `thiserror`, `serde`,
+`tokio`, `axum`, `rayon`, `clap`, `nom`, `syn`, `quote`, `chumsky`,
+`bevy`. These names give the crate identity. They're memorable. They
+become verbs ("I'll reqwest it"). The contract is bounded enough that
+a distinct name doesn't fight searchability.
+
+**Descriptive / utility**: `tokio-postgres`, `tracing-subscriber`,
+`wasm-bindgen`, `serde_json`, `actix-web`. These are extensions of an
+established primary library, where the descriptive form is the *whole
+point* — you find them via the prefix.
+
+For a focused, bounded contract crate (the kind that survives the bar
+test in this document), the playful form is usually correct. For an
+extension of an existing well-known crate, the descriptive form is
+correct.
+
+### The bar for a name
+
+Before publishing:
+
+1. **Would a Rust dev want to type it?** If the name reads like a
+   Java package (`mailbox-formats`, `email-parser-utils`), reconsider.
+   Counter-test: imagine a top-level comment "// uses xxx for X" —
+   does the name flow naturally, or does it stick out?
+
+2. **Does it carry domain weight?** When the crate has a term of art
+   in its domain (JWZ for email threading, BERT for tokenizers, JWZ
+   for RFC 5256 threading), at least one of {crate name, leading
+   description, top keyword} should carry that term. Otherwise SEO
+   loses to the abstract description.
+
+3. **Is it findable by someone who doesn't already know the name?**
+   The `url` and `regex` crates work because the name is the problem.
+   `reqwest` works because the description ("HTTP requests") fixes
+   findability. If your name is distinct but obscure, your description
+   has to do more work.
+
+### How our four ranked
+
+- **`list-unsubscribe`** — RIGHT. Crate name = RFC header name.
+  Anyone searching for "list-unsubscribe" finds it. The contract IS
+  the spec; the name shouldn't reach for cleverness.
+- **`mail-threading`** — defensible but a mild miss. `jwz` as a
+  crate name would have been instantly recognizable to ecosystem
+  natives and given the crate a distinct identity. We chose
+  searchability over distinctness. **Patched the v0.1.1 description
+  to lead with "JWZ"** as the SEO recovery move.
+- **`mail-query`** — descriptive, fine. Could have been more
+  playful but Gmail-vocabulary parsers don't have an obvious term of
+  art. The vendor-neutral rename (from candidate doc's `gmail-query`)
+  was correct.
+- **`mailbox-formats`** — the weakest. Bureaucratic compound noun.
+  Better options existed: `pigeonhole` (literally a mail slot),
+  `mboxen` (plural-evocative for "mbox + Maildir"), `mailroom`. Worth
+  the lesson, not worth the rename — crates.io names are forever once
+  published.
+
+### The recovery move when you already shipped
+
+You can't rename a crate post-publish (the name is reserved
+forever, even if you yank). But you CAN ship a metadata-only patch
+release with a better description and keyword order. Search engines
+re-crawl; crates.io re-indexes. The `mail-threading v0.1.1` release
+on 2026-05-17 demonstrates the pattern:
+
+```diff
+- description = "Spec-aligned client-side email threading using RFC 5256/JWZ references."
++ description = "JWZ email threading (RFC 5256). Reconstruct message threads from References/In-Reply-To headers, with subject fallback for broken clients."
+- keywords = ["email", "threading", "jwz", "imap", "rfc5256"]
++ keywords = ["jwz", "email", "threading", "imap", "rfc5256"]
+```
+
+Same code, better discoverability. Free win if you catch the issue
+early.
+
+### Forward rule
+
+For the next extraction, *before* writing the candidate doc:
+
+- Write down 3-5 candidate names. At least one playful, at least one
+  descriptive.
+- Run each through the three questions above.
+- Check availability (`cargo search` + crates.io API).
+- Cite the chosen name + rejected alternatives in the candidate doc,
+  with one sentence on why.
+
+Naming is cheap to do before the work, expensive to fix after.

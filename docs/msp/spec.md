@@ -166,8 +166,7 @@ The output of `sync` and the payload of push notifications:
 
 ```
 SyncDelta {
-  messages_added:    Vec<Message>
-  messages_changed:  Vec<MessageChange>     // partial update (flags, folder_ids)
+  messages_changed:  Vec<Message>           // additions + mutations; merged
   messages_removed:  Vec<MessageId>
   threads_changed:   Vec<Thread>            // composition or ordering changed
   folders_changed:   Vec<Folder>            // additions, renames, deletions
@@ -176,8 +175,11 @@ SyncDelta {
 }
 ```
 
-The `created/updated/destroyed` triple is JMAP's contribution and is
-the canonical sync output. `has_more` enables paginated catch-up.
+The merged `messages_changed` follows MS Graph, Drive, CloudKit, and
+WebDAV convention. Local-store clients upsert-by-id; splitting
+`created/updated` doubles array counts without semantic gain (only
+JMAP splits, and only because it returns IDs alone and defers object
+retrieval). `has_more` enables paginated catch-up.
 
 ---
 

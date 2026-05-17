@@ -10,6 +10,10 @@ use std::sync::Arc;
 pub struct SyncOutcome {
     pub synced_count: u32,
     pub upserted_message_ids: Vec<MessageId>,
+    /// Provider truncated this batch and the next sync call will yield
+    /// more data immediately. The daemon uses this to skip its normal
+    /// sleep interval and re-poll right away.
+    pub has_more: bool,
 }
 
 /// No-op lookup used when the engine is constructed without an explicit
@@ -269,6 +273,7 @@ impl SyncEngine {
                 }
             };
             let synced_count = batch.upserted.len() as u32;
+            let has_more = batch.has_more;
             let upserted_message_ids = batch
                 .upserted
                 .iter()
@@ -481,6 +486,7 @@ impl SyncEngine {
             return Ok(SyncOutcome {
                 synced_count,
                 upserted_message_ids,
+                has_more,
             });
         }
     }

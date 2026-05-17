@@ -281,6 +281,7 @@ impl GmailProvider {
             }
         }
 
+        let has_more = page_token.is_some();
         let next_cursor = match (latest_history_id, &page_token) {
             (Some(hid), Some(token)) => {
                 tracing::info!(
@@ -305,6 +306,7 @@ impl GmailProvider {
             deleted_provider_ids: vec![],
             label_changes: vec![],
             next_cursor,
+            has_more,
         })
     }
 
@@ -332,6 +334,7 @@ impl GmailProvider {
                 deleted_provider_ids: vec![],
                 label_changes: vec![],
                 next_cursor: GmailCursor::delta(history_id).encode(),
+                has_more: false,
             });
         }
 
@@ -358,6 +361,7 @@ impl GmailProvider {
             deleted_provider_ids: vec![],
             label_changes: vec![],
             next_cursor,
+            has_more,
         })
     }
 
@@ -464,6 +468,7 @@ impl GmailProvider {
             deleted_provider_ids: deleted_ids,
             label_changes,
             next_cursor: GmailCursor::delta(latest_history_id).encode(),
+            has_more: false,
         })
     }
 }
@@ -1330,5 +1335,40 @@ mod tests {
 
         assert_eq!(batch.upserted.len(), 63);
         assert_eq!(parse_observer.max_concurrency(), 1);
+    }
+
+    #[tokio::test]
+    async fn gmail_backfill_with_more_pages_surfaces_has_more() {
+        let provider = gmail_provider();
+        let cursor = GmailCursor::backfill(22, "page-1".into()).encode();
+
+        let batch = provider.sync_messages(&cursor).await.unwrap();
+
+        assert!(
+            batch.has_more,
+            "backfill with a non-terminal page should surface has_more = true"
+        );
+        let next = GmailCursor::decode(&batch.next_cursor).unwrap().unwrap();
+        let GmailCursor::V1(v) = next;
+        assert_eq!(v.page_token.as_deref(), Some("page-2"));
+    }
+
+    #[tokio::test]
+    async fn gmail_backfill_final_page_surfaces_has_more_false() {
+        let provider = gmail_provider();
+        let cursor = GmailCursor::backfill(22, "page-2".into()).encode();
+
+        let batch = provider.sync_messages(&cursor).await.unwrap();
+
+        assert!(
+            !batch.has_more,
+            "the terminal backfill page must surface has_more = false so the daemon stops re-polling"
+        );
+        let next = GmailCursor::decode(&batch.next_cursor).unwrap().unwrap();
+        let GmailCursor::V1(v) = next;
+        assert!(
+            v.page_token.is_none(),
+            "next_cursor should be delta-ready (no page_token)"
+        );
     }
 }

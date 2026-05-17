@@ -215,7 +215,8 @@ short-lived in-memory cache keyed on `mutation_id`).
 
 ### MSP §2.8 — SyncDelta
 
-**mxr today:** `SyncBatch` at `crates/core/src/types.rs:1781`:
+**mxr today** (post-Phase-C): `SyncBatch` at
+`crates/core/src/types.rs`:
 
 ```rust
 pub struct SyncBatch {
@@ -223,26 +224,32 @@ pub struct SyncBatch {
     pub deleted_provider_ids: Vec<String>,
     pub label_changes: Vec<LabelChange>,
     pub next_cursor: SyncCursor,
+    pub has_more: bool,
 }
 ```
 
-**Gap:** Very close to MSP's `SyncDelta`. Differences:
+**Gap:** Close to MSP's `SyncDelta`. Remaining differences:
 
-- `upserted` merges added + changed. MSP splits them
-  (`messages_added` vs `messages_changed`).
 - No `threads_changed` or `folders_changed` — mxr handles labels via
   `label_changes` and threads implicitly via envelope `thread_id`.
-- No `has_more` flag — mxr's pagination uses the cursor structure
-  itself (e.g. `GmailBackfill { page_token }`).
 
-**Refactor:**
-- Split upserted into added vs changed (adapter knows which).
-- Add explicit `folders_changed` (already implied by
-  `label_changes`).
-- Add `has_more: bool`.
+**Resolved in Phase C (2026-05-17):**
 
-**Cost: medium.** ~1-2 days. The new shape is strictly more
-expressive; mxr can adopt it without breaking anything.
+- `has_more: bool` added; daemon's sync loop now sets
+  `skip_sleep = outcome.has_more` and re-polls immediately on
+  truncated batches (multi-page Gmail backfill finishes in minutes
+  rather than hours).
+- Decision: **do not split `upserted` into added vs changed.**
+  Survey of 8 sync protocols (JMAP, MS Graph, Drive, WebDAV,
+  CloudKit, Matrix, Notion, Linear) showed only JMAP splits, and
+  only because JMAP returns IDs alone and defers object retrieval.
+  Every protocol with a local id-keyed store merges added+changed
+  because the client upserts-by-id anyway — which mxr already does
+  via `(account_id, provider_id)` upsert in
+  `crates/store/src/message.rs`. Splitting would double array
+  counts for no semantic gain. MSP spec §2.8 was updated to match.
+
+**Cost (delivered): small.** ~half-day, single atomic commit.
 
 ### MSP §3 — Wire protocol (JSON-RPC framing)
 

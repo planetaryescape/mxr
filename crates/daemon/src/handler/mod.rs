@@ -4497,6 +4497,7 @@ mod tests {
                 deleted_provider_ids,
                 label_changes: vec![],
                 next_cursor: mxr_core::SyncCursor::empty(),
+                has_more: false,
             })
         }
 

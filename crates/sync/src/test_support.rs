@@ -128,6 +128,7 @@ impl MailSyncProvider for DeltaLabelProvider {
                 deleted_provider_ids: vec![],
                 label_changes: vec![],
                 next_cursor: SyncCursor::from_bytes(b"delta-label-initial".to_vec()),
+                has_more: false,
             })
         } else {
             Ok(SyncBatch {
@@ -135,6 +136,7 @@ impl MailSyncProvider for DeltaLabelProvider {
                 deleted_provider_ids: vec![],
                 label_changes: self.label_changes.clone(),
                 next_cursor: SyncCursor::from_bytes(b"delta-label-follow-up".to_vec()),
+                has_more: false,
             })
         }
     }
@@ -197,6 +199,7 @@ impl MailSyncProvider for ThreadingProvider {
             deleted_provider_ids: vec![],
             label_changes: vec![],
             next_cursor: SyncCursor::empty(),
+            has_more: false,
         })
     }
 

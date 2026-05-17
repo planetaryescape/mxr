@@ -1,7 +1,8 @@
 # MSP roadmap
 
-> **Current focus:** Step 4 — Publish-or-hold decision. Steps 1, 2,
-> and 3 landed 2026-05-17.
+> **Current focus:** Phase D (mutation unification) and beyond. Step 4
+> (publish-or-hold) deferred to "hold." Steps 1–3 + alignment Phase C
+> landed 2026-05-17.
 >
 > _Last updated: 2026-05-17._
 
@@ -219,6 +220,25 @@ sustainable.
 ## Roadmap revisions / changelog
 
 Append below as the roadmap evolves. Most recent first.
+
+### 2026-05-17 — Phase C landed
+- Single atomic commit per the audit's small-cost budget. Added
+  `has_more: bool` to `SyncBatch` and `SyncOutcome`; daemon sets
+  `skip_sleep = outcome.has_more` so multi-page Gmail backfill
+  finishes in minutes instead of hours (was: 30s sleep between
+  pages, gated on `is_backfill_cursor` heuristic).
+- Defensive: 50-iteration cap on consecutive `has_more = true` to
+  prevent a buggy adapter from tight-looping; forces one sleep
+  cycle and resets the counter.
+- **Decision:** did NOT split `upserted` into `messages_added` +
+  `messages_changed` (despite the original audit prescription).
+  8-protocol survey (JMAP, MS Graph, Drive, WebDAV, CloudKit,
+  Matrix, Notion, Linear) showed only JMAP splits, and only for
+  ID-only deltas. Every local-store client (Graph/Drive/CloudKit/
+  WebDAV) merges. MSP spec §2.8 + alignment audit §2.8 updated
+  to match.
+- Step 4 (publish-or-hold) deferred to "hold" — internal alignment
+  work continues.
 
 ### 2026-05-17 — Phase B landed
 - Single atomic commit (0588142) per the audit's medium-cost budget.

@@ -171,6 +171,7 @@ impl MailSyncProvider for FakeProvider {
                 deleted_provider_ids: vec![],
                 label_changes: vec![],
                 next_cursor: SyncCursor::from_bytes(b"fake-synced".to_vec()),
+                has_more: false,
             })
         } else {
             Ok(SyncBatch {
@@ -178,6 +179,7 @@ impl MailSyncProvider for FakeProvider {
                 deleted_provider_ids: vec![],
                 label_changes: vec![],
                 next_cursor: cursor.clone(),
+                has_more: false,
             })
         }
     }

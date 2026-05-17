@@ -125,6 +125,7 @@ async fn sync_loop_for_account(
 ) {
     let mut backoff_secs: u64 = 0;
     let mut skip_sleep = true;
+    let mut consecutive_has_more: u32 = 0;
     let mut last_message_sync_at = chrono::Utc::now();
     let mut deferred_relationship_contacts = BTreeSet::<String>::new();
     // Phase 3.1: wake the sleep early when an IDLE watcher signals.
@@ -385,13 +386,25 @@ async fn sync_loop_for_account(
                     let _ = state.event_tx.send(counts_event);
                 }
 
-                if let Ok(Some(cursor)) = state.store.get_sync_cursor(&account_id).await {
-                    if provider.is_backfill_cursor(&cursor) {
-                        tracing::info!(account = %account_id, "Backfill in progress, re-syncing in 2s");
-                        tokio::time::sleep(Duration::from_secs(2)).await;
+                if outcome.has_more {
+                    consecutive_has_more = consecutive_has_more.saturating_add(1);
+                    if consecutive_has_more >= 50 {
+                        tracing::warn!(
+                            account = %account_id,
+                            consecutive_has_more,
+                            "has_more cap reached — forcing one sleep cycle"
+                        );
+                        consecutive_has_more = 0;
+                    } else {
+                        tracing::info!(
+                            account = %account_id,
+                            "provider has more — re-polling immediately"
+                        );
                         skip_sleep = true;
                         continue;
                     }
+                } else {
+                    consecutive_has_more = 0;
                 }
             }
             Err(e) => {

@@ -359,6 +359,7 @@ impl ImapProvider {
             deleted_provider_ids: vec![],
             label_changes: vec![],
             next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
+            has_more: false,
         })
     }
 
@@ -481,6 +482,7 @@ impl ImapProvider {
             deleted_provider_ids,
             label_changes: vec![],
             next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
+            has_more: false,
         })
     }
 

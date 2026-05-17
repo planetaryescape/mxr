@@ -82,7 +82,7 @@ fn bench_sync_overlap(c: &mut Criterion) {
             runtime.block_on(async {
                 let batch = mxr_core::MailSyncProvider::sync_messages(
                     black_box(&provider),
-                    &SyncCursor::Initial,
+                    &SyncCursor::empty(),
                 )
                 .await
                 .expect("imap initial sync");

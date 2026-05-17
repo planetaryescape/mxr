@@ -1839,6 +1839,11 @@ pub struct SyncBatch {
     pub deleted_provider_ids: Vec<String>,
     pub label_changes: Vec<LabelChange>,
     pub next_cursor: SyncCursor,
+    /// True iff the provider deliberately truncated this batch and
+    /// the next `sync_messages()` call will yield more data
+    /// immediately. False = caught up; the daemon may sleep normally.
+    #[serde(default)]
+    pub has_more: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

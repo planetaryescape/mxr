@@ -156,6 +156,62 @@ mod tests {
         calls: std::sync::Mutex<Vec<SyncCursor>>,
     }
 
+    struct HasMoreProvider {
+        account_id: AccountId,
+        message: SyncedMessage,
+    }
+
+    #[async_trait::async_trait]
+    impl MailSyncProvider for HasMoreProvider {
+        fn name(&self) -> &str {
+            "has-more"
+        }
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities::default()
+        }
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(vec![])
+        }
+        async fn sync_messages(&self, _cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            Ok(SyncBatch {
+                upserted: vec![self.message.clone()],
+                deleted_provider_ids: vec![],
+                label_changes: vec![],
+                next_cursor: SyncCursor::from_bytes(b"more-pages".to_vec()),
+                has_more: true,
+            })
+        }
+        async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+        async fn modify_labels(
+            &self,
+            _id: &str,
+            _add: &[String],
+            _rm: &[String],
+        ) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn trash(&self, _id: &str) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn set_read(&self, _id: &str, _read: bool) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn set_starred(&self, _id: &str, _starred: bool) -> Result<(), MxrError> {
+            Ok(())
+        }
+    }
+
     #[async_trait::async_trait]
     impl MailSyncProvider for ThreadingProvider {
         fn name(&self) -> &str {
@@ -188,6 +244,7 @@ mod tests {
                 deleted_provider_ids: vec![],
                 label_changes: vec![],
                 next_cursor: SyncCursor::empty(),
+                has_more: false,
             })
         }
 
@@ -257,6 +314,7 @@ mod tests {
                     deleted_provider_ids: vec![],
                     label_changes: vec![],
                     next_cursor: SyncCursor::from_bytes(b"recovered-cursor".to_vec()),
+                    has_more: false,
                 })
             } else {
                 Err(MxrError::SyncCursorExpired {
@@ -339,6 +397,7 @@ mod tests {
                     deleted_provider_ids: vec![],
                     label_changes: vec![],
                     next_cursor: SyncCursor::from_bytes(b"delta-initial".to_vec()),
+                    has_more: false,
                 })
             } else {
                 Ok(SyncBatch {
@@ -346,6 +405,7 @@ mod tests {
                     deleted_provider_ids: vec![],
                     label_changes: self.label_changes.clone(),
                     next_cursor: SyncCursor::from_bytes(b"delta-follow-up".to_vec()),
+                    has_more: false,
                 })
             }
         }
@@ -1749,6 +1809,64 @@ mod tests {
         assert_eq!(
             stored_cursor.as_ref().map(SyncCursor::as_bytes),
             Some(b"recovered-cursor".as_slice())
+        );
+    }
+
+    #[tokio::test]
+    async fn engine_propagates_has_more_into_sync_outcome() {
+        // Phase C: providers signal "more pages remain" via SyncBatch.has_more;
+        // the engine must surface it through SyncOutcome so the daemon's sync
+        // loop can skip its normal sleep interval and re-poll immediately.
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search.clone());
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+
+        let message_id = MessageId::new();
+        let provider = HasMoreProvider {
+            account_id: account_id.clone(),
+            message: SyncedMessage {
+                envelope: Envelope {
+                    id: message_id.clone(),
+                    account_id: account_id.clone(),
+                    provider_id: "page-1-msg".into(),
+                    thread_id: ThreadId::new(),
+                    message_id_header: None,
+                    in_reply_to: None,
+                    references: vec![],
+                    from: Address {
+                        name: Some("Page One".into()),
+                        email: "p1@example.com".into(),
+                    },
+                    to: vec![],
+                    cc: vec![],
+                    bcc: vec![],
+                    subject: "Page 1 of N".into(),
+                    date: chrono::Utc::now(),
+                    flags: MessageFlags::empty(),
+                    snippet: "Page 1".into(),
+                    has_attachments: false,
+                    size_bytes: 32,
+                    unsubscribe: UnsubscribeMethod::None,
+                    link_count: 0,
+                    body_word_count: 0,
+                    label_provider_ids: vec![],
+                },
+                body: make_empty_body(&message_id),
+            },
+        };
+
+        let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
+
+        assert_eq!(outcome.synced_count, 1);
+        assert!(
+            outcome.has_more,
+            "engine must surface batch.has_more on SyncOutcome so the daemon re-polls immediately"
         );
     }
 

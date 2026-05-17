@@ -2,7 +2,7 @@
 
 use mxr_core::id::*;
 use mxr_core::types::*;
-use mxr_core::{MailSyncProvider, MxrError, SyncCapabilities};
+use mxr_core::{MailSyncProvider, MutateCaps, MxrError, SyncCapabilities, SyncCaps};
 
 /// A provider that always returns errors from sync_messages, for testing error handling.
 pub(crate) struct ErrorProvider {
@@ -19,12 +19,11 @@ impl MailSyncProvider for ErrorProvider {
     }
     fn capabilities(&self) -> SyncCapabilities {
         SyncCapabilities {
-            labels: false,
-            server_search: false,
-            delta_sync: false,
-            push: false,
-            batch_operations: false,
-            native_thread_ids: true,
+            sync: SyncCaps {
+                native_threading: true,
+                ..Default::default()
+            },
+            ..Default::default()
         }
     }
     async fn authenticate(&mut self) -> Result<(), MxrError> {
@@ -102,12 +101,15 @@ impl MailSyncProvider for DeltaLabelProvider {
     }
     fn capabilities(&self) -> SyncCapabilities {
         SyncCapabilities {
-            labels: true,
-            server_search: false,
-            delta_sync: true,
-            push: false,
-            batch_operations: false,
-            native_thread_ids: true,
+            sync: SyncCaps {
+                delta: true,
+                native_threading: true,
+            },
+            mutate: MutateCaps {
+                labels: true,
+                ..Default::default()
+            },
+            ..Default::default()
         }
     }
     async fn authenticate(&mut self) -> Result<(), MxrError> {
@@ -173,14 +175,7 @@ impl MailSyncProvider for ThreadingProvider {
     }
 
     fn capabilities(&self) -> SyncCapabilities {
-        SyncCapabilities {
-            labels: false,
-            server_search: false,
-            delta_sync: false,
-            push: false,
-            batch_operations: false,
-            native_thread_ids: false,
-        }
+        SyncCapabilities::default()
     }
 
     async fn authenticate(&mut self) -> Result<(), MxrError> {
@@ -248,12 +243,11 @@ impl MailSyncProvider for RecoveringNotFoundProvider {
 
     fn capabilities(&self) -> SyncCapabilities {
         SyncCapabilities {
-            labels: false,
-            server_search: false,
-            delta_sync: true,
-            push: false,
-            batch_operations: false,
-            native_thread_ids: true,
+            sync: SyncCaps {
+                delta: true,
+                native_threading: true,
+            },
+            ..Default::default()
         }
     }
 

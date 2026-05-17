@@ -4,7 +4,8 @@ use async_trait::async_trait;
 use futures::stream::{self, StreamExt};
 use mxr_core::{
     AccountId, Address, Draft, Label, LabelChange, LabelId, LabelKind, MailSendProvider,
-    MailSyncProvider, MxrError, SendReceipt, SyncBatch, SyncCapabilities, SyncCursor,
+    MailSyncProvider, MutateCaps, MxrError, PushCaps, SearchCaps, SendReceipt, SyncBatch,
+    SyncCapabilities, SyncCaps, SyncCursor,
 };
 use tracing::{debug, warn};
 
@@ -505,12 +506,16 @@ impl MailSyncProvider for GmailProvider {
 
     fn capabilities(&self) -> SyncCapabilities {
         SyncCapabilities {
-            labels: true,
-            server_search: true,
-            delta_sync: true,
-            push: false, // push via pub/sub not yet implemented
-            batch_operations: true,
-            native_thread_ids: true,
+            sync: SyncCaps {
+                delta: true,
+                native_threading: true,
+            },
+            mutate: MutateCaps {
+                labels: true,
+                batch_operations: true,
+            },
+            search: SearchCaps { server_side: true },
+            push: PushCaps { streaming: false }, // push via pub/sub not yet implemented
         }
     }
 

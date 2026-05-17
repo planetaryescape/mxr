@@ -1733,7 +1733,7 @@ pub(crate) async fn reconcile_label_mutation(
     add: &[String],
     remove: &[String],
 ) -> Result<(), String> {
-    if provider.capabilities().labels {
+    if provider.capabilities().mutate.labels {
         persist_local_label_changes(state, message_id, add, remove)
             .await
             .map_err(|e| e.to_string())
@@ -1833,7 +1833,7 @@ pub(crate) async fn apply_snooze(
         &["INBOX".to_string()],
     )
     .await?;
-    let snoozed_message_id = if provider.capabilities().labels {
+    let snoozed_message_id = if provider.capabilities().mutate.labels {
         message_id.clone()
     } else {
         find_reconciled_message_id(state, &envelope, message_id).await?
@@ -4371,12 +4371,15 @@ mod tests {
 
         fn capabilities(&self) -> mxr_core::SyncCapabilities {
             mxr_core::SyncCapabilities {
-                labels: true,
-                server_search: false,
-                delta_sync: false,
-                push: false,
-                batch_operations: false,
-                native_thread_ids: true,
+                sync: mxr_core::SyncCaps {
+                    native_threading: true,
+                    ..Default::default()
+                },
+                mutate: mxr_core::MutateCaps {
+                    labels: true,
+                    ..Default::default()
+                },
+                ..Default::default()
             }
         }
 
@@ -4455,12 +4458,11 @@ mod tests {
 
         fn capabilities(&self) -> mxr_core::SyncCapabilities {
             mxr_core::SyncCapabilities {
-                labels: false,
-                server_search: false,
-                delta_sync: false,
-                push: false,
-                batch_operations: false,
-                native_thread_ids: true,
+                sync: mxr_core::SyncCaps {
+                    native_threading: true,
+                    ..Default::default()
+                },
+                ..Default::default()
             }
         }
 

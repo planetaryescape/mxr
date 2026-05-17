@@ -3153,12 +3153,12 @@ impl Default for AccountCapabilitiesData {
 impl From<SyncCapabilities> for AccountCapabilitiesData {
     fn from(capabilities: SyncCapabilities) -> Self {
         Self {
-            labels: capabilities.labels,
-            server_search: capabilities.server_search,
-            delta_sync: capabilities.delta_sync,
-            push: capabilities.push,
-            batch_operations: capabilities.batch_operations,
-            native_thread_ids: capabilities.native_thread_ids,
+            labels: capabilities.mutate.labels,
+            server_search: capabilities.search.server_side,
+            delta_sync: capabilities.sync.delta,
+            push: capabilities.push.streaming,
+            batch_operations: capabilities.mutate.batch_operations,
+            native_thread_ids: capabilities.sync.native_threading,
             ..Self::default()
         }
     }

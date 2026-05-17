@@ -114,12 +114,16 @@ impl MailSyncProvider for FakeProvider {
 
     fn capabilities(&self) -> SyncCapabilities {
         SyncCapabilities {
-            labels: true,
-            server_search: false,
-            delta_sync: false,
-            push: false,
-            batch_operations: false,
-            native_thread_ids: true,
+            sync: SyncCaps {
+                delta: false,
+                native_threading: true,
+            },
+            mutate: MutateCaps {
+                labels: true,
+                batch_operations: false,
+            },
+            search: SearchCaps { server_side: false },
+            push: PushCaps { streaming: false },
         }
     }
 

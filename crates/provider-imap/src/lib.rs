@@ -702,17 +702,21 @@ impl MailSyncProvider for ImapProvider {
 
     fn capabilities(&self) -> SyncCapabilities {
         SyncCapabilities {
-            labels: false,
-            server_search: true,
-            delta_sync: true,
+            sync: SyncCaps {
+                delta: true,
+                native_threading: false,
+            },
+            mutate: MutateCaps {
+                labels: false,
+                batch_operations: false,
+            },
+            search: SearchCaps { server_side: true },
             // Phase 3.1: capability flag is set by detection in
             // session::capabilities(); until the real IDLE handle
             // wiring lands the daemon-side framework remains
             // poll-only for IMAP. Tracked alongside the TODO on
             // `idle_watch` below.
-            push: false,
-            batch_operations: false,
-            native_thread_ids: false,
+            push: PushCaps { streaming: false },
         }
     }
 

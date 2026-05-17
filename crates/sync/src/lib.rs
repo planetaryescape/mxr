@@ -9,7 +9,7 @@ mod tests {
     use super::*;
     use mxr_core::id::*;
     use mxr_core::types::*;
-    use mxr_core::{MailSyncProvider, MxrError, SyncCapabilities};
+    use mxr_core::{MailSyncProvider, MutateCaps, MxrError, SyncCapabilities, SyncCaps};
     use mxr_search::{SearchIndex, SearchServiceHandle};
     use mxr_store::{ScreenerDecision, ScreenerDisposition, Store};
     use std::collections::HashSet;
@@ -59,12 +59,11 @@ mod tests {
         }
         fn capabilities(&self) -> SyncCapabilities {
             SyncCapabilities {
-                labels: false,
-                server_search: false,
-                delta_sync: false,
-                push: false,
-                batch_operations: false,
-                native_thread_ids: true,
+                sync: SyncCaps {
+                    native_threading: true,
+                    ..Default::default()
+                },
+                ..Default::default()
             }
         }
         async fn authenticate(&mut self) -> Result<(), MxrError> {
@@ -168,14 +167,7 @@ mod tests {
         }
 
         fn capabilities(&self) -> SyncCapabilities {
-            SyncCapabilities {
-                labels: false,
-                server_search: false,
-                delta_sync: false,
-                push: false,
-                batch_operations: false,
-                native_thread_ids: false,
-            }
+            SyncCapabilities::default()
         }
 
         async fn authenticate(&mut self) -> Result<(), MxrError> {
@@ -237,12 +229,11 @@ mod tests {
 
         fn capabilities(&self) -> SyncCapabilities {
             SyncCapabilities {
-                labels: false,
-                server_search: false,
-                delta_sync: true,
-                push: false,
-                batch_operations: false,
-                native_thread_ids: true,
+                sync: SyncCaps {
+                    delta: true,
+                    native_threading: true,
+                },
+                ..Default::default()
             }
         }
 
@@ -321,12 +312,15 @@ mod tests {
         }
         fn capabilities(&self) -> SyncCapabilities {
             SyncCapabilities {
-                labels: true,
-                server_search: false,
-                delta_sync: true,
-                push: false,
-                batch_operations: false,
-                native_thread_ids: true,
+                sync: SyncCaps {
+                    delta: true,
+                    native_threading: true,
+                },
+                mutate: MutateCaps {
+                    labels: true,
+                    ..Default::default()
+                },
+                ..Default::default()
             }
         }
         async fn authenticate(&mut self) -> Result<(), MxrError> {

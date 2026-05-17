@@ -92,7 +92,7 @@ where
         .expect("modify_labels should succeed");
     provider.trash(first).await.expect("trash should succeed");
 
-    if provider.capabilities().labels {
+    if provider.capabilities().mutate.labels {
         let created = provider
             .create_label("Conformance Label", Some("#3366ff"))
             .await

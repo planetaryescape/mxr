@@ -1828,18 +1828,69 @@ pub struct ProviderMeta {
 
 // -- SyncCapabilities ---------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Namespaced provider capabilities, MSP-shaped (see `docs/msp/spec.md` §4).
+///
+/// Grouped into `sync`, `mutate`, `search`, and `push` namespaces so callers
+/// can negotiate against the same shape MSP adapters will advertise on the
+/// wire. The boolean fields inside each group are intentionally additive —
+/// a missing field never means "unsupported," only "the older shape doesn't
+/// carry this signal yet." Every namespace defaults to all-false.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SyncCapabilities {
+    #[serde(default)]
+    pub sync: SyncCaps,
+    #[serde(default)]
+    pub mutate: MutateCaps,
+    #[serde(default)]
+    pub search: SearchCaps,
+    #[serde(default)]
+    pub push: PushCaps,
+}
+
+/// Sync-namespace capabilities.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SyncCaps {
+    /// Adapter supports incremental delta sync (cursor-driven); false means
+    /// the daemon must full-sync every cycle.
+    pub delta: bool,
+    /// Adapter surfaces thread ids natively (Gmail `threadId`, JMAP
+    /// `threadId`); false means the daemon falls back to JWZ via
+    /// `mail-threading`.
+    pub native_threading: bool,
+}
+
+/// Mutate-namespace capabilities.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MutateCaps {
     /// True only for providers with stable multi-assign label semantics.
-    /// False means placement is folder/mailbox-based, even if `sync_labels()` exposes folders
-    /// through the shared `Label` type.
+    /// False means placement is folder/mailbox-based, even if `sync_labels()`
+    /// exposes folders through the shared `Label` type.
     pub labels: bool,
-    pub server_search: bool,
-    pub delta_sync: bool,
-    pub push: bool,
+    /// Adapter exposes a batch mutation API (Gmail `batchModify`, IMAP
+    /// `UID STORE` over ranges, JMAP `set` with multiple ids). The daemon
+    /// uses this to coalesce multi-message operations into one round-trip.
     pub batch_operations: bool,
-    pub native_thread_ids: bool,
+}
+
+/// Search-namespace capabilities.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SearchCaps {
+    /// Adapter can execute search server-side and return matching ids;
+    /// otherwise the daemon falls back to the local Tantivy index.
+    pub server_side: bool,
+}
+
+/// Push-namespace capabilities.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PushCaps {
+    /// Adapter can open a long-lived push channel (IMAP IDLE, Gmail
+    /// pub/sub, JMAP push) instead of being polled.
+    pub streaming: bool,
 }
 
 // -- SendReceipt --------------------------------------------------------------

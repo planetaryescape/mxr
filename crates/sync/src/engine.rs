@@ -446,7 +446,7 @@ impl SyncEngine {
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
 
-            if !provider.capabilities().native_thread_ids {
+            if !provider.capabilities().sync.native_threading {
                 self.rethread_account(account_id).await?;
             }
 
@@ -470,7 +470,7 @@ impl SyncEngine {
                 .count_messages_by_account(account_id)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
-            if provider.capabilities().labels && junction_count == 0 && message_count > 0 {
+            if provider.capabilities().mutate.labels && junction_count == 0 && message_count > 0 {
                 tracing::warn!(
                     message_count,
                     "Junction table empty — resetting sync cursor for full re-sync"

@@ -123,6 +123,7 @@ mod tests {
             unread_count: 0,
             latest_date: chrono::Utc::now(),
             snippet: "snippet".into(),
+            message_ids: Vec::new(),
         }
     }
 

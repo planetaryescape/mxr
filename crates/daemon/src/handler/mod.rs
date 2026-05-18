@@ -538,6 +538,23 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         } => mailbox::open_attachment(state, message_id, attachment_id).await,
         Request::ListBodies { message_ids } => mailbox::list_bodies(state, message_ids).await,
         Request::GetThread { thread_id } => mailbox::get_thread(state, thread_id).await,
+        Request::ListThreads {
+            account_id,
+            label_id,
+            limit,
+            offset,
+            sort,
+        } => {
+            mailbox::list_threads(
+                state,
+                account_id.as_ref(),
+                label_id.as_ref(),
+                *limit,
+                *offset,
+                sort.clone(),
+            )
+            .await
+        }
         Request::ListLabels { account_id } => {
             mailbox::list_labels(state, account_id.as_ref()).await
         }
@@ -1225,6 +1242,7 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::GetBody { .. }
             | Request::ListBodies { .. }
             | Request::GetThread { .. }
+            | Request::ListThreads { .. }
             | Request::ListLabels { .. }
             | Request::ListAccounts
             | Request::ListAccountsConfig
@@ -1298,6 +1316,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::OpenAttachment { .. } => "open_attachment",
         Request::ListBodies { .. } => "list_bodies",
         Request::GetThread { .. } => "get_thread",
+        Request::ListThreads { .. } => "list_threads",
         Request::ListLabels { .. } => "list_labels",
         Request::CreateLabel { .. } => "create_label",
         Request::DeleteLabel { .. } => "delete_label",
@@ -1468,6 +1487,7 @@ fn mutation_kind(cmd: &MutationCommand) -> &'static str {
 fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
     match req {
         Request::ListEnvelopes { account_id, .. }
+        | Request::ListThreads { account_id, .. }
         | Request::ListLabels { account_id }
         | Request::DeleteLabel { account_id, .. }
         | Request::CreateLabel { account_id, .. }
@@ -4507,6 +4527,7 @@ mod tests {
                 label_changes: vec![],
                 next_cursor: mxr_core::SyncCursor::empty(),
                 has_more: false,
+                threads_changed: vec![],
             })
         }
 

@@ -160,21 +160,55 @@ capability.
 
 ### MSP §2.5 — Thread
 
-**mxr today:** `Envelope` carries `thread_id`. mail-threading
-(extracted earlier) does the JWZ-style fallback when adapters don't
-provide native threading. Gmail provides `threadId`; IMAP doesn't.
+**mxr today** (post-Phase-F): `Thread` is a first-class entity
+carrying `message_ids: Vec<MessageId>` (date-ascending, JMAP-style
+flat list). `SyncBatch` carries a `threads_changed: Vec<Thread>`
+slice populated by the daemon-side sync engine. New IPC variant
+`Request::ListThreads` exposes paginated thread listing alongside
+the existing `GetThread`. mail-threading stays the IMAP-side JWZ
+producer; Gmail provides `threadId` natively.
 
-**Gap:** mxr's thread is implicit (envelope carries thread_id);
-MSP's Thread is explicit (`{id, message_ids}`). Adapters that don't
-support native threading would still need to surface thread shape to
-clients.
+**Resolved in Phase F (2026-05-18):**
 
-**Refactor:** introduce a `Thread` type alongside `Envelope`;
-populate it from native provider data where available, from
-mail-threading otherwise.
+- New `Thread.message_ids: Vec<MessageId>` field, ordered by date
+  ascending with id tie-break (RFC 8621 §5.1). Empty `message_ids`
+  denotes a tombstone — emitted when mail-threading merges two
+  threads and the loser's id stops appearing in any envelope.
+- New `SyncBatch.threads_changed` + `SyncOutcome.threads_changed`
+  fields. Populated by the engine's touched-set accumulator: every
+  upserted envelope's `thread_id` is recorded, and any (old,
+  canonical) pair from `rethread_account` joins the set. Hydrated
+  via `Store::get_threads_batch` before returning the outcome.
+- New `Store::get_threads_batch` helper (three batched queries
+  via `json_each`) and new `Store::list_threads` paginated query
+  (filterable by account or label, sort by latest-date asc/desc).
+- New IPC variant `Request::ListThreads { account_id, label_id,
+  limit, offset, sort }` returning `ResponseData::Threads`.
+  Wired through CLI as `mxr threads` (date-table by default,
+  `--json`/`--csv`/`--jsonl`/`--ids` available). TUI client
+  exposes `IpcClient::list_threads` as the consumer path; a full
+  thread-pane UI is queued for a future phase.
+- **Decision:** kept the rich `Thread` (subject/snippet/counts/
+  participants) and just appended `message_ids` rather than
+  splitting into two types. mxr's TUI already needs the rich
+  shape; an MSP-wire export at the daemon edge can project down
+  later if/when the daemon ever exposes MSP to external clients.
+- **Decision:** clients reconcile thread merges via empty
+  `message_ids` tombstones (matching JMAP/Gmail/Graph); no
+  `merged_into: Option<ThreadId>` provenance pointer.
+- **Decision:** message deltas remain the only delta stream;
+  `threads_changed` rides on the same `SyncBatch`/`SyncOutcome`
+  cycle and never gets its own state cursor. A JMAP-style
+  `Thread/changes` capability flag is reserved for v0.2 if a
+  client ever needs independently observable thread deltas.
+- **Decision:** `mail-threading` algorithm is unchanged; Phase F
+  is purely observational. `rethread_account` now returns the
+  touched-id set instead of `()`, but the merge logic stays the
+  same.
 
-**Cost: medium.** ~1 day. mail-threading already does the work; we
-just need to expose it through the protocol.
+**Cost (delivered): medium.** Single atomic commit spanning core,
+store, protocol, daemon handler + CLI + TUI client, sync engine,
+~6 test sites, and docs.
 
 ### MSP §2.6 — Flag
 

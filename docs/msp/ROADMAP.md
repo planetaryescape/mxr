@@ -1,8 +1,9 @@
 # MSP roadmap
 
-> **Current focus:** Phase F (Thread type alongside Envelope) and
-> beyond. Step 4 (publish-or-hold) deferred to "hold." Steps 1–3 +
-> alignment Phases C/D/E landed 2026-05-17 / 2026-05-18.
+> **Current focus:** Phase G (lazy body fetch — optional, may stay
+> deferred indefinitely). Step 4 (publish-or-hold) deferred to
+> "hold." Steps 1–3 + alignment Phases C/D/E/F landed 2026-05-17 /
+> 2026-05-18.
 >
 > _Last updated: 2026-05-18._
 
@@ -220,6 +221,45 @@ sustainable.
 ## Roadmap revisions / changelog
 
 Append below as the roadmap evolves. Most recent first.
+
+### 2026-05-18 — Phase F landed
+- Single atomic commit. `Thread` gains `message_ids: Vec<MessageId>`
+  (date-ascending, id tie-break per JMAP RFC 8621 §5.1). `SyncBatch`
+  and `SyncOutcome` gain `threads_changed: Vec<Thread>`.
+- New `Store::get_threads_batch` (three batched queries via
+  `json_each`) plus `Store::list_threads` (paginated, optionally
+  filtered by account or label, sortable date-asc/desc).
+- Sync engine accumulates touched thread_ids during envelope upsert
+  + mail-threading rethread merges; hydrates `threads_changed` at
+  outcome return time. Merged-away thread loser appears as a
+  tombstone Thread with empty `message_ids` so clients can drop
+  cached state.
+- New `Request::ListThreads` IPC variant wired through daemon
+  handler dispatch, classification (read-only + handler-name +
+  account-id extractor), the new `mxr threads` CLI subcommand
+  (`--account`/`--label`/`--limit`/`--offset`/`--sort`,
+  table/json/jsonl/csv/ids output), and a `TuiClient::list_threads`
+  helper that the TUI's future thread-pane view can consume.
+- Three new tests in mxr-store (`get_thread_populates_message_ids_
+  date_ordered`, `get_threads_batch_skips_empty_thread_ids`,
+  `list_threads_pagination_and_sort`); three new/extended tests in
+  mxr-sync (`sync_emits_threads_changed_for_upserted_envelopes` and
+  the two rethread tests now also assert survivor + tombstone in
+  `threads_changed`).
+- **Decision:** kept rich Thread (subject/participants/counts/
+  snippet) and appended `message_ids`. Single type, smaller blast
+  radius; MSP-wire projection deferred to whenever the daemon ever
+  speaks MSP to an external client.
+- **Decision:** no `merged_into: Option<ThreadId>` pointer; empty
+  `message_ids` is the tombstone signal (matches JMAP/Gmail/Graph).
+- **Decision:** no separate Thread state cursor; threads ride on
+  the existing SyncBatch cycle. JMAP-style `Thread/changes` is a
+  capability flag reserved for v0.2 if ever needed.
+- **No mail-threading dep change.** Phase F is observational —
+  `rethread_account` keeps its JWZ logic and now returns the set
+  of touched thread_ids so the engine can surface merges as
+  `threads_changed` events.
+- MSP spec §2.5 + alignment audit §2.5 updated.
 
 ### 2026-05-18 — Phase E landed
 - Single atomic commit. Added `Envelope.keywords: BTreeSet<String>`

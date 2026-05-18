@@ -360,6 +360,7 @@ impl ImapProvider {
             label_changes: vec![],
             next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
             has_more: false,
+            threads_changed: vec![],
         })
     }
 
@@ -483,6 +484,7 @@ impl ImapProvider {
             label_changes: vec![],
             next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
             has_more: false,
+            threads_changed: vec![],
         })
     }
 

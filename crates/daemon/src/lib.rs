@@ -239,6 +239,17 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::thread::run(thread_id, search, first, limit, format).await?;
         }
+        Some(Command::Threads {
+            account,
+            label,
+            limit,
+            offset,
+            sort,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::threads::run(account, label, limit, offset, sort, format).await?;
+        }
         Some(Command::Export {
             thread_id,
             search,

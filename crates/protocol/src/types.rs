@@ -397,6 +397,17 @@ pub enum Request {
     GetThread {
         thread_id: ThreadId,
     },
+    /// Paginated list of threads in date-descending order (most-recent
+    /// first), with optional account/label filters. Each returned
+    /// `Thread` carries its full `message_ids` member list.
+    ListThreads {
+        account_id: Option<AccountId>,
+        label_id: Option<LabelId>,
+        limit: u32,
+        offset: u32,
+        #[serde(default)]
+        sort: Option<SortOrder>,
+    },
     ListLabels {
         account_id: Option<AccountId>,
     },
@@ -1177,6 +1188,7 @@ impl Request {
             | Self::OpenAttachment { .. }
             | Self::ListBodies { .. }
             | Self::GetThread { .. }
+            | Self::ListThreads { .. }
             | Self::ListLabels { .. }
             | Self::CreateLabel { .. }
             | Self::DeleteLabel { .. }
@@ -1590,6 +1602,9 @@ pub enum ResponseData {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         summary: Option<ThreadSummaryData>,
     },
+    Threads {
+        threads: Vec<Thread>,
+    },
     Labels {
         labels: Vec<Label>,
     },
@@ -1963,6 +1978,7 @@ impl ResponseData {
             | Self::AttachmentFile { .. }
             | Self::Bodies { .. }
             | Self::Thread { .. }
+            | Self::Threads { .. }
             | Self::Labels { .. }
             | Self::Label { .. }
             | Self::SearchResults { .. }

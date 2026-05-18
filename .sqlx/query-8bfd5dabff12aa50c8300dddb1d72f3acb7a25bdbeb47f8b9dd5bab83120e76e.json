@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT\n                thread_id as \"thread_id!\",\n                from_name,\n                from_email as \"from_email!\"\n             FROM messages\n             WHERE thread_id IN (SELECT value FROM json_each(?))",
+  "describe": {
+    "columns": [
+      {
+        "name": "thread_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "from_name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "from_email!",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "8bfd5dabff12aa50c8300dddb1d72f3acb7a25bdbeb47f8b9dd5bab83120e76e"
+}

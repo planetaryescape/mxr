@@ -196,6 +196,7 @@ pub(crate) fn request_supports_retry(request: &Request) -> bool {
             | Request::GetHtmlImageAssets { .. }
             | Request::ListBodies { .. }
             | Request::GetThread { .. }
+            | Request::ListThreads { .. }
             | Request::ListLabels { .. }
             | Request::ListRules
             | Request::ListAccounts

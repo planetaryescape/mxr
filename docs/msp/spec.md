@@ -131,6 +131,19 @@ or constructs it from References/In-Reply-To (IMAP) is opaque to the
 client. Adapters that can't thread MUST still return a Thread per
 message (a singleton thread with `message_ids = [msg.id]`).
 
+`message_ids` is a **flat list ordered by date ascending**; equal-date
+ties broken by `MessageId` ascending (RFC 8621 §5.1 convention).
+A Thread whose `message_ids` is empty is a **tombstone** — clients
+SHOULD drop any cached state for that id. Tombstones are typically
+emitted when a server-side or local-threading merge moves all of a
+thread's messages into another thread; `SyncDelta.threads_changed`
+carries both the survivor (with its new `message_ids`) and the
+tombstoned loser (with `message_ids: []`).
+
+Resolved 2026-05-18 in mxr (Phase F): extended the internal Thread
+to carry `message_ids` + emitted `threads_changed` in `SyncBatch`;
+added `Request::ListThreads` for paginated thread listing.
+
 ### Flag
 
 Envelope flag state is split into two parallel facets to match the

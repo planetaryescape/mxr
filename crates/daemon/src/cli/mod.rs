@@ -111,6 +111,23 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// List threads in date-descending order. Each returned thread
+    /// includes its constituent message IDs (date-ascending). Filter
+    /// by account or label; paginate with --limit/--offset.
+    Threads {
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        label: Option<String>,
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+        #[arg(long, default_value_t = 0)]
+        offset: u32,
+        #[arg(long)]
+        sort: Option<ThreadsSort>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Export a thread or matching search results
     Export {
         thread_id: Option<String>,
@@ -1430,6 +1447,25 @@ pub enum DraftAction {
         #[arg(long = "add-context")]
         add_context: Option<String>,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ThreadsSort {
+    /// Latest message first (default).
+    #[value(name = "latest-desc", alias = "date-desc")]
+    DateDesc,
+    /// Oldest message first.
+    #[value(name = "date-asc")]
+    DateAsc,
+}
+
+impl From<ThreadsSort> for mxr_core::types::SortOrder {
+    fn from(value: ThreadsSort) -> Self {
+        match value {
+            ThreadsSort::DateDesc => Self::DateDesc,
+            ThreadsSort::DateAsc => Self::DateAsc,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

@@ -140,6 +140,59 @@ mod tests {
         messages: Vec<SyncedMessage>,
     }
 
+    /// Provider that advertises `native_threading = true` so the
+    /// engine does NOT run the JWZ rethread pass. Used to verify
+    /// that the upsert path alone produces `threads_changed`
+    /// entries — purely from envelope.thread_id observations.
+    struct NativeThreadingProvider {
+        account_id: AccountId,
+        messages: Vec<SyncedMessage>,
+    }
+
+    #[async_trait::async_trait]
+    impl MailSyncProvider for NativeThreadingProvider {
+        fn name(&self) -> &str {
+            "native-threading"
+        }
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+        fn capabilities(&self) -> SyncCapabilities {
+            let mut caps = SyncCapabilities::default();
+            caps.sync.native_threading = true;
+            caps
+        }
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(vec![])
+        }
+        async fn sync_messages(&self, _cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            Ok(SyncBatch {
+                upserted: self.messages.clone(),
+                deleted_provider_ids: vec![],
+                label_changes: vec![],
+                next_cursor: SyncCursor::from_bytes(b"native-synced".to_vec()),
+                has_more: false,
+                threads_changed: vec![],
+            })
+        }
+        async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+        async fn apply_mutation(
+            &self,
+            _mutation_id: &str,
+            _mutation: &Mutation,
+        ) -> Result<(), MxrError> {
+            Ok(())
+        }
+    }
+
     struct RecoveringExpiredCursorProvider {
         account_id: AccountId,
         message: SyncedMessage,
@@ -178,6 +231,7 @@ mod tests {
                 label_changes: vec![],
                 next_cursor: SyncCursor::from_bytes(b"more-pages".to_vec()),
                 has_more: true,
+                threads_changed: vec![],
             })
         }
         async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
@@ -225,6 +279,7 @@ mod tests {
                 label_changes: vec![],
                 next_cursor: SyncCursor::empty(),
                 has_more: false,
+                threads_changed: vec![],
             })
         }
 
@@ -282,6 +337,7 @@ mod tests {
                     label_changes: vec![],
                     next_cursor: SyncCursor::from_bytes(b"recovered-cursor".to_vec()),
                     has_more: false,
+                    threads_changed: vec![],
                 })
             } else {
                 Err(MxrError::SyncCursorExpired {
@@ -352,6 +408,7 @@ mod tests {
                     label_changes: vec![],
                     next_cursor: SyncCursor::from_bytes(b"delta-initial".to_vec()),
                     has_more: false,
+                    threads_changed: vec![],
                 })
             } else {
                 Ok(SyncBatch {
@@ -360,6 +417,7 @@ mod tests {
                     label_changes: self.label_changes.clone(),
                     next_cursor: SyncCursor::from_bytes(b"delta-follow-up".to_vec()),
                     has_more: false,
+                    threads_changed: vec![],
                 })
             }
         }
@@ -628,6 +686,88 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sync_emits_threads_changed_for_upserted_envelopes() {
+        // Phase F: even when the adapter has native_threading=true and
+        // no rethread pass runs, every upserted envelope contributes
+        // its thread_id to the touched set so the outcome's
+        // threads_changed list reflects the new/changed threads.
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search);
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+
+        // Two envelopes sharing one thread_id — adapter assigned the
+        // same thread natively, no rethread merge required.
+        let shared_thread = ThreadId::new();
+        let m1_id = MessageId::new();
+        let m2_id = MessageId::new();
+        let make = |id: MessageId, pid: &str, subject: &str, date_offset_minutes: i64| {
+            SyncedMessage {
+                envelope: Envelope {
+                    id: id.clone(),
+                    account_id: account_id.clone(),
+                    provider_id: pid.to_string(),
+                    thread_id: shared_thread.clone(),
+                    message_id_header: Some(format!("<{pid}@example.com>")),
+                    in_reply_to: None,
+                    references: vec![],
+                    from: mxr_core::Address {
+                        name: None,
+                        email: "alice@example.com".into(),
+                    },
+                    to: vec![],
+                    cc: vec![],
+                    bcc: vec![],
+                    subject: subject.to_string(),
+                    date: chrono::Utc::now()
+                        - chrono::Duration::minutes(date_offset_minutes),
+                    flags: MessageFlags::empty(),
+                    snippet: subject.to_string(),
+                    has_attachments: false,
+                    size_bytes: 100,
+                    unsubscribe: UnsubscribeMethod::None,
+                    link_count: 0,
+                    body_word_count: 0,
+                    label_provider_ids: vec![],
+                    keywords: std::collections::BTreeSet::new(),
+                },
+                body: make_empty_body(&id),
+            }
+        };
+
+        let provider = NativeThreadingProvider {
+            account_id: account_id.clone(),
+            messages: vec![
+                make(m1_id.clone(), "native-1", "First", 10),
+                make(m2_id.clone(), "native-2", "Second", 0),
+            ],
+        };
+
+        let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
+        let changed: Vec<_> = outcome
+            .threads_changed
+            .iter()
+            .filter(|t| t.id == shared_thread)
+            .collect();
+        assert_eq!(
+            changed.len(),
+            1,
+            "expected exactly one Thread for the shared id, got {:?}",
+            outcome.threads_changed
+        );
+        let thread = changed[0];
+        assert_eq!(thread.message_count, 2);
+        assert_eq!(thread.message_ids.len(), 2);
+        // Date-ascending: m1 (older, -10min) then m2 (newer).
+        assert_eq!(thread.message_ids, vec![m1_id, m2_id]);
+    }
+
+    #[tokio::test]
     async fn sync_rethreads_messages_when_provider_lacks_native_thread_ids() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();
@@ -707,7 +847,7 @@ mod tests {
             messages: vec![first, second],
         };
 
-        engine.sync_account(&provider).await.unwrap();
+        let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
 
         let first_env = store.get_envelope(&first_id).await.unwrap().unwrap();
         let second_env = store.get_envelope(&second_id).await.unwrap().unwrap();
@@ -719,6 +859,30 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(thread.message_count, 2);
+
+        // Phase F: rethread merged two threads, so outcome.threads_changed
+        // carries the survivor (2 members, both message ids) plus the
+        // tombstone for the loser (empty message_ids).
+        let survivor_id = first_env.thread_id.clone();
+        let survivor = outcome
+            .threads_changed
+            .iter()
+            .find(|t| t.id == survivor_id)
+            .expect("survivor thread should be in threads_changed");
+        assert_eq!(survivor.message_ids.len(), 2);
+        assert!(survivor.message_ids.contains(&first_id));
+        assert!(survivor.message_ids.contains(&second_id));
+
+        let tombstone = outcome
+            .threads_changed
+            .iter()
+            .find(|t| t.id != survivor_id)
+            .expect("tombstoned (loser) thread should be in threads_changed");
+        assert!(
+            tombstone.message_ids.is_empty(),
+            "loser thread should be tombstoned"
+        );
+        assert_eq!(tombstone.message_count, 0);
     }
 
     #[tokio::test]
@@ -759,11 +923,22 @@ mod tests {
             ],
         };
 
-        engine.sync_account(&provider).await.unwrap();
+        let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
 
         let first_env = store.get_envelope(&first_id).await.unwrap().unwrap();
         let second_env = store.get_envelope(&second_id).await.unwrap().unwrap();
         assert_eq!(first_env.thread_id, second_env.thread_id);
+
+        // Phase F: subject-fallback rethread also emits threads_changed
+        // (survivor + tombstone) just like the message-id-driven path.
+        assert!(
+            outcome.threads_changed.iter().any(|t| !t.message_ids.is_empty()),
+            "survivor thread missing from threads_changed"
+        );
+        assert!(
+            outcome.threads_changed.iter().any(|t| t.message_ids.is_empty()),
+            "tombstone thread missing from threads_changed"
+        );
     }
 
     #[tokio::test]

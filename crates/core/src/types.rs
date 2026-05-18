@@ -1276,6 +1276,14 @@ pub struct Thread {
     pub unread_count: u32,
     pub latest_date: DateTime<Utc>,
     pub snippet: String,
+    /// Constituent message IDs ordered by `date` ascending, ties
+    /// broken by `MessageId` ascending. Empty `message_ids` denotes
+    /// a tombstoned thread (typically the loser side of a
+    /// mail-threading merge); clients receiving such a Thread in
+    /// `SyncBatch.threads_changed` SHOULD drop any cached metadata
+    /// for that id.
+    #[serde(default)]
+    pub message_ids: Vec<MessageId>,
 }
 
 // -- Draft --------------------------------------------------------------------
@@ -1851,6 +1859,13 @@ pub struct SyncBatch {
     /// immediately. False = caught up; the daemon may sleep normally.
     #[serde(default)]
     pub has_more: bool,
+    /// MSP §2.8 — threads whose membership or metadata changed
+    /// during this batch. Populated by the daemon-side sync engine;
+    /// the provider trait does NOT populate this. Empty
+    /// `Thread.message_ids` denotes a tombstoned/merged-away thread
+    /// — clients SHOULD drop any cached metadata for that id.
+    #[serde(default)]
+    pub threads_changed: Vec<Thread>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -4295,6 +4295,7 @@ mod tests {
             unread_count: 1,
             latest_date: envelope.date,
             snippet: envelope.snippet.clone(),
+            message_ids: vec![envelope.id.clone()],
         }
     }
 

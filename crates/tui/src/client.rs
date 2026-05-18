@@ -104,6 +104,34 @@ impl Client {
         }
     }
 
+    /// Phase F: paginated thread list. Provides the TUI's read path
+    /// for `Request::ListThreads`. The TUI's existing mailbox screen
+    /// renders messages grouped client-side by `thread_id`; a future
+    /// dedicated thread-pane view can call this to render threads
+    /// directly (each `Thread` carries its `message_ids`).
+    pub async fn list_threads(
+        &mut self,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<mxr_core::types::Thread>, MxrError> {
+        let resp = self
+            .request(Request::ListThreads {
+                account_id: None,
+                label_id: None,
+                limit,
+                offset,
+                sort: None,
+            })
+            .await?;
+        match resp {
+            Response::Ok {
+                data: ResponseData::Threads { threads },
+            } => Ok(threads),
+            Response::Error { message, .. } => Err(MxrError::Ipc(message)),
+            _ => Err(MxrError::Ipc("Unexpected response".into())),
+        }
+    }
+
     pub async fn search(
         &mut self,
         query: &str,

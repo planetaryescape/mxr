@@ -307,6 +307,7 @@ impl GmailProvider {
             label_changes: vec![],
             next_cursor,
             has_more,
+            threads_changed: vec![],
         })
     }
 
@@ -335,6 +336,7 @@ impl GmailProvider {
                 label_changes: vec![],
                 next_cursor: GmailCursor::delta(history_id).encode(),
                 has_more: false,
+                threads_changed: vec![],
             });
         }
 
@@ -362,6 +364,7 @@ impl GmailProvider {
             label_changes: vec![],
             next_cursor,
             has_more,
+            threads_changed: vec![],
         })
     }
 
@@ -469,6 +472,7 @@ impl GmailProvider {
             label_changes,
             next_cursor: GmailCursor::delta(latest_history_id).encode(),
             has_more: false,
+            threads_changed: vec![],
         })
     }
 

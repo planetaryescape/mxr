@@ -1049,6 +1049,23 @@ pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> Handle
     })
 }
 
+pub(super) async fn list_threads(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    label_id: Option<&LabelId>,
+    limit: u32,
+    offset: u32,
+    sort: Option<mxr_core::types::SortOrder>,
+) -> HandlerResult {
+    let sort = sort.unwrap_or(mxr_core::types::SortOrder::DateDesc);
+    let threads = state
+        .store
+        .list_threads(account_id, label_id, limit, offset, sort)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::Threads { threads })
+}
+
 pub(super) async fn list_labels(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
     let Some(account_id) = account_id
         .cloned()

@@ -921,6 +921,115 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_thread_populates_message_ids_date_ordered() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        // Insert 3 envelopes with non-monotonic dates so the date-ASC
+        // sort is exercised. Equal-date ids ride on the secondary
+        // `id ASC` tiebreaker.
+        let thread_id = ThreadId::new();
+        let base = chrono::Utc::now();
+        let mut envs: Vec<Envelope> = (0..3)
+            .map(|i| {
+                let mut env = test_envelope(&account.id);
+                env.provider_id = format!("phase-f-{i}");
+                env.thread_id = thread_id.clone();
+                env.date = base - chrono::Duration::hours(i);
+                env
+            })
+            .collect();
+        // Date order: env[2] (oldest), env[1], env[0] (newest)
+        for env in &envs {
+            store.upsert_envelope(env).await.unwrap();
+        }
+
+        let thread = store.get_thread(&thread_id).await.unwrap().unwrap();
+        assert_eq!(
+            thread.message_ids.len(),
+            3,
+            "expected three members, got {:?}",
+            thread.message_ids
+        );
+        // Sorted ascending by date → env[2] first, env[0] last
+        envs.sort_by_key(|e| e.date);
+        assert_eq!(
+            thread.message_ids,
+            envs.iter().map(|e| e.id.clone()).collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn get_threads_batch_skips_empty_thread_ids() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        // One live thread, one orphan id with no member rows.
+        let live = ThreadId::new();
+        let orphan = ThreadId::new();
+        let mut env = test_envelope(&account.id);
+        env.thread_id = live.clone();
+        env.provider_id = "phase-f-batch-1".to_string();
+        store.upsert_envelope(&env).await.unwrap();
+
+        let batch = store
+            .get_threads_batch(&[live.clone(), orphan.clone()])
+            .await
+            .unwrap();
+        // Orphan is silently skipped — sync engine synthesises the
+        // tombstone, not the store.
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch[0].id, live);
+        assert_eq!(batch[0].message_ids, vec![env.id]);
+    }
+
+    #[tokio::test]
+    async fn list_threads_pagination_and_sort() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        // Seed 5 threads with descending latest_date so DateDesc gives
+        // them in insertion order; DateAsc reverses it.
+        let base = chrono::Utc::now();
+        let mut thread_ids: Vec<ThreadId> = Vec::new();
+        for i in 0..5 {
+            let tid = ThreadId::new();
+            thread_ids.push(tid.clone());
+            let mut env = test_envelope(&account.id);
+            env.thread_id = tid;
+            env.provider_id = format!("phase-f-list-{i}");
+            // Newest first: i=0 most recent, i=4 oldest.
+            env.date = base - chrono::Duration::hours(i);
+            store.upsert_envelope(&env).await.unwrap();
+        }
+
+        // limit=2, offset=2, DateDesc → 3rd and 4th newest = indices 2,3
+        let page = store
+            .list_threads(None, None, 2, 2, SortOrder::DateDesc)
+            .await
+            .unwrap();
+        assert_eq!(page.len(), 2);
+        assert_eq!(page[0].id, thread_ids[2]);
+        assert_eq!(page[1].id, thread_ids[3]);
+        // Each returned thread carries its single member id.
+        for thread in &page {
+            assert_eq!(thread.message_ids.len(), 1);
+        }
+
+        // DateAsc reverses: limit=2, offset=0 → oldest two = indices 4,3
+        let asc = store
+            .list_threads(None, None, 2, 0, SortOrder::DateAsc)
+            .await
+            .unwrap();
+        assert_eq!(asc.len(), 2);
+        assert_eq!(asc[0].id, thread_ids[4]);
+        assert_eq!(asc[1].id, thread_ids[3]);
+    }
+
+    #[tokio::test]
     async fn thread_latest_date_ignores_impossible_future_dates() {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();

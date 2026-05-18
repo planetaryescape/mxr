@@ -4,7 +4,7 @@ use mxr_core::types::*;
 use mxr_core::{MailSyncProvider, MxrError};
 use mxr_search::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};
 use mxr_store::{ScreenerDisposition, Store};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 pub struct SyncOutcome {
@@ -14,6 +14,11 @@ pub struct SyncOutcome {
     /// more data immediately. The daemon uses this to skip its normal
     /// sleep interval and re-poll right away.
     pub has_more: bool,
+    /// Threads whose membership or metadata changed during this batch.
+    /// Populated by the engine after envelope upsert and any rethread
+    /// pass. Empty `Thread.message_ids` denotes a tombstoned thread
+    /// (e.g. the loser side of a mail-threading merge).
+    pub threads_changed: Vec<Thread>,
 }
 
 /// No-op lookup used when the engine is constructed without an explicit
@@ -220,6 +225,11 @@ impl SyncEngine {
     ) -> Result<SyncOutcome, MxrError> {
         let account_id = provider.account_id();
         let mut recovered_expired_cursor = false;
+        // Phase F: accumulate thread_ids touched this sync run. Populated
+        // from each upserted envelope plus any (old, canonical) pair
+        // returned by `rethread_account`. Drained into
+        // `outcome.threads_changed` just before returning.
+        let mut touched_threads: HashSet<ThreadId> = HashSet::new();
         tracing::debug!(account = %account_id, "sync_account_with_outcome: starting");
 
         loop {
@@ -341,6 +351,9 @@ impl SyncEngine {
                     .set_message_keywords(&envelope.id, &envelope.keywords)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
+                // Phase F: record the touched thread so the outcome's
+                // `threads_changed` list reflects this upsert.
+                touched_threads.insert(envelope.thread_id.clone());
                 let reply_later = self
                     .store
                     .is_reply_later(&envelope.id)
@@ -454,7 +467,8 @@ impl SyncEngine {
                 .map_err(|e| MxrError::Store(e.to_string()))?;
 
             if !provider.capabilities().sync.native_threading {
-                self.rethread_account(account_id).await?;
+                let rethread_touched = self.rethread_account(account_id).await?;
+                touched_threads.extend(rethread_touched);
             }
 
             // Update cursor
@@ -489,10 +503,42 @@ impl SyncEngine {
                 continue;
             }
 
+            // Phase F: hydrate `threads_changed` from the touched set.
+            // Live threads (i.e. those with at least one member row) come
+            // back from `get_threads_batch`; ids present in the touched
+            // set but absent from the result are merged-away thread
+            // tombstones — we synthesise an empty-`message_ids` Thread
+            // so clients can drop their cached metadata.
+            let touched_vec: Vec<ThreadId> = touched_threads.iter().cloned().collect();
+            let live_threads = self
+                .store
+                .get_threads_batch(&touched_vec)
+                .await
+                .map_err(|e| MxrError::Store(e.to_string()))?;
+            let live_ids: HashSet<ThreadId> =
+                live_threads.iter().map(|t| t.id.clone()).collect();
+            let mut threads_changed = live_threads;
+            for id in &touched_vec {
+                if !live_ids.contains(id) {
+                    threads_changed.push(Thread {
+                        id: id.clone(),
+                        account_id: account_id.clone(),
+                        subject: String::new(),
+                        participants: Vec::new(),
+                        message_count: 0,
+                        unread_count: 0,
+                        latest_date: chrono::DateTime::<chrono::Utc>::UNIX_EPOCH,
+                        snippet: String::new(),
+                        message_ids: Vec::new(),
+                    });
+                }
+            }
+
             return Ok(SyncOutcome {
                 synced_count,
                 upserted_message_ids,
                 has_more,
+                threads_changed,
             });
         }
     }
@@ -537,7 +583,10 @@ impl SyncEngine {
         Ok(())
     }
 
-    async fn rethread_account(&self, account_id: &AccountId) -> Result<(), MxrError> {
+    async fn rethread_account(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<HashSet<ThreadId>, MxrError> {
         tracing::debug!(account = %account_id, "rethreading account");
         let envelopes = self
             .store
@@ -563,6 +612,14 @@ impl SyncEngine {
             })
             .collect();
 
+        // Phase F: track every (old, canonical) thread_id pair that a
+        // mail-threading merge touches so the sync outcome can emit a
+        // `threads_changed` slice. The loser's id stays in the set
+        // even after every member is reassigned — `get_threads_batch`
+        // returns nothing for it, and the caller synthesises an
+        // empty-`message_ids` tombstone Thread.
+        let mut touched: HashSet<ThreadId> = HashSet::new();
+
         for thread in thread_messages(&threading_input) {
             let member_indices: Vec<usize> = thread
                 .messages
@@ -583,6 +640,8 @@ impl SyncEngine {
             for member_index in member_indices {
                 let member = &envelopes[member_index];
                 if member.thread_id != canonical_thread_id {
+                    touched.insert(member.thread_id.clone());
+                    touched.insert(canonical_thread_id.clone());
                     let message_id = member.id.clone();
                     self.store
                         .update_message_thread_id(&message_id, &canonical_thread_id)
@@ -592,7 +651,7 @@ impl SyncEngine {
             }
         }
 
-        Ok(())
+        Ok(touched)
     }
 
     /// Read body from store. Bodies are always available after sync.

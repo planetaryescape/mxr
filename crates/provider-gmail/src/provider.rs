@@ -471,6 +471,63 @@ impl GmailProvider {
             has_more: false,
         })
     }
+
+    async fn apply_modify_labels(
+        &self,
+        provider_message_id: &str,
+        add: &[String],
+        remove: &[String],
+    ) -> mxr_core::provider::Result<()> {
+        let add_refs: Vec<&str> = add.iter().map(|s| s.as_str()).collect();
+        let remove_refs: Vec<&str> = remove.iter().map(|s| s.as_str()).collect();
+        self.client
+            .modify_message(provider_message_id, &add_refs, &remove_refs)
+            .await
+            .map_err(MxrError::from)
+    }
+
+    async fn apply_trash(&self, provider_message_id: &str) -> mxr_core::provider::Result<()> {
+        self.client
+            .trash_message(provider_message_id)
+            .await
+            .map_err(MxrError::from)
+    }
+
+    async fn apply_set_read(
+        &self,
+        provider_message_id: &str,
+        read: bool,
+    ) -> mxr_core::provider::Result<()> {
+        if read {
+            self.client
+                .modify_message(provider_message_id, &[], &["UNREAD"])
+                .await
+                .map_err(MxrError::from)
+        } else {
+            self.client
+                .modify_message(provider_message_id, &["UNREAD"], &[])
+                .await
+                .map_err(MxrError::from)
+        }
+    }
+
+    async fn apply_set_starred(
+        &self,
+        provider_message_id: &str,
+        starred: bool,
+    ) -> mxr_core::provider::Result<()> {
+        if starred {
+            self.client
+                .modify_message(provider_message_id, &["STARRED"], &[])
+                .await
+                .map_err(MxrError::from)
+        } else {
+            self.client
+                .modify_message(provider_message_id, &[], &["STARRED"])
+                .await
+                .map_err(MxrError::from)
+        }
+    }
 }
 
 struct IndexedSyncedMessage {
@@ -611,18 +668,29 @@ impl MailSyncProvider for GmailProvider {
             .map_err(MxrError::from)
     }
 
-    async fn modify_labels(
+    async fn apply_mutation(
         &self,
-        provider_message_id: &str,
-        add: &[String],
-        remove: &[String],
+        _mutation_id: &str,
+        mutation: &mxr_core::Mutation,
     ) -> mxr_core::provider::Result<()> {
-        let add_refs: Vec<&str> = add.iter().map(|s| s.as_str()).collect();
-        let remove_refs: Vec<&str> = remove.iter().map(|s| s.as_str()).collect();
-        self.client
-            .modify_message(provider_message_id, &add_refs, &remove_refs)
-            .await
-            .map_err(MxrError::from)
+        match mutation {
+            mxr_core::Mutation::ModifyLabels {
+                provider_message_id,
+                add,
+                remove,
+            } => self.apply_modify_labels(provider_message_id, add, remove).await,
+            mxr_core::Mutation::Trash {
+                provider_message_id,
+            } => self.apply_trash(provider_message_id).await,
+            mxr_core::Mutation::SetRead {
+                provider_message_id,
+                read,
+            } => self.apply_set_read(provider_message_id, *read).await,
+            mxr_core::Mutation::SetStarred {
+                provider_message_id,
+                starred,
+            } => self.apply_set_starred(provider_message_id, *starred).await,
+        }
     }
 
     async fn create_label(
@@ -656,49 +724,6 @@ impl MailSyncProvider for GmailProvider {
             .delete_label(provider_label_id)
             .await
             .map_err(MxrError::from)
-    }
-
-    async fn trash(&self, provider_message_id: &str) -> mxr_core::provider::Result<()> {
-        self.client
-            .trash_message(provider_message_id)
-            .await
-            .map_err(MxrError::from)
-    }
-
-    async fn set_read(
-        &self,
-        provider_message_id: &str,
-        read: bool,
-    ) -> mxr_core::provider::Result<()> {
-        if read {
-            self.client
-                .modify_message(provider_message_id, &[], &["UNREAD"])
-                .await
-                .map_err(MxrError::from)
-        } else {
-            self.client
-                .modify_message(provider_message_id, &["UNREAD"], &[])
-                .await
-                .map_err(MxrError::from)
-        }
-    }
-
-    async fn set_starred(
-        &self,
-        provider_message_id: &str,
-        starred: bool,
-    ) -> mxr_core::provider::Result<()> {
-        if starred {
-            self.client
-                .modify_message(provider_message_id, &["STARRED"], &[])
-                .await
-                .map_err(MxrError::from)
-        } else {
-            self.client
-                .modify_message(provider_message_id, &[], &["STARRED"])
-                .await
-                .map_err(MxrError::from)
-        }
     }
 
     async fn search_remote(&self, query: &str) -> mxr_core::provider::Result<Vec<String>> {

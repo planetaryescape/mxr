@@ -146,6 +146,15 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         loops::activity_prune_loop(activity_prune_state, shutdown_rx).await;
     });
 
+    // Mutation dedup + undo prune. 24h dedup TTL means rows older
+    // than that are safe to drop; hourly cadence keeps the table
+    // bounded under heavy mutation traffic.
+    let mutation_dedup_state = state.clone();
+    tokio::spawn(async move {
+        let shutdown_rx = mutation_dedup_state.shutdown_receiver();
+        loops::mutation_dedup_prune_loop(mutation_dedup_state, shutdown_rx).await;
+    });
+
     // Managed HTTP bridge. Reads [bridge] from config, applies CLI
     // overrides, refuses to start non-loopback binds without operator
     // intent.

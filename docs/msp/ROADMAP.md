@@ -1,10 +1,10 @@
 # MSP roadmap
 
-> **Current focus:** Phase D (mutation unification) and beyond. Step 4
-> (publish-or-hold) deferred to "hold." Steps 1–3 + alignment Phase C
-> landed 2026-05-17.
+> **Current focus:** Phase E (custom keywords on flags) and beyond.
+> Step 4 (publish-or-hold) deferred to "hold." Steps 1–3 + alignment
+> Phases C/D landed 2026-05-17.
 >
-> _Last updated: 2026-05-17._
+> _Last updated: 2026-05-18._
 
 This roadmap tracks the six steps from
 [`spike-verdict.md`](./spike-verdict.md) plus the open-ended Step 7
@@ -220,6 +220,27 @@ sustainable.
 ## Roadmap revisions / changelog
 
 Append below as the roadmap evolves. Most recent first.
+
+### 2026-05-18 — Phase D landed
+- Single atomic commit collapsing the four per-method mutation
+  trait functions (`modify_labels`, `trash`, `set_read`,
+  `set_starred`) into one `apply_mutation(mutation_id, &Mutation)`.
+- New `mutation_dedup_log` SQLite table (migration 040, 24h TTL)
+  keyed on `(mutation_id, provider_message_id)`. Daemon checks
+  before each provider call; replays of an already-applied
+  mutation become no-ops. Hourly prune loop bounds the table.
+- `mutation_id` generation made universal (was undoable-only) so
+  retry-dedup covers every mutation including Star / Move /
+  ModifyLabels.
+- **Decision:** batched per-message `Mutation` enum
+  (`ModifyLabels` / `Trash` / `SetRead` / `SetStarred`) rather
+  than MSP draft's granular per-flag variants. 8-protocol survey
+  showed only ID-only-delta protocols split; local-store clients
+  (Graph, Drive, CloudKit, WebDAV) batch. MSP spec §2.7 + audit
+  §2.7 updated to match.
+- **Decision:** daemon-side persisted dedup, not adapter-side
+  in-memory cache, for cross-provider consistency and
+  crash-safety.
 
 ### 2026-05-17 — Phase C landed
 - Single atomic commit per the audit's small-cost budget. Added

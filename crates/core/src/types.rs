@@ -1854,6 +1854,53 @@ pub struct LabelChange {
     pub removed_labels: Vec<String>,
 }
 
+/// Adapter-facing mutation request. The daemon constructs one of
+/// these per envelope from a higher-level `MutationCommand` and
+/// passes it to [`MailSyncProvider::apply_mutation`] together with
+/// a client-supplied `mutation_id` for idempotent retry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum Mutation {
+    ModifyLabels {
+        provider_message_id: String,
+        add: Vec<String>,
+        remove: Vec<String>,
+    },
+    Trash {
+        provider_message_id: String,
+    },
+    SetRead {
+        provider_message_id: String,
+        read: bool,
+    },
+    SetStarred {
+        provider_message_id: String,
+        starred: bool,
+    },
+}
+
+impl Mutation {
+    pub fn provider_message_id(&self) -> &str {
+        match self {
+            Mutation::ModifyLabels {
+                provider_message_id,
+                ..
+            }
+            | Mutation::Trash {
+                provider_message_id,
+            }
+            | Mutation::SetRead {
+                provider_message_id,
+                ..
+            }
+            | Mutation::SetStarred {
+                provider_message_id,
+                ..
+            } => provider_message_id,
+        }
+    }
+}
+
 // -- Export -------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

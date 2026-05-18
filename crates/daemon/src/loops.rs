@@ -742,12 +742,59 @@ async fn execute_rule_action(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Provider ID not found for message {message_id}"))?;
 
+    // Rule-driven actions get their own mutation_id per execution so a
+    // re-run of the same rule (e.g. after a daemon restart mid-batch)
+    // dedupes against the existing apply within the 24h window.
+    let mutation_id = uuid::Uuid::now_v7().to_string();
+    let mutation_to_apply = match action {
+        RuleAction::AddLabel { label } => Some(mxr_core::Mutation::ModifyLabels {
+            provider_message_id: provider_message_id.clone(),
+            add: vec![label.clone()],
+            remove: vec![],
+        }),
+        RuleAction::RemoveLabel { label } => Some(mxr_core::Mutation::ModifyLabels {
+            provider_message_id: provider_message_id.clone(),
+            add: vec![],
+            remove: vec![label.clone()],
+        }),
+        RuleAction::Archive => Some(mxr_core::Mutation::ModifyLabels {
+            provider_message_id: provider_message_id.clone(),
+            add: vec![],
+            remove: vec!["INBOX".to_string()],
+        }),
+        RuleAction::Trash => Some(mxr_core::Mutation::Trash {
+            provider_message_id: provider_message_id.clone(),
+        }),
+        RuleAction::Star => Some(mxr_core::Mutation::SetStarred {
+            provider_message_id: provider_message_id.clone(),
+            starred: true,
+        }),
+        RuleAction::MarkRead => Some(mxr_core::Mutation::SetRead {
+            provider_message_id: provider_message_id.clone(),
+            read: true,
+        }),
+        RuleAction::MarkUnread => Some(mxr_core::Mutation::SetRead {
+            provider_message_id: provider_message_id.clone(),
+            read: false,
+        }),
+        RuleAction::Snooze { .. } | RuleAction::ShellHook { .. } => None,
+    };
+    if let Some(mutation) = mutation_to_apply {
+        provider
+            .apply_mutation(&mutation_id, &mutation)
+            .await
+            .map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().timestamp();
+        if let Err(error) = state
+            .store
+            .record_mutation_applied(&mutation_id, &provider_message_id, account_id, now)
+            .await
+        {
+            tracing::warn!(%error, mutation_id, "rule engine failed to record mutation dedup row");
+        }
+    }
     match action {
         RuleAction::AddLabel { label } => {
-            provider
-                .modify_labels(&provider_message_id, std::slice::from_ref(label), &[])
-                .await
-                .map_err(|e| e.to_string())?;
             if let Some(found) = labels
                 .iter()
                 .find(|candidate| candidate.provider_id == *label || candidate.name == *label)
@@ -760,10 +807,6 @@ async fn execute_rule_action(
             }
         }
         RuleAction::RemoveLabel { label } => {
-            provider
-                .modify_labels(&provider_message_id, &[], std::slice::from_ref(label))
-                .await
-                .map_err(|e| e.to_string())?;
             if let Some(found) = labels
                 .iter()
                 .find(|candidate| candidate.provider_id == *label || candidate.name == *label)
@@ -775,17 +818,8 @@ async fn execute_rule_action(
                     .map_err(|e| e.to_string())?;
             }
         }
-        RuleAction::Archive => {
-            provider
-                .modify_labels(&provider_message_id, &[], &["INBOX".to_string()])
-                .await
-                .map_err(|e| e.to_string())?;
-        }
+        RuleAction::Archive => {}
         RuleAction::Trash => {
-            provider
-                .trash(&provider_message_id)
-                .await
-                .map_err(|e| e.to_string())?;
             state
                 .store
                 .move_to_trash(message_id, mxr_core::EventSource::RuleEngine)
@@ -793,10 +827,6 @@ async fn execute_rule_action(
                 .map_err(|e| e.to_string())?;
         }
         RuleAction::Star => {
-            provider
-                .set_starred(&provider_message_id, true)
-                .await
-                .map_err(|e| e.to_string())?;
             state
                 .store
                 .set_starred(message_id, true, mxr_core::EventSource::RuleEngine)
@@ -804,10 +834,6 @@ async fn execute_rule_action(
                 .map_err(|e| e.to_string())?;
         }
         RuleAction::MarkRead => {
-            provider
-                .set_read(&provider_message_id, true)
-                .await
-                .map_err(|e| e.to_string())?;
             state
                 .store
                 .set_read(message_id, true, mxr_core::EventSource::RuleEngine)
@@ -815,10 +841,6 @@ async fn execute_rule_action(
                 .map_err(|e| e.to_string())?;
         }
         RuleAction::MarkUnread => {
-            provider
-                .set_read(&provider_message_id, false)
-                .await
-                .map_err(|e| e.to_string())?;
             state
                 .store
                 .set_read(message_id, false, mxr_core::EventSource::RuleEngine)
@@ -1287,6 +1309,40 @@ pub async fn activity_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::R
                     tracing::warn!(error = %e, tier = tier.as_str(), "activity prune failed");
                 }
             }
+        }
+    }
+}
+
+pub async fn mutation_dedup_prune_loop(
+    state: Arc<AppState>,
+    mut shutdown_rx: watch::Receiver<bool>,
+) {
+    // Mutation dedup rows have a 24h TTL; prune hourly so the table
+    // stays bounded under heavy mutation traffic. The undo log gets
+    // pruned alongside since both tables share the daemon's
+    // maintenance cadence.
+    let mut ticker = interval(Duration::from_secs(3600));
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {}
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                    tracing::info!("Mutation dedup prune loop exiting: shutdown requested");
+                    break;
+                }
+                continue;
+            }
+        }
+        let now = chrono::Utc::now().timestamp();
+        match state.store.prune_expired_mutation_dedup(now).await {
+            Ok(0) => {}
+            Ok(n) => tracing::debug!(rows = n, "mutation dedup prune deleted rows"),
+            Err(e) => tracing::warn!(error = %e, "mutation dedup prune failed"),
+        }
+        match state.store.prune_expired_undo_entries(now).await {
+            Ok(0) => {}
+            Ok(n) => tracing::debug!(rows = n, "mutation undo prune deleted rows"),
+            Err(e) => tracing::warn!(error = %e, "mutation undo prune failed"),
         }
     }
 }

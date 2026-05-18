@@ -1821,10 +1821,26 @@ pub(crate) async fn apply_snooze(
         .await
         .map_err(|e| e.to_string())?;
     let provider = state.get_provider(Some(&envelope.account_id))?;
+    let snooze_mutation_id = uuid::Uuid::now_v7().to_string();
     provider
-        .modify_labels(&provider_id, &[], &["INBOX".to_string()])
+        .apply_mutation(
+            &snooze_mutation_id,
+            &mxr_core::Mutation::ModifyLabels {
+                provider_message_id: provider_id.clone(),
+                add: vec![],
+                remove: vec!["INBOX".to_string()],
+            },
+        )
         .await
         .map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().timestamp();
+    if let Err(error) = state
+        .store
+        .record_mutation_applied(&snooze_mutation_id, &provider_id, &envelope.account_id, now)
+        .await
+    {
+        tracing::warn!(%error, "snooze failed to record dedup row");
+    }
     reconcile_label_mutation(
         state,
         provider.as_ref(),
@@ -1873,10 +1889,26 @@ pub(crate) async fn restore_snoozed_message(
         .collect();
 
     let provider = state.get_provider(Some(&snoozed.account_id))?;
+    let wake_mutation_id = uuid::Uuid::now_v7().to_string();
     provider
-        .modify_labels(&provider_id, &restore_provider_ids, &[])
+        .apply_mutation(
+            &wake_mutation_id,
+            &mxr_core::Mutation::ModifyLabels {
+                provider_message_id: provider_id.clone(),
+                add: restore_provider_ids.clone(),
+                remove: vec![],
+            },
+        )
         .await
         .map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().timestamp();
+    if let Err(error) = state
+        .store
+        .record_mutation_applied(&wake_mutation_id, &provider_id, &snoozed.account_id, now)
+        .await
+    {
+        tracing::warn!(%error, "wake-from-snooze failed to record dedup row");
+    }
     reconcile_label_mutation(
         state,
         provider.as_ref(),
@@ -4413,34 +4445,10 @@ mod tests {
             Err(mxr_core::MxrError::Provider(self.message.to_string()))
         }
 
-        async fn modify_labels(
+        async fn apply_mutation(
             &self,
-            _provider_message_id: &str,
-            _add: &[String],
-            _remove: &[String],
-        ) -> Result<(), mxr_core::MxrError> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            Err(mxr_core::MxrError::Provider(self.message.to_string()))
-        }
-
-        async fn trash(&self, _provider_message_id: &str) -> Result<(), mxr_core::MxrError> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            Err(mxr_core::MxrError::Provider(self.message.to_string()))
-        }
-
-        async fn set_read(
-            &self,
-            _provider_message_id: &str,
-            _read: bool,
-        ) -> Result<(), mxr_core::MxrError> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            Err(mxr_core::MxrError::Provider(self.message.to_string()))
-        }
-
-        async fn set_starred(
-            &self,
-            _provider_message_id: &str,
-            _starred: bool,
+            _mutation_id: &str,
+            _mutation: &mxr_core::Mutation,
         ) -> Result<(), mxr_core::MxrError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Err(mxr_core::MxrError::Provider(self.message.to_string()))
@@ -4509,12 +4517,21 @@ mod tests {
             Ok(vec![])
         }
 
-        async fn modify_labels(
+        async fn apply_mutation(
             &self,
-            provider_message_id: &str,
-            add: &[String],
-            remove: &[String],
+            _mutation_id: &str,
+            mutation: &mxr_core::Mutation,
         ) -> Result<(), mxr_core::MxrError> {
+            let (provider_message_id, add, remove): (&str, &[String], &[String]) = match mutation {
+                mxr_core::Mutation::ModifyLabels {
+                    provider_message_id,
+                    add,
+                    remove,
+                } => (provider_message_id.as_str(), add.as_slice(), remove.as_slice()),
+                // Trash / SetRead / SetStarred are no-ops for this folder-tracking mock.
+                _ => return Ok(()),
+            };
+
             let source_folder = provider_message_id
                 .rsplit_once(':')
                 .map(|(folder, _)| folder.to_string())
@@ -4597,26 +4614,6 @@ mod tests {
                 folders.push(source_folder);
             }
 
-            Ok(())
-        }
-
-        async fn trash(&self, _provider_message_id: &str) -> Result<(), mxr_core::MxrError> {
-            Ok(())
-        }
-
-        async fn set_read(
-            &self,
-            _provider_message_id: &str,
-            _read: bool,
-        ) -> Result<(), mxr_core::MxrError> {
-            Ok(())
-        }
-
-        async fn set_starred(
-            &self,
-            _provider_message_id: &str,
-            _starred: bool,
-        ) -> Result<(), mxr_core::MxrError> {
             Ok(())
         }
     }

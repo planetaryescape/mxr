@@ -146,19 +146,25 @@ advertising which are supported).
 
 ### Mutation
 
-A request to change server state. Idempotent — the adapter dedupes
-on retry:
+A request to change server state. Each `apply_mutation` call carries
+a client-supplied `mutation_id` (UUIDv7); the adapter (or its
+client-side wrapper) dedupes on retry within a 24h window:
 
 ```
 Mutation ::
-    AddFlag    { message_id, flag }
-  | RemoveFlag { message_id, flag }
-  | Move       { message_id, target_folder_id }
-  | Copy       { message_id, target_folder_id }
-  | Delete     { message_id }
-  | LabelApply { message_id, folder_id }  // multi-assign providers
-  | LabelRemove{ message_id, folder_id }
+    ModifyLabels { message_id, add: Vec<FolderId>, remove: Vec<FolderId> }
+  | Trash        { message_id }
+  | SetRead      { message_id, read: bool }
+  | SetStarred   { message_id, starred: bool }
 ```
+
+`ModifyLabels` is batched per-message so a single user intent
+("archive this") maps to one provider call instead of N. The earlier
+draft prescribed per-flag granular variants (`AddFlag`, `RemoveFlag`,
+`Move`, `Copy`, `Delete`, `LabelApply`, `LabelRemove`); the batched
+shape matches MS Graph, Drive, CloudKit, and WebDAV convention.
+Local-store clients upsert-by-id anyway, so the granular split only
+helps stateless protocols (none of MSP's target audience).
 
 ### SyncDelta
 

@@ -81,21 +81,11 @@ mod tests {
         async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
             Err(MxrError::Provider("simulated attachment error".into()))
         }
-        async fn modify_labels(
+        async fn apply_mutation(
             &self,
-            _id: &str,
-            _add: &[String],
-            _rm: &[String],
+            _mutation_id: &str,
+            _mutation: &Mutation,
         ) -> Result<(), MxrError> {
-            Err(MxrError::Provider("simulated error".into()))
-        }
-        async fn trash(&self, _id: &str) -> Result<(), MxrError> {
-            Err(MxrError::Provider("simulated error".into()))
-        }
-        async fn set_read(&self, _id: &str, _read: bool) -> Result<(), MxrError> {
-            Err(MxrError::Provider("simulated error".into()))
-        }
-        async fn set_starred(&self, _id: &str, _starred: bool) -> Result<(), MxrError> {
             Err(MxrError::Provider("simulated error".into()))
         }
     }
@@ -193,21 +183,11 @@ mod tests {
         async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
             Err(MxrError::NotFound("no attachment".into()))
         }
-        async fn modify_labels(
+        async fn apply_mutation(
             &self,
-            _id: &str,
-            _add: &[String],
-            _rm: &[String],
+            _mutation_id: &str,
+            _mutation: &Mutation,
         ) -> Result<(), MxrError> {
-            Ok(())
-        }
-        async fn trash(&self, _id: &str) -> Result<(), MxrError> {
-            Ok(())
-        }
-        async fn set_read(&self, _id: &str, _read: bool) -> Result<(), MxrError> {
-            Ok(())
-        }
-        async fn set_starred(&self, _id: &str, _starred: bool) -> Result<(), MxrError> {
             Ok(())
         }
     }
@@ -252,24 +232,11 @@ mod tests {
             Err(MxrError::NotFound("no attachment".into()))
         }
 
-        async fn modify_labels(
+        async fn apply_mutation(
             &self,
-            _id: &str,
-            _add: &[String],
-            _rm: &[String],
+            _mutation_id: &str,
+            _mutation: &Mutation,
         ) -> Result<(), MxrError> {
-            Ok(())
-        }
-
-        async fn trash(&self, _id: &str) -> Result<(), MxrError> {
-            Ok(())
-        }
-
-        async fn set_read(&self, _id: &str, _read: bool) -> Result<(), MxrError> {
-            Ok(())
-        }
-
-        async fn set_starred(&self, _id: &str, _starred: bool) -> Result<(), MxrError> {
             Ok(())
         }
     }
@@ -327,24 +294,11 @@ mod tests {
             Err(MxrError::NotFound("no attachment".into()))
         }
 
-        async fn modify_labels(
+        async fn apply_mutation(
             &self,
-            _id: &str,
-            _add: &[String],
-            _rm: &[String],
+            _mutation_id: &str,
+            _mutation: &Mutation,
         ) -> Result<(), MxrError> {
-            Ok(())
-        }
-
-        async fn trash(&self, _id: &str) -> Result<(), MxrError> {
-            Ok(())
-        }
-
-        async fn set_read(&self, _id: &str, _read: bool) -> Result<(), MxrError> {
-            Ok(())
-        }
-
-        async fn set_starred(&self, _id: &str, _starred: bool) -> Result<(), MxrError> {
             Ok(())
         }
     }
@@ -412,21 +366,11 @@ mod tests {
         async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
             Err(MxrError::NotFound("no attachment".into()))
         }
-        async fn modify_labels(
+        async fn apply_mutation(
             &self,
-            _id: &str,
-            _add: &[String],
-            _rm: &[String],
+            _mutation_id: &str,
+            _mutation: &Mutation,
         ) -> Result<(), MxrError> {
-            Ok(())
-        }
-        async fn trash(&self, _id: &str) -> Result<(), MxrError> {
-            Ok(())
-        }
-        async fn set_read(&self, _id: &str, _read: bool) -> Result<(), MxrError> {
-            Ok(())
-        }
-        async fn set_starred(&self, _id: &str, _starred: bool) -> Result<(), MxrError> {
             Ok(())
         }
     }

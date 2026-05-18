@@ -485,6 +485,10 @@ pub(super) async fn mutation(
 ) -> HandlerResult {
     let message_ids = mutation_message_ids(cmd);
     let undoable_kind = undoable_kind(cmd);
+    // One id per MutationCommand batch — drives both the dedup log
+    // (retry safety) and the undo log (user-undo). Generated up-front
+    // so dedup applies even to non-undoable commands.
+    let mutation_id = uuid::Uuid::now_v7().to_string();
     let mut grouped: HashMap<mxr_core::AccountId, Vec<Envelope>> = HashMap::new();
     for message_id in message_ids {
         let envelope = state
@@ -550,7 +554,15 @@ pub(super) async fn mutation(
                 None
             };
 
-            match apply_mutation_to_envelope(state, provider.as_ref(), cmd, envelope).await {
+            match apply_mutation_to_envelope(
+                state,
+                provider.as_ref(),
+                &mutation_id,
+                cmd,
+                envelope,
+            )
+            .await
+            {
                 Ok(()) => {
                     account_result.succeeded += 1;
                     if let Some(snapshot) = snapshot {
@@ -582,12 +594,14 @@ pub(super) async fn mutation(
     let skipped = accounts.iter().map(|account| account.skipped).sum();
     let failed = accounts.iter().map(|account| account.failed).sum();
 
+    // Persist an undo entry only for undoable kinds and only if at
+    // least one envelope succeeded. The mutation_id is the same one
+    // used for dedup above; undo + dedup share a key by design.
     let mutation_id = match (undoable_kind, succeeded_snapshots.is_empty()) {
         (Some(kind), false) => {
-            let id = uuid::Uuid::now_v7().to_string();
             let now = chrono::Utc::now().timestamp();
             let entry = UndoEntry {
-                mutation_id: id.clone(),
+                mutation_id: mutation_id.clone(),
                 kind,
                 snapshots: succeeded_snapshots,
                 applied_at: now,
@@ -599,7 +613,7 @@ pub(super) async fn mutation(
                 tracing::warn!(%error, "failed to write undo entry");
                 None
             } else {
-                Some(id)
+                Some(mutation_id)
             }
         }
         _ => None,
@@ -757,11 +771,36 @@ async fn restore_snapshot(
         .map(|s| (*s).to_string())
         .collect();
 
+    // Undo runs under a fresh mutation_id (a retry of undo would be a
+    // distinct operation in the user's mind). Dedup against the reverse
+    // op's provider call.
+    let undo_mutation_id = uuid::Uuid::now_v7().to_string();
+
     if !to_add.is_empty() || !to_remove.is_empty() {
         provider
-            .modify_labels(&snapshot.provider_id, &to_add, &to_remove)
+            .apply_mutation(
+                &undo_mutation_id,
+                &mxr_core::Mutation::ModifyLabels {
+                    provider_message_id: snapshot.provider_id.clone(),
+                    add: to_add.clone(),
+                    remove: to_remove.clone(),
+                },
+            )
             .await
             .map_err(|error| classify_provider_error(error))?;
+        let now = chrono::Utc::now().timestamp();
+        if let Err(error) = state
+            .store
+            .record_mutation_applied(
+                &undo_mutation_id,
+                &snapshot.provider_id,
+                &snapshot.account_id,
+                now,
+            )
+            .await
+        {
+            tracing::warn!(%error, "undo failed to record dedup row");
+        }
         reconcile_label_mutation(state, provider, &snapshot.message_id, &to_add, &to_remove)
             .await
             .map_err(SnapshotError::Other)?;
@@ -777,10 +816,32 @@ async fn restore_snapshot(
         let prior_read = prior_flags.contains(mxr_core::MessageFlags::READ);
         let current_read = current.flags.contains(mxr_core::MessageFlags::READ);
         if prior_read != current_read {
+            // Suffix dedup key so this co-exists with the ModifyLabels
+            // call above when undoing a ReadAndArchive.
+            let read_dedup_key = format!("{}#read", snapshot.provider_id);
             provider
-                .set_read(&snapshot.provider_id, prior_read)
+                .apply_mutation(
+                    &undo_mutation_id,
+                    &mxr_core::Mutation::SetRead {
+                        provider_message_id: snapshot.provider_id.clone(),
+                        read: prior_read,
+                    },
+                )
                 .await
                 .map_err(|error| classify_provider_error(error))?;
+            let now = chrono::Utc::now().timestamp();
+            if let Err(error) = state
+                .store
+                .record_mutation_applied(
+                    &undo_mutation_id,
+                    &read_dedup_key,
+                    &snapshot.account_id,
+                    now,
+                )
+                .await
+            {
+                tracing::warn!(%error, "undo failed to record dedup row");
+            }
             state
                 .store
                 .set_read(
@@ -833,6 +894,7 @@ fn mutation_message_ids(cmd: &MutationCommand) -> &[mxr_core::MessageId] {
 async fn apply_mutation_to_envelope(
     state: &AppState,
     provider: &dyn mxr_core::MailSyncProvider,
+    mutation_id: &str,
     cmd: &MutationCommand,
     envelope: &Envelope,
 ) -> Result<(), String> {
@@ -840,35 +902,70 @@ async fn apply_mutation_to_envelope(
     let provider_id = &envelope.provider_id;
     match cmd {
         MutationCommand::Archive { .. } => {
-            provider
-                .modify_labels(provider_id, &[], &["INBOX".to_string()])
-                .await
-                .map_err(|e| e.to_string())?;
+            apply_one_mutation(
+                state,
+                provider,
+                mutation_id,
+                provider_id,
+                mxr_core::Mutation::ModifyLabels {
+                    provider_message_id: provider_id.clone(),
+                    add: vec![],
+                    remove: vec!["INBOX".to_string()],
+                },
+                &envelope.account_id,
+            )
+            .await?;
             reconcile_label_mutation(state, provider, message_id, &[], &["INBOX".to_string()])
                 .await?;
         }
         MutationCommand::ReadAndArchive { .. } => {
-            provider
-                .set_read(provider_id, true)
-                .await
-                .map_err(|e| e.to_string())?;
+            // Two provider calls under one mutation_id; suffix the dedup
+            // key so the rows don't collide.
+            apply_one_mutation(
+                state,
+                provider,
+                mutation_id,
+                &format!("{provider_id}#read"),
+                mxr_core::Mutation::SetRead {
+                    provider_message_id: provider_id.clone(),
+                    read: true,
+                },
+                &envelope.account_id,
+            )
+            .await?;
             state
                 .store
                 .set_read(message_id, true, mxr_core::EventSource::User)
                 .await
                 .map_err(|e| e.to_string())?;
-            provider
-                .modify_labels(provider_id, &[], &["INBOX".to_string()])
-                .await
-                .map_err(|e| e.to_string())?;
+            apply_one_mutation(
+                state,
+                provider,
+                mutation_id,
+                &format!("{provider_id}#labels"),
+                mxr_core::Mutation::ModifyLabels {
+                    provider_message_id: provider_id.clone(),
+                    add: vec![],
+                    remove: vec!["INBOX".to_string()],
+                },
+                &envelope.account_id,
+            )
+            .await?;
             reconcile_label_mutation(state, provider, message_id, &[], &["INBOX".to_string()])
                 .await?;
         }
         MutationCommand::Trash { .. } => {
-            provider
-                .trash(provider_id)
-                .await
-                .map_err(|e| e.to_string())?;
+            apply_one_mutation(
+                state,
+                provider,
+                mutation_id,
+                provider_id,
+                mxr_core::Mutation::Trash {
+                    provider_message_id: provider_id.clone(),
+                },
+                &envelope.account_id,
+            )
+            .await?;
             // Trash is provider-specific (Gmail relabels, IMAP moves+expunges).
             // Mirror the common case locally: drop INBOX, add TRASH if labels-capable;
             // otherwise let reconcile_label_mutation re-sync from the provider.
@@ -882,10 +979,19 @@ async fn apply_mutation_to_envelope(
             .await?;
         }
         MutationCommand::Spam { .. } => {
-            provider
-                .modify_labels(provider_id, &["SPAM".to_string()], &["INBOX".to_string()])
-                .await
-                .map_err(|e| e.to_string())?;
+            apply_one_mutation(
+                state,
+                provider,
+                mutation_id,
+                provider_id,
+                mxr_core::Mutation::ModifyLabels {
+                    provider_message_id: provider_id.clone(),
+                    add: vec!["SPAM".to_string()],
+                    remove: vec!["INBOX".to_string()],
+                },
+                &envelope.account_id,
+            )
+            .await?;
             reconcile_label_mutation(
                 state,
                 provider,
@@ -896,10 +1002,18 @@ async fn apply_mutation_to_envelope(
             .await?;
         }
         MutationCommand::Star { starred, .. } => {
-            provider
-                .set_starred(provider_id, *starred)
-                .await
-                .map_err(|e| e.to_string())?;
+            apply_one_mutation(
+                state,
+                provider,
+                mutation_id,
+                provider_id,
+                mxr_core::Mutation::SetStarred {
+                    provider_message_id: provider_id.clone(),
+                    starred: *starred,
+                },
+                &envelope.account_id,
+            )
+            .await?;
             state
                 .store
                 .set_starred(message_id, *starred, mxr_core::EventSource::User)
@@ -907,10 +1021,18 @@ async fn apply_mutation_to_envelope(
                 .map_err(|e| e.to_string())?;
         }
         MutationCommand::SetRead { read, .. } => {
-            provider
-                .set_read(provider_id, *read)
-                .await
-                .map_err(|e| e.to_string())?;
+            apply_one_mutation(
+                state,
+                provider,
+                mutation_id,
+                provider_id,
+                mxr_core::Mutation::SetRead {
+                    provider_message_id: provider_id.clone(),
+                    read: *read,
+                },
+                &envelope.account_id,
+            )
+            .await?;
             state
                 .store
                 .set_read(message_id, *read, mxr_core::EventSource::User)
@@ -925,10 +1047,19 @@ async fn apply_mutation_to_envelope(
                 .map_err(|e| e.to_string())?;
             let resolved_add = resolve_to_provider_ids(&labels, add);
             let resolved_remove = resolve_to_provider_ids(&labels, remove);
-            provider
-                .modify_labels(provider_id, &resolved_add, &resolved_remove)
-                .await
-                .map_err(|e| e.to_string())?;
+            apply_one_mutation(
+                state,
+                provider,
+                mutation_id,
+                provider_id,
+                mxr_core::Mutation::ModifyLabels {
+                    provider_message_id: provider_id.clone(),
+                    add: resolved_add.clone(),
+                    remove: resolved_remove.clone(),
+                },
+                &envelope.account_id,
+            )
+            .await?;
             reconcile_label_mutation(state, provider, message_id, &resolved_add, &resolved_remove)
                 .await?;
         }
@@ -940,10 +1071,19 @@ async fn apply_mutation_to_envelope(
                 .map_err(|e| e.to_string())?;
             let resolved_target =
                 resolve_to_provider_ids(&labels, std::slice::from_ref(target_label));
-            provider
-                .modify_labels(provider_id, &resolved_target, &["INBOX".to_string()])
-                .await
-                .map_err(|e| e.to_string())?;
+            apply_one_mutation(
+                state,
+                provider,
+                mutation_id,
+                provider_id,
+                mxr_core::Mutation::ModifyLabels {
+                    provider_message_id: provider_id.clone(),
+                    add: resolved_target.clone(),
+                    remove: vec!["INBOX".to_string()],
+                },
+                &envelope.account_id,
+            )
+            .await?;
             reconcile_label_mutation(
                 state,
                 provider,
@@ -957,6 +1097,52 @@ async fn apply_mutation_to_envelope(
     // Single point of search-index reconciliation: refresh the indexed envelope so
     // queries (`mxr search ...`) see the new flags/labels immediately.
     reindex_message_in_search(state, message_id).await
+}
+
+/// Dedup-aware provider mutation: skips the provider call if a row for
+/// `(mutation_id, dedup_key)` already exists in `mutation_dedup_log`,
+/// otherwise calls the provider and records the apply.
+///
+/// `dedup_key` is normally the envelope's provider id, but
+/// ReadAndArchive uses suffixed keys (`${pid}#read`, `${pid}#labels`)
+/// so its two provider calls don't collide in the dedup table.
+async fn apply_one_mutation(
+    state: &AppState,
+    provider: &dyn mxr_core::MailSyncProvider,
+    mutation_id: &str,
+    dedup_key: &str,
+    mutation: mxr_core::Mutation,
+    account_id: &mxr_core::AccountId,
+) -> Result<(), String> {
+    let already = state
+        .store
+        .was_mutation_applied(mutation_id, dedup_key)
+        .await
+        .map_err(|e| e.to_string())?;
+    if already {
+        tracing::debug!(
+            mutation_id,
+            dedup_key,
+            "mutation already applied within dedup window; skipping provider call"
+        );
+        return Ok(());
+    }
+    provider
+        .apply_mutation(mutation_id, &mutation)
+        .await
+        .map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().timestamp();
+    if let Err(error) = state
+        .store
+        .record_mutation_applied(mutation_id, dedup_key, account_id, now)
+        .await
+    {
+        // Non-fatal: provider already applied the mutation. A future
+        // retry of the same mutation_id will be safe because Gmail/IMAP
+        // ops are set-semantics; logged so it's visible.
+        tracing::warn!(%error, mutation_id, dedup_key, "failed to record mutation dedup row");
+    }
+    Ok(())
 }
 
 async fn reindex_message_in_search(
@@ -1890,14 +2076,34 @@ pub(super) async fn set_flags(
     }
 
     let provider = state.get_provider(Some(&envelope.account_id))?;
-    let provider_id = envelope.provider_id.as_str();
+    let provider_id = envelope.provider_id.clone();
+    let mutation_id = uuid::Uuid::now_v7().to_string();
 
     let read = flags.contains(MessageFlags::READ);
     if envelope.flags.contains(MessageFlags::READ) != read {
         provider
-            .set_read(provider_id, read)
+            .apply_mutation(
+                &mutation_id,
+                &mxr_core::Mutation::SetRead {
+                    provider_message_id: provider_id.clone(),
+                    read,
+                },
+            )
             .await
             .map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().timestamp();
+        if let Err(error) = state
+            .store
+            .record_mutation_applied(
+                &mutation_id,
+                &format!("{provider_id}#read"),
+                &envelope.account_id,
+                now,
+            )
+            .await
+        {
+            tracing::warn!(%error, mutation_id, "set_flags failed to record dedup row");
+        }
         state
             .store
             .set_read(message_id, read, mxr_core::EventSource::User)
@@ -1908,9 +2114,28 @@ pub(super) async fn set_flags(
     let starred = flags.contains(MessageFlags::STARRED);
     if envelope.flags.contains(MessageFlags::STARRED) != starred {
         provider
-            .set_starred(provider_id, starred)
+            .apply_mutation(
+                &mutation_id,
+                &mxr_core::Mutation::SetStarred {
+                    provider_message_id: provider_id.clone(),
+                    starred,
+                },
+            )
             .await
             .map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().timestamp();
+        if let Err(error) = state
+            .store
+            .record_mutation_applied(
+                &mutation_id,
+                &format!("{provider_id}#starred"),
+                &envelope.account_id,
+                now,
+            )
+            .await
+        {
+            tracing::warn!(%error, mutation_id, "set_flags failed to record dedup row");
+        }
         state
             .store
             .set_starred(message_id, starred, mxr_core::EventSource::User)

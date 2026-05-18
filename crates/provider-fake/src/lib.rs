@@ -25,7 +25,7 @@ pub struct FakeProvider {
     bodies: HashMap<String, MessageBody>,
     labels: Mutex<Vec<Label>>,
     sent: Mutex<Vec<Draft>>,
-    mutations: Mutex<Vec<Mutation>>,
+    mutations: Mutex<Vec<RecordedMutation>>,
     /// Phase 3.1: when set, `idle_watch` returns a watcher that emits a
     /// notification each time `idle_trigger.notify_one()` is called.
     /// Tests use this to simulate server-pushed EXISTS / EXPUNGE events.
@@ -33,7 +33,7 @@ pub struct FakeProvider {
 }
 
 #[derive(Debug, Clone)]
-pub enum Mutation {
+pub enum RecordedMutation {
     LabelsModified {
         provider_id: String,
         added: Vec<String>,
@@ -65,7 +65,7 @@ impl FakeProvider {
             .expect("fake provider sent mutex should not be poisoned")
     }
 
-    fn mutations_guard(&self) -> std::sync::MutexGuard<'_, Vec<Mutation>> {
+    fn mutations_guard(&self) -> std::sync::MutexGuard<'_, Vec<RecordedMutation>> {
         self.mutations
             .lock()
             .expect("fake provider mutations mutex should not be poisoned")
@@ -97,7 +97,7 @@ impl FakeProvider {
         self.sent_guard().clone()
     }
 
-    pub fn mutations(&self) -> Vec<Mutation> {
+    pub fn mutations(&self) -> Vec<RecordedMutation> {
         self.mutations_guard().clone()
     }
 }
@@ -221,17 +221,42 @@ impl MailSyncProvider for FakeProvider {
         Ok(b"fake attachment content".to_vec())
     }
 
-    async fn modify_labels(
+    async fn apply_mutation(
         &self,
-        provider_message_id: &str,
-        add: &[String],
-        remove: &[String],
+        _mutation_id: &str,
+        mutation: &Mutation,
     ) -> Result<(), MxrError> {
-        self.mutations_guard().push(Mutation::LabelsModified {
-            provider_id: provider_message_id.to_string(),
-            added: add.to_vec(),
-            removed: remove.to_vec(),
-        });
+        let recorded = match mutation {
+            Mutation::ModifyLabels {
+                provider_message_id,
+                add,
+                remove,
+            } => RecordedMutation::LabelsModified {
+                provider_id: provider_message_id.clone(),
+                added: add.clone(),
+                removed: remove.clone(),
+            },
+            Mutation::Trash {
+                provider_message_id,
+            } => RecordedMutation::Trashed {
+                provider_id: provider_message_id.clone(),
+            },
+            Mutation::SetRead {
+                provider_message_id,
+                read,
+            } => RecordedMutation::ReadSet {
+                provider_id: provider_message_id.clone(),
+                read: *read,
+            },
+            Mutation::SetStarred {
+                provider_message_id,
+                starred,
+            } => RecordedMutation::StarredSet {
+                provider_id: provider_message_id.clone(),
+                starred: *starred,
+            },
+        };
+        self.mutations_guard().push(recorded);
         Ok(())
     }
 
@@ -274,29 +299,6 @@ impl MailSyncProvider for FakeProvider {
         if labels.len() == before {
             return Err(MxrError::NotFound(format!("label {provider_label_id}")));
         }
-        Ok(())
-    }
-
-    async fn trash(&self, provider_message_id: &str) -> Result<(), MxrError> {
-        self.mutations_guard().push(Mutation::Trashed {
-            provider_id: provider_message_id.to_string(),
-        });
-        Ok(())
-    }
-
-    async fn set_read(&self, provider_message_id: &str, read: bool) -> Result<(), MxrError> {
-        self.mutations_guard().push(Mutation::ReadSet {
-            provider_id: provider_message_id.to_string(),
-            read,
-        });
-        Ok(())
-    }
-
-    async fn set_starred(&self, provider_message_id: &str, starred: bool) -> Result<(), MxrError> {
-        self.mutations_guard().push(Mutation::StarredSet {
-            provider_id: provider_message_id.to_string(),
-            starred,
-        });
         Ok(())
     }
 
@@ -521,15 +523,51 @@ mod tests {
     #[tokio::test]
     async fn mutations_recorded() {
         let provider = FakeProvider::new(AccountId::new());
-        provider.trash("fake-msg-1").await.unwrap();
-        provider.set_read("fake-msg-2", true).await.unwrap();
         provider
-            .modify_labels("fake-msg-3", &["work".to_string()], &[])
+            .apply_mutation(
+                "mut-1",
+                &Mutation::Trash {
+                    provider_message_id: "fake-msg-1".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+        provider
+            .apply_mutation(
+                "mut-2",
+                &Mutation::SetRead {
+                    provider_message_id: "fake-msg-2".to_string(),
+                    read: true,
+                },
+            )
+            .await
+            .unwrap();
+        provider
+            .apply_mutation(
+                "mut-3",
+                &Mutation::ModifyLabels {
+                    provider_message_id: "fake-msg-3".to_string(),
+                    add: vec!["work".to_string()],
+                    remove: vec![],
+                },
+            )
             .await
             .unwrap();
 
         let mutations = provider.mutations();
         assert_eq!(mutations.len(), 3);
+        assert!(matches!(
+            mutations[0],
+            RecordedMutation::Trashed { .. }
+        ));
+        assert!(matches!(
+            mutations[1],
+            RecordedMutation::ReadSet { read: true, .. }
+        ));
+        assert!(matches!(
+            mutations[2],
+            RecordedMutation::LabelsModified { .. }
+        ));
     }
 
     #[tokio::test]

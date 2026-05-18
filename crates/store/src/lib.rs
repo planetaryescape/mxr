@@ -20,6 +20,7 @@ mod label;
 mod message;
 mod message_events;
 mod message_flags;
+mod mutation_dedup;
 mod owed_replies;
 mod pool;
 mod relationship_watchlist;
@@ -3497,5 +3498,89 @@ mod tests {
         assert_eq!(pruned, 1, "only the expired row must be dropped");
         assert!(store.read_undo_entry("expired").await.unwrap().is_none());
         assert!(store.read_undo_entry("fresh").await.unwrap().is_some());
+    }
+
+    /// Phase D: dedup log starts empty, was_mutation_applied returns false
+    /// for an unseen key, true after record. Same key recorded twice is a
+    /// no-op (single row).
+    #[tokio::test]
+    async fn mutation_dedup_records_apply_and_detects_replay() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        assert!(
+            !store
+                .was_mutation_applied("mut-1", "msg-1")
+                .await
+                .unwrap(),
+            "unrecorded key must report not-applied"
+        );
+
+        store
+            .record_mutation_applied("mut-1", "msg-1", &account.id, 100)
+            .await
+            .unwrap();
+
+        assert!(
+            store.was_mutation_applied("mut-1", "msg-1").await.unwrap(),
+            "recorded key must report applied"
+        );
+
+        // Re-record is idempotent (INSERT OR IGNORE).
+        store
+            .record_mutation_applied("mut-1", "msg-1", &account.id, 200)
+            .await
+            .unwrap();
+        assert_eq!(store.count_mutation_dedup_rows().await.unwrap(), 1);
+
+        // Different message under same mutation_id gets its own row.
+        store
+            .record_mutation_applied("mut-1", "msg-2", &account.id, 100)
+            .await
+            .unwrap();
+        assert!(store.was_mutation_applied("mut-1", "msg-2").await.unwrap());
+        assert!(
+            !store
+                .was_mutation_applied("mut-other", "msg-1")
+                .await
+                .unwrap(),
+            "different mutation_id must not collide"
+        );
+    }
+
+    /// Phase D: prune drops only rows where expires_at <= now.
+    #[tokio::test]
+    async fn prune_expired_mutation_dedup_drops_only_stale_rows() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        // applied_at=100 -> expires_at=100 + 24h. Use a tiny offset below
+        // by calling record_mutation_applied with applied_at=0 to make a
+        // very-old row, and a current row for the "fresh" case.
+        store
+            .record_mutation_applied("expired", "msg-expired", &account.id, 0)
+            .await
+            .unwrap();
+        let now = chrono::Utc::now().timestamp();
+        store
+            .record_mutation_applied("fresh", "msg-fresh", &account.id, now)
+            .await
+            .unwrap();
+
+        // Prune at "now + 1 day": the 0-applied row's expires_at is
+        // 86400, which is < now+86400 for any present-day now. The fresh
+        // row's expires_at = now + 86400 is > prune cutoff.
+        let prune_cutoff = now + 100; // well past expired's expires_at, well before fresh's
+        let pruned = store.prune_expired_mutation_dedup(prune_cutoff).await.unwrap();
+        assert_eq!(pruned, 1, "only the expired row must be dropped");
+        assert!(
+            !store
+                .was_mutation_applied("expired", "msg-expired")
+                .await
+                .unwrap()
+        );
+        assert!(store.was_mutation_applied("fresh", "msg-fresh").await.unwrap());
     }
 }

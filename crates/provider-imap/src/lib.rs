@@ -886,7 +886,97 @@ impl MailSyncProvider for ImapProvider {
         Ok(part.contents().to_vec())
     }
 
-    async fn modify_labels(
+    async fn apply_mutation(
+        &self,
+        _mutation_id: &str,
+        mutation: &mxr_core::Mutation,
+    ) -> mxr_core::provider::Result<()> {
+        match mutation {
+            mxr_core::Mutation::ModifyLabels {
+                provider_message_id,
+                add,
+                remove,
+            } => self.apply_modify_labels(provider_message_id, add, remove).await,
+            mxr_core::Mutation::Trash {
+                provider_message_id,
+            } => self.apply_trash(provider_message_id).await,
+            mxr_core::Mutation::SetRead {
+                provider_message_id,
+                read,
+            } => self.apply_set_read(provider_message_id, *read).await,
+            mxr_core::Mutation::SetStarred {
+                provider_message_id,
+                starred,
+            } => self.apply_set_starred(provider_message_id, *starred).await,
+        }
+    }
+
+    async fn create_label(
+        &self,
+        name: &str,
+        _color: Option<&str>,
+    ) -> mxr_core::provider::Result<Label> {
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        session
+            .create_mailbox(name)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let _ = session.logout().await;
+
+        Ok(folders::map_folder_to_label(name, None, &self.account_id))
+    }
+
+    async fn rename_label(
+        &self,
+        provider_label_id: &str,
+        new_name: &str,
+    ) -> mxr_core::provider::Result<Label> {
+        self.assert_mutable_folder(provider_label_id).await?;
+
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        session
+            .rename_mailbox(provider_label_id, new_name)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let _ = session.logout().await;
+
+        Ok(folders::map_folder_to_label(
+            new_name,
+            None,
+            &self.account_id,
+        ))
+    }
+
+    async fn delete_label(&self, provider_label_id: &str) -> mxr_core::provider::Result<()> {
+        self.assert_mutable_folder(provider_label_id).await?;
+
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        session
+            .delete_mailbox(provider_label_id)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let _ = session.logout().await;
+        Ok(())
+    }
+}
+
+impl ImapProvider {
+    async fn apply_modify_labels(
         &self,
         provider_message_id: &str,
         add: &[String],
@@ -979,70 +1069,7 @@ impl MailSyncProvider for ImapProvider {
         Ok(())
     }
 
-    async fn create_label(
-        &self,
-        name: &str,
-        _color: Option<&str>,
-    ) -> mxr_core::provider::Result<Label> {
-        let mut session = self
-            .session_factory
-            .create_session()
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-
-        session
-            .create_mailbox(name)
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-        let _ = session.logout().await;
-
-        Ok(folders::map_folder_to_label(name, None, &self.account_id))
-    }
-
-    async fn rename_label(
-        &self,
-        provider_label_id: &str,
-        new_name: &str,
-    ) -> mxr_core::provider::Result<Label> {
-        self.assert_mutable_folder(provider_label_id).await?;
-
-        let mut session = self
-            .session_factory
-            .create_session()
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-
-        session
-            .rename_mailbox(provider_label_id, new_name)
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-        let _ = session.logout().await;
-
-        Ok(folders::map_folder_to_label(
-            new_name,
-            None,
-            &self.account_id,
-        ))
-    }
-
-    async fn delete_label(&self, provider_label_id: &str) -> mxr_core::provider::Result<()> {
-        self.assert_mutable_folder(provider_label_id).await?;
-
-        let mut session = self
-            .session_factory
-            .create_session()
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-
-        session
-            .delete_mailbox(provider_label_id)
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-        let _ = session.logout().await;
-        Ok(())
-    }
-
-    async fn trash(&self, provider_message_id: &str) -> mxr_core::provider::Result<()> {
+    async fn apply_trash(&self, provider_message_id: &str) -> mxr_core::provider::Result<()> {
         let (mailbox, uid) = folders::parse_provider_id(provider_message_id)
             .map_err(mxr_core::error::MxrError::from)?;
 
@@ -1087,7 +1114,7 @@ impl MailSyncProvider for ImapProvider {
         Ok(())
     }
 
-    async fn set_read(
+    async fn apply_set_read(
         &self,
         provider_message_id: &str,
         read: bool,
@@ -1121,7 +1148,7 @@ impl MailSyncProvider for ImapProvider {
         Ok(())
     }
 
-    async fn set_starred(
+    async fn apply_set_starred(
         &self,
         provider_message_id: &str,
         starred: bool,
@@ -1931,7 +1958,16 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        provider.set_read("INBOX:42", true).await.unwrap();
+        provider
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::SetRead {
+                    provider_message_id: "INBOX:42".to_string(),
+                    read: true,
+                },
+            )
+            .await
+            .unwrap();
 
         let commands = log.lock().unwrap().commands.clone();
         assert!(commands.contains(&"SELECT INBOX".to_string()));
@@ -1946,7 +1982,16 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        provider.set_read("INBOX:42", false).await.unwrap();
+        provider
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::SetRead {
+                    provider_message_id: "INBOX:42".to_string(),
+                    read: false,
+                },
+            )
+            .await
+            .unwrap();
 
         let commands = log.lock().unwrap().commands.clone();
         assert!(commands.contains(&"UID STORE 42 -FLAGS (\\Seen)".to_string()));
@@ -1960,7 +2005,16 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        provider.set_starred("INBOX:42", true).await.unwrap();
+        provider
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::SetStarred {
+                    provider_message_id: "INBOX:42".to_string(),
+                    starred: true,
+                },
+            )
+            .await
+            .unwrap();
 
         let commands = log.lock().unwrap().commands.clone();
         assert!(commands.contains(&"UID STORE 42 +FLAGS (\\Flagged)".to_string()));
@@ -1975,7 +2029,12 @@ mod tests {
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         let err = provider
-            .trash("INBOX:42")
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::Trash {
+                    provider_message_id: "INBOX:42".to_string(),
+                },
+            )
             .await
             .expect_err("trash without UIDPLUS or MOVE must fail");
         let message = err.to_string();
@@ -2007,7 +2066,15 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        provider.trash("INBOX:42").await.unwrap();
+        provider
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::Trash {
+                    provider_message_id: "INBOX:42".to_string(),
+                },
+            )
+            .await
+            .unwrap();
 
         let commands = log.lock().unwrap().commands.clone();
         assert!(commands.contains(&"UID MOVE 42 Trash".to_string()));
@@ -2031,7 +2098,15 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        provider.trash("INBOX:42").await.unwrap();
+        provider
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::Trash {
+                    provider_message_id: "INBOX:42".to_string(),
+                },
+            )
+            .await
+            .unwrap();
 
         let commands = log.lock().unwrap().commands.clone();
         assert!(commands.contains(&"UID COPY 42 Trash".to_string()));
@@ -2048,10 +2123,13 @@ mod tests {
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         provider
-            .modify_labels(
-                "INBOX:42",
-                &["STARRED".to_string(), "Archive".to_string()],
-                &["READ".to_string()],
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::ModifyLabels {
+                    provider_message_id: "INBOX:42".to_string(),
+                    add: vec!["STARRED".to_string(), "Archive".to_string()],
+                    remove: vec!["READ".to_string()],
+                },
             )
             .await
             .unwrap();
@@ -2082,7 +2160,14 @@ mod tests {
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         provider
-            .modify_labels("INBOX:42", &[], &["INBOX".to_string()])
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::ModifyLabels {
+                    provider_message_id: "INBOX:42".to_string(),
+                    add: vec![],
+                    remove: vec!["INBOX".to_string()],
+                },
+            )
             .await
             .unwrap();
 
@@ -2230,7 +2315,16 @@ mod tests {
 
         let provider3 = ImapProvider::with_session_factory(account_id, config, Box::new(factory3));
 
-        provider3.set_starred("INBOX:4", true).await.unwrap();
+        provider3
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::SetStarred {
+                    provider_message_id: "INBOX:4".to_string(),
+                    starred: true,
+                },
+            )
+            .await
+            .unwrap();
         let cmds = log3.lock().unwrap().commands.clone();
         assert!(cmds.contains(&"UID STORE 4 +FLAGS (\\Flagged)".to_string()));
     }

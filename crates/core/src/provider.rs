@@ -51,20 +51,18 @@ pub trait MailSyncProvider: Send + Sync {
         provider_attachment_id: &str,
     ) -> Result<Vec<u8>>;
 
-    /// Apply provider-native placement/label state.
+    /// Apply a mutation against the provider.
     ///
-    /// For providers with `capabilities().mutate.labels == true`, callers may
-    /// treat this as stable multi-assign label semantics.
+    /// Callers supply a stable `mutation_id` (UUIDv7) so the daemon's
+    /// `mutation_dedup_log` (24h window) can skip a duplicate apply
+    /// on retry. Adapters are free to ignore `mutation_id` — the
+    /// authoritative dedup happens in the daemon's store.
     ///
-    /// For folder-based providers (`mutate.labels == false`), callers must not
-    /// assume Gmail-style label behavior. The same request may map to move or
-    /// copy semantics instead.
-    async fn modify_labels(
-        &self,
-        provider_message_id: &str,
-        add: &[String],
-        remove: &[String],
-    ) -> Result<()>;
+    /// For providers with `capabilities().mutate.labels == true`,
+    /// `Mutation::ModifyLabels` is stable multi-assign label semantics.
+    /// For folder-based providers (`mutate.labels == false`), the same
+    /// request may map to move or copy semantics instead.
+    async fn apply_mutation(&self, mutation_id: &str, mutation: &Mutation) -> Result<()>;
 
     async fn create_label(&self, _name: &str, _color: Option<&str>) -> Result<Label> {
         Err(MxrError::Provider(
@@ -81,10 +79,6 @@ pub trait MailSyncProvider: Send + Sync {
             "Label deletion not supported".to_string(),
         ))
     }
-
-    async fn trash(&self, provider_message_id: &str) -> Result<()>;
-    async fn set_read(&self, provider_message_id: &str, read: bool) -> Result<()>;
-    async fn set_starred(&self, provider_message_id: &str, starred: bool) -> Result<()>;
 
     async fn search_remote(&self, _query: &str) -> Result<Vec<String>> {
         Err(MxrError::Provider(

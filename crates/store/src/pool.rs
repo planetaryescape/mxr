@@ -613,6 +613,11 @@ const MIGRATIONS: &[Migration] = &[
             sql: "ALTER TABLE drafts ADD COLUMN inline_calendar_reply_json TEXT",
         },
     },
+    Migration {
+        version: 40,
+        name: "mutation_dedup_log",
+        kind: MigrationKind::Sql(include_str!("../migrations/040_mutation_dedup_log.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

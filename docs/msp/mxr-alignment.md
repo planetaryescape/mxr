@@ -195,23 +195,34 @@ legitimate flag carriers and mxr currently drops them.
 
 ### MSP §2.7 — Mutation
 
-**mxr today:** Per-mutation methods on `MailSyncProvider`:
-`modify_labels`, `trash`, `set_read`, `set_starred`. No batching.
-No `mutation_id`.
+**mxr today** (post-Phase-D): single trait method
+`apply_mutation(mutation_id, Mutation)` on `MailSyncProvider`.
+`Mutation` is the batched per-message enum
+(`ModifyLabels`/`Trash`/`SetRead`/`SetStarred`); MSP spec §2.7
+updated to match.
 
-**Gap:** MSP has a unified `Mutation` enum + a `mutate` method that
-takes a single mutation. No batching in v0.1 either, but
-`mutation_id` is mandatory for idempotent replay.
+**Resolved in Phase D (2026-05-17):**
 
-**Refactor:**
-- Unify the mutation methods behind one `apply_mutation(Mutation)`
-  method.
-- Add `mutation_id: Uuid` on every mutation, plumbed through
-  adapter-side dedupe.
+- Four per-method trait functions (`modify_labels`, `trash`,
+  `set_read`, `set_starred`) collapsed into one
+  `apply_mutation(mutation_id, &Mutation)`.
+- New `mutation_dedup_log` SQLite table (migration 040, 24h TTL)
+  keyed on `(mutation_id, provider_message_id)`. Daemon checks
+  the log before each provider call; replays of an
+  already-applied mutation become no-ops.
+- `ReadAndArchive` fans out into SetRead + ModifyLabels under one
+  mutation_id; daemon disambiguates the two dedup rows by
+  suffixing the provider_message_id (`${pid}#read` /
+  `${pid}#labels`).
+- 8-protocol survey (JMAP, MS Graph, Drive, WebDAV, CloudKit,
+  Matrix, Notion, Stripe) confirmed: batched per-message enum is
+  idiomatic for local-store clients; granular per-flag variants
+  only help stateless protocols.
+- Adapter-side in-memory dedup rejected in favour of daemon-side
+  persisted dedup for cross-provider consistency and crash-safety.
 
-**Cost: medium.** ~1-2 days. The unified mutation surface is a small
-refactor; idempotency requires adapter-side dedupe state (a
-short-lived in-memory cache keyed on `mutation_id`).
+**Cost (delivered): medium.** Single atomic commit covering the
+trait change, migration, daemon dispatch, and three adapters.
 
 ### MSP §2.8 — SyncDelta
 

@@ -1,6 +1,6 @@
 use crate::fixtures;
 use chrono::Utc;
-use mxr_core::{AccountId, MailSendProvider, MailSyncProvider, SyncCursor};
+use mxr_core::{AccountId, MailSendProvider, MailSyncProvider, Mutation, SyncCursor};
 
 /// Run reusable sync-provider conformance checks.
 ///
@@ -77,20 +77,47 @@ where
         assert!(!bytes.is_empty(), "attachment bytes should not be empty");
     }
 
-    let first = &batch.upserted[0].envelope.provider_id;
+    let first = batch.upserted[0].envelope.provider_id.clone();
     provider
-        .set_read(first, true)
+        .apply_mutation(
+            "conformance-set-read",
+            &Mutation::SetRead {
+                provider_message_id: first.clone(),
+                read: true,
+            },
+        )
         .await
-        .expect("set_read should succeed");
+        .expect("apply_mutation(SetRead) should succeed");
     provider
-        .set_starred(first, true)
+        .apply_mutation(
+            "conformance-set-starred",
+            &Mutation::SetStarred {
+                provider_message_id: first.clone(),
+                starred: true,
+            },
+        )
         .await
-        .expect("set_starred should succeed");
+        .expect("apply_mutation(SetStarred) should succeed");
     provider
-        .modify_labels(first, &["INBOX".to_string()], &[])
+        .apply_mutation(
+            "conformance-modify-labels",
+            &Mutation::ModifyLabels {
+                provider_message_id: first.clone(),
+                add: vec!["INBOX".to_string()],
+                remove: vec![],
+            },
+        )
         .await
-        .expect("modify_labels should succeed");
-    provider.trash(first).await.expect("trash should succeed");
+        .expect("apply_mutation(ModifyLabels) should succeed");
+    provider
+        .apply_mutation(
+            "conformance-trash",
+            &Mutation::Trash {
+                provider_message_id: first.clone(),
+            },
+        )
+        .await
+        .expect("apply_mutation(Trash) should succeed");
 
     if provider.capabilities().mutate.labels {
         let created = provider

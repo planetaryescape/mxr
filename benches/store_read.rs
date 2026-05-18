@@ -56,6 +56,7 @@ fn bench_store_read(c: &mut Criterion) {
                     link_count: 0,
                     body_word_count: 0,
                     label_provider_ids: Vec::new(),
+                    keywords: std::collections::BTreeSet::new(),
                 })
                 .await
                 .expect("insert envelope");

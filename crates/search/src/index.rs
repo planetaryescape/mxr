@@ -269,6 +269,14 @@ impl SearchIndex {
             envelope.flags.contains(MessageFlags::ANSWERED),
         );
         doc.add_bool(s.is_reply_later, reply_later);
+        // Phase E: index each keyword as a separate STRING term so
+        // `is:$foo` filters resolve via exact-match TermQuery.
+        // Index keywords lowercased so `is:$Forwarded` / `is:$forwarded`
+        // match the same set. The authoritative case-preserved form
+        // lives in `message_keywords` for round-trip back to IMAP.
+        for keyword in &envelope.keywords {
+            doc.add_text(s.keywords, keyword.to_lowercase());
+        }
 
         let timestamp = envelope.date.timestamp();
         let dt = tantivy::DateTime::from_timestamp_secs(timestamp);
@@ -357,6 +365,12 @@ impl SearchIndex {
             envelope.flags.contains(MessageFlags::ANSWERED),
         );
         doc.add_bool(s.is_reply_later, reply_later);
+        // Index keywords lowercased so `is:$Forwarded` / `is:$forwarded`
+        // match the same set. The authoritative case-preserved form
+        // lives in `message_keywords` for round-trip back to IMAP.
+        for keyword in &envelope.keywords {
+            doc.add_text(s.keywords, keyword.to_lowercase());
+        }
         let timestamp = envelope.date.timestamp();
         let dt = tantivy::DateTime::from_timestamp_secs(timestamp);
         doc.add_date(s.date, dt);

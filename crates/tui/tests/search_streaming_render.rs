@@ -47,6 +47,7 @@ fn streaming_envelope(slug: &str, subject: &str, sender: &str) -> Envelope {
         link_count: 0,
         body_word_count: 0,
         label_provider_ids: vec!["INBOX".into()],
+        keywords: std::collections::BTreeSet::new(),
     }
 }
 

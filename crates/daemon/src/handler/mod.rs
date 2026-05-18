@@ -4304,6 +4304,7 @@ mod tests {
                         link_count: 0,
                         body_word_count: 0,
                         label_provider_ids: vec![folder.clone()],
+                        keywords: std::collections::BTreeSet::new(),
                     };
                     let body = mxr_core::MessageBody {
                         message_id,

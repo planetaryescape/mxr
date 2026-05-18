@@ -108,6 +108,7 @@ impl TestEnvelopeBuilder {
             link_count: self.link_count,
             body_word_count: self.body_word_count,
             label_provider_ids: self.label_provider_ids,
+            keywords: std::collections::BTreeSet::new(),
         }
     }
 }

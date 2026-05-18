@@ -218,6 +218,7 @@ impl super::Store {
         };
         let mut envelopes = vec![envelope.clone()];
         self.hydrate_link_metadata(&mut envelopes).await?;
+        self.hydrate_envelope_keywords(&mut envelopes).await?;
         envelope = envelopes.remove(0);
         Ok(Some(envelope))
     }
@@ -290,6 +291,7 @@ impl super::Store {
             })
             .collect::<Result<Vec<_>, _>>()?;
         self.hydrate_link_metadata(&mut envelopes).await?;
+        self.hydrate_envelope_keywords(&mut envelopes).await?;
         Ok(envelopes)
     }
 
@@ -360,6 +362,7 @@ impl super::Store {
             })
             .collect::<Result<Vec<_>, _>>()?;
         self.hydrate_link_metadata(&mut envelopes).await?;
+        self.hydrate_envelope_keywords(&mut envelopes).await?;
         Ok(envelopes)
     }
 
@@ -598,6 +601,7 @@ impl super::Store {
             .filter_map(|message_id| by_id.remove(message_id))
             .collect();
         self.hydrate_link_metadata(&mut envelopes).await?;
+        self.hydrate_envelope_keywords(&mut envelopes).await?;
         Ok(envelopes)
     }
 
@@ -1387,5 +1391,9 @@ pub(crate) fn record_to_envelope(
                 .map(str::to_string)
                 .collect()
         },
+        // Keywords live in a separate junction table; callers that
+        // need them stitch via Store::hydrate_envelope_keywords after
+        // the row decode.
+        keywords: std::collections::BTreeSet::new(),
     })
 }

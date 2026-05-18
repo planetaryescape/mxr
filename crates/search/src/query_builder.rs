@@ -39,6 +39,7 @@ pub struct QueryBuilder {
     has_link: Field,
     link_density: Field,
     has_user_labels: Field,
+    keywords: Field,
 }
 
 impl QueryBuilder {
@@ -71,6 +72,7 @@ impl QueryBuilder {
             has_link: schema.has_link,
             link_density: schema.link_density,
             has_user_labels: schema.has_user_labels,
+            keywords: schema.keywords,
         }
     }
 
@@ -253,6 +255,13 @@ impl QueryBuilder {
             // standalone mail-query crate.
             FilterKind::Custom(name) if name == FILTER_REPLY_LATER => {
                 let term = Term::from_field_bool(self.is_reply_later, true);
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic))
+            }
+            // Phase E: `is:$forwarded` (or any `is:$foo`) is a custom
+            // keyword filter. The `$` prefix preserves the IMAP atom
+            // form we stored on the wire.
+            FilterKind::Custom(name) if name.starts_with('$') => {
+                let term = Term::from_field_text(self.keywords, name);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
             FilterKind::Inbox => self.build_label_query("INBOX"),

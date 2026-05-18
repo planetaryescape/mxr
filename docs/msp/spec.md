@@ -133,16 +133,29 @@ message (a singleton thread with `message_ids = [msg.id]`).
 
 ### Flag
 
-A fixed set plus arbitrary string keywords:
+Envelope flag state is split into two parallel facets to match the
+local-store model most clients (mxr, Apple Mail, Thunderbird) already
+use:
 
 ```
-Flag :: Seen | Answered | Flagged | Draft | Deleted | Forwarded
-      | Keyword(String)
+flags    : Bitfield of system flags
+           Seen / Answered / Flagged / Draft / Deleted / Sent / Trash / Spam / Archived
+keywords : Set<String> of free-form IMAP-style keywords
+           ($Forwarded, $NotJunk, $MDNSent, user-defined $Work, ...)
 ```
 
-Adapters whose backend doesn't support a given flag map it to the
-closest available semantics or drop it (with a `flags` capability
-advertising which are supported).
+Adapters whose backend doesn't support keywords advertise
+`capabilities.mutate.custom_keywords = false`; clients MUST NOT
+issue `SetKeywords` mutations against such accounts. (The earlier
+draft modelled this as a single `Flag :: System | Keyword(String)`
+enum; an 8-protocol survey showed every local-store client splits,
+and the per-flag granular Mutation enum only helps stateless
+protocols like JMAP that defer body retrieval.)
+
+Adapters whose backend doesn't support a given system flag map it
+to the closest available semantics or drop it. Keywords are
+preserved verbatim — IMAP atoms are case-sensitive on the wire,
+and round-trip integrity matters more than canonicalising case.
 
 ### Mutation
 
@@ -156,7 +169,11 @@ Mutation ::
   | Trash        { message_id }
   | SetRead      { message_id, read: bool }
   | SetStarred   { message_id, starred: bool }
+  | SetKeywords  { message_id, add: Vec<String>, remove: Vec<String> }
 ```
+
+`SetKeywords` is rejected by adapters with
+`capabilities.mutate.custom_keywords = false` (e.g. Gmail).
 
 `ModifyLabels` is batched per-message so a single user intent
 ("archive this") maps to one provider call instead of N. The earlier

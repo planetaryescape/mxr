@@ -38,6 +38,7 @@ fn bench_search_query(c: &mut Criterion) {
             link_count: 0,
             body_word_count: 0,
             label_provider_ids: vec!["INBOX".to_string()],
+            keywords: std::collections::BTreeSet::new(),
         };
         index.index_envelope(&envelope).expect("index envelope");
     }

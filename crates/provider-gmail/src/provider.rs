@@ -586,6 +586,9 @@ impl MailSyncProvider for GmailProvider {
             mutate: MutateCaps {
                 labels: true,
                 batch_operations: true,
+                // Gmail has no native keyword surface; the daemon
+                // refuses Mutation::SetKeywords against Gmail accounts.
+                custom_keywords: false,
             },
             search: SearchCaps { server_side: true },
             push: PushCaps { streaming: false }, // push via pub/sub not yet implemented
@@ -690,6 +693,12 @@ impl MailSyncProvider for GmailProvider {
                 provider_message_id,
                 starred,
             } => self.apply_set_starred(provider_message_id, *starred).await,
+            mxr_core::Mutation::SetKeywords { .. } => Err(MxrError::Provider(
+                "Custom IMAP keywords are not supported by the Gmail adapter; \
+                 check capabilities().mutate.custom_keywords before issuing \
+                 Mutation::SetKeywords"
+                    .to_string(),
+            )),
         }
     }
 
@@ -1395,5 +1404,38 @@ mod tests {
             v.page_token.is_none(),
             "next_cursor should be delta-ready (no page_token)"
         );
+    }
+
+    /// Phase E: Gmail has no native keyword surface. The adapter advertises
+    /// `mutate.custom_keywords = false`, and any SetKeywords mutation
+    /// returned by an outdated client must surface as a typed provider error
+    /// rather than silently dropping.
+    #[tokio::test]
+    async fn gmail_rejects_set_keywords_mutation() {
+        let provider = gmail_provider();
+
+        assert!(
+            !provider.capabilities().mutate.custom_keywords,
+            "Gmail adapter must advertise no keyword support"
+        );
+
+        let err = provider
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::SetKeywords {
+                    provider_message_id: "msg-1".to_string(),
+                    add: vec!["$Forwarded".to_string()],
+                    remove: vec![],
+                },
+            )
+            .await
+            .expect_err("SetKeywords must error on Gmail");
+
+        match err {
+            MxrError::Provider(msg) => {
+                assert!(msg.contains("keyword"), "error must mention keywords: {msg}");
+            }
+            other => panic!("expected Provider error, got {other:?}"),
+        }
     }
 }

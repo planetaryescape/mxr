@@ -840,6 +840,7 @@ mod auto_summary_tests {
             link_count: 0,
             body_word_count: word_count,
             label_provider_ids: vec![],
+            keywords: std::collections::BTreeSet::new(),
         }
     }
 

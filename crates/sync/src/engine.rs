@@ -335,6 +335,12 @@ impl SyncEngine {
                     .set_message_labels(&envelope.id, &label_ids, EventSource::Sync)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
+                // Phase E: persist the keyword set alongside labels.
+                // Empty sets are handled by the store (delete-then-insert).
+                self.store
+                    .set_message_keywords(&envelope.id, &envelope.keywords)
+                    .await
+                    .map_err(|e| MxrError::Store(e.to_string()))?;
                 let reply_later = self
                     .store
                     .is_reply_later(&envelope.id)

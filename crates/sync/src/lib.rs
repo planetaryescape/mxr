@@ -419,6 +419,7 @@ mod tests {
             link_count: 0,
             body_word_count: 0,
             label_provider_ids,
+            keywords: std::collections::BTreeSet::new(),
         }
     }
 
@@ -666,6 +667,7 @@ mod tests {
                 link_count: 0,
                 body_word_count: 0,
                 label_provider_ids: vec![],
+                keywords: std::collections::BTreeSet::new(),
             },
             body: make_empty_body(&first_id),
         };
@@ -695,6 +697,7 @@ mod tests {
                 link_count: 0,
                 body_word_count: 0,
                 label_provider_ids: vec![],
+                keywords: std::collections::BTreeSet::new(),
             },
             body: make_empty_body(&second_id),
         };
@@ -1734,6 +1737,7 @@ mod tests {
                     link_count: 0,
                     body_word_count: 0,
                     label_provider_ids: vec![],
+                    keywords: std::collections::BTreeSet::new(),
                 },
                 body: make_empty_body(&message_id),
             },
@@ -1800,6 +1804,7 @@ mod tests {
                     link_count: 0,
                     body_word_count: 0,
                     label_provider_ids: vec![],
+                    keywords: std::collections::BTreeSet::new(),
                 },
                 body: make_empty_body(&message_id),
             },

@@ -17,6 +17,7 @@ mod draft_recovery;
 mod draft_safety;
 mod event_log;
 mod label;
+mod keywords;
 mod message;
 mod message_events;
 mod message_flags;
@@ -3582,5 +3583,42 @@ mod tests {
                 .unwrap()
         );
         assert!(store.was_mutation_applied("fresh", "msg-fresh").await.unwrap());
+    }
+
+    /// Phase E: keywords persist exactly as written and a re-set replaces
+    /// the prior set wholesale (delete-then-insert semantics).
+    #[tokio::test]
+    async fn message_keywords_persist_and_replace() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        let message_id = envelope.id.clone();
+        store.upsert_envelope(&envelope).await.unwrap();
+
+        let initial: std::collections::BTreeSet<String> =
+            ["$Forwarded".to_string(), "$Work".to_string()]
+                .into_iter()
+                .collect();
+        store
+            .set_message_keywords(&message_id, &initial)
+            .await
+            .unwrap();
+        let read_back = store.get_message_keywords(&message_id).await.unwrap();
+        assert_eq!(read_back, initial);
+
+        // Replace: drop $Work, keep $Forwarded, add $Important.
+        let replacement: std::collections::BTreeSet<String> =
+            ["$Forwarded".to_string(), "$Important".to_string()]
+                .into_iter()
+                .collect();
+        store
+            .set_message_keywords(&message_id, &replacement)
+            .await
+            .unwrap();
+        let after = store.get_message_keywords(&message_id).await.unwrap();
+        assert_eq!(after, replacement, "set must replace, not merge");
     }
 }

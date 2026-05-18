@@ -330,6 +330,7 @@ mod tests {
                 link_count: 0,
                 body_word_count: 0,
                 label_provider_ids: vec![],
+                keywords: std::collections::BTreeSet::new(),
             };
             state
                 .store
@@ -471,6 +472,7 @@ mod tests {
             link_count: 0,
             body_word_count: 0,
             label_provider_ids: vec![],
+            keywords: std::collections::BTreeSet::new(),
         };
         state
             .store

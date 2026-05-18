@@ -178,6 +178,7 @@ mod tests {
             link_count: 0,
             body_word_count: 0,
             label_provider_ids: vec![label.provider_id.clone()],
+            keywords: std::collections::BTreeSet::new(),
         };
         store.upsert_envelope(&envelope).await.unwrap();
         store

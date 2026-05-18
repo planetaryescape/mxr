@@ -1803,6 +1803,7 @@ async fn ingest_sent_message(
         } else {
             Vec::new()
         },
+        keywords: std::collections::BTreeSet::new(),
     };
     let thread_id = envelope.thread_id.clone();
 
@@ -2377,6 +2378,7 @@ mod safety_context_wiring_tests {
             link_count: 0,
             body_word_count: 0,
             label_provider_ids: vec![],
+            keywords: std::collections::BTreeSet::new(),
         };
         state
             .store

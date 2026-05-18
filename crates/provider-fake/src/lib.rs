@@ -50,6 +50,11 @@ pub enum RecordedMutation {
         provider_id: String,
         starred: bool,
     },
+    KeywordsSet {
+        provider_id: String,
+        added: Vec<String>,
+        removed: Vec<String>,
+    },
 }
 
 impl FakeProvider {
@@ -121,6 +126,7 @@ impl MailSyncProvider for FakeProvider {
             mutate: MutateCaps {
                 labels: true,
                 batch_operations: false,
+                custom_keywords: true,
             },
             search: SearchCaps { server_side: false },
             push: PushCaps { streaming: false },
@@ -254,6 +260,15 @@ impl MailSyncProvider for FakeProvider {
             } => RecordedMutation::StarredSet {
                 provider_id: provider_message_id.clone(),
                 starred: *starred,
+            },
+            Mutation::SetKeywords {
+                provider_message_id,
+                add,
+                remove,
+            } => RecordedMutation::KeywordsSet {
+                provider_id: provider_message_id.clone(),
+                added: add.clone(),
+                removed: remove.clone(),
             },
         };
         self.mutations_guard().push(recorded);

@@ -712,6 +712,7 @@ impl MailSyncProvider for ImapProvider {
             mutate: MutateCaps {
                 labels: false,
                 batch_operations: false,
+                custom_keywords: true,
             },
             search: SearchCaps { server_side: true },
             // Phase 3.1: capability flag is set by detection in
@@ -908,6 +909,11 @@ impl MailSyncProvider for ImapProvider {
                 provider_message_id,
                 starred,
             } => self.apply_set_starred(provider_message_id, *starred).await,
+            mxr_core::Mutation::SetKeywords {
+                provider_message_id,
+                add,
+                remove,
+            } => self.apply_set_keywords(provider_message_id, add, remove).await,
         }
     }
 
@@ -1177,6 +1183,50 @@ impl ImapProvider {
             .uid_store(&uid.to_string(), flag_op)
             .await
             .map_err(mxr_core::error::MxrError::from)?;
+
+        let _ = session.logout().await;
+        Ok(())
+    }
+
+    /// Emit `UID STORE +FLAGS (...)` and `-FLAGS (...)` for the supplied
+    /// keyword adds and removes. RFC 3501 allows custom atoms as flags
+    /// alongside the `\System` flags; keywords are passed through
+    /// verbatim (case-sensitive, no normalisation).
+    async fn apply_set_keywords(
+        &self,
+        provider_message_id: &str,
+        add: &[String],
+        remove: &[String],
+    ) -> mxr_core::provider::Result<()> {
+        let (mailbox, uid) = folders::parse_provider_id(provider_message_id)
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        session
+            .select(&mailbox)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        let uid_str = uid.to_string();
+        if !add.is_empty() {
+            let flag_str = format!("+FLAGS ({})", add.join(" "));
+            session
+                .uid_store(&uid_str, &flag_str)
+                .await
+                .map_err(mxr_core::error::MxrError::from)?;
+        }
+        if !remove.is_empty() {
+            let flag_str = format!("-FLAGS ({})", remove.join(" "));
+            session
+                .uid_store(&uid_str, &flag_str)
+                .await
+                .map_err(mxr_core::error::MxrError::from)?;
+        }
 
         let _ = session.logout().await;
         Ok(())

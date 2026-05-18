@@ -4188,6 +4188,7 @@ mod tests {
             link_count: 0,
             body_word_count: 0,
             label_provider_ids: Vec::new(),
+            keywords: std::collections::BTreeSet::new(),
         }
     }
 

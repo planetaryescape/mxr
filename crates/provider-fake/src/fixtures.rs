@@ -1228,6 +1228,9 @@ fn push_demo_msg(
         link_count: 0,
         body_word_count: 0,
         label_provider_ids,
+        // Seed one fixture with a sample keyword so the keyword
+        // round-trip is exercised by the conformance test path.
+        keywords: std::collections::BTreeSet::from(["$Forwarded".to_string()]),
     });
 
     bodies.insert(
@@ -1504,6 +1507,7 @@ fn push_msg(
             }
             labels
         },
+        keywords: std::collections::BTreeSet::new(),
     });
 
     bodies.insert(

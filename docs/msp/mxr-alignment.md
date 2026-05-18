@@ -178,20 +178,41 @@ just need to expose it through the protocol.
 
 ### MSP §2.6 — Flag
 
-**mxr today:** `MessageFlags` bitflags in `mxr-core` (READ, STARRED,
-DRAFT, SENT, TRASH, SPAM, ANSWERED — the IMAP fixed set). Custom
-keywords are NOT supported.
+**mxr today** (post-Phase-E): `Envelope.flags: MessageFlags` (u32
+bitfield for the 8 system flags) + parallel
+`Envelope.keywords: BTreeSet<String>` for free-form IMAP atoms.
+IMAP adapter captures keywords from FETCH FLAGS and emits them via
+`UID STORE +/-FLAGS (...)`. Gmail adapter ignores keywords and
+advertises `capabilities.mutate.custom_keywords = false`.
 
-**Gap:** MSP supports arbitrary `Keyword(String)`. mxr doesn't.
+**Resolved in Phase E (2026-05-18):**
 
-**Refactor:** extend `MessageFlags` with a parallel
-`keywords: Vec<String>` field, or replace bitflags with a typed
-`Flag` enum.
+- New `keywords: BTreeSet<String>` field on Envelope. New
+  `message_keywords` junction table (migration 041, foreign-keyed
+  to messages so deletes cascade). Hydration happens batch-wise on
+  every envelope read.
+- `Mutation::SetKeywords { add, remove }` enum variant; IMAP emits
+  it as `UID STORE`, Gmail returns a typed error, Fake records it.
+- New `MutateCaps.custom_keywords: bool` capability. IMAP + Fake =
+  true; Gmail = false.
+- IMAP parse split: `flags_from_imap` → `flags_and_keywords_from_imap`
+  returning a tuple. The old function stays as a one-line wrapper for
+  callers that only care about system flags.
+- Search: new `keywords` STRING field in the Tantivy schema, indexed
+  during ingest, queryable via `is:$foo` syntax which routes through
+  `FilterKind::Custom` when the name starts with `$`.
+- **Decision:** kept the bitfield + parallel keyword set rather than
+  unifying into one JMAP-style keyword set. Local-store clients
+  upsert-by-id; the split keeps existing `envelope.flags.contains(...)`
+  call sites unchanged.
+- **Decision:** Gmail drops keywords on the floor (no
+  `mxr/keywords/<name>` label-namespace synthesis). The capability
+  bit makes the limitation explicit; cross-provider sync that
+  involves Gmail loses keywords.
 
-**Cost: medium.** ~1-2 days. Touches sync, store schema (keywords
-need a junction table), search (if we want filterable keywords).
-Worth doing for mxr regardless — Dovecot/IMAP keywords are
-legitimate flag carriers and mxr currently drops them.
+**Cost (delivered): medium.** Single atomic commit covering the
+core type, migration, all three adapters, sync engine, search,
+and ~25 test mocks.
 
 ### MSP §2.7 — Mutation
 

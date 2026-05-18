@@ -1,8 +1,8 @@
 # MSP roadmap
 
-> **Current focus:** Phase E (custom keywords on flags) and beyond.
-> Step 4 (publish-or-hold) deferred to "hold." Steps 1–3 + alignment
-> Phases C/D landed 2026-05-17.
+> **Current focus:** Phase F (Thread type alongside Envelope) and
+> beyond. Step 4 (publish-or-hold) deferred to "hold." Steps 1–3 +
+> alignment Phases C/D/E landed 2026-05-17 / 2026-05-18.
 >
 > _Last updated: 2026-05-18._
 
@@ -220,6 +220,33 @@ sustainable.
 ## Roadmap revisions / changelog
 
 Append below as the roadmap evolves. Most recent first.
+
+### 2026-05-18 — Phase E landed
+- Single atomic commit. Added `Envelope.keywords: BTreeSet<String>`
+  parallel to the existing `MessageFlags` bitfield. New
+  `message_keywords` SQLite junction table (migration 041,
+  foreign-keyed cascade).
+- IMAP adapter: split `flags_from_imap` →
+  `flags_and_keywords_from_imap`; new `apply_set_keywords` helper
+  emits `UID STORE +/-FLAGS (...)`. Capability bit
+  `mutate.custom_keywords = true`.
+- Gmail adapter: returns typed error on `Mutation::SetKeywords`;
+  capability bit stays false. Cross-provider sync involving Gmail
+  loses keywords (documented limitation).
+- Fake adapter: `RecordedMutation::KeywordsSet` for test
+  assertions; one fixture seeds `$Forwarded` so the conformance
+  test exercises the round-trip end-to-end.
+- Search: new `keywords` Tantivy STRING field. Indexed during
+  ingest; `is:$foo` filter routes through
+  `FilterKind::Custom(name).starts_with('$')`.
+- **Decision:** kept bitfield + parallel keyword set rather than
+  unifying into a single JMAP-style keyword bag. Smaller blast
+  radius; existing `envelope.flags.contains(...)` call sites stay.
+- **Decision:** drop keywords on Gmail (no
+  `mxr/keywords/<name>` label-namespace synthesis). The capability
+  bit makes the limitation explicit.
+- MSP spec §2.6 + alignment audit §2.6 updated to match the split
+  shape.
 
 ### 2026-05-18 — Phase D landed
 - Single atomic commit collapsing the four per-method mutation

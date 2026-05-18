@@ -132,6 +132,7 @@ fn search_result_envelope(slug: &str) -> Envelope {
         link_count: 0,
         body_word_count: 0,
         label_provider_ids: vec!["INBOX".into()],
+        keywords: std::collections::BTreeSet::new(),
     }
 }
 

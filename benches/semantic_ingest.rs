@@ -83,6 +83,7 @@ async fn semantic_bench_fixture(data_dir: &Path) -> (SemanticEngine, Vec<Message
             link_count: 0,
             body_word_count: 0,
             label_provider_ids: vec!["INBOX".into()],
+            keywords: std::collections::BTreeSet::new(),
         };
         let body = MessageBody {
             message_id: envelope.id.clone(),

@@ -88,6 +88,9 @@ pub fn gmail_message_to_envelope(
         link_count: 0,
         body_word_count: 0,
         label_provider_ids: msg.label_ids.clone().unwrap_or_default(),
+        // Gmail has no native keyword surface; the adapter advertises
+        // mutate.custom_keywords=false and synthesises an empty set.
+        keywords: std::collections::BTreeSet::new(),
     })
 }
 

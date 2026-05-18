@@ -16,28 +16,55 @@ use crate::error::ImapProviderError;
 use crate::folders::format_provider_id;
 use crate::types::FetchedMessage;
 
-/// Convert IMAP flags to mxr MessageFlags.
-pub fn flags_from_imap(flags: &[String]) -> MessageFlags {
-    let mut result = MessageFlags::empty();
+/// Convert IMAP flag strings into (system bitfield, custom keywords).
+///
+/// The canonical wire form is `\Seen`, `\Flagged`, etc., but async_imap
+/// formats flags via Debug which can strip the backslash — so we accept
+/// either form. Custom keywords (anything not matching a known system
+/// flag name case-insensitively) are preserved verbatim per RFC 3501
+/// §2.3.2: IMAP atoms are case-sensitive on the wire, and round-trip
+/// integrity matters more than normalising case.
+pub fn flags_and_keywords_from_imap(
+    flags: &[String],
+) -> (MessageFlags, std::collections::BTreeSet<String>) {
+    let mut bits = MessageFlags::empty();
+    let mut keywords = std::collections::BTreeSet::new();
     for flag in flags {
-        let lower = flag.to_lowercase();
-        if lower.contains("seen") {
-            result |= MessageFlags::READ;
-        }
-        if lower.contains("flagged") {
-            result |= MessageFlags::STARRED;
-        }
-        if lower.contains("draft") {
-            result |= MessageFlags::DRAFT;
-        }
-        if lower.contains("deleted") {
-            result |= MessageFlags::TRASH;
-        }
-        if lower.contains("answered") {
-            result |= MessageFlags::ANSWERED;
+        let bare = flag.strip_prefix('\\').unwrap_or(flag);
+        let matched = match bare.to_lowercase().as_str() {
+            "seen" => {
+                bits |= MessageFlags::READ;
+                true
+            }
+            "flagged" => {
+                bits |= MessageFlags::STARRED;
+                true
+            }
+            "draft" => {
+                bits |= MessageFlags::DRAFT;
+                true
+            }
+            "deleted" => {
+                bits |= MessageFlags::TRASH;
+                true
+            }
+            "answered" => {
+                bits |= MessageFlags::ANSWERED;
+                true
+            }
+            _ => false,
+        };
+        if !matched {
+            keywords.insert(flag.clone());
         }
     }
-    result
+    (bits, keywords)
+}
+
+/// Convert IMAP flags into the system bitfield only (drops custom
+/// keywords). Kept for callers that don't yet thread keywords through.
+pub fn flags_from_imap(flags: &[String]) -> MessageFlags {
+    flags_and_keywords_from_imap(flags).0
 }
 
 /// Parse an IMAP date string into `DateTime<Utc>`.
@@ -108,7 +135,7 @@ pub fn imap_fetch_to_synced_message(
         .map(|text| text.chars().take(200).collect::<String>())
         .unwrap_or_else(|| parsed_headers.subject.chars().take(100).collect());
 
-    let mut flags = flags_from_imap(&msg.flags);
+    let (mut flags, keywords) = flags_and_keywords_from_imap(&msg.flags);
     let mailbox_lower = mailbox.to_lowercase();
     if mailbox_lower.contains("sent") {
         flags |= MessageFlags::SENT;
@@ -145,6 +172,7 @@ pub fn imap_fetch_to_synced_message(
         link_count: 0,
         body_word_count: 0,
         label_provider_ids: vec![mailbox.to_string()],
+        keywords,
     };
 
     Ok(SyncedMessage { envelope, body })
@@ -538,6 +566,37 @@ mod tests {
     #[test]
     fn parse_imap_date_invalid() {
         assert!(parse_imap_date("not a date").is_err());
+    }
+
+    #[test]
+    fn flags_and_keywords_split_system_from_custom() {
+        // Phase E: system flags (`\Foo`) land in the bitfield; everything
+        // without a `\` prefix is preserved as a custom keyword.
+        let (bits, keywords) = flags_and_keywords_from_imap(&[
+            "\\Seen".to_string(),
+            "\\Flagged".to_string(),
+            "$Forwarded".to_string(),
+            "$Work".to_string(),
+        ]);
+        assert!(bits.contains(MessageFlags::READ));
+        assert!(bits.contains(MessageFlags::STARRED));
+        assert!(!bits.contains(MessageFlags::DRAFT));
+        assert_eq!(keywords.len(), 2);
+        assert!(keywords.contains("$Forwarded"));
+        assert!(keywords.contains("$Work"));
+    }
+
+    #[test]
+    fn flags_and_keywords_preserves_case_verbatim() {
+        // IMAP atoms are case-sensitive; we do NOT normalise so that
+        // round-trips back to the server keep the same on-the-wire form.
+        let (_bits, keywords) = flags_and_keywords_from_imap(&[
+            "$Forwarded".to_string(),
+            "$forwarded".to_string(),
+        ]);
+        assert_eq!(keywords.len(), 2, "case-distinct keywords must coexist");
+        assert!(keywords.contains("$Forwarded"));
+        assert!(keywords.contains("$forwarded"));
     }
 
     #[test]

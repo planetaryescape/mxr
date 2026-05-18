@@ -39,9 +39,35 @@ pub const FILTER_REPLY_LATER: &str = "reply-later";
 /// (`is:owed-reply`, `is:reply-later`) pre-registered so they parse
 /// through `FilterKind::Custom(...)` instead of returning
 /// `ParseError::UnknownFilter`.
+///
+/// Phase E: also scans `input` for `is:$<keyword>` tokens and
+/// dynamically registers each so the parser accepts any IMAP-style
+/// keyword without needing an upstream `mail-query` schema change.
+/// The downstream query builder dispatches `FilterKind::Custom(name)`
+/// where `name.starts_with('$')` to the Tantivy keywords field.
 pub fn parse_query(input: &str) -> Result<QueryNode, ParseError> {
     let mut options = ParserOptions::new();
     options.register_custom_filters([FILTER_OWED_REPLY, FILTER_REPLY_LATER]);
+    // Dynamic keyword filter registration: mail-query lowercases
+    // filter names internally, so we register the lowercase form even
+    // if the user typed mixed case. The QueryBuilder branch still
+    // sees the lowercased atom on the FilterKind::Custom payload.
+    let mut keyword_atoms: Vec<String> = Vec::new();
+    let mut rest = input;
+    while let Some(idx) = rest.find("is:$") {
+        let after = &rest[idx + 4..];
+        let end = after
+            .find(|c: char| c.is_whitespace() || matches!(c, ')' | '(' | '"'))
+            .unwrap_or(after.len());
+        let atom = &after[..end];
+        if !atom.is_empty() {
+            keyword_atoms.push(format!("${}", atom.to_lowercase()));
+        }
+        rest = &after[end..];
+    }
+    for atom in &keyword_atoms {
+        options.register_custom_filters([atom.as_str()]);
+    }
     mail_query::parse_with(input, &options)
 }
 
@@ -106,6 +132,7 @@ mod tests {
             link_count: 0,
             body_word_count: 0,
             label_provider_ids: vec!["notifications".to_string()],
+            keywords: std::collections::BTreeSet::new(),
         }
     }
 
@@ -335,6 +362,37 @@ mod tests {
         let results = e2e_search(&idx, "deployment");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0], envelopes[0].id.as_str());
+    }
+
+    /// Phase E: `is:$forwarded` resolves through FilterKind::Custom and
+    /// matches only envelopes carrying that keyword in their indexed set.
+    #[test]
+    fn e2e_keyword_filter_is_dollar_foo_matches_keyword() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let mut env_with = make_envelope_full(
+            "Has the keyword",
+            "...",
+            "Alice",
+            "alice@example.com",
+            MessageFlags::empty(),
+            false,
+        );
+        env_with.keywords.insert("$Forwarded".to_string());
+        let env_without = make_envelope_full(
+            "No keyword here",
+            "...",
+            "Bob",
+            "bob@example.com",
+            MessageFlags::empty(),
+            false,
+        );
+        idx.index_envelope(&env_with).unwrap();
+        idx.index_envelope(&env_without).unwrap();
+        idx.commit().unwrap();
+
+        let results = e2e_search(&idx, "is:$Forwarded");
+        assert_eq!(results.len(), 1, "exactly one envelope carries $Forwarded");
+        assert_eq!(results[0], env_with.id.as_str());
     }
 
     #[test]

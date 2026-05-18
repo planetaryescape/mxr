@@ -618,6 +618,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "mutation_dedup_log",
         kind: MigrationKind::Sql(include_str!("../migrations/040_mutation_dedup_log.sql")),
     },
+    Migration {
+        version: 41,
+        name: "message_keywords",
+        kind: MigrationKind::Sql(include_str!("../migrations/041_message_keywords.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

@@ -1169,6 +1169,7 @@ mod tests {
             link_count: 0,
             body_word_count: 0,
             label_provider_ids: Vec::new(),
+            keywords: std::collections::BTreeSet::new(),
         };
         let missing_envelope = Envelope {
             id: MessageId::new(),
@@ -1198,6 +1199,7 @@ mod tests {
             link_count: 0,
             body_word_count: 0,
             label_provider_ids: Vec::new(),
+            keywords: std::collections::BTreeSet::new(),
         };
 
         state
@@ -1275,6 +1277,7 @@ mod tests {
             link_count: 0,
             body_word_count: 0,
             label_provider_ids: Vec::new(),
+            keywords: std::collections::BTreeSet::new(),
         };
 
         state

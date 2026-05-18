@@ -36,6 +36,7 @@ pub struct MxrSchema {
     pub is_spam: Field,
     pub is_answered: Field,
     pub is_reply_later: Field,
+    pub keywords: Field,
 }
 
 impl MxrSchema {
@@ -81,6 +82,10 @@ impl MxrSchema {
         let is_spam = builder.add_bool_field("is_spam", INDEXED);
         let is_answered = builder.add_bool_field("is_answered", INDEXED);
         let is_reply_later = builder.add_bool_field("is_reply_later", INDEXED);
+        // Phase E: per-message IMAP-style keywords ($Forwarded, $Work, ...).
+        // STRING (not TEXT) so each keyword is one untokenised term, which
+        // lets `is:$forwarded`-style filters do exact-match TermQuery.
+        let keywords = builder.add_text_field("keywords", STRING);
 
         let schema = builder.build();
 
@@ -120,6 +125,7 @@ impl MxrSchema {
             is_spam,
             is_answered,
             is_reply_later,
+            keywords,
         }
     }
 }

@@ -2,6 +2,7 @@ use crate::id::*;
 use bitflags::bitflags;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -786,6 +787,12 @@ pub struct Envelope {
     /// Transient: used during sync to populate the message_labels junction table.
     #[serde(default)]
     pub label_provider_ids: Vec<String>,
+    /// Custom IMAP-style keywords (`$Forwarded`, `$NotJunk`, user-defined
+    /// `$Work`, etc.). System flags continue to live in `flags`. Stored
+    /// case-preserved as received; equality is case-sensitive to match
+    /// IMAP atom semantics.
+    #[serde(default)]
+    pub keywords: BTreeSet<String>,
 }
 
 /// Tri-state classification of how link-bearing a message body is. Renders
@@ -1877,6 +1884,14 @@ pub enum Mutation {
         provider_message_id: String,
         starred: bool,
     },
+    /// Add/remove custom IMAP-style keywords on a message. Adapters
+    /// whose `capabilities().mutate.custom_keywords` is false must
+    /// return `MxrError::Provider` rather than silently dropping.
+    SetKeywords {
+        provider_message_id: String,
+        add: Vec<String>,
+        remove: Vec<String>,
+    },
 }
 
 impl Mutation {
@@ -1894,6 +1909,10 @@ impl Mutation {
                 ..
             }
             | Mutation::SetStarred {
+                provider_message_id,
+                ..
+            }
+            | Mutation::SetKeywords {
                 provider_message_id,
                 ..
             } => provider_message_id,
@@ -1979,6 +1998,12 @@ pub struct MutateCaps {
     /// `UID STORE` over ranges, JMAP `set` with multiple ids). The daemon
     /// uses this to coalesce multi-message operations into one round-trip.
     pub batch_operations: bool,
+    /// Adapter persists and round-trips arbitrary `$Foo` keywords on
+    /// message flags (IMAP RFC 3501 §2.3.2 atoms / JMAP keywords). The
+    /// daemon refuses `Mutation::SetKeywords` against providers where
+    /// this is false; Gmail historically has no keyword surface, so its
+    /// adapter keeps the default `false`.
+    pub custom_keywords: bool,
 }
 
 /// Search-namespace capabilities.

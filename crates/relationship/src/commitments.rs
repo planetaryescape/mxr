@@ -317,6 +317,7 @@ mod tests {
             link_count: 0,
             body_word_count: 0,
             label_provider_ids: Vec::new(),
+            keywords: std::collections::BTreeSet::new(),
         };
         store
             .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)

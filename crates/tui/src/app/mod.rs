@@ -836,6 +836,7 @@ fn subscription_summary_to_envelope(summary: &SubscriptionSummary) -> Envelope {
         link_count: 0,
         body_word_count: 0,
         label_provider_ids: vec![],
+        keywords: std::collections::BTreeSet::new(),
     }
 }
 

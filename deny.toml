@@ -12,10 +12,6 @@ ignore = [
     # Transitive dependencies with no safe upgrade available.
     # These are pulled in by upstream crates we don't control.
     { id = "RUSTSEC-2025-0052", reason = "async-std is a transitive dep of fastembed; no upgrade path" },
-    { id = "RUSTSEC-2025-0141", reason = "bincode is a transitive dep of fastembed/tokenizers; no upgrade path" },
-    { id = "RUSTSEC-2024-0384", reason = "instant is a transitive dep via rav1e; no upgrade path" },
-    { id = "RUSTSEC-2024-0436", reason = "paste is a transitive dep of tokenizers; no upgrade path" },
-    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is a transitive dep of yup-oauth2; no upgrade path" },
 ]
 
 [licenses]

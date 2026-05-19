@@ -847,15 +847,6 @@ mod tests {
             .await
             .unwrap();
 
-        state
-            .semantic
-            .ingest_messages(&[
-                subject_message.id.clone(),
-                body_message.id.clone(),
-                attachment_message.id.clone(),
-            ])
-            .await
-            .unwrap();
         enable_semantic_for_test(&state).await;
 
         let subject_execution = execute_search(

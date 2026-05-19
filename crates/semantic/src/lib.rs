@@ -775,6 +775,44 @@ fn semantic_unavailable_error() -> anyhow::Error {
     anyhow!("semantic search unavailable in this binary")
 }
 
+#[cfg(all(test, not(feature = "local")))]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn default_build_reports_semantic_disabled() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let data_dir = tempfile::tempdir().unwrap();
+        let engine = SemanticEngine::new(store, data_dir.path(), SemanticConfig::default());
+
+        let snapshot = engine.status_snapshot().await.unwrap();
+
+        assert!(!snapshot.enabled);
+        assert!(snapshot.profiles.is_empty());
+        assert!(!should_use_semantic(SearchMode::Hybrid));
+        assert!(!should_use_semantic(SearchMode::Semantic));
+    }
+
+    #[tokio::test]
+    async fn default_build_keeps_ingest_and_search_as_noops() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut engine = SemanticEngine::new(store, data_dir.path(), SemanticConfig::default());
+
+        let message_id = MessageId::new();
+        engine
+            .ingest_messages(std::slice::from_ref(&message_id))
+            .await
+            .unwrap();
+        let hits = engine
+            .search("anything", 10, &[SemanticChunkSourceKind::Body])
+            .await
+            .unwrap();
+
+        assert!(hits.is_empty());
+    }
+}
+
 #[cfg(feature = "local")]
 fn semantic_profile_id(profile: SemanticProfile) -> SemanticProfileId {
     SemanticProfileId::from_provider_id("semantic_profile", profile.as_str())
@@ -1242,6 +1280,7 @@ mod tests {
     use mxr_core::types::{Address, BackendRef, MessageFlags, MessageMetadata, ProviderKind};
     use mxr_core::Account;
     use mxr_store::Store;
+    use std::collections::BTreeSet;
     use std::collections::HashMap;
     use std::fs::File;
     use std::io::Write;
@@ -1293,6 +1332,7 @@ mod tests {
             link_count: 0,
             body_word_count: 0,
             label_provider_ids: Vec::new(),
+            keywords: BTreeSet::new(),
         }
     }
 

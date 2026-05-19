@@ -706,8 +706,8 @@ mod tests {
         let shared_thread = ThreadId::new();
         let m1_id = MessageId::new();
         let m2_id = MessageId::new();
-        let make = |id: MessageId, pid: &str, subject: &str, date_offset_minutes: i64| {
-            SyncedMessage {
+        let make =
+            |id: MessageId, pid: &str, subject: &str, date_offset_minutes: i64| SyncedMessage {
                 envelope: Envelope {
                     id: id.clone(),
                     account_id: account_id.clone(),
@@ -724,8 +724,7 @@ mod tests {
                     cc: vec![],
                     bcc: vec![],
                     subject: subject.to_string(),
-                    date: chrono::Utc::now()
-                        - chrono::Duration::minutes(date_offset_minutes),
+                    date: chrono::Utc::now() - chrono::Duration::minutes(date_offset_minutes),
                     flags: MessageFlags::empty(),
                     snippet: subject.to_string(),
                     has_attachments: false,
@@ -737,8 +736,7 @@ mod tests {
                     keywords: std::collections::BTreeSet::new(),
                 },
                 body: make_empty_body(&id),
-            }
-        };
+            };
 
         let provider = NativeThreadingProvider {
             account_id: account_id.clone(),
@@ -932,11 +930,17 @@ mod tests {
         // Phase F: subject-fallback rethread also emits threads_changed
         // (survivor + tombstone) just like the message-id-driven path.
         assert!(
-            outcome.threads_changed.iter().any(|t| !t.message_ids.is_empty()),
+            outcome
+                .threads_changed
+                .iter()
+                .any(|t| !t.message_ids.is_empty()),
             "survivor thread missing from threads_changed"
         );
         assert!(
-            outcome.threads_changed.iter().any(|t| t.message_ids.is_empty()),
+            outcome
+                .threads_changed
+                .iter()
+                .any(|t| t.message_ids.is_empty()),
             "tombstone thread missing from threads_changed"
         );
     }

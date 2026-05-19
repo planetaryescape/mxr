@@ -33,10 +33,9 @@ impl super::Store {
             return Ok(vec![]);
         }
         let cutoff = future_date_cutoff_timestamp();
-        let ids_json = serde_json::to_string(
-            &thread_ids.iter().map(|t| t.as_str()).collect::<Vec<_>>(),
-        )
-        .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+        let ids_json =
+            serde_json::to_string(&thread_ids.iter().map(|t| t.as_str()).collect::<Vec<_>>())
+                .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
 
         let started_at = std::time::Instant::now();
         let aggregate_rows = sqlx::query!(
@@ -164,9 +163,8 @@ impl super::Store {
 
         let started_at = std::time::Instant::now();
         let id_rows = match sort {
-            SortOrder::DateAsc => {
-                sqlx::query!(
-                    r#"SELECT thread_id as "thread_id!"
+            SortOrder::DateAsc => sqlx::query!(
+                r#"SELECT thread_id as "thread_id!"
                        FROM messages
                        WHERE (?1 IS NULL OR account_id = ?1)
                          AND (?2 IS NULL OR id IN (
@@ -177,18 +175,17 @@ impl super::Store {
                        GROUP BY thread_id
                        ORDER BY MAX(CASE WHEN date > ?3 THEN 0 ELSE date END) ASC
                        LIMIT ?4 OFFSET ?5"#,
-                    account_filter,
-                    label_filter,
-                    cutoff,
-                    limit_i,
-                    offset_i,
-                )
-                .fetch_all(self.reader())
-                .await?
-                .into_iter()
-                .map(|r| r.thread_id)
-                .collect::<Vec<_>>()
-            }
+                account_filter,
+                label_filter,
+                cutoff,
+                limit_i,
+                offset_i,
+            )
+            .fetch_all(self.reader())
+            .await?
+            .into_iter()
+            .map(|r| r.thread_id)
+            .collect::<Vec<_>>(),
             // DateDesc | Relevance (Relevance has no defined meaning
             // for thread listing — fall back to "most recent first").
             _ => sqlx::query!(

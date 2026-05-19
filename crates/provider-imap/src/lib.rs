@@ -899,7 +899,10 @@ impl MailSyncProvider for ImapProvider {
                 provider_message_id,
                 add,
                 remove,
-            } => self.apply_modify_labels(provider_message_id, add, remove).await,
+            } => {
+                self.apply_modify_labels(provider_message_id, add, remove)
+                    .await
+            }
             mxr_core::Mutation::Trash {
                 provider_message_id,
             } => self.apply_trash(provider_message_id).await,
@@ -915,7 +918,10 @@ impl MailSyncProvider for ImapProvider {
                 provider_message_id,
                 add,
                 remove,
-            } => self.apply_set_keywords(provider_message_id, add, remove).await,
+            } => {
+                self.apply_set_keywords(provider_message_id, add, remove)
+                    .await
+            }
         }
     }
 

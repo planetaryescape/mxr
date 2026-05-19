@@ -554,14 +554,8 @@ pub(super) async fn mutation(
                 None
             };
 
-            match apply_mutation_to_envelope(
-                state,
-                provider.as_ref(),
-                &mutation_id,
-                cmd,
-                envelope,
-            )
-            .await
+            match apply_mutation_to_envelope(state, provider.as_ref(), &mutation_id, cmd, envelope)
+                .await
             {
                 Ok(()) => {
                     account_result.succeeded += 1;

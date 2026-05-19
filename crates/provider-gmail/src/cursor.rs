@@ -131,13 +131,8 @@ enum LegacyOutcome {
 
 #[derive(Deserialize)]
 enum LegacyGmailVariant {
-    Gmail {
-        history_id: u64,
-    },
-    GmailBackfill {
-        history_id: u64,
-        page_token: String,
-    },
+    Gmail { history_id: u64 },
+    GmailBackfill { history_id: u64, page_token: String },
 }
 
 impl LegacyGmailVariant {
@@ -170,7 +165,9 @@ fn decode_legacy(bytes: &[u8]) -> Option<LegacyOutcome> {
     // variants are intentionally unrecognised here — they'd indicate a
     // store corruption (Gmail provider receiving an IMAP-shape cursor)
     // and the SyncCursorExpired path is the right response.
-    serde_json::from_slice::<LegacyGmailVariant>(bytes).ok().map(LegacyOutcome::Cursor)
+    serde_json::from_slice::<LegacyGmailVariant>(bytes)
+        .ok()
+        .map(LegacyOutcome::Cursor)
 }
 
 #[cfg(test)]
@@ -207,8 +204,7 @@ mod tests {
 
     #[test]
     fn legacy_gmail_tagged_decodes() {
-        let legacy =
-            SyncCursor::from_bytes(br#"{"Gmail":{"history_id":54321}}"#.to_vec());
+        let legacy = SyncCursor::from_bytes(br#"{"Gmail":{"history_id":54321}}"#.to_vec());
         let decoded = GmailCursor::decode(&legacy).unwrap().unwrap();
         let GmailCursor::V1(v) = decoded;
         assert_eq!(v.history_id, 54321);

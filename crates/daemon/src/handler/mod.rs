@@ -2143,7 +2143,9 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
             _ => return Err("unknown size op is not supported in rules form".to_string()),
         },
         QueryNode::Near { .. } => return Err("AROUND is not supported in rules form".to_string()),
-        QueryNode::Exact(_) => return Err("+word exact-match is not supported in rules form".to_string()),
+        QueryNode::Exact(_) => {
+            return Err("+word exact-match is not supported in rules form".to_string())
+        }
         _ => return Err("unknown query node is not supported in rules form".to_string()),
     })
 }
@@ -4549,7 +4551,11 @@ mod tests {
                     provider_message_id,
                     add,
                     remove,
-                } => (provider_message_id.as_str(), add.as_slice(), remove.as_slice()),
+                } => (
+                    provider_message_id.as_str(),
+                    add.as_slice(),
+                    remove.as_slice(),
+                ),
                 // Trash / SetRead / SetStarred are no-ops for this folder-tracking mock.
                 _ => return Ok(()),
             };

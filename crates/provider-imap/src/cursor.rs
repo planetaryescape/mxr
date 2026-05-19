@@ -210,9 +210,8 @@ mod tests {
     #[test]
     fn legacy_imap_tagged_without_mailboxes_synthesises_inbox() {
         // The very old shape had only scalar fields and no mailboxes vec.
-        let legacy = SyncCursor::from_bytes(
-            br#"{"Imap":{"uid_validity":7,"uid_next":999}}"#.to_vec(),
-        );
+        let legacy =
+            SyncCursor::from_bytes(br#"{"Imap":{"uid_validity":7,"uid_next":999}}"#.to_vec());
         let decoded = ImapCursor::decode(&legacy).unwrap().unwrap();
         let mailboxes = decoded.into_mailboxes();
         assert_eq!(mailboxes.len(), 1);
@@ -236,8 +235,7 @@ mod tests {
 
     #[test]
     fn gmail_legacy_shape_surfaces_expired() {
-        let legacy =
-            SyncCursor::from_bytes(br#"{"Gmail":{"history_id":12345}}"#.to_vec());
+        let legacy = SyncCursor::from_bytes(br#"{"Gmail":{"history_id":12345}}"#.to_vec());
         let err = ImapCursor::decode(&legacy).unwrap_err();
         assert!(matches!(err, MxrError::SyncCursorExpired { .. }));
     }

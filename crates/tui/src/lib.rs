@@ -1550,8 +1550,8 @@ pub async fn run() -> anyhow::Result<()> {
                 attempts,
                 run_after: _,
             } = queued_mutation;
-            let retry = (attempts < app::TRANSIENT_MUTATION_MAX_RETRIES)
-                .then(|| app::QueuedMutation {
+            let retry =
+                (attempts < app::TRANSIENT_MUTATION_MAX_RETRIES).then(|| app::QueuedMutation {
                     id: mutation_id,
                     request: req.clone(),
                     effect: effect.clone(),
@@ -5818,9 +5818,7 @@ mod tests {
         );
 
         assert!(app.modals.error.is_none());
-        assert!(!app.mailbox.envelopes[0]
-            .flags
-            .contains(MessageFlags::READ));
+        assert!(!app.mailbox.envelopes[0].flags.contains(MessageFlags::READ));
         assert!(!app.mailbox.all_envelopes[0]
             .flags
             .contains(MessageFlags::READ));

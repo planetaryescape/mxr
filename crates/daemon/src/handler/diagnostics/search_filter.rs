@@ -12,9 +12,7 @@ use mxr_search::ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, S
 /// per-envelope Tantivy field).
 pub(super) fn ast_contains_owed_reply(node: &QueryNode) -> bool {
     match node {
-        QueryNode::Filter(FilterKind::Custom(name))
-            if name == mxr_search::FILTER_OWED_REPLY =>
-        {
+        QueryNode::Filter(FilterKind::Custom(name)) if name == mxr_search::FILTER_OWED_REPLY => {
             true
         }
         QueryNode::And(left, right) | QueryNode::Or(left, right) => {
@@ -143,8 +141,7 @@ fn matches_filter(filter: &FilterKind, envelope: &mxr_core::Envelope) -> bool {
         // by the QueryBuilder; here we default true for the same
         // reason.
         FilterKind::Custom(name)
-            if name == mxr_search::FILTER_OWED_REPLY
-                || name == mxr_search::FILTER_REPLY_LATER =>
+            if name == mxr_search::FILTER_OWED_REPLY || name == mxr_search::FILTER_REPLY_LATER =>
         {
             true
         }

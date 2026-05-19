@@ -151,18 +151,18 @@ impl MailSyncProvider for FakeProvider {
                 .messages
                 .iter()
                 .map(|env| {
-                    let body =
-                        self.bodies
-                            .get(&env.provider_id)
-                            .cloned()
-                            .unwrap_or_else(|| MessageBody {
-                                message_id: env.id.clone(),
-                                text_plain: None,
-                                text_html: None,
-                                attachments: vec![],
-                                fetched_at: chrono::Utc::now(),
-                                metadata: Default::default(),
-                            });
+                    let body = self
+                        .bodies
+                        .get(&env.provider_id)
+                        .cloned()
+                        .unwrap_or_else(|| MessageBody {
+                            message_id: env.id.clone(),
+                            text_plain: None,
+                            text_html: None,
+                            attachments: vec![],
+                            fetched_at: chrono::Utc::now(),
+                            metadata: Default::default(),
+                        });
                     SyncedMessage {
                         envelope: env.clone(),
                         body,
@@ -573,10 +573,7 @@ mod tests {
 
         let mutations = provider.mutations();
         assert_eq!(mutations.len(), 3);
-        assert!(matches!(
-            mutations[0],
-            RecordedMutation::Trashed { .. }
-        ));
+        assert!(matches!(mutations[0], RecordedMutation::Trashed { .. }));
         assert!(matches!(
             mutations[1],
             RecordedMutation::ReadSet { read: true, .. }

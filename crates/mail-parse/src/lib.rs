@@ -472,12 +472,12 @@ fn parse_text_plain_format(content_type: &mail_parser::ContentType<'_>) -> Optio
 /// header-derived variants.
 fn convert_unsubscribe(method: list_unsubscribe::UnsubscribeMethod) -> UnsubscribeMethod {
     match method {
-        list_unsubscribe::UnsubscribeMethod::OneClick { url } => UnsubscribeMethod::OneClick {
-            url: url.into(),
-        },
-        list_unsubscribe::UnsubscribeMethod::HttpLink { url } => UnsubscribeMethod::HttpLink {
-            url: url.into(),
-        },
+        list_unsubscribe::UnsubscribeMethod::OneClick { url } => {
+            UnsubscribeMethod::OneClick { url: url.into() }
+        }
+        list_unsubscribe::UnsubscribeMethod::HttpLink { url } => {
+            UnsubscribeMethod::HttpLink { url: url.into() }
+        }
         list_unsubscribe::UnsubscribeMethod::Mailto { address, subject } => {
             UnsubscribeMethod::Mailto { address, subject }
         }

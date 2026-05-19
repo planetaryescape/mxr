@@ -685,7 +685,10 @@ impl MailSyncProvider for GmailProvider {
                 provider_message_id,
                 add,
                 remove,
-            } => self.apply_modify_labels(provider_message_id, add, remove).await,
+            } => {
+                self.apply_modify_labels(provider_message_id, add, remove)
+                    .await
+            }
             mxr_core::Mutation::Trash {
                 provider_message_id,
             } => self.apply_trash(provider_message_id).await,
@@ -1437,7 +1440,10 @@ mod tests {
 
         match err {
             MxrError::Provider(msg) => {
-                assert!(msg.contains("keyword"), "error must mention keywords: {msg}");
+                assert!(
+                    msg.contains("keyword"),
+                    "error must mention keywords: {msg}"
+                );
             }
             other => panic!("expected Provider error, got {other:?}"),
         }

@@ -590,10 +590,8 @@ mod tests {
     fn flags_and_keywords_preserves_case_verbatim() {
         // IMAP atoms are case-sensitive; we do NOT normalise so that
         // round-trips back to the server keep the same on-the-wire form.
-        let (_bits, keywords) = flags_and_keywords_from_imap(&[
-            "$Forwarded".to_string(),
-            "$forwarded".to_string(),
-        ]);
+        let (_bits, keywords) =
+            flags_and_keywords_from_imap(&["$Forwarded".to_string(), "$forwarded".to_string()]);
         assert_eq!(keywords.len(), 2, "case-distinct keywords must coexist");
         assert!(keywords.contains("$Forwarded"));
         assert!(keywords.contains("$forwarded"));

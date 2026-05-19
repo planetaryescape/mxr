@@ -256,9 +256,7 @@ impl SyncEngine {
             tracing::info!(cursor = ?cursor, "sync_account: dispatching with cursor");
             let batch = match provider.sync_messages(&cursor).await {
                 Ok(batch) => batch,
-                Err(MxrError::SyncCursorExpired { reason })
-                    if !recovered_expired_cursor =>
-                {
+                Err(MxrError::SyncCursorExpired { reason }) if !recovered_expired_cursor => {
                     tracing::warn!(
                         account = %account_id,
                         cursor = ?cursor,
@@ -515,8 +513,7 @@ impl SyncEngine {
                 .get_threads_batch(&touched_vec)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
-            let live_ids: HashSet<ThreadId> =
-                live_threads.iter().map(|t| t.id.clone()).collect();
+            let live_ids: HashSet<ThreadId> = live_threads.iter().map(|t| t.id.clone()).collect();
             let mut threads_changed = live_threads;
             for id in &touched_vec {
                 if !live_ids.contains(id) {

@@ -16,8 +16,8 @@ mod draft_commitments;
 mod draft_recovery;
 mod draft_safety;
 mod event_log;
-mod label;
 mod keywords;
+mod label;
 mod message;
 mod message_events;
 mod message_flags;
@@ -470,11 +470,9 @@ mod tests {
         // Opaque-cursor persistence: the store round-trips bytes
         // verbatim. Adapter-specific schema is tested in each provider's
         // own cursor tests; here we just confirm bytes-in, bytes-out.
-        let first_cursor =
-            SyncCursor::from_bytes(br#"{"v":"1","history_id":42}"#.to_vec());
-        let second_cursor = SyncCursor::from_bytes(
-            br#"{"v":"1","history_id":77,"page_token":"page-2"}"#.to_vec(),
-        );
+        let first_cursor = SyncCursor::from_bytes(br#"{"v":"1","history_id":42}"#.to_vec());
+        let second_cursor =
+            SyncCursor::from_bytes(br#"{"v":"1","history_id":77,"page_token":"page-2"}"#.to_vec());
         store
             .set_sync_cursor(&first.id, &first_cursor)
             .await
@@ -1856,8 +1854,7 @@ mod tests {
         let cursor = store.get_sync_cursor(&account.id).await.unwrap();
         assert!(cursor.is_none());
 
-        let new_cursor =
-            SyncCursor::from_bytes(br#"{"v":"1","history_id":12345}"#.to_vec());
+        let new_cursor = SyncCursor::from_bytes(br#"{"v":"1","history_id":12345}"#.to_vec());
         store
             .set_sync_cursor(&account.id, &new_cursor)
             .await
@@ -3620,10 +3617,7 @@ mod tests {
         store.insert_account(&account).await.unwrap();
 
         assert!(
-            !store
-                .was_mutation_applied("mut-1", "msg-1")
-                .await
-                .unwrap(),
+            !store.was_mutation_applied("mut-1", "msg-1").await.unwrap(),
             "unrecorded key must report not-applied"
         );
 
@@ -3683,15 +3677,19 @@ mod tests {
         // 86400, which is < now+86400 for any present-day now. The fresh
         // row's expires_at = now + 86400 is > prune cutoff.
         let prune_cutoff = now + 100; // well past expired's expires_at, well before fresh's
-        let pruned = store.prune_expired_mutation_dedup(prune_cutoff).await.unwrap();
+        let pruned = store
+            .prune_expired_mutation_dedup(prune_cutoff)
+            .await
+            .unwrap();
         assert_eq!(pruned, 1, "only the expired row must be dropped");
-        assert!(
-            !store
-                .was_mutation_applied("expired", "msg-expired")
-                .await
-                .unwrap()
-        );
-        assert!(store.was_mutation_applied("fresh", "msg-fresh").await.unwrap());
+        assert!(!store
+            .was_mutation_applied("expired", "msg-expired")
+            .await
+            .unwrap());
+        assert!(store
+            .was_mutation_applied("fresh", "msg-fresh")
+            .await
+            .unwrap());
     }
 
     /// Phase E: keywords persist exactly as written and a re-set replaces

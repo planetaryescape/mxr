@@ -1,8 +1,8 @@
+use crate::schema::MxrSchema;
 use crate::{
     DateBound, DateValue, FilterKind, QueryField, QueryNode, RelativeUnit, SizeOp,
     FILTER_OWED_REPLY, FILTER_REPLY_LATER,
 };
-use crate::schema::MxrSchema;
 use chrono::{Datelike, Local, NaiveDate};
 use std::ops::Bound;
 use tantivy::query::{
@@ -581,8 +581,8 @@ mod tests {
 
     use super::*;
     use crate::index::SearchIndex;
-    use crate::{parse_query, ParseError};
     use crate::test_fixtures::TestEnvelopeBuilder;
+    use crate::{parse_query, ParseError};
     use mxr_core::types::*;
     use proptest::prelude::*;
 

@@ -1,11 +1,11 @@
 # MSP roadmap
 
-> **Current focus:** Phase G (lazy body fetch — optional, may stay
-> deferred indefinitely). Step 4 (publish-or-hold) deferred to
-> "hold." Steps 1–3 + alignment Phases C/D/E/F landed 2026-05-17 /
-> 2026-05-18.
+> **Current focus:** alignment Phases C/D/E/F all landed (2026-05-17
+> / 2026-05-18). Phase G (lazy body fetch) retracted 2026-05-19 —
+> MSP §2.4 is now unopinionated about body delivery and mxr stays
+> eager-only. Step 4 (publish-or-hold) deferred to "hold."
 >
-> _Last updated: 2026-05-18._
+> _Last updated: 2026-05-19._
 
 This roadmap tracks the six steps from
 [`spike-verdict.md`](./spike-verdict.md) plus the open-ended Step 7
@@ -221,6 +221,27 @@ sustainable.
 ## Roadmap revisions / changelog
 
 Append below as the roadmap evolves. Most recent first.
+
+### 2026-05-19 — Phase G retracted; MSP unopinionated about body delivery
+- Earlier MSP drafts mandated lazy body fetch as foundational
+  (`fetch_body` required, bodies excluded from `SyncDelta`).
+  Retracted today.
+- spec §2.4 reworded: body delivery is a negotiated capability
+  (`bodies.modes = ["eager"] | ["lazy"] | ["eager","lazy"]`),
+  not a mandate. Clients advertise `bodies.prefer`; adapters
+  advertise the modes they support; each session picks one.
+- spec §4 (Foundational capabilities) updated: `fetch_body` is
+  required only when the adapter advertises lazy support.
+- mxr's stance: eager-only. Adapters owned by mxr (Gmail, IMAP,
+  Fake) will advertise `bodies.modes = ["eager"]`. No
+  `fetch_body` method. No body cache. Opening a message stays
+  a pure SQLite read.
+- **Decision (user-driven):** the eager-fetch UX is the
+  intentional local-first commitment from AGENTS.md rule 3 and
+  isn't a degenerate case to retrofit. Protocols accommodate
+  their clients; clients don't bend to their protocols.
+- Phase G as a future code-side initiative is **removed from the
+  roadmap entirely** — there is nothing for mxr to refactor.
 
 ### 2026-05-18 — Phase F landed
 - Single atomic commit. `Thread` gains `message_ids: Vec<MessageId>`

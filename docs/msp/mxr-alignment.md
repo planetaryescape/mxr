@@ -129,34 +129,39 @@ existing `special_use` strings in the adapters.
 **Cost: cheap.** ~2-3 hours. The `role` is derived, not new state.
 Pure addition.
 
-### MSP §2.4 — Message + lazy body fetch
+### MSP §2.4 — Message + body delivery
 
 **mxr today:** `SyncedMessage` carries `envelope + body` together
 (`crates/core/src/types.rs:1776-1779`). Bodies fetch eagerly during
-sync (the comment at line 1773 says "no lazy hydration").
+sync. Opening a message is a pure SQLite read — no network call,
+no loading state. This is the local-first principle in `AGENTS.md`
+rule 3 and an intentional UX commitment.
 
-**Gap:** MSP separates body from sync delta. Clients fetch bodies
-lazily via `fetch_body`. mxr's current model streams bodies eagerly.
+**Gap:** **None of substance.** Earlier drafts of MSP made
+`fetch_body` foundational and bodies-out-of-delta a hard MUST. That
+prescription has been retracted (2026-05-19): MSP v0.1 §2.4 now
+treats eager-vs-lazy as a **negotiated capability**, not a mandate.
+Adapters advertise `bodies.modes` (some subset of `["eager",
+"lazy"]`); clients advertise `bodies.prefer`; each session picks
+one. Local-first clients and thin-web clients are equally
+first-class.
 
-**Why mxr does it eagerly:** the comment says "opening a message is
-a pure SQLite read — no network call, no loading state." This is a
-deliberate UX choice (the local-first principle in `AGENTS.md` rule
-3).
+**mxr's stance:** ship as an eager-only client. Adapters that we
+own (Gmail, IMAP, Fake) all advertise `bodies.modes = ["eager"]`;
+they bundle the body in the delta and have no `fetch_body`
+method. No refactor needed. mxr stays MSP-compatible by being
+explicit about the mode it negotiates, not by paying for a body
+cache it has no use for.
 
-**Refactor consideration:** mxr's choice is good for mxr but not
-necessarily for every MSP client. A web client may want lazy bodies;
-a Maildir-sync tool may want eager.
+**Cost (delivered): zero.** Doc-only change in MSP. No code touches
+mxr. This eliminates the previously-projected "Phase G" (1-2 week
+expensive refactor) — that phase no longer exists.
 
-**Resolution:** make body fetch a **capability**. Adapters that
-support lazy fetch advertise it; clients that want eager fetch
-either don't claim the capability or ignore it and `fetch_body`
-immediately. mxr keeps its eager behaviour internally by setting
-its client capability accordingly.
-
-**Cost: expensive.** ~1-2 weeks. Affects every sync codepath and
-the daemon's body-cache logic. But it's optional — mxr can keep
-eager fetch and still be MSP-compatible by negotiating that
-capability.
+**Decision (2026-05-19):** trade-off was framed wrong. Lazy fetch
+isn't strictly better — it imposes loading state, network coupling,
+and a body cache for negative UX impact on local-first clients.
+Protocols accommodate their clients; clients don't bend to their
+protocols. MSP is now unopinionated on this axis.
 
 ### MSP §2.5 — Thread
 
@@ -445,7 +450,7 @@ Protocol".
 |-----|------|----------------------|
 | Opaque SyncCursor | medium (1-2 days) | provider-agnostic daemon |
 | Namespaced capabilities | cheap (2-3 hours) | clearer code |
-| Lazy fetch capability | expensive (1-2 weeks) | optional — keep eager |
+| ~~Lazy fetch capability~~ | ~~expensive (1-2 weeks)~~ | retracted 2026-05-19 — MSP now unopinionated; mxr stays eager |
 | Thread shape | medium (1 day) | better external API |
 | Custom keywords | medium (1-2 days) | feature parity with Dovecot |
 | Unified Mutation + ID | medium (1-2 days) | idempotent retries |
@@ -470,9 +475,10 @@ Protocol".
   support.
 - **Phase F — Sync delta shape** (~2 days): split added/changed,
   add has_more.
-- **Phase G — Lazy body fetch** (~1-2 weeks): optional. mxr can
-  skip indefinitely while still being MSP-shaped (eager-fetch is a
-  valid client capability).
+- ~~**Phase G — Lazy body fetch**~~ — **retracted 2026-05-19.**
+  MSP spec §2.4 is now unopinionated about eager-vs-lazy body
+  delivery; both are first-class. mxr stays eager-only and
+  advertises `bodies.modes = ["eager"]`. No refactor required.
 
 Phases A-F are all things mxr would benefit from doing regardless
 of whether MSP ships as a public protocol. They're architectural

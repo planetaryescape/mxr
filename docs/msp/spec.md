@@ -113,9 +113,41 @@ Message {
 }
 ```
 
-Bodies are NOT included in the sync delta. Clients fetch them via
-`fetch_body` after seeing the message-id in a delta. This keeps the
-sync stream small and avoids re-streaming bodies on cursor catch-up.
+Body delivery is **a capability the adapter and client negotiate**,
+not a spec mandate. Two valid modes:
+
+- **Eager (default).** The adapter includes the body alongside the
+  envelope in `SyncDelta.messages_changed`. Opening a message becomes
+  a local read — no spinner, no per-message round-trip. Best for
+  local-first clients (mxr, mutt-style TUIs, Maildir tooling) and
+  for offline-first UX. Adapters that fetch bodies cheaply during
+  sync anyway (Gmail's `format=full`, IMAP `BODY[]` while the
+  session is open) have no reason to defer.
+- **Lazy.** The adapter omits bodies from the delta and the client
+  calls `fetch_body(message_id)` on demand. Best for thin-web clients
+  that don't want to persist full corpora, for cursor catch-up on
+  massive backlogs, and for adapters whose body fetch is metered or
+  rate-limited separately from envelope listing.
+
+Negotiation:
+
+- Client advertises `bodies.prefer = "eager" | "lazy"` in
+  `initialize`.
+- Adapter advertises `bodies.modes = ["eager", "lazy"]` (subset it
+  supports) and the client picks one for the session.
+- If the adapter can't satisfy the client's preference, it falls
+  back to whichever mode it does support and the client adapts.
+
+`fetch_body(message_id)` is always callable (the eager-mode client
+may still need it for cursor-reset re-hydration, attachment streams,
+or messages older than the local body cache). Adapters MAY omit
+support only if they ALSO advertise `bodies.modes = ["eager"]`
+exclusively — in which case the body is always present in the
+delta and there is nothing to fetch.
+
+MSP takes no position on which mode is "correct." Local-first
+clients are not a degenerate case to be retrofitted; they are
+first-class. Equally, lazy-fetch clients are first-class.
 
 ### Thread
 
@@ -338,7 +370,12 @@ Every adapter MUST support:
 
 - `core` namespace (initialize, shutdown, ping)
 - `sync.delta` (sync_account method with state cursor)
-- `fetch_body` (lazy body fetch)
+- `bodies` namespace with at least one of `eager` or `lazy`
+  declared in `bodies.modes`
+
+`fetch_body` is REQUIRED only when the adapter advertises
+`bodies.modes` containing `"lazy"`. Eager-only adapters bundle
+bodies into `SyncDelta` and do not need a separate fetch path.
 
 Everything else is optional but discoverable.
 

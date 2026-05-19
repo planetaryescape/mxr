@@ -1568,9 +1568,7 @@ impl App {
     }
 
     fn handle_saved_search_form_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
-        let Some(form) = self.modals.saved_search_form.as_mut() else {
-            return None;
-        };
+        let form = self.modals.saved_search_form.as_mut()?;
         match (key.code, key.modifiers) {
             (KeyCode::Esc, _) => {
                 self.close_saved_search_form();

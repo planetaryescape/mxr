@@ -89,10 +89,7 @@ impl MailSendProvider for OutlookSmtpSendProvider {
 
         #[cfg(not(test))]
         {
-            let transport = self
-                .build_transport()
-                .await
-                .map_err(|e| MxrError::Provider(e))?;
+            let transport = self.build_transport().await.map_err(MxrError::Provider)?;
             transport
                 .send(_message)
                 .await
@@ -121,10 +118,7 @@ impl MailSendProvider for OutlookSmtpSendProvider {
 
         #[cfg(not(test))]
         {
-            let transport = self
-                .build_transport()
-                .await
-                .map_err(|e| MxrError::Provider(e))?;
+            let transport = self.build_transport().await.map_err(MxrError::Provider)?;
             transport
                 .send(_message)
                 .await

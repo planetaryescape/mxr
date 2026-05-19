@@ -1184,7 +1184,7 @@ async fn contacts_autocomplete(
     Query(query): Query<ContactsAutocompleteQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     // Pull more than the requested limit so client-side filtering has headroom.
-    let scan_limit = query.limit.saturating_mul(20).max(50).min(500);
+    let scan_limit = query.limit.saturating_mul(20).clamp(50, 500);
     let response = dispatch(
         &state,
         &headers,

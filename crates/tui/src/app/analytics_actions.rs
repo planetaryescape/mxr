@@ -85,13 +85,13 @@ impl App {
             }
             Action::AdjustStaleOlderThanDays(delta) => {
                 let curr = self.analytics.stale_older_than_days as i64;
-                let next = (curr + delta as i64).max(1).min(3650);
+                let next = (curr + delta as i64).clamp(1, 3650);
                 self.analytics.stale_older_than_days = next as u32;
                 self.analytics.refresh_pending = true;
             }
             Action::AdjustStaleWithinDays(delta) => {
                 let curr = self.analytics.stale_within_days as i64;
-                let next = (curr + delta as i64).max(1).min(36500);
+                let next = (curr + delta as i64).clamp(1, 36500);
                 self.analytics.stale_within_days = next as u32;
                 self.analytics.refresh_pending = true;
             }

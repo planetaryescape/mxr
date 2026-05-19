@@ -74,7 +74,7 @@ pub(crate) async fn valid_cached_summary(
         thread_summary_content_hash(envelopes)
     );
     let record = store.get_thread_summary(thread_id).await.ok().flatten()?;
-    (record.content_hash == content_hash).then(|| ThreadSummaryData {
+    (record.content_hash == content_hash).then_some(ThreadSummaryData {
         text: record.text,
         model: record.model,
         generated_at: record.generated_at,

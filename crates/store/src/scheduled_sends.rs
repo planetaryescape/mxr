@@ -229,7 +229,7 @@ mod tests {
                 }],
                 cc: vec![],
                 bcc: vec![],
-                subject: format!("S{i}").into(),
+                subject: format!("S{i}"),
                 body_markdown: "Body".into(),
                 attachments: vec![],
                 inline_calendar_reply: None,

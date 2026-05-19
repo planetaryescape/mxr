@@ -148,7 +148,7 @@ fn send_time_zero_history_returns_low_confidence_json() {
         "no history → empty best windows: {resp}"
     );
     assert!(
-        resp.get("proposed_at").map_or(true, Value::is_null),
+        resp.get("proposed_at").is_none_or(Value::is_null),
         "no --at flag → no proposed_at in response: {resp}"
     );
 }
@@ -193,7 +193,7 @@ fn send_time_with_at_echoes_proposed_slot() {
     assert!(
         resp["recipient_rows"][0]
             .get("proposed_expected_reply_seconds")
-            .map_or(true, Value::is_null),
+            .is_none_or(Value::is_null),
         "no history → proposed_expected_reply_seconds is null: {resp}"
     );
 }

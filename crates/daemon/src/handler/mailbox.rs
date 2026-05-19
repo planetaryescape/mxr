@@ -675,7 +675,7 @@ fn best_effort_summary_looks_suspicious(body: &MessageBody, envelope: Option<&En
             && body
                 .text_plain
                 .as_deref()
-                .map_or(true, |summary| !summary.contains(snippet))
+                .is_none_or(|summary| !summary.contains(snippet))
     });
 
     if snippet_suggests_body {

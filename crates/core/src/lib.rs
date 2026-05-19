@@ -58,7 +58,7 @@ mod tests {
             ResponseTimeDirection::IReplied,
             ResponseTimeDirection::TheyReplied,
         ] {
-            assert_eq!(d.as_db_str().is_empty(), false);
+            assert!(!d.as_db_str().is_empty());
         }
     }
 

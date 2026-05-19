@@ -8849,11 +8849,11 @@ mod tests {
         assert_eq!(log.len(), 5, "ring buffer caps at 5");
         let messages: Vec<&str> = log.iter().map(|e| e.message.as_str()).collect();
         assert!(
-            !messages.iter().any(|m| *m == "warn 0"),
+            !messages.contains(&"warn 0"),
             "oldest entry must be dropped; got {messages:?}"
         );
         assert!(
-            messages.iter().any(|m| *m == "warn 5"),
+            messages.contains(&"warn 5"),
             "newest entry must be kept; got {messages:?}"
         );
     }

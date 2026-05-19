@@ -16,6 +16,14 @@ const SLOWEST_REPLY_CAP_SECONDS: i64 = 30 * 86_400;
 /// Number of contacts per top-N section.
 const TOP_N: i64 = 5;
 
+type CountBucketRow = (i64, i64);
+type NamedContactCountRow = (String, Option<String>, i64);
+type EmailCountRow = (String, i64);
+type ContactAsymmetrySqlRow = (String, Option<String>, i64, i64);
+type MimeStorageSqlRow = (String, i64, i64);
+type HeaviestMessageSqlRow = (String, String, String, i64, i64);
+type TopListSqlRow = (String, i64, i64);
+
 impl super::Store {
     /// Compute a year-in-review summary for the given window. Powers
     /// `mxr wrapped`. Runs ~10 SQL queries against the local store; each
@@ -164,8 +172,11 @@ impl super::Store {
             .bind(until)
             .fetch_optional(self.reader());
 
-        let (dow_rows, hour_rows, day): (Vec<(i64, i64)>, Vec<(i64, i64)>, Option<(i64, i64)>) =
-            tokio::try_join!(dow_query, hour_query, day_query)?;
+        let (dow_rows, hour_rows, day): (
+            Vec<CountBucketRow>,
+            Vec<CountBucketRow>,
+            Option<CountBucketRow>,
+        ) = tokio::try_join!(dow_query, hour_query, day_query)?;
 
         let mut day_of_week_distribution = [0u32; 7];
         let mut busiest_dow_sqlite: Option<i64> = None;
@@ -317,9 +328,9 @@ impl super::Store {
             .fetch_all(self.reader());
 
         let (inbound, outbound, asym): (
-            Vec<(String, Option<String>, i64)>,
-            Vec<(String, i64)>,
-            Vec<(String, Option<String>, i64, i64)>,
+            Vec<NamedContactCountRow>,
+            Vec<EmailCountRow>,
+            Vec<ContactAsymmetrySqlRow>,
         ) = tokio::try_join!(inbound_query, outbound_query, asym_query)?;
 
         // last_seen_at on ContactAsymmetryRow needs a value — reuse
@@ -523,8 +534,8 @@ impl super::Store {
 
         let (total_row, mime, heaviest): (
             (i64,),
-            Option<(String, i64, i64)>,
-            Option<(String, String, String, i64, i64)>,
+            Option<MimeStorageSqlRow>,
+            Option<HeaviestMessageSqlRow>,
         ) = tokio::try_join!(total_query, mime_query, heaviest_query)?;
 
         Ok(WrappedStorage {
@@ -608,11 +619,8 @@ impl super::Store {
             .bind(until)
             .fetch_one(self.reader());
 
-        let (unique_row, top_list, share_row): (
-            (i64,),
-            Option<(String, i64, i64)>,
-            (Option<f64>,),
-        ) = tokio::try_join!(unique_query, top_list_query, share_query)?;
+        let (unique_row, top_list, share_row): ((i64,), Option<TopListSqlRow>, (Option<f64>,)) =
+            tokio::try_join!(unique_query, top_list_query, share_query)?;
 
         Ok(WrappedNewsletters {
             unique_lists: unique_row.0.max(0) as u32,

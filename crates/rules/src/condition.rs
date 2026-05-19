@@ -149,13 +149,13 @@ impl FieldCondition {
                 let (link_count, body_word_count) = msg.link_density_inputs();
                 let tier =
                     mxr_core::types::Envelope::classify_link_density(link_count, body_word_count);
-                match (match_kind, tier) {
-                    (LinkDensityMatch::Any, mxr_core::types::LinkDensity::Some) => true,
-                    (LinkDensityMatch::Any, mxr_core::types::LinkDensity::Heavy) => true,
-                    (LinkDensityMatch::Heavy, mxr_core::types::LinkDensity::Heavy) => true,
-                    (LinkDensityMatch::None, mxr_core::types::LinkDensity::None) => true,
-                    _ => false,
-                }
+                matches!(
+                    (match_kind, tier),
+                    (LinkDensityMatch::Any, mxr_core::types::LinkDensity::Some)
+                        | (LinkDensityMatch::Any, mxr_core::types::LinkDensity::Heavy)
+                        | (LinkDensityMatch::Heavy, mxr_core::types::LinkDensity::Heavy)
+                        | (LinkDensityMatch::None, mxr_core::types::LinkDensity::None)
+                )
             }
         }
     }

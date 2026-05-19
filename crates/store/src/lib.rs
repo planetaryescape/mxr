@@ -2610,7 +2610,7 @@ mod tests {
         assert_eq!(bob.total_outbound, 5);
         assert!(bob.asymmetry.abs() < 1e-6);
 
-        assert!(by_email.get("carol@example.com").is_none());
+        assert!(!by_email.contains_key("carol@example.com"));
 
         // First row should be alice (largest asymmetry).
         assert_eq!(asym[0].email, "alice@example.com");

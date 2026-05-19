@@ -107,8 +107,10 @@ fn bench_list_by_action_prefix(c: &mut Criterion) {
     let _guard = rt.enter();
     seed_rows(&store, 10_000);
 
-    let mut filter = ActivityFilter::default();
-    filter.action_prefix = Some("mail.".into());
+    let filter = ActivityFilter {
+        action_prefix: Some("mail.".into()),
+        ..ActivityFilter::default()
+    };
 
     let mut group = c.benchmark_group("user_activity_list");
     group.sample_size(30);

@@ -245,8 +245,8 @@ fn render_list_table(entries: &[ActivityEntry], next_cursor: Option<ActivityCurs
         return;
     }
     println!(
-        "{:<19} {:<4} {:<22} {:<24} {}",
-        "TIMESTAMP", "SRC", "ACTION", "TARGET", "CONTEXT"
+        "{:<19} {:<4} {:<22} {:<24} CONTEXT",
+        "TIMESTAMP", "SRC", "ACTION", "TARGET"
     );
     println!("{}", "-".repeat(110));
     for e in entries {
@@ -1224,14 +1224,14 @@ mod tests {
     fn recall_resolves_last_hour_to_one_hour() {
         let (s, u) = parse_recall_phrase("last hour").unwrap();
         let diff = u - s;
-        assert!(diff >= 3_595_000 && diff <= 3_605_000, "got {diff}");
+        assert!((3_595_000..=3_605_000).contains(&diff), "got {diff}");
     }
 
     #[test]
     fn recall_resolves_last_5_minutes() {
         let (s, u) = parse_recall_phrase("last 5 minutes").unwrap();
         let diff = u - s;
-        assert!(diff >= 295_000 && diff <= 305_000);
+        assert!((295_000..=305_000).contains(&diff));
     }
 
     #[test]

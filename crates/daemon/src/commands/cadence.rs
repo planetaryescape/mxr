@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::items_after_test_module))]
+
 use crate::cli::{CadenceAction, OutputFormat};
 use crate::commands::resolve_account;
 use crate::ipc_client::IpcClient;

@@ -752,16 +752,8 @@ pub(crate) fn auto_summary_eligible(
             if body.metadata.calendar.is_some() {
                 return false;
             }
-            let plain_words = body
-                .text_plain
-                .as_deref()
-                .map(|text| count_words(text))
-                .unwrap_or(0);
-            let html_words = body
-                .text_html
-                .as_deref()
-                .map(|text| count_words(text))
-                .unwrap_or(0);
+            let plain_words = body.text_plain.as_deref().map(count_words).unwrap_or(0);
+            let html_words = body.text_html.as_deref().map(count_words).unwrap_or(0);
             let cached_words = plain_words.max(html_words);
             body_text_words = body_text_words.saturating_add(cached_words);
             if cached_words > 0 {
@@ -863,19 +855,20 @@ mod auto_summary_tests {
     }
 
     fn body_with_calendar(message_id: MessageId) -> MessageBody {
-        let mut metadata = MessageMetadata::default();
-        metadata.calendar = Some(CalendarMetadata {
-            method: Some("REQUEST".into()),
-            summary: Some("Sync".into()),
-            ..CalendarMetadata::default()
-        });
         MessageBody {
             message_id,
             text_plain: Some("Calendar invite payload".into()),
             text_html: None,
             attachments: vec![],
             fetched_at: Utc::now(),
-            metadata,
+            metadata: MessageMetadata {
+                calendar: Some(CalendarMetadata {
+                    method: Some("REQUEST".into()),
+                    summary: Some("Sync".into()),
+                    ..CalendarMetadata::default()
+                }),
+                ..MessageMetadata::default()
+            },
         }
     }
 

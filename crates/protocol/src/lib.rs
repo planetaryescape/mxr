@@ -1328,7 +1328,7 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::DraftSafetyReportResponse { report: r2 },
             }) => {
-                assert_eq!(r2.allowed, false);
+                assert!(!r2.allowed);
                 assert!(matches!(r2.verdict, DraftSafetyVerdict::Blocked));
                 assert_eq!(r2.issues.len(), 1);
                 assert_eq!(r2.issues[0].citations.len(), 1);

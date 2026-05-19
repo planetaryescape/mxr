@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::items_after_test_module))]
+
 use crate::app::{snooze_presets, SnoozePanelState, SnoozePreset};
 use mxr_config::SnoozeConfig;
 use ratatui::prelude::*;

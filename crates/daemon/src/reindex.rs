@@ -60,7 +60,7 @@ pub async fn reindex(
             });
 
             indexed += 1;
-            if indexed % 100 == 0 {
+            if indexed.is_multiple_of(100) {
                 progress(ReindexProgress::Indexing { indexed, total });
             }
         }

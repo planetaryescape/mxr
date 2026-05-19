@@ -107,7 +107,8 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
     let fixed_columns_width = 4 + 1 + 2 + 2 + 22 + 8 + 8 + 2;
     let column_spacing_total: u16 = 8; // 9 cells, 8 gaps × 1 char
     let border_total: u16 = 2;
-    let subject_max_width = u16::from(area.width)
+    let subject_max_width = area
+        .width
         .saturating_sub(fixed_columns_width)
         .saturating_sub(column_spacing_total)
         .saturating_sub(border_total) as usize;

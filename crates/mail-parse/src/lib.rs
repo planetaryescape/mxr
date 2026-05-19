@@ -692,25 +692,27 @@ mod tests {
 
     #[test]
     fn matching_attendee_strict_errors_on_zero_or_multiple_matches() {
-        let mut calendar = CalendarMetadata::default();
-        calendar.attendees = vec![
-            CalendarAttendee {
-                email: "alice@example.com".into(),
-                name: None,
-                uri: None,
-                partstat: None,
-                role: None,
-                rsvp: None,
-            },
-            CalendarAttendee {
-                email: "bob@example.com".into(),
-                name: None,
-                uri: None,
-                partstat: None,
-                role: None,
-                rsvp: None,
-            },
-        ];
+        let calendar = CalendarMetadata {
+            attendees: vec![
+                CalendarAttendee {
+                    email: "alice@example.com".into(),
+                    name: None,
+                    uri: None,
+                    partstat: None,
+                    role: None,
+                    rsvp: None,
+                },
+                CalendarAttendee {
+                    email: "bob@example.com".into(),
+                    name: None,
+                    uri: None,
+                    partstat: None,
+                    role: None,
+                    rsvp: None,
+                },
+            ],
+            ..CalendarMetadata::default()
+        };
 
         let no_match = matching_attendee_strict(&calendar, &["zzz@example.com".into()]);
         assert!(matches!(no_match, Err(MatchingAttendeeError::NoMatch)));
@@ -727,25 +729,27 @@ mod tests {
 
     #[test]
     fn matching_attendee_lenient_returns_none_for_ambiguous() {
-        let mut calendar = CalendarMetadata::default();
-        calendar.attendees = vec![
-            CalendarAttendee {
-                email: "alice@example.com".into(),
-                name: None,
-                uri: None,
-                partstat: None,
-                role: None,
-                rsvp: None,
-            },
-            CalendarAttendee {
-                email: "bob@example.com".into(),
-                name: None,
-                uri: None,
-                partstat: None,
-                role: None,
-                rsvp: None,
-            },
-        ];
+        let calendar = CalendarMetadata {
+            attendees: vec![
+                CalendarAttendee {
+                    email: "alice@example.com".into(),
+                    name: None,
+                    uri: None,
+                    partstat: None,
+                    role: None,
+                    rsvp: None,
+                },
+                CalendarAttendee {
+                    email: "bob@example.com".into(),
+                    name: None,
+                    uri: None,
+                    partstat: None,
+                    role: None,
+                    rsvp: None,
+                },
+            ],
+            ..CalendarMetadata::default()
+        };
 
         let none = matching_attendee_lenient(&calendar, &["zzz@example.com".into()]);
         assert!(none.is_none());

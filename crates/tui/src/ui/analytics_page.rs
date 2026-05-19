@@ -1266,12 +1266,13 @@ fn unsubscribe_method_label(method: &mxr_core::types::UnsubscribeMethod) -> &'st
 /// When, Contacts, Reply discipline, Storage, Newsletters. Each
 /// tile answers ONE question with the most direct rendering for
 /// that data shape:
-///   * Volume:  in:out ratio + split bar + longest-thread footer.
-///   * When:    busiest day-of-week + 24h sparkline + AM/PM split.
-///   * Contacts: top-1 + share gauge + most-ghosted footer.
-///   * Reply:   p50/p90 + named fastest/slowest.
-///   * Storage: top mime + share gauge + heaviest message.
-///   * Newsletters: top list + opened gauge (or zeroed empty state).
+/// * Volume: in:out ratio + split bar + longest-thread footer.
+/// * When: busiest day-of-week + 24h sparkline + AM/PM split.
+/// * Contacts: top-1 + share gauge + most-ghosted footer.
+/// * Reply: p50/p90 + named fastest/slowest.
+/// * Storage: top mime + share gauge + heaviest message.
+/// * Newsletters: top list + opened gauge (or zeroed empty state).
+///
 /// Tile selection (`wrapped_selected_tile`, 0..=5) draws the focused
 /// border around the selected tile.
 fn draw_wrapped(
@@ -2242,6 +2243,11 @@ pub(super) fn format_duration_seconds(seconds: u32) -> String {
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::field_reassign_with_default,
+        reason = "render tests emphasize the one or two state fields under inspection"
+    )]
+
     use super::*;
     use crate::app::AnalyticsState;
     use mxr_core::types::{
@@ -2479,6 +2485,11 @@ mod tests {
 
 #[cfg(test)]
 mod cache_tests {
+    #![expect(
+        clippy::field_reassign_with_default,
+        reason = "cache tests emphasize the specific state knobs under inspection"
+    )]
+
     use crate::app::{AnalyticsState, AnalyticsView, StorageMode};
     use mxr_core::types::{StorageBucket, StorageGroupBy};
 

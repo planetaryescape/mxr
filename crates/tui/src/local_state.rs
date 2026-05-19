@@ -74,7 +74,7 @@ mod tests {
         let raw = std::fs::read_to_string(&path).expect("read saved state");
         let loaded: TuiLocalState = serde_json::from_str(&raw).expect("parse state");
 
-        assert_eq!(loaded.onboarding_seen, true);
+        assert!(loaded.onboarding_seen);
         assert_eq!(
             loaded.recent_action_labels,
             vec![
@@ -94,7 +94,7 @@ mod tests {
         // existed must still load cleanly with an empty recents list.
         let raw = r#"{ "onboarding_seen": true }"#;
         let loaded: TuiLocalState = serde_json::from_str(raw).expect("parse legacy state");
-        assert_eq!(loaded.onboarding_seen, true);
+        assert!(loaded.onboarding_seen);
         assert!(loaded.recent_action_labels.is_empty());
     }
 }

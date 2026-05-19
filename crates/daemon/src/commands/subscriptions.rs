@@ -175,7 +175,7 @@ mod tests {
         very_low.opened_count = 0;
         very_low.archived_unread_count = 3;
 
-        let mut subs = vec![high_rate.clone(), low_rate.clone(), very_low.clone()];
+        let mut subs = [high_rate.clone(), low_rate.clone(), very_low.clone()];
         subs.sort_by(|a, b| {
             open_rate(a)
                 .partial_cmp(&open_rate(b))

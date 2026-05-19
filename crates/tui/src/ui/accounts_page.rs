@@ -1028,8 +1028,10 @@ mod tests {
     fn unhealthy_account_renders_repair_indicator() {
         let account = fake_account("Work");
         let status = fake_status(&account, false);
-        let mut state = AccountsPageState::default();
-        state.accounts = vec![account];
+        let state = AccountsPageState {
+            accounts: vec![account],
+            ..AccountsPageState::default()
+        };
 
         let rendered = render_to_string(120, 24, |frame| {
             draw(
@@ -1057,8 +1059,10 @@ mod tests {
     fn healthy_account_does_not_render_repair_indicator() {
         let account = fake_account("Work");
         let status = fake_status(&account, true);
-        let mut state = AccountsPageState::default();
-        state.accounts = vec![account];
+        let state = AccountsPageState {
+            accounts: vec![account],
+            ..AccountsPageState::default()
+        };
 
         let rendered = render_to_string(120, 24, |frame| {
             draw(

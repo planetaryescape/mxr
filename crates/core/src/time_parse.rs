@@ -11,8 +11,8 @@
 //! * `"tomorrow"` and `"tomorrow <time>"` — next calendar day, default 09:00.
 //! * `"today <time>"` — same calendar day; must be in the future.
 //! * `"<weekday>"` and `"<weekday> <time>"` — next occurrence of the named
-//!    weekday (today doesn't count even if it's the same day-of-week
-//!    earlier in the day; "monday" on Monday is "next Monday").
+//!   weekday (today doesn't count even if it's the same day-of-week
+//!   earlier in the day; "monday" on Monday is "next Monday").
 //! * RFC3339 (`"2026-06-01T15:00:00Z"`).
 //!
 //! Time formats: `"9am"`, `"5pm"`, `"17:00"`, `"09:30am"`. Ambiguity in

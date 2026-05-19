@@ -260,12 +260,9 @@ fn render_csv(entries: &[ActivityEntry]) -> String {
         s.push(',');
         push_csv_str(&mut s, e.tier.as_str());
         s.push(',');
-        match &e.context {
-            Some(v) => {
-                let serialized = serde_json::to_string(v).unwrap_or_default();
-                push_csv_str(&mut s, &serialized);
-            }
-            None => {}
+        if let Some(v) = &e.context {
+            let serialized = serde_json::to_string(v).unwrap_or_default();
+            push_csv_str(&mut s, &serialized);
         }
         s.push(',');
         s.push_str(if e.redacted { "1" } else { "0" });

@@ -249,7 +249,7 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         })
         .unwrap_or_default();
     assert!(
-        !inbox_ids.iter().any(|id| *id == message_id),
+        !inbox_ids.contains(&message_id),
         "archived message {message_id} should not appear in `label:inbox` after archive; got {} ids",
         inbox_ids.len()
     );

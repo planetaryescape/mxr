@@ -85,8 +85,7 @@ impl super::Store {
         if message_ids.is_empty() {
             return Ok(out);
         }
-        let placeholders = std::iter::repeat("?")
-            .take(message_ids.len())
+        let placeholders = std::iter::repeat_n("?", message_ids.len())
             .collect::<Vec<_>>()
             .join(",");
         let sql = format!(

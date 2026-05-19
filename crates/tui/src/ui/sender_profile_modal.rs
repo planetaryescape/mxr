@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::items_after_test_module))]
+
 use crate::app::{SenderProfileModalState, SenderProfileTab};
 use crate::theme::Theme;
 use ratatui::layout::Margin;

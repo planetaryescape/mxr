@@ -937,7 +937,7 @@ pub enum Request {
         context: DraftSafetyContextData,
     },
     /// Extract per-draft commitment candidates (deterministic prefilter
-    /// + LLM, gated by `LlmFeature::Commitments`). Persists into
+    /// plus LLM, gated by `LlmFeature::Commitments`). Persists into
     /// `draft_commitment_candidates`; on successful send, candidates
     /// promote to `contact_commitments`.
     ExtractDraftCommitments {

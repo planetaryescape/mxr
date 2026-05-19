@@ -363,7 +363,7 @@ impl SenderProfileModalState {
                     .filter(|message| {
                         self.current_thread_id
                             .as_ref()
-                            .map_or(true, |thread_id| &message.thread_id != thread_id)
+                            .is_none_or(|thread_id| &message.thread_id != thread_id)
                     })
                     .collect()
             })
@@ -938,10 +938,12 @@ mod activity_modal_tests {
 
     #[test]
     fn open_loading_resets_state() {
-        let mut s = ActivityModalState::default();
-        s.entries = vec![entry(1)];
-        s.selected_index = 5;
-        s.error = Some("stale".into());
+        let mut s = ActivityModalState {
+            entries: vec![entry(1)],
+            selected_index: 5,
+            error: Some("stale".into()),
+            ..ActivityModalState::default()
+        };
         s.open_loading();
         assert!(s.visible);
         assert!(s.loading);
@@ -952,8 +954,10 @@ mod activity_modal_tests {
 
     #[test]
     fn set_entries_clamps_selected_index() {
-        let mut s = ActivityModalState::default();
-        s.selected_index = 10;
+        let mut s = ActivityModalState {
+            selected_index: 10,
+            ..ActivityModalState::default()
+        };
         s.set_entries(vec![entry(1), entry(2)]);
         assert!(s.selected_index < s.entries.len());
     }

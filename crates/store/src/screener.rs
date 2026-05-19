@@ -191,7 +191,7 @@ impl super::Store {
         limit: u32,
     ) -> Result<Vec<ScreenerQueueEntry>, sqlx::Error> {
         let aid = account_id.as_str();
-        let limit = limit.max(1).min(500) as i64;
+        let limit = limit.clamp(1, 500) as i64;
         let started_at = std::time::Instant::now();
         let rows = sqlx::query!(
             r#"SELECT m.from_email as "from_email!",

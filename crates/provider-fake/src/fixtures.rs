@@ -735,7 +735,7 @@ pub fn generate_demo_fixtures(
                 - Duration::minutes(thread_offset_minutes + (thread_len - reply_idx) as i64 * 47);
             let old_enough_to_read = thread_offset_minutes > 24 * 60;
             let unread = !sent && !old_enough_to_read && reply_idx + 1 == thread_len;
-            let starred = thread_num % 29 == 0 || root_subject.contains("Security");
+            let starred = thread_num.is_multiple_of(29) || root_subject.contains("Security");
             let mut flags = if unread {
                 MessageFlags::empty()
             } else {
@@ -750,7 +750,7 @@ pub fn generate_demo_fixtures(
             if category == 10 {
                 flags |= MessageFlags::SPAM;
             }
-            if category == 9 && thread_num % 11 == 0 {
+            if category == 9 && thread_num.is_multiple_of(11) {
                 flags |= MessageFlags::ARCHIVED;
             }
 
@@ -788,7 +788,7 @@ pub fn generate_demo_fixtures(
             }
 
             let unsubscribe = match category {
-                2 if thread_num % 2 == 0 => UnsubscribeMethod::OneClick {
+                2 if thread_num.is_multiple_of(2) => UnsubscribeMethod::OneClick {
                     url: format!("https://lists.demo.mxr.local/unsubscribe/{thread_num}"),
                 },
                 2 => UnsubscribeMethod::Mailto {
@@ -801,8 +801,8 @@ pub fn generate_demo_fixtures(
                 _ => UnsubscribeMethod::None,
             };
             let has_attachments = matches!(category, 5 | 6 | 8)
-                || (matches!(category, 2 | 11) && thread_num % 8 == 0)
-                || thread_num % 41 == 0;
+                || (matches!(category, 2 | 11) && thread_num.is_multiple_of(8))
+                || thread_num.is_multiple_of(41);
             let snippet = demo_snippet(root_subject, category, reply_idx, sent);
             let body = demo_body(root_subject, category, reply_idx, sent, &peer.email);
             let current_header = push_demo_msg(
@@ -896,7 +896,7 @@ fn generate_curated_demo_fixtures(
             } else {
                 format!("Re: {root_subject}")
             };
-            let unread = !sent && reply_idx + 1 == thread_len && thread_num % 3 == 0;
+            let unread = !sent && reply_idx + 1 == thread_len && thread_num.is_multiple_of(3);
             let mut flags = if unread {
                 MessageFlags::empty()
             } else {

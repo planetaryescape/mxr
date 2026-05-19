@@ -781,7 +781,7 @@ async fn restore_snapshot(
                 },
             )
             .await
-            .map_err(|error| classify_provider_error(error))?;
+            .map_err(classify_provider_error)?;
         let now = chrono::Utc::now().timestamp();
         if let Err(error) = state
             .store
@@ -822,7 +822,7 @@ async fn restore_snapshot(
                     },
                 )
                 .await
-                .map_err(|error| classify_provider_error(error))?;
+                .map_err(classify_provider_error)?;
             let now = chrono::Utc::now().timestamp();
             if let Err(error) = state
                 .store
@@ -2314,10 +2314,12 @@ mod safety_context_wiring_tests {
             i.code == DraftSafetyIssueCode::WrongRecipient
                 && i.severity == DraftSafetySeverity::Warning
         });
-        let typo = typo.expect(&format!(
-            "expected WrongRecipient warning, got issues: {:?}",
-            r.issues
-        ));
+        let Some(typo) = typo else {
+            panic!(
+                "expected WrongRecipient warning, got issues: {:?}",
+                r.issues
+            );
+        };
         assert!(
             typo.message.contains("alcie@example.com"),
             "warning omits typed recipient: {}",

@@ -312,7 +312,7 @@ impl Store {
             QueryBuilder::new("SELECT COUNT(*) FROM user_activity WHERE 1=1");
         push_filter_clauses(&mut qb, filter);
         let row = qb.build().fetch_one(self.reader()).await?;
-        Ok(row.try_get::<i64, _>(0)?)
+        row.try_get::<i64, _>(0)
     }
 
     /// Tombstone rows by id. `context_json` is cleared so the FTS trigger
@@ -730,8 +730,10 @@ mod tests {
             .await
             .unwrap();
 
-        let mut filter = ActivityFilter::default();
-        filter.action_prefix = Some("mail.".into());
+        let filter = ActivityFilter {
+            action_prefix: Some("mail.".into()),
+            ..ActivityFilter::default()
+        };
         let page = store.list_activity(&filter, 10, None).await.unwrap();
 
         let actions: Vec<&str> = page.rows.iter().map(|r| r.action.as_str()).collect();
@@ -885,8 +887,10 @@ mod tests {
         assert!(default_page.rows.is_empty());
 
         // Opt-in shows them, with cleared context.
-        let mut filter = ActivityFilter::default();
-        filter.include_redacted = true;
+        let filter = ActivityFilter {
+            include_redacted: true,
+            ..ActivityFilter::default()
+        };
         let page = store.list_activity(&filter, 10, None).await.unwrap();
         assert_eq!(page.rows.len(), 1);
         assert!(page.rows[0].redacted);
@@ -916,8 +920,10 @@ mod tests {
             .await
             .unwrap();
 
-        let mut filter = ActivityFilter::default();
-        filter.action_prefix = Some("mail.".into());
+        let filter = ActivityFilter {
+            action_prefix: Some("mail.".into()),
+            ..ActivityFilter::default()
+        };
         let n = store.redact_activity_by_filter(&filter).await.unwrap();
         assert_eq!(n, 2);
 
@@ -995,8 +1001,10 @@ mod tests {
             .await
             .unwrap();
 
-        let mut filter = ActivityFilter::default();
-        filter.query = Some("invoice".into());
+        let filter = ActivityFilter {
+            query: Some("invoice".into()),
+            ..ActivityFilter::default()
+        };
         let page = store.list_activity(&filter, 10, None).await.unwrap();
         assert_eq!(page.rows.len(), 1);
         assert_eq!(page.rows[0].id, id);

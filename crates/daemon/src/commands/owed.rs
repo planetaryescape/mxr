@@ -60,8 +60,8 @@ fn print(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
             }
             OutputFormat::Table => {
                 println!(
-                    "{:>5}  {:<28}  {:>6}  {:>6}  {:>6}  {}",
-                    "score", "from", "wait", "exp", "days", "subject"
+                    "{:>5}  {:<28}  {:>6}  {:>6}  {:>6}  subject",
+                    "score", "from", "wait", "exp", "days"
                 );
                 for row in rows {
                     let from = truncate(row.from_name.as_deref().unwrap_or(&row.from_email), 28);

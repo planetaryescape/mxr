@@ -78,8 +78,7 @@ impl super::Store {
         for row in rows {
             let parent_received: i64 = row.try_get("parent_received_at")?;
             let latency: i64 = row.try_get("latency_seconds")?;
-            let dt =
-                DateTime::<Utc>::from_timestamp(parent_received, 0).unwrap_or_else(|| Utc::now());
+            let dt = DateTime::<Utc>::from_timestamp(parent_received, 0).unwrap_or_else(Utc::now);
             let weekday = dt.weekday().num_days_from_monday() as u8;
             let hour = dt.hour() as u8;
             by_bucket.entry((weekday, hour)).or_default().push(latency);

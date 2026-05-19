@@ -94,10 +94,15 @@ Run all of these before sending changes:
 ```bash
 cargo fmt --all -- --check
 cargo nextest run --workspace
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo sqlx prepare --check --workspace
 cargo deny check
 ```
+
+Test helpers may use narrow `#[expect(clippy::...)]` annotations when
+panic/unwrap/default-mutation keeps fixture failures clearer. Keep the
+annotation on the smallest test module or function that needs it, and include
+the reason.
 
 If you touch the docs site:
 

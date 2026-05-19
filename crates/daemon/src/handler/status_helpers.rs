@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::items_after_test_module))]
+
 use super::helpers::{dir_size, file_size, protocol_event_entry, recent_log_lines};
 use crate::state::AppState;
 use mxr_core::{Account, AccountId};

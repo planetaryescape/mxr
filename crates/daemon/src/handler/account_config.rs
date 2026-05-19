@@ -566,17 +566,15 @@ pub(super) async fn authorize_account_config(
             );
         }
         let auth = crate::provider_credentials::outlook_auth(cid, token_ref, tenant);
-        if !reauthorize {
-            if auth.get_valid_access_token().await.is_ok() {
-                return account_operation_result(
-                    true,
-                    "Outlook authorization ready.".into(),
-                    None,
-                    Some(account_step(true, "Existing OAuth token valid.".into())),
-                    None,
-                    None,
-                );
-            }
+        if !reauthorize && auth.get_valid_access_token().await.is_ok() {
+            return account_operation_result(
+                true,
+                "Outlook authorization ready.".into(),
+                None,
+                Some(account_step(true, "Existing OAuth token valid.".into())),
+                None,
+                None,
+            );
         }
         let device_resp = match auth.start_device_flow().await {
             Ok(r) => r,

@@ -451,8 +451,13 @@ impl App {
 
         let mut flags = envelope.flags;
         flags.insert(MessageFlags::READ);
-        self.apply_local_flags(&envelope.id, flags);
-        self.queue_mutation(
+        let optimistic_effect = MutationEffect::UpdateFlags {
+            message_id: envelope.id.clone(),
+            flags,
+        };
+        let snapshot = self.snapshot_for_effect(&optimistic_effect);
+        self.apply_local_mutation_effect(&optimistic_effect);
+        let id = self.queue_best_effort_mutation(
             Request::mutation(MutationCommand::SetRead {
                 message_ids: vec![envelope.id.clone()],
                 read: true,
@@ -460,6 +465,8 @@ impl App {
             MutationEffect::StatusOnly("Marked message as read".into()),
             "Marking message as read...".into(),
         );
+        self.pending_optimistic.record(id, &optimistic_effect);
+        self.mutation_snapshots.insert(id, snapshot);
     }
 
     pub(super) fn move_thread_focus_down(&mut self) {

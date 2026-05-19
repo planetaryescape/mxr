@@ -5841,7 +5841,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatch_list_bodies_rehydrates_missing_store_row_from_provider() {
+    async fn dispatch_list_bodies_stays_local_when_store_row_is_missing() {
         let (state, _) = AppState::in_memory_with_fake().await.unwrap();
         let state = Arc::new(state);
         let id = sync_and_get_first_id(&state).await;
@@ -5863,12 +5863,19 @@ mod tests {
 
         match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::Bodies { bodies, .. },
+                data: ResponseData::Bodies { bodies, failures },
             }) => {
-                assert_eq!(bodies.len(), 1);
+                assert!(bodies.is_empty());
+                assert_eq!(failures.len(), 1);
+                assert_eq!(failures[0].message_id, id);
                 assert!(
-                    bodies[0].text_plain.is_some() || bodies[0].text_html.is_some(),
-                    "list bodies should rehydrate readable content on cache miss"
+                    state
+                        .store
+                        .get_body(&failures[0].message_id)
+                        .await
+                        .unwrap()
+                        .is_none(),
+                    "bulk prefetch must not repair from provider and block the TUI queue"
                 );
             }
             other => panic!("Expected Bodies, got {:?}", other),

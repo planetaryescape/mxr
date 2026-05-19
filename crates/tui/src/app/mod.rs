@@ -54,6 +54,7 @@ pub(in crate::app) use crate::ui::label_picker::LabelPickerMode;
 pub(crate) use mailbox_helpers::auto_summary_eligible;
 pub use mutation_snapshot::{
     MutationId, MutationIdGenerator, MutationSnapshot, MutationSnapshotStore, QueuedMutation,
+    TRANSIENT_MUTATION_MAX_RETRIES,
 };
 pub use pending_optimistic::PendingOptimisticState;
 use state::PendingPreviewRead;

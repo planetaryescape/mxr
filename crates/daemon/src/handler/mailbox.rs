@@ -519,6 +519,20 @@ async fn load_body_for_message(
     enrich_calendar_viewer_fields(state, message_id, body).await
 }
 
+async fn load_cached_body_for_message(
+    state: &AppState,
+    message_id: &MessageId,
+) -> Result<MessageBody, String> {
+    let mut body = state
+        .store
+        .get_body(message_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("Body not found in local store: {message_id}"))?;
+    body.ensure_best_effort_readable();
+    enrich_calendar_viewer_fields(state, message_id, body).await
+}
+
 /// Derive `viewer_partstat`, `viewer_attendee_email`, and `is_update` on the
 /// body's `metadata.calendar` so every client (TUI, web SPA) renders the
 /// invite card consistently without re-walking attendees or stored invites.
@@ -1010,7 +1024,7 @@ pub(super) async fn list_bodies(state: &AppState, message_ids: &[MessageId]) -> 
     let mut bodies = Vec::with_capacity(message_ids.len());
     let mut failures = Vec::new();
     for id in message_ids {
-        match load_body_for_message(state, id).await {
+        match load_cached_body_for_message(state, id).await {
             Ok(body) => bodies.push(body),
             Err(error) => {
                 tracing::debug!(message_id = %id, error = %error, "ListBodies: body unavailable");

@@ -296,6 +296,25 @@ impl App {
         effect: MutationEffect,
         status_message: String,
     ) -> MutationId {
+        self.queue_mutation_with_policy(request, effect, status_message, false)
+    }
+
+    pub(super) fn queue_best_effort_mutation(
+        &mut self,
+        request: Request,
+        effect: MutationEffect,
+        status_message: String,
+    ) -> MutationId {
+        self.queue_mutation_with_policy(request, effect, status_message, true)
+    }
+
+    fn queue_mutation_with_policy(
+        &mut self,
+        request: Request,
+        effect: MutationEffect,
+        status_message: String,
+        best_effort: bool,
+    ) -> MutationId {
         let id = self.mutation_id_generator.next_id();
         let request = match request {
             Request::Mutation {
@@ -311,11 +330,49 @@ impl App {
             id,
             request,
             effect,
+            best_effort,
+            attempts: 0,
+            run_after: None,
         });
         self.pending_mutation_count += 1;
         self.pending_mutation_status = Some(status_message.clone());
         self.status_message = Some(status_message);
         id
+    }
+
+    pub fn schedule_mutation_retry(&mut self, mut queued: QueuedMutation, error: &MxrError) {
+        queued.attempts = queued.attempts.saturating_add(1);
+        let delay = QueuedMutation::retry_delay(queued.attempts);
+        queued.run_after = Some(std::time::Instant::now() + delay);
+        tracing::debug!(
+            mutation_id = queued.id.raw(),
+            attempt = queued.attempts,
+            delay_ms = delay.as_millis() as u64,
+            error = %error,
+            "retrying optimistic mutation after transient failure"
+        );
+        self.pending_mutation_queue.push(queued);
+        self.pending_mutation_count += 1;
+        let status = format!("Retrying mailbox update in {}s...", delay.as_secs());
+        self.pending_mutation_status = Some(status.clone());
+        self.status_message = Some(status);
+    }
+
+    pub fn should_retry_mutation_failure(&self, error: &MxrError) -> bool {
+        let error = error.to_string().to_lowercase();
+        [
+            "pool timed out",
+            "database is locked",
+            "database table is locked",
+            "connection closed",
+            "connection reset",
+            "connection refused",
+            "timed out",
+            "timeout",
+            "temporarily unavailable",
+        ]
+        .iter()
+        .any(|needle| error.contains(needle))
     }
 
     /// Capture a snapshot of the state about to change, suitable for
@@ -479,6 +536,22 @@ impl App {
             ),
         );
         self.status_message = Some(format!("Error: {error}"));
+    }
+
+    pub fn handle_mutation_failure_result(
+        &mut self,
+        id: MutationId,
+        best_effort: bool,
+        error: &MxrError,
+    ) {
+        self.handle_mutation_reconciliation_failed(id);
+        self.pending_optimistic.clear(id);
+        self.refresh_mailbox_after_mutation_failure();
+        if best_effort {
+            self.status_message = Some("Mailbox refreshing to reconcile state".into());
+        } else {
+            self.show_mutation_failure(error);
+        }
     }
 
     pub fn refresh_mailbox_after_mutation_failure(&mut self) {

@@ -88,6 +88,8 @@ pub(crate) enum AsyncResult {
     },
     MutationResult {
         id: app::MutationId,
+        best_effort: bool,
+        retry: Option<app::QueuedMutation>,
         outcome: Result<app::MutationEffect, MxrError>,
     },
     ComposeReady(Result<ComposeReadyData, MxrError>),

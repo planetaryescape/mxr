@@ -1535,12 +1535,30 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         // Drain pending mutations
+        let now = std::time::Instant::now();
+        let mut deferred_mutations = Vec::new();
         for queued_mutation in app.pending_mutation_queue.drain(..) {
+            if !queued_mutation.ready_to_run(now) {
+                deferred_mutations.push(queued_mutation);
+                continue;
+            }
             let app::QueuedMutation {
                 id: mutation_id,
                 request: req,
                 effect,
+                best_effort,
+                attempts,
+                run_after: _,
             } = queued_mutation;
+            let retry = (attempts < app::TRANSIENT_MUTATION_MAX_RETRIES)
+                .then(|| app::QueuedMutation {
+                    id: mutation_id,
+                    request: req.clone(),
+                    effect: effect.clone(),
+                    best_effort,
+                    attempts,
+                    run_after: None,
+                });
             let bg = bg.clone();
             let result_tx_inner = result_tx.clone();
             let _ = submit_task(&queued, async move {
@@ -1593,10 +1611,13 @@ pub async fn run() -> anyhow::Result<()> {
                 };
                 AsyncResult::MutationResult {
                     id: mutation_id,
+                    best_effort,
+                    retry,
                     outcome,
                 }
             });
         }
+        app.pending_mutation_queue.extend(deferred_mutations);
 
         // Handle thread export (uses daemon ExportThread which runs mxr-export)
         if let Some(thread_id) = app.mailbox.pending_export_thread.take() {
@@ -2334,6 +2355,8 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::MutationResult {
                             id,
+                            best_effort: _,
+                            retry: _,
                             outcome: Ok(effect),
                         } => {
                             app.finish_pending_mutation();
@@ -2350,15 +2373,18 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::MutationResult {
                             id,
+                            best_effort,
+                            retry,
                             outcome: Err(e),
                         } => {
                             app.finish_pending_mutation();
-                            // Replay the snapshot to revert the optimistic change
-                            // before surfacing the error UX.
-                            app.handle_mutation_reconciliation_failed(id);
-                            app.pending_optimistic.clear(id);
-                            app.refresh_mailbox_after_mutation_failure();
-                            app.show_mutation_failure(&e);
+                            if app.should_retry_mutation_failure(&e) {
+                                if let Some(retry) = retry {
+                                    app.schedule_mutation_retry(retry, &e);
+                                    continue;
+                                }
+                            }
+                            app.handle_mutation_failure_result(id, best_effort, &e);
                         }
                         AsyncResult::ComposeReady(Ok(data)) => {
                             let status = run_with_terminal_suspended(&mut terminal, &mut events, || {
@@ -4980,6 +5006,37 @@ mod tests {
     }
 
     #[test]
+    fn archived_message_stays_hidden_while_transient_failure_retries() {
+        let mut app = App::new();
+        set_active_inbox(&mut app);
+        app.mailbox.envelopes = make_test_envelopes(3);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let archived_id = app.mailbox.envelopes[0].id.clone();
+
+        app.apply(Action::Archive);
+
+        assert_eq!(app.mailbox.envelopes.len(), 2);
+        assert!(app.pending_optimistic.is_removed(&archived_id));
+        let queued = app.pending_mutation_queue.remove(0);
+        assert!(!queued.best_effort);
+
+        let error = MxrError::Ipc("mutation skipped 1 message(s): pool timed out".into());
+        app.finish_pending_mutation();
+        app.schedule_mutation_retry(queued, &error);
+
+        assert!(app.modals.error.is_none());
+        assert_eq!(
+            app.mailbox.envelopes.len(),
+            2,
+            "retrying a transient failure must not bounce the archived row back into view"
+        );
+        assert!(app.pending_optimistic.is_removed(&archived_id));
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+        assert_eq!(app.pending_mutation_queue[0].attempts, 1);
+        assert_eq!(app.pending_mutation_count, 1);
+    }
+
+    #[test]
     fn archive_outside_inbox_does_not_remove_optimistically() {
         let mut app = App::new();
         // Active label = STARRED (not INBOX). Archive removes INBOX, so the
@@ -5691,6 +5748,7 @@ mod tests {
             .flags
             .contains(MessageFlags::READ));
         assert_eq!(app.pending_mutation_queue.len(), 1);
+        assert!(app.pending_mutation_queue[0].best_effort);
         match &app.pending_mutation_queue[0].request {
             Request::Mutation {
                 mutation: MutationCommand::SetRead { message_ids, read },
@@ -5701,6 +5759,88 @@ mod tests {
             }
             other => panic!("expected set-read mutation, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn preview_read_transient_failure_retries_without_error_modal_or_rollback() {
+        let mut app = App::new();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.envelopes[0].flags = MessageFlags::empty();
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+        app.expire_pending_preview_read_for_tests();
+        app.tick();
+
+        let queued = app.pending_mutation_queue.remove(0);
+        assert!(queued.best_effort);
+        assert!(app.mailbox.envelopes[0].flags.contains(MessageFlags::READ));
+
+        let error = MxrError::Ipc("mutation skipped 1 message(s): pool timed out".into());
+        app.finish_pending_mutation();
+        assert!(app.should_retry_mutation_failure(&error));
+        app.schedule_mutation_retry(queued, &error);
+
+        assert!(app.modals.error.is_none());
+        assert!(app.mailbox.envelopes[0].flags.contains(MessageFlags::READ));
+        assert!(app.mailbox.all_envelopes[0]
+            .flags
+            .contains(MessageFlags::READ));
+        assert!(app.mailbox.viewed_thread_messages[0]
+            .flags
+            .contains(MessageFlags::READ));
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+        assert_eq!(app.pending_mutation_queue[0].attempts, 1);
+        assert!(app.pending_mutation_queue[0].run_after.is_some());
+        assert_eq!(app.pending_mutation_count, 1);
+    }
+
+    #[test]
+    fn preview_read_exhausted_failure_reconciles_without_error_modal() {
+        let mut app = App::new();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.envelopes[0].flags = MessageFlags::empty();
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+        app.expire_pending_preview_read_for_tests();
+        app.tick();
+
+        let queued = app.pending_mutation_queue.remove(0);
+        assert!(queued.best_effort);
+        assert!(app.mailbox.envelopes[0].flags.contains(MessageFlags::READ));
+
+        app.finish_pending_mutation();
+        app.handle_mutation_failure_result(
+            queued.id,
+            queued.best_effort,
+            &MxrError::Ipc("pool timed out".into()),
+        );
+
+        assert!(app.modals.error.is_none());
+        assert!(!app.mailbox.envelopes[0]
+            .flags
+            .contains(MessageFlags::READ));
+        assert!(!app.mailbox.all_envelopes[0]
+            .flags
+            .contains(MessageFlags::READ));
+        assert!(!app.mailbox.viewed_thread_messages[0]
+            .flags
+            .contains(MessageFlags::READ));
+        assert!(!app
+            .mailbox
+            .viewing_envelope
+            .as_ref()
+            .unwrap()
+            .flags
+            .contains(MessageFlags::READ));
+        assert!(app.mailbox.pending_labels_refresh);
+        assert!(app.mailbox.pending_all_envelopes_refresh);
+        assert!(app.diagnostics.pending_status_refresh);
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Mailbox refreshing to reconcile state")
+        );
     }
 
     #[test]

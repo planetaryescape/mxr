@@ -64,11 +64,13 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &mut SubscriptionsPageView<'_>,
         frame,
         chunks[1],
         view.preview_blocks,
-        None,
-        view.message_scroll_offset,
-        view.active_pane,
-        theme,
-        view.html_images,
+        crate::ui::message_view::DrawOptions {
+            summary: None,
+            scroll_offset: view.message_scroll_offset,
+            active_pane: view.active_pane,
+            theme,
+            html_images: view.html_images,
+        },
     );
 }
 

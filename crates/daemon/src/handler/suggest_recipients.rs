@@ -158,6 +158,10 @@ mod tests {
     use mxr_search::{SearchIndexEntry, SearchUpdateBatch};
     use std::sync::Arc;
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "test fixture helper keeps recipient/header dimensions explicit"
+    )]
     fn envelope(
         account_id: &AccountId,
         thread_id: &ThreadId,

@@ -151,6 +151,10 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "CLI wrapper mirrors clap-dispatched reply flags without changing the command surface"
+)]
 pub async fn reply(
     message_id: String,
     body: Option<String>,
@@ -177,6 +181,10 @@ pub async fn reply(
     .await
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "CLI wrapper mirrors clap-dispatched reply-all flags without changing the command surface"
+)]
 pub async fn reply_all(
     message_id: String,
     body: Option<String>,
@@ -203,6 +211,10 @@ pub async fn reply_all(
     .await
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "reply_inner is the shared CLI reply/reply-all bridge; flags stay explicit at the boundary"
+)]
 async fn reply_inner(
     message_id: String,
     body: Option<String>,
@@ -286,6 +298,10 @@ async fn reply_inner(
     .await
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "CLI wrapper mirrors clap-dispatched forward flags without changing the command surface"
+)]
 pub async fn forward(
     message_id: String,
     to: Option<String>,
@@ -394,6 +410,10 @@ async fn build_compose_draft(
     Ok((frontmatter, body, Some(path)))
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "compose finalization keeps draft state and CLI mode flags explicit at the send/save boundary"
+)]
 async fn finalize_compose(
     client: &mut IpcClient,
     account_id: AccountId,

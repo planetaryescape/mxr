@@ -383,12 +383,14 @@ fn draw_storage(
     render_table(
         frame,
         table,
-        " Storage ",
-        header,
-        rows,
-        &widths,
-        state.selected_index,
         theme,
+        TableRender {
+            title: " Storage ",
+            header,
+            rows,
+            widths: &widths,
+            selected_index: state.selected_index,
+        },
     );
 }
 
@@ -465,12 +467,14 @@ fn draw_stale(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
     render_table(
         frame,
         table,
-        " Stale Threads ",
-        header,
-        rows,
-        &widths,
-        state.selected_index,
         theme,
+        TableRender {
+            title: " Stale Threads ",
+            header,
+            rows,
+            widths: &widths,
+            selected_index: state.selected_index,
+        },
     );
 }
 
@@ -562,12 +566,14 @@ fn draw_asymmetry(
     render_table(
         frame,
         table,
-        " Contact Asymmetry ",
-        header,
-        rows,
-        &widths,
-        state.selected_index,
         theme,
+        TableRender {
+            title: " Contact Asymmetry ",
+            header,
+            rows,
+            widths: &widths,
+            selected_index: state.selected_index,
+        },
     );
 }
 
@@ -730,16 +736,27 @@ fn short_email(email: &str) -> &str {
     }
 }
 
+struct TableRender<'a> {
+    title: &'a str,
+    header: Row<'a>,
+    rows: Vec<Row<'a>>,
+    widths: &'a [Constraint],
+    selected_index: usize,
+}
+
 fn render_table<'a>(
     frame: &mut Frame,
     area: Rect,
-    title: &str,
-    header: Row<'a>,
-    rows: Vec<Row<'a>>,
-    widths: &[Constraint],
-    selected_index: usize,
     theme: &crate::theme::Theme,
+    table_render: TableRender<'a>,
 ) {
+    let TableRender {
+        title,
+        header,
+        rows,
+        widths,
+        selected_index,
+    } = table_render;
     let table = Table::new(rows, widths)
         .header(header)
         .block(
@@ -834,12 +851,14 @@ fn draw_largest_messages(
     render_table(
         frame,
         table,
-        " Largest Messages ",
-        header,
-        rows,
-        &widths,
-        state.selected_index,
         theme,
+        TableRender {
+            title: " Largest Messages ",
+            header,
+            rows,
+            widths: &widths,
+            selected_index: state.selected_index,
+        },
     );
 }
 
@@ -945,12 +964,14 @@ fn draw_decay(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
     render_table(
         frame,
         table,
-        " Contact Decay ",
-        header,
-        rows,
-        &widths,
-        state.selected_index,
         theme,
+        TableRender {
+            title: " Contact Decay ",
+            header,
+            rows,
+            widths: &widths,
+            selected_index: state.selected_index,
+        },
     );
 }
 
@@ -1031,12 +1052,14 @@ fn draw_cadence_drift(
     render_table(
         frame,
         table,
-        " Cadence Drift ",
-        header,
-        rows,
-        &widths,
-        state.selected_index,
         theme,
+        TableRender {
+            title: " Cadence Drift ",
+            header,
+            rows,
+            widths: &widths,
+            selected_index: state.selected_index,
+        },
     );
 }
 
@@ -1208,12 +1231,14 @@ fn draw_subscriptions(
     render_table(
         frame,
         table,
-        " Subscriptions ",
-        header,
-        rows,
-        &widths,
-        state.selected_index,
         theme,
+        TableRender {
+            title: " Subscriptions ",
+            header,
+            rows,
+            widths: &widths,
+            selected_index: state.selected_index,
+        },
     );
 }
 

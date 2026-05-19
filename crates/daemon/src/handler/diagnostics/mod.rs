@@ -929,16 +929,11 @@ pub(crate) async fn create_saved_search(
 pub(crate) async fn update_saved_search(
     state: &AppState,
     name: &str,
-    new_name: Option<&str>,
-    query: Option<&str>,
-    search_mode: Option<&SearchMode>,
-    sort: Option<&mxr_core::types::SortOrder>,
-    icon: Option<&str>,
-    position: Option<i32>,
+    update: mxr_store::SavedSearchUpdate<'_>,
 ) -> HandlerResult {
     let updated = state
         .store
-        .update_saved_search_by_name(name, new_name, query, search_mode, sort, icon, position)
+        .update_saved_search_by_name(name, update)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Saved search '{name}' not found"))?;

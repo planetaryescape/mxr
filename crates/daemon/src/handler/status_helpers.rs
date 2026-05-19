@@ -176,9 +176,9 @@ pub(super) async fn collect_doctor_report(
     // categorised entries with shell-runnable remediation. Clients (TUI,
     // future agents) can reason about individual issues without parsing
     // free text.
-    let findings = build_doctor_findings(
-        &sync_statuses,
-        &recent_error_logs,
+    let findings = build_doctor_findings(DoctorFindingInputs {
+        sync_statuses: &sync_statuses,
+        recent_errors: &recent_error_logs,
         data_dir_exists,
         database_exists,
         index_exists,
@@ -186,8 +186,8 @@ pub(super) async fn collect_doctor_report(
         repair_required,
         restart_required,
         semantic_enabled,
-        &data_stats,
-    );
+        data_stats: &data_stats,
+    });
 
     let report = mxr_protocol::DoctorReport {
         healthy,
@@ -315,22 +315,26 @@ fn llm_feature_health(
 /// failure modes — OAuth refresh failed, rate-limited, network
 /// unreachable — so the user gets a copy-pasteable next step instead
 /// of a free-text dump.
+pub(crate) struct DoctorFindingInputs<'a> {
+    pub(crate) sync_statuses: &'a [mxr_protocol::AccountSyncStatus],
+    pub(crate) recent_errors: &'a [String],
+    pub(crate) data_dir_exists: bool,
+    pub(crate) database_exists: bool,
+    pub(crate) index_exists: bool,
+    pub(crate) socket_exists: bool,
+    pub(crate) repair_required: bool,
+    pub(crate) restart_required: bool,
+    pub(crate) semantic_enabled: bool,
+    pub(crate) data_stats: &'a mxr_protocol::DoctorDataStats,
+}
+
 pub(crate) fn build_doctor_findings(
-    sync_statuses: &[mxr_protocol::AccountSyncStatus],
-    recent_errors: &[String],
-    data_dir_exists: bool,
-    database_exists: bool,
-    index_exists: bool,
-    socket_exists: bool,
-    repair_required: bool,
-    restart_required: bool,
-    semantic_enabled: bool,
-    data_stats: &mxr_protocol::DoctorDataStats,
+    inputs: DoctorFindingInputs<'_>,
 ) -> Vec<mxr_protocol::DoctorFinding> {
     use mxr_protocol::{DoctorFinding, DoctorFindingCategory, DoctorFindingSeverity};
     let mut findings = Vec::new();
 
-    if !data_dir_exists {
+    if !inputs.data_dir_exists {
         findings.push(DoctorFinding {
             category: DoctorFindingCategory::Storage,
             severity: DoctorFindingSeverity::Error,
@@ -338,7 +342,7 @@ pub(crate) fn build_doctor_findings(
             remediation: vec!["mxr daemon --foreground".into()],
         });
     }
-    if !database_exists {
+    if !inputs.database_exists {
         findings.push(DoctorFinding {
             category: DoctorFindingCategory::Storage,
             severity: DoctorFindingSeverity::Error,
@@ -346,7 +350,7 @@ pub(crate) fn build_doctor_findings(
             remediation: vec!["mxr daemon --foreground".into(), "mxr doctor".into()],
         });
     }
-    if !index_exists || repair_required {
+    if !inputs.index_exists || inputs.repair_required {
         findings.push(DoctorFinding {
             category: DoctorFindingCategory::SearchIndex,
             severity: DoctorFindingSeverity::Warning,
@@ -354,7 +358,7 @@ pub(crate) fn build_doctor_findings(
             remediation: vec!["mxr doctor --reindex".into()],
         });
     }
-    if !socket_exists {
+    if !inputs.socket_exists {
         findings.push(DoctorFinding {
             category: DoctorFindingCategory::Daemon,
             severity: DoctorFindingSeverity::Error,
@@ -362,7 +366,7 @@ pub(crate) fn build_doctor_findings(
             remediation: vec!["mxr daemon --foreground".into(), "mxr status".into()],
         });
     }
-    if restart_required {
+    if inputs.restart_required {
         findings.push(DoctorFinding {
             category: DoctorFindingCategory::Daemon,
             severity: DoctorFindingSeverity::Warning,
@@ -371,9 +375,9 @@ pub(crate) fn build_doctor_findings(
         });
     }
 
-    if semantic_enabled {
-        let missing_messages = data_stats.messages_missing_semantic_chunks;
-        let missing_embeddings = data_stats.semantic_chunks_missing_embeddings;
+    if inputs.semantic_enabled {
+        let missing_messages = inputs.data_stats.messages_missing_semantic_chunks;
+        let missing_embeddings = inputs.data_stats.semantic_chunks_missing_embeddings;
         if missing_messages > 0 || missing_embeddings > 0 {
             findings.push(DoctorFinding {
                 category: DoctorFindingCategory::Semantic,
@@ -386,25 +390,25 @@ pub(crate) fn build_doctor_findings(
         }
     }
 
-    if data_stats.relationship_drifts > 0 {
+    if inputs.data_stats.relationship_drifts > 0 {
         findings.push(DoctorFinding {
             category: DoctorFindingCategory::Generic,
             severity: DoctorFindingSeverity::Info,
             message: format!(
                 "Relationship voice drift detected for {} contact(s)",
-                data_stats.relationship_drifts
+                inputs.data_stats.relationship_drifts
             ),
             remediation: vec!["mxr profile <email> --rebuild".into()],
         });
     }
 
-    for status in sync_statuses {
+    for status in inputs.sync_statuses {
         if let Some(err) = status.last_error.as_deref() {
             findings.push(classify_sync_error(&status.account_name, err));
         }
     }
 
-    for line in recent_errors {
+    for line in inputs.recent_errors {
         if let Some(finding) = classify_log_line(line) {
             findings.push(finding);
         }

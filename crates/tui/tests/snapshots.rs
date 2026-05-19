@@ -21,7 +21,7 @@ use mxr_tui::ui::command_palette::{draw as draw_command_palette, CommandPalette}
 use mxr_tui::ui::compose_picker::{draw as draw_compose_picker, ComposePicker, Contact};
 use mxr_tui::ui::help_modal::{draw as draw_help_modal, HelpModalState};
 use mxr_tui::ui::label_picker::{draw as draw_label_picker, LabelPicker, LabelPickerMode};
-use mxr_tui::ui::message_view::{draw as draw_message_view, ThreadMessageBlock};
+use mxr_tui::ui::message_view::{draw as draw_message_view, DrawOptions, ThreadMessageBlock};
 use mxr_tui::ui::onboarding_modal::draw as draw_onboarding_modal;
 use mxr_tui::ui::search_bar::{draw as draw_search_bar, SearchBar};
 use mxr_tui::ui::search_page::draw as draw_search_page;
@@ -122,11 +122,13 @@ fn message_view_snapshot() {
             frame,
             Rect::new(0, 0, 70, 20),
             &[block],
-            None,
-            0,
-            &ActivePane::MessageView,
-            &mxr_tui::theme::Theme::default(),
-            &mut html_images,
+            DrawOptions {
+                summary: None,
+                scroll_offset: 0,
+                active_pane: &ActivePane::MessageView,
+                theme: &mxr_tui::theme::Theme::default(),
+                html_images: &mut html_images,
+            },
         );
     });
     assert!(snapshot.contains("Snapshot fixture"));

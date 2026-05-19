@@ -63,7 +63,7 @@ pub(crate) use helpers::{
 };
 pub(crate) use mutations::send_stored_draft;
 pub(crate) use status_helpers::{
-    build_doctor_findings, doctor_data_stats, latest_successful_sync_at,
+    build_doctor_findings, doctor_data_stats, latest_successful_sync_at, DoctorFindingInputs,
 };
 
 type HandlerResult = Result<ResponseData, String>;
@@ -764,12 +764,14 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             platform::update_saved_search(
                 state,
                 name,
-                new_name.as_deref(),
-                query.as_deref(),
-                search_mode.as_ref(),
-                sort.as_ref(),
-                icon.as_deref(),
-                *position,
+                mxr_store::SavedSearchUpdate {
+                    new_name: new_name.as_deref(),
+                    query: query.as_deref(),
+                    search_mode: search_mode.as_ref(),
+                    sort: sort.as_ref(),
+                    icon: icon.as_deref(),
+                    position: *position,
+                },
             )
             .await
         }

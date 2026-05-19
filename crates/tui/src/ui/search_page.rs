@@ -125,11 +125,13 @@ pub fn draw(
             frame,
             *inner.last().unwrap_or(&chunks[1]),
             preview_messages,
-            None,
-            preview_scroll,
-            &preview_active_pane,
-            theme,
-            html_images,
+            message_view::DrawOptions {
+                summary: None,
+                scroll_offset: preview_scroll,
+                active_pane: &preview_active_pane,
+                theme,
+                html_images,
+            },
         );
     }
 }

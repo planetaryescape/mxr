@@ -239,11 +239,13 @@ impl App {
                                 frame,
                                 inner[1],
                                 &preview_blocks,
-                                summary,
-                                self.mailbox.message_scroll_offset,
-                                &self.mailbox.active_pane,
-                                theme,
-                                &mut self.html_image_assets,
+                                ui::message_view::DrawOptions {
+                                    summary,
+                                    scroll_offset: self.mailbox.message_scroll_offset,
+                                    active_pane: &self.mailbox.active_pane,
+                                    theme,
+                                    html_images: &mut self.html_image_assets,
+                                },
                             );
                         }
                     }
@@ -261,11 +263,13 @@ impl App {
                             frame,
                             chunks[1],
                             &preview_blocks,
-                            summary,
-                            self.mailbox.message_scroll_offset,
-                            &self.mailbox.active_pane,
-                            theme,
-                            &mut self.html_image_assets,
+                            ui::message_view::DrawOptions {
+                                summary,
+                                scroll_offset: self.mailbox.message_scroll_offset,
+                                active_pane: &self.mailbox.active_pane,
+                                theme,
+                                html_images: &mut self.html_image_assets,
+                            },
                         );
                     }
                 }

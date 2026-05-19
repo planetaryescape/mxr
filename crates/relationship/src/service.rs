@@ -617,6 +617,10 @@ mod tests {
         }
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "test fixture helper keeps relationship-message dimensions explicit"
+    )]
     async fn insert_relationship_message(
         store: &Store,
         account: &Account,

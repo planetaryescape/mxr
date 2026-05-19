@@ -92,6 +92,15 @@ pub use user_voice_profile::{
     UserVoiceMessageSample, UserVoiceProfileRecord, UserVoiceRegisterMode,
 };
 
+pub struct SavedSearchUpdate<'a> {
+    pub new_name: Option<&'a str>,
+    pub query: Option<&'a str>,
+    pub search_mode: Option<&'a mxr_core::types::SearchMode>,
+    pub sort: Option<&'a mxr_core::types::SortOrder>,
+    pub icon: Option<&'a str>,
+    pub position: Option<i32>,
+}
+
 use chrono::{DateTime, Utc};
 use serde::de::DeserializeOwned;
 use serde::Serialize;

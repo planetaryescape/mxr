@@ -49,16 +49,27 @@ struct HtmlImageBlock {
     label: String,
 }
 
+pub struct DrawOptions<'a> {
+    pub summary: Option<ThreadSummaryBlock>,
+    pub scroll_offset: u16,
+    pub active_pane: &'a ActivePane,
+    pub theme: &'a Theme,
+    pub html_images: &'a mut HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
+}
+
 pub fn draw(
     frame: &mut Frame,
     area: Rect,
     messages: &[ThreadMessageBlock],
-    summary: Option<ThreadSummaryBlock>,
-    scroll_offset: u16,
-    active_pane: &ActivePane,
-    theme: &Theme,
-    html_images: &mut HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
+    options: DrawOptions<'_>,
 ) {
+    let DrawOptions {
+        summary,
+        scroll_offset,
+        active_pane,
+        theme,
+        html_images,
+    } = options;
     let is_focused = *active_pane == ActivePane::MessageView;
     let border_style = theme.border_style(is_focused);
 
@@ -387,11 +398,13 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 70, 18),
                 &[block],
-                None,
-                0,
-                &ActivePane::MessageView,
-                &Theme::default(),
-                &mut html_images,
+                DrawOptions {
+                    summary: None,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
             );
         });
 
@@ -423,16 +436,18 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 90, 20),
                 &[block],
-                Some(ThreadSummaryBlock {
-                    text: Some("Summary:\n- Alice asked for launch approval.".into()),
-                    model: Some("llama3.2".into()),
-                    loading: false,
-                    error: None,
-                }),
-                0,
-                &ActivePane::MessageView,
-                &Theme::default(),
-                &mut html_images,
+                DrawOptions {
+                    summary: Some(ThreadSummaryBlock {
+                        text: Some("Summary:\n- Alice asked for launch approval.".into()),
+                        model: Some("llama3.2".into()),
+                        loading: false,
+                        error: None,
+                    }),
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
             );
         });
 
@@ -472,11 +487,13 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 80, 18),
                 &[block],
-                None,
-                0,
-                &ActivePane::MessageView,
-                &Theme::default(),
-                &mut html_images,
+                DrawOptions {
+                    summary: None,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
             );
         });
 
@@ -523,11 +540,13 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 120, 30),
                 &[block],
-                None,
-                0,
-                &ActivePane::MessageView,
-                &Theme::default(),
-                &mut html_images,
+                DrawOptions {
+                    summary: None,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
             );
         });
 
@@ -569,11 +588,13 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 100, 18),
                 &[block],
-                None,
-                0,
-                &ActivePane::MessageView,
-                &Theme::default(),
-                &mut html_images,
+                DrawOptions {
+                    summary: None,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
             );
         });
 
@@ -622,11 +643,13 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 100, 24),
                 &[block],
-                None,
-                0,
-                &ActivePane::MessageView,
-                &Theme::default(),
-                &mut html_images,
+                DrawOptions {
+                    summary: None,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
             );
         });
 

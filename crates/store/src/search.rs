@@ -81,12 +81,7 @@ impl super::Store {
     pub async fn update_saved_search_by_name(
         &self,
         name: &str,
-        new_name: Option<&str>,
-        query: Option<&str>,
-        search_mode: Option<&SearchMode>,
-        sort: Option<&SortOrder>,
-        icon: Option<&str>,
-        position: Option<i32>,
+        update: super::SavedSearchUpdate<'_>,
     ) -> Result<Option<SavedSearch>, sqlx::Error> {
         let Some(existing) = self.get_saved_search_by_name(name).await? else {
             return Ok(None);
@@ -94,12 +89,18 @@ impl super::Store {
         let merged = SavedSearch {
             id: existing.id,
             account_id: existing.account_id,
-            name: new_name.map(|s| s.to_string()).unwrap_or(existing.name),
-            query: query.map(|s| s.to_string()).unwrap_or(existing.query),
-            search_mode: search_mode.cloned().unwrap_or(existing.search_mode),
-            sort: sort.cloned().unwrap_or(existing.sort),
-            icon: icon.map(|s| s.to_string()).or(existing.icon),
-            position: position.unwrap_or(existing.position),
+            name: update
+                .new_name
+                .map(|s| s.to_string())
+                .unwrap_or(existing.name),
+            query: update
+                .query
+                .map(|s| s.to_string())
+                .unwrap_or(existing.query),
+            search_mode: update.search_mode.cloned().unwrap_or(existing.search_mode),
+            sort: update.sort.cloned().unwrap_or(existing.sort),
+            icon: update.icon.map(|s| s.to_string()).or(existing.icon),
+            position: update.position.unwrap_or(existing.position),
             created_at: existing.created_at,
         };
 

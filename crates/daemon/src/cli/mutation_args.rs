@@ -2,6 +2,10 @@ use clap::Subcommand;
 use std::path::PathBuf;
 
 #[derive(Subcommand)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "clap keeps subcommand argument fields inline to preserve the CLI parser shape"
+)]
 pub enum AccountsAction {
     /// Add an account.
     ///

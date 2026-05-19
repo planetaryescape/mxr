@@ -734,7 +734,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::GetLlmStatus => platform::llm_status(state).await,
         Request::GetLlmConfig => platform::llm_config(state).await,
         Request::UpdateLlmConfig { config } => {
-            platform::update_llm_config(state, config.clone()).await
+            platform::update_llm_config(state, config.as_ref().clone()).await
         }
         Request::GetSemanticStatus => platform::semantic_status(state).await,
         Request::EnableSemantic { enabled } => platform::enable_semantic(state, *enabled).await,
@@ -8427,7 +8427,7 @@ mod tests {
                         id: 1,
                         source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Request(Request::UpdateLlmConfig {
-                            config: mxr_protocol::LlmConfigData {
+                            config: Box::new(mxr_protocol::LlmConfigData {
                                 enabled: true,
                                 base_url: "http://127.0.0.1:11434/v1".into(),
                                 model: "local-test-model".into(),
@@ -8436,7 +8436,7 @@ mod tests {
                                 request_timeout_secs: 30,
                                 allow_cloud_relationship_data: true,
                                 overrides: None,
-                            },
+                            }),
                         }),
                     };
 
@@ -8488,7 +8488,7 @@ mod tests {
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::UpdateLlmConfig {
-                config: mxr_protocol::LlmConfigData {
+                config: Box::new(mxr_protocol::LlmConfigData {
                     enabled: true,
                     base_url: "http://127.0.0.1:11434/v1".into(),
                     model: "  ".into(),
@@ -8497,7 +8497,7 @@ mod tests {
                     request_timeout_secs: 30,
                     allow_cloud_relationship_data: false,
                     overrides: None,
-                },
+                }),
             }),
         };
 

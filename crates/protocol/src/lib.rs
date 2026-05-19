@@ -319,7 +319,7 @@ mod tests {
             (Request::GetLlmConfig, IpcCategory::MxrPlatform),
             (
                 Request::UpdateLlmConfig {
-                    config: LlmConfigData {
+                    config: Box::new(LlmConfigData {
                         enabled: true,
                         base_url: "http://localhost:11434/v1".into(),
                         model: "qwen2.5:3b-instruct".into(),
@@ -328,7 +328,7 @@ mod tests {
                         request_timeout_secs: 120,
                         allow_cloud_relationship_data: false,
                         overrides: Some(LlmOverridesData::default()),
-                    },
+                    }),
                 },
                 IpcCategory::MxrPlatform,
             ),

@@ -366,12 +366,12 @@ mod tests {
     fn selected_messages_render_visible_chip() {
         let block = ThreadMessageBlock {
             envelope: envelope(),
-            body_state: BodyViewState::Ready {
-                raw: "hello".into(),
-                rendered: "hello".into(),
-                source: BodySource::Plain,
-                metadata: crate::app::BodyViewMetadata::default(),
-            },
+            body_state: BodyViewState::ready(
+                "hello".into(),
+                "hello".into(),
+                BodySource::Plain,
+                crate::app::BodyViewMetadata::default(),
+            ),
             labels: vec!["INBOX".into()],
             attachments: vec![],
             selected: true,
@@ -402,12 +402,12 @@ mod tests {
     fn thread_summary_renders_above_message() {
         let block = ThreadMessageBlock {
             envelope: envelope(),
-            body_state: BodyViewState::Ready {
-                raw: "hello".into(),
-                rendered: "hello".into(),
-                source: BodySource::Plain,
-                metadata: crate::app::BodyViewMetadata::default(),
-            },
+            body_state: BodyViewState::ready(
+                "hello".into(),
+                "hello".into(),
+                BodySource::Plain,
+                crate::app::BodyViewMetadata::default(),
+            ),
             labels: vec![],
             attachments: vec![],
             selected: true,
@@ -446,17 +446,17 @@ mod tests {
         let raw = "Hello\n> quoted line\n-- \nSignature";
         let block = ThreadMessageBlock {
             envelope: envelope(),
-            body_state: BodyViewState::Ready {
-                raw: raw.into(),
-                rendered: raw.into(),
-                source: BodySource::Plain,
-                metadata: BodyViewMetadata {
+            body_state: BodyViewState::ready(
+                raw.into(),
+                raw.into(),
+                BodySource::Plain,
+                BodyViewMetadata {
                     mode: BodyViewMode::Text,
                     provenance: Some(BodyPartSource::Exact),
                     reader_applied: false,
                     ..BodyViewMetadata::default()
                 },
-            },
+            ),
             labels: vec![],
             attachments: vec![],
             selected: true,
@@ -495,11 +495,11 @@ mod tests {
         );
         let block = ThreadMessageBlock {
             envelope: envelope(),
-            body_state: BodyViewState::Ready {
-                raw: html.into(),
-                rendered: html.into(),
-                source: BodySource::Html,
-                metadata: BodyViewMetadata {
+            body_state: BodyViewState::ready(
+                html.into(),
+                html.into(),
+                BodySource::Html,
+                BodyViewMetadata {
                     mode: BodyViewMode::Html,
                     provenance: Some(BodyPartSource::Exact),
                     inline_images: true,
@@ -507,7 +507,7 @@ mod tests {
                     remote_content_enabled: false,
                     ..BodyViewMetadata::default()
                 },
-            },
+            ),
             labels: vec![],
             attachments: vec![],
             selected: true,
@@ -548,12 +548,12 @@ mod tests {
         };
         let block = ThreadMessageBlock {
             envelope: env,
-            body_state: BodyViewState::Ready {
-                raw: "hello".into(),
-                rendered: "hello".into(),
-                source: BodySource::Plain,
-                metadata: BodyViewMetadata::default(),
-            },
+            body_state: BodyViewState::ready(
+                "hello".into(),
+                "hello".into(),
+                BodySource::Plain,
+                BodyViewMetadata::default(),
+            ),
             labels: vec![],
             attachments: vec![],
             selected: true,
@@ -584,11 +584,11 @@ mod tests {
     fn calendar_invite_metadata_renders_as_message_header_card() {
         let block = ThreadMessageBlock {
             envelope: envelope(),
-            body_state: BodyViewState::Ready {
-                raw: "Join us".into(),
-                rendered: "Join us".into(),
-                source: BodySource::Plain,
-                metadata: BodyViewMetadata {
+            body_state: BodyViewState::ready(
+                "Join us".into(),
+                "Join us".into(),
+                BodySource::Plain,
+                BodyViewMetadata {
                     mode: BodyViewMode::Text,
                     calendar: Some(CalendarMetadata {
                         method: Some("REQUEST".into()),
@@ -606,7 +606,7 @@ mod tests {
                     }),
                     ..BodyViewMetadata::default()
                 },
-            },
+            ),
             labels: vec![],
             attachments: vec![],
             selected: true,

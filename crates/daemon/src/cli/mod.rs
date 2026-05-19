@@ -1880,6 +1880,10 @@ pub enum ActivityAction {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "clap keeps subcommand argument fields inline to preserve the CLI parser shape"
+)]
 pub enum ActivitySavedAction {
     /// List all saved filter presets.
     List {

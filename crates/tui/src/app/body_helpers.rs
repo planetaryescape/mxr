@@ -310,12 +310,12 @@ impl App {
                         false,
                         None,
                     );
-                    return BodyViewState::Ready {
-                        rendered: raw.clone(),
-                        raw,
-                        source: BodySource::Html,
+                    return BodyViewState::ready(
+                        raw.clone(),
+                        raw.clone(),
+                        BodySource::Html,
                         metadata,
-                    };
+                    );
                 }
 
                 if let Some(raw) = body.text_plain.clone() {
@@ -326,12 +326,12 @@ impl App {
                         false,
                         None,
                     );
-                    return BodyViewState::Ready {
-                        rendered: raw.clone(),
-                        raw,
-                        source: BodySource::Plain,
+                    return BodyViewState::ready(
+                        raw.clone(),
+                        raw.clone(),
+                        BodySource::Plain,
                         metadata,
-                    };
+                    );
                 }
             }
 
@@ -344,12 +344,7 @@ impl App {
                     self.mailbox.reader_mode,
                     stats,
                 );
-                return BodyViewState::Ready {
-                    raw,
-                    rendered,
-                    source: BodySource::Plain,
-                    metadata,
-                };
+                return BodyViewState::ready(raw, rendered, BodySource::Plain, metadata);
             }
 
             if let Some(raw) = body.text_html.clone() {
@@ -361,12 +356,7 @@ impl App {
                     self.mailbox.reader_mode,
                     stats,
                 );
-                return BodyViewState::Ready {
-                    raw,
-                    rendered,
-                    source: BodySource::Html,
-                    metadata,
-                };
+                return BodyViewState::ready(raw, rendered, BodySource::Html, metadata);
             }
 
             if let Some(raw) = body.best_effort_readable_summary() {
@@ -378,12 +368,7 @@ impl App {
                     self.mailbox.reader_mode,
                     stats,
                 );
-                return BodyViewState::Ready {
-                    raw,
-                    rendered,
-                    source: BodySource::Fallback,
-                    metadata,
-                };
+                return BodyViewState::ready(raw, rendered, BodySource::Fallback, metadata);
             }
 
             return BodyViewState::Empty { preview };

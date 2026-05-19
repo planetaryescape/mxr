@@ -3234,7 +3234,7 @@ async fn update_llm_config(
     match ipc_request(
         &state.config.socket_path,
         Request::UpdateLlmConfig {
-            config: body.into(),
+            config: Box::new(body.into()),
         },
     )
     .await?
@@ -3549,6 +3549,7 @@ mod tests {
                     },
                 }),
                 Request::UpdateLlmConfig { config } => {
+                    let config = *config;
                     *seen_for_ipc.lock().unwrap() = Some(config.clone());
                     Some(Response::Ok {
                         data: ResponseData::LlmConfig { config },

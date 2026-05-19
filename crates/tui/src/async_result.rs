@@ -89,8 +89,8 @@ pub(crate) enum AsyncResult {
     MutationResult {
         id: app::MutationId,
         best_effort: bool,
-        retry: Option<app::QueuedMutation>,
-        outcome: Result<app::MutationEffect, MxrError>,
+        retry: Option<Box<app::QueuedMutation>>,
+        outcome: Box<Result<app::MutationEffect, MxrError>>,
     },
     ComposeReady(Result<ComposeReadyData, MxrError>),
     /// Result of a fire-and-forget prewarm task that runs when the
@@ -99,8 +99,8 @@ pub(crate) enum AsyncResult {
     /// silently dropped — the cold path still works.
     ReplyContextWarmed {
         message_id: MessageId,
-        reply: Result<ReplyContext, MxrError>,
-        reply_all: Result<ReplyContext, MxrError>,
+        reply: Box<Result<ReplyContext, MxrError>>,
+        reply_all: Box<Result<ReplyContext, MxrError>>,
     },
     ExportResult(Result<String, MxrError>),
     Unsubscribe(Result<UnsubscribeResultData, MxrError>),
@@ -152,7 +152,7 @@ pub(crate) enum AsyncResult {
     /// view are dropped by the handler.
     AnalyticsResult {
         view: app::AnalyticsView,
-        result: Result<AnalyticsResultPayload, MxrError>,
+        result: Box<Result<AnalyticsResultPayload, MxrError>>,
     },
     /// Snapshot of the user's compose snippets, surfaced by the
     /// snippets browser modal.
@@ -167,7 +167,7 @@ pub(crate) enum AsyncResult {
     /// `Ok(None)` when the sender is unknown to the contacts table.
     SenderProfileLoaded {
         email: String,
-        result: Result<Option<SenderProfileData>, MxrError>,
+        result: Box<Result<Option<SenderProfileData>, MxrError>>,
     },
     /// Snapshot of senders awaiting a screener decision.
     ScreenerQueueLoaded {
@@ -201,7 +201,7 @@ pub(crate) enum AnalyticsResultPayload {
     CadenceDrift(Vec<mxr_protocol::CadenceDriftRowData>),
     ResponseTime(mxr_core::types::ResponseTimeSummary),
     Subscriptions(Vec<mxr_core::types::SubscriptionSummary>),
-    Wrapped(mxr_core::types::WrappedSummary),
+    Wrapped(Box<mxr_core::types::WrappedSummary>),
     ContactsRefreshed { rows: u32 },
 }
 

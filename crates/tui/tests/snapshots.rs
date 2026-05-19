@@ -98,12 +98,12 @@ fn sample_mail_row() -> MailListRow {
 fn message_view_snapshot() {
     let block = ThreadMessageBlock {
         envelope: sample_envelope(),
-        body_state: BodyViewState::Ready {
-            raw: "Hello\n> quoted\n> lines\n-- \nSig".into(),
-            rendered: "Hello\n> quoted\n> lines\n-- \nSig".into(),
-            source: BodySource::Plain,
-            metadata: mxr_tui::app::BodyViewMetadata::default(),
-        },
+        body_state: BodyViewState::ready(
+            "Hello\n> quoted\n> lines\n-- \nSig".into(),
+            "Hello\n> quoted\n> lines\n-- \nSig".into(),
+            BodySource::Plain,
+            mxr_tui::app::BodyViewMetadata::default(),
+        ),
         labels: vec!["INBOX".into(), "STARRED".into(), "UNSUBSCRIBE".into()],
         attachments: vec![mxr_tui::app::AttachmentSummary {
             filename: "report.pdf".into(),
@@ -352,12 +352,12 @@ fn search_page_snapshot() {
     let rows = vec![sample_mail_row()];
     let preview = vec![ThreadMessageBlock {
         envelope: sample_envelope(),
-        body_state: BodyViewState::Ready {
-            raw: "Preview body".into(),
-            rendered: "Preview body".into(),
-            source: BodySource::Plain,
-            metadata: mxr_tui::app::BodyViewMetadata::default(),
-        },
+        body_state: BodyViewState::ready(
+            "Preview body".into(),
+            "Preview body".into(),
+            BodySource::Plain,
+            mxr_tui::app::BodyViewMetadata::default(),
+        ),
         labels: vec!["INBOX".into()],
         attachments: vec![],
         selected: true,

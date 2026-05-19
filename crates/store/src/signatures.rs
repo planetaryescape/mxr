@@ -66,7 +66,7 @@ impl SignatureScope {
         }
     }
 
-    fn from_email(&self) -> Option<String> {
+    fn address_email(&self) -> Option<String> {
         match self {
             Self::Global | Self::Account(_) => None,
             Self::Address { email, .. } => Some(normalize_email(email)),
@@ -181,7 +181,7 @@ impl super::Store {
         let kind = kind.as_db_str();
         let signature_id = signature_id.as_str();
         let account_id = scope.account_id_str();
-        let from_email = scope.from_email();
+        let from_email = scope.address_email();
         let now = Utc::now().timestamp();
         sqlx::query!(
             r#"INSERT INTO signature_defaults

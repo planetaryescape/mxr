@@ -731,7 +731,7 @@ pub async fn run() -> anyhow::Result<()> {
                 };
                 AsyncResult::SenderProfileLoaded {
                     email: captured_email,
-                    result,
+                    result: Box::new(result),
                 }
             });
         }
@@ -1411,7 +1411,7 @@ pub async fn run() -> anyhow::Result<()> {
                         Ok(Response::Ok {
                             data: ResponseData::Wrapped { summary },
                         }) => Ok(crate::async_result::AnalyticsResultPayload::Wrapped(
-                            summary,
+                            Box::new(summary),
                         )),
                         Ok(Response::Ok {
                             data: ResponseData::RefreshedContacts { rows },
@@ -1424,7 +1424,10 @@ pub async fn run() -> anyhow::Result<()> {
                         Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                         Err(e) => Err(e),
                     };
-                AsyncResult::AnalyticsResult { view, result }
+                AsyncResult::AnalyticsResult {
+                    view,
+                    result: Box::new(result),
+                }
             });
         }
 
@@ -1447,7 +1450,10 @@ pub async fn run() -> anyhow::Result<()> {
                         Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                         Err(e) => Err(e),
                     };
-                AsyncResult::AnalyticsResult { view, result }
+                AsyncResult::AnalyticsResult {
+                    view,
+                    result: Box::new(result),
+                }
             });
         }
 
@@ -1619,8 +1625,8 @@ pub async fn run() -> anyhow::Result<()> {
                 AsyncResult::MutationResult {
                     id: mutation_id,
                     best_effort,
-                    retry,
-                    outcome,
+                    retry: retry.map(Box::new),
+                    outcome: Box::new(outcome),
                 }
             });
         }
@@ -1697,8 +1703,8 @@ pub async fn run() -> anyhow::Result<()> {
                         fetch_reply_context_dedicated(&socket_path, message_id.clone(), true).await;
                     let _ = result_tx_clone.send(AsyncResult::ReplyContextWarmed {
                         message_id,
-                        reply,
-                        reply_all,
+                        reply: Box::new(reply),
+                        reply_all: Box::new(reply_all),
                     });
                 });
             }
@@ -1947,7 +1953,7 @@ pub async fn run() -> anyhow::Result<()> {
                             if !still_relevant {
                                 continue;
                             }
-                            match result {
+                            match *result {
                                 Ok(profile) => {
                                     app.modals.sender_profile.set_profile(profile);
                                 }
@@ -2362,36 +2368,34 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::MutationResult {
                             id,
-                            best_effort: _,
-                            retry: _,
-                            outcome: Ok(effect),
-                        } => {
-                            app.finish_pending_mutation();
-                            // Daemon ack'd the mutation: discard the rollback
-                            // snapshot — there's no longer anything to revert.
-                            let _ = app.mutation_snapshots.take(id);
-                            // The optimistic change is now authoritative on
-                            // both sides; subsequent refreshes will reflect it
-                            // naturally, so stop masking refresh responses for
-                            // this mutation.
-                            app.pending_optimistic.clear(id);
-                            let show_completion_status = app.pending_mutation_count == 0;
-                            app.apply_mutation_completion(effect, show_completion_status);
-                        }
-                        AsyncResult::MutationResult {
-                            id,
                             best_effort,
                             retry,
-                            outcome: Err(e),
+                            outcome,
                         } => {
                             app.finish_pending_mutation();
-                            if app.should_retry_mutation_failure(&e) {
-                                if let Some(retry) = retry {
-                                    app.schedule_mutation_retry(retry, &e);
-                                    continue;
+                            match *outcome {
+                                Ok(effect) => {
+                                    // Daemon ack'd the mutation: discard the rollback
+                                    // snapshot — there's no longer anything to revert.
+                                    let _ = app.mutation_snapshots.take(id);
+                                    // The optimistic change is now authoritative on
+                                    // both sides; subsequent refreshes will reflect it
+                                    // naturally, so stop masking refresh responses for
+                                    // this mutation.
+                                    app.pending_optimistic.clear(id);
+                                    let show_completion_status = app.pending_mutation_count == 0;
+                                    app.apply_mutation_completion(effect, show_completion_status);
+                                }
+                                Err(e) => {
+                                    if app.should_retry_mutation_failure(&e) {
+                                        if let Some(retry) = retry {
+                                            app.schedule_mutation_retry(*retry, &e);
+                                            continue;
+                                        }
+                                    }
+                                    app.handle_mutation_failure_result(id, best_effort, &e);
                                 }
                             }
-                            app.handle_mutation_failure_result(id, best_effort, &e);
                         }
                         AsyncResult::ComposeReady(Ok(data)) => {
                             let status = run_with_terminal_suspended(&mut terminal, &mut events, || {
@@ -2411,8 +2415,8 @@ pub async fn run() -> anyhow::Result<()> {
                             reply,
                             reply_all,
                         } => {
-                            let reply_ok = reply.ok();
-                            let reply_all_ok = reply_all.ok();
+                            let reply_ok = (*reply).ok();
+                            let reply_all_ok = (*reply_all).ok();
                             app.compose.reply_context_cache.insert(
                                 message_id.clone(),
                                 crate::app::ReplyContextPair {
@@ -2612,7 +2616,7 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                             app.analytics.loading = false;
                             let was_ok = result.is_ok();
-                            match result {
+                            match *result {
                                 Ok(crate::async_result::AnalyticsResultPayload::Storage(rows)) => {
                                     app.analytics.storage_rows = rows;
                                 }
@@ -2654,7 +2658,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 Ok(crate::async_result::AnalyticsResultPayload::Wrapped(
                                     summary,
                                 )) => {
-                                    app.analytics.wrapped = Some(summary);
+                                    app.analytics.wrapped = Some(*summary);
                                 }
                                 Ok(
                                     crate::async_result::AnalyticsResultPayload::ContactsRefreshed {
@@ -5623,12 +5627,12 @@ mod tests {
         app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         app.apply(Action::OpenMessageView);
         assert_eq!(app.mailbox.layout_mode, LayoutMode::ThreePane);
-        app.mailbox.body_view_state = BodyViewState::Ready {
-            raw: "Hello".into(),
-            rendered: "Hello".into(),
-            source: BodySource::Plain,
-            metadata: BodyViewMetadata::default(),
-        };
+        app.mailbox.body_view_state = BodyViewState::ready(
+            "Hello".into(),
+            "Hello".into(),
+            BodySource::Plain,
+            BodyViewMetadata::default(),
+        );
         assert_eq!(app.mailbox.body_view_state.display_text(), Some("Hello"));
         app.apply(Action::CloseMessageView);
         assert!(matches!(
@@ -7542,12 +7546,12 @@ mod tests {
         app.search.page.preview_fullscreen = true;
         app.mailbox.viewed_thread_messages = vec![env.clone()];
         app.mailbox.viewing_envelope = Some(env);
-        app.mailbox.body_view_state = BodyViewState::Ready {
-            raw: "hello".into(),
-            rendered: "hello".into(),
-            source: BodySource::Plain,
-            metadata: BodyViewMetadata::default(),
-        };
+        app.mailbox.body_view_state = BodyViewState::ready(
+            "hello".into(),
+            "hello".into(),
+            BodySource::Plain,
+            BodyViewMetadata::default(),
+        );
 
         let output = render_to_string(120, 20, |frame| app.draw(frame));
 
@@ -8486,7 +8490,7 @@ mod tests {
                 ref rendered,
                 source: BodySource::Plain,
                 ..
-            } if raw == "Plain body" && rendered == "Plain body"
+            } if raw.as_str() == "Plain body" && rendered.as_str() == "Plain body"
         ));
     }
 
@@ -8519,8 +8523,8 @@ mod tests {
                 ref rendered,
                 source: BodySource::Html,
                 ref metadata,
-            } if raw == "<p>Hello html</p>"
-                && rendered == raw
+            } if raw.as_str() == "<p>Hello html</p>"
+                && rendered.as_str() == raw.as_str()
                 && metadata.mode == super::app::BodyViewMode::Html
         ));
     }
@@ -8659,7 +8663,7 @@ mod tests {
         assert!(matches!(
             app.mailbox.body_view_state,
             BodyViewState::Ready { ref raw, .. }
-                if raw == "Loaded by priority request"
+                if raw.as_str() == "Loaded by priority request"
         ));
     }
 
@@ -8721,8 +8725,8 @@ mod tests {
 
         match &app.mailbox.body_view_state {
             BodyViewState::Ready { raw, rendered, .. } => {
-                assert_eq!(raw, "<p>Hello html</p>");
-                assert_ne!(rendered, raw);
+                assert_eq!(raw.as_str(), "<p>Hello html</p>");
+                assert_ne!(rendered.as_str(), raw.as_str());
                 assert!(rendered.contains("Hello html"));
             }
             other => panic!("expected ready state, got {other:?}"),
@@ -8732,8 +8736,8 @@ mod tests {
 
         match &app.mailbox.body_view_state {
             BodyViewState::Ready { raw, rendered, .. } => {
-                assert_eq!(raw, "<p>Hello html</p>");
-                assert_eq!(rendered, raw);
+                assert_eq!(raw.as_str(), "<p>Hello html</p>");
+                assert_eq!(rendered.as_str(), raw.as_str());
             }
             other => panic!("expected ready state, got {other:?}"),
         }
@@ -8742,8 +8746,8 @@ mod tests {
 
         match &app.mailbox.body_view_state {
             BodyViewState::Ready { raw, rendered, .. } => {
-                assert_eq!(raw, "<p>Hello html</p>");
-                assert_ne!(rendered, raw);
+                assert_eq!(raw.as_str(), "<p>Hello html</p>");
+                assert_ne!(rendered.as_str(), raw.as_str());
                 assert!(rendered.contains("Hello html"));
             }
             other => panic!("expected ready state, got {other:?}"),
@@ -8881,11 +8885,11 @@ mod tests {
     #[test]
     fn reader_stats_visibility_respects_config() {
         let mut app = App::new();
-        app.mailbox.body_view_state = BodyViewState::Ready {
-            raw: "Hello".into(),
-            rendered: "Hello".into(),
-            source: BodySource::Plain,
-            metadata: BodyViewMetadata {
+        app.mailbox.body_view_state = BodyViewState::ready(
+            "Hello".into(),
+            "Hello".into(),
+            BodySource::Plain,
+            BodyViewMetadata {
                 mode: super::app::BodyViewMode::Text,
                 provenance: Some(BodyPartSource::Exact),
                 reader_applied: true,
@@ -8893,7 +8897,7 @@ mod tests {
                 cleaned_lines: Some(7),
                 ..BodyViewMetadata::default()
             },
-        };
+        );
 
         app.mailbox.show_reader_stats = false;
         assert!(app
@@ -8920,12 +8924,12 @@ mod tests {
         app.mailbox.active_pane = ActivePane::MessageView;
         app.mailbox.viewing_envelope = Some(app.mailbox.envelopes[0].clone());
         app.mailbox.viewed_thread_messages = app.mailbox.envelopes.clone();
-        app.mailbox.body_view_state = BodyViewState::Ready {
-            raw: "hello".into(),
-            rendered: "hello".into(),
-            source: BodySource::Plain,
-            metadata: BodyViewMetadata::default(),
-        };
+        app.mailbox.body_view_state = BodyViewState::ready(
+            "hello".into(),
+            "hello".into(),
+            BodySource::Plain,
+            BodyViewMetadata::default(),
+        );
         app.mailbox.active_label = Some(LabelId::new());
         app.mailbox.pending_active_label = Some(LabelId::new());
         app.mailbox.pending_label_fetch = Some(LabelId::new());

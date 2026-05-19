@@ -83,10 +83,10 @@ pub enum BodyViewState {
         preview: Option<String>,
     },
     Ready {
-        raw: String,
-        rendered: String,
+        raw: Box<String>,
+        rendered: Box<String>,
         source: BodySource,
-        metadata: BodyViewMetadata,
+        metadata: Box<BodyViewMetadata>,
     },
     Empty {
         preview: Option<String>,
@@ -98,6 +98,20 @@ pub enum BodyViewState {
 }
 
 impl BodyViewState {
+    pub fn ready(
+        raw: String,
+        rendered: String,
+        source: BodySource,
+        metadata: BodyViewMetadata,
+    ) -> Self {
+        Self::Ready {
+            raw: Box::new(raw),
+            rendered: Box::new(rendered),
+            source,
+            metadata: Box::new(metadata),
+        }
+    }
+
     pub fn display_text(&self) -> Option<&str> {
         match self {
             Self::Ready { rendered, .. } => Some(rendered.as_str()),

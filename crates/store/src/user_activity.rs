@@ -19,6 +19,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::QueryBuilder;
 use sqlx::Row;
+use std::str::FromStr;
 
 use crate::Store;
 
@@ -42,13 +43,21 @@ impl Tier {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    fn parse_str(s: &str) -> Option<Self> {
         match s {
             "ephemeral" => Some(Self::Ephemeral),
             "standard" => Some(Self::Standard),
             "important" => Some(Self::Important),
             _ => None,
         }
+    }
+}
+
+impl FromStr for Tier {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse_str(s).ok_or(())
     }
 }
 

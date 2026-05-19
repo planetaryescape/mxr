@@ -316,7 +316,10 @@ pub struct IpcMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "type")]
-#[allow(clippy::large_enum_variant)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "IPC envelope keeps request/response/event payloads transparent on the wire"
+)]
 pub enum IpcPayload {
     Request(Request),
     Response(Response),
@@ -573,7 +576,7 @@ pub enum Request {
     GetLlmStatus,
     GetLlmConfig,
     UpdateLlmConfig {
-        config: LlmConfigData,
+        config: Box<LlmConfigData>,
     },
     GetSemanticStatus,
     EnableSemantic {

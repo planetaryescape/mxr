@@ -1,4 +1,5 @@
-use super::{resolve_gmail_credentials, upsert_account_config, HandlerResult};
+use super::account_config::{resolve_gmail_credentials, upsert_account_config};
+use super::HandlerResult;
 use crate::state::{AppState, AuthSessionRuntime};
 use mxr_protocol::{
     AccountConfigData, AccountSyncConfigData, AuthFlowData, AuthSessionData, AuthSessionId,

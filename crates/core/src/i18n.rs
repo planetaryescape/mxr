@@ -81,42 +81,50 @@ pub struct StatusStrings {
     pub invite_cancelled: &'static str,
 }
 
+/// A calendar participation status that can be sent back to an organizer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendableCalendarPartstat {
+    Accepted,
+    Tentative,
+    Declined,
+}
+
+impl SendableCalendarPartstat {
+    pub fn as_calendar_partstat(self) -> CalendarPartstat {
+        match self {
+            Self::Accepted => CalendarPartstat::Accepted,
+            Self::Tentative => CalendarPartstat::Tentative,
+            Self::Declined => CalendarPartstat::Declined,
+        }
+    }
+}
+
 impl Locale {
-    /// Return the subject-line prefix for a given outgoing PARTSTAT, panicking
-    /// on `Delegated`/`NeedsAction` which never reach the send path.
-    pub fn invite_subject_prefix_for(&self, partstat: CalendarPartstat) -> &'static str {
+    /// Return the subject-line prefix for a sendable outgoing PARTSTAT.
+    pub fn invite_subject_prefix_for(&self, partstat: SendableCalendarPartstat) -> &'static str {
         match partstat {
-            CalendarPartstat::Accepted => self.invite.subject_prefix_accepted,
-            CalendarPartstat::Declined => self.invite.subject_prefix_declined,
-            CalendarPartstat::Tentative => self.invite.subject_prefix_tentative,
-            other => panic!(
-                "subject_prefix_for called with non-sendable partstat: {:?}",
-                other
-            ),
+            SendableCalendarPartstat::Accepted => self.invite.subject_prefix_accepted,
+            SendableCalendarPartstat::Declined => self.invite.subject_prefix_declined,
+            SendableCalendarPartstat::Tentative => self.invite.subject_prefix_tentative,
         }
     }
 
     /// Substitute `{email}` into the body template for the given PARTSTAT.
-    pub fn invite_body_for(&self, partstat: CalendarPartstat, email: &str) -> String {
+    pub fn invite_body_for(&self, partstat: SendableCalendarPartstat, email: &str) -> String {
         let template = match partstat {
-            CalendarPartstat::Accepted => self.invite.body_template_accepted,
-            CalendarPartstat::Declined => self.invite.body_template_declined,
-            CalendarPartstat::Tentative => self.invite.body_template_tentative,
-            other => panic!("body_for called with non-sendable partstat: {:?}", other),
+            SendableCalendarPartstat::Accepted => self.invite.body_template_accepted,
+            SendableCalendarPartstat::Declined => self.invite.body_template_declined,
+            SendableCalendarPartstat::Tentative => self.invite.body_template_tentative,
         };
         template.replace("{email}", email)
     }
 
     /// Return the localized pending-status label for a given outgoing PARTSTAT.
-    pub fn invite_status_pending_for(&self, partstat: CalendarPartstat) -> &'static str {
+    pub fn invite_status_pending_for(&self, partstat: SendableCalendarPartstat) -> &'static str {
         match partstat {
-            CalendarPartstat::Accepted => self.status.invite_pending_accept,
-            CalendarPartstat::Declined => self.status.invite_pending_decline,
-            CalendarPartstat::Tentative => self.status.invite_pending_tentative,
-            other => panic!(
-                "status_pending_for called with non-sendable partstat: {:?}",
-                other
-            ),
+            SendableCalendarPartstat::Accepted => self.status.invite_pending_accept,
+            SendableCalendarPartstat::Declined => self.status.invite_pending_decline,
+            SendableCalendarPartstat::Tentative => self.status.invite_pending_tentative,
         }
     }
 
@@ -284,23 +292,16 @@ mod tests {
 
     #[test]
     fn subject_prefix_dispatch_matches_partstat() {
-        assert_eq!(
-            EN.invite_subject_prefix_for(CalendarPartstat::Accepted),
-            "Accepted: "
-        );
-        assert_eq!(
-            EN.invite_subject_prefix_for(CalendarPartstat::Declined),
-            "Declined: "
-        );
-        assert_eq!(
-            EN.invite_subject_prefix_for(CalendarPartstat::Tentative),
-            "Tentative: "
-        );
+        use SendableCalendarPartstat::{Accepted, Declined, Tentative};
+
+        assert_eq!(EN.invite_subject_prefix_for(Accepted), "Accepted: ");
+        assert_eq!(EN.invite_subject_prefix_for(Declined), "Declined: ");
+        assert_eq!(EN.invite_subject_prefix_for(Tentative), "Tentative: ");
     }
 
     #[test]
     fn body_dispatch_substitutes_email() {
-        let body = EN.invite_body_for(CalendarPartstat::Accepted, "alice@example.com");
+        let body = EN.invite_body_for(SendableCalendarPartstat::Accepted, "alice@example.com");
         assert_eq!(body, "alice@example.com has accepted this invitation.");
     }
 

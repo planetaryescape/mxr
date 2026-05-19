@@ -369,8 +369,9 @@ pub fn compute_business_hours_seconds(start_unix: i64, end_unix: i64) -> i64 {
         return 0;
     };
 
-    let business_open = NaiveTime::from_hms_opt(9, 0, 0).unwrap();
-    let business_close = NaiveTime::from_hms_opt(17, 0, 0).unwrap();
+    let business_open = NaiveTime::from_hms_opt(9, 0, 0).expect("09:00:00 is a valid time literal");
+    let business_close =
+        NaiveTime::from_hms_opt(17, 0, 0).expect("17:00:00 is a valid time literal");
 
     let mut total: i64 = 0;
     let mut cursor_date = start.date_naive();

@@ -50,7 +50,11 @@ fn parse_dt(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
     }
     chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
         .ok()
-        .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc())
+        .map(|d| {
+            d.and_hms_opt(0, 0, 0)
+                .expect("midnight is a valid time literal")
+                .and_utc()
+        })
 }
 
 fn print(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {

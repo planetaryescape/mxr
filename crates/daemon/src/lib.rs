@@ -1,3 +1,11 @@
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "unit tests unwrap daemon fixtures and JSON fields for direct failures"
+    )
+)]
+
 #[doc(hidden)]
 pub mod activity;
 pub(crate) mod bridge;

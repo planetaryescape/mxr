@@ -3,6 +3,7 @@ use super::{
     populate_envelope_label_provider_ids, HandlerResult,
 };
 use crate::state::AppState;
+use mxr_core::i18n::SendableCalendarPartstat;
 use mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
 use mxr_core::types::{
     Address, BodyPartSource, CalendarAttendee, CalendarMetadata, CalendarPartstat,
@@ -351,9 +352,9 @@ async fn build_invite_response_preview(
         .map_err(|err| err.to_string())?;
 
     let partstat = match action {
-        CalendarInviteActionData::Accept => CalendarPartstat::Accepted,
-        CalendarInviteActionData::Tentative => CalendarPartstat::Tentative,
-        CalendarInviteActionData::Decline => CalendarPartstat::Declined,
+        CalendarInviteActionData::Accept => SendableCalendarPartstat::Accepted,
+        CalendarInviteActionData::Tentative => SendableCalendarPartstat::Tentative,
+        CalendarInviteActionData::Decline => SendableCalendarPartstat::Declined,
     };
     let subject = format!(
         "{}{}",

@@ -14,11 +14,12 @@ static FIRST_PERSON_PROMISE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?im)\bI\s*(?:'?ll|will|can|am\s+going\s+to|'?m\s+going\s+to)\s+([a-z][a-z\s\-']{2,80}?)(?:[.!\n]|$)",
     )
-    .unwrap()
+    .expect("first-person promise regex literal compiles")
 });
 
 static FOLLOW_UP_PHRASE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)\bI\s*(?:'?ll|will)\s+(follow\s+up|get\s+back|circle\s+back|send|share|file|review|update|ping|reach\s+out)\b").unwrap()
+    Regex::new(r"(?i)\bI\s*(?:'?ll|will)\s+(follow\s+up|get\s+back|circle\s+back|send|share|file|review|update|ping|reach\s+out)\b")
+        .expect("follow-up phrase regex literal compiles")
 });
 
 pub fn detect_candidates(draft: &Draft) -> Vec<DraftSafetyIssue> {

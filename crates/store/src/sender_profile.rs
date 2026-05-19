@@ -377,7 +377,10 @@ impl super::Store {
             .map(|index| {
                 let week_unix = first_week + Duration::weeks(index).num_seconds();
                 SenderWeeklyActivity {
-                    week_start: Utc.timestamp_opt(week_unix, 0).single().unwrap(),
+                    week_start: Utc
+                        .timestamp_opt(week_unix, 0)
+                        .single()
+                        .expect("week bucket timestamp is generated from a valid UTC date"),
                     inbound_count: 0,
                     outbound_count: 0,
                 }
@@ -536,7 +539,10 @@ fn build_sender_response_histogram(clock_seconds: &[i64]) -> Vec<ResponseTimeBuc
 }
 
 fn week_start_unix(timestamp: i64) -> i64 {
-    let dt = Utc.timestamp_opt(timestamp, 0).single().unwrap();
+    let dt = Utc
+        .timestamp_opt(timestamp, 0)
+        .single()
+        .expect("stored message timestamps must be valid UTC instants");
     let date = dt.date_naive() - Duration::days(i64::from(dt.weekday().num_days_from_monday()));
     Utc.from_utc_datetime(&date.and_time(NaiveTime::MIN))
         .timestamp()

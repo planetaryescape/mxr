@@ -19,6 +19,14 @@
 //! interactive: a single completion call returning the full response
 //! is simpler and just as fast in practice for ≤2KB outputs.
 
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "unit tests unwrap fake LLM responses for direct fixture failures"
+    )
+)]
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

@@ -540,12 +540,12 @@ impl App {
 
 fn invite_action_partstat(
     action: mxr_protocol::CalendarInviteActionData,
-) -> mxr_core::types::CalendarPartstat {
-    use mxr_core::types::CalendarPartstat;
+) -> mxr_core::i18n::SendableCalendarPartstat {
+    use mxr_core::i18n::SendableCalendarPartstat;
     use mxr_protocol::CalendarInviteActionData;
     match action {
-        CalendarInviteActionData::Accept => CalendarPartstat::Accepted,
-        CalendarInviteActionData::Tentative => CalendarPartstat::Tentative,
-        CalendarInviteActionData::Decline => CalendarPartstat::Declined,
+        CalendarInviteActionData::Accept => SendableCalendarPartstat::Accepted,
+        CalendarInviteActionData::Tentative => SendableCalendarPartstat::Tentative,
+        CalendarInviteActionData::Decline => SendableCalendarPartstat::Declined,
     }
 }

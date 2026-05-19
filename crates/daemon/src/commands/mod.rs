@@ -98,8 +98,8 @@ pub(crate) async fn resolve_account(
             .map(|account| account.account_id)
             .ok_or_else(|| anyhow::anyhow!("No account matching '{key}'"));
     }
-    if accounts.len() == 1 {
-        return Ok(accounts.into_iter().next().unwrap().account_id);
+    if let [account] = accounts.as_slice() {
+        return Ok(account.account_id.clone());
     }
     if let Some(default) = accounts.iter().find(|account| account.is_default) {
         return Ok(default.account_id.clone());

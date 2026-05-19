@@ -15,11 +15,13 @@ use regex::Regex;
 use crate::SafetyContext;
 
 static GROUP_LANG: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?im)^\s*(hi|hey|hello|dear)?\s*(team|all|folks|everyone|y'?all|guys)\b").unwrap()
+    Regex::new(r"(?im)^\s*(hi|hey|hello|dear)?\s*(team|all|folks|everyone|y'?all|guys)\b")
+        .expect("group language regex literal compiles")
 });
 static VOCATIVE: Lazy<Regex> = Lazy::new(|| {
     // "Hi Alice,", "Hey Alice -", "Alice,", "Hello Alice"
-    Regex::new(r"(?m)^\s*(?i:hi|hey|hello|dear)?\s*([A-Z][a-zA-Z'’\-]{1,30})\s*[,\-:!]").unwrap()
+    Regex::new(r"(?m)^\s*(?i:hi|hey|hello|dear)?\s*([A-Z][a-zA-Z'’\-]{1,30})\s*[,\-:!]")
+        .expect("vocative regex literal compiles")
 });
 
 pub fn check(draft: &Draft, ctx: &SafetyContext) -> Vec<DraftSafetyIssue> {

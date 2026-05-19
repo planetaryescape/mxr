@@ -6,18 +6,35 @@
 //!   `xoxb-…`, AWS keys/secrets, generic `client_secret=` / `api_key=`).
 //! - Warning: SSN-shaped, Luhn-valid card numbers.
 
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "PII unit tests serialize fixture output directly for failure clarity"
+    )
+)]
+
 use mxr_core::types::{Draft, DraftSafetyIssue, DraftSafetyIssueCode, DraftSafetySeverity};
 use mxr_reader::{clean, ReaderConfig};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-static SSN: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b(\d{3})-(\d{2})-(\d{4})\b").unwrap());
-static CC_DIGITS: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b(\d[ -]?){11,18}\d\b").unwrap());
-static SK_PREFIX: Lazy<Regex> = Lazy::new(|| Regex::new(r"\bsk-[A-Za-z0-9_-]{16,}\b").unwrap());
-static GH_PREFIX: Lazy<Regex> = Lazy::new(|| Regex::new(r"\bghp_[A-Za-z0-9]{20,}\b").unwrap());
-static SLACK_PREFIX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b").unwrap());
-static AWS_KEY_ID: Lazy<Regex> = Lazy::new(|| Regex::new(r"\bAKIA[0-9A-Z]{16}\b").unwrap());
+static SSN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\b(\d{3})-(\d{2})-(\d{4})\b").expect("SSN regex literal compiles"));
+static CC_DIGITS: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\b(\d[ -]?){11,18}\d\b").expect("credit-card regex literal compiles")
+});
+static SK_PREFIX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\bsk-[A-Za-z0-9_-]{16,}\b").expect("OpenAI key regex literal compiles")
+});
+static GH_PREFIX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\bghp_[A-Za-z0-9]{20,}\b").expect("GitHub token regex literal compiles")
+});
+static SLACK_PREFIX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b").expect("Slack token regex literal compiles")
+});
+static AWS_KEY_ID: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\bAKIA[0-9A-Z]{16}\b").expect("AWS key id regex literal compiles"));
 // Catches all four canonical/loose forms:
 //   AWS_ACCESS_KEY_ID=...      (canonical env var)
 //   AWS_SECRET_ACCESS_KEY=...  (canonical env var)
@@ -27,16 +44,20 @@ static AWS_KEY_LABEL: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)\baws[_-]?(access[_-]?key([_-]?id)?|secret[_-]?(access[_-]?)?key)\s*[:=]\s*\S+",
     )
-    .unwrap()
+    .expect("AWS key label regex literal compiles")
 });
 static GENERIC_API_KEY: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)\bapi[_-]?key\s*[:=]\s*['"]?[A-Za-z0-9_\-]{12,}['"]?"#).unwrap()
+    Regex::new(r#"(?i)\bapi[_-]?key\s*[:=]\s*['"]?[A-Za-z0-9_\-]{12,}['"]?"#)
+        .expect("generic API key regex literal compiles")
 });
 static CLIENT_SECRET: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)\bclient[_-]?secret\s*[:=]\s*['"]?[A-Za-z0-9_\-]{12,}['"]?"#).unwrap()
+    Regex::new(r#"(?i)\bclient[_-]?secret\s*[:=]\s*['"]?[A-Za-z0-9_\-]{12,}['"]?"#)
+        .expect("client secret regex literal compiles")
 });
-static PEM_PRIVATE_KEY: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"-----BEGIN [A-Z ]*PRIVATE KEY-----").unwrap());
+static PEM_PRIVATE_KEY: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
+        .expect("PEM private key regex literal compiles")
+});
 
 pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
     let cleaned_body = reader_clean(&draft.body_markdown);

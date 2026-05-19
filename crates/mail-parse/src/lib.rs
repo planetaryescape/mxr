@@ -1,3 +1,11 @@
+#![cfg_attr(
+    test,
+    expect(
+        clippy::panic,
+        reason = "unit tests panic with fixture names when calendar parsing fails"
+    )
+)]
+
 use chrono::{DateTime, Utc};
 use icalendar::parser::{
     read_calendar, unfold, Component as ParsedCalendarComponent, Property as ParsedCalendarProperty,

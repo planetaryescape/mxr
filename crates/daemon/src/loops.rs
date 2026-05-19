@@ -34,7 +34,7 @@ pub fn spawn_sync_loops(state: Arc<AppState>) {
             let loop_state = state.clone();
             let watcher_account_id = account_id.clone();
             let watcher_provider = provider.clone();
-            let _ = tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
                 let shutdown_rx = loop_state.shutdown_receiver();
                 idle_loop_for_account(
                     loop_state.clone(),
@@ -45,6 +45,7 @@ pub fn spawn_sync_loops(state: Arc<AppState>) {
                 .await;
                 loop_state.finish_idle_loop(&watcher_account_id);
             });
+            state.register_idle_loop_handle(account_id.clone(), handle);
         }
     }
 }

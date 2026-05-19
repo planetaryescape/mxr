@@ -39,6 +39,7 @@ struct RuntimeTasks {
     relationship_worker: ParkingMutex<Option<JoinHandle<()>>>,
     contacts_refresh_worker: ParkingMutex<Option<JoinHandle<()>>>,
     sync_loops: ParkingMutex<HashMap<AccountId, JoinHandle<()>>>,
+    idle_loops: ParkingMutex<HashMap<AccountId, JoinHandle<()>>>,
     snooze_loop: ParkingMutex<Option<JoinHandle<()>>>,
     auto_reminders_loop: ParkingMutex<Option<JoinHandle<()>>>,
     scheduled_sends_loop: ParkingMutex<Option<JoinHandle<()>>>,
@@ -70,8 +71,16 @@ impl RuntimeTasks {
         self.sync_loops.lock().insert(account_id, handle);
     }
 
+    fn register_idle_loop(&self, account_id: AccountId, handle: JoinHandle<()>) {
+        self.idle_loops.lock().insert(account_id, handle);
+    }
+
     fn finish_sync_loop(&self, account_id: &AccountId) {
         self.sync_loops.lock().remove(account_id);
+    }
+
+    fn finish_idle_loop(&self, account_id: &AccountId) {
+        self.idle_loops.lock().remove(account_id);
     }
 
     fn set_snooze_loop(&self, handle: JoinHandle<()>) {
@@ -185,6 +194,12 @@ impl RuntimeTasks {
         for (account_id, handle) in self.sync_loops.lock().drain() {
             handles.push(NamedTaskHandle {
                 name: format!("sync_loop:{account_id}"),
+                handle,
+            });
+        }
+        for (account_id, handle) in self.idle_loops.lock().drain() {
+            handles.push(NamedTaskHandle {
+                name: format!("idle_loop:{account_id}"),
                 handle,
             });
         }
@@ -931,6 +946,10 @@ impl AppState {
         self.runtime_tasks.register_sync_loop(account_id, handle);
     }
 
+    pub fn register_idle_loop_handle(&self, account_id: AccountId, handle: JoinHandle<()>) {
+        self.runtime_tasks.register_idle_loop(account_id, handle);
+    }
+
     pub fn finish_sync_loop(&self, account_id: &AccountId) {
         self.sync_loop_accounts.lock().remove(account_id);
         self.runtime_tasks.finish_sync_loop(account_id);
@@ -958,6 +977,7 @@ impl AppState {
 
     pub fn finish_idle_loop(&self, account_id: &AccountId) {
         self.idle_loop_accounts.lock().remove(account_id);
+        self.runtime_tasks.finish_idle_loop(account_id);
     }
 
     pub fn register_reply_pair_reconciler(&self, handle: JoinHandle<()>) {

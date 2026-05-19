@@ -108,11 +108,15 @@ mxr/
 │   │
 │   ├── provider-gmail/           # Gmail API adapter (MailSyncProvider + MailSendProvider)
 │   │                             # OAuth2 flow, history.list delta sync, batch API.
-│   │                             # Depends on: core
+│   │                             # Depends on: core, mail-parse, outbound
 │   │
 │   ├── provider-imap/            # IMAP adapter (MailSyncProvider only, first-party)
 │   │                             # CONDSTORE/QRESYNC + UID fallback + IDLE.
-│   │                             # Depends on: core
+│   │                             # Depends on: core, mail-parse
+│   │
+│   ├── provider-outlook/         # Outlook adapter (MailSyncProvider + MailSendProvider)
+│   │                             # Microsoft Graph sync plus outbound rendering.
+│   │                             # Depends on: core, outbound
 │   │
 │   ├── provider-smtp/            # SMTP send adapter (MailSendProvider only)
 │   │                             # Via lettre. Depends on: core, outbound
@@ -128,6 +132,10 @@ mxr/
 │   │                             # Markdown render, attachments, RFC 5322 assembly.
 │   │                             # Depends on: core
 │   │
+│   ├── llm/                      # LLM provider clients and prompt/result DTOs
+│   │                             # Mail-model-free; callers pass plain data.
+│   │                             # Depends on: no mxr crates
+│   │
 │   ├── sync/                     # Sync engine: orchestrates providers ↔ store ↔ search
 │   │                             # Delta tracking, conflict resolution, snooze wake loop.
 │   │                             # Depends on: core, store, search
@@ -138,15 +146,23 @@ mxr/
 │   │
 │   ├── reader/                   # Reader mode: HTML→text, signature stripping,
 │   │                             # quote collapsing, boilerplate removal.
-│   │                             # Depends on: core
+│   │                             # Depends on: no mxr crates
 │   │
 │   ├── rules/                    # Deterministic rules engine
 │   │                             # Condition evaluation, action dispatch, dry-run, replay.
-│   │                             # Depends on: core, store
+│   │                             # Depends on: core
 │   │
 │   ├── export/                   # Thread export in multiple formats
 │   │                             # Markdown, JSON, mbox, LLM context.
-│   │                             # Depends on: core, store, reader
+│   │                             # Depends on: core, reader
+│   │
+│   ├── relationship/             # Relationship analytics and recipient intelligence
+│   │                             # Uses local mail state, reader text, and optional LLM DTOs.
+│   │                             # Depends on: core, store, reader, llm
+│   │
+│   ├── safety/                   # Local reply/composition safety checks
+│   │                             # Pure checks over caller-provided message/reply context.
+│   │                             # Depends on: core, reader, relationship
 │   │
 │   ├── protocol/                 # IPC types: Request, Response, Command enums
 │   │                             # Shared between daemon and all clients.
@@ -186,12 +202,16 @@ These are strict. Violations should be caught in code review:
 
 1. **`core` depends on nothing internal.** It is the leaf node. All other crates depend on it.
 2. **`protocol` depends only on `core`.** It defines the IPC contract between daemon and clients.
-3. **Provider crates depend on `core` plus shared mail utility crates only.** Today that means `mail-parse` and `outbound`. They do NOT depend on store, search, sync, daemon, TUI, or web.
+3. **Provider crates depend on `core` plus shared mail utility crates only.** Today that means `mail-parse` and `outbound`. Gmail, IMAP, SMTP, Outlook, and fake adapters do NOT depend on store, search, sync, daemon, TUI, or web.
 4. **`store` depends only on `core`, and `search` depends only on `core`.** They are storage backends, not business logic.
-5. **`sync` depends on `core`, `store`, `search`.** It orchestrates data flow between providers and local state.
-6. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable — it's the application entry point.
-7. **`tui` and `web` are clients.** They may depend on `core`, `protocol`, and client-local utility crates such as `config`, `compose`, `reader`, and `mail-parse`, but they must not depend on daemon, store, search, sync, semantic, or provider crates.
-8. **Architectural seams are Cargo seams.** Do not fake crate boundaries with `#[path]` source inclusion; use real workspace crates and normal path dependencies.
+5. **`semantic` owns embeddings and dense retrieval.** It may depend on `core`, `config`, `reader`, and `store`. It must not depend on daemon, TUI, or provider crates.
+6. **`llm` owns LLM provider clients and prompt/result DTOs.** It deliberately depends on no internal crates; higher layers pass plain data into it.
+7. **`relationship` owns relationship analytics and recipient intelligence.** It may depend on `core`, `store`, `reader`, and `llm`. It must not depend on protocol, daemon, clients, sync, search, semantic, or provider crates.
+8. **`safety` owns local reply/composition safety checks.** It may depend on `core`, `reader`, and `relationship`. It must not depend on store, protocol, daemon, clients, sync, search, semantic, or provider crates.
+9. **`sync` depends on `core`, `store`, `search`.** It orchestrates data flow between providers and local state.
+10. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable — it's the application entry point.
+11. **`tui` and `web` are clients.** They may depend on `core`, `protocol`, and client-local utility crates such as `config`, `compose`, `reader`, and `mail-parse`, but they must not depend on daemon, store, search, sync, semantic, or provider crates.
+12. **Architectural seams are Cargo seams.** Do not fake crate boundaries with `#[path]` source inclusion; use real workspace crates and normal path dependencies.
 
 ### Package surface
 

@@ -225,14 +225,17 @@ These are strict. Violations should be caught in code review:
 
 1. **`core` depends on nothing internal.** It is the leaf node. All other crates depend on it.
 2. **`protocol` depends only on `core`.** It defines the IPC contract between daemon and clients.
-3. **Provider crates depend on `core` plus shared mail utility crates only.** Today that means `mail-parse` and `outbound`. They do NOT depend on store, search, sync, daemon, TUI, or web.
+3. **Provider crates depend on `core` plus shared mail utility crates only.** Today that means `mail-parse` and `outbound`. Gmail, IMAP, SMTP, Outlook, and fake adapters do NOT depend on store, search, sync, daemon, TUI, or web.
 4. **`store` depends only on `core`, and `search` depends only on `core`.** They are storage backends, not business logic.
 5. **`semantic` owns embeddings and dense retrieval.** It may depend on `core`, `config`, `reader`, and `store`. It must not depend on daemon, TUI, or provider crates.
-6. **`sync` depends on `core`, `store`, `search`.** It orchestrates data flow between providers and local state.
-7. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable — it's the application entry point.
+6. **`llm` owns LLM provider clients and prompt/result DTOs.** It deliberately depends on no internal crates; higher layers pass plain data into it.
+7. **`relationship` owns relationship analytics and recipient intelligence.** It may depend on `core`, `store`, `reader`, and `llm`. It must not depend on protocol, daemon, clients, sync, search, semantic, or provider crates.
+8. **`safety` owns local reply/composition safety checks.** It may depend on `core`, `reader`, and `relationship`. It must not depend on store, protocol, daemon, clients, sync, search, semantic, or provider crates.
+9. **`sync` depends on `core`, `store`, `search`.** It orchestrates data flow between providers and local state.
+10. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable — it's the application entry point.
    - **`daemon` MUST interact with providers only through `MailSyncProvider` / `MailSendProvider` traits.** Never import or call provider-specific types (e.g. `GmailClient`, `ImapClient`) from daemon handler/loop code. If a capability is needed, add it to the trait in `core` first, then implement it in the adapter. This is what makes providers swappable.
-8. **`tui` and `web` are clients.** They may depend on `core`, `protocol`, and client-local utility crates such as `config`, `compose`, `reader`, and `mail-parse`, but they must not depend on daemon, store, search, sync, semantic, or provider crates.
-9. **Architectural seams are Cargo seams.** Do not fake crate boundaries with `#[path]` source inclusion; use real workspace crates and normal path dependencies.
+11. **`tui` and `web` are clients.** They may depend on `core`, `protocol`, and client-local utility crates such as `config`, `compose`, `reader`, and `mail-parse`, but they must not depend on daemon, store, search, sync, semantic, or provider crates.
+12. **Architectural seams are Cargo seams.** Do not fake crate boundaries with `#[path]` source inclusion; use real workspace crates and normal path dependencies.
 
 ## Development Principles
 
@@ -342,13 +345,20 @@ crates/
   outbound/       # Shared outbound message rendering/building
   provider-gmail/ # Gmail API adapter (first-party)
   provider-imap/  # IMAP adapter (first-party)
+  provider-outlook/ # Outlook adapter (first-party)
   provider-smtp/  # SMTP send adapter
   provider-fake/  # In-memory test provider
   sync/           # Sync engine (providers <-> store <-> search)
   compose/        # $EDITOR workflow, frontmatter, draft UX
+  config/         # Config loading and typed settings
+  keychain/       # System keyring adapter
   reader/         # Reader mode (HTML->text, signature/quote stripping)
   rules/          # Deterministic rules engine
   export/         # Thread export (markdown, JSON, mbox, LLM context)
+  llm/            # LLM provider clients and DTOs
+  relationship/   # Relationship analytics and recipient intelligence
+  safety/         # Local reply/composition safety checks
+  humanizer/      # Human-facing text formatting helpers
   daemon/         # Background process, socket server
   tui/            # Ratatui frontend
   web/            # HTTP/WebSocket bridge client

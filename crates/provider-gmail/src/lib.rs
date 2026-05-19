@@ -1,3 +1,12 @@
+#![cfg_attr(
+    test,
+    expect(
+        clippy::panic,
+        clippy::unwrap_used,
+        reason = "unit tests use panic and unwrap to keep fixture failures direct"
+    )
+)]
+
 pub mod auth;
 mod auth_storage;
 pub mod client;

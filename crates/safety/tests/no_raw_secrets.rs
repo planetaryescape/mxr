@@ -9,6 +9,11 @@
 //! assertions in this file fail (the "raw absent" assertion AND the
 //! "preview present" assertion for that kind).
 
+#![expect(
+    clippy::unwrap_used,
+    reason = "integration tests unwrap stored audit rows and JSON fields for direct invariant failures"
+)]
+
 use mxr_core::types::{Address, Draft, DraftIntent, DraftSafetyReport, DraftSafetySeverity};
 use mxr_safety::{check_draft_deterministic, SafetyConfig, SafetyContext};
 use mxr_store::Store;

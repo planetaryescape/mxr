@@ -6,6 +6,12 @@
 //!
 //! These tests are intentionally LLM-free — Track 4 is statistical.
 
+#![expect(
+    clippy::panic,
+    clippy::unwrap_used,
+    reason = "integration tests use panic and unwrap to keep fixture failures direct"
+)]
+
 use mxr_test_support::daemon::{daemon_lock, run_json, run_status_only, spawn_fake_daemon};
 use serde_json::Value;
 use tempfile::TempDir;

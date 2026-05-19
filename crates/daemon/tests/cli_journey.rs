@@ -4,6 +4,11 @@
 //! → reply --yes → mutate → search reflects new state. Asserts the JSON contract
 //! on every command we touch so script consumers stay covered.
 
+#![expect(
+    clippy::panic,
+    reason = "integration tests panic with command output when daemon-backed journeys fail"
+)]
+
 use mxr_test_support::daemon::{
     daemon_lock, instance_socket_path, run_json, run_json_with_stdin, run_status_only,
     unique_instance_name as ts_unique_instance_name, write_fake_account_config, DaemonGuard,

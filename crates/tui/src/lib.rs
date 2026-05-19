@@ -1,4 +1,11 @@
-#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::panic,
+        clippy::unwrap_used,
+        reason = "unit tests use panic and unwrap to keep fixture failures direct"
+    )
+)]
 
 mod account_workflow;
 mod accounts_helpers;

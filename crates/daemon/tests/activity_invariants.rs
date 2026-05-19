@@ -8,6 +8,11 @@
 //!    module and `crates/store/src/user_activity.rs`, no code path
 //!    references `record_activity` or `user_activity` directly.
 
+#![expect(
+    clippy::unwrap_used,
+    reason = "integration tests unwrap inspected JSON fields for direct invariant failures"
+)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 

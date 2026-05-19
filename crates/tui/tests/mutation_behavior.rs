@@ -10,6 +10,11 @@
 //! buffer, reconciliation routing, etc.) as long as the observable
 //! outcome remains the same.
 
+#![expect(
+    clippy::panic,
+    reason = "integration tests panic when an observable action produces the wrong variant"
+)]
+
 use chrono::{TimeZone, Utc};
 use mxr_core::id::{AccountId, LabelId, MessageId, ThreadId};
 use mxr_core::types::{Address, Envelope, Label, LabelKind, MessageFlags, UnsubscribeMethod};
@@ -25,7 +30,7 @@ fn set_active_inbox_for_tests(app: &mut App) {
         .envelopes
         .first()
         .map(|e| e.account_id.clone())
-        .unwrap_or_else(AccountId::new);
+        .unwrap_or_default();
     let inbox_id = LabelId::from_provider_id("test", "INBOX");
     app.mailbox.labels = vec![Label {
         id: inbox_id.clone(),

@@ -14,7 +14,11 @@
 //! Use a dedicated throwaway Google account — the test only reads, but it
 //! does authenticate as the live user.
 
-#![allow(clippy::unwrap_used)]
+#![expect(
+    clippy::panic,
+    clippy::unwrap_used,
+    reason = "integration tests use panic and unwrap to keep fixture failures direct"
+)]
 
 use std::sync::Arc;
 

@@ -1,3 +1,8 @@
+#![expect(
+    clippy::panic,
+    reason = "test support panics with captured command output to make fixture failures actionable"
+)]
+
 pub mod daemon;
 
 use ratatui::backend::TestBackend;

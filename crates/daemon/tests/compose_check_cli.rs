@@ -6,6 +6,11 @@
 //! Journey: `mxr compose --to alice@example.com --body "see attached"
 //! --check`).
 
+#![expect(
+    clippy::expect_fun_call,
+    reason = "integration tests include command output in parse failure messages"
+)]
+
 use assert_cmd::prelude::*;
 use mxr_test_support::daemon::{daemon_lock, spawn_fake_daemon};
 use serde_json::Value;

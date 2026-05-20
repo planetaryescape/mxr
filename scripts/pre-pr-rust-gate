@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Mirror the required Rust hygiene checks from GitHub CI before opening or
+# updating a PR. The repository tracks the floating stable toolchain, so update
+# stable locally before treating this gate as authoritative.
+
+set -euo pipefail
+
+WORKSPACE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$WORKSPACE_ROOT"
+
+export CARGO_TERM_COLOR="${CARGO_TERM_COLOR:-always}"
+
+echo "mxr pre-PR Rust gate"
+echo
+if command -v rustup >/dev/null 2>&1; then
+    echo "active toolchain: $(rustup show active-toolchain 2>/dev/null || true)"
+fi
+echo "rustc: $(rustc --version)"
+echo "cargo: $(cargo --version)"
+echo "clippy: $(cargo clippy --version)"
+echo
+echo "Repo toolchain is floating stable. Run 'rustup update stable' before final verification."
+echo
+
+run() {
+    echo "+ $*"
+    "$@"
+    echo
+}
+
+run cargo fmt --all -- --check
+run cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+run scripts/check_architecture_boundaries.sh
+run cargo deny check
+
+echo "pre-PR Rust gate passed"

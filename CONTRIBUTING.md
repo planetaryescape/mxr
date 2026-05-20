@@ -99,6 +99,24 @@ cargo sqlx prepare --check --workspace
 cargo deny check
 ```
 
+Before claiming a PR is Rust-clean, update the floating stable toolchain and
+run the local CI mirror:
+
+```bash
+rustup update stable
+scripts/pre-pr-rust-gate
+```
+
+The script prints the active `rustc` and Clippy versions, then runs the Rust
+hygiene checks that most often drift from local machines to GitHub CI:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+scripts/check_architecture_boundaries.sh
+cargo deny check
+```
+
 Test helpers may use narrow `#[expect(clippy::...)]` annotations when
 panic/unwrap/default-mutation keeps fixture failures clearer. Keep the
 annotation on the smallest test module or function that needs it, and include

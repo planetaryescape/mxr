@@ -90,7 +90,7 @@ pub(crate) async fn suggest(state: &AppState, draft: &Draft, limit: usize) -> su
             })
         })
         .collect();
-    suggestions.sort_by(|a, b| b.evidence_msg_ids.len().cmp(&a.evidence_msg_ids.len()));
+    suggestions.sort_by_key(|suggestion| std::cmp::Reverse(suggestion.evidence_msg_ids.len()));
     suggestions.truncate(limit);
 
     Ok(ResponseData::SuggestedCollaborators { suggestions })

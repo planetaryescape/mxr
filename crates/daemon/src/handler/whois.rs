@@ -87,7 +87,7 @@ pub(crate) async fn explain(
     }
 
     let mut candidates: Vec<EntityCandidateData> = by_sender.into_values().collect();
-    candidates.sort_by(|a, b| b.mention_count.cmp(&a.mention_count));
+    candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.mention_count));
     candidates.truncate(MAX_CANDIDATES);
 
     let summary = if candidates.len() > 1 {

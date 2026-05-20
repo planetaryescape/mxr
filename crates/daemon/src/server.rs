@@ -259,12 +259,16 @@ async fn serve_client_connection(
 
             joined = request_tasks.join_next(), if !request_tasks.is_empty() => {
                 match joined {
-                    Some(Ok(response)) => {
-                        if can_send && sink.send(response).await.is_err() {
-                            can_send = false;
-                            accept_requests = false;
+                    Some(Ok(response)) if can_send => {
+                        match sink.send(response).await {
+                            Ok(()) => {}
+                            Err(_) => {
+                                can_send = false;
+                                accept_requests = false;
+                            }
                         }
                     }
+                    Some(Ok(_)) => {}
                     Some(Err(error)) => {
                         tracing::warn!("ipc request task failed: {error}");
                     }

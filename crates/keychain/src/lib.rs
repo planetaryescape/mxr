@@ -1,11 +1,3 @@
-#![cfg_attr(
-    test,
-    expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )
-)]
-
 #[cfg(target_os = "macos")]
 use security_framework::base::Error as SecurityError;
 #[cfg(target_os = "macos")]
@@ -218,6 +210,10 @@ pub fn set_password(service: &str, account: &str, password: &str) -> Result<(), 
 }
 
 #[cfg(all(test, target_os = "macos"))]
+#[expect(
+    clippy::unwrap_used,
+    reason = "macOS keychain tests unwrap fixture setup for direct failures"
+)]
 mod tests {
     use super::*;
     use security_framework::passwords::delete_generic_password;

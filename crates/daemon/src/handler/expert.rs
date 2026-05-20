@@ -63,11 +63,11 @@ pub(crate) async fn find(
         let mut full = match state.store.get_thread_envelopes(&thread_id).await {
             Ok(rows) => rows,
             Err(_) => {
-                envs.sort_by(|a, b| a.date.cmp(&b.date));
+                envs.sort_by_key(|env| env.date);
                 envs
             }
         };
-        full.sort_by(|a, b| a.date.cmp(&b.date));
+        full.sort_by_key(|env| env.date);
         if full.is_empty() {
             continue;
         }

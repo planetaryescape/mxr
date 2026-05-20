@@ -1324,7 +1324,7 @@ pub(super) async fn list_drafts(state: &AppState) -> HandlerResult {
                 .map_err(|e| e.to_string())?,
         );
     }
-    drafts.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+    drafts.sort_by_key(|draft| std::cmp::Reverse(draft.updated_at));
     Ok(ResponseData::Drafts { drafts })
 }
 
@@ -1344,7 +1344,7 @@ pub(super) async fn list_orphaned_drafts(state: &AppState) -> HandlerResult {
             drafts.push(draft);
         }
     }
-    drafts.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+    drafts.sort_by_key(|draft| std::cmp::Reverse(draft.updated_at));
     Ok(ResponseData::Drafts { drafts })
 }
 

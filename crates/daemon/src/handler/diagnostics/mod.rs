@@ -42,28 +42,10 @@ struct ExecutionExplainInput<'a> {
     notes: Vec<String>,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn list_events(
     state: &AppState,
-    limit: u32,
-    offset: u32,
-    level: Option<&str>,
-    category: Option<&str>,
-    category_prefix: Option<&str>,
-    since: Option<i64>,
-    until: Option<i64>,
-    search: Option<&str>,
+    filter: mxr_store::EventLogFilter<'_>,
 ) -> HandlerResult {
-    let filter = mxr_store::EventLogFilter {
-        limit,
-        offset,
-        level,
-        category,
-        category_prefix,
-        since,
-        until,
-        search,
-    };
     let entries = state
         .store
         .list_events_filtered(filter)

@@ -18,15 +18,24 @@ struct DraftAssistSuggestion {
     rewrite_iterations: u8,
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn run(
-    thread_id: Option<String>,
-    search: Option<String>,
-    first: bool,
-    limit: Option<u32>,
-    instruction: String,
-    format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
+pub struct DraftAssistRunOptions {
+    pub thread_id: Option<String>,
+    pub search: Option<String>,
+    pub first: bool,
+    pub limit: Option<u32>,
+    pub instruction: String,
+    pub format: Option<OutputFormat>,
+}
+
+pub async fn run(options: DraftAssistRunOptions) -> anyhow::Result<()> {
+    let DraftAssistRunOptions {
+        thread_id,
+        search,
+        first,
+        limit,
+        instruction,
+        format,
+    } = options;
     let mut client = IpcClient::connect().await?;
     let ids = resolve_thread_ids(
         &mut client,

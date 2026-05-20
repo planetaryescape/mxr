@@ -143,7 +143,10 @@ pub struct SubscriptionEntry {
     pub envelope: Envelope,
 }
 
-#[allow(clippy::large_enum_variant)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "sidebar item variants preserve direct payload access in hot UI state; boxing would add churn without shrinking the public state surface"
+)]
 #[derive(Debug, Clone)]
 pub enum SidebarItem {
     Account(mxr_protocol::AccountSummaryData),

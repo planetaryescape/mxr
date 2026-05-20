@@ -26,7 +26,7 @@ pub(super) async fn start_auth_session(
             client_secret,
             token_ref,
         }) => {
-            start_gmail_auth_session(
+            start_gmail_auth_session(GmailAuthSessionRequest {
                 state,
                 account,
                 reauthorize,
@@ -35,7 +35,7 @@ pub(super) async fn start_auth_session(
                 client_id,
                 client_secret,
                 token_ref,
-            )
+            })
             .await
         }
         Some(AccountSyncConfigData::OutlookPersonal {
@@ -70,9 +70,8 @@ pub(super) async fn start_auth_session(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn start_gmail_auth_session(
-    state: &Arc<AppState>,
+struct GmailAuthSessionRequest<'a> {
+    state: &'a Arc<AppState>,
     account: AccountConfigData,
     reauthorize: bool,
     requested_flow: AuthFlowData,
@@ -80,7 +79,19 @@ async fn start_gmail_auth_session(
     client_id: String,
     client_secret: Option<String>,
     token_ref: String,
-) -> HandlerResult {
+}
+
+async fn start_gmail_auth_session(request: GmailAuthSessionRequest<'_>) -> HandlerResult {
+    let GmailAuthSessionRequest {
+        state,
+        account,
+        reauthorize,
+        requested_flow,
+        credential_source,
+        client_id,
+        client_secret,
+        token_ref,
+    } = request;
     let (client_id, client_secret) =
         resolve_gmail_credentials(credential_source, client_id, client_secret)?;
     let flow = match requested_flow {

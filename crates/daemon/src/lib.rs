@@ -142,7 +142,15 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             purge,
             format,
         }) => {
-            commands::logs::run(no_follow, level, since, search, limit, purge, format)?;
+            commands::logs::run(commands::logs::LogRunOptions {
+                no_follow,
+                level,
+                since,
+                search,
+                limit,
+                purge,
+                format,
+            })?;
         }
         Some(Command::Reset {
             hard,
@@ -232,9 +240,17 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::cat::run(
-                message_id, search, first, limit, view, assets, raw, html, format,
-            )
+            commands::cat::run(commands::cat::CatRunOptions {
+                message_id,
+                search,
+                first,
+                limit,
+                view,
+                assets,
+                raw,
+                html,
+                format,
+            })
             .await?;
         }
         Some(Command::Thread {
@@ -402,9 +418,17 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::ask::run(
-                question, account, from, to, after, before, mode, limit, format,
-            )
+            commands::ask::run(commands::ask::ArchiveAskRunOptions {
+                question,
+                account,
+                from,
+                to,
+                after,
+                before,
+                mode,
+                limit,
+                format,
+            })
             .await?;
         }
         Some(Command::Voice {
@@ -473,8 +497,15 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                     "Provide an instruction: a positional argument or `--instruct \"...\"`"
                 )
             })?;
-            commands::draft_assist::run(thread_id, search, first, limit, instruction_text, format)
-                .await?;
+            commands::draft_assist::run(commands::draft_assist::DraftAssistRunOptions {
+                thread_id,
+                search,
+                first,
+                limit,
+                instruction: instruction_text,
+                format,
+            })
+            .await?;
         }
         Some(Command::Draft {
             action,
@@ -633,7 +664,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::history::run(
+            commands::history::run(commands::history::HistoryRunOptions {
                 category,
                 category_prefix,
                 level,
@@ -643,7 +674,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 offset,
                 limit,
                 format,
-            )
+            })
             .await?;
         }
         Some(Command::Notify { format, watch }) => {

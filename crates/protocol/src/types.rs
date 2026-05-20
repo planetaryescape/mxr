@@ -1444,7 +1444,10 @@ pub struct MutationResultData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "status")]
-#[allow(clippy::large_enum_variant)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "IPC response shape is serialized directly; boxing would not change the wire shape but would add client-side allocation churn"
+)]
 pub enum Response {
     Ok {
         data: ResponseData,
@@ -1563,7 +1566,10 @@ fn error_looks_retryable(message: &str) -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "kind")]
-#[allow(clippy::large_enum_variant)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "ResponseData is the tagged IPC contract; large variants are preserved inline to keep serde JSON compatibility obvious"
+)]
 pub enum ResponseData {
     // Core mail/runtime responses.
     Envelopes {

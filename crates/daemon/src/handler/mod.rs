@@ -793,14 +793,16 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         } => {
             admin::list_events(
                 state,
-                *limit,
-                *offset,
-                level.as_deref(),
-                category.as_deref(),
-                category_prefix.as_deref(),
-                *since,
-                *until,
-                search.as_deref(),
+                mxr_store::EventLogFilter {
+                    limit: *limit,
+                    offset: *offset,
+                    level: level.as_deref(),
+                    category: category.as_deref(),
+                    category_prefix: category_prefix.as_deref(),
+                    since: *since,
+                    until: *until,
+                    search: search.as_deref(),
+                },
             )
             .await
         }
@@ -820,12 +822,15 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         } => {
             admin::count_events(
                 state,
-                level.as_deref(),
-                category.as_deref(),
-                category_prefix.as_deref(),
-                *since,
-                *until,
-                search.as_deref(),
+                mxr_store::EventLogFilter {
+                    level: level.as_deref(),
+                    category: category.as_deref(),
+                    category_prefix: category_prefix.as_deref(),
+                    since: *since,
+                    until: *until,
+                    search: search.as_deref(),
+                    ..mxr_store::EventLogFilter::default()
+                },
             )
             .await
         }

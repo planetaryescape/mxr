@@ -30,18 +30,30 @@ fn render_table(entries: &[EventLogEntry]) {
     println!("\n{} entries", entries.len());
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn run(
-    category: Option<String>,
-    category_prefix: Option<String>,
-    level: Option<String>,
-    search: Option<String>,
-    since: Option<String>,
-    until: Option<String>,
-    offset: u32,
-    limit: u32,
-    format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
+pub struct HistoryRunOptions {
+    pub category: Option<String>,
+    pub category_prefix: Option<String>,
+    pub level: Option<String>,
+    pub search: Option<String>,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub offset: u32,
+    pub limit: u32,
+    pub format: Option<OutputFormat>,
+}
+
+pub async fn run(options: HistoryRunOptions) -> anyhow::Result<()> {
+    let HistoryRunOptions {
+        category,
+        category_prefix,
+        level,
+        search,
+        since,
+        until,
+        offset,
+        limit,
+        format,
+    } = options;
     let since_ts = since.as_deref().map(parse_history_time).transpose()?;
     let until_ts = until.as_deref().map(parse_history_time).transpose()?;
     let mut client = IpcClient::connect().await?;

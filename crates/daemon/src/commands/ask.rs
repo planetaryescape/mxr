@@ -4,18 +4,30 @@ use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::*;
 
-#[allow(clippy::too_many_arguments)]
-pub async fn run(
-    question: String,
-    account: Option<String>,
-    from: Option<String>,
-    to: Option<String>,
-    after: Option<String>,
-    before: Option<String>,
-    mode: ArchiveAskModeArg,
-    limit: u32,
-    format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
+pub struct ArchiveAskRunOptions {
+    pub question: String,
+    pub account: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub after: Option<String>,
+    pub before: Option<String>,
+    pub mode: ArchiveAskModeArg,
+    pub limit: u32,
+    pub format: Option<OutputFormat>,
+}
+
+pub async fn run(options: ArchiveAskRunOptions) -> anyhow::Result<()> {
+    let ArchiveAskRunOptions {
+        question,
+        account,
+        from,
+        to,
+        after,
+        before,
+        mode,
+        limit,
+        format,
+    } = options;
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_account(&mut client, account.as_deref()).await.ok();
     let after = after.as_deref().and_then(parse_dt);

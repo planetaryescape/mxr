@@ -1169,7 +1169,10 @@ fn demo_body(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "demo fixture builder keeps message dimensions explicit for readable generated scenarios"
+)]
 fn push_demo_msg(
     envelopes: &mut Vec<Envelope>,
     bodies: &mut HashMap<String, MessageBody>,
@@ -1424,7 +1427,10 @@ fn label_color(provider_id: &str) -> Option<&'static str> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "small fixture builder keeps synthetic message dimensions visible at call sites"
+)]
 fn push_msg(
     envelopes: &mut Vec<Envelope>,
     bodies: &mut HashMap<String, MessageBody>,

@@ -1329,7 +1329,10 @@ impl super::Store {
 /// Shared helper to convert individual field values into an Envelope.
 /// Used by both message.rs and thread.rs queries since the `query!` macro
 /// returns different anonymous types for each call site.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "row decoder mirrors the messages SQL projection; named DB row fields are the source of truth"
+)]
 pub(crate) fn record_to_envelope(
     id: &str,
     account_id: &str,

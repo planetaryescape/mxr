@@ -46,18 +46,30 @@ fn render_body_view(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn run(
-    message_id: Option<String>,
-    search: Option<String>,
-    first: bool,
-    limit: Option<u32>,
-    view: Option<BodyViewArg>,
-    assets: bool,
-    raw: bool,
-    html: bool,
-    format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
+pub struct CatRunOptions {
+    pub message_id: Option<String>,
+    pub search: Option<String>,
+    pub first: bool,
+    pub limit: Option<u32>,
+    pub view: Option<BodyViewArg>,
+    pub assets: bool,
+    pub raw: bool,
+    pub html: bool,
+    pub format: Option<OutputFormat>,
+}
+
+pub async fn run(options: CatRunOptions) -> anyhow::Result<()> {
+    let CatRunOptions {
+        message_id,
+        search,
+        first,
+        limit,
+        view,
+        assets,
+        raw,
+        html,
+        format,
+    } = options;
     let mut client = IpcClient::connect().await?;
     let ids = resolve_message_ids(
         &mut client,

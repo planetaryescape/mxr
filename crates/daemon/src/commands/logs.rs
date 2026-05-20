@@ -45,16 +45,26 @@ fn purge_events(retention_days: u32) -> anyhow::Result<u64> {
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn run(
-    no_follow: bool,
-    level: Option<String>,
-    since: Option<String>,
-    search: Option<String>,
-    limit: u32,
-    purge: bool,
-    format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
+pub struct LogRunOptions {
+    pub no_follow: bool,
+    pub level: Option<String>,
+    pub since: Option<String>,
+    pub search: Option<String>,
+    pub limit: u32,
+    pub purge: bool,
+    pub format: Option<OutputFormat>,
+}
+
+pub fn run(options: LogRunOptions) -> anyhow::Result<()> {
+    let LogRunOptions {
+        no_follow,
+        level,
+        since,
+        search,
+        limit,
+        purge,
+        format,
+    } = options;
     let data_dir = mxr_config::data_dir();
     let log_dir = data_dir.join("logs");
     let log_path = log_dir.join("mxr.log");

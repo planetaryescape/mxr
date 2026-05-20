@@ -1,30 +1,9 @@
 use super::{diagnostics_impl, HandlerResult};
 use crate::state::AppState;
+use mxr_store::EventLogFilter;
 
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn list_events(
-    state: &AppState,
-    limit: u32,
-    offset: u32,
-    level: Option<&str>,
-    category: Option<&str>,
-    category_prefix: Option<&str>,
-    since: Option<i64>,
-    until: Option<i64>,
-    search: Option<&str>,
-) -> HandlerResult {
-    diagnostics_impl::list_events(
-        state,
-        limit,
-        offset,
-        level,
-        category,
-        category_prefix,
-        since,
-        until,
-        search,
-    )
-    .await
+pub(super) async fn list_events(state: &AppState, filter: EventLogFilter<'_>) -> HandlerResult {
+    diagnostics_impl::list_events(state, filter).await
 }
 
 pub(super) async fn get_logs(
@@ -45,29 +24,15 @@ pub(super) async fn list_event_categories(state: &AppState) -> HandlerResult {
     Ok(mxr_protocol::ResponseData::EventCategories { categories })
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn count_events(
-    state: &AppState,
-    level: Option<&str>,
-    category: Option<&str>,
-    category_prefix: Option<&str>,
-    since: Option<i64>,
-    until: Option<i64>,
-    search: Option<&str>,
-) -> HandlerResult {
-    let filter = mxr_store::EventLogFilter {
+pub(super) async fn count_events(state: &AppState, filter: EventLogFilter<'_>) -> HandlerResult {
+    let count_filter = EventLogFilter {
         limit: 0,
         offset: 0,
-        level,
-        category,
-        category_prefix,
-        since,
-        until,
-        search,
+        ..filter
     };
     let count = state
         .store
-        .count_events_filtered(filter)
+        .count_events_filtered(count_filter)
         .await
         .map_err(|e| e.to_string())?;
     Ok(mxr_protocol::ResponseData::EventLogCount { count })

@@ -1,4 +1,10 @@
-#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::panic,
+        reason = "tests panic with diagnostic context for direct failures"
+    )
+)]
 
 use crate::handler::{handle_request, request_lane, IpcLane};
 use crate::ipc_client::IpcClient;

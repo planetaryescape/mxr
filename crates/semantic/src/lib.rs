@@ -1273,7 +1273,10 @@ fn semantic_hit_snippet(normalized: &str) -> String {
 
 #[cfg(all(test, feature = "local"))]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )]
 
     use super::*;
     use mxr_core::id::{AccountId, AttachmentId, MessageId, ThreadId};

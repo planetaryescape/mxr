@@ -781,7 +781,10 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )]
 
     use super::Store;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};

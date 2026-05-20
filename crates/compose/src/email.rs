@@ -1,6 +1,12 @@
 pub use mxr_outbound::email::*;
 
-#[cfg_attr(test, allow(clippy::unwrap_used))]
+#[cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

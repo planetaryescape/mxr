@@ -627,7 +627,10 @@ fn push_filter_clauses<'a>(qb: &mut QueryBuilder<'a, sqlx::Sqlite>, filter: &'a 
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )]
 
     use super::*;
     use serde_json::json;

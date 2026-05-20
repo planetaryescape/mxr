@@ -1,4 +1,10 @@
-#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::panic,
+        reason = "tests panic with diagnostic context for direct failures"
+    )
+)]
 
 use mxr_core::types::UnsubscribeMethod;
 use reqwest::Client;

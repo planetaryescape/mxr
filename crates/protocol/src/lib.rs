@@ -8,7 +8,11 @@ pub const IPC_PROTOCOL_VERSION: u32 = 3;
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::panic)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::panic,
+        reason = "tests use panic and unwrap for direct fixture failures"
+    )]
 
     use super::*;
     use bytes::BytesMut;

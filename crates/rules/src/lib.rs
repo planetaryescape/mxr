@@ -51,8 +51,6 @@ pub struct Rule {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    #![allow(clippy::unwrap_used)]
-
     use crate::condition::MessageView;
     use chrono::{DateTime, Utc};
 

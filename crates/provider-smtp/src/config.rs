@@ -1,4 +1,10 @@
-#![cfg_attr(test, allow(clippy::unwrap_used))]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )
+)]
 
 use once_cell::sync::OnceCell;
 use serde::Deserialize;

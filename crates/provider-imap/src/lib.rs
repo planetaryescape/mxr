@@ -1,4 +1,10 @@
-#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "IMAP tests unwrap fixture setup for direct failures"
+    )
+)]
 
 pub mod config;
 mod cursor;
@@ -1255,7 +1261,10 @@ fn label_to_flag(label: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::panic)]
+    #![expect(
+        clippy::unwrap_used,
+        reason = "IMAP tests unwrap fixture setup for direct failures"
+    )]
 
     use super::*;
     use crate::session::mock::MockImapSessionFactory;

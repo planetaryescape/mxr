@@ -1,4 +1,10 @@
-#![cfg_attr(test, allow(clippy::unwrap_used))]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )
+)]
 
 use async_trait::async_trait;
 use futures::stream::{self, StreamExt};

@@ -12,7 +12,11 @@
 //! is the HTTP↔IPC contract. Real-daemon-against-FakeProvider end-to-end
 //! coverage lives with the daemon and web app smoke tests.
 
-#![allow(clippy::unwrap_used, clippy::panic)]
+#![expect(
+    clippy::unwrap_used,
+    clippy::panic,
+    reason = "tests use panic and unwrap for direct fixture failures"
+)]
 
 use futures::{SinkExt, StreamExt};
 use mxr_core::id::{AccountId, MessageId};

@@ -1,4 +1,7 @@
-#![allow(clippy::unwrap_used)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "tests unwrap fixture setup for direct failures"
+)]
 
 //! End-to-end IMAP sync flow integration tests.
 //!

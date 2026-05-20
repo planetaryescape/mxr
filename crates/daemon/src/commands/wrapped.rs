@@ -1,5 +1,3 @@
-#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
-
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};

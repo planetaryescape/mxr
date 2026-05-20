@@ -109,7 +109,10 @@ impl RuleEngine {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )]
 
     use super::*;
     use crate::action::RuleAction;

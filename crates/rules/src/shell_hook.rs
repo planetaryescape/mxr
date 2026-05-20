@@ -113,7 +113,10 @@ pub enum ShellHookError {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::panic)]
+    #![expect(
+        clippy::panic,
+        reason = "tests panic with diagnostic context for direct failures"
+    )]
 
     use super::*;
 

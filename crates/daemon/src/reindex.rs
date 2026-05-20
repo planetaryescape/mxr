@@ -1,4 +1,10 @@
-#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )
+)]
 
 use mxr_core::MxrError;
 use mxr_search::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};

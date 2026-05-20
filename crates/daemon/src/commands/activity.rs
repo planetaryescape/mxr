@@ -1,4 +1,10 @@
-#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )
+)]
 //! `mxr activity` CLI subcommand. See `docs/activity-log.md`.
 //!
 //! The CLI is a thin wrapper around the IPC verbs added in Phase 3. Most

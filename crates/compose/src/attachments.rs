@@ -1,6 +1,10 @@
 #![cfg_attr(
     test,
-    allow(clippy::infallible_destructuring_match, clippy::unwrap_used)
+    expect(
+        clippy::infallible_destructuring_match,
+        clippy::unwrap_used,
+        reason = "attachment tests unwrap and match exact fixture failures"
+    )
 )]
 
 pub use mxr_outbound::attachments::*;

@@ -1,4 +1,11 @@
-#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::panic,
+        clippy::unwrap_used,
+        reason = "tests use panic and unwrap for direct fixture failures"
+    )
+)]
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use mail_builder::MessageBuilder;

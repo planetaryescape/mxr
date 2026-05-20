@@ -1,4 +1,10 @@
-#![cfg_attr(test, allow(clippy::unwrap_used))]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )
+)]
 
 use crate::types::{GmailHeader, GmailMessage, GmailPayload};
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};

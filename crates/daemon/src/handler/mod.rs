@@ -1,10 +1,10 @@
+#![cfg_attr(test, allow(clippy::bool_assert_comparison, clippy::len_zero))]
 #![cfg_attr(
     test,
-    allow(
-        clippy::bool_assert_comparison,
-        clippy::len_zero,
+    expect(
         clippy::panic,
-        clippy::unwrap_used
+        clippy::unwrap_used,
+        reason = "handler tests use panic and unwrap for direct fixture failures"
     )
 )]
 

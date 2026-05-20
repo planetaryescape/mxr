@@ -157,7 +157,10 @@ fn decode_attachment_disposition(value: &str) -> Result<AttachmentDisposition, s
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )]
 
     use super::super::Store;
     use crate::test_fixtures::{test_account, TestEnvelopeBuilder};

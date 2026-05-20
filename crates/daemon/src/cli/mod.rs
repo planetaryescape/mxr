@@ -1,6 +1,11 @@
+#![cfg_attr(test, allow(clippy::bool_assert_comparison))]
 #![cfg_attr(
     test,
-    allow(clippy::bool_assert_comparison, clippy::panic, clippy::unwrap_used)
+    expect(
+        clippy::panic,
+        clippy::unwrap_used,
+        reason = "CLI parser tests use panic and unwrap for direct assertion failures"
+    )
 )]
 
 mod mutation_args;

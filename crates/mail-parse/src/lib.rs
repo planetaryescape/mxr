@@ -558,7 +558,10 @@ fn html_unescape(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )]
 
     use super::*;
     use mxr_test_support::{fixture_stem, standards_fixture_bytes, standards_fixture_names};

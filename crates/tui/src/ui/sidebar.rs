@@ -142,7 +142,7 @@ fn build_sidebar_entries<'a>(
         .filter(|label| label.kind != LabelKind::System)
         .copied()
         .collect();
-    user_labels.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    user_labels.sort_by_key(|label| label.name.to_lowercase());
 
     let mut entries = Vec::new();
 

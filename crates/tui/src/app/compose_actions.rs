@@ -15,7 +15,7 @@ impl App {
                     });
                 }
                 let mut contacts: Vec<_> = seen.into_values().collect();
-                contacts.sort_by(|a, b| a.email.to_lowercase().cmp(&b.email.to_lowercase()));
+                contacts.sort_by_key(|contact| contact.email.to_lowercase());
                 self.compose.compose_picker.open_to(contacts);
             }
             Action::Reply => {

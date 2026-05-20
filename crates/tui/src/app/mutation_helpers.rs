@@ -677,7 +677,7 @@ impl App {
                 }
                 list.push(env.clone());
             }
-            list.sort_unstable_by(|a, b| b.date.cmp(&a.date));
+            list.sort_unstable_by_key(|envelope| std::cmp::Reverse(envelope.date));
         };
 
         merge(&mut self.mailbox.all_envelopes);

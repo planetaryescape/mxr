@@ -158,7 +158,7 @@ impl App {
             .filter(|l| !crate::ui::sidebar::should_hide_label(&l.name))
             .filter(|l| l.kind != mxr_core::types::LabelKind::System)
             .collect();
-        user.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        user.sort_by_key(|label| label.name.to_lowercase());
 
         let mut result = system;
         result.extend(user);

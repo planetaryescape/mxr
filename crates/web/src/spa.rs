@@ -15,7 +15,10 @@ use axum::{
 };
 use include_dir::{include_dir, Dir};
 
+#[cfg(has_spa_dist)]
 static SPA_DIST: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../apps/web/dist");
+#[cfg(not(has_spa_dist))]
+static SPA_DIST: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/spa-empty-dist");
 
 /// Strict Content-Security-Policy for the SPA HTML response. Forbids inline
 /// scripts (defends against XSS exfiltrating the localStorage bridge token),

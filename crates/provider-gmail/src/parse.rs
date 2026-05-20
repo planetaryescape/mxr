@@ -275,20 +275,21 @@ fn walk_parts(
 
     // Leaf text node
     match mime {
-        "text/plain" if body_data.text_plain.is_none() => {
-            if !is_attachment_part(payload, mime, disposition) {
-                if let Some(decoded) = decoded_text {
-                    body_data.text_plain = Some(decoded);
-                    body_data.text_plain_format = parse_text_plain_format_from_payload(payload)
-                        .or(Some(TextPlainFormat::Fixed));
-                }
+        "text/plain"
+            if body_data.text_plain.is_none()
+                && !is_attachment_part(payload, mime, disposition) =>
+        {
+            if let Some(decoded) = decoded_text {
+                body_data.text_plain = Some(decoded);
+                body_data.text_plain_format =
+                    parse_text_plain_format_from_payload(payload).or(Some(TextPlainFormat::Fixed));
             }
         }
-        "text/html" if body_data.text_html.is_none() => {
-            if !is_attachment_part(payload, mime, disposition) {
-                if let Some(decoded) = decoded_text {
-                    body_data.text_html = Some(decoded);
-                }
+        "text/html"
+            if body_data.text_html.is_none() && !is_attachment_part(payload, mime, disposition) =>
+        {
+            if let Some(decoded) = decoded_text {
+                body_data.text_html = Some(decoded);
             }
         }
         "text/calendar" if body_data.calendar.is_none() => {

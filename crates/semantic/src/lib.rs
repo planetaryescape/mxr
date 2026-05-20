@@ -593,11 +593,7 @@ impl SemanticEngine {
             "embed message chunks",
         )?;
         let profile_id = profile.id.clone();
-        let chunk_embeddings = chunks
-            .iter()
-            .cloned()
-            .zip(embeddings.into_iter())
-            .collect::<Vec<_>>();
+        let chunk_embeddings = chunks.iter().cloned().zip(embeddings).collect::<Vec<_>>();
         let embed_prep_started = std::time::Instant::now();
         let embedding_records = self
             .cpu_executor

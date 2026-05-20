@@ -3798,7 +3798,6 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "async-native-tls",
- "async-std",
  "async-trait",
  "axum",
  "base64 0.22.1",
@@ -3890,7 +3889,6 @@ dependencies = [
  "which",
  "wiremock",
  "yup-oauth2",
- "zip 2.4.2",
 ]
 
 [[package]]

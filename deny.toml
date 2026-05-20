@@ -11,7 +11,7 @@ yanked = "warn"
 ignore = [
     # Transitive dependencies with no safe upgrade available.
     # These are pulled in by upstream crates we don't control.
-    { id = "RUSTSEC-2025-0052", reason = "async-std is a transitive dep of fastembed; no upgrade path" },
+    { id = "RUSTSEC-2025-0052", reason = "async-std remains through mxr-async-imap/provider-imap; no async-imap-compatible upgrade path yet" },
 ]
 
 [licenses]
@@ -48,6 +48,32 @@ ignore = false
 multiple-versions = "warn"
 wildcards = "allow"
 highlight = "all"
+skip-tree = [
+    # fastembed currently brings the ONNX/tokenizers/hnsw_rs/hf-hub/calamine stack, which
+    # pins older base64, darling, ureq, windows, and zip families alongside current app deps.
+    { name = "fastembed", version = "5.13.0" },
+    # hnsw_rs is also a direct semantic dependency; it still carries env_logger/anstream 0.x.
+    { name = "hnsw_rs", version = "0.3.4" },
+    # html2text and scraper intentionally coexist for text extraction vs DOM queries, but they
+    # track different html5ever/markup5ever/match_token release lines.
+    { name = "html2text", version = "0.14.4" },
+    # undoc is the DOCX/PPTX extractor path and still pins older quick-xml/zip than calamine.
+    { name = "undoc", version = "0.1.18" },
+    # calamine's current spreadsheet reader stack uses zip 7.x while Swagger vendoring uses zip 3.x.
+    { name = "calamine", version = "0.34.0" },
+    # async-std is required by mxr-async-imap/provider-imap until the IMAP adapter stack
+    # moves to a Tokio-native transport; it also brings async-channel/event-listener 1.x.
+    { name = "async-std", version = "1.13.2" },
+    # keyring 3.x still depends on security-framework 2.x/core-foundation 0.9 while our
+    # TLS stack uses security-framework 3.x/core-foundation 0.10.
+    { name = "keyring", version = "3.6.3" },
+    # ratatui-image carries platform/image support crates with older rustix/windows lines
+    # than the rest of the workspace's runtime and test stacks.
+    { name = "ratatui-image", version = "10.0.6" },
+    # tui-big-text still depends on derive_builder 0.20, which pins darling 0.20 while
+    # current UI/rendering dependencies use darling 0.23.
+    { name = "tui-big-text", version = "0.8.4" },
+]
 
 [sources]
 unknown-registry = "deny"

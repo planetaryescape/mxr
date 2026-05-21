@@ -1053,14 +1053,16 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
     }
 
     let exe = std::env::current_exe()?;
-    std::process::Command::new(exe)
+    let mut command = std::process::Command::new(exe);
+    command
         .arg("daemon")
         .arg("--instance")
         .arg(mxr_config::app_instance_name())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()?;
+        .stderr(std::process::Stdio::null());
+    detach_daemon_child(&mut command);
+    command.spawn()?;
 
     for i in 0..40 {
         tokio::time::sleep(std::time::Duration::from_millis(100 * (i + 1))).await;
@@ -1086,6 +1088,18 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
         log_path.display()
     )
 }
+
+#[cfg(unix)]
+fn detach_daemon_child(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+
+    // Autostarted daemons must outlive short-lived CLI invocations,
+    // including shells that send SIGHUP when the command exits.
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn detach_daemon_child(_command: &mut std::process::Command) {}
 
 #[cfg(test)]
 mod tests {

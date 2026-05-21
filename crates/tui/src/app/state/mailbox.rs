@@ -143,18 +143,14 @@ pub struct SubscriptionEntry {
     pub envelope: Envelope,
 }
 
-#[expect(
-    clippy::large_enum_variant,
-    reason = "sidebar item variants preserve direct payload access in hot UI state; boxing would add churn without shrinking the public state surface"
-)]
 #[derive(Debug, Clone)]
 pub enum SidebarItem {
-    Account(mxr_protocol::AccountSummaryData),
+    Account(Box<mxr_protocol::AccountSummaryData>),
     AllMail,
     Subscriptions,
     Owed,
-    Label(Label),
-    SavedSearch(mxr_core::SavedSearch),
+    Label(Box<Label>),
+    SavedSearch(Box<mxr_core::SavedSearch>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

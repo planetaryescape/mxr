@@ -158,20 +158,28 @@ mod tests {
     use mxr_search::{SearchIndexEntry, SearchUpdateBatch};
     use std::sync::Arc;
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "test fixture helper keeps recipient/header dimensions explicit"
-    )]
+    struct EnvelopeFixture<'a> {
+        from: &'a str,
+        to: Vec<&'a str>,
+        cc: Vec<&'a str>,
+        bcc: Vec<&'a str>,
+        subject: &'a str,
+        body: &'a str,
+    }
+
     fn envelope(
         account_id: &AccountId,
         thread_id: &ThreadId,
-        from: &str,
-        to: Vec<&str>,
-        cc: Vec<&str>,
-        bcc: Vec<&str>,
-        subject: &str,
-        body: &str,
+        fixture: EnvelopeFixture<'_>,
     ) -> Envelope {
+        let EnvelopeFixture {
+            from,
+            to,
+            cc,
+            bcc,
+            subject,
+            body,
+        } = fixture;
         Envelope {
             id: MessageId::new(),
             account_id: account_id.clone(),
@@ -289,12 +297,14 @@ mod tests {
             let env = envelope(
                 &account,
                 &thread,
-                "alice@example.com",
-                vec!["user@example.com", "bob@example.com"],
-                vec![],
-                vec![],
-                "rollout planning",
-                "rollout planning details",
+                EnvelopeFixture {
+                    from: "alice@example.com",
+                    to: vec!["user@example.com", "bob@example.com"],
+                    cc: vec![],
+                    bcc: vec![],
+                    subject: "rollout planning",
+                    body: "rollout planning details",
+                },
             );
             index(&state, &env, "rollout planning details").await;
         }
@@ -323,12 +333,14 @@ mod tests {
         let env = envelope(
             &account,
             &thread,
-            "alice@example.com",
-            vec!["user@example.com", "bob@example.com"],
-            vec![],
-            vec![],
-            "rollout",
-            "one-off rollout",
+            EnvelopeFixture {
+                from: "alice@example.com",
+                to: vec!["user@example.com", "bob@example.com"],
+                cc: vec![],
+                bcc: vec![],
+                subject: "rollout",
+                body: "one-off rollout",
+            },
         );
         index(&state, &env, "one-off rollout").await;
         let d = draft(&account, "rollout", "rollout", vec!["alice@example.com"]);
@@ -352,12 +364,14 @@ mod tests {
             let env = envelope(
                 &account,
                 &thread,
-                "alice@example.com",
-                vec!["user@example.com"],
-                vec![],
-                vec!["carol@example.com"],
-                "rollout secret",
-                "rollout secret",
+                EnvelopeFixture {
+                    from: "alice@example.com",
+                    to: vec!["user@example.com"],
+                    cc: vec![],
+                    bcc: vec!["carol@example.com"],
+                    subject: "rollout secret",
+                    body: "rollout secret",
+                },
             );
             index(&state, &env, "rollout secret").await;
         }
@@ -385,12 +399,14 @@ mod tests {
             let env = envelope(
                 &account,
                 &thread,
-                "alice@example.com",
-                vec!["user@example.com", "bob@example.com"],
-                vec![],
-                vec![],
-                "rollout",
-                "rollout details",
+                EnvelopeFixture {
+                    from: "alice@example.com",
+                    to: vec!["user@example.com", "bob@example.com"],
+                    cc: vec![],
+                    bcc: vec![],
+                    subject: "rollout",
+                    body: "rollout details",
+                },
             );
             index(&state, &env, "rollout details").await;
         }

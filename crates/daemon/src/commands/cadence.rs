@@ -1,5 +1,3 @@
-#![cfg_attr(test, allow(clippy::items_after_test_module))]
-
 use crate::cli::{CadenceAction, OutputFormat};
 use crate::commands::resolve_account;
 use crate::ipc_client::IpcClient;
@@ -139,18 +137,6 @@ fn parse_every_days(value: &str) -> anyhow::Result<f64> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_every_days_accepts_days_and_weeks() {
-        assert_eq!(parse_every_days("14d").unwrap(), 14.0);
-        assert_eq!(parse_every_days("2w").unwrap(), 14.0);
-        assert_eq!(parse_every_days("30 days").unwrap(), 30.0);
-    }
-}
-
 fn print_drift(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
     match resp {
         Response::Ok {
@@ -176,4 +162,16 @@ fn print_drift(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_every_days_accepts_days_and_weeks() {
+        assert_eq!(parse_every_days("14d").unwrap(), 14.0);
+        assert_eq!(parse_every_days("2w").unwrap(), 14.0);
+        assert_eq!(parse_every_days("30 days").unwrap(), 30.0);
+    }
 }

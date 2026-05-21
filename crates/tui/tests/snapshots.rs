@@ -24,7 +24,7 @@ use mxr_tui::ui::label_picker::{draw as draw_label_picker, LabelPicker, LabelPic
 use mxr_tui::ui::message_view::{draw as draw_message_view, DrawOptions, ThreadMessageBlock};
 use mxr_tui::ui::onboarding_modal::draw as draw_onboarding_modal;
 use mxr_tui::ui::search_bar::{draw as draw_search_bar, SearchBar};
-use mxr_tui::ui::search_page::draw as draw_search_page;
+use mxr_tui::ui::search_page::{draw as draw_search_page, SearchPageView};
 use mxr_tui::ui::send_confirm_modal::draw as draw_send_confirm;
 use mxr_tui::ui::sidebar::{draw as draw_sidebar, SidebarView};
 use mxr_tui::ui::status_bar::{draw as draw_status_bar, StatusBarState};
@@ -371,16 +371,19 @@ fn search_page_snapshot() {
 
     let mut html_images = std::collections::HashMap::new();
     let snapshot = render_to_string(90, 24, |frame| {
+        let selected_set = std::collections::HashSet::new();
         draw_search_page(
             frame,
             Rect::new(0, 0, 90, 24),
-            &state,
-            &rows,
-            &std::collections::HashSet::new(),
-            MailListMode::Threads,
-            &preview,
-            0,
-            &mut html_images,
+            SearchPageView {
+                state: &state,
+                rows: &rows,
+                selected_set: &selected_set,
+                mail_list_mode: MailListMode::Threads,
+                preview_messages: &preview,
+                preview_scroll: 0,
+                html_images: &mut html_images,
+            },
             &mxr_tui::theme::Theme::default(),
         );
     });
@@ -393,16 +396,19 @@ fn search_page_blank_snapshot() {
 
     let mut html_images = std::collections::HashMap::new();
     let snapshot = render_to_string(90, 24, |frame| {
+        let selected_set = std::collections::HashSet::new();
         draw_search_page(
             frame,
             Rect::new(0, 0, 90, 24),
-            &state,
-            &[],
-            &std::collections::HashSet::new(),
-            MailListMode::Messages,
-            &[],
-            0,
-            &mut html_images,
+            SearchPageView {
+                state: &state,
+                rows: &[],
+                selected_set: &selected_set,
+                mail_list_mode: MailListMode::Messages,
+                preview_messages: &[],
+                preview_scroll: 0,
+                html_images: &mut html_images,
+            },
             &mxr_tui::theme::Theme::default(),
         );
     });
@@ -500,16 +506,19 @@ fn search_page_searching_snapshot() {
 
     let mut html_images = std::collections::HashMap::new();
     let snapshot = render_to_string(90, 24, |frame| {
+        let selected_set = std::collections::HashSet::new();
         draw_search_page(
             frame,
             Rect::new(0, 0, 90, 24),
-            &state,
-            &[],
-            &std::collections::HashSet::new(),
-            MailListMode::Messages,
-            &[],
-            0,
-            &mut html_images,
+            SearchPageView {
+                state: &state,
+                rows: &[],
+                selected_set: &selected_set,
+                mail_list_mode: MailListMode::Messages,
+                preview_messages: &[],
+                preview_scroll: 0,
+                html_images: &mut html_images,
+            },
             &mxr_tui::theme::Theme::default(),
         );
     });

@@ -188,30 +188,7 @@ impl super::Store {
         trace_lookup("message.get_envelope", started_at, row.is_some());
 
         let envelope = row
-            .map(|r| {
-                record_to_envelope(
-                    &r.id,
-                    &r.account_id,
-                    &r.provider_id,
-                    &r.thread_id,
-                    r.message_id_header.as_deref(),
-                    r.in_reply_to.as_deref(),
-                    r.reference_headers.as_deref(),
-                    r.from_name.as_deref(),
-                    &r.from_email,
-                    &r.to_addrs,
-                    &r.cc_addrs,
-                    &r.bcc_addrs,
-                    &r.subject,
-                    r.date,
-                    r.flags,
-                    &r.snippet,
-                    r.has_attachments,
-                    r.size_bytes,
-                    r.unsubscribe_method.as_deref(),
-                    &r.label_provider_ids,
-                )
-            })
+            .map(|r| record_to_envelope(envelope_record!(r)))
             .transpose()?;
         let Some(mut envelope) = envelope else {
             return Ok(None);
@@ -265,30 +242,7 @@ impl super::Store {
 
         let mut envelopes: Vec<Envelope> = rows
             .into_iter()
-            .map(|r| {
-                record_to_envelope(
-                    &r.id,
-                    &r.account_id,
-                    &r.provider_id,
-                    &r.thread_id,
-                    r.message_id_header.as_deref(),
-                    r.in_reply_to.as_deref(),
-                    r.reference_headers.as_deref(),
-                    r.from_name.as_deref(),
-                    &r.from_email,
-                    &r.to_addrs,
-                    &r.cc_addrs,
-                    &r.bcc_addrs,
-                    &r.subject,
-                    r.date,
-                    r.flags,
-                    &r.snippet,
-                    r.has_attachments,
-                    r.size_bytes,
-                    r.unsubscribe_method.as_deref(),
-                    &r.label_provider_ids,
-                )
-            })
+            .map(|r| record_to_envelope(envelope_record!(r)))
             .collect::<Result<Vec<_>, _>>()?;
         self.hydrate_link_metadata(&mut envelopes).await?;
         self.hydrate_envelope_keywords(&mut envelopes).await?;
@@ -336,30 +290,7 @@ impl super::Store {
 
         let mut envelopes: Vec<Envelope> = rows
             .into_iter()
-            .map(|r| {
-                record_to_envelope(
-                    &r.id,
-                    &r.account_id,
-                    &r.provider_id,
-                    &r.thread_id,
-                    r.message_id_header.as_deref(),
-                    r.in_reply_to.as_deref(),
-                    r.reference_headers.as_deref(),
-                    r.from_name.as_deref(),
-                    &r.from_email,
-                    &r.to_addrs,
-                    &r.cc_addrs,
-                    &r.bcc_addrs,
-                    &r.subject,
-                    r.date,
-                    r.flags,
-                    &r.snippet,
-                    r.has_attachments,
-                    r.size_bytes,
-                    r.unsubscribe_method.as_deref(),
-                    &r.label_provider_ids,
-                )
-            })
+            .map(|r| record_to_envelope(envelope_record!(r)))
             .collect::<Result<Vec<_>, _>>()?;
         self.hydrate_link_metadata(&mut envelopes).await?;
         self.hydrate_envelope_keywords(&mut envelopes).await?;
@@ -414,30 +345,7 @@ impl super::Store {
         );
 
         rows.into_iter()
-            .map(|r| {
-                record_to_envelope(
-                    &r.get::<String, _>("id"),
-                    &r.get::<String, _>("account_id"),
-                    &r.get::<String, _>("provider_id"),
-                    &r.get::<String, _>("thread_id"),
-                    r.get::<Option<String>, _>("message_id_header").as_deref(),
-                    r.get::<Option<String>, _>("in_reply_to").as_deref(),
-                    r.get::<Option<String>, _>("reference_headers").as_deref(),
-                    r.get::<Option<String>, _>("from_name").as_deref(),
-                    &r.get::<String, _>("from_email"),
-                    &r.get::<String, _>("to_addrs"),
-                    &r.get::<String, _>("cc_addrs"),
-                    &r.get::<String, _>("bcc_addrs"),
-                    &r.get::<String, _>("subject"),
-                    r.get::<i64, _>("date"),
-                    r.get::<i64, _>("flags"),
-                    &r.get::<String, _>("snippet"),
-                    r.get::<bool, _>("has_attachments"),
-                    r.get::<i64, _>("size_bytes"),
-                    r.get::<Option<String>, _>("unsubscribe_method").as_deref(),
-                    &r.get::<String, _>("label_provider_ids"),
-                )
-            })
+            .map(|r| sqlite_row_to_envelope(&r))
             .collect()
     }
 
@@ -485,30 +393,7 @@ impl super::Store {
         );
 
         rows.into_iter()
-            .map(|r| {
-                record_to_envelope(
-                    &r.get::<String, _>("id"),
-                    &r.get::<String, _>("account_id"),
-                    &r.get::<String, _>("provider_id"),
-                    &r.get::<String, _>("thread_id"),
-                    r.get::<Option<String>, _>("message_id_header").as_deref(),
-                    r.get::<Option<String>, _>("in_reply_to").as_deref(),
-                    r.get::<Option<String>, _>("reference_headers").as_deref(),
-                    r.get::<Option<String>, _>("from_name").as_deref(),
-                    &r.get::<String, _>("from_email"),
-                    &r.get::<String, _>("to_addrs"),
-                    &r.get::<String, _>("cc_addrs"),
-                    &r.get::<String, _>("bcc_addrs"),
-                    &r.get::<String, _>("subject"),
-                    r.get::<i64, _>("date"),
-                    r.get::<i64, _>("flags"),
-                    &r.get::<String, _>("snippet"),
-                    r.get::<bool, _>("has_attachments"),
-                    r.get::<i64, _>("size_bytes"),
-                    r.get::<Option<String>, _>("unsubscribe_method").as_deref(),
-                    &r.get::<String, _>("label_provider_ids"),
-                )
-            })
+            .map(|r| sqlite_row_to_envelope(&r))
             .collect()
     }
 
@@ -551,48 +436,7 @@ impl super::Store {
         trace_query("message.list_envelopes_by_ids", started_at, rows.len());
         let mut by_id = std::collections::HashMap::with_capacity(rows.len());
         for row in rows {
-            let id = row.get::<String, _>(0);
-            let account_id = row.get::<String, _>(1);
-            let provider_id = row.get::<String, _>(2);
-            let thread_id = row.get::<String, _>(3);
-            let message_id_header = row.get::<Option<String>, _>(4);
-            let in_reply_to = row.get::<Option<String>, _>(5);
-            let reference_headers = row.get::<Option<String>, _>(6);
-            let from_name = row.get::<Option<String>, _>(7);
-            let from_email = row.get::<String, _>(8);
-            let to_addrs = row.get::<String, _>(9);
-            let cc_addrs = row.get::<String, _>(10);
-            let bcc_addrs = row.get::<String, _>(11);
-            let subject = row.get::<String, _>(12);
-            let date = row.get::<i64, _>(13);
-            let flags = row.get::<i64, _>(14);
-            let snippet = row.get::<String, _>(15);
-            let has_attachments = row.get::<bool, _>(16);
-            let size_bytes = row.get::<i64, _>(17);
-            let unsubscribe_method = row.get::<Option<String>, _>(18);
-            let label_provider_ids = row.get::<String, _>(19);
-            let envelope = record_to_envelope(
-                &id,
-                &account_id,
-                &provider_id,
-                &thread_id,
-                message_id_header.as_deref(),
-                in_reply_to.as_deref(),
-                reference_headers.as_deref(),
-                from_name.as_deref(),
-                &from_email,
-                &to_addrs,
-                &cc_addrs,
-                &bcc_addrs,
-                &subject,
-                date,
-                flags,
-                &snippet,
-                has_attachments,
-                size_bytes,
-                unsubscribe_method.as_deref(),
-                &label_provider_ids,
-            )?;
+            let envelope = sqlite_row_to_envelope(&row)?;
             by_id.insert(envelope.id.clone(), envelope);
         }
 
@@ -795,30 +639,7 @@ impl super::Store {
         .await?;
 
         rows.into_iter()
-            .map(|r| {
-                record_to_envelope(
-                    &r.id,
-                    &r.account_id,
-                    &r.provider_id,
-                    &r.thread_id,
-                    r.message_id_header.as_deref(),
-                    r.in_reply_to.as_deref(),
-                    r.reference_headers.as_deref(),
-                    r.from_name.as_deref(),
-                    &r.from_email,
-                    &r.to_addrs,
-                    &r.cc_addrs,
-                    &r.bcc_addrs,
-                    &r.subject,
-                    r.date,
-                    r.flags,
-                    &r.snippet,
-                    r.has_attachments,
-                    r.size_bytes,
-                    r.unsubscribe_method.as_deref(),
-                    &r.label_provider_ids,
-                )
-            })
+            .map(|r| record_to_envelope(envelope_record!(r)))
             .collect()
     }
 
@@ -1329,32 +1150,82 @@ impl super::Store {
 /// Shared helper to convert individual field values into an Envelope.
 /// Used by both message.rs and thread.rs queries since the `query!` macro
 /// returns different anonymous types for each call site.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "row decoder mirrors the messages SQL projection; named DB row fields are the source of truth"
-)]
-pub(crate) fn record_to_envelope(
-    id: &str,
-    account_id: &str,
-    provider_id: &str,
-    thread_id: &str,
-    message_id_header: Option<&str>,
-    in_reply_to: Option<&str>,
-    reference_headers: Option<&str>,
-    from_name: Option<&str>,
-    from_email: &str,
-    to_addrs: &str,
-    cc_addrs: &str,
-    bcc_addrs: &str,
-    subject: &str,
-    date: i64,
-    flags: i64,
-    snippet: &str,
-    has_attachments: bool,
-    size_bytes: i64,
-    unsubscribe_method: Option<&str>,
-    label_provider_ids: &str,
-) -> Result<Envelope, sqlx::Error> {
+pub(crate) struct EnvelopeRecord<'a> {
+    pub id: &'a str,
+    pub account_id: &'a str,
+    pub provider_id: &'a str,
+    pub thread_id: &'a str,
+    pub message_id_header: Option<&'a str>,
+    pub in_reply_to: Option<&'a str>,
+    pub reference_headers: Option<&'a str>,
+    pub from_name: Option<&'a str>,
+    pub from_email: &'a str,
+    pub to_addrs: &'a str,
+    pub cc_addrs: &'a str,
+    pub bcc_addrs: &'a str,
+    pub subject: &'a str,
+    pub date: i64,
+    pub flags: i64,
+    pub snippet: &'a str,
+    pub has_attachments: bool,
+    pub size_bytes: i64,
+    pub unsubscribe_method: Option<&'a str>,
+    pub label_provider_ids: &'a str,
+}
+
+macro_rules! envelope_record {
+    ($row:expr) => {
+        $crate::message::EnvelopeRecord {
+            id: &$row.id,
+            account_id: &$row.account_id,
+            provider_id: &$row.provider_id,
+            thread_id: &$row.thread_id,
+            message_id_header: $row.message_id_header.as_deref(),
+            in_reply_to: $row.in_reply_to.as_deref(),
+            reference_headers: $row.reference_headers.as_deref(),
+            from_name: $row.from_name.as_deref(),
+            from_email: &$row.from_email,
+            to_addrs: &$row.to_addrs,
+            cc_addrs: &$row.cc_addrs,
+            bcc_addrs: &$row.bcc_addrs,
+            subject: &$row.subject,
+            date: $row.date,
+            flags: $row.flags,
+            snippet: &$row.snippet,
+            has_attachments: $row.has_attachments,
+            size_bytes: $row.size_bytes,
+            unsubscribe_method: $row.unsubscribe_method.as_deref(),
+            label_provider_ids: &$row.label_provider_ids,
+        }
+    };
+}
+
+pub(crate) use envelope_record;
+
+pub(crate) fn record_to_envelope(record: EnvelopeRecord<'_>) -> Result<Envelope, sqlx::Error> {
+    let EnvelopeRecord {
+        id,
+        account_id,
+        provider_id,
+        thread_id,
+        message_id_header,
+        in_reply_to,
+        reference_headers,
+        from_name,
+        from_email,
+        to_addrs,
+        cc_addrs,
+        bcc_addrs,
+        subject,
+        date,
+        flags,
+        snippet,
+        has_attachments,
+        size_bytes,
+        unsubscribe_method,
+        label_provider_ids,
+    } = record;
+
     Ok(Envelope {
         id: decode_id(id)?,
         account_id: decode_id(account_id)?,
@@ -1398,5 +1269,51 @@ pub(crate) fn record_to_envelope(
         // need them stitch via Store::hydrate_envelope_keywords after
         // the row decode.
         keywords: std::collections::BTreeSet::new(),
+    })
+}
+
+fn sqlite_row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<Envelope, sqlx::Error> {
+    let id = row.get::<String, _>("id");
+    let account_id = row.get::<String, _>("account_id");
+    let provider_id = row.get::<String, _>("provider_id");
+    let thread_id = row.get::<String, _>("thread_id");
+    let message_id_header = row.get::<Option<String>, _>("message_id_header");
+    let in_reply_to = row.get::<Option<String>, _>("in_reply_to");
+    let reference_headers = row.get::<Option<String>, _>("reference_headers");
+    let from_name = row.get::<Option<String>, _>("from_name");
+    let from_email = row.get::<String, _>("from_email");
+    let to_addrs = row.get::<String, _>("to_addrs");
+    let cc_addrs = row.get::<String, _>("cc_addrs");
+    let bcc_addrs = row.get::<String, _>("bcc_addrs");
+    let subject = row.get::<String, _>("subject");
+    let date = row.get::<i64, _>("date");
+    let flags = row.get::<i64, _>("flags");
+    let snippet = row.get::<String, _>("snippet");
+    let has_attachments = row.get::<bool, _>("has_attachments");
+    let size_bytes = row.get::<i64, _>("size_bytes");
+    let unsubscribe_method = row.get::<Option<String>, _>("unsubscribe_method");
+    let label_provider_ids = row.get::<String, _>("label_provider_ids");
+
+    record_to_envelope(EnvelopeRecord {
+        id: &id,
+        account_id: &account_id,
+        provider_id: &provider_id,
+        thread_id: &thread_id,
+        message_id_header: message_id_header.as_deref(),
+        in_reply_to: in_reply_to.as_deref(),
+        reference_headers: reference_headers.as_deref(),
+        from_name: from_name.as_deref(),
+        from_email: &from_email,
+        to_addrs: &to_addrs,
+        cc_addrs: &cc_addrs,
+        bcc_addrs: &bcc_addrs,
+        subject: &subject,
+        date,
+        flags,
+        snippet: &snippet,
+        has_attachments,
+        size_bytes,
+        unsubscribe_method: unsubscribe_method.as_deref(),
+        label_provider_ids: &label_provider_ids,
     })
 }

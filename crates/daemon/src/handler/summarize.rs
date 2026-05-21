@@ -407,8 +407,8 @@ mod tests {
             .account_id(account_id.clone())
             .thread_id(thread_id.clone())
             .provider_id("first")
-            .from_address("Alice", "alice@example.com")
-            .to_address(Some("Bob"), "bob@example.com")
+            .sender_address("Alice", "alice@example.com")
+            .recipient_address(Some("Bob"), "bob@example.com")
             .subject("Decision")
             .snippet("Please approve")
             .build();
@@ -420,8 +420,8 @@ mod tests {
             .account_id(account_id)
             .thread_id(thread_id.clone())
             .provider_id("second")
-            .from_address("Bob", "bob@example.com")
-            .to_address(Some("Alice"), "alice@example.com")
+            .sender_address("Bob", "bob@example.com")
+            .recipient_address(Some("Alice"), "alice@example.com")
             .subject("Decision")
             .snippet("Approved")
             .build();
@@ -504,7 +504,7 @@ mod tests {
             .account_id(account_id.clone())
             .thread_id(thread_id.clone())
             .provider_id("first")
-            .from_address("Alice", "alice@example.com")
+            .sender_address("Alice", "alice@example.com")
             .subject("Launch")
             .snippet("Can you review the launch note?")
             .build();

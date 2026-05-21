@@ -598,8 +598,8 @@ mod tests {
     ) -> Envelope {
         TestEnvelopeBuilder::new()
             .subject(subject)
-            .from_address(from_name, from_email)
-            .to_address(None, "recipient@example.com")
+            .sender_address(from_name, from_email)
+            .recipient_address(None, "recipient@example.com")
             .provider_id(format!("fake-{}", subject.len()))
             .message_id_header(None)
             .flags(flags)

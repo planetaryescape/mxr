@@ -352,6 +352,49 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
+    async fn wait_until_paused(rec: &Recorder) {
+        for _ in 0..50 {
+            let (paused, _) = rec.pause_status();
+            if paused {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(
+            rec.pause_status().0,
+            "activity recorder did not enter paused state"
+        );
+    }
+
+    async fn wait_for_actions(store: &Store, expected: &[&str]) -> Vec<String> {
+        for _ in 0..50 {
+            let page = store
+                .list_activity(&ActivityFilter::default(), 10, None)
+                .await
+                .unwrap();
+            let actions: Vec<String> = page.rows.into_iter().map(|row| row.action).collect();
+            if expected
+                .iter()
+                .all(|expected| actions.iter().any(|action| action == expected))
+            {
+                return actions;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let page = store
+            .list_activity(&ActivityFilter::default(), 10, None)
+            .await
+            .unwrap();
+        let actions: Vec<String> = page.rows.into_iter().map(|row| row.action).collect();
+        assert!(
+            expected
+                .iter()
+                .all(|expected| actions.iter().any(|action| action == expected)),
+            "activity actions did not include {expected:?}; got {actions:?}"
+        );
+        actions
+    }
+
     #[tokio::test]
     async fn record_lands_a_row_in_the_store() {
         let (rec, store) = fresh_recorder().await;
@@ -474,20 +517,15 @@ mod tests {
         // Pause "until 1 ms in the past" — the next record() triggers the auto-resume branch.
         let now = current_unix_ms();
         rec.pause(Some(now - 1));
-        drain().await;
+        wait_until_paused(&rec).await;
 
         rec.record(entry("mail.send"));
-        drain().await;
 
         // Two rows expected: the synthesized activity.resumed marker (Daemon source)
         // and the mail.send that flowed through after auto-resume.
-        let page = store
-            .list_activity(&ActivityFilter::default(), 10, None)
-            .await
-            .unwrap();
-        let actions: Vec<&str> = page.rows.iter().map(|r| r.action.as_str()).collect();
+        let actions = wait_for_actions(&store, &["activity.resumed", "mail.send"]).await;
         // Newest first; mail.send recorded after the resumed marker.
-        assert!(actions.contains(&"activity.resumed"));
-        assert!(actions.contains(&"mail.send"));
+        assert!(actions.iter().any(|action| action == "activity.resumed"));
+        assert!(actions.iter().any(|action| action == "mail.send"));
     }
 }

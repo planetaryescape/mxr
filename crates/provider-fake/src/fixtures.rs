@@ -128,15 +128,17 @@ pub fn generate_fixtures(
             &mut msg_num,
             account_id,
             &t1,
-            people[i].0,
-            people[i].1,
-            subjects[i],
-            snippets[i],
-            body_texts[i],
-            now - Duration::days(2) + Duration::hours(i as i64),
-            flags_list[i],
-            false,
-            UnsubscribeMethod::None,
+            FixtureMessage {
+                from_name: people[i].0,
+                from_email: people[i].1,
+                subject: subjects[i],
+                snippet: snippets[i],
+                body_text: body_texts[i],
+                date: now - Duration::days(2) + Duration::hours(i as i64),
+                flags: flags_list[i],
+                has_attachments: false,
+                unsubscribe: UnsubscribeMethod::None,
+            },
         );
     }
 
@@ -154,19 +156,22 @@ pub fn generate_fixtures(
             &mut msg_num,
             account_id,
             &t2,
-            from_name,
-            from_email,
-            if i == 0 {
+            FixtureMessage {
+                from_name,
+                from_email,
+                subject: if i == 0 {
                 "Q1 Report review"
             } else {
                 "Re: Q1 Report review"
             },
-            &format!("Q1 report snippet part {}", i + 1),
-            &format!("Q1 report body text section {}. Revenue up 12% QoQ.", i + 1),
-            now - Duration::days(5) + Duration::hours(i as i64 * 3),
-            MessageFlags::READ,
-            i == 0, // first msg has attachment
+                snippet: &format!("Q1 report snippet part {}", i + 1),
+                body_text: &format!("Q1 report body text section {}. Revenue up 12% QoQ.", i + 1),
+                date: now - Duration::days(5) + Duration::hours(i as i64 * 3),
+                flags: MessageFlags::READ,
+                has_attachments: i == 0,
+                unsubscribe: // first msg has attachment
             UnsubscribeMethod::None,
+            },
         );
     }
 
@@ -178,16 +183,18 @@ pub fn generate_fixtures(
         &mut msg_num,
         account_id,
         &t3,
-        "This Week in Rust",
-        "noreply@rust-lang.org",
-        "This Week in Rust #580",
-        "Crate of the week: tantivy 0.22 released with new features...",
-        "Hello Rustacean! This week's highlights include tantivy 0.22 release.",
-        now - Duration::days(1),
-        MessageFlags::empty(),
-        false,
-        UnsubscribeMethod::OneClick {
-            url: "https://this-week-in-rust.org/unsubscribe".to_string(),
+        FixtureMessage {
+            from_name: "This Week in Rust",
+            from_email: "noreply@rust-lang.org",
+            subject: "This Week in Rust #580",
+            snippet: "Crate of the week: tantivy 0.22 released with new features...",
+            body_text: "Hello Rustacean! This week's highlights include tantivy 0.22 release.",
+            date: now - Duration::days(1),
+            flags: MessageFlags::empty(),
+            has_attachments: false,
+            unsubscribe: UnsubscribeMethod::OneClick {
+                url: "https://this-week-in-rust.org/unsubscribe".to_string(),
+            },
         },
     );
 
@@ -200,39 +207,41 @@ pub fn generate_fixtures(
             &mut msg_num,
             account_id,
             &t4,
-            if i == 0 {
-                "Frank Billing"
-            } else {
-                "Grace Admin"
+            FixtureMessage {
+                from_name: if i == 0 {
+                    "Frank Billing"
+                } else {
+                    "Grace Admin"
+                },
+                from_email: if i == 0 {
+                    "billing@vendor.com"
+                } else {
+                    "grace@work.com"
+                },
+                subject: if i == 0 {
+                    "Invoice #2847"
+                } else {
+                    "Re: Invoice #2847"
+                },
+                snippet: if i == 0 {
+                    "Please find attached invoice #2847..."
+                } else {
+                    "Approved for payment. cc: accounting."
+                },
+                body_text: if i == 0 {
+                    "Invoice #2847 for consulting services. Amount: $15,000."
+                } else {
+                    "Approved for payment. Please process by EOM."
+                },
+                date: now - Duration::days(3) + Duration::hours(i as i64 * 4),
+                flags: if i == 0 {
+                    MessageFlags::READ
+                } else {
+                    MessageFlags::empty()
+                },
+                has_attachments: i == 0,
+                unsubscribe: UnsubscribeMethod::None,
             },
-            if i == 0 {
-                "billing@vendor.com"
-            } else {
-                "grace@work.com"
-            },
-            if i == 0 {
-                "Invoice #2847"
-            } else {
-                "Re: Invoice #2847"
-            },
-            if i == 0 {
-                "Please find attached invoice #2847..."
-            } else {
-                "Approved for payment. cc: accounting."
-            },
-            if i == 0 {
-                "Invoice #2847 for consulting services. Amount: $15,000."
-            } else {
-                "Approved for payment. Please process by EOM."
-            },
-            now - Duration::days(3) + Duration::hours(i as i64 * 4),
-            if i == 0 {
-                MessageFlags::READ
-            } else {
-                MessageFlags::empty()
-            },
-            i == 0,
-            UnsubscribeMethod::None,
         );
     }
 
@@ -250,19 +259,21 @@ pub fn generate_fixtures(
             &mut msg_num,
             account_id,
             &t5,
-            names[i].0,
-            names[i].1,
-            if i == 0 {
-                "Team standup notes"
-            } else {
-                "Re: Team standup notes"
+            FixtureMessage {
+                from_name: names[i].0,
+                from_email: names[i].1,
+                subject: if i == 0 {
+                    "Team standup notes"
+                } else {
+                    "Re: Team standup notes"
+                },
+                snippet: &format!("Standup update from {}", names[i].0),
+                body_text: &format!("{}: Working on feature X. No blockers.", names[i].0),
+                date: now - Duration::days(1) + Duration::hours(i as i64),
+                flags: MessageFlags::READ,
+                has_attachments: false,
+                unsubscribe: UnsubscribeMethod::None,
             },
-            &format!("Standup update from {}", names[i].0),
-            &format!("{}: Working on feature X. No blockers.", names[i].0),
-            now - Duration::days(1) + Duration::hours(i as i64),
-            MessageFlags::READ,
-            false,
-            UnsubscribeMethod::None,
         );
     }
 
@@ -275,35 +286,37 @@ pub fn generate_fixtures(
             &mut msg_num,
             account_id,
             &t6,
-            if i == 0 { "Kim Travel" } else { "Liam Friend" },
-            if i == 0 {
-                "kim@personal.com"
-            } else {
-                "liam@personal.com"
+            FixtureMessage {
+                from_name: if i == 0 { "Kim Travel" } else { "Liam Friend" },
+                from_email: if i == 0 {
+                    "kim@personal.com"
+                } else {
+                    "liam@personal.com"
+                },
+                subject: if i == 0 {
+                    "Summer trip planning"
+                } else {
+                    "Re: Summer trip planning"
+                },
+                snippet: if i == 0 {
+                    "Let's plan our summer trip to Japan!"
+                } else {
+                    "Great idea! I've been looking at flights."
+                },
+                body_text: if i == 0 {
+                    "I've been researching Tokyo hotels and found some great deals for August."
+                } else {
+                    "Flights from SFO are around $800 round trip. Let's book soon!"
+                },
+                date: now - Duration::days(4) + Duration::hours(i as i64 * 6),
+                flags: if i == 0 {
+                    MessageFlags::READ
+                } else {
+                    MessageFlags::empty()
+                },
+                has_attachments: false,
+                unsubscribe: UnsubscribeMethod::None,
             },
-            if i == 0 {
-                "Summer trip planning"
-            } else {
-                "Re: Summer trip planning"
-            },
-            if i == 0 {
-                "Let's plan our summer trip to Japan!"
-            } else {
-                "Great idea! I've been looking at flights."
-            },
-            if i == 0 {
-                "I've been researching Tokyo hotels and found some great deals for August."
-            } else {
-                "Flights from SFO are around $800 round trip. Let's book soon!"
-            },
-            now - Duration::days(4) + Duration::hours(i as i64 * 6),
-            if i == 0 {
-                MessageFlags::READ
-            } else {
-                MessageFlags::empty()
-            },
-            false,
-            UnsubscribeMethod::None,
         );
     }
 
@@ -332,22 +345,24 @@ pub fn generate_fixtures(
             &mut msg_num,
             account_id,
             &t7,
-            name,
-            email,
-            if i == 0 {
-                "PR review: fix auth middleware"
-            } else {
-                "Re: PR review: fix auth middleware"
+            FixtureMessage {
+                from_name: name,
+                from_email: email,
+                subject: if i == 0 {
+                    "PR review: fix auth middleware"
+                } else {
+                    "Re: PR review: fix auth middleware"
+                },
+                snippet: &format!("PR comment round {}", i + 1),
+                body_text: &format!(
+                    "Review comment {}: The auth middleware change looks correct.",
+                    i + 1
+                ),
+                date: now - Duration::days(1) + Duration::hours(i as i64),
+                flags,
+                has_attachments: false,
+                unsubscribe: UnsubscribeMethod::None,
             },
-            &format!("PR comment round {}", i + 1),
-            &format!(
-                "Review comment {}: The auth middleware change looks correct.",
-                i + 1
-            ),
-            now - Duration::days(1) + Duration::hours(i as i64),
-            flags,
-            false,
-            UnsubscribeMethod::None,
         );
     }
 
@@ -359,16 +374,18 @@ pub fn generate_fixtures(
         &mut msg_num,
         account_id,
         &t8,
-        "Hacker News",
-        "digest@hn.algolia.com",
-        "HN Weekly Digest",
-        "Top stories this week: Rust in production at scale...",
-        "Your weekly Hacker News digest. Top stories include Rust adoption.",
-        now - Duration::hours(12),
-        MessageFlags::empty(),
-        false,
-        UnsubscribeMethod::HttpLink {
-            url: "https://hn.algolia.com/unsubscribe".to_string(),
+        FixtureMessage {
+            from_name: "Hacker News",
+            from_email: "digest@hn.algolia.com",
+            subject: "HN Weekly Digest",
+            snippet: "Top stories this week: Rust in production at scale...",
+            body_text: "Your weekly Hacker News digest. Top stories include Rust adoption.",
+            date: now - Duration::hours(12),
+            flags: MessageFlags::empty(),
+            has_attachments: false,
+            unsubscribe: UnsubscribeMethod::HttpLink {
+                url: "https://hn.algolia.com/unsubscribe".to_string(),
+            },
         },
     );
 
@@ -381,35 +398,37 @@ pub fn generate_fixtures(
             &mut msg_num,
             account_id,
             &t9,
-            if i == 0 {
-                "RustConf Team"
-            } else {
-                "Pat Colleague"
+            FixtureMessage {
+                from_name: if i == 0 {
+                    "RustConf Team"
+                } else {
+                    "Pat Colleague"
+                },
+                from_email: if i == 0 {
+                    "info@rustconf.com"
+                } else {
+                    "pat@work.com"
+                },
+                subject: if i == 0 {
+                    "RustConf 2026 invite"
+                } else {
+                    "Re: RustConf 2026 invite"
+                },
+                snippet: if i == 0 {
+                    "You're invited to RustConf 2026!"
+                } else {
+                    "Want to go together? Company might sponsor."
+                },
+                body_text: if i == 0 {
+                    "RustConf 2026 in Portland, Sept 15-17. Early bird tickets available!"
+                } else {
+                    "I asked my manager and they'll cover the ticket. Let's go!"
+                },
+                date: now - Duration::days(7) + Duration::hours(i as i64 * 24),
+                flags: MessageFlags::empty(),
+                has_attachments: i == 0,
+                unsubscribe: UnsubscribeMethod::None,
             },
-            if i == 0 {
-                "info@rustconf.com"
-            } else {
-                "pat@work.com"
-            },
-            if i == 0 {
-                "RustConf 2026 invite"
-            } else {
-                "Re: RustConf 2026 invite"
-            },
-            if i == 0 {
-                "You're invited to RustConf 2026!"
-            } else {
-                "Want to go together? Company might sponsor."
-            },
-            if i == 0 {
-                "RustConf 2026 in Portland, Sept 15-17. Early bird tickets available!"
-            } else {
-                "I asked my manager and they'll cover the ticket. Let's go!"
-            },
-            now - Duration::days(7) + Duration::hours(i as i64 * 24),
-            MessageFlags::empty(),
-            i == 0,
-            UnsubscribeMethod::None,
         );
     }
 
@@ -422,26 +441,28 @@ pub fn generate_fixtures(
             &mut msg_num,
             account_id,
             &t10,
-            "CI Bot",
-            "ci@work.com",
-            if i == 0 {
-                "CI pipeline failures"
-            } else {
-                "Re: CI pipeline failures"
+            FixtureMessage {
+                from_name: "CI Bot",
+                from_email: "ci@work.com",
+                subject: if i == 0 {
+                    "CI pipeline failures"
+                } else {
+                    "Re: CI pipeline failures"
+                },
+                snippet: &format!("Pipeline run #{} failed: test timeout", 487 + i),
+                body_text: &format!(
+                    "Build #{} failed at stage: integration-tests. Error: timeout after 600s.",
+                    487 + i
+                ),
+                date: now - Duration::hours(6) + Duration::hours(i as i64),
+                flags: if i == 0 {
+                    MessageFlags::READ
+                } else {
+                    MessageFlags::empty()
+                },
+                has_attachments: false,
+                unsubscribe: UnsubscribeMethod::None,
             },
-            &format!("Pipeline run #{} failed: test timeout", 487 + i),
-            &format!(
-                "Build #{} failed at stage: integration-tests. Error: timeout after 600s.",
-                487 + i
-            ),
-            now - Duration::hours(6) + Duration::hours(i as i64),
-            if i == 0 {
-                MessageFlags::READ
-            } else {
-                MessageFlags::empty()
-            },
-            false,
-            UnsubscribeMethod::None,
         );
     }
 
@@ -453,17 +474,19 @@ pub fn generate_fixtures(
         &mut msg_num,
         account_id,
         &t11,
-        "The Changelog",
-        "noreply@changelog.com",
-        "Changelog newsletter #523",
-        "This week: SQLite internals deep dive...",
-        "Weekly changelog: SQLite internals, new Rust crates, and more.",
-        now - Duration::days(3),
-        MessageFlags::empty(),
-        false,
-        UnsubscribeMethod::Mailto {
-            address: "unsub@changelog.com".to_string(),
-            subject: Some("unsubscribe".to_string()),
+        FixtureMessage {
+            from_name: "The Changelog",
+            from_email: "noreply@changelog.com",
+            subject: "Changelog newsletter #523",
+            snippet: "This week: SQLite internals deep dive...",
+            body_text: "Weekly changelog: SQLite internals, new Rust crates, and more.",
+            date: now - Duration::days(3),
+            flags: MessageFlags::empty(),
+            has_attachments: false,
+            unsubscribe: UnsubscribeMethod::Mailto {
+                address: "unsub@changelog.com".to_string(),
+                subject: Some("unsubscribe".to_string()),
+            },
         },
     );
 
@@ -533,18 +556,20 @@ pub fn generate_fixtures(
             &mut msg_num,
             account_id,
             &t,
-            name,
-            email,
-            filler_subjects[i],
-            &format!("Preview of: {}", filler_subjects[i]),
-            &format!(
-                "Full body content for: {}. This contains detailed discussion.",
-                filler_subjects[i]
-            ),
-            now - Duration::days(i as i64 % 30) - Duration::hours(i as i64),
-            flags,
-            false,
-            unsub,
+            FixtureMessage {
+                from_name: name,
+                from_email: email,
+                subject: filler_subjects[i],
+                snippet: &format!("Preview of: {}", filler_subjects[i]),
+                body_text: &format!(
+                    "Full body content for: {}. This contains detailed discussion.",
+                    filler_subjects[i]
+                ),
+                date: now - Duration::days(i as i64 % 30) - Duration::hours(i as i64),
+                flags,
+                has_attachments: false,
+                unsubscribe: unsub,
+            },
         );
     }
 
@@ -811,20 +836,22 @@ pub fn generate_demo_fixtures(
                 &mut msg_num,
                 account_id,
                 &thread_id,
-                from,
-                to,
-                cc,
-                subject,
-                snippet,
-                body,
-                date,
-                flags,
-                has_attachments,
-                category,
-                unsubscribe,
-                provider_labels,
-                previous_message_id.clone(),
-                references.clone(),
+                DemoMessage {
+                    from,
+                    to,
+                    cc,
+                    subject,
+                    snippet,
+                    body_text: body,
+                    date,
+                    flags,
+                    has_attachments,
+                    category,
+                    unsubscribe,
+                    label_provider_ids: provider_labels,
+                    in_reply_to: previous_message_id.clone(),
+                    references: references.clone(),
+                },
             );
             if previous_message_id.is_none() {
                 references.push(current_header.clone());
@@ -943,20 +970,22 @@ fn generate_curated_demo_fixtures(
                 &mut msg_num,
                 account_id,
                 &thread_id,
-                from,
-                to,
-                Vec::new(),
-                subject,
-                snippet,
-                body,
-                now - Duration::hours((thread_num * 5 + reply_idx) as i64),
-                flags,
-                has_attachments,
-                sender.category,
-                unsubscribe,
-                provider_labels,
-                previous_message_id.clone(),
-                references.clone(),
+                DemoMessage {
+                    from,
+                    to,
+                    cc: Vec::new(),
+                    subject,
+                    snippet,
+                    body_text: body,
+                    date: now - Duration::hours((thread_num * 5 + reply_idx) as i64),
+                    flags,
+                    has_attachments,
+                    category: sender.category,
+                    unsubscribe,
+                    label_provider_ids: provider_labels,
+                    in_reply_to: previous_message_id.clone(),
+                    references: references.clone(),
+                },
             );
             if previous_message_id.is_none() {
                 references.push(current_header.clone());
@@ -1169,16 +1198,7 @@ fn demo_body(
     )
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "demo fixture builder keeps message dimensions explicit for readable generated scenarios"
-)]
-fn push_demo_msg(
-    envelopes: &mut Vec<Envelope>,
-    bodies: &mut HashMap<String, MessageBody>,
-    msg_num: &mut usize,
-    account_id: &AccountId,
-    thread_id: &ThreadId,
+struct DemoMessage {
     from: Address,
     to: Vec<Address>,
     cc: Vec<Address>,
@@ -1193,7 +1213,32 @@ fn push_demo_msg(
     label_provider_ids: Vec<String>,
     in_reply_to: Option<String>,
     references: Vec<String>,
+}
+
+fn push_demo_msg(
+    envelopes: &mut Vec<Envelope>,
+    bodies: &mut HashMap<String, MessageBody>,
+    msg_num: &mut usize,
+    account_id: &AccountId,
+    thread_id: &ThreadId,
+    message: DemoMessage,
 ) -> String {
+    let DemoMessage {
+        from,
+        to,
+        cc,
+        subject,
+        snippet,
+        body_text,
+        date,
+        flags,
+        has_attachments,
+        category,
+        unsubscribe,
+        label_provider_ids,
+        in_reply_to,
+        references,
+    } = message;
     let current_num = *msg_num;
     let msg_id = MessageId::new();
     let provider_id = format!("demo-msg-{current_num}");
@@ -1427,26 +1472,37 @@ fn label_color(provider_id: &str) -> Option<&'static str> {
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "small fixture builder keeps synthetic message dimensions visible at call sites"
-)]
+struct FixtureMessage<'a> {
+    from_name: &'a str,
+    from_email: &'a str,
+    subject: &'a str,
+    snippet: &'a str,
+    body_text: &'a str,
+    date: chrono::DateTime<chrono::Utc>,
+    flags: MessageFlags,
+    has_attachments: bool,
+    unsubscribe: UnsubscribeMethod,
+}
+
 fn push_msg(
     envelopes: &mut Vec<Envelope>,
     bodies: &mut HashMap<String, MessageBody>,
     msg_num: &mut usize,
     account_id: &AccountId,
     thread_id: &ThreadId,
-    from_name: &str,
-    from_email: &str,
-    subject: &str,
-    snippet: &str,
-    body_text: &str,
-    date: chrono::DateTime<chrono::Utc>,
-    flags: MessageFlags,
-    has_attachments: bool,
-    unsubscribe: UnsubscribeMethod,
+    message: FixtureMessage<'_>,
 ) {
+    let FixtureMessage {
+        from_name,
+        from_email,
+        subject,
+        snippet,
+        body_text,
+        date,
+        flags,
+        has_attachments,
+        unsubscribe,
+    } = message;
     let msg_id = MessageId::new();
     let provider_id = format!("fake-msg-{}", msg_num);
     *msg_num += 1;

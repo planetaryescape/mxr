@@ -1,32 +1,37 @@
 use crate::app::{
     ActivePane, MailListMode, MailListRow, SearchPageState, SearchPane, SearchUiStatus,
 };
+use crate::terminal_images::HtmlImageEntry;
+use crate::theme::Theme;
 use crate::ui::{mail_list, message_view, search_query::highlight_search_query};
+use mxr_core::id::MessageId;
 use mxr_core::SearchMode;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use throbber_widgets_tui::{Throbber, BRAILLE_SIX};
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "TUI draw entrypoint keeps call sites explicit"
-)]
-pub fn draw(
-    frame: &mut Frame,
-    area: Rect,
-    state: &SearchPageState,
-    rows: &[MailListRow],
-    selected_set: &HashSet<mxr_core::MessageId>,
-    mail_list_mode: MailListMode,
-    preview_messages: &[message_view::ThreadMessageBlock],
-    preview_scroll: u16,
-    html_images: &mut std::collections::HashMap<
-        mxr_core::MessageId,
-        std::collections::HashMap<String, crate::terminal_images::HtmlImageEntry>,
-    >,
-    theme: &crate::theme::Theme,
-) {
+pub struct SearchPageView<'a> {
+    pub state: &'a SearchPageState,
+    pub rows: &'a [MailListRow],
+    pub selected_set: &'a HashSet<MessageId>,
+    pub mail_list_mode: MailListMode,
+    pub preview_messages: &'a [message_view::ThreadMessageBlock],
+    pub preview_scroll: u16,
+    pub html_images: &'a mut HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
+}
+
+pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &Theme) {
+    let SearchPageView {
+        state,
+        rows,
+        selected_set,
+        mail_list_mode,
+        preview_messages,
+        preview_scroll,
+        html_images,
+    } = view;
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(4), Constraint::Min(0)])

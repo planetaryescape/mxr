@@ -22,38 +22,6 @@ pub struct MailListView<'a> {
     pub loading_throbber: Option<&'a throbber_widgets_tui::ThrobberState>,
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "TUI draw entrypoint keeps call sites explicit"
-)]
-pub fn draw(
-    frame: &mut Frame,
-    area: Rect,
-    rows: &[MailListRow],
-    selected_index: usize,
-    scroll_offset: usize,
-    active_pane: &ActivePane,
-    title: &str,
-    theme: &Theme,
-) {
-    draw_view(
-        frame,
-        area,
-        &MailListView {
-            rows,
-            selected_index,
-            scroll_offset,
-            active_pane,
-            title,
-            selected_set: &HashSet::new(),
-            mode: MailListMode::Threads,
-            loading_message: None,
-            loading_throbber: None,
-        },
-        theme,
-    );
-}
-
 pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: &Theme) {
     let is_focused = *view.active_pane == ActivePane::MailList;
     let border_style = theme.border_style(is_focused);

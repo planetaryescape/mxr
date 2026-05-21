@@ -1,5 +1,5 @@
 #![cfg(test)]
-#![allow(clippy::wrong_self_convention, dead_code)]
+#![allow(dead_code)]
 
 use mxr_core::id::*;
 use mxr_core::types::*;
@@ -101,7 +101,7 @@ impl TestEnvelopeBuilder {
         self
     }
 
-    pub(crate) fn from_address(mut self, name: &str, email: &str) -> Self {
+    pub(crate) fn sender_address(mut self, name: &str, email: &str) -> Self {
         self.from = Address {
             name: Some(name.to_string()),
             email: email.to_string(),
@@ -109,7 +109,7 @@ impl TestEnvelopeBuilder {
         self
     }
 
-    pub(crate) fn to_address(mut self, name: Option<&str>, email: &str) -> Self {
+    pub(crate) fn recipient_address(mut self, name: Option<&str>, email: &str) -> Self {
         self.to = vec![Address {
             name: name.map(|n| n.to_string()),
             email: email.to_string(),

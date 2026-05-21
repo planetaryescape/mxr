@@ -15,7 +15,7 @@ use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Address, Envelope, MessageFlags, UnsubscribeMethod};
 use mxr_test_support::render_to_string;
 use mxr_tui::app::{MailListMode, MailListRow, SearchPageState, SearchUiStatus};
-use mxr_tui::ui::search_page::draw as draw_search_page;
+use mxr_tui::ui::search_page::{draw as draw_search_page, SearchPageView};
 use ratatui::layout::Rect;
 
 fn streaming_envelope(slug: &str, subject: &str, sender: &str) -> Envelope {
@@ -97,16 +97,19 @@ fn result_list_renders_first_batch_before_query_completes() {
 
     let mut html_images = std::collections::HashMap::new();
     let rendered = render_to_string(160, 24, |frame| {
+        let selected_set = std::collections::HashSet::new();
         draw_search_page(
             frame,
             Rect::new(0, 0, 160, 24),
-            &state,
-            &rows,
-            &std::collections::HashSet::new(),
-            MailListMode::Messages,
-            &[],
-            0,
-            &mut html_images,
+            SearchPageView {
+                state: &state,
+                rows: &rows,
+                selected_set: &selected_set,
+                mail_list_mode: MailListMode::Messages,
+                preview_messages: &[],
+                preview_scroll: 0,
+                html_images: &mut html_images,
+            },
             &mxr_tui::theme::Theme::default(),
         );
     });

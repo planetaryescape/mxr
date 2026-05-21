@@ -1,4 +1,3 @@
-#![cfg_attr(test, allow(clippy::bool_assert_comparison))]
 #![cfg_attr(
     test,
     expect(

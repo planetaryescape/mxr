@@ -471,11 +471,13 @@ mod tests {
                 &store,
                 &account,
                 &thread_id,
-                MessageDirection::Outbound,
-                "alice@example.com",
-                "Hi Alice. I will send it today.\n> This quoted inbound paragraph has many extra words that should not shape my outbound voice metrics.",
-                base + chrono::Duration::minutes(index),
-                None,
+                RelationshipMessageFixture {
+                    direction: MessageDirection::Outbound,
+                    contact_email: "alice@example.com",
+                    body: "Hi Alice. I will send it today.\n> This quoted inbound paragraph has many extra words that should not shape my outbound voice metrics.",
+                    date: base + chrono::Duration::minutes(index),
+                    list_id: None,
+                },
             )
             .await;
         }
@@ -483,22 +485,26 @@ mod tests {
             &store,
             &account,
             &thread_id,
-            MessageDirection::Outbound,
-            "alice@example.com",
-            "Newsletter list content should not count as direct relationship voice.",
-            base + chrono::Duration::minutes(6),
-            Some("list.example"),
+            RelationshipMessageFixture {
+                direction: MessageDirection::Outbound,
+                contact_email: "alice@example.com",
+                body: "Newsletter list content should not count as direct relationship voice.",
+                date: base + chrono::Duration::minutes(6),
+                list_id: Some("list.example"),
+            },
         )
         .await;
         insert_relationship_message(
             &store,
             &account,
             &thread_id,
-            MessageDirection::Inbound,
-            "alice@example.com",
-            "Can you send it today?",
-            base + chrono::Duration::minutes(7),
-            None,
+            RelationshipMessageFixture {
+                direction: MessageDirection::Inbound,
+                contact_email: "alice@example.com",
+                body: "Can you send it today?",
+                date: base + chrono::Duration::minutes(7),
+                list_id: None,
+            },
         )
         .await;
 
@@ -544,11 +550,13 @@ mod tests {
                 &store,
                 &account,
                 &thread_id,
-                MessageDirection::Outbound,
-                "alice@example.com",
-                "ok.",
-                base + chrono::Duration::minutes(index),
-                None,
+                RelationshipMessageFixture {
+                    direction: MessageDirection::Outbound,
+                    contact_email: "alice@example.com",
+                    body: "ok.",
+                    date: base + chrono::Duration::minutes(index),
+                    list_id: None,
+                },
             )
             .await;
         }
@@ -556,11 +564,13 @@ mod tests {
             &store,
             &account,
             &thread_id,
-            MessageDirection::Inbound,
-            "alice@example.com",
-            "Thanks.",
-            base + chrono::Duration::minutes(9),
-            None,
+            RelationshipMessageFixture {
+                direction: MessageDirection::Inbound,
+                contact_email: "alice@example.com",
+                body: "Thanks.",
+                date: base + chrono::Duration::minutes(9),
+                list_id: None,
+            },
         )
         .await;
         rebuild_contact_style(&store, &account.id, "alice@example.com")
@@ -572,11 +582,13 @@ mod tests {
                 &store,
                 &account,
                 &thread_id,
-                MessageDirection::Outbound,
-                "alice@example.com",
-                "I can prepare the deployment update, summarize the dashboard results, confirm the owner, and send the final note before the deadline.",
-                base + chrono::Duration::minutes(20 + index),
-                None,
+                RelationshipMessageFixture {
+                    direction: MessageDirection::Outbound,
+                    contact_email: "alice@example.com",
+                    body: "I can prepare the deployment update, summarize the dashboard results, confirm the owner, and send the final note before the deadline.",
+                    date: base + chrono::Duration::minutes(20 + index),
+                    list_id: None,
+                },
             )
             .await;
         }
@@ -617,20 +629,27 @@ mod tests {
         }
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "test fixture helper keeps relationship-message dimensions explicit"
-    )]
+    struct RelationshipMessageFixture<'a> {
+        direction: MessageDirection,
+        contact_email: &'a str,
+        body: &'a str,
+        date: chrono::DateTime<Utc>,
+        list_id: Option<&'a str>,
+    }
+
     async fn insert_relationship_message(
         store: &Store,
         account: &Account,
         thread_id: &ThreadId,
-        direction: MessageDirection,
-        contact_email: &str,
-        body: &str,
-        date: chrono::DateTime<Utc>,
-        list_id: Option<&str>,
+        fixture: RelationshipMessageFixture<'_>,
     ) -> MessageId {
+        let RelationshipMessageFixture {
+            direction,
+            contact_email,
+            body,
+            date,
+            list_id,
+        } = fixture;
         let message_id = MessageId::new();
         let (from, to) = match direction {
             MessageDirection::Outbound => (

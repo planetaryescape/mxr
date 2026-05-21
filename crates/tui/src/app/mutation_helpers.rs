@@ -1,5 +1,15 @@
 use super::*;
 
+pub(super) struct BulkActionRequest {
+    pub title: String,
+    pub detail: String,
+    pub request: Request,
+    pub effect: MutationEffect,
+    pub optimistic_effect: Option<MutationEffect>,
+    pub status_message: String,
+    pub count: usize,
+}
+
 impl App {
     /// Resolve the user's selection in the snooze panel into a wake-at
     /// instant and queue the snooze mutation. Handles both the preset
@@ -786,24 +796,21 @@ impl App {
         self.mailbox.visual_anchor = None;
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "bulk confirmation inputs stay explicit for safety"
-    )]
-    pub(super) fn queue_or_confirm_bulk_action(
-        &mut self,
-        title: impl Into<String>,
-        detail: impl Into<String>,
-        request: Request,
-        effect: MutationEffect,
-        optimistic_effect: Option<MutationEffect>,
-        status_message: String,
-        count: usize,
-    ) {
+    pub(super) fn queue_or_confirm_bulk_action(&mut self, action: BulkActionRequest) {
+        let BulkActionRequest {
+            title,
+            detail,
+            request,
+            effect,
+            optimistic_effect,
+            status_message,
+            count,
+        } = action;
+
         if count > 1 {
             self.modals.pending_bulk_confirm = Some(PendingBulkConfirm {
-                title: title.into(),
-                detail: detail.into(),
+                title,
+                detail,
                 request,
                 effect,
                 optimistic_effect,

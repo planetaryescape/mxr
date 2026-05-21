@@ -3,7 +3,7 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use std::collections::HashMap;
 
-use crate::message::{future_date_cutoff_timestamp, record_to_envelope};
+use crate::message::{envelope_record, future_date_cutoff_timestamp, record_to_envelope};
 
 impl super::Store {
     pub async fn get_thread(&self, thread_id: &ThreadId) -> Result<Option<Thread>, sqlx::Error> {
@@ -264,30 +264,7 @@ impl super::Store {
         trace_query("thread.get_thread_envelopes", started_at, rows.len());
 
         rows.into_iter()
-            .map(|r| {
-                record_to_envelope(
-                    &r.id,
-                    &r.account_id,
-                    &r.provider_id,
-                    &r.thread_id,
-                    r.message_id_header.as_deref(),
-                    r.in_reply_to.as_deref(),
-                    r.reference_headers.as_deref(),
-                    r.from_name.as_deref(),
-                    &r.from_email,
-                    &r.to_addrs,
-                    &r.cc_addrs,
-                    &r.bcc_addrs,
-                    &r.subject,
-                    r.date,
-                    r.flags,
-                    &r.snippet,
-                    r.has_attachments,
-                    r.size_bytes,
-                    r.unsubscribe_method.as_deref(),
-                    &r.label_provider_ids,
-                )
-            })
+            .map(|r| record_to_envelope(envelope_record!(r)))
             .collect()
     }
 }

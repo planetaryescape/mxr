@@ -1,5 +1,3 @@
-#![cfg_attr(test, allow(clippy::items_after_test_module))]
-
 use crate::app::{SenderProfileModalState, SenderProfileTab};
 use crate::theme::Theme;
 use ratatui::layout::Margin;
@@ -425,6 +423,41 @@ fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
         .split(popup_layout[1])[1]
 }
 
+fn truncate(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{truncated}…")
+    } else {
+        truncated
+    }
+}
+
+fn human_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{} {}", bytes, UNITS[unit])
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+fn formality_label(score: f64) -> &'static str {
+    if score < 0.4 {
+        "casual"
+    } else if score < 0.7 {
+        "neutral"
+    } else {
+        "formal"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -651,40 +684,5 @@ mod tests {
             snapshot.contains("Sender unknown"),
             "unknown senders must surface a hint; got:\n{snapshot}",
         );
-    }
-}
-
-fn truncate(value: &str, max_chars: usize) -> String {
-    let mut chars = value.chars();
-    let truncated: String = chars.by_ref().take(max_chars).collect();
-    if chars.next().is_some() {
-        format!("{truncated}…")
-    } else {
-        truncated
-    }
-}
-
-fn human_bytes(bytes: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
-    let mut value = bytes as f64;
-    let mut unit = 0;
-    while value >= 1024.0 && unit < UNITS.len() - 1 {
-        value /= 1024.0;
-        unit += 1;
-    }
-    if unit == 0 {
-        format!("{} {}", bytes, UNITS[unit])
-    } else {
-        format!("{value:.1} {}", UNITS[unit])
-    }
-}
-
-fn formality_label(score: f64) -> &'static str {
-    if score < 0.4 {
-        "casual"
-    } else if score < 0.7 {
-        "neutral"
-    } else {
-        "formal"
     }
 }

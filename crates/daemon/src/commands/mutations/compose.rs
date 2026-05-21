@@ -158,22 +158,28 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "CLI wrapper mirrors clap-dispatched reply flags without changing the command surface"
-)]
-pub async fn reply(
-    message_id: String,
-    body: Option<String>,
-    body_stdin: bool,
-    signature: Option<String>,
-    no_signature: bool,
-    yes: bool,
-    dry_run: bool,
-    remind_after: Option<String>,
-    format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
-    reply_inner(
+pub struct ReplyCommand {
+    pub message_id: String,
+    pub body: Option<String>,
+    pub body_stdin: bool,
+    pub signature: Option<String>,
+    pub no_signature: bool,
+    pub yes: bool,
+    pub dry_run: bool,
+    pub remind_after: Option<String>,
+    pub format: Option<OutputFormat>,
+}
+
+pub async fn reply(command: ReplyCommand) -> anyhow::Result<()> {
+    reply_inner(command, false).await
+}
+
+pub async fn reply_all(command: ReplyCommand) -> anyhow::Result<()> {
+    reply_inner(command, true).await
+}
+
+async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<()> {
+    let ReplyCommand {
         message_id,
         body,
         body_stdin,
@@ -182,58 +188,8 @@ pub async fn reply(
         yes,
         dry_run,
         remind_after,
-        false,
         format,
-    )
-    .await
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "CLI wrapper mirrors clap-dispatched reply-all flags without changing the command surface"
-)]
-pub async fn reply_all(
-    message_id: String,
-    body: Option<String>,
-    body_stdin: bool,
-    signature: Option<String>,
-    no_signature: bool,
-    yes: bool,
-    dry_run: bool,
-    remind_after: Option<String>,
-    format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
-    reply_inner(
-        message_id,
-        body,
-        body_stdin,
-        signature,
-        no_signature,
-        yes,
-        dry_run,
-        remind_after,
-        true,
-        format,
-    )
-    .await
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "reply_inner is the shared CLI reply/reply-all bridge; flags stay explicit at the boundary"
-)]
-async fn reply_inner(
-    message_id: String,
-    body: Option<String>,
-    body_stdin: bool,
-    signature: Option<String>,
-    no_signature: bool,
-    yes: bool,
-    dry_run: bool,
-    remind_after: Option<String>,
-    reply_all: bool,
-    format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
+    } = command;
     let id = parse_message_id(&message_id)?;
     let mut client = IpcClient::connect().await?;
 
@@ -288,38 +244,49 @@ async fn reply_inner(
 
     finalize_compose(
         &mut client,
-        ctx.account_id,
-        if reply_all {
-            mxr_core::DraftIntent::ReplyAll
-        } else {
-            mxr_core::DraftIntent::Reply
+        FinalizeCompose {
+            account_id: ctx.account_id,
+            intent: if reply_all {
+                mxr_core::DraftIntent::ReplyAll
+            } else {
+                mxr_core::DraftIntent::Reply
+            },
+            frontmatter,
+            body: body_text,
+            draft_file,
+            yes,
+            dry_run,
+            remind_after,
+            format,
         },
-        frontmatter,
-        body_text,
-        draft_file,
-        yes,
-        dry_run,
-        remind_after,
-        format,
     )
     .await
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "CLI wrapper mirrors clap-dispatched forward flags without changing the command surface"
-)]
-pub async fn forward(
-    message_id: String,
-    to: Option<String>,
-    body: Option<String>,
-    body_stdin: bool,
-    signature: Option<String>,
-    no_signature: bool,
-    yes: bool,
-    dry_run: bool,
-    format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
+pub struct ForwardCommand {
+    pub message_id: String,
+    pub to: Option<String>,
+    pub body: Option<String>,
+    pub body_stdin: bool,
+    pub signature: Option<String>,
+    pub no_signature: bool,
+    pub yes: bool,
+    pub dry_run: bool,
+    pub format: Option<OutputFormat>,
+}
+
+pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
+    let ForwardCommand {
+        message_id,
+        to,
+        body,
+        body_stdin,
+        signature,
+        no_signature,
+        yes,
+        dry_run,
+        format,
+    } = command;
     let id = parse_message_id(&message_id)?;
     let mut client = IpcClient::connect().await?;
 
@@ -367,15 +334,17 @@ pub async fn forward(
 
     finalize_compose(
         &mut client,
-        ctx.account_id,
-        mxr_core::DraftIntent::Forward,
-        frontmatter,
-        body_text,
-        draft_file,
-        yes,
-        dry_run,
-        None,
-        format,
+        FinalizeCompose {
+            account_id: ctx.account_id,
+            intent: mxr_core::DraftIntent::Forward,
+            frontmatter,
+            body: body_text,
+            draft_file,
+            yes,
+            dry_run,
+            remind_after: None,
+            format,
+        },
     )
     .await
 }
@@ -417,12 +386,7 @@ async fn build_compose_draft(
     Ok((frontmatter, body, Some(path)))
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "compose finalization keeps draft state and CLI mode flags explicit at the send/save boundary"
-)]
-async fn finalize_compose(
-    client: &mut IpcClient,
+struct FinalizeCompose {
     account_id: AccountId,
     intent: mxr_core::DraftIntent,
     frontmatter: mxr_compose::frontmatter::ComposeFrontmatter,
@@ -432,7 +396,21 @@ async fn finalize_compose(
     dry_run: bool,
     remind_after: Option<String>,
     format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
+}
+
+async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> anyhow::Result<()> {
+    let FinalizeCompose {
+        account_id,
+        intent,
+        frontmatter,
+        body,
+        draft_file,
+        yes,
+        dry_run,
+        remind_after,
+        format,
+    } = compose;
+
     // Recipient + thread context is only meaningful at the
     // post-$EDITOR stage where the user has filled in `to:` / `subject:`.
     let snippet_ctx = snippet_context_from_frontmatter(&frontmatter);
@@ -1790,7 +1768,7 @@ mod tests {
         crate::test_fixtures::TestEnvelopeBuilder::new()
             .subject(subject)
             .provider_id(format!("provider-{subject}"))
-            .from_address("Buildkite", "buildkite@example.com")
+            .sender_address("Buildkite", "buildkite@example.com")
             .to(vec![])
             .message_id_header(None)
             .snippet("")

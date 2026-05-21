@@ -1,5 +1,15 @@
 use super::*;
 
+pub(super) struct SearchRequestDraft {
+    target: SearchTarget,
+    append: bool,
+    query: String,
+    mode: SearchMode,
+    sort: SortOrder,
+    offset: u32,
+    session_id: u64,
+}
+
 impl App {
     pub(crate) fn apply_search_page_results(&mut self, append: bool, results: SearchResultData) {
         let SearchResultData {
@@ -92,20 +102,16 @@ impl App {
         *current
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "queued search state stays explicit at call sites"
-    )]
-    pub(super) fn queue_search_request(
-        &mut self,
-        target: SearchTarget,
-        append: bool,
-        query: String,
-        mode: SearchMode,
-        sort: SortOrder,
-        offset: u32,
-        session_id: u64,
-    ) {
+    pub(super) fn queue_search_request(&mut self, request: SearchRequestDraft) {
+        let SearchRequestDraft {
+            target,
+            append,
+            query,
+            mode,
+            sort,
+            offset,
+            session_id,
+        } = request;
         self.search.pending = Some(PendingSearchRequest {
             query,
             mode,
@@ -211,15 +217,15 @@ impl App {
         }
 
         let session_id = self.begin_search_page_request(SearchUiStatus::Searching);
-        self.queue_search_request(
-            SearchTarget::SearchPage,
-            false,
-            query.clone(),
-            self.search.page.mode,
-            self.search.page.sort.clone(),
-            0,
+        self.queue_search_request(SearchRequestDraft {
+            target: SearchTarget::SearchPage,
+            append: false,
+            query: query.clone(),
+            mode: self.search.page.mode,
+            sort: self.search.page.sort.clone(),
+            offset: 0,
             session_id,
-        );
+        });
         self.queue_search_count_request(query, self.search.page.mode, session_id);
     }
 
@@ -235,15 +241,15 @@ impl App {
         self.search.page.loading_more = true;
         self.search.page.count_pending = true;
         self.search.page.ui_status = SearchUiStatus::Searching;
-        self.queue_search_request(
-            SearchTarget::SearchPage,
-            false,
-            pending.query.clone(),
-            pending.mode,
-            self.search.page.sort.clone(),
-            0,
-            pending.session_id,
-        );
+        self.queue_search_request(SearchRequestDraft {
+            target: SearchTarget::SearchPage,
+            append: false,
+            query: pending.query.clone(),
+            mode: pending.mode,
+            sort: self.search.page.sort.clone(),
+            offset: 0,
+            session_id: pending.session_id,
+        });
         self.queue_search_count_request(pending.query, pending.mode, pending.session_id);
     }
 
@@ -256,15 +262,15 @@ impl App {
         }
         self.search.page.loading_more = true;
         self.search.page.ui_status = SearchUiStatus::LoadingMore;
-        self.queue_search_request(
-            SearchTarget::SearchPage,
-            true,
-            self.search.page.query.clone(),
-            self.search.page.mode,
-            self.search.page.sort.clone(),
-            self.search.page.results.len() as u32,
-            self.search.page.session_id,
-        );
+        self.queue_search_request(SearchRequestDraft {
+            target: SearchTarget::SearchPage,
+            append: true,
+            query: self.search.page.query.clone(),
+            mode: self.search.page.mode,
+            sort: self.search.page.sort.clone(),
+            offset: self.search.page.results.len() as u32,
+            session_id: self.search.page.session_id,
+        });
     }
 
     pub fn maybe_load_more_search_results(&mut self) {
@@ -329,15 +335,15 @@ impl App {
             self.mailbox.envelopes = filtered;
             self.search.active = true;
             let session_id = Self::bump_search_session_id(&mut self.search.mailbox_session_id);
-            self.queue_search_request(
-                SearchTarget::Mailbox,
-                false,
-                query_source,
-                self.search.bar.mode,
-                SortOrder::DateDesc,
-                0,
+            self.queue_search_request(SearchRequestDraft {
+                target: SearchTarget::Mailbox,
+                append: false,
+                query: query_source,
+                mode: self.search.bar.mode,
+                sort: SortOrder::DateDesc,
+                offset: 0,
                 session_id,
-            );
+            });
         }
         self.mailbox.selected_index = 0;
         self.mailbox.scroll_offset = 0;

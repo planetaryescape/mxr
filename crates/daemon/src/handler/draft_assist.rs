@@ -660,7 +660,7 @@ mod tests {
             .thread_id(thread_id.clone())
             .provider_id("current-inbound")
             .subject("Pricing rollout")
-            .from_address("Customer", "customer@example.com")
+            .sender_address("Customer", "customer@example.com")
             .snippet("Can you clarify pricing rollout timing?")
             .build();
         state
@@ -753,7 +753,7 @@ mod tests {
             .thread_id(thread_id.clone())
             .provider_id("current-inbound")
             .subject("Pricing rollout")
-            .from_address("Customer", "customer@example.com")
+            .sender_address("Customer", "customer@example.com")
             .snippet("Can you clarify pricing rollout timing?")
             .build();
         state
@@ -849,7 +849,7 @@ mod tests {
             .thread_id(thread_id.clone())
             .provider_id("current-inbound")
             .subject("Pricing rollout")
-            .from_address("Customer", "customer@example.com")
+            .sender_address("Customer", "customer@example.com")
             .snippet("Can you clarify pricing rollout timing?")
             .build();
         state
@@ -905,7 +905,7 @@ mod tests {
             .thread_id(reply_thread_id.clone())
             .provider_id("current-inbound")
             .subject("Pricing rollout")
-            .from_address("Customer", "customer@example.com")
+            .sender_address("Customer", "customer@example.com")
             .to(vec![Address {
                 name: Some("Me".to_string()),
                 email: "user@example.com".to_string(),
@@ -918,8 +918,8 @@ mod tests {
             .thread_id(mxr_core::ThreadId::new())
             .provider_id("prior-sent")
             .subject("Pricing rollout")
-            .from_address("Me", "user@example.com")
-            .to_address(Some("Customer"), "customer@example.com")
+            .sender_address("Me", "user@example.com")
+            .recipient_address(Some("Customer"), "customer@example.com")
             .date(now - chrono::Duration::days(7))
             .snippet("I can hold the rollout note until numbers are firm.")
             .build();
@@ -928,7 +928,7 @@ mod tests {
             .thread_id(mxr_core::ThreadId::new())
             .provider_id("prior-inbound")
             .subject("Pricing rollout")
-            .from_address("Vendor", "vendor@example.com")
+            .sender_address("Vendor", "vendor@example.com")
             .date(now - chrono::Duration::days(6))
             .snippet("External pricing notes should not shape my voice.")
             .build();

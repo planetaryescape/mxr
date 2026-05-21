@@ -331,341 +331,6 @@ fn thread_summary_lines(summary: ThreadSummaryBlock, theme: &Theme) -> Vec<Line<
     lines
 }
 
-#[allow(clippy::items_after_test_module)]
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::app::{BodySource, BodyViewMetadata, BodyViewMode};
-    use chrono::{TimeZone, Utc};
-    use mxr_core::id::{AccountId, MessageId, ThreadId};
-    use mxr_core::types::{
-        Address, BodyPartSource, CalendarMetadata, CalendarPerson, MessageFlags, UnsubscribeMethod,
-    };
-    use mxr_test_support::render_to_string;
-
-    fn envelope() -> Envelope {
-        Envelope {
-            id: MessageId::new(),
-            account_id: AccountId::new(),
-            provider_id: "msg-1".into(),
-            thread_id: ThreadId::new(),
-            message_id_header: None,
-            in_reply_to: None,
-            references: vec![],
-            from: Address {
-                name: Some("Alice".into()),
-                email: "alice@example.com".into(),
-            },
-            to: vec![],
-            cc: vec![],
-            bcc: vec![],
-            subject: "Selection".into(),
-            date: Utc.with_ymd_and_hms(2024, 3, 15, 9, 30, 0).unwrap(),
-            flags: MessageFlags::READ,
-            snippet: "snippet".into(),
-            has_attachments: false,
-            size_bytes: 1024,
-            unsubscribe: UnsubscribeMethod::None,
-            link_count: 0,
-            body_word_count: 0,
-            label_provider_ids: vec![],
-            keywords: std::collections::BTreeSet::new(),
-        }
-    }
-
-    #[test]
-    fn selected_messages_render_visible_chip() {
-        let block = ThreadMessageBlock {
-            envelope: envelope(),
-            body_state: BodyViewState::ready(
-                "hello".into(),
-                "hello".into(),
-                BodySource::Plain,
-                crate::app::BodyViewMetadata::default(),
-            ),
-            labels: vec!["INBOX".into()],
-            attachments: vec![],
-            selected: true,
-            bulk_selected: true,
-            has_unsubscribe: false,
-            signature_expanded: false,
-            assets_loading: false,
-        };
-
-        let snapshot = render_to_string(70, 18, |frame| {
-            let mut html_images = HashMap::new();
-            draw(
-                frame,
-                Rect::new(0, 0, 70, 18),
-                &[block],
-                DrawOptions {
-                    summary: None,
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MessageView,
-                    theme: &Theme::default(),
-                    html_images: &mut html_images,
-                },
-            );
-        });
-
-        assert!(snapshot.contains("Selected"));
-    }
-
-    #[test]
-    fn thread_summary_renders_above_message() {
-        let block = ThreadMessageBlock {
-            envelope: envelope(),
-            body_state: BodyViewState::ready(
-                "hello".into(),
-                "hello".into(),
-                BodySource::Plain,
-                crate::app::BodyViewMetadata::default(),
-            ),
-            labels: vec![],
-            attachments: vec![],
-            selected: true,
-            bulk_selected: false,
-            has_unsubscribe: false,
-            signature_expanded: false,
-            assets_loading: false,
-        };
-
-        let snapshot = render_to_string(90, 20, |frame| {
-            let mut html_images = HashMap::new();
-            draw(
-                frame,
-                Rect::new(0, 0, 90, 20),
-                &[block],
-                DrawOptions {
-                    summary: Some(ThreadSummaryBlock {
-                        text: Some("Summary:\n- Alice asked for launch approval.".into()),
-                        model: Some("llama3.2".into()),
-                        loading: false,
-                        error: None,
-                    }),
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MessageView,
-                    theme: &Theme::default(),
-                    html_images: &mut html_images,
-                },
-            );
-        });
-
-        assert!(snapshot.contains("Summary"));
-        assert!(snapshot.contains("Alice asked for launch approval"));
-        assert!(snapshot.contains("llama3.2"));
-    }
-
-    #[test]
-    fn raw_body_rendering_preserves_quotes_and_signature_markers() {
-        let raw = "Hello\n> quoted line\n-- \nSignature";
-        let block = ThreadMessageBlock {
-            envelope: envelope(),
-            body_state: BodyViewState::ready(
-                raw.into(),
-                raw.into(),
-                BodySource::Plain,
-                BodyViewMetadata {
-                    mode: BodyViewMode::Text,
-                    provenance: Some(BodyPartSource::Exact),
-                    reader_applied: false,
-                    ..BodyViewMetadata::default()
-                },
-            ),
-            labels: vec![],
-            attachments: vec![],
-            selected: true,
-            bulk_selected: false,
-            has_unsubscribe: false,
-            signature_expanded: false,
-            assets_loading: false,
-        };
-
-        let rendered = render_to_string(80, 18, |frame| {
-            let mut html_images = HashMap::new();
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 18),
-                &[block],
-                DrawOptions {
-                    summary: None,
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MessageView,
-                    theme: &Theme::default(),
-                    html_images: &mut html_images,
-                },
-            );
-        });
-
-        assert!(rendered.contains("> quoted line"));
-        assert!(rendered.contains("-- "));
-        assert!(!rendered.contains("signature ("));
-    }
-
-    #[test]
-    fn html_body_rendering_labels_inline_embedded_and_remote_images() {
-        let html = concat!(
-            "<p>Hello</p>",
-            "<img alt=\"Logo\" src=\"cid:logo@example.com\">",
-            "<img alt=\"Badge\" src=\"data:image/png;base64,AAAA\">",
-            "<img alt=\"Hero\" src=\"https://example.com/hero.png\">"
-        );
-        let block = ThreadMessageBlock {
-            envelope: envelope(),
-            body_state: BodyViewState::ready(
-                html.into(),
-                html.into(),
-                BodySource::Html,
-                BodyViewMetadata {
-                    mode: BodyViewMode::Html,
-                    provenance: Some(BodyPartSource::Exact),
-                    inline_images: true,
-                    remote_content_available: true,
-                    remote_content_enabled: false,
-                    ..BodyViewMetadata::default()
-                },
-            ),
-            labels: vec![],
-            attachments: vec![],
-            selected: true,
-            bulk_selected: false,
-            has_unsubscribe: false,
-            signature_expanded: false,
-            assets_loading: false,
-        };
-
-        let rendered = render_to_string(120, 30, |frame| {
-            let mut html_images = HashMap::new();
-            draw(
-                frame,
-                Rect::new(0, 0, 120, 30),
-                &[block],
-                DrawOptions {
-                    summary: None,
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MessageView,
-                    theme: &Theme::default(),
-                    html_images: &mut html_images,
-                },
-            );
-        });
-
-        assert!(rendered.contains("Logo"));
-        assert!(rendered.contains("Badge"));
-        assert!(rendered.contains("Hero"));
-        assert!(rendered.contains("View: Original HTML"));
-        // Phase 3.4: chip label changed from "remote images blocked"
-        // to a clearer "External content blocked" with affordance hint.
-        assert!(rendered.contains("External content blocked"));
-    }
-
-    #[test]
-    fn unsubscribe_header_uses_explicit_action_label() {
-        let mut env = envelope();
-        env.unsubscribe = UnsubscribeMethod::OneClick {
-            url: "https://example.com/unsub".into(),
-        };
-        let block = ThreadMessageBlock {
-            envelope: env,
-            body_state: BodyViewState::ready(
-                "hello".into(),
-                "hello".into(),
-                BodySource::Plain,
-                BodyViewMetadata::default(),
-            ),
-            labels: vec![],
-            attachments: vec![],
-            selected: true,
-            bulk_selected: false,
-            has_unsubscribe: true,
-            signature_expanded: false,
-            assets_loading: false,
-        };
-
-        let rendered = render_to_string(100, 18, |frame| {
-            let mut html_images = HashMap::new();
-            draw(
-                frame,
-                Rect::new(0, 0, 100, 18),
-                &[block],
-                DrawOptions {
-                    summary: None,
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MessageView,
-                    theme: &Theme::default(),
-                    html_images: &mut html_images,
-                },
-            );
-        });
-
-        assert!(rendered.contains("One-click unsubscribe (D)"));
-    }
-
-    #[test]
-    fn calendar_invite_metadata_renders_as_message_header_card() {
-        let block = ThreadMessageBlock {
-            envelope: envelope(),
-            body_state: BodyViewState::ready(
-                "Join us".into(),
-                "Join us".into(),
-                BodySource::Plain,
-                BodyViewMetadata {
-                    mode: BodyViewMode::Text,
-                    calendar: Some(CalendarMetadata {
-                        method: Some("REQUEST".into()),
-                        summary: Some("Planning session".into()),
-                        starts_at: Some("2026-05-20T15:00:00Z".into()),
-                        location: Some("Room 3".into()),
-                        organizer: Some(CalendarPerson {
-                            email: "organizer@example.com".into(),
-                            name: Some("Organizer".into()),
-                            uri: None,
-                        }),
-                        rsvp_requested: true,
-                        warnings: vec!["organizer changed for this UID".into()],
-                        ..Default::default()
-                    }),
-                    ..BodyViewMetadata::default()
-                },
-            ),
-            labels: vec![],
-            attachments: vec![],
-            selected: true,
-            bulk_selected: false,
-            has_unsubscribe: false,
-            signature_expanded: false,
-            assets_loading: false,
-        };
-
-        let rendered = render_to_string(100, 24, |frame| {
-            let mut html_images = HashMap::new();
-            draw(
-                frame,
-                Rect::new(0, 0, 100, 24),
-                &[block],
-                DrawOptions {
-                    summary: None,
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MessageView,
-                    theme: &Theme::default(),
-                    html_images: &mut html_images,
-                },
-            );
-        });
-
-        // Card title comes from the locale provider ("Calendar invite") and
-        // replaces the older "Invite:" label.
-        assert!(rendered.contains("Calendar invite"));
-        assert!(rendered.contains("Planning session"));
-        assert!(rendered.contains("When:"));
-        assert!(rendered.contains("Room 3"));
-        assert!(rendered.contains("RSVP:"));
-        assert!(rendered.contains("requested"));
-        assert!(rendered.contains("Warn:"));
-        assert!(rendered.contains("organizer changed"));
-    }
-}
-
 fn body_metadata_lines(
     metadata: &BodyViewMetadata,
     source: &BodySource,
@@ -1535,5 +1200,339 @@ fn style_line_with_links(line: &str, theme: &Theme) -> Line<'static> {
         Line::from(line.to_string())
     } else {
         Line::from(spans)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{BodySource, BodyViewMetadata, BodyViewMode};
+    use chrono::{TimeZone, Utc};
+    use mxr_core::id::{AccountId, MessageId, ThreadId};
+    use mxr_core::types::{
+        Address, BodyPartSource, CalendarMetadata, CalendarPerson, MessageFlags, UnsubscribeMethod,
+    };
+    use mxr_test_support::render_to_string;
+
+    fn envelope() -> Envelope {
+        Envelope {
+            id: MessageId::new(),
+            account_id: AccountId::new(),
+            provider_id: "msg-1".into(),
+            thread_id: ThreadId::new(),
+            message_id_header: None,
+            in_reply_to: None,
+            references: vec![],
+            from: Address {
+                name: Some("Alice".into()),
+                email: "alice@example.com".into(),
+            },
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Selection".into(),
+            date: Utc.with_ymd_and_hms(2024, 3, 15, 9, 30, 0).unwrap(),
+            flags: MessageFlags::READ,
+            snippet: "snippet".into(),
+            has_attachments: false,
+            size_bytes: 1024,
+            unsubscribe: UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
+            label_provider_ids: vec![],
+            keywords: std::collections::BTreeSet::new(),
+        }
+    }
+
+    #[test]
+    fn selected_messages_render_visible_chip() {
+        let block = ThreadMessageBlock {
+            envelope: envelope(),
+            body_state: BodyViewState::ready(
+                "hello".into(),
+                "hello".into(),
+                BodySource::Plain,
+                crate::app::BodyViewMetadata::default(),
+            ),
+            labels: vec!["INBOX".into()],
+            attachments: vec![],
+            selected: true,
+            bulk_selected: true,
+            has_unsubscribe: false,
+            signature_expanded: false,
+            assets_loading: false,
+        };
+
+        let snapshot = render_to_string(70, 18, |frame| {
+            let mut html_images = HashMap::new();
+            draw(
+                frame,
+                Rect::new(0, 0, 70, 18),
+                &[block],
+                DrawOptions {
+                    summary: None,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
+            );
+        });
+
+        assert!(snapshot.contains("Selected"));
+    }
+
+    #[test]
+    fn thread_summary_renders_above_message() {
+        let block = ThreadMessageBlock {
+            envelope: envelope(),
+            body_state: BodyViewState::ready(
+                "hello".into(),
+                "hello".into(),
+                BodySource::Plain,
+                crate::app::BodyViewMetadata::default(),
+            ),
+            labels: vec![],
+            attachments: vec![],
+            selected: true,
+            bulk_selected: false,
+            has_unsubscribe: false,
+            signature_expanded: false,
+            assets_loading: false,
+        };
+
+        let snapshot = render_to_string(90, 20, |frame| {
+            let mut html_images = HashMap::new();
+            draw(
+                frame,
+                Rect::new(0, 0, 90, 20),
+                &[block],
+                DrawOptions {
+                    summary: Some(ThreadSummaryBlock {
+                        text: Some("Summary:\n- Alice asked for launch approval.".into()),
+                        model: Some("llama3.2".into()),
+                        loading: false,
+                        error: None,
+                    }),
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
+            );
+        });
+
+        assert!(snapshot.contains("Summary"));
+        assert!(snapshot.contains("Alice asked for launch approval"));
+        assert!(snapshot.contains("llama3.2"));
+    }
+
+    #[test]
+    fn raw_body_rendering_preserves_quotes_and_signature_markers() {
+        let raw = "Hello\n> quoted line\n-- \nSignature";
+        let block = ThreadMessageBlock {
+            envelope: envelope(),
+            body_state: BodyViewState::ready(
+                raw.into(),
+                raw.into(),
+                BodySource::Plain,
+                BodyViewMetadata {
+                    mode: BodyViewMode::Text,
+                    provenance: Some(BodyPartSource::Exact),
+                    reader_applied: false,
+                    ..BodyViewMetadata::default()
+                },
+            ),
+            labels: vec![],
+            attachments: vec![],
+            selected: true,
+            bulk_selected: false,
+            has_unsubscribe: false,
+            signature_expanded: false,
+            assets_loading: false,
+        };
+
+        let rendered = render_to_string(80, 18, |frame| {
+            let mut html_images = HashMap::new();
+            draw(
+                frame,
+                Rect::new(0, 0, 80, 18),
+                &[block],
+                DrawOptions {
+                    summary: None,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
+            );
+        });
+
+        assert!(rendered.contains("> quoted line"));
+        assert!(rendered.contains("-- "));
+        assert!(!rendered.contains("signature ("));
+    }
+
+    #[test]
+    fn html_body_rendering_labels_inline_embedded_and_remote_images() {
+        let html = concat!(
+            "<p>Hello</p>",
+            "<img alt=\"Logo\" src=\"cid:logo@example.com\">",
+            "<img alt=\"Badge\" src=\"data:image/png;base64,AAAA\">",
+            "<img alt=\"Hero\" src=\"https://example.com/hero.png\">"
+        );
+        let block = ThreadMessageBlock {
+            envelope: envelope(),
+            body_state: BodyViewState::ready(
+                html.into(),
+                html.into(),
+                BodySource::Html,
+                BodyViewMetadata {
+                    mode: BodyViewMode::Html,
+                    provenance: Some(BodyPartSource::Exact),
+                    inline_images: true,
+                    remote_content_available: true,
+                    remote_content_enabled: false,
+                    ..BodyViewMetadata::default()
+                },
+            ),
+            labels: vec![],
+            attachments: vec![],
+            selected: true,
+            bulk_selected: false,
+            has_unsubscribe: false,
+            signature_expanded: false,
+            assets_loading: false,
+        };
+
+        let rendered = render_to_string(120, 30, |frame| {
+            let mut html_images = HashMap::new();
+            draw(
+                frame,
+                Rect::new(0, 0, 120, 30),
+                &[block],
+                DrawOptions {
+                    summary: None,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
+            );
+        });
+
+        assert!(rendered.contains("Logo"));
+        assert!(rendered.contains("Badge"));
+        assert!(rendered.contains("Hero"));
+        assert!(rendered.contains("View: Original HTML"));
+        // Phase 3.4: chip label changed from "remote images blocked"
+        // to a clearer "External content blocked" with affordance hint.
+        assert!(rendered.contains("External content blocked"));
+    }
+
+    #[test]
+    fn unsubscribe_header_uses_explicit_action_label() {
+        let mut env = envelope();
+        env.unsubscribe = UnsubscribeMethod::OneClick {
+            url: "https://example.com/unsub".into(),
+        };
+        let block = ThreadMessageBlock {
+            envelope: env,
+            body_state: BodyViewState::ready(
+                "hello".into(),
+                "hello".into(),
+                BodySource::Plain,
+                BodyViewMetadata::default(),
+            ),
+            labels: vec![],
+            attachments: vec![],
+            selected: true,
+            bulk_selected: false,
+            has_unsubscribe: true,
+            signature_expanded: false,
+            assets_loading: false,
+        };
+
+        let rendered = render_to_string(100, 18, |frame| {
+            let mut html_images = HashMap::new();
+            draw(
+                frame,
+                Rect::new(0, 0, 100, 18),
+                &[block],
+                DrawOptions {
+                    summary: None,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
+            );
+        });
+
+        assert!(rendered.contains("One-click unsubscribe (D)"));
+    }
+
+    #[test]
+    fn calendar_invite_metadata_renders_as_message_header_card() {
+        let block = ThreadMessageBlock {
+            envelope: envelope(),
+            body_state: BodyViewState::ready(
+                "Join us".into(),
+                "Join us".into(),
+                BodySource::Plain,
+                BodyViewMetadata {
+                    mode: BodyViewMode::Text,
+                    calendar: Some(CalendarMetadata {
+                        method: Some("REQUEST".into()),
+                        summary: Some("Planning session".into()),
+                        starts_at: Some("2026-05-20T15:00:00Z".into()),
+                        location: Some("Room 3".into()),
+                        organizer: Some(CalendarPerson {
+                            email: "organizer@example.com".into(),
+                            name: Some("Organizer".into()),
+                            uri: None,
+                        }),
+                        rsvp_requested: true,
+                        warnings: vec!["organizer changed for this UID".into()],
+                        ..Default::default()
+                    }),
+                    ..BodyViewMetadata::default()
+                },
+            ),
+            labels: vec![],
+            attachments: vec![],
+            selected: true,
+            bulk_selected: false,
+            has_unsubscribe: false,
+            signature_expanded: false,
+            assets_loading: false,
+        };
+
+        let rendered = render_to_string(100, 24, |frame| {
+            let mut html_images = HashMap::new();
+            draw(
+                frame,
+                Rect::new(0, 0, 100, 24),
+                &[block],
+                DrawOptions {
+                    summary: None,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
+            );
+        });
+
+        // Card title comes from the locale provider ("Calendar invite") and
+        // replaces the older "Invite:" label.
+        assert!(rendered.contains("Calendar invite"));
+        assert!(rendered.contains("Planning session"));
+        assert!(rendered.contains("When:"));
+        assert!(rendered.contains("Room 3"));
+        assert!(rendered.contains("RSVP:"));
+        assert!(rendered.contains("requested"));
+        assert!(rendered.contains("Warn:"));
+        assert!(rendered.contains("organizer changed"));
     }
 }

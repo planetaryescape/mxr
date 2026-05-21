@@ -1,3 +1,4 @@
+use super::mutation_helpers::BulkActionRequest;
 use super::*;
 
 impl App {
@@ -23,17 +24,17 @@ impl App {
                     };
                     let optimistic_effect =
                         removes_from_view.then(|| remove_from_list_effect(&ids));
-                    self.queue_or_confirm_bulk_action(
-                        "Archive messages",
-                        bulk_message_detail("archive", ids.len()),
-                        Request::mutation(MutationCommand::Archive {
+                    self.queue_or_confirm_bulk_action(BulkActionRequest {
+                        title: "Archive messages".into(),
+                        detail: bulk_message_detail("archive", ids.len()),
+                        request: Request::mutation(MutationCommand::Archive {
                             message_ids: ids.clone(),
                         }),
-                        completion_effect,
+                        effect: completion_effect,
                         optimistic_effect,
-                        "Archiving...".into(),
-                        ids.len(),
-                    );
+                        status_message: "Archiving...".into(),
+                        count: ids.len(),
+                    });
                 }
             }
             Action::MarkReadAndArchive => {
@@ -51,55 +52,55 @@ impl App {
                     };
                     let optimistic_effect =
                         removes_from_view.then(|| remove_from_list_effect(&ids));
-                    self.queue_or_confirm_bulk_action(
-                        "Mark messages as read and archive",
-                        bulk_message_detail("mark as read and archive", ids.len()),
-                        Request::mutation(MutationCommand::ReadAndArchive {
+                    self.queue_or_confirm_bulk_action(BulkActionRequest {
+                        title: "Mark messages as read and archive".into(),
+                        detail: bulk_message_detail("mark as read and archive", ids.len()),
+                        request: Request::mutation(MutationCommand::ReadAndArchive {
                             message_ids: ids.clone(),
                         }),
-                        completion_effect,
+                        effect: completion_effect,
                         optimistic_effect,
-                        format!(
+                        status_message: format!(
                             "Marking {} {} as read and archiving...",
                             ids.len(),
                             pluralize_messages(ids.len())
                         ),
-                        ids.len(),
-                    );
+                        count: ids.len(),
+                    });
                 }
             }
             Action::Trash => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {
                     let effect = remove_from_list_effect(&ids);
-                    self.queue_or_confirm_bulk_action(
-                        "Delete messages",
-                        bulk_message_detail("delete", ids.len()),
-                        Request::mutation(MutationCommand::Trash {
+                    self.queue_or_confirm_bulk_action(BulkActionRequest {
+                        title: "Delete messages".into(),
+                        detail: bulk_message_detail("delete", ids.len()),
+                        request: Request::mutation(MutationCommand::Trash {
                             message_ids: ids.clone(),
                         }),
-                        effect.clone(),
-                        Some(effect),
-                        "Trashing...".into(),
-                        ids.len(),
-                    );
+                        effect: effect.clone(),
+                        optimistic_effect: Some(effect),
+                        status_message: "Trashing...".into(),
+                        count: ids.len(),
+                    });
                 }
             }
             Action::Spam => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {
                     let effect = remove_from_list_effect(&ids);
-                    self.queue_or_confirm_bulk_action(
-                        "Mark as spam",
-                        bulk_message_detail("mark as spam", ids.len()),
-                        Request::mutation(MutationCommand::Spam {
+                    self.queue_or_confirm_bulk_action(BulkActionRequest {
+                        title: "Mark as spam".into(),
+                        detail: bulk_message_detail("mark as spam", ids.len()),
+                        request: Request::mutation(MutationCommand::Spam {
                             message_ids: ids.clone(),
                         }),
-                        effect.clone(),
-                        Some(effect),
-                        "Marking as spam...".into(),
-                        ids.len(),
-                    );
+                        effect: effect.clone(),
+                        optimistic_effect: Some(effect),
+                        status_message: "Marking as spam...".into(),
+                        count: ids.len(),
+                    });
                 }
             }
             Action::UndoLastMutation => {
@@ -164,26 +165,27 @@ impl App {
                             pluralize_messages(ids.len())
                         )
                     };
-                    self.queue_or_confirm_bulk_action(
-                        if starred {
+                    self.queue_or_confirm_bulk_action(BulkActionRequest {
+                        title: if starred {
                             "Star messages"
                         } else {
                             "Unstar messages"
-                        },
-                        bulk_message_detail(verb, ids.len()),
-                        Request::mutation(MutationCommand::Star {
+                        }
+                        .into(),
+                        detail: bulk_message_detail(verb, ids.len()),
+                        request: Request::mutation(MutationCommand::Star {
                             message_ids: ids.clone(),
                             starred,
                         }),
-                        MutationEffect::StatusOnly(if starred {
+                        effect: MutationEffect::StatusOnly(if starred {
                             format!("Starred {} {}", ids.len(), pluralize_messages(ids.len()))
                         } else {
                             format!("Unstarred {} {}", ids.len(), pluralize_messages(ids.len()))
                         }),
                         optimistic_effect,
-                        status,
-                        ids.len(),
-                    );
+                        status_message: status,
+                        count: ids.len(),
+                    });
                 }
             }
             Action::MarkRead => {
@@ -193,27 +195,27 @@ impl App {
                         flags.insert(MessageFlags::READ);
                         flags
                     });
-                    self.queue_or_confirm_bulk_action(
-                        "Mark messages as read",
-                        bulk_message_detail("mark as read", ids.len()),
-                        Request::mutation(MutationCommand::SetRead {
+                    self.queue_or_confirm_bulk_action(BulkActionRequest {
+                        title: "Mark messages as read".into(),
+                        detail: bulk_message_detail("mark as read", ids.len()),
+                        request: Request::mutation(MutationCommand::SetRead {
                             message_ids: ids.clone(),
                             read: true,
                         }),
-                        MutationEffect::StatusOnly(format!(
+                        effect: MutationEffect::StatusOnly(format!(
                             "Marked {} {} as read",
                             ids.len(),
                             pluralize_messages(ids.len())
                         )),
-                        (!updates.is_empty())
+                        optimistic_effect: (!updates.is_empty())
                             .then_some(MutationEffect::UpdateFlagsMany { updates }),
-                        format!(
+                        status_message: format!(
                             "Marking {} {} as read...",
                             ids.len(),
                             pluralize_messages(ids.len())
                         ),
-                        ids.len(),
-                    );
+                        count: ids.len(),
+                    });
                 }
             }
             Action::MarkUnread => {
@@ -223,27 +225,27 @@ impl App {
                         flags.remove(MessageFlags::READ);
                         flags
                     });
-                    self.queue_or_confirm_bulk_action(
-                        "Mark messages as unread",
-                        bulk_message_detail("mark as unread", ids.len()),
-                        Request::mutation(MutationCommand::SetRead {
+                    self.queue_or_confirm_bulk_action(BulkActionRequest {
+                        title: "Mark messages as unread".into(),
+                        detail: bulk_message_detail("mark as unread", ids.len()),
+                        request: Request::mutation(MutationCommand::SetRead {
                             message_ids: ids.clone(),
                             read: false,
                         }),
-                        MutationEffect::StatusOnly(format!(
+                        effect: MutationEffect::StatusOnly(format!(
                             "Marked {} {} as unread",
                             ids.len(),
                             pluralize_messages(ids.len())
                         )),
-                        (!updates.is_empty())
+                        optimistic_effect: (!updates.is_empty())
                             .then_some(MutationEffect::UpdateFlagsMany { updates }),
-                        format!(
+                        status_message: format!(
                             "Marking {} {} as unread...",
                             ids.len(),
                             pluralize_messages(ids.len())
                         ),
-                        ids.len(),
-                    );
+                        count: ids.len(),
+                    });
                 }
             }
             Action::ApplyLabel => {
@@ -257,29 +259,29 @@ impl App {
                             remove: vec![],
                             status: String::new(),
                         };
-                        self.queue_or_confirm_bulk_action(
-                            "Apply label",
-                            format!(
+                        self.queue_or_confirm_bulk_action(BulkActionRequest {
+                            title: "Apply label".into(),
+                            detail: format!(
                                 "You are about to apply '{}' to {} {}.",
                                 label_name,
                                 ids.len(),
                                 pluralize_messages(ids.len())
                             ),
-                            Request::mutation(MutationCommand::ModifyLabels {
+                            request: Request::mutation(MutationCommand::ModifyLabels {
                                 message_ids: ids.clone(),
                                 add: vec![label_name.clone()],
                                 remove: vec![],
                             }),
-                            MutationEffect::ModifyLabels {
+                            effect: MutationEffect::ModifyLabels {
                                 message_ids: ids.clone(),
                                 add: vec![label_name.clone()],
                                 remove: vec![],
                                 status: format!("Applied label '{}'", label_name),
                             },
-                            Some(optimistic_effect),
-                            format!("Applying label '{}'...", label_name),
-                            ids.len(),
-                        );
+                            optimistic_effect: Some(optimistic_effect),
+                            status_message: format!("Applying label '{}'...", label_name),
+                            count: ids.len(),
+                        });
                     }
                 } else {
                     // Open label picker
@@ -294,23 +296,23 @@ impl App {
                     let ids = self.mutation_target_ids();
                     if !ids.is_empty() {
                         let optimistic_effect = remove_from_list_effect(&ids);
-                        self.queue_or_confirm_bulk_action(
-                            "Move messages",
-                            format!(
+                        self.queue_or_confirm_bulk_action(BulkActionRequest {
+                            title: "Move messages".into(),
+                            detail: format!(
                                 "You are about to move {} {} to '{}'.",
                                 ids.len(),
                                 pluralize_messages(ids.len()),
                                 label_name
                             ),
-                            Request::mutation(MutationCommand::Move {
+                            request: Request::mutation(MutationCommand::Move {
                                 message_ids: ids.clone(),
                                 target_label: label_name.clone(),
                             }),
-                            remove_from_list_effect(&ids),
-                            Some(optimistic_effect),
-                            format!("Moving to '{}'...", label_name),
-                            ids.len(),
-                        );
+                            effect: remove_from_list_effect(&ids),
+                            optimistic_effect: Some(optimistic_effect),
+                            status_message: format!("Moving to '{}'...", label_name),
+                            count: ids.len(),
+                        });
                     }
                 } else {
                     // Open label picker

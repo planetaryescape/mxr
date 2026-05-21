@@ -101,7 +101,7 @@ mod tests {
         let message = TestEnvelopeBuilder::new()
             .account_id(account_id.clone())
             .provider_id("customer-inbound")
-            .from_address("Customer", "customer@example.com")
+            .sender_address("Customer", "customer@example.com")
             .subject("Pricing rollout")
             .snippet("Can you clarify pricing timing?")
             .build();

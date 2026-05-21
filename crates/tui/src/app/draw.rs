@@ -280,13 +280,15 @@ impl App {
                 ui::search_page::draw(
                     frame,
                     content_area,
-                    &self.search.page,
-                    &rows,
-                    &self.mailbox.selected_set,
-                    self.search_list_mode(),
-                    &preview_blocks,
-                    self.mailbox.message_scroll_offset,
-                    &mut self.html_image_assets,
+                    ui::search_page::SearchPageView {
+                        state: &self.search.page,
+                        rows: &rows,
+                        selected_set: &self.mailbox.selected_set,
+                        mail_list_mode: self.search_list_mode(),
+                        preview_messages: &preview_blocks,
+                        preview_scroll: self.mailbox.message_scroll_offset,
+                        html_images: &mut self.html_image_assets,
+                    },
                     theme,
                 );
             }

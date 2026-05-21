@@ -102,17 +102,17 @@ async fn walk_reply_queue(client: &mut IpcClient) -> anyhow::Result<()> {
         std::io::stdin().read_line(&mut input)?;
         match parse_walk_action(input.trim()) {
             WalkAction::Reply => {
-                crate::commands::mutations::reply(
-                    env.id.to_string(),
-                    None,
-                    false,
-                    None,
-                    false,
-                    false,
-                    false,
-                    None,
-                    None,
-                )
+                crate::commands::mutations::reply(crate::commands::mutations::ReplyCommand {
+                    message_id: env.id.to_string(),
+                    body: None,
+                    body_stdin: false,
+                    signature: None,
+                    no_signature: false,
+                    yes: false,
+                    dry_run: false,
+                    remind_after: None,
+                    format: None,
+                })
                 .await?;
                 clear_reply_later(client, &env.id).await?;
                 apply_walk_action(&mut messages, &mut index, WalkAction::Reply);

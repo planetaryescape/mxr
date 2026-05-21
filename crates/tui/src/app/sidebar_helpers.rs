@@ -16,7 +16,13 @@ impl App {
             .filter(|a| mailbox_sidebar_account(a))
             .collect();
         if sync_accounts.len() > 1 && self.mailbox.sidebar_accounts_expanded {
-            items.extend(sync_accounts.into_iter().cloned().map(SidebarItem::Account));
+            items.extend(
+                sync_accounts
+                    .into_iter()
+                    .cloned()
+                    .map(Box::new)
+                    .map(SidebarItem::Account),
+            );
         }
         let mut system_labels = Vec::new();
         let mut user_labels = Vec::new();
@@ -28,13 +34,23 @@ impl App {
             }
         }
         if self.mailbox.sidebar_system_expanded {
-            items.extend(system_labels.into_iter().map(SidebarItem::Label));
+            items.extend(
+                system_labels
+                    .into_iter()
+                    .map(Box::new)
+                    .map(SidebarItem::Label),
+            );
         }
         items.push(SidebarItem::AllMail);
         items.push(SidebarItem::Subscriptions);
         items.push(SidebarItem::Owed);
         if self.mailbox.sidebar_user_expanded {
-            items.extend(user_labels.into_iter().map(SidebarItem::Label));
+            items.extend(
+                user_labels
+                    .into_iter()
+                    .map(Box::new)
+                    .map(SidebarItem::Label),
+            );
         }
         if self.mailbox.sidebar_saved_searches_expanded {
             items.extend(
@@ -42,6 +58,7 @@ impl App {
                     .saved_searches
                     .iter()
                     .cloned()
+                    .map(Box::new)
                     .map(SidebarItem::SavedSearch),
             );
         }

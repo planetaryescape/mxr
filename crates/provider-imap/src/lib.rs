@@ -43,6 +43,16 @@ struct DeltaFolderSyncResult {
     deleted_provider_ids: Vec<String>,
 }
 
+struct CollectSyncedMessages<'a> {
+    mailbox: &'a str,
+    uid_set: &'a str,
+    query: &'a str,
+    min_uid: u32,
+    seen_uids: &'a mut HashSet<u32>,
+    account_id: &'a AccountId,
+    synced: &'a mut Vec<SyncedMessage>,
+}
+
 pub struct ImapProvider {
     account_id: AccountId,
     trash_folder: String,
@@ -192,20 +202,20 @@ impl ImapProvider {
         format!("(FLAGS BODY.PEEK[] RFC822.SIZE) (CHANGEDSINCE {modseq})")
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "sync fetch state is explicit at this call boundary"
-    )]
     async fn collect_synced_messages(
         session: &mut dyn session::ImapSession,
-        mailbox: &str,
-        uid_set: &str,
-        query: &str,
-        min_uid: u32,
-        seen_uids: &mut HashSet<u32>,
-        account_id: &AccountId,
-        synced: &mut Vec<SyncedMessage>,
+        request: CollectSyncedMessages<'_>,
     ) -> mxr_core::provider::Result<()> {
+        let CollectSyncedMessages {
+            mailbox,
+            uid_set,
+            query,
+            min_uid,
+            seen_uids,
+            account_id,
+            synced,
+        } = request;
+
         let fetched = session
             .uid_fetch(uid_set, query)
             .await
@@ -547,13 +557,15 @@ impl ImapProvider {
                                     .join(",");
                                 Self::collect_synced_messages(
                                     &mut *session,
-                                    &folder.name,
-                                    &uid_set,
-                                    "(FLAGS BODY.PEEK[] RFC822.SIZE)",
-                                    1,
-                                    &mut seen_uids,
-                                    &self.account_id,
-                                    &mut synced,
+                                    CollectSyncedMessages {
+                                        mailbox: &folder.name,
+                                        uid_set: &uid_set,
+                                        query: "(FLAGS BODY.PEEK[] RFC822.SIZE)",
+                                        min_uid: 1,
+                                        seen_uids: &mut seen_uids,
+                                        account_id: &self.account_id,
+                                        synced: &mut synced,
+                                    },
                                 )
                                 .await?;
                             }
@@ -601,17 +613,20 @@ impl ImapProvider {
                         .zip(mailbox_info.highest_modseq)
                         .is_some_and(|(old_modseq, new_modseq)| new_modseq > old_modseq)
                 {
+                    let changed_since_query = Self::fetch_query_for_changed_since(
+                        old_mailbox.highest_modseq.expect("checked is_some"),
+                    );
                     Self::collect_synced_messages(
                         &mut *session,
-                        &folder.name,
-                        "1:*",
-                        &Self::fetch_query_for_changed_since(
-                            old_mailbox.highest_modseq.expect("checked is_some"),
-                        ),
-                        1,
-                        &mut seen_uids,
-                        &self.account_id,
-                        &mut synced,
+                        CollectSyncedMessages {
+                            mailbox: &folder.name,
+                            uid_set: "1:*",
+                            query: &changed_since_query,
+                            min_uid: 1,
+                            seen_uids: &mut seen_uids,
+                            account_id: &self.account_id,
+                            synced: &mut synced,
+                        },
                     )
                     .await?;
                 }
@@ -680,13 +695,15 @@ impl ImapProvider {
 
             Self::collect_synced_messages(
                 &mut *session,
-                &folder.name,
-                &query,
-                "(FLAGS BODY.PEEK[] RFC822.SIZE)",
-                min_uid,
-                &mut seen_uids,
-                &self.account_id,
-                &mut synced,
+                CollectSyncedMessages {
+                    mailbox: &folder.name,
+                    uid_set: &query,
+                    query: "(FLAGS BODY.PEEK[] RFC822.SIZE)",
+                    min_uid,
+                    seen_uids: &mut seen_uids,
+                    account_id: &self.account_id,
+                    synced: &mut synced,
+                },
             )
             .await?;
         }

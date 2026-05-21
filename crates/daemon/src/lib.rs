@@ -741,7 +741,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::reply(
+            commands::mutations::reply(commands::mutations::ReplyCommand {
                 message_id,
                 body,
                 body_stdin,
@@ -751,7 +751,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 dry_run,
                 remind_after,
                 format,
-            )
+            })
             .await?;
         }
         Some(Command::ReplyAll {
@@ -766,7 +766,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::reply_all(
+            commands::mutations::reply_all(commands::mutations::ReplyCommand {
                 message_id,
                 body,
                 body_stdin,
@@ -776,7 +776,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 dry_run,
                 remind_after,
                 format,
-            )
+            })
             .await?;
         }
         Some(Command::Forward {
@@ -791,7 +791,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::forward(
+            commands::mutations::forward(commands::mutations::ForwardCommand {
                 message_id,
                 to,
                 body,
@@ -801,7 +801,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 yes,
                 dry_run,
                 format,
-            )
+            })
             .await?;
         }
         Some(Command::Drafts { action, format }) => {

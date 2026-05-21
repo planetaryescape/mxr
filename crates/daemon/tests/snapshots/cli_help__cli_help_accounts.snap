@@ -10,6 +10,7 @@ Commands:
   add        Add an account
   show       Show account details
   test       Test account connectivity
+  reauth     Re-authorize an OAuth account and keep cached mail
   repair     Re-save account passwords into the protected keychain store
   disable    Disable an account without deleting local cached mail
   remove     Remove an account from config; cached mail is kept unless purged

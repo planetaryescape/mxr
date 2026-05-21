@@ -122,6 +122,10 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_accounts_show", &["accounts", "show", "--help"]),
         ("cli_help_accounts_test", &["accounts", "test", "--help"]),
         (
+            "cli_help_accounts_reauth",
+            &["accounts", "reauth", "--help"],
+        ),
+        (
             "cli_help_accounts_repair",
             &["accounts", "repair", "--help"],
         ),
@@ -307,7 +311,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ),
     ];
 
-    assert_eq!(cases.len(), 170);
+    assert_eq!(cases.len(), 171);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

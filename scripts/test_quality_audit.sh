@@ -245,7 +245,7 @@ strict_issues="$(tail -n +2 "$CSV_PATH" | awk -F, '($12<18) || ($9>0) {c++} END 
   echo "|---|---|---:|---:|---|---|---:|---:|---:|"
   tail -n +2 "$CSV_PATH" \
     | sort -t, -k12,12n -k1,1 \
-    | head -40 \
+    | awk 'NR <= 40' \
     | awk -F, '{printf "| %s | %s | %s | %s/30 | %s | %s | %s | %s | %s |\n",$1,$2,$3,$12,$13,$14,$5,$6,$7}'
 } > "$MD_PATH"
 

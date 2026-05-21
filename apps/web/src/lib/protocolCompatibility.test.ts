@@ -1,4 +1,7 @@
 import { describe, expect, test } from "vitest";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 
 import {
   EXPECTED_IPC_PROTOCOL_VERSION,
@@ -18,5 +21,14 @@ describe("protocol compatibility", () => {
       requiredProtocol: EXPECTED_IPC_PROTOCOL_VERSION,
     });
     expect(evaluateProtocolCompatibility({})).toMatchObject({ actualProtocol: null });
+  });
+
+  test("matches the Rust IPC protocol constant", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const protocolLib = resolve(testDir, "../../../..", "crates/protocol/src/lib.rs");
+    const source = readFileSync(protocolLib, "utf8");
+    const match = source.match(/pub const IPC_PROTOCOL_VERSION: u32 = (\d+);/);
+
+    expect(match?.[1]).toBe(String(EXPECTED_IPC_PROTOCOL_VERSION));
   });
 });

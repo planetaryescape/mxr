@@ -31,6 +31,7 @@ export const pwaManifest: Partial<ManifestOptions> = {
 
 export const pwaOptions: Partial<VitePWAOptions> = {
   registerType: "autoUpdate",
+  selfDestroying: true,
   includeAssets: ["favicon.svg", "pwa-192.png", "pwa-512.png", "pwa-maskable-512.png"],
   manifest: pwaManifest,
   workbox: {

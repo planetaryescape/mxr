@@ -18,8 +18,12 @@ describe("PWA config", () => {
     );
   });
 
-  it("pre-caches only the app shell and leaves API traffic to the daemon", () => {
+  it("retires stale service workers before they can outlive the daemon protocol", () => {
     expect(pwaOptions.registerType).toBe("autoUpdate");
+    expect(pwaOptions.selfDestroying).toBe(true);
+  });
+
+  it("keeps API traffic out of the app-shell fallback if PWA caching returns", () => {
     expect(pwaOptions.workbox?.globPatterns).toEqual(["**/*.{js,css,html,png,svg,woff2}"]);
 
     const denylist = pwaOptions.workbox?.navigateFallbackDenylist ?? [];

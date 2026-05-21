@@ -27,7 +27,7 @@ env:
 jobs:
   bridge-integration:
     name: Bridge integration tests
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
@@ -46,7 +46,7 @@ jobs:
 
   spec-lint:
     name: Spec validates as OpenAPI 3.1
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6

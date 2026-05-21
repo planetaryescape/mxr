@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       has_artifacts: ${{ steps.scope.outputs.has_artifacts }}
       is_release_pr_merge: ${{ steps.release-merge.outputs.is_release_pr_merge }}
@@ -40,7 +40,7 @@ jobs:
   release-please:
     needs: plan
     if: needs.plan.outputs.has_artifacts == 'true' || needs.plan.outputs.is_release_pr_merge == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - id: release
         uses: googleapis/release-please-action@v4

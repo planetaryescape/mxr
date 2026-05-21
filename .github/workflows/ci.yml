@@ -18,7 +18,7 @@ env:
 jobs:
   changes:
     name: Detect Changes
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       web: ${{ steps.filter.outputs.web }}
@@ -89,7 +89,7 @@ jobs:
 
   deny:
     name: cargo deny
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
@@ -98,7 +98,7 @@ jobs:
 
   check:
     name: Check
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
@@ -109,7 +109,7 @@ jobs:
 
   architecture:
     name: Architecture Boundaries
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
@@ -118,7 +118,7 @@ jobs:
 
   fmt:
     name: Format
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
@@ -130,7 +130,7 @@ jobs:
 
   clippy:
     name: Clippy
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     env:
@@ -145,7 +145,7 @@ jobs:
 
   test:
     name: Test (fast / no semantic)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
@@ -157,7 +157,7 @@ jobs:
 
   test-semantic:
     name: Test (semantic-local)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
@@ -169,7 +169,7 @@ jobs:
 
   test-quality-audit:
     name: Test Quality Audit (non-blocking)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true'
     continue-on-error: true
@@ -184,7 +184,7 @@ jobs:
 
   test-quality-gate:
     name: Test Quality Gate (changed files)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true')
     steps:
@@ -196,7 +196,7 @@ jobs:
 
   web-tests:
     name: Web Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true'
     defaults:
@@ -216,7 +216,7 @@ jobs:
 
   web-e2e-smoke:
     name: Web E2E Smoke
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true'
     timeout-minutes: 25
@@ -241,7 +241,7 @@ jobs:
 
   coverage:
     name: Coverage
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     steps:
@@ -262,7 +262,7 @@ jobs:
 
   sqlx:
     name: SQLx Offline
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
@@ -274,7 +274,7 @@ jobs:
 
   docs:
     name: Docs Build
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.expensive == 'true'
     defaults:
@@ -296,7 +296,7 @@ jobs:
     if: needs.changes.outputs.expensive == 'true'
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [blacksmith-4vcpu-ubuntu-2404, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -306,7 +306,7 @@ jobs:
 
   rustdoc:
     name: Rustdoc
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     env:
@@ -319,7 +319,7 @@ jobs:
 
   msrv:
     name: MSRV (1.88)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     steps:
@@ -330,7 +330,7 @@ jobs:
 
   install-check:
     name: Install Smoke Test
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     steps:

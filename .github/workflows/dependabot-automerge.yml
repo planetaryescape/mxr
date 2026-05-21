@@ -15,7 +15,7 @@ permissions:
 jobs:
   approve-and-enable:
     if: github.event.pull_request.user.login == 'dependabot[bot]' && !github.event.pull_request.draft
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Approve PR
         env:

@@ -4,7 +4,7 @@ use yup_oauth2::DeviceFlowAuthenticator;
 use yup_oauth2::InstalledFlowAuthenticator;
 use yup_oauth2::InstalledFlowReturnMethod;
 
-use crate::auth_storage::KeychainTokenStorage;
+use crate::auth_storage::{has_keychain_token_cache, KeychainTokenStorage};
 
 #[derive(Debug, Error)]
 pub enum AuthError {
@@ -354,10 +354,7 @@ impl GmailAuth {
         // Either the keychain entry or the legacy on-disk cache must exist.
         // The keychain check is fast enough (one OS call) that it's fine in
         // the common case even when nothing is stored.
-        let has_keychain_entry = keyring::Entry::new(&self.keychain_service, &self.token_ref)
-            .ok()
-            .and_then(|e| e.get_password().ok())
-            .is_some();
+        let has_keychain_entry = has_keychain_token_cache(&self.keychain_service, &self.token_ref);
         if !has_keychain_entry && !token_path.exists() {
             return Err(AuthError::TokenExpired);
         }

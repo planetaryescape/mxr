@@ -34,6 +34,10 @@ tracing = { workspace = true }
 url = { workspace = true }
 yup-oauth2 = { workspace = true }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = { workspace = true }
+security-framework-sys = { workspace = true }
+
 [dev-dependencies]
 insta = { workspace = true }
 mxr-provider-fake = { workspace = true }

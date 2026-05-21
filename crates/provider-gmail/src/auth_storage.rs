@@ -15,6 +15,54 @@ use yup_oauth2::storage::{TokenInfo, TokenStorage};
 
 pub(crate) const KEYCHAIN_SERVICE: &str = "mxr-gmail-oauth";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeychainTokenCacheErrorKind {
+    NotFound,
+    Access,
+    #[cfg(target_os = "macos")]
+    InvalidData,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct KeychainTokenCacheError {
+    kind: KeychainTokenCacheErrorKind,
+    message: String,
+}
+
+impl KeychainTokenCacheError {
+    fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            kind: KeychainTokenCacheErrorKind::NotFound,
+            message: message.into(),
+        }
+    }
+
+    fn access(message: impl Into<String>) -> Self {
+        Self {
+            kind: KeychainTokenCacheErrorKind::Access,
+            message: message.into(),
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn invalid_data(message: impl Into<String>) -> Self {
+        Self {
+            kind: KeychainTokenCacheErrorKind::InvalidData,
+            message: message.into(),
+        }
+    }
+
+    fn is_not_found(&self) -> bool {
+        self.kind == KeychainTokenCacheErrorKind::NotFound
+    }
+}
+
+impl std::fmt::Display for KeychainTokenCacheError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 struct StoredToken {
     scopes: Vec<String>,
@@ -47,23 +95,13 @@ impl KeychainTokenStorage {
     }
 
     fn persist(&self, json: &str) -> std::io::Result<()> {
-        match keyring::Entry::new(&self.keychain_service, &self.token_ref) {
-            Ok(entry) => match entry.set_password(json) {
-                Ok(()) => Ok(()),
-                Err(error) => {
-                    tracing::warn!(
-                        token_ref = %self.token_ref,
-                        error = %error,
-                        "keychain write failed; falling back to disk-encrypted cache"
-                    );
-                    self.persist_to_disk(json)
-                }
-            },
+        match write_keychain_token_cache(&self.keychain_service, &self.token_ref, json) {
+            Ok(()) => Ok(()),
             Err(error) => {
                 tracing::warn!(
                     token_ref = %self.token_ref,
                     error = %error,
-                    "keychain unavailable; falling back to disk cache"
+                    "keychain write failed; falling back to disk cache"
                 );
                 self.persist_to_disk(json)
             }
@@ -97,16 +135,129 @@ fn write_fallback_token_file(path: &std::path::Path, json: &str) -> std::io::Res
     std::fs::write(path, json)
 }
 
+#[cfg(target_os = "macos")]
+fn keychain_password_options(
+    service: &str,
+    token_ref: &str,
+) -> security_framework::passwords::PasswordOptions {
+    security_framework::passwords::PasswordOptions::new_generic_password(service, token_ref)
+}
+
+#[cfg(target_os = "macos")]
+fn map_security_error(
+    context: &str,
+    error: security_framework::base::Error,
+) -> KeychainTokenCacheError {
+    if error.code() == security_framework_sys::base::errSecItemNotFound {
+        return KeychainTokenCacheError::not_found(format!("{context}: {error}"));
+    }
+    KeychainTokenCacheError::access(format!("{context}: {error}"))
+}
+
+#[cfg(target_os = "macos")]
+fn with_disabled_keychain_ui<T>(
+    operation: impl FnOnce() -> Result<T, security_framework::base::Error>,
+) -> Result<T, KeychainTokenCacheError> {
+    let _interaction_lock =
+        security_framework::os::macos::keychain::SecKeychain::disable_user_interaction()
+            .map_err(|error| map_security_error("Failed to disable keychain UI", error))?;
+    operation().map_err(|error| map_security_error("macOS keychain operation failed", error))
+}
+
+#[cfg(target_os = "macos")]
+fn read_keychain_token_cache(
+    keychain_service: &str,
+    token_ref: &str,
+) -> Result<String, KeychainTokenCacheError> {
+    let bytes = with_disabled_keychain_ui(|| {
+        security_framework::passwords::generic_password(keychain_password_options(
+            keychain_service,
+            token_ref,
+        ))
+    })?;
+    String::from_utf8(bytes)
+        .map_err(|_| KeychainTokenCacheError::invalid_data("stored OAuth token cache is not UTF-8"))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn read_keychain_token_cache(
+    keychain_service: &str,
+    token_ref: &str,
+) -> Result<String, KeychainTokenCacheError> {
+    let entry = keyring::Entry::new(keychain_service, token_ref)
+        .map_err(|error| KeychainTokenCacheError::access(error.to_string()))?;
+    entry.get_password().map_err(|error| match error {
+        keyring::Error::NoEntry => KeychainTokenCacheError::not_found(error.to_string()),
+        _ => KeychainTokenCacheError::access(error.to_string()),
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn write_keychain_token_cache(
+    keychain_service: &str,
+    token_ref: &str,
+    json: &str,
+) -> Result<(), KeychainTokenCacheError> {
+    with_disabled_keychain_ui(|| {
+        security_framework::passwords::set_generic_password(
+            keychain_service,
+            token_ref,
+            json.as_bytes(),
+        )
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn write_keychain_token_cache(
+    keychain_service: &str,
+    token_ref: &str,
+    json: &str,
+) -> Result<(), KeychainTokenCacheError> {
+    let entry = keyring::Entry::new(keychain_service, token_ref)
+        .map_err(|error| KeychainTokenCacheError::access(error.to_string()))?;
+    entry
+        .set_password(json)
+        .map_err(|error| KeychainTokenCacheError::access(error.to_string()))
+}
+
+fn log_keychain_read_error(token_ref: &str, error: &KeychainTokenCacheError) {
+    if error.is_not_found() {
+        tracing::debug!(
+            token_ref = %token_ref,
+            "OAuth token cache not present in keychain"
+        );
+    } else {
+        tracing::warn!(
+            token_ref = %token_ref,
+            error = %error,
+            "keychain read failed; falling back to disk cache if present"
+        );
+    }
+}
+
+pub(crate) fn has_keychain_token_cache(keychain_service: &str, token_ref: &str) -> bool {
+    match read_keychain_token_cache(keychain_service, token_ref) {
+        Ok(_) => true,
+        Err(error) => {
+            log_keychain_read_error(token_ref, &error);
+            false
+        }
+    }
+}
+
 fn load_initial_with_service(
     keychain_service: &str,
     token_ref: &str,
     fallback_path: &std::path::Path,
 ) -> Vec<StoredToken> {
-    if let Ok(entry) = keyring::Entry::new(keychain_service, token_ref) {
-        if let Ok(payload) = entry.get_password() {
+    match read_keychain_token_cache(keychain_service, token_ref) {
+        Ok(payload) => {
             if let Ok(parsed) = serde_json::from_str::<Vec<StoredToken>>(&payload) {
                 return parsed;
             }
+        }
+        Err(error) => {
+            log_keychain_read_error(token_ref, &error);
         }
     }
 
@@ -114,15 +265,13 @@ fn load_initial_with_service(
         if let Ok(bytes) = std::fs::read(fallback_path) {
             if let Ok(parsed) = serde_json::from_slice::<Vec<StoredToken>>(&bytes) {
                 if !parsed.is_empty() {
-                    if let Ok(entry) = keyring::Entry::new(keychain_service, token_ref) {
-                        if let Ok(json) = serde_json::to_string(&parsed) {
-                            if entry.set_password(&json).is_ok() {
-                                let _ = std::fs::remove_file(fallback_path);
-                                tracing::info!(
-                                    token_ref = %token_ref,
-                                    "migrated OAuth token cache from disk to keychain"
-                                );
-                            }
+                    if let Ok(json) = serde_json::to_string(&parsed) {
+                        if write_keychain_token_cache(keychain_service, token_ref, &json).is_ok() {
+                            let _ = std::fs::remove_file(fallback_path);
+                            tracing::info!(
+                                token_ref = %token_ref,
+                                "migrated OAuth token cache from disk to keychain"
+                            );
                         }
                     }
                 }

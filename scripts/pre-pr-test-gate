@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Local test-confidence gate. This complements scripts/pre-pr-rust-gate by
+# checking the quality-audit tooling and the web test suite that CI runs for
+# web-facing changes.
+
+set -euo pipefail
+
+WORKSPACE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$WORKSPACE_ROOT"
+
+echo "mxr pre-PR test gate"
+echo
+
+run() {
+    echo "+ $*"
+    "$@"
+    echo
+}
+
+run scripts/test_quality_audit_test.sh
+run scripts/test_quality_audit.sh --strict
+
+if [[ -f apps/web/package.json ]]; then
+    (
+        cd apps/web
+        run npm run typecheck
+        run npm run lint
+        run npm run test
+    )
+fi
+
+cat <<'EOF'
+pre-PR test gate passed
+
+For browser-backed web changes, also run:
+  cargo build -p mxr
+  cd apps/web && npm run e2e -- e2e/smoke.spec.ts
+EOF

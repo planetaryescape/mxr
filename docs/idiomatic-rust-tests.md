@@ -81,4 +81,15 @@ Use `scripts/test_quality_audit.sh` to generate:
 - machine-readable CSV (`target/test-quality/audit.csv`)
 - markdown report (`target/test-quality/audit.md`)
 
-This audit is heuristic and intended to prioritize review and remediation.
+Run `scripts/test_quality_audit_test.sh` after changing the audit script itself.
+It creates a disposable repo with deliberately weak tests and verifies that
+strict mode rejects them.
+
+For local PR confidence beyond Rust hygiene, run:
+
+```bash
+scripts/pre-pr-test-gate
+```
+
+This audit is heuristic and intended to prioritize review and remediation. A
+high score is not a substitute for the 5-question gate above.

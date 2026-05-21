@@ -32,6 +32,13 @@ interface ActivityBrowserProps {
   embedded?: boolean;
 }
 
+function toggle<T>(set: Set<T>, item: T): Set<T> {
+  const next = new Set(set);
+  if (next.has(item)) next.delete(item);
+  else next.add(item);
+  return next;
+}
+
 export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
   const queryClient = useQueryClient();
   const [windowMs, setWindowMs] = useState<number | null>(86_400_000);
@@ -94,13 +101,6 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
     },
     onError: (e: Error) => toast.error(e.message),
   });
-
-  function toggle<T>(set: Set<T>, item: T): Set<T> {
-    const next = new Set(set);
-    if (next.has(item)) next.delete(item);
-    else next.add(item);
-    return next;
-  }
 
   const entries: ActivityEntry[] = list.data?.entries ?? [];
 

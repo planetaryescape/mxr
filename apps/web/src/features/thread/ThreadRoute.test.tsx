@@ -348,8 +348,11 @@ describe("ThreadRoute", () => {
 
     expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
 
-    fireEvent.keyDown(window, { key: "L" });
+    fireEvent.keyDown(window, { key: "L", shiftKey: true });
 
+    await waitFor(() => {
+      expect(useModals.getState().rightRail).toMatchObject({ kind: "thread-context" });
+    });
     expect(await screen.findByRole("heading", { name: "Thread context" })).toBeVisible();
     expect(screen.getByText("1 attachment")).toBeVisible();
   });

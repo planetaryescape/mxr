@@ -416,6 +416,7 @@ function SearchResultRow({
       type="button"
       className={`grid w-full grid-cols-[minmax(120px,190px)_1fr_auto] gap-3 border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-muted ${active ? "bg-muted" : ""}`}
       aria-current={active ? "true" : undefined}
+      aria-label={`${row.subject || "(no subject)"} from ${row.sender}`}
       onFocus={onPreview}
       onMouseEnter={onPreview}
       onClick={() =>

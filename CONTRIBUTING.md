@@ -117,6 +117,15 @@ scripts/check_architecture_boundaries.sh
 cargo deny check
 ```
 
+For test-quality and web-facing changes, also run:
+
+```bash
+scripts/pre-pr-test-gate
+```
+
+That gate validates the test-quality audit script, runs strict test-quality
+audit, and runs the web typecheck/lint/unit test suite.
+
 Test helpers may use narrow `#[expect(clippy::...)]` annotations when
 panic/unwrap/default-mutation keeps fixture failures clearer. Keep the
 annotation on the smallest test module or function that needs it, and include

@@ -52,6 +52,10 @@ function levelClasses(level?: string): string {
   }
 }
 
+function logRowKey(row: LogRow): string {
+  return [row.timestamp ?? "", row.level ?? "", row.message ?? "", row.raw].join("|");
+}
+
 export function LogsPanel() {
   const queryClient = useQueryClient();
   const [level, setLevel] = useState<string>("all");
@@ -149,9 +153,9 @@ export function LogsPanel() {
         <div className="max-h-[480px] overflow-auto rounded-lg bg-muted/50 font-mono text-2xs">
           <table className="w-full">
             <tbody>
-              {rows.map((row, i) => (
+              {rows.map((row) => (
                 <tr
-                  key={i}
+                  key={logRowKey(row)}
                   className="border-b border-border/30 align-top last:border-0 hover:bg-background/50"
                 >
                   <td className="whitespace-nowrap px-2 py-1 text-muted-foreground">

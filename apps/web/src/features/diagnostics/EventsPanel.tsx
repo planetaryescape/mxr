@@ -29,6 +29,18 @@ function levelClasses(level: string): string {
   }
 }
 
+function eventEntryKey(entry: EventLogEntry): string {
+  return [
+    entry.timestamp,
+    entry.level,
+    entry.category,
+    entry.account_id ?? "",
+    entry.message_id ?? "",
+    entry.rule_id ?? "",
+    entry.summary,
+  ].join("|");
+}
+
 export function EventsPanel() {
   const queryClient = useQueryClient();
   const [level, setLevel] = useState("all");
@@ -37,7 +49,7 @@ export function EventsPanel() {
   const [windowSecs, setWindowSecs] = useState<number | null>(86_400);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const baseFilter = useMemo(
     () => ({
@@ -172,13 +184,14 @@ export function EventsPanel() {
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry, idx) => {
-                const isOpen = expanded === idx;
+              {entries.map((entry) => {
+                const key = eventEntryKey(entry);
+                const isOpen = expanded === key;
                 return (
                   <tr
-                    key={`${entry.timestamp}-${idx}`}
+                    key={key}
                     className="cursor-pointer border-b border-border/40 last:border-0 hover:bg-muted/30"
-                    onClick={() => setExpanded(isOpen ? null : idx)}
+                    onClick={() => setExpanded(isOpen ? null : key)}
                   >
                     <td className="whitespace-nowrap px-2 py-1.5 font-mono">
                       {new Date(entry.timestamp * 1000).toLocaleString()}

@@ -116,7 +116,7 @@ describe("SearchResultsRoute keyboard flow", () => {
   test("blurs submitted input and routes j/k to result selection", async () => {
     renderWithQueryClient(<SearchResultsRoute />);
 
-    expect(await screen.findByText("Subject 1")).toBeVisible();
+    expect(await screen.findByRole("button", { name: /Subject 1/ })).toBeVisible();
     const input = screen.getByLabelText("Search query") as HTMLInputElement;
     input.focus();
     fireEvent.change(input, { target: { value: "alice" } });

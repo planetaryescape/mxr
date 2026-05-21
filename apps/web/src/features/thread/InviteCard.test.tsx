@@ -6,16 +6,18 @@ import type { CalendarMetadataView } from "@/features/mailbox/types";
 
 import { InviteCard } from "./InviteCard";
 
-const apiFetchMock = vi.hoisted(() => vi.fn());
+const apiFetchMock = vi.hoisted(() =>
+  vi.fn<(path: string, init?: RequestInit) => Promise<unknown>>(),
+);
 
 vi.mock("@/api/client", () => ({
   apiFetch: apiFetchMock,
 }));
 
 vi.mock("sonner", () => ({
-  toast: Object.assign(vi.fn(), {
-    success: vi.fn(),
-    error: vi.fn(),
+  toast: Object.assign(vi.fn<(message?: string) => void>(), {
+    success: vi.fn<(message?: string) => void>(),
+    error: vi.fn<(message?: string) => void>(),
   }),
 }));
 

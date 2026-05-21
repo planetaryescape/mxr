@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   yank:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       VERSIONS: ${{ inputs.versions }}

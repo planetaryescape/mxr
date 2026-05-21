@@ -21,7 +21,7 @@ env:
 jobs:
   plan:
     name: Plan Release
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       cli_changed: ${{ steps.scope.outputs.cli_changed }}
       has_artifacts: ${{ steps.scope.outputs.has_artifacts }}
@@ -56,7 +56,7 @@ jobs:
 
   release-smoke:
     name: Release CLI Smoke
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: plan
     env:
       MXR_GMAIL_TEST_CLIENT_ID: ${{ secrets.MXR_GMAIL_TEST_CLIENT_ID }}
@@ -259,7 +259,7 @@ jobs:
 
   github-release:
     name: GitHub Release
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [plan, release-smoke, build-binaries]
     if: >-
       always()
@@ -302,7 +302,7 @@ jobs:
 
   homebrew:
     name: Homebrew Formula
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [plan, github-release]
     if: needs.plan.outputs.cli_changed == 'true' && needs.github-release.result == 'success'
     steps:

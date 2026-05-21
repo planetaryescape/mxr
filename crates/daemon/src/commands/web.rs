@@ -53,19 +53,10 @@ async fn run_local_detached(args: Args) -> anyhow::Result<()> {
     validate_local_bind_host(host)?;
     let fallback_host = display_host(host);
 
-    if let Some(port) = mxr_config::read_bridge_port() {
-        if probe_bridge_health("127.0.0.1", port).await {
-            let host = display_host(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
-            let (bridge_url, display_url) = local_bridge_url(&host, port)?;
-            present_launch_url(&bridge_url, &display_url, args.print_url, args.no_open);
-            return Ok(());
-        }
-        // The cached port no longer responds — the daemon-managed bridge
-        // died (e.g. it lost its port on a previous startup and got
-        // disabled). Clear the stale file so subsequent invocations
-        // don't keep probing a dead port, then fall through to spawn a
-        // fresh detached child.
-        mxr_config::clear_bridge_port();
+    if let Some((host, port)) = existing_bridge(&fallback_host, args.port).await {
+        let (bridge_url, display_url) = local_bridge_url(&host, port)?;
+        present_launch_url(&bridge_url, &display_url, args.print_url, args.no_open);
+        return Ok(());
     }
 
     if let Some(pid) = live_web_pid() {
@@ -252,6 +243,30 @@ fn local_bridge_url(host: &str, port: u16) -> anyhow::Result<(String, String)> {
 
 fn should_retry_port(args: &Args) -> bool {
     args.auto_port && !args.strict_port
+}
+
+async fn existing_bridge(fallback_host: &str, requested_port: u16) -> Option<(String, u16)> {
+    let mut probed_cached_port = None;
+    if let Some(port) = mxr_config::read_bridge_port() {
+        probed_cached_port = Some(port);
+        if probe_bridge_health("127.0.0.1", port).await {
+            let host = display_host(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+            return Some((host, port));
+        }
+        // The cached port no longer responds. Clear it, then also check the
+        // configured port below: a previous probe may have cleared this file
+        // while the daemon bridge stayed healthy and kept the stable port.
+        mxr_config::clear_bridge_port();
+    }
+
+    if probed_cached_port != Some(requested_port)
+        && probe_bridge_health("127.0.0.1", requested_port).await
+    {
+        let _ = mxr_config::write_bridge_port(requested_port);
+        return Some((fallback_host.to_string(), requested_port));
+    }
+
+    None
 }
 
 fn bind_error_message(host: &str, port: u16, auto_port: bool, error: &std::io::Error) -> String {
@@ -710,5 +725,88 @@ mod tests {
 
         assert!(!probe_bridge_health("127.0.0.1", addr.port()).await);
         server.await.unwrap();
+    }
+
+    #[test]
+    fn existing_bridge_reuses_requested_port_when_cache_is_missing() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let config_dir = temp.path().join("config");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        temp_env::with_var("MXR_CONFIG_DIR", Some(&config_dir), || {
+            runtime.block_on(async {
+                let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+                    .await
+                    .unwrap();
+                let port = listener.local_addr().unwrap().port();
+                let server = spawn_health_server(listener, true);
+                let host = display_host(IpAddr::V4(Ipv4Addr::LOCALHOST));
+
+                let result = existing_bridge(&host, port).await;
+                assert_eq!(result, Some((host, port)));
+                assert_eq!(mxr_config::read_bridge_port(), Some(port));
+                server.await.unwrap();
+            });
+        });
+    }
+
+    #[test]
+    fn existing_bridge_falls_back_from_stale_cache_to_requested_port() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let config_dir = temp.path().join("config");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        temp_env::with_var("MXR_CONFIG_DIR", Some(&config_dir), || {
+            runtime.block_on(async {
+                let stale_listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+                    .await
+                    .unwrap();
+                let stale_port = stale_listener.local_addr().unwrap().port();
+                let stale_server = spawn_health_server(stale_listener, false);
+                let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+                    .await
+                    .unwrap();
+                let port = listener.local_addr().unwrap().port();
+                let server = spawn_health_server(listener, true);
+                mxr_config::write_bridge_port(stale_port).unwrap();
+                let host = display_host(IpAddr::V4(Ipv4Addr::LOCALHOST));
+
+                let result = existing_bridge(&host, port).await;
+                assert_eq!(result, Some((host, port)));
+                assert_eq!(mxr_config::read_bridge_port(), Some(port));
+                stale_server.await.unwrap();
+                server.await.unwrap();
+            });
+        });
+    }
+
+    fn spawn_health_server(
+        listener: tokio::net::TcpListener,
+        mxr_bridge: bool,
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = [0_u8; 1024];
+            let _ = stream.read(&mut buf).await.unwrap();
+            let body = if mxr_bridge {
+                r#"{"service":"mxr-bridge"}"#
+            } else {
+                r#"{"service":"other"}"#
+            };
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        })
     }
 }

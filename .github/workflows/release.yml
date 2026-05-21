@@ -302,7 +302,7 @@ jobs:
 
   homebrew:
     name: Homebrew Formula
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: macos-15
     needs: [plan, github-release]
     if: needs.plan.outputs.cli_changed == 'true' && needs.github-release.result == 'success'
     steps:
@@ -335,7 +335,6 @@ jobs:
           git -C tap add Formula/mxr.rb
           git -C tap commit -m "mxr ${VERSION}"
           git -C tap push origin HEAD:main
-      - uses: Homebrew/actions/setup-homebrew@master
       - name: Verify Homebrew install
         run: |
           brew update

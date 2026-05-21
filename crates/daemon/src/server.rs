@@ -735,19 +735,26 @@ fn is_index_lock_error(message: &str) -> bool {
 }
 
 async fn ensure_current_daemon_matches_binary(sock_path: &std::path::Path) -> anyhow::Result<()> {
-    let snapshot =
-        match fetch_daemon_status_snapshot_from_path(sock_path, STATUS_REQUEST_TIMEOUT).await {
-            Ok(snapshot) => snapshot,
-            Err(error) => {
-                eprintln!("Restarting daemon after failed status check: {error}");
-                return restart_daemon_process(
-                    sock_path,
-                    None,
-                    "Restarting daemon to recover from a bad running daemon...",
-                )
-                .await;
+    let snapshot = match fetch_daemon_status_snapshot_from_path(sock_path, STATUS_REQUEST_TIMEOUT)
+        .await
+    {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            if daemon_responds_to_ping(sock_path, Duration::from_secs(2)).await {
+                eprintln!(
+                    "Daemon status check failed ({error}); daemon is still responsive, leaving it running."
+                );
+                return Ok(());
             }
-        };
+            eprintln!("Restarting daemon after failed status check: {error}");
+            return restart_daemon_process(
+                sock_path,
+                None,
+                "Restarting daemon to recover from a bad running daemon...",
+            )
+            .await;
+        }
+    };
 
     if !daemon_requires_restart(
         snapshot.protocol_version,
@@ -944,10 +951,26 @@ async fn request_shutdown_to(sock_path: &std::path::Path) -> anyhow::Result<()> 
     }
 }
 
+#[cfg(test)]
 async fn daemon_responds_to_status(sock_path: &std::path::Path, timeout: Duration) -> bool {
     fetch_daemon_status_snapshot_from_path(sock_path, timeout)
         .await
         .is_ok()
+}
+
+async fn daemon_responds_to_ping(sock_path: &std::path::Path, timeout: Duration) -> bool {
+    let response = tokio::time::timeout(timeout, async {
+        let mut client = IpcClient::connect_to(sock_path).await?;
+        client.request(Request::Ping).await
+    })
+    .await;
+
+    matches!(
+        response,
+        Ok(Ok(Response::Ok {
+            data: ResponseData::Pong,
+        }))
+    )
 }
 
 fn spawn_startup_maintenance(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
@@ -1041,7 +1064,7 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
 
     for i in 0..40 {
         tokio::time::sleep(std::time::Duration::from_millis(100 * (i + 1))).await;
-        if daemon_responds_to_status(sock_path, Duration::from_millis(250)).await {
+        if daemon_responds_to_ping(sock_path, Duration::from_millis(250)).await {
             eprintln!(" ready.");
             return Ok(());
         }
@@ -1067,9 +1090,10 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_health, current_build_id, daemon_requires_restart, daemon_responds_to_status,
-        guard_ipc_response, is_index_lock_error, request_shutdown_to, serve_client_connection,
-        spawn_startup_maintenance, BULK_CONCURRENCY_LIMIT, REQUEST_CONCURRENCY_LIMIT,
+        classify_health, current_build_id, daemon_requires_restart, daemon_responds_to_ping,
+        daemon_responds_to_status, guard_ipc_response, is_index_lock_error, request_shutdown_to,
+        serve_client_connection, spawn_startup_maintenance, BULK_CONCURRENCY_LIMIT,
+        REQUEST_CONCURRENCY_LIMIT,
     };
     use crate::{handler::handle_request, state::AppState};
     use chrono::Utc;
@@ -1406,6 +1430,37 @@ mod tests {
         assert!(daemon_responds_to_status(&ready_socket_path, Duration::from_secs(1)).await);
         server.await.expect("join status server");
         let _ = std::fs::remove_file(&ready_socket_path);
+    }
+
+    #[tokio::test]
+    async fn daemon_ping_probe_does_not_need_database_status() {
+        let socket_path = std::path::PathBuf::from(format!(
+            "/tmp/mxr-ping-ready-{}.sock",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::remove_file(&socket_path);
+        let listener = UnixListener::bind(&socket_path).expect("bind ping socket");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut framed = Framed::new(stream, IpcCodec::new());
+            if let Some(Ok(message)) = framed.next().await {
+                framed
+                    .send(IpcMessage {
+                        id: message.id,
+                        source: ::mxr_protocol::ClientKind::default(),
+                        payload: IpcPayload::Response(Response::Ok {
+                            data: ResponseData::Pong,
+                        }),
+                    })
+                    .await
+                    .expect("send pong");
+            }
+        });
+
+        assert!(daemon_responds_to_ping(&socket_path, Duration::from_secs(1)).await);
+        server.await.expect("join ping server");
+        let _ = std::fs::remove_file(&socket_path);
     }
 
     #[tokio::test]

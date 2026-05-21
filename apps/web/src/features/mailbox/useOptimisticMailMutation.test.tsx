@@ -3,10 +3,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { useOptimisticMailMutation } from "./useOptimisticMailMutation";
 import { useSelection } from "@/state/selectionStore";
+
+const router = vi.hoisted(() => ({
+  navigate: vi.fn<(options: unknown) => Promise<void>>(),
+}));
 
 const api = vi.hoisted(() => ({
   archiveMessages: vi.fn<(ids: string[]) => Promise<unknown>>(),
@@ -33,6 +38,10 @@ vi.mock("./api", () => ({
   shellKey: ["shell"],
 }));
 
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => router.navigate,
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn<(message: string, opts?: unknown) => void>(),
@@ -51,14 +60,38 @@ const baseMailbox = {
         id: "today",
         title: "Today",
         rows: [
-          { id: "m1", labels: [{ id: "lbl-inbox", kind: "system", name: "Inbox" }] },
-          { id: "m2", labels: [{ id: "lbl-inbox", kind: "system", name: "Inbox" }] },
-          { id: "m3", labels: [{ id: "lbl-inbox", kind: "system", name: "Inbox" }] },
+          {
+            id: "m1",
+            unread: true,
+            labels: [{ id: "lbl-inbox", kind: "system", name: "Inbox" }],
+          },
+          {
+            id: "m2",
+            unread: true,
+            labels: [{ id: "lbl-inbox", kind: "system", name: "Inbox" }],
+          },
+          {
+            id: "m3",
+            unread: true,
+            labels: [{ id: "lbl-inbox", kind: "system", name: "Inbox" }],
+          },
         ],
       },
     ],
   },
 };
+
+function mutationSuccess(count: number) {
+  return {
+    ok: true,
+    result: {
+      requested: count,
+      succeeded: count,
+      skipped: 0,
+      failed: 0,
+    },
+  };
+}
 
 function wrapper(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -70,6 +103,7 @@ describe("useOptimisticMailMutation — label/move/read-and-archive", () => {
   let client: QueryClient;
 
   beforeEach(() => {
+    window.sessionStorage.clear();
     client = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
@@ -79,10 +113,11 @@ describe("useOptimisticMailMutation — label/move/read-and-archive", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
   });
 
   test("move(ids, target=Receipts) optimistically removes rows from current view and calls moveMessagesToLabel", async () => {
-    api.moveMessagesToLabel.mockResolvedValue({ result: { succeeded: 2 } });
+    api.moveMessagesToLabel.mockResolvedValue(mutationSuccess(2));
 
     const { result } = renderHook(
       () => useOptimisticMailMutation("move", { payload: { label: "Receipts" } }),
@@ -122,7 +157,7 @@ describe("useOptimisticMailMutation — label/move/read-and-archive", () => {
   });
 
   test("label-add(ids, label=Receipts) keeps rows visible and calls modifyLabels with add only", async () => {
-    api.modifyLabels.mockResolvedValue({ result: { succeeded: 1 } });
+    api.modifyLabels.mockResolvedValue(mutationSuccess(1));
 
     const { result } = renderHook(
       () => useOptimisticMailMutation("label-add", { payload: { label: "Receipts" } }),
@@ -140,7 +175,7 @@ describe("useOptimisticMailMutation — label/move/read-and-archive", () => {
   });
 
   test("read-and-archive removes rows from the current view and calls readAndArchiveMessages", async () => {
-    api.readAndArchiveMessages.mockResolvedValue({ result: { succeeded: 3 } });
+    api.readAndArchiveMessages.mockResolvedValue(mutationSuccess(3));
 
     const { result } = renderHook(() => useOptimisticMailMutation("read-and-archive"), {
       wrapper: wrapper(client),
@@ -168,5 +203,62 @@ describe("useOptimisticMailMutation — label/move/read-and-archive", () => {
       }
     });
     expect(api.moveMessagesToLabel).not.toHaveBeenCalled();
+  });
+
+  test("read rolls back and reports provider skips as an error", async () => {
+    api.markReadMessages.mockResolvedValue({
+      ok: false,
+      result: {
+        requested: 1,
+        succeeded: 0,
+        skipped: 1,
+        failed: 0,
+        accounts: [
+          {
+            account_id: "account-1",
+            account_name: "personal",
+            succeeded: 0,
+            skipped: 1,
+            failed: 0,
+            error: "account unavailable: No sync provider configured",
+          },
+        ],
+      },
+    });
+
+    const { result } = renderHook(() => useOptimisticMailMutation("read"), {
+      wrapper: wrapper(client),
+    });
+
+    let caught: unknown;
+    await act(async () => {
+      try {
+        await result.current.mutateAsync(["m1"]);
+      } catch (error) {
+        caught = error;
+      }
+    });
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toContain("No messages changed");
+    await waitFor(() => {
+      const after = client.getQueryData(mailboxKey) as typeof baseMailbox;
+      expect(after.mailbox.groups[0]?.rows[0]?.unread).toBe(true);
+    });
+    expect(toast.error).toHaveBeenCalledWith("Marked read failed", {
+      description: expect.stringContaining("account unavailable"),
+      action: expect.objectContaining({ label: "Re-auth personal" }),
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+
+    const [, toastOptions] = vi.mocked(toast.error).mock.calls[0] ?? [];
+    const action = (toastOptions as { action?: { onClick: () => void } } | undefined)?.action;
+    action?.onClick();
+
+    expect(window.sessionStorage.getItem("mxr.account.reauth.request.v1")).toBe("account-1");
+    expect(router.navigate).toHaveBeenCalledWith({
+      to: "/accounts/$key",
+      params: { key: "account-1" },
+    });
   });
 });

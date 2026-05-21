@@ -171,8 +171,15 @@ export function OnboardingRoute() {
               <div className="font-mono text-3xl tracking-widest text-primary">
                 {session?.user_code ?? "..."}
               </div>
-              <div className="mt-2 text-xs text-muted-foreground">
-                {session?.message ?? session?.state ?? "Waiting for authorization"}
+              <div
+                className={`mt-2 whitespace-pre-wrap text-xs ${
+                  session?.error ? "text-destructive" : "text-muted-foreground"
+                }`}
+              >
+                {session?.error ??
+                  session?.message ??
+                  session?.state ??
+                  "Waiting for authorization"}
               </div>
               {session?.verification_uri || session?.auth_url ? (
                 <Button

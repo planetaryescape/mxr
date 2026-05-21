@@ -160,7 +160,7 @@ pub(crate) async fn ack_mutation(
     match ipc_request(socket_path, Request::mutation(mutation)).await? {
         ResponseData::Ack => Ok(Json(serde_json::json!({ "ok": true }))),
         ResponseData::MutationResult { result } => Ok(Json(serde_json::json!({
-            "ok": result.failed == 0,
+            "ok": result.succeeded == result.requested && result.skipped == 0 && result.failed == 0,
             "result": result,
         }))),
         _ => Err(BridgeError::UnexpectedResponse),

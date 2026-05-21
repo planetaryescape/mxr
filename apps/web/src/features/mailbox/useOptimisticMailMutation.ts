@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
 import {
@@ -13,7 +14,13 @@ import {
   trashMessages,
   undoMutation,
 } from "./api";
-import type { MailboxResponse, MessageGroupView, MutationResponse } from "./types";
+import type {
+  AccountMutationResult,
+  MailboxResponse,
+  MessageGroupView,
+  MutationResponse,
+} from "./types";
+import { requestAccountReauth } from "@/features/accounts/reauthRequest";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 import { useSelection } from "@/state/selectionStore";
 
@@ -38,6 +45,9 @@ export interface MailActionPayload {
 interface MutationContext {
   snapshots: Array<[readonly unknown[], unknown]>;
 }
+
+const AUTH_RECOVERY_ERROR =
+  /oauth|auth|token|invalid_client|invalid_grant|no sync provider configured|no sync-capable accounts configured|account unavailable/i;
 
 const destructiveActions = new Set<MailAction>([
   "archive",
@@ -78,11 +88,7 @@ function mapMailboxRows(
   return { ...data, mailbox: { ...data.mailbox, groups } };
 }
 
-function snapshotAndMutate(
-  qc: QueryClient,
-  ids: string[],
-  action: MailAction,
-): MutationContext {
+function snapshotAndMutate(qc: QueryClient, ids: string[], action: MailAction): MutationContext {
   const idSet = new Set(ids);
   const snapshots: MutationContext["snapshots"] = [];
   for (const [queryKey, data] of qc.getQueriesData({ queryKey: ["mailbox"] })) {
@@ -136,6 +142,55 @@ function runAction(
   }
 }
 
+function mutationCompleted(response: MutationResponse): boolean {
+  if (!response.ok) return false;
+  const result = response.result;
+  if (!result) return true;
+  return result.succeeded === result.requested && result.skipped === 0 && result.failed === 0;
+}
+
+function mutationFailureDescription(response: MutationResponse, requestedFallback: number): string {
+  const result = response.result;
+  if (!result) return "Bridge rejected the mutation.";
+
+  const accountErrors =
+    result.accounts
+      ?.filter((account) => account.error)
+      .map((account) => `${account.account_name}: ${account.error}`) ?? [];
+  const counts = `requested ${result.requested}, succeeded ${result.succeeded}, skipped ${result.skipped}, failed ${result.failed}`;
+  const prefix =
+    result.succeeded > 0
+      ? `Only ${result.succeeded} of ${result.requested || requestedFallback} messages changed`
+      : "No messages changed";
+
+  if (accountErrors.length > 0) return `${prefix} (${counts}). ${accountErrors.join("; ")}`;
+  return `${prefix} (${counts}).`;
+}
+
+function assertMutationCompleted(response: MutationResponse, messageCount: number) {
+  if (mutationCompleted(response)) return;
+  throw new MutationFailureError(mutationFailureDescription(response, messageCount), response);
+}
+
+class MutationFailureError extends Error {
+  constructor(
+    message: string,
+    readonly response: MutationResponse,
+  ) {
+    super(message);
+    this.name = "MutationFailureError";
+  }
+}
+
+function findReauthableAccount(error: Error): AccountMutationResult | null {
+  if (!(error instanceof MutationFailureError)) return null;
+  return (
+    error.response.result?.accounts?.find(
+      (account) => account.error && AUTH_RECOVERY_ERROR.test(account.error),
+    ) ?? null
+  );
+}
+
 function actionLabel(action: MailAction, payload?: MailActionPayload): string {
   switch (action) {
     case "archive":
@@ -171,11 +226,17 @@ export interface MailMutationOptions {
 
 export function useOptimisticMailMutation(action: MailAction, options: MailMutationOptions = {}) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const clearSelection = useSelection((state) => state.clear);
   const { silentSuccess, payload } = options;
   return useMutation({
-    mutationFn: (messageIds: string[]) =>
-      requestCoordinator.enqueueMutation(() => runAction(action, messageIds, payload)),
+    mutationFn: async (messageIds: string[]) => {
+      const response = await requestCoordinator.enqueueMutation(() =>
+        runAction(action, messageIds, payload),
+      );
+      assertMutationCompleted(response, messageIds.length);
+      return response;
+    },
     onMutate: async (messageIds) => {
       await qc.cancelQueries({ queryKey: ["mailbox"] });
       const context = snapshotAndMutate(qc, messageIds, action);
@@ -184,7 +245,22 @@ export function useOptimisticMailMutation(action: MailAction, options: MailMutat
     },
     onError: (error, _messageIds, context) => {
       restore(qc, context);
-      toast.error(`${actionLabel(action, payload)} failed`, { description: error.message });
+      const reauthAccount = findReauthableAccount(error);
+      toast.error(`${actionLabel(action, payload)} failed`, {
+        description: error.message,
+        action: reauthAccount
+          ? {
+              label: `Re-auth ${reauthAccount.account_name}`,
+              onClick: () => {
+                requestAccountReauth(reauthAccount.account_id);
+                void navigate({
+                  to: "/accounts/$key",
+                  params: { key: reauthAccount.account_id },
+                });
+              },
+            }
+          : undefined,
+      });
     },
     onSuccess: (response, messageIds) => {
       if (silentSuccess) return;

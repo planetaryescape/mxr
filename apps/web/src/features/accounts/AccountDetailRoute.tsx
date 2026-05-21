@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { CheckCircle2, KeyRound, RefreshCw, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -20,6 +20,7 @@ import {
   testAccount,
   type AccountConfig,
 } from "./api";
+import { claimAccountReauthRequest } from "./reauthRequest";
 import { OnboardingRoute } from "@/features/onboarding/OnboardingRoute";
 import type { RuntimeAccount } from "@/features/compose/api";
 import { EmptyState } from "@/components/EmptyState";
@@ -61,6 +62,7 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
   const [alias, setAlias] = useState("");
   const [purgeLocalData, setPurgeLocalData] = useState(false);
   const [authSessionId, setAuthSessionId] = useState<string | null>(null);
+  const autoReauthStarted = useRef(false);
   const authSession = useQuery({
     queryKey: ["auth-session", authSessionId],
     queryFn: () => fetchAuthSession(authSessionId ?? ""),
@@ -119,7 +121,7 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
     },
   });
   const reauth = useMutation({
-    mutationFn: () => startAuthSession(accountConfig(account)),
+    mutationFn: () => startAuthSession(accountConfig(account), true),
     onSuccess: (result) => {
       setAuthSessionId(result.session.session_id);
       if (result.session.verification_uri || result.session.auth_url) {
@@ -149,6 +151,17 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
       await navigate({ to: "/accounts" });
     },
   });
+
+  useEffect(() => {
+    autoReauthStarted.current = false;
+  }, [keyParam]);
+
+  useEffect(() => {
+    if (!account || authSessionId || autoReauthStarted.current || !isOauthAccount(account)) return;
+    if (!claimAccountReauthRequest(account)) return;
+    autoReauthStarted.current = true;
+    reauth.mutate();
+  }, [account, authSessionId, reauth]);
 
   if (accounts.isLoading)
     return <div className="p-6 text-xs text-muted-foreground">Loading account...</div>;
@@ -232,8 +245,14 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
         {authSession.data?.session ? (
           <Card className="p-4 lg:col-span-2">
             <h2 className="mb-2 text-sm font-semibold">OAuth session</h2>
-            <div className="text-xs text-muted-foreground">
-              {authSession.data.session.message ?? authSession.data.session.state}
+            <div
+              className={`whitespace-pre-wrap text-xs ${
+                authSession.data.session.error ? "text-destructive" : "text-muted-foreground"
+              }`}
+            >
+              {authSession.data.session.error ??
+                authSession.data.session.message ??
+                authSession.data.session.state}
             </div>
             {authSession.data.session.user_code ? (
               <div className="mt-2 font-mono text-2xl tracking-widest text-primary">

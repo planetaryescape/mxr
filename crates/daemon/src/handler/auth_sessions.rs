@@ -158,7 +158,9 @@ async fn start_gmail_auth_session(request: GmailAuthSessionRequest<'_>) -> Handl
             Err(error) => {
                 session.state = AuthSessionStateData::Failed;
                 session.message = None;
-                session.error = Some(error.to_string());
+                session.error = Some(super::account_config::friendly_gmail_auth_error(
+                    &error.to_string(),
+                ));
             }
         });
         tracing::debug!(session_id = %task_session_id.0, "auth session task finished");

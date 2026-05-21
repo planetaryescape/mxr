@@ -1167,7 +1167,7 @@ pub(super) fn resolve_gmail_credentials(
 /// Rewrite raw Gmail OAuth errors into actionable guidance for onboarding UI.
 /// Google's response strings are precise but cryptic; users need to know what
 /// to change in Google Cloud Console.
-fn friendly_gmail_auth_error(raw: &str) -> String {
+pub(super) fn friendly_gmail_auth_error(raw: &str) -> String {
     let lower = raw.to_lowercase();
     if lower.contains("invalid_client") {
         return format!(

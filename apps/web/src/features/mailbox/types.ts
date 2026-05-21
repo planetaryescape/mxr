@@ -200,11 +200,21 @@ export interface ThreadResponse {
   right_rail?: { title?: string; items?: string[] };
 }
 
+export interface AccountMutationResult {
+  account_id: string;
+  account_name: string;
+  succeeded: number;
+  skipped: number;
+  failed: number;
+  error?: string | null;
+}
+
 export interface MutationResult {
   requested: number;
   succeeded: number;
   skipped: number;
   failed: number;
+  accounts?: AccountMutationResult[];
   mutation_id?: string;
 }
 

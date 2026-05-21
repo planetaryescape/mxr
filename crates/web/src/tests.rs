@@ -2576,6 +2576,83 @@ async fn archive_mutation_endpoint_proxies_message_ids() {
 }
 
 #[tokio::test]
+async fn read_mutation_endpoint_reports_skipped_result_as_not_ok() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let expected_message_id = MessageId::new();
+    let expected_message_id_text = expected_message_id.to_string();
+    let expected_for_ipc = expected_message_id.clone();
+    let account_id = AccountId::new();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::Mutation {
+                mutation:
+                    mxr_protocol::MutationCommand::SetRead {
+                        message_ids,
+                        read: true,
+                    },
+                ..
+            } => {
+                assert_eq!(message_ids, vec![expected_for_ipc.clone()]);
+                Some(Response::Ok {
+                    data: ResponseData::MutationResult {
+                        result: mxr_protocol::MutationResultData {
+                            requested: 1,
+                            succeeded: 0,
+                            skipped: 1,
+                            failed: 0,
+                            accounts: vec![mxr_protocol::AccountMutationResultData {
+                                account_id: account_id.clone(),
+                                account_name: "personal".into(),
+                                succeeded: 0,
+                                skipped: 1,
+                                failed: 0,
+                                error: Some("account unavailable".into()),
+                            }],
+                            mutation_id: None,
+                        },
+                    },
+                })
+            }
+            _ => None,
+        },
+        None,
+    )
+    .await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/mutations/read"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({
+            "message_ids": [expected_message_id_text],
+            "read": true,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["ok"], false);
+    assert_eq!(json["result"]["requested"], 1);
+    assert_eq!(json["result"]["succeeded"], 0);
+    assert_eq!(json["result"]["skipped"], 1);
+    assert_eq!(
+        json["result"]["accounts"][0]["error"],
+        "account unavailable"
+    );
+}
+
+#[tokio::test]
 async fn invite_reply_endpoint_proxies_dry_run_request() {
     let temp = TempDir::new().unwrap();
     let socket_path = temp.path().join("mxr.sock");

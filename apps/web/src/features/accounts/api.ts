@@ -80,10 +80,10 @@ export function removeAccount(key: string, purgeLocalData = false) {
   );
 }
 
-export function startAuthSession(account: AccountConfig) {
+export function startAuthSession(account: AccountConfig, reauthorize = false) {
   return apiFetch<{ session: AuthSession }>("/api/v1/platform/auth/sessions/start", {
     method: "POST",
-    body: { account, reauthorize: false, flow: "device" },
+    body: { account, reauthorize, flow: "device" },
   });
 }
 

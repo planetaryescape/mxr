@@ -6,7 +6,7 @@ use crate::state::AppState;
 use mxr_core::i18n::SendableCalendarPartstat;
 use mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
 use mxr_core::types::{
-    Address, BodyPartSource, CalendarAttendee, CalendarMetadata, CalendarPartstat,
+    Account, Address, BodyPartSource, CalendarAttendee, CalendarMetadata, CalendarPartstat,
     CalendarReplyMessage, Envelope, HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind,
     MessageBody,
 };
@@ -28,6 +28,46 @@ fn resolve_account_id(
         .ok_or_else(|| "No sync-capable accounts configured".to_string())
 }
 
+fn sync_account_matches_config_key(account: &Account, config_key: &str) -> bool {
+    account
+        .sync_backend
+        .as_ref()
+        .is_some_and(|backend| backend.config_key == config_key)
+}
+
+async fn resolve_local_account_id(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+) -> Result<Option<AccountId>, String> {
+    if let Some(account_id) = account_id {
+        return Ok(Some(account_id.clone()));
+    }
+
+    if let Some(account_id) = state.default_account_id_opt() {
+        return Ok(Some(account_id));
+    }
+
+    let accounts = state
+        .store
+        .list_accounts()
+        .await
+        .map_err(|e| e.to_string())?;
+    let config = state.config_snapshot();
+    if let Some(default_key) = config.general.default_account.as_deref() {
+        if let Some(account) = accounts.iter().find(|account| {
+            account.enabled && sync_account_matches_config_key(account, default_key)
+        }) {
+            return Ok(Some(account.id.clone()));
+        }
+    }
+
+    Ok(accounts
+        .iter()
+        .find(|account| account.enabled && account.sync_backend.is_some())
+        .or_else(|| accounts.iter().find(|account| account.enabled))
+        .map(|account| account.id.clone()))
+}
+
 pub(super) async fn list_envelopes(
     state: &AppState,
     label_id: Option<&LabelId>,
@@ -42,14 +82,14 @@ pub(super) async fn list_envelopes(
             .list_envelopes_by_label(label_id, limit, offset)
             .await
     } else {
-        let Some(default_account_id) = state.default_account_id_opt() else {
+        let Some(default_account_id) = resolve_local_account_id(state, account_id).await? else {
             return Ok(ResponseData::Envelopes {
                 envelopes: Vec::new(),
             });
         };
         state
             .store
-            .list_envelopes_by_account(account_id.unwrap_or(&default_account_id), limit, offset)
+            .list_envelopes_by_account(&default_account_id, limit, offset)
             .await
     };
 
@@ -1082,10 +1122,7 @@ pub(super) async fn list_threads(
 }
 
 pub(super) async fn list_labels(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
-    let Some(account_id) = account_id
-        .cloned()
-        .or_else(|| state.default_account_id_opt())
-    else {
+    let Some(account_id) = resolve_local_account_id(state, account_id).await? else {
         return Ok(ResponseData::Labels { labels: Vec::new() });
     };
     let labels = state

@@ -2311,6 +2311,18 @@ mod tests {
     }
 
     #[test]
+    fn parses_accounts_reauth_subcommand() {
+        let cli = Cli::parse_from(["mxr", "accounts", "reauth", "personal"]);
+        match cli.command {
+            Some(Command::Accounts {
+                action: Some(AccountsAction::Reauth { name }),
+                ..
+            }) => assert_eq!(name, "personal"),
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
     fn parses_accounts_remove_subcommand() {
         let cli = Cli::parse_from([
             "mxr",

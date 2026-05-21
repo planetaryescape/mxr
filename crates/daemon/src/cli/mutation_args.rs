@@ -66,6 +66,8 @@ pub enum AccountsAction {
     Show { name: String },
     /// Test account connectivity
     Test { name: String },
+    /// Re-authorize an OAuth account and keep cached mail
+    Reauth { name: String },
     /// Re-save account passwords into the protected keychain store
     Repair { name: String },
     /// Disable an account without deleting local cached mail

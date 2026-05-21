@@ -253,6 +253,107 @@ async fn dispatch_list_envelopes_without_accounts_returns_empty() {
 }
 
 #[tokio::test]
+async fn dispatch_read_only_mailbox_uses_local_account_when_provider_missing() {
+    let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+    let account_id = mxr_core::AccountId::from_provider_id("gmail", "me@example.com");
+    let account = mxr_core::types::Account {
+        id: account_id.clone(),
+        name: "Personal".to_string(),
+        email: "me@example.com".to_string(),
+        sync_backend: Some(mxr_core::types::BackendRef {
+            provider_kind: mxr_core::types::ProviderKind::Gmail,
+            config_key: "personal".to_string(),
+        }),
+        send_backend: None,
+        enabled: true,
+    };
+    state.store.insert_account(&account).await.unwrap();
+
+    let label = mxr_core::types::Label {
+        id: mxr_core::LabelId::from_provider_id("gmail", "INBOX"),
+        account_id: account_id.clone(),
+        name: "Inbox".to_string(),
+        kind: mxr_core::types::LabelKind::System,
+        color: None,
+        provider_id: "INBOX".to_string(),
+        unread_count: 0,
+        total_count: 1,
+        role: None,
+    };
+    state.store.upsert_label(&label).await.unwrap();
+
+    let message_id = mxr_core::MessageId::from_provider_id("gmail", "msg-1");
+    let envelope = mxr_core::types::Envelope {
+        id: message_id.clone(),
+        account_id: account_id.clone(),
+        provider_id: "msg-1".to_string(),
+        thread_id: mxr_core::ThreadId::from_provider_id("gmail", "thread-1"),
+        message_id_header: Some("<msg-1@example.com>".to_string()),
+        in_reply_to: None,
+        references: vec![],
+        from: mxr_core::types::Address {
+            name: Some("Sender".to_string()),
+            email: "sender@example.com".to_string(),
+        },
+        to: vec![mxr_core::types::Address {
+            name: None,
+            email: "me@example.com".to_string(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Still local".to_string(),
+        date: chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
+        flags: mxr_core::types::MessageFlags::empty(),
+        snippet: "cached body".to_string(),
+        has_attachments: false,
+        size_bytes: 128,
+        unsubscribe: mxr_core::types::UnsubscribeMethod::None,
+        link_count: 0,
+        body_word_count: 2,
+        label_provider_ids: vec![],
+        keywords: std::collections::BTreeSet::new(),
+    };
+    state.store.upsert_envelope(&envelope).await.unwrap();
+
+    let envelopes_msg = IpcMessage {
+        id: 14,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::ListEnvelopes {
+            label_id: None,
+            account_id: None,
+            limit: 100,
+            offset: 0,
+        }),
+    };
+    let resp = handle_request(&state, &envelopes_msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Envelopes { envelopes },
+        }) => assert_eq!(
+            envelopes.iter().map(|env| &env.id).collect::<Vec<_>>(),
+            vec![&message_id]
+        ),
+        other => panic!("Expected Envelopes, got {:?}", other),
+    }
+
+    let labels_msg = IpcMessage {
+        id: 15,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::ListLabels { account_id: None }),
+    };
+    let resp = handle_request(&state, &labels_msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Labels { labels },
+        }) => assert_eq!(
+            labels.iter().map(|label| &label.id).collect::<Vec<_>>(),
+            vec![&label.id]
+        ),
+        other => panic!("Expected Labels, got {:?}", other),
+    }
+}
+
+#[tokio::test]
 async fn dispatch_create_label_persists_and_returns_label() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let account_id = state.default_account_id();

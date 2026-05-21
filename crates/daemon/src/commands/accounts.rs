@@ -68,6 +68,7 @@ pub async fn run(
         }
         Some(AccountsAction::Show { name }) => show_account(&name).await?,
         Some(AccountsAction::Test { name }) => test_account(&name).await?,
+        Some(AccountsAction::Reauth { name }) => reauth_account(&name).await?,
         Some(AccountsAction::Repair { name }) => repair_account(&name).await?,
         Some(AccountsAction::Disable { name }) => {
             run_account_operation(disable_account_request(&name)).await?
@@ -383,13 +384,16 @@ fn render_account_operation(result: AccountOperationResult) -> anyhow::Result<()
     }
 }
 
-async fn authorize_and_save_account(account: AccountConfigData) -> anyhow::Result<()> {
+async fn authorize_and_save_account(
+    account: AccountConfigData,
+    reauthorize: bool,
+) -> anyhow::Result<()> {
     let mut client = client().await?;
     let session = request_auth_session(
         &mut client,
         Request::StartAuthSession {
             account,
-            reauthorize: false,
+            reauthorize,
             flow: AuthFlowData::Auto,
         },
     )
@@ -617,7 +621,7 @@ async fn add_gmail(args: &AddArgs) -> anyhow::Result<()> {
         is_default: false,
     };
 
-    authorize_and_save_account(account).await?;
+    authorize_and_save_account(account, false).await?;
     Ok(())
 }
 
@@ -872,8 +876,12 @@ async fn add_outlook_inner(kind: OutlookAccountKind) -> anyhow::Result<()> {
         is_default: false,
     };
 
-    authorize_and_save_account(account).await?;
+    authorize_and_save_account(account, false).await?;
     Ok(())
+}
+
+async fn reauth_account(name: &str) -> anyhow::Result<()> {
+    authorize_and_save_account(find_account_config(name).await?, true).await
 }
 
 async fn repair_account(name: &str) -> anyhow::Result<()> {

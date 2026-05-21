@@ -5,7 +5,7 @@
 //!
 //! Format: `[ { "scopes": [...], "token": <TokenInfo> }, ... ]` — same JSON
 //! shape as yup-oauth2's `DiskStorage` so a one-shot migration from the
-//! legacy disk path is a straight read-write-delete.
+//! legacy disk path is a straight read-write-mirror.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -72,9 +72,8 @@ struct StoredToken {
 pub(crate) struct KeychainTokenStorage {
     keychain_service: String,
     token_ref: String,
-    /// Disk path retained as a fallback target when keychain writes fail
-    /// (e.g. headless Linux with no secret-service backend). Also the path
-    /// from which legacy on-disk caches are migrated on first read.
+    /// Private disk fallback retained alongside the keychain so noninteractive
+    /// keychain access failures cannot strand an otherwise valid token cache.
     fallback_path: PathBuf,
     cache: Mutex<Vec<StoredToken>>,
 }
@@ -96,7 +95,7 @@ impl KeychainTokenStorage {
 
     fn persist(&self, json: &str) -> std::io::Result<()> {
         match write_keychain_token_cache(&self.keychain_service, &self.token_ref, json) {
-            Ok(()) => Ok(()),
+            Ok(()) => self.persist_to_disk(json),
             Err(error) => {
                 tracing::warn!(
                     token_ref = %self.token_ref,
@@ -261,26 +260,30 @@ fn load_initial_with_service(
         }
     }
 
-    if fallback_path.exists() {
-        if let Ok(bytes) = std::fs::read(fallback_path) {
-            if let Ok(parsed) = serde_json::from_slice::<Vec<StoredToken>>(&bytes) {
-                if !parsed.is_empty() {
-                    if let Ok(json) = serde_json::to_string(&parsed) {
-                        if write_keychain_token_cache(keychain_service, token_ref, &json).is_ok() {
-                            let _ = std::fs::remove_file(fallback_path);
-                            tracing::info!(
-                                token_ref = %token_ref,
-                                "migrated OAuth token cache from disk to keychain"
-                            );
-                        }
-                    }
-                }
-                return parsed;
+    load_fallback_token_cache(token_ref, fallback_path, |json| {
+        write_keychain_token_cache(keychain_service, token_ref, json).is_ok()
+    })
+    .unwrap_or_default()
+}
+
+fn load_fallback_token_cache(
+    token_ref: &str,
+    fallback_path: &std::path::Path,
+    mirror_to_keychain: impl FnOnce(&str) -> bool,
+) -> Option<Vec<StoredToken>> {
+    let bytes = std::fs::read(fallback_path).ok()?;
+    let parsed = serde_json::from_slice::<Vec<StoredToken>>(&bytes).ok()?;
+    if !parsed.is_empty() {
+        if let Ok(json) = serde_json::to_string(&parsed) {
+            if mirror_to_keychain(&json) {
+                tracing::info!(
+                    token_ref = %token_ref,
+                    "mirrored OAuth token cache from disk to keychain"
+                );
             }
         }
     }
-
-    Vec::new()
+    Some(parsed)
 }
 
 #[async_trait]
@@ -384,8 +387,8 @@ mod tests {
         assert_eq!(fetched.access_token.as_deref(), Some("hello"));
     }
 
-    #[tokio::test]
-    async fn migrates_legacy_disk_cache_into_keychain_storage() {
+    #[test]
+    fn keeps_legacy_disk_cache_after_successful_keychain_mirror() {
         let temp = tempdir().unwrap();
         let path = temp.path().join("legacy.json");
         let legacy = vec![StoredToken {
@@ -394,13 +397,22 @@ mod tests {
         }];
         std::fs::write(&path, serde_json::to_string(&legacy).unwrap()).unwrap();
 
-        let storage = KeychainTokenStorage::new_with_service(
-            unique_ref("test-migrate"),
-            path,
-            KEYCHAIN_SERVICE.to_string(),
-        );
-        let token = storage.get(&["scope-a"]).await.unwrap();
+        let mirrored = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mirrored_for_closure = std::sync::Arc::clone(&mirrored);
+        let loaded = load_fallback_token_cache(&unique_ref("test-migrate"), &path, move |_json| {
+            mirrored_for_closure.store(true, std::sync::atomic::Ordering::SeqCst);
+            true
+        });
+        let token = loaded.unwrap().into_iter().next().unwrap().token;
         assert_eq!(token.access_token.as_deref(), Some("legacy-access"));
+        assert!(
+            mirrored.load(std::sync::atomic::Ordering::SeqCst),
+            "legacy disk cache should be mirrored to the keychain when possible"
+        );
+        assert!(
+            path.exists(),
+            "disk fallback must stay available after keychain mirroring"
+        );
     }
 
     /// Regression: yup-oauth2's storage layer always passes scopes

@@ -40,6 +40,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { runReplaceableQuery } from "@/lib/requestCoordinator";
 import { parseSearchTokens, removeSearchToken, searchSyntaxRows } from "@/lib/searchSyntax";
+import { useMailboxPane } from "@/state/mailboxPaneStore";
 
 export function SearchResultsRoute() {
   const navigate = useNavigate();
@@ -53,6 +54,7 @@ export function SearchResultsRoute() {
   const [saveName, setSaveName] = useState("");
   const [draftQ, setDraftQ] = useState(q);
   const inputRef = useRef<HTMLInputElement>(null);
+  const setActivePane = useMailboxPane((state) => state.setActivePane);
 
   const results = useQuery({
     queryKey: searchKey({ q, mode, sort, scope, account: search.account, limit: 100 }),
@@ -109,6 +111,28 @@ export function SearchResultsRoute() {
     setDraftQ(q);
   }, [q]);
 
+  // `/` refocuses the query input from anywhere on this page (capture
+  // phase + stopImmediatePropagation so the global search-palette
+  // shortcut doesn't also fire). Typing `/` inside a field is left alone.
+  useEffect(() => {
+    function focusOnSlash(event: KeyboardEvent) {
+      if (event.key !== "/" || event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+    window.addEventListener("keydown", focusOnSlash, true);
+    return () => window.removeEventListener("keydown", focusOnSlash, true);
+  }, []);
+
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background">
       <header className="border-b border-border px-6 py-4">
@@ -121,6 +145,9 @@ export function SearchResultsRoute() {
                 event.preventDefault();
                 updateSearch({ q: draftQ });
                 inputRef.current?.blur();
+                // Hand keyboard control to the results list so j/k/o
+                // work immediately, without a click.
+                setActivePane("mailbox");
               }}
             >
               <Input

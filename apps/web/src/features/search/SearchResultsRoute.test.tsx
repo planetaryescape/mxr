@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { SearchResultsRoute } from "./SearchResultsRoute";
 import type { MessageGroupView, MessageRowView } from "@/features/mailbox/types";
+import { useMailboxPane } from "@/state/mailboxPaneStore";
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn<(options: unknown) => Promise<void>>(),
@@ -85,6 +86,11 @@ function renderWithQueryClient(children: ReactNode) {
 describe("SearchResultsRoute", () => {
   beforeEach(() => {
     router.search = { q: "invoice", mode: "lexical", sort: "relevance" };
+    useMailboxPane.setState({
+      activePane: "sidebar",
+      sidebarIndex: 0,
+      suppressNextReaderFocus: false,
+    });
     searchApi.fetchSavedSearches.mockResolvedValue({ searches: [] });
     searchApi.fetchSearch.mockResolvedValue({
       scope: "threads",
@@ -131,5 +137,19 @@ describe("SearchResultsRoute", () => {
       },
     });
     await waitFor(() => expect(document.activeElement).not.toBe(input));
+    // Control moves to the results list so j/k/o work without a click.
+    expect(useMailboxPane.getState().activePane).toBe("mailbox");
+  });
+
+  test("pressing / refocuses the query input", async () => {
+    renderWithQueryClient(<SearchResultsRoute />);
+
+    const input = (await screen.findByLabelText("Search query")) as HTMLInputElement;
+    input.blur();
+    expect(document.activeElement).not.toBe(input);
+
+    fireEvent.keyDown(document.body, { key: "/" });
+
+    expect(document.activeElement).toBe(input);
   });
 });

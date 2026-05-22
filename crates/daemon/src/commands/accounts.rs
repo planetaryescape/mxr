@@ -384,6 +384,20 @@ fn render_account_operation(result: AccountOperationResult) -> anyhow::Result<()
     }
 }
 
+/// Resolve the OAuth grant flow in the *client* process, where the TTY, SSH,
+/// and display signals actually describe the user's environment. The daemon
+/// runs the auth session in a detached task with no controlling terminal, so it
+/// must never auto-detect — it would always see "no TTY" and pick the device
+/// flow, which Google rejects for our Desktop OAuth client with
+/// "invalid_client: Invalid client type". Sending a concrete flow keeps local
+/// desktop users on the loopback (`Installed`) flow.
+fn detect_auth_flow() -> AuthFlowData {
+    match mxr_provider_gmail::auth::AuthFlow::auto_detect() {
+        mxr_provider_gmail::auth::AuthFlow::Installed => AuthFlowData::Installed,
+        mxr_provider_gmail::auth::AuthFlow::Device => AuthFlowData::Device,
+    }
+}
+
 async fn authorize_and_save_account(
     account: AccountConfigData,
     reauthorize: bool,
@@ -394,7 +408,7 @@ async fn authorize_and_save_account(
         Request::StartAuthSession {
             account,
             reauthorize,
-            flow: AuthFlowData::Auto,
+            flow: detect_auth_flow(),
         },
     )
     .await?;

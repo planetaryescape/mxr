@@ -72,7 +72,7 @@ pub async fn extract_commitments(
 
     let response = match llm
         .for_feature(LlmFeature::Commitments)
-        .complete(CompletionRequest {
+        .complete_background(CompletionRequest {
             messages: vec![ChatMessage::user(prompt)],
             max_tokens: Some(500),
             temperature: Some(0.1),

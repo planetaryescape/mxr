@@ -9,7 +9,7 @@ use mxr_core::types::{
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Semaphore};
 use tokio::task::JoinHandle;
 
 #[cfg(feature = "local")]
@@ -78,7 +78,14 @@ struct PendingIngest {
 }
 
 impl SemanticServiceHandle {
-    pub fn start(engine: SemanticEngine) -> (Self, JoinHandle<()>) {
+    /// `background_db` gates this worker's DB-touching work below the
+    /// reader-pool size so background ingest can never starve
+    /// interactive/status queries of connections. A permit is held
+    /// across each per-message ingest unit (embedding compute + writes).
+    pub fn start(
+        engine: SemanticEngine,
+        background_db: Arc<Semaphore>,
+    ) -> (Self, JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel::<SemanticCommand>(32);
         let runtime_metrics = Arc::new(Mutex::new(SemanticRuntimeMetrics::default()));
         let worker_metrics = runtime_metrics.clone();
@@ -112,6 +119,10 @@ impl SemanticServiceHandle {
                         metrics.last_queue_wait_ms = Some(queue_wait.as_millis() as u64);
                     }
                     let started_at = Instant::now();
+                    // Reserve background-DB headroom: hold a permit across
+                    // the ingest unit so concurrent background work can't
+                    // exhaust the reader pool and starve interactive queries.
+                    let _bg_permit = background_db.acquire().await;
                     let result = engine
                         .ingest_messages(std::slice::from_ref(&next.message_id))
                         .await;

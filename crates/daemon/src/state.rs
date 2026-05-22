@@ -264,6 +264,9 @@ fn build_llm_runtime(config: &mxr_config::LlmConfig) -> Arc<mxr_llm::LlmRuntime>
 
 fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_config::LlmConfig) {
     runtime.replace(build_llm_provider(&base_llm_config(config)));
+    runtime.set_background_timeout(std::time::Duration::from_secs(
+        config.background_request_timeout_secs,
+    ));
     let mut providers = HashMap::<mxr_llm::LlmFeature, Arc<dyn mxr_llm::LlmProvider>>::new();
     let mut blocked = HashMap::<mxr_llm::LlmFeature, String>::new();
     for (feature, override_config) in llm_override_entries(&config.overrides) {
@@ -461,6 +464,15 @@ pub struct AppState {
     pub(crate) auth_sessions: ParkingMutex<HashMap<AuthSessionId, AuthSessionRuntime>>,
 }
 
+/// Background-worker DB concurrency cap. Held below the reader pool's
+/// `max_connections` (see `crates/store/src/pool.rs`) so at least
+/// `reader_max - BACKGROUND_DB_PERMITS` connections always remain free
+/// for interactive/status traffic even when every background worker is
+/// busy. The semaphore is a construction-local shared across the three
+/// background workers (semantic ingest, relationship analytics,
+/// contacts refresh); each worker holds an `Arc` clone for its lifetime.
+const BACKGROUND_DB_PERMITS: usize = 2;
+
 pub(crate) struct AuthSessionRuntime {
     pub account: AccountConfigData,
     pub status: Arc<ParkingMutex<AuthSessionData>>,
@@ -490,21 +502,21 @@ impl AppState {
         let store = Arc::new(Store::new(&db_path).await?);
         let activity = crate::activity::Recorder::spawn(store.clone());
         let runtime_tasks = RuntimeTasks::default();
+        let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
         let (search, search_worker) =
             SearchServiceHandle::start(open_search_index(&index_path, &store).await?);
         runtime_tasks.set_search_worker(search_worker);
-        let (semantic, semantic_worker) = SemanticServiceHandle::start(SemanticEngine::new(
-            store.clone(),
-            &data_dir,
-            config.search.semantic.clone(),
-        ));
+        let (semantic, semantic_worker) = SemanticServiceHandle::start(
+            SemanticEngine::new(store.clone(), &data_dir, config.search.semantic.clone()),
+            background_db.clone(),
+        );
         runtime_tasks.set_semantic_worker(semantic_worker);
         let llm = build_llm_runtime(&config.llm);
         let (relationship, relationship_worker) =
-            RelationshipServiceHandle::start(store.clone(), llm.clone());
+            RelationshipServiceHandle::start(store.clone(), llm.clone(), background_db.clone());
         runtime_tasks.set_relationship_worker(relationship_worker);
         let (contacts_refresh, contacts_refresh_worker) =
-            ContactsRefreshHandle::start(store.clone());
+            ContactsRefreshHandle::start(store.clone(), background_db.clone());
         runtime_tasks.set_contacts_refresh_worker(contacts_refresh_worker);
         let account_addresses = Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new());
         // Best-effort initial load. Empty result is fine — `is_loaded` stays
@@ -1238,20 +1250,24 @@ impl AppState {
         config.general.attachment_dir = test_attachment_dir();
         let store = Arc::new(Store::in_memory().await?);
         let runtime_tasks = RuntimeTasks::default();
+        let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
         let (search, search_worker) = SearchServiceHandle::start(SearchIndex::in_memory()?);
         runtime_tasks.set_search_worker(search_worker);
-        let (semantic, semantic_worker) = SemanticServiceHandle::start(SemanticEngine::new(
-            store.clone(),
-            &std::env::temp_dir(),
-            config.search.semantic.clone(),
-        ));
+        let (semantic, semantic_worker) = SemanticServiceHandle::start(
+            SemanticEngine::new(
+                store.clone(),
+                &std::env::temp_dir(),
+                config.search.semantic.clone(),
+            ),
+            background_db.clone(),
+        );
         runtime_tasks.set_semantic_worker(semantic_worker);
         let llm = build_llm_runtime(&config.llm);
         let (relationship, relationship_worker) =
-            RelationshipServiceHandle::start(store.clone(), llm.clone());
+            RelationshipServiceHandle::start(store.clone(), llm.clone(), background_db.clone());
         runtime_tasks.set_relationship_worker(relationship_worker);
         let (contacts_refresh, contacts_refresh_worker) =
-            ContactsRefreshHandle::start(store.clone());
+            ContactsRefreshHandle::start(store.clone(), background_db.clone());
         runtime_tasks.set_contacts_refresh_worker(contacts_refresh_worker);
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 
@@ -1310,20 +1326,24 @@ impl AppState {
         config.general.attachment_dir = test_attachment_dir();
         let store = Arc::new(Store::in_memory().await?);
         let runtime_tasks = RuntimeTasks::default();
+        let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
         let (search, search_worker) = SearchServiceHandle::start(SearchIndex::in_memory()?);
         runtime_tasks.set_search_worker(search_worker);
-        let (semantic, semantic_worker) = SemanticServiceHandle::start(SemanticEngine::new(
-            store.clone(),
-            &std::env::temp_dir(),
-            config.search.semantic.clone(),
-        ));
+        let (semantic, semantic_worker) = SemanticServiceHandle::start(
+            SemanticEngine::new(
+                store.clone(),
+                &std::env::temp_dir(),
+                config.search.semantic.clone(),
+            ),
+            background_db.clone(),
+        );
         runtime_tasks.set_semantic_worker(semantic_worker);
         let llm = build_llm_runtime(&config.llm);
         let (relationship, relationship_worker) =
-            RelationshipServiceHandle::start(store.clone(), llm.clone());
+            RelationshipServiceHandle::start(store.clone(), llm.clone(), background_db.clone());
         runtime_tasks.set_relationship_worker(relationship_worker);
         let (contacts_refresh, contacts_refresh_worker) =
-            ContactsRefreshHandle::start(store.clone());
+            ContactsRefreshHandle::start(store.clone(), background_db.clone());
         runtime_tasks.set_contacts_refresh_worker(contacts_refresh_worker);
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
         let (event_tx, _) = broadcast::channel(256);
@@ -1371,20 +1391,24 @@ impl AppState {
         config.general.attachment_dir = test_attachment_dir();
         let store = Arc::new(Store::in_memory().await?);
         let runtime_tasks = RuntimeTasks::default();
+        let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
         let (search, search_worker) = SearchServiceHandle::start(SearchIndex::in_memory()?);
         runtime_tasks.set_search_worker(search_worker);
-        let (semantic, semantic_worker) = SemanticServiceHandle::start(SemanticEngine::new(
-            store.clone(),
-            &std::env::temp_dir(),
-            config.search.semantic.clone(),
-        ));
+        let (semantic, semantic_worker) = SemanticServiceHandle::start(
+            SemanticEngine::new(
+                store.clone(),
+                &std::env::temp_dir(),
+                config.search.semantic.clone(),
+            ),
+            background_db.clone(),
+        );
         runtime_tasks.set_semantic_worker(semantic_worker);
         let llm = build_llm_runtime(&config.llm);
         let (relationship, relationship_worker) =
-            RelationshipServiceHandle::start(store.clone(), llm.clone());
+            RelationshipServiceHandle::start(store.clone(), llm.clone(), background_db.clone());
         runtime_tasks.set_relationship_worker(relationship_worker);
         let (contacts_refresh, contacts_refresh_worker) =
-            ContactsRefreshHandle::start(store.clone());
+            ContactsRefreshHandle::start(store.clone(), background_db.clone());
         runtime_tasks.set_contacts_refresh_worker(contacts_refresh_worker);
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 

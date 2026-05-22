@@ -9,7 +9,7 @@ use mxr_store::{ContactStyleRecord, Store, UserVoiceProfileRecord, UserVoiceRegi
 use serde_json::json;
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Semaphore};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
@@ -38,7 +38,15 @@ enum RelationshipCommand {
 }
 
 impl RelationshipServiceHandle {
-    pub fn start(store: Arc<Store>, llm: Arc<LlmRuntime>) -> (Self, JoinHandle<()>) {
+    /// `background_db` gates this worker's DB-touching work below the
+    /// reader-pool size so background relationship analytics can never
+    /// starve interactive/status queries of connections. A permit is
+    /// held across each per-contact unit.
+    pub fn start(
+        store: Arc<Store>,
+        llm: Arc<LlmRuntime>,
+        background_db: Arc<Semaphore>,
+    ) -> (Self, JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel(32);
         let handle = tokio::spawn(async move {
             let mut pending = VecDeque::<(AccountId, String)>::new();
@@ -47,6 +55,9 @@ impl RelationshipServiceHandle {
                 while let Some((account_id, email)) = pending.pop_front() {
                     pending_keys.remove(&(account_id.as_str(), email.clone()));
                     sleep(Duration::from_millis(250)).await;
+                    // Reserve background-DB headroom for the whole
+                    // per-contact unit (style + summary + commitments).
+                    let _bg_permit = background_db.acquire().await;
                     if let Err(error) = rebuild_contact_style(&store, &account_id, &email).await {
                         tracing::warn!(%account_id, %email, %error, "relationship profile refresh failed");
                     }

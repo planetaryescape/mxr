@@ -48,8 +48,13 @@ impl Store {
             .pragma("foreign_keys", "ON")
             .read_only(true);
 
+        // 6 readers: WAL readers don't block each other and are cheap.
+        // Background DB work is capped below this by the daemon's
+        // `BACKGROUND_DB_PERMITS` semaphore, so at least
+        // `6 - BACKGROUND_DB_PERMITS` connections always stay free for
+        // interactive/status traffic even under full background load.
         let reader = SqlitePoolOptions::new()
-            .max_connections(4)
+            .max_connections(6)
             .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
             .connect_with(read_opts)
             .await?;

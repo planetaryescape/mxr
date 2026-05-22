@@ -750,6 +750,9 @@ fn normalize_llm_config(
         api_key_env: config.api_key_env.trim().to_string(),
         context_window: config.context_window,
         request_timeout_secs: config.request_timeout_secs,
+        // Not exposed in the IPC SetLlmConfig DTO; preserve the
+        // config-file value (default 45s) across runtime updates.
+        background_request_timeout_secs: current.background_request_timeout_secs,
         allow_cloud_relationship_data: config.allow_cloud_relationship_data,
         overrides: match config.overrides {
             Some(overrides) => normalize_llm_overrides(overrides)?,
@@ -960,9 +963,39 @@ pub(crate) async fn run_saved_search(state: &AppState, name: &str, limit: u32) -
     })
 }
 
+/// How long `get_status` waits on the DB-backed snapshot before
+/// degrading. Status is observability: it must never block on the
+/// starved resource it reports on. Under normal load the snapshot
+/// returns in well under this; under reader-pool saturation it would
+/// otherwise hang the full 90s `acquire_timeout`, which breaks the
+/// daemon-version-match auto-restart check and the TUI launch (both
+/// only need the DB-free version fields below).
+const STATUS_SNAPSHOT_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
+
 pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
-    let (accounts, total_messages, sync_statuses) = collect_status_snapshot(state).await?;
-    let repair_required = crate::server::search_requires_repair(state, total_messages).await;
+    // Fast-fail the DB-backed snapshot so a saturated pool can't wedge
+    // status. On timeout we return a degraded (empty) snapshot but keep
+    // the DB-free version/protocol fields populated.
+    let (accounts, total_messages, sync_statuses, degraded) =
+        match tokio::time::timeout(STATUS_SNAPSHOT_BUDGET, collect_status_snapshot(state)).await {
+            Ok(Ok((accounts, total_messages, sync_statuses))) => {
+                (accounts, total_messages, sync_statuses, false)
+            }
+            Ok(Err(e)) => return Err(e),
+            Err(_elapsed) => {
+                tracing::warn!(
+                    budget_ms = STATUS_SNAPSHOT_BUDGET.as_millis(),
+                    "status snapshot timed out (reader pool saturated); returning degraded status"
+                );
+                (Vec::new(), 0, Vec::new(), true)
+            }
+        };
+    // Don't trigger a search repair off a degraded reading.
+    let repair_required = if degraded {
+        false
+    } else {
+        crate::server::search_requires_repair(state, total_messages).await
+    };
     let semantic_runtime = state
         .semantic
         .status_snapshot()

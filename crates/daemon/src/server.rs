@@ -441,9 +441,26 @@ pub async fn restart_daemon() -> anyhow::Result<()> {
 }
 
 pub async fn ensure_daemon_supports_tui() -> anyhow::Result<()> {
-    let snapshot =
-        fetch_daemon_status_snapshot_from_path(&AppState::socket_path(), STATUS_REQUEST_TIMEOUT)
-            .await?;
+    let sock_path = AppState::socket_path();
+    let snapshot = match fetch_daemon_status_snapshot_from_path(&sock_path, STATUS_REQUEST_TIMEOUT)
+        .await
+    {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            // The status query can still time out if the daemon is
+            // pathologically busy. A live daemon that answers ping is
+            // protocol-compatible enough to launch into — don't block the
+            // TUI on a transient status stall (mirrors the daemon-match
+            // path's ping fallback).
+            if daemon_responds_to_ping(&sock_path, Duration::from_secs(2)).await {
+                eprintln!(
+                    "Daemon status check failed ({error}); daemon is responsive, launching anyway."
+                );
+                return Ok(());
+            }
+            return Err(error);
+        }
+    };
 
     if snapshot.protocol_version >= mxr_protocol::IPC_PROTOCOL_VERSION {
         Ok(())

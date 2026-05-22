@@ -17,6 +17,9 @@ reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+# `time` only: bounds background completions via `tokio::time::timeout`.
+# No runtime/macros — the caller supplies the runtime context.
+tokio = { workspace = true, features = ["time"] }
 tracing = { workspace = true }
 
 [dev-dependencies]

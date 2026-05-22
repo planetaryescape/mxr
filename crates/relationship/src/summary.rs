@@ -72,7 +72,7 @@ pub async fn generate_relationship_summary(
 
     let response = match llm
         .for_feature(LlmFeature::RelationshipSummary)
-        .complete(CompletionRequest {
+        .complete_background(CompletionRequest {
             messages: vec![ChatMessage::user(prompt)],
             max_tokens: Some(300),
             temperature: Some(0.2),

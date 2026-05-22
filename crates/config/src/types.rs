@@ -131,6 +131,13 @@ pub struct LlmConfig {
     pub context_window: u32,
     /// Per-request timeout in seconds. Local LLMs can be slow.
     pub request_timeout_secs: u64,
+    /// Timeout in seconds for *background* LLM work (relationship
+    /// summary, commitment extraction). Held tighter than
+    /// `request_timeout_secs` so a slow/dead endpoint can't pin a
+    /// background worker (and its reserved DB slot) for the full
+    /// foreground budget. Foreground/user-initiated LLM keeps
+    /// `request_timeout_secs`.
+    pub background_request_timeout_secs: u64,
     /// Allow relationship/profile data to be sent to non-local LLM endpoints.
     pub allow_cloud_relationship_data: bool,
     /// Optional feature-specific provider overrides. Each override inherits
@@ -147,6 +154,7 @@ impl Default for LlmConfig {
             api_key_env: String::new(),
             context_window: 8192,
             request_timeout_secs: 120,
+            background_request_timeout_secs: 45,
             allow_cloud_relationship_data: false,
             overrides: LlmOverrides::default(),
         }

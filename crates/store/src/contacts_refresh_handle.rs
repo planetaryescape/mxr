@@ -2,7 +2,7 @@ use crate::Store;
 use mxr_core::id::AccountId;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Semaphore};
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 
@@ -28,7 +28,12 @@ enum ContactsRefreshCommand {
 }
 
 impl ContactsRefreshHandle {
-    pub fn start(store: Arc<Store>) -> (Self, JoinHandle<()>) {
+    /// `background_db` gates the refresh below the reader-pool size. The
+    /// `refresh_contacts` aggregate scans the whole `messages` table and
+    /// pins a reader connection for its full duration; holding a permit
+    /// across it guarantees interactive/status queries keep their
+    /// headroom.
+    pub fn start(store: Arc<Store>, background_db: Arc<Semaphore>) -> (Self, JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel(16);
         let pending = Arc::new(Mutex::new(HashSet::<AccountId>::new()));
         let handle = tokio::spawn({
@@ -70,6 +75,7 @@ impl ContactsRefreshHandle {
                                 if drained.is_empty() {
                                     continue;
                                 }
+                                let _bg_permit = background_db.acquire().await;
                                 if let Err(error) = store.refresh_contacts().await {
                                     tracing::warn!(%error, "contacts refresh failed");
                                 }

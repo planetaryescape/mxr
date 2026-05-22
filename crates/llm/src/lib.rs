@@ -137,10 +137,18 @@ pub trait LlmProvider: Send + Sync {
     fn model_name(&self) -> &str;
 }
 
+/// Default ceiling for background LLM work (relationship summary,
+/// commitment extraction). Overridden from `[llm]
+/// background_request_timeout_secs`. Tighter than the foreground
+/// request timeout so a slow/dead endpoint frees the background
+/// worker's reserved DB slot quickly.
+const DEFAULT_BACKGROUND_TIMEOUT: Duration = Duration::from_secs(45);
+
 pub struct LlmRuntime {
     provider: RwLock<Arc<dyn LlmProvider>>,
     feature_providers: RwLock<HashMap<LlmFeature, Arc<dyn LlmProvider>>>,
     blocked_features: RwLock<HashMap<LlmFeature, String>>,
+    background_timeout: RwLock<Duration>,
 }
 
 pub struct FeatureLlmRuntime {
@@ -154,7 +162,24 @@ impl LlmRuntime {
             provider: RwLock::new(provider),
             feature_providers: RwLock::new(HashMap::new()),
             blocked_features: RwLock::new(HashMap::new()),
+            background_timeout: RwLock::new(DEFAULT_BACKGROUND_TIMEOUT),
         }
+    }
+
+    /// Override the background-work timeout (from `[llm]
+    /// background_request_timeout_secs`).
+    pub fn set_background_timeout(&self, timeout: Duration) {
+        *self
+            .background_timeout
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = timeout;
+    }
+
+    pub fn background_timeout(&self) -> Duration {
+        *self
+            .background_timeout
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     pub fn replace(&self, provider: Arc<dyn LlmProvider>) {
@@ -236,6 +261,22 @@ impl FeatureLlmRuntime {
             .provider_for_feature(self.feature)
             .complete(req)
             .await
+    }
+
+    /// Like [`complete`], but bounded by the runtime's background
+    /// timeout. Background workers (relationship summary, commitment
+    /// extraction) MUST use this so a slow/dead endpoint can't pin the
+    /// worker — and its reserved background-DB slot — for the full
+    /// foreground request budget.
+    pub async fn complete_background(
+        &self,
+        req: CompletionRequest,
+    ) -> Result<CompletionResponse, LlmError> {
+        let budget = self.runtime.background_timeout();
+        match tokio::time::timeout(budget, self.complete(req)).await {
+            Ok(result) => result,
+            Err(_elapsed) => Err(LlmError::Timeout(budget)),
+        }
     }
 
     pub fn capabilities(&self) -> LlmCapabilities {
@@ -586,5 +627,74 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, LlmError::PrivacyBlocked(_)));
+    }
+
+    #[derive(Debug)]
+    struct SlowProvider {
+        delay: Duration,
+    }
+
+    #[async_trait]
+    impl LlmProvider for SlowProvider {
+        async fn complete(&self, _req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+            tokio::time::sleep(self.delay).await;
+            Ok(CompletionResponse {
+                content: "late".into(),
+                model: "slow".into(),
+                finish_reason: None,
+            })
+        }
+        fn capabilities(&self) -> LlmCapabilities {
+            LlmCapabilities {
+                context_window: 8,
+                supports_streaming: false,
+            }
+        }
+        fn model_name(&self) -> &str {
+            "slow"
+        }
+    }
+
+    #[tokio::test]
+    async fn complete_background_times_out_slow_provider() {
+        // A hung/slow endpoint must not pin a background worker for the
+        // full foreground budget — complete_background bounds it.
+        let runtime = Arc::new(LlmRuntime::new(Arc::new(SlowProvider {
+            delay: Duration::from_secs(30),
+        })));
+        runtime.set_background_timeout(Duration::from_millis(50));
+
+        let started = std::time::Instant::now();
+        let error = runtime
+            .for_feature(LlmFeature::RelationshipSummary)
+            .complete_background(CompletionRequest {
+                messages: vec![ChatMessage::user("hello")],
+                max_tokens: None,
+                temperature: None,
+            })
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, LlmError::Timeout(_)), "got {error:?}");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "should fail near the 50ms budget, not wait the 30s provider delay"
+        );
+    }
+
+    #[tokio::test]
+    async fn complete_background_succeeds_within_budget() {
+        let runtime = Arc::new(LlmRuntime::new(Arc::new(StaticProvider { model: "base" })));
+        // Default 45s budget; a fast provider returns well within it.
+        let response = runtime
+            .for_feature(LlmFeature::RelationshipSummary)
+            .complete_background(CompletionRequest {
+                messages: vec![ChatMessage::user("hello")],
+                max_tokens: None,
+                temperature: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(response.model, "base");
     }
 }

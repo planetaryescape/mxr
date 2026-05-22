@@ -18,6 +18,7 @@ import {
   unsubscribeSubscription,
   type AnalyticsRange,
   type ResponseDirection,
+  type StaleThread,
   type StorageGroupBy,
   type SubscriptionSummary,
   type WrappedSummary,
@@ -45,7 +46,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { cn, formatBytes } from "@/lib/utils";
+import { MailboxList } from "@/features/mailbox/MailboxList";
+import type { MessageRowView } from "@/features/mailbox/types";
+import { cn, formatBytes, formatRelativeAge } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
 
 const analyticsTabs = [
@@ -261,7 +264,19 @@ function StaleDashboard() {
           They owe
         </ToggleGroupItem>
       </ToggleGroup>
-      <DataList rows={(stale.data?.rows ?? []).map(staleRow)} />
+      <div className="mt-3 flex h-[calc(100vh-22rem)] min-h-80 flex-col overflow-hidden rounded-lg border border-border">
+        <MailboxList
+          groups={[
+            {
+              id: "stale",
+              label: "Stale threads",
+              rows: (stale.data?.rows ?? []).filter((row) => row.thread_id).map(staleRowView),
+            },
+          ]}
+          mailboxPath="/analytics/stale"
+          readOnly
+        />
+      </div>
     </Panel>
   );
 }
@@ -384,39 +399,46 @@ export function SubscriptionsDashboard() {
             <SelectItem value="recent">Recent</SelectItem>
           </SelectContent>
         </Select>
-        <div className="divide-y divide-border">
+        <div className="overflow-hidden rounded-lg border border-border bg-surface">
           {rows.map((row) => {
             const latestThreadId = row.latest_thread_id;
-            const detail = (
-              <>
-                <div className="truncate text-xs font-medium">
+            return (
+              <div
+                key={row.sender_email}
+                className="group grid grid-cols-[minmax(148px,220px)_1fr_auto] items-center gap-3 border-b border-border/70 px-3 transition-colors last:border-b-0 hover:bg-accent/70 hover:text-accent-foreground"
+                style={{ height: "var(--row-height)" }}
+              >
+                <div
+                  className="min-w-0 truncate text-[length:var(--mail-row-subject-size)]"
+                  title={row.sender_email}
+                >
                   {row.sender_name ?? row.sender_email}
                 </div>
-                <div className="truncate text-2xs text-muted-foreground">
-                  {row.message_count} messages · {openRateLabel(row)} opened ·{" "}
-                  {row.latest_subject ?? "latest unknown"}
-                </div>
-              </>
-            );
-            return (
-              <div key={row.sender_email} className="flex items-center gap-3 py-2">
-                {latestThreadId ? (
-                  <button
-                    type="button"
-                    onClick={() =>
+                <button
+                  type="button"
+                  disabled={!latestThreadId}
+                  onClick={() => {
+                    if (latestThreadId) {
                       void navigate({
                         to: "/m/$mailbox/$threadId",
                         params: { mailbox: "inbox", threadId: latestThreadId },
-                      })
+                      });
                     }
-                    className="-mx-2 min-w-0 flex-1 rounded-md px-2 py-1 text-left outline-none transition-colors hover:bg-muted/60 focus-visible:bg-muted/60"
-                    aria-label={`Open latest message from ${row.sender_name ?? row.sender_email}`}
-                  >
-                    {detail}
-                  </button>
-                ) : (
-                  <div className="min-w-0 flex-1">{detail}</div>
-                )}
+                  }}
+                  className="min-w-0 text-left outline-none disabled:cursor-default"
+                  aria-label={
+                    latestThreadId
+                      ? `Open latest message from ${row.sender_name ?? row.sender_email}`
+                      : undefined
+                  }
+                >
+                  <div className="truncate text-[length:var(--mail-row-subject-size)] leading-5">
+                    {row.latest_subject ?? "latest unknown"}
+                  </div>
+                  <div className="truncate text-[length:var(--mail-row-meta-size)] leading-5 text-muted-foreground">
+                    {row.message_count} messages · {openRateLabel(row)} opened
+                  </div>
+                </button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -765,16 +787,32 @@ function sortSubscriptions(rows: SubscriptionSummary[], sort: "low-open" | "volu
   });
 }
 
-function staleRow(row: {
-  thread_id?: string;
-  subject?: string;
-  counterparty?: string;
-  age_days?: number;
-}) {
+const staleDayMonth = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+const staleFullStamp = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+function staleRowView(row: StaleThread): MessageRowView {
+  const date = row.latest_at ? new Date(row.latest_at) : null;
+  const valid = date && !Number.isNaN(date.getTime());
+  const count = row.message_count ?? 0;
   return {
     id: row.thread_id ?? row.subject ?? "stale",
-    title: row.subject ?? "(no subject)",
-    meta: `${row.counterparty ?? "unknown"} · ${row.age_days ?? 0}d`,
+    kind: "thread",
+    thread_id: row.thread_id ?? "",
+    provider_id: "",
+    sender: row.counterparty ?? "unknown",
+    subject: row.subject ?? "(no subject)",
+    snippet: `${row.age_days ?? 0}d waiting${count > 1 ? ` · ${count} messages` : ""}`,
+    date: row.latest_at ?? "",
+    date_label: valid ? staleDayMonth.format(date) : `${row.age_days ?? 0}d`,
+    date_full: valid ? staleFullStamp.format(date) : "",
+    date_relative: valid ? formatRelativeAge(date) : "",
+    unread: false,
+    starred: false,
+    has_attachments: false,
+    message_count: count > 1 ? count : undefined,
   };
 }
 

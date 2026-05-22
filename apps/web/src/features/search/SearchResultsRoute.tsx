@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { BookmarkPlus, HelpCircle, RefreshCw, Search, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -15,8 +15,7 @@ import {
   type SearchMode,
   type SearchSort,
 } from "./api";
-import type { MessageRowView } from "@/features/mailbox/types";
-import { fetchThread } from "@/features/mailbox/api";
+import { MailboxList } from "@/features/mailbox/MailboxList";
 import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,7 +51,6 @@ export function SearchResultsRoute() {
   const scope = (search.scope as "threads" | "messages" | "attachments" | undefined) ?? "threads";
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
-  const [previewRowId, setPreviewRowId] = useState<string | null>(null);
   const [draftQ, setDraftQ] = useState(q);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -103,93 +101,13 @@ export function SearchResultsRoute() {
   }
 
   const tokens = parseSearchTokens(q);
-  const rows = useMemo(
-    () => results.data?.groups.flatMap((group) => group.rows) ?? [],
-    [results.data?.groups],
-  );
-
-  const openPreviewRow = useCallback(() => {
-    const row = rows.find((candidate) => candidate.id === previewRowId) ?? rows[0];
-    if (!row) return;
-    void navigate({
-      to: "/m/$mailbox/$threadId",
-      params: { mailbox: "inbox", threadId: row.thread_id },
-    });
-  }, [navigate, previewRowId, rows]);
-
-  const movePreview = useCallback(
-    (delta: number) => {
-      if (rows.length === 0) return;
-      setPreviewRowId((current) => {
-        const currentIndex = current ? rows.findIndex((row) => row.id === current) : -1;
-        const fallback = delta > 0 ? -1 : rows.length;
-        const nextIndex = Math.max(
-          0,
-          Math.min(rows.length - 1, (currentIndex >= 0 ? currentIndex : fallback) + delta),
-        );
-        return rows[nextIndex]?.id ?? null;
-      });
-    },
-    [rows],
-  );
-  const previewRow = rows.find((row) => row.id === previewRowId) ?? rows[0];
-  const preview = useQuery({
-    queryKey: ["search-preview", previewRow?.thread_id],
-    queryFn: () => fetchThread(previewRow?.thread_id ?? ""),
-    enabled: Boolean(previewRow?.thread_id),
-    staleTime: 30_000,
-  });
-
-  useEffect(() => {
-    if (rows.length === 0) {
-      setPreviewRowId(null);
-      return;
-    }
-    setPreviewRowId((current) =>
-      current && rows.some((row) => row.id === current) ? current : (rows[0]?.id ?? null),
-    );
-  }, [rows]);
+  const groups = results.data?.groups ?? [];
+  const resultCount =
+    results.data?.total ?? groups.reduce((sum, group) => sum + group.rows.length, 0);
 
   useEffect(() => {
     setDraftQ(q);
   }, [q]);
-
-  useEffect(() => {
-    if (!previewRowId) return;
-    document
-      .getElementById(`search-result-${previewRowId}`)
-      ?.scrollIntoView?.({ block: "nearest" });
-  }, [previewRowId]);
-
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (saveOpen || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
-        return;
-      }
-      const target = event.target;
-      if (target instanceof HTMLElement) {
-        if (target.closest("input, textarea, select, [contenteditable=true]")) return;
-        if (
-          target.closest("button, a, [role=button]") &&
-          !target.closest("[data-search-result-row]")
-        ) {
-          return;
-        }
-      }
-      if (event.key === "j" || event.key === "ArrowDown") {
-        event.preventDefault();
-        movePreview(1);
-      } else if (event.key === "k" || event.key === "ArrowUp") {
-        event.preventDefault();
-        movePreview(-1);
-      } else if (event.key === "Enter" || event.key === "o") {
-        event.preventDefault();
-        openPreviewRow();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [movePreview, openPreviewRow, saveOpen]);
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background">
@@ -323,36 +241,24 @@ export function SearchResultsRoute() {
           description={results.error.message}
           action={<Button onClick={() => results.refetch()}>Retry</Button>}
         />
-      ) : rows.length === 0 ? (
+      ) : groups.length === 0 ? (
         <EmptyState
           icon={Search}
           title="No matches"
           description="Try a broader query or switch search mode."
         />
       ) : (
-        <div className="grid min-h-0 flex-1 gap-3 overflow-hidden p-3 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="mb-2 flex items-center justify-between px-1 text-2xs text-muted-foreground">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex items-center justify-between px-4 py-2 text-2xs text-muted-foreground">
             <span>
-              {results.data?.total ?? rows.length} results · {mode} · {sort}
+              {resultCount} results · {mode} · {sort}
             </span>
             <span>{savedSearches.data?.searches.length ?? 0} saved searches</span>
           </div>
-          <div className="min-h-0 overflow-auto rounded-lg border border-border bg-surface xl:row-start-2">
-            {rows.map((row) => (
-              <SearchResultRow
-                key={row.id}
-                row={row}
-                active={previewRow?.id === row.id}
-                onPreview={() => setPreviewRowId(row.id)}
-              />
-            ))}
-          </div>
-          <SearchPreviewPane
-            row={previewRow}
-            loading={preview.isLoading}
-            error={preview.error}
-            thread={preview.data}
-          />
+          {/* Reuse the canonical mailbox list so search results match the
+              inbox exactly — same rows, selection, bulk actions, quick
+              actions, and keyboard navigation. */}
+          <MailboxList groups={groups} mailboxPath="/search" />
         </div>
       )}
 
@@ -399,86 +305,6 @@ export function SearchResultsRoute() {
   );
 }
 
-function SearchResultRow({
-  row,
-  active,
-  onPreview,
-}: {
-  row: MessageRowView;
-  active: boolean;
-  onPreview: () => void;
-}) {
-  const navigate = useNavigate();
-  return (
-    <button
-      id={`search-result-${row.id}`}
-      data-search-result-row="true"
-      type="button"
-      className={`grid w-full grid-cols-[minmax(120px,190px)_1fr_auto] gap-3 border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-muted ${active ? "bg-muted" : ""}`}
-      aria-current={active ? "true" : undefined}
-      aria-label={`${row.subject || "(no subject)"} from ${row.sender}`}
-      onFocus={onPreview}
-      onMouseEnter={onPreview}
-      onClick={() =>
-        navigate({
-          to: "/m/$mailbox/$threadId",
-          params: { mailbox: "inbox", threadId: row.thread_id },
-        })
-      }
-    >
-      <div className="truncate text-xs text-muted-foreground">{row.sender}</div>
-      <div className="min-w-0">
-        <div className="truncate text-xs font-medium">{row.subject || "(no subject)"}</div>
-        <div className="truncate text-2xs text-muted-foreground">{row.snippet}</div>
-      </div>
-      <div className="font-mono text-2xs text-muted-foreground">{row.date_label}</div>
-    </button>
-  );
-}
-
-function SearchPreviewPane({
-  row,
-  loading,
-  error,
-  thread,
-}: {
-  row?: MessageRowView;
-  loading: boolean;
-  error: Error | null;
-  thread?: Awaited<ReturnType<typeof fetchThread>>;
-}) {
-  if (!row) return null;
-  const previewText =
-    thread?.bodies
-      .map((body) => body.reader_text ?? body.text_plain)
-      .filter(Boolean)
-      .join("\n\n") || row.snippet;
-  return (
-    <aside className="hidden min-h-0 rounded-lg border border-border bg-surface xl:row-span-2 xl:block">
-      <div className="border-b border-border px-4 py-3">
-        <div className="font-mono text-2xs uppercase tracking-wide text-muted-foreground">
-          Preview
-        </div>
-        <h2 className="mt-1 line-clamp-2 text-sm font-semibold">
-          {(thread?.thread.subject ?? row.subject) || "(no subject)"}
-        </h2>
-        <div className="mt-1 truncate text-2xs text-muted-foreground">
-          {row.sender} · {row.date_label}
-        </div>
-      </div>
-      <div className="max-h-[calc(100vh-260px)] overflow-auto p-4 text-xs leading-6 text-foreground">
-        {loading ? (
-          <div className="text-muted-foreground">Loading preview...</div>
-        ) : error ? (
-          <div className="text-destructive">{error.message}</div>
-        ) : (
-          <pre className="whitespace-pre-wrap break-words font-sans">{previewText}</pre>
-        )}
-      </div>
-    </aside>
-  );
-}
-
 function SavedSearchManager({
   searches,
   onChange,
@@ -488,8 +314,13 @@ function SavedSearchManager({
 }) {
   const [open, setOpen] = useState(false);
   const update = useMutation({
-    mutationFn: ({ name, patch }: { name: string; patch: Parameters<typeof updateSavedSearch>[1] }) =>
-      updateSavedSearch(name, patch),
+    mutationFn: ({
+      name,
+      patch,
+    }: {
+      name: string;
+      patch: Parameters<typeof updateSavedSearch>[1];
+    }) => updateSavedSearch(name, patch),
     onSuccess: () => {
       onChange();
       toast.success("Saved search updated");
@@ -550,9 +381,7 @@ function SavedSearchManager({
               type="color"
               aria-label={`Color for ${s.name}`}
               defaultValue={s.icon ?? "#888888"}
-              onBlur={(e) =>
-                update.mutate({ name: s.name, patch: { icon: e.target.value } })
-              }
+              onBlur={(e) => update.mutate({ name: s.name, patch: { icon: e.target.value } })}
               className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent"
             />
             <Button

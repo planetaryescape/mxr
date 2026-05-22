@@ -1,6 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { BulkActionBar } from "./BulkActionBar";
 import { MailboxRow } from "./MailboxRow";
@@ -21,6 +21,15 @@ interface MailboxListProps {
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
+  /**
+   * Read-only lists drop selection, bulk actions, and message mutations
+   * (star/archive/read/etc.) — keeping navigation and open. Use for
+   * lists whose rows aren't directly mutable messages (e.g. stale
+   * thread aggregates with no message id).
+   */
+  readOnly?: boolean;
+  /** Optional per-row trailing control, e.g. a list-specific action. */
+  rowAction?: (row: MessageRowView) => ReactNode;
 }
 
 interface FlatHeader {
@@ -42,6 +51,8 @@ export function MailboxList({
   hasMore = false,
   loadingMore = false,
   onLoadMore,
+  readOnly = false,
+  rowAction,
 }: MailboxListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const pendingGoTimerRef = useRef<number | null>(null);
@@ -176,6 +187,18 @@ export function MailboxList({
       if (target instanceof HTMLElement) {
         if (target.closest("input, textarea, select, [contenteditable=true]")) return;
       }
+      // Read-only lists support navigation + open only; block selection
+      // and message mutations.
+      if (readOnly) {
+        const k = event.key;
+        const blocked =
+          ((event.metaKey || event.ctrlKey) && k.toLowerCase() === "a") ||
+          ["x", "e", "s", "m"].includes(k.toLowerCase()) ||
+          k === "!" ||
+          k === "Delete" ||
+          k === "Backspace";
+        if (blocked) return;
+      }
       const rowItems = rows;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
@@ -302,6 +325,7 @@ export function MailboxList({
     openRow,
     previewOnFocus,
     read,
+    readOnly,
     rows,
     selectMany,
     selectRange,
@@ -345,18 +369,24 @@ export function MailboxList({
         <div className="min-w-0 truncate font-mono text-xs text-muted-foreground">
           {rows.length} loaded
           {loadingMore ? " · loading more" : hasMore ? " · scroll for more" : ""}
-          {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
+          {!readOnly && selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
         </div>
-        <div className="flex items-center gap-1">
-          <Button variant="outline" size="xs" onClick={() => selectMany(rows.map((row) => row.id))}>
-            Select all
-          </Button>
-          {selectedIds.size > 0 ? (
-            <Button variant="outline" size="xs" onClick={clearSelection}>
-              Clear
+        {readOnly ? null : (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => selectMany(rows.map((row) => row.id))}
+            >
+              Select all
             </Button>
-          ) : null}
-        </div>
+            {selectedIds.size > 0 ? (
+              <Button variant="outline" size="xs" onClick={clearSelection}>
+                Clear
+              </Button>
+            ) : null}
+          </div>
+        )}
       </div>
       <div
         ref={parentRef}
@@ -386,11 +416,13 @@ export function MailboxList({
                 ) : (
                   <MailboxRow
                     row={item.row}
-                    selected={selectedIds.has(item.row.id)}
+                    selected={!readOnly && selectedIds.has(item.row.id)}
                     focused={focusedRow?.id === item.row.id}
                     onToggleSelection={(shift) => toggleRow(item.row, shift)}
                     onFocusPane={() => setActivePane("mailbox")}
                     onOpen={() => openRow(item.row, "mailbox")}
+                    readOnly={readOnly}
+                    trailingAction={rowAction?.(item.row)}
                   />
                 )}
               </div>
@@ -398,7 +430,7 @@ export function MailboxList({
           })}
         </div>
       </div>
-      <BulkActionBar />
+      {readOnly ? null : <BulkActionBar />}
     </div>
   );
 }

@@ -10,7 +10,7 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import type { MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 
 import type { MessageRowView } from "./types";
 import { useOptimisticMailMutation } from "./useOptimisticMailMutation";
@@ -25,6 +25,15 @@ interface MailboxRowProps {
   onOpen: () => void;
   onFocusPane: () => void;
   onToggleSelection: (shift: boolean) => void;
+  /**
+   * Read-only rows drop the selection checkbox, star toggle, and hover
+   * quick-actions (archive/trash/spam/read). Used for lists whose rows
+   * aren't directly mutable messages (e.g. stale thread aggregates that
+   * carry no message id). Navigation/open still works.
+   */
+  readOnly?: boolean;
+  /** Optional list-specific trailing control, e.g. "Remove from queue". */
+  trailingAction?: ReactNode;
 }
 
 export function MailboxRow({
@@ -34,6 +43,8 @@ export function MailboxRow({
   onOpen,
   onFocusPane,
   onToggleSelection,
+  readOnly = false,
+  trailingAction,
 }: MailboxRowProps) {
   const star = useOptimisticMailMutation(row.starred ? "unstar" : "star");
   const read = useOptimisticMailMutation(row.unread ? "read" : "unread");
@@ -63,7 +74,10 @@ export function MailboxRow({
         }
       }}
       className={cn(
-        "mailbox-row group relative grid min-w-0 cursor-pointer grid-cols-[28px_28px_minmax(148px,220px)_1fr_auto] items-center gap-3 overflow-hidden border-b border-border/70 px-3 transition-colors",
+        "mailbox-row group relative grid min-w-0 cursor-pointer items-center gap-3 overflow-hidden border-b border-border/70 px-3 transition-colors",
+        readOnly
+          ? "grid-cols-[minmax(148px,220px)_1fr_auto]"
+          : "grid-cols-[28px_28px_minmax(148px,220px)_1fr_auto]",
         "hover:bg-accent/70 hover:text-accent-foreground",
         selected && "bg-accent text-accent-foreground hover:bg-accent",
         focused && "bg-accent/85 text-accent-foreground ring-1 ring-ring/70 hover:bg-accent",
@@ -72,32 +86,36 @@ export function MailboxRow({
       )}
       style={{ height: "var(--row-height)" }}
     >
-      <button
-        type="button"
-        onClick={toggleSelection}
-        aria-label={selected ? "Deselect message" : "Select message"}
-        className={cn(
-          "grid size-4 place-items-center rounded border border-border text-[10px] text-primary opacity-0 transition-opacity group-hover:opacity-100",
-          selected && "border-primary bg-primary text-primary-foreground opacity-100",
-        )}
-      >
-        {selected ? <Check className="size-3" /> : null}
-      </button>
+      {readOnly ? null : (
+        <>
+          <button
+            type="button"
+            onClick={toggleSelection}
+            aria-label={selected ? "Deselect message" : "Select message"}
+            className={cn(
+              "grid size-4 place-items-center rounded border border-border text-[10px] text-primary opacity-0 transition-opacity group-hover:opacity-100",
+              selected && "border-primary bg-primary text-primary-foreground opacity-100",
+            )}
+          >
+            {selected ? <Check className="size-3" /> : null}
+          </button>
 
-      <button
-        type="button"
-        className={cn(
-          "grid size-5 place-items-center rounded text-muted-foreground hover:bg-muted",
-          row.starred && "text-star",
-        )}
-        onClick={(event) => {
-          event.stopPropagation();
-          star.mutate([row.id]);
-        }}
-        aria-label={row.starred ? "Unstar" : "Star"}
-      >
-        <Star className={cn("size-3.5", row.starred && "fill-current")} />
-      </button>
+          <button
+            type="button"
+            className={cn(
+              "grid size-5 place-items-center rounded text-muted-foreground hover:bg-muted",
+              row.starred && "text-star",
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              star.mutate([row.id]);
+            }}
+            aria-label={row.starred ? "Unstar" : "Star"}
+          >
+            <Star className={cn("size-3.5", row.starred && "fill-current")} />
+          </button>
+        </>
+      )}
 
       <div className="mailbox-row-sender flex min-w-0 items-center gap-1.5 text-[length:var(--mail-row-subject-size)]">
         <span className="min-w-0 truncate" title={row.sender_detail ?? row.sender}>
@@ -148,14 +166,19 @@ export function MailboxRow({
         <div className="mr-1 whitespace-nowrap font-mono text-[length:var(--mail-row-meta-size)] font-normal text-muted-foreground">
           {row.date_label}
         </div>
-        <div className="hidden items-center gap-1 opacity-0 transition-opacity group-hover:flex group-hover:opacity-100">
-          <QuickAction
-            icon={MailOpen}
-            label={row.unread ? "Mark read" : "Mark unread"}
-            onClick={() => read.mutate([row.id])}
-          />
-          <QuickArchive id={row.id} />
-        </div>
+        {readOnly ? null : (
+          <div className="hidden items-center gap-1 opacity-0 transition-opacity group-hover:flex group-hover:opacity-100">
+            <QuickAction
+              icon={MailOpen}
+              label={row.unread ? "Mark read" : "Mark unread"}
+              onClick={() => read.mutate([row.id])}
+            />
+            <QuickArchive id={row.id} />
+          </div>
+        )}
+        {trailingAction ? (
+          <div onClick={(event) => event.stopPropagation()}>{trailingAction}</div>
+        ) : null}
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { SearchResultsRoute } from "./SearchResultsRoute";
-import type { MessageRowView, ThreadResponse } from "@/features/mailbox/types";
+import type { MessageGroupView, MessageRowView } from "@/features/mailbox/types";
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn<(options: unknown) => Promise<void>>(),
@@ -24,10 +24,6 @@ const searchApi = vi.hoisted(() => ({
   fetchSearch: vi.fn<(params: unknown, opts?: unknown) => Promise<unknown>>(),
 }));
 
-const mailboxApi = vi.hoisted(() => ({
-  fetchThread: vi.fn<(threadId: string) => Promise<ThreadResponse>>(),
-}));
-
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => router.navigate,
   useSearch: () => router.search,
@@ -40,8 +36,19 @@ vi.mock("./api", () => ({
   searchKey: (params: unknown) => ["search", params],
 }));
 
-vi.mock("@/features/mailbox/api", () => ({
-  fetchThread: mailboxApi.fetchThread,
+// MailboxList is the canonical list and has its own tests; here we only
+// verify the search route hands it the result groups and renders the
+// search chrome. Stub it to surface the rows it received.
+vi.mock("@/features/mailbox/MailboxList", () => ({
+  MailboxList: ({ groups }: { groups: MessageGroupView[] }) => (
+    <div data-testid="mailbox-list">
+      {groups
+        .flatMap((group) => group.rows)
+        .map((row) => (
+          <div key={row.id}>{row.subject}</div>
+        ))}
+    </div>
+  ),
 }));
 
 vi.mock("sonner", () => ({
@@ -75,24 +82,7 @@ function renderWithQueryClient(children: ReactNode) {
   return render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>);
 }
 
-function threadResponse(threadId: string): ThreadResponse {
-  return {
-    thread: {
-      account_id: "account-1",
-      id: threadId,
-      latest_date: "2026-05-11T10:00:00Z",
-      message_count: 1,
-      participants: [],
-      snippet: "Snippet",
-      subject: `Preview ${threadId}`,
-      unread_count: 0,
-    },
-    messages: [],
-    bodies: [],
-  };
-}
-
-describe("SearchResultsRoute keyboard flow", () => {
+describe("SearchResultsRoute", () => {
   beforeEach(() => {
     router.search = { q: "invoice", mode: "lexical", sort: "relevance" };
     searchApi.fetchSavedSearches.mockResolvedValue({ searches: [] });
@@ -104,19 +94,25 @@ describe("SearchResultsRoute keyboard flow", () => {
       has_more: false,
       groups: [{ id: "today", label: "Today", rows }],
     });
-    mailboxApi.fetchThread.mockImplementation((threadId) =>
-      Promise.resolve(threadResponse(threadId)),
-    );
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  test("blurs submitted input and routes j/k to result selection", async () => {
+  test("renders results through the shared mailbox list", async () => {
     renderWithQueryClient(<SearchResultsRoute />);
 
-    expect(await screen.findByRole("button", { name: /Subject 1/ })).toBeVisible();
+    expect(await screen.findByTestId("mailbox-list")).toBeVisible();
+    expect(screen.getByText("Subject 1")).toBeVisible();
+    expect(screen.getByText("Subject 2")).toBeVisible();
+    expect(screen.getByText(/2 results/i)).toBeVisible();
+  });
+
+  test("submitting the query blurs the input and navigates", async () => {
+    renderWithQueryClient(<SearchResultsRoute />);
+
+    await screen.findByTestId("mailbox-list");
     const input = screen.getByLabelText("Search query") as HTMLInputElement;
     input.focus();
     fireEvent.change(input, { target: { value: "alice" } });
@@ -134,23 +130,6 @@ describe("SearchResultsRoute keyboard flow", () => {
         account: undefined,
       },
     });
-    expect(document.activeElement).not.toBe(input);
-
-    fireEvent.keyDown(window, { key: "j" });
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Subject 2/ })).toHaveAttribute(
-        "aria-current",
-        "true",
-      );
-    });
-    expect(input).toHaveValue("alice");
-
-    fireEvent.keyDown(window, { key: "k" });
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Subject 1/ })).toHaveAttribute(
-        "aria-current",
-        "true",
-      );
-    });
+    await waitFor(() => expect(document.activeElement).not.toBe(input));
   });
 });

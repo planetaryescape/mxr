@@ -230,3 +230,79 @@ describe("MailboxList keyboard selection", () => {
     expect(screen.getByRole("article", { name: /2 open commitments/i })).toBeVisible();
   });
 });
+
+describe("MailboxList readOnly mode", () => {
+  beforeEach(() => {
+    useMailboxPane.setState({
+      activePane: "mailbox",
+      sidebarIndex: 0,
+      suppressNextReaderFocus: false,
+    });
+    useSelection.setState({ scope: null, ids: new Set(), lastClickedId: null });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    useSelection.getState().clear();
+  });
+
+  test("hides bulk selection and ignores mutation keys", async () => {
+    render(<MailboxList groups={groups} mailboxPath="/analytics/stale" readOnly />);
+
+    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+    expect(screen.queryByRole("button", { name: /select all/i })).toBeNull();
+
+    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    expect(useSelection.getState().ids.size).toBe(0);
+    fireEvent.keyDown(window, { key: "x" });
+    expect(useSelection.getState().ids.size).toBe(0);
+  });
+
+  test("non-readOnly still exposes bulk selection", async () => {
+    render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
+    expect(await screen.findByRole("button", { name: /select all/i })).toBeVisible();
+  });
+});
+
+describe("MailboxRow readOnly + trailingAction", () => {
+  test("readOnly row hides star and selection controls", () => {
+    render(
+      <MailboxRow
+        row={rows[0]!}
+        selected={false}
+        focused={false}
+        onOpen={vi.fn<() => void>()}
+        onFocusPane={vi.fn<() => void>()}
+        onToggleSelection={vi.fn<(shift: boolean) => void>()}
+        readOnly
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /star/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /select message|deselect message/i })).toBeNull();
+  });
+
+  test("trailing action fires without opening the row", () => {
+    const onAction = vi.fn<(id: string) => void>();
+    const onOpen = vi.fn<() => void>();
+    render(
+      <MailboxRow
+        row={rows[0]!}
+        selected={false}
+        focused={false}
+        onOpen={onOpen}
+        onFocusPane={vi.fn<() => void>()}
+        onToggleSelection={vi.fn<(shift: boolean) => void>()}
+        trailingAction={
+          <button type="button" onClick={() => onAction(rows[0]!.id)}>
+            Remove
+          </button>
+        }
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(onAction).toHaveBeenCalledWith("msg-1");
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+});

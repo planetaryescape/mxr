@@ -98,6 +98,13 @@ export function SearchPalette() {
     } else if (event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
+      // Cmd/Ctrl+Enter always opens the full search page, even when a
+      // quick result is highlighted. Plain Enter opens the highlighted
+      // result (or falls back to full search when nothing is selected).
+      if (event.metaKey || event.ctrlKey) {
+        goToSearch();
+        return;
+      }
       const row = activeIndex >= 0 ? rows[activeIndex] : undefined;
       if (row) openRow(row);
       else goToSearch();
@@ -147,10 +154,10 @@ export function SearchPalette() {
                   role="option"
                   aria-selected={activeIndex === index}
                   className={cn(
-                    "grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-3 rounded-md px-3 py-2 text-left text-xs outline-none transition-colors",
+                    "grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-3 rounded-md border-l-2 px-3 py-2 text-left text-xs outline-none transition-colors",
                     activeIndex === index
-                      ? "bg-primary/15 text-foreground ring-1 ring-primary/35"
-                      : "hover:bg-muted/70",
+                      ? "border-l-primary bg-accent text-accent-foreground ring-1 ring-ring"
+                      : "border-l-transparent hover:bg-muted/70",
                   )}
                   onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => openRow(row)}
@@ -177,7 +184,7 @@ export function SearchPalette() {
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2 text-2xs text-muted-foreground">
-          <span>↑/↓ select · Enter open/search · Esc close</span>
+          <span>↑/↓ select · Enter open · ⌘/Ctrl+Enter search all · Esc close</span>
           <Button
             type="button"
             variant="outline"

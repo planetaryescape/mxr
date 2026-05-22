@@ -122,4 +122,40 @@ describe("SearchPalette", () => {
       params: { mailbox: "inbox", threadId: "thread-2" },
     });
   });
+
+  test("Cmd/Ctrl+Enter opens the full search page even with a result selected", async () => {
+    renderWithQueryClient(<SearchPalette />);
+
+    const input = await screen.findByRole("textbox", { name: "Search mail" });
+    fireEvent.change(input, { target: { value: "invoice" } });
+
+    expect(await screen.findByText("Subject 1")).toBeVisible();
+    // Highlight the first result, then Cmd+Enter — should bypass the
+    // selected row and go to full search, not open the thread.
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+
+    expect(router.navigate).toHaveBeenCalledWith({
+      to: "/search",
+      search: { q: "invoice", mode: "lexical", sort: "relevance" },
+    });
+    expect(router.navigate).not.toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/m/$mailbox/$threadId" }),
+    );
+  });
+
+  test("Ctrl+Enter also opens the full search page", async () => {
+    renderWithQueryClient(<SearchPalette />);
+
+    const input = await screen.findByRole("textbox", { name: "Search mail" });
+    fireEvent.change(input, { target: { value: "invoice" } });
+
+    expect(await screen.findByText("Subject 1")).toBeVisible();
+    fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
+
+    expect(router.navigate).toHaveBeenCalledWith({
+      to: "/search",
+      search: { q: "invoice", mode: "lexical", sort: "relevance" },
+    });
+  });
 });

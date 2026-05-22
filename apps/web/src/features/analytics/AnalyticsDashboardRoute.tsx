@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { BarChart3, RefreshCw, ShieldAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -151,6 +151,7 @@ function Dashboard({ dashboard, range }: { dashboard: string; range: AnalyticsRa
 }
 
 function StorageDashboard({ range }: { range: AnalyticsRange }) {
+  const navigate = useNavigate();
   const [groupBy, setGroupBy] = useState<StorageGroupBy>("sender");
   const [keyword, setKeyword] = useState("");
   const breakdown = useQuery({
@@ -210,11 +211,21 @@ function StorageDashboard({ range }: { range: AnalyticsRange }) {
       </Panel>
       <Panel title="Largest messages">
         <DataList
-          rows={(largest.data?.rows ?? []).map((row) => ({
-            id: row.message_id ?? row.subject ?? "message",
-            title: row.subject ?? "(no subject)",
-            meta: `${row.sender ?? "unknown"} · ${formatBytes(row.size_bytes ?? 0)}`,
-          }))}
+          rows={(largest.data?.rows ?? []).map((row) => {
+            const threadId = row.thread_id;
+            return {
+              id: row.message_id ?? row.subject ?? "message",
+              title: row.subject ?? "(no subject)",
+              meta: `${row.sender ?? "unknown"} · ${formatBytes(row.size_bytes ?? 0)}`,
+              onSelect: threadId
+                ? () =>
+                    void navigate({
+                      to: "/m/$mailbox/$threadId",
+                      params: { mailbox: "inbox", threadId },
+                    })
+                : undefined,
+            };
+          })}
         />
       </Panel>
     </div>
@@ -339,6 +350,7 @@ function ResponseTimeDashboard({ range }: { range: AnalyticsRange }) {
 }
 
 export function SubscriptionsDashboard() {
+  const navigate = useNavigate();
   const [sort, setSort] = useState<"low-open" | "volume" | "recent">("low-open");
   const [confirm, setConfirm] = useState<SubscriptionSummary | null>(null);
   const subscriptions = useQuery({
@@ -373,9 +385,10 @@ export function SubscriptionsDashboard() {
           </SelectContent>
         </Select>
         <div className="divide-y divide-border">
-          {rows.map((row) => (
-            <div key={row.sender_email} className="flex items-center gap-3 py-2">
-              <div className="min-w-0 flex-1">
+          {rows.map((row) => {
+            const latestThreadId = row.latest_thread_id;
+            const detail = (
+              <>
                 <div className="truncate text-xs font-medium">
                   {row.sender_name ?? row.sender_email}
                 </div>
@@ -383,17 +396,38 @@ export function SubscriptionsDashboard() {
                   {row.message_count} messages · {openRateLabel(row)} opened ·{" "}
                   {row.latest_subject ?? "latest unknown"}
                 </div>
+              </>
+            );
+            return (
+              <div key={row.sender_email} className="flex items-center gap-3 py-2">
+                {latestThreadId ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void navigate({
+                        to: "/m/$mailbox/$threadId",
+                        params: { mailbox: "inbox", threadId: latestThreadId },
+                      })
+                    }
+                    className="-mx-2 min-w-0 flex-1 rounded-md px-2 py-1 text-left outline-none transition-colors hover:bg-muted/60 focus-visible:bg-muted/60"
+                    aria-label={`Open latest message from ${row.sender_name ?? row.sender_email}`}
+                  >
+                    {detail}
+                  </button>
+                ) : (
+                  <div className="min-w-0 flex-1">{detail}</div>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!row.latest_message_id}
+                  onClick={() => setConfirm(row)}
+                >
+                  Unsubscribe
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!row.latest_message_id}
-                onClick={() => setConfirm(row)}
-              >
-                Unsubscribe
-              </Button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Panel>
       <AlertDialog open={Boolean(confirm)} onOpenChange={(open) => !open && setConfirm(null)}>
@@ -636,7 +670,9 @@ function Explainer({ children }: { children: React.ReactNode }) {
   );
 }
 
-function DataList({ rows }: { rows: Array<{ id: string; title: string; meta: string }> }) {
+type DataListRow = { id: string; title: string; meta: string; onSelect?: () => void };
+
+function DataList({ rows }: { rows: DataListRow[] }) {
   if (rows.length === 0)
     return (
       <div className="text-xs text-muted-foreground">
@@ -645,12 +681,24 @@ function DataList({ rows }: { rows: Array<{ id: string; title: string; meta: str
     );
   return (
     <div className="divide-y divide-border">
-      {rows.map((row) => (
-        <div key={row.id} className="py-2">
-          <div className="truncate text-xs font-medium">{row.title}</div>
-          <div className="truncate text-2xs text-muted-foreground">{row.meta}</div>
-        </div>
-      ))}
+      {rows.map((row) =>
+        row.onSelect ? (
+          <button
+            key={row.id}
+            type="button"
+            onClick={row.onSelect}
+            className="-mx-2 block w-full rounded-md px-2 py-2 text-left outline-none transition-colors hover:bg-muted/60 focus-visible:bg-muted/60"
+          >
+            <div className="truncate text-xs font-medium">{row.title}</div>
+            <div className="truncate text-2xs text-muted-foreground">{row.meta}</div>
+          </button>
+        ) : (
+          <div key={row.id} className="py-2">
+            <div className="truncate text-xs font-medium">{row.title}</div>
+            <div className="truncate text-2xs text-muted-foreground">{row.meta}</div>
+          </div>
+        ),
+      )}
     </div>
   );
 }

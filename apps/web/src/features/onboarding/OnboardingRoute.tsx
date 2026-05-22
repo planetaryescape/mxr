@@ -80,6 +80,9 @@ export function OnboardingRoute() {
   });
 
   const session = authSession.data?.session;
+  const providerLabel = providerTiles.find((tile) => tile.id === provider)?.label ?? provider;
+  // Device flow surfaces a verification_uri; loopback surfaces auth_url.
+  const signInUrl = session?.verification_uri ?? session?.auth_url;
 
   return (
     <div className="flex min-w-0 flex-1 items-center justify-center overflow-auto bg-background p-6">
@@ -163,37 +166,44 @@ export function OnboardingRoute() {
         ) : null}
         {step === 3 && provider !== "imap" ? (
           <section>
-            <h1 className="text-xl font-semibold">Authorize {provider}</h1>
+            <h1 className="text-xl font-semibold">Authorize {providerLabel}</h1>
             <p className="mt-1 text-xs text-muted-foreground">
-              Use the device code flow. mxr never needs a redirect callback in the browser.
+              {session?.user_code
+                ? "Enter the code below on the verification page to authorize mxr."
+                : `We open ${providerLabel} sign-in in a new tab. Approve access there — mxr captures the result automatically.`}
             </p>
             <div className="mt-5 rounded-xl border border-border bg-background p-5">
-              <div className="font-mono text-3xl tracking-widest text-primary">
-                {session?.user_code ?? "..."}
-              </div>
+              {session?.user_code ? (
+                <div className="font-mono text-3xl tracking-widest text-primary">
+                  {session.user_code}
+                </div>
+              ) : null}
               <div
-                className={`mt-2 whitespace-pre-wrap text-xs ${
-                  session?.error ? "text-destructive" : "text-muted-foreground"
-                }`}
+                className={`whitespace-pre-wrap text-xs ${
+                  session?.user_code ? "mt-2" : ""
+                } ${session?.error ? "text-destructive" : "text-muted-foreground"}`}
               >
                 {session?.error ??
                   session?.message ??
                   session?.state ??
                   "Waiting for authorization"}
               </div>
-              {session?.verification_uri || session?.auth_url ? (
-                <Button
-                  className="mt-4"
-                  onClick={() =>
-                    window.open(
-                      session.verification_uri ?? session.auth_url,
-                      "_blank",
-                      "noopener,noreferrer",
-                    )
-                  }
-                >
-                  Open sign-in
-                </Button>
+              {signInUrl ? (
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <Button onClick={() => window.open(signInUrl, "_blank", "noopener,noreferrer")}>
+                    Open {providerLabel} sign-in
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(signInUrl);
+                      toast.success("Sign-in link copied");
+                    }}
+                  >
+                    Copy sign-in link
+                  </Button>
+                </div>
               ) : null}
             </div>
             <div className="mt-4 flex gap-2">

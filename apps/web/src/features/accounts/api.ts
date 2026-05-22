@@ -80,10 +80,24 @@ export function removeAccount(key: string, purgeLocalData = false) {
   );
 }
 
+/**
+ * Pick the OAuth flow for an account's provider.
+ *
+ * Gmail uses a Desktop-app OAuth client, which Google rejects at the
+ * device-code endpoint ("invalid_client: Invalid client type"); it must
+ * use the loopback (Installed) flow, which the daemon resolves from
+ * "auto". Outlook's adapter implements only the device-code flow, so it
+ * stays on "device". (IMAP/SMTP never starts an OAuth session.)
+ */
+function authFlowForAccount(account: AccountConfig): "auto" | "device" {
+  const syncType = (account.sync as { type?: string } | undefined)?.type;
+  return syncType === "outlook_personal" ? "device" : "auto";
+}
+
 export function startAuthSession(account: AccountConfig, reauthorize = false) {
   return apiFetch<{ session: AuthSession }>("/api/v1/platform/auth/sessions/start", {
     method: "POST",
-    body: { account, reauthorize, flow: "device" },
+    body: { account, reauthorize, flow: authFlowForAccount(account) },
   });
 }
 

@@ -259,6 +259,35 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
                 {authSession.data.session.user_code}
               </div>
             ) : null}
+            {(authSession.data.session.verification_uri ?? authSession.data.session.auth_url) ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const s = authSession.data?.session;
+                    const url = s?.verification_uri ?? s?.auth_url;
+                    if (url) window.open(url, "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  Open sign-in
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const s = authSession.data?.session;
+                    const url = s?.verification_uri ?? s?.auth_url;
+                    if (url) {
+                      void navigator.clipboard?.writeText(url);
+                      toast.success("Sign-in link copied");
+                    }
+                  }}
+                >
+                  Copy sign-in link
+                </Button>
+              </div>
+            ) : null}
             <Button
               className="mt-3"
               disabled={authSession.data.session.state !== "authorized" || completeReauth.isPending}

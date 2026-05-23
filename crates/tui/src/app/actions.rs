@@ -100,6 +100,7 @@ impl App {
             | Action::OpenTab4
             | Action::OpenTab5
             | Action::OpenTab6
+            | Action::OpenTab7
             | Action::SyncNow
             | Action::Noop
             | Action::CancelOutlookAuth => self.apply_screen_action(action),

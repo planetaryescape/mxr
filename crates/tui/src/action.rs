@@ -51,6 +51,7 @@ pub enum Action {
     OpenTab4,
     OpenTab5,
     OpenTab6,
+    OpenTab7,
     // Search
     OpenGlobalSearch,
     OpenMailboxFilter,
@@ -287,6 +288,7 @@ pub enum ScreenContext {
     Diagnostics,
     Accounts,
     Analytics,
+    Deliveries,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -303,6 +305,7 @@ pub enum UiContext {
     AccountsList,
     AccountsForm,
     Analytics,
+    Deliveries,
 }
 
 impl UiContext {
@@ -316,6 +319,7 @@ impl UiContext {
             Self::Diagnostics => ScreenContext::Diagnostics,
             Self::AccountsList | Self::AccountsForm => ScreenContext::Accounts,
             Self::Analytics => ScreenContext::Analytics,
+            Self::Deliveries => ScreenContext::Deliveries,
         }
     }
 
@@ -333,6 +337,7 @@ impl UiContext {
             Self::AccountsList => "Accounts",
             Self::AccountsForm => "Accounts / Form",
             Self::Analytics => "Analytics",
+            Self::Deliveries => "Deliveries",
         }
     }
 }
@@ -348,6 +353,9 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
 
     match context {
         MailboxSidebar | MailboxList | MailboxMessage => true,
+        // The Deliveries screen handles its row keys directly; global
+        // navigation/tab actions are all permitted.
+        Deliveries => true,
         Analytics => matches!(
             action,
             OpenCommandPalette
@@ -384,6 +392,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenTab4
                 | OpenTab5
                 | OpenTab6
+                | OpenTab7
                 | SyncNow
                 | EditConfig
                 | OpenLogs
@@ -418,6 +427,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenTab4
                 | OpenTab5
                 | OpenTab6
+                | OpenTab7
                 | SyncNow
                 | EditConfig
                 | OpenLogs

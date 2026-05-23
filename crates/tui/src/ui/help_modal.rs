@@ -181,6 +181,13 @@ fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
             ("r".into(), "Refresh current view".into()),
             ("Esc".into(), "Back to mailbox".into()),
         ],
+        UiContext::Deliveries => vec![
+            ("j / k".into(), "Move row".into()),
+            ("r".into(), "Resolve (mark delivered)".into()),
+            ("d".into(), "Dismiss (false positive)".into()),
+            ("D".into(), "Cycle filter".into()),
+            ("g".into(), "Refresh".into()),
+        ],
     };
 
     entries.insert(0, ("Context".into(), state.ui_context.label().into()));
@@ -318,6 +325,16 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
                 ("j / k".into(), "Move row".into()),
                 ("r".into(), "Refresh".into()),
                 ("Esc".into(), "Back to mailbox".into()),
+            ],
+        }],
+        UiContext::Deliveries => vec![HelpSection {
+            title: "Deliveries Page".into(),
+            entries: vec![
+                ("j / k".into(), "Move row".into()),
+                ("r".into(), "Resolve (mark delivered)".into()),
+                ("d".into(), "Dismiss (false positive)".into()),
+                ("D".into(), "Cycle filter".into()),
+                ("g".into(), "Refresh".into()),
             ],
         }],
     }

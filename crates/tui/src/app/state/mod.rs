@@ -2,6 +2,7 @@ mod accounts;
 mod analytics;
 mod command_palette;
 mod compose;
+mod deliveries;
 mod diagnostics;
 mod mailbox;
 mod modals;
@@ -18,6 +19,7 @@ pub use command_palette::CommandPaletteState;
 pub use compose::{
     ComposeAction, ComposeState, DeferredCompose, PendingSend, PendingSendMode, ReplyContextPair,
 };
+pub use deliveries::{DeliveriesState, DeliveryFilter};
 pub use diagnostics::{DiagnosticsPageState, DiagnosticsPaneKind, DiagnosticsState};
 pub(in crate::app) use mailbox::PendingPreviewRead;
 pub(crate) use mailbox::SidebarSelectionKey;

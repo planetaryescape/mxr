@@ -124,6 +124,7 @@ pub enum Screen {
     Diagnostics,
     Accounts,
     Analytics,
+    Deliveries,
 }
 
 /// Health of the IPC connection to the daemon. Drives the status bar and the
@@ -197,6 +198,7 @@ pub struct App {
     pub rules: RulesState,
     pub diagnostics: DiagnosticsState,
     pub analytics: AnalyticsState,
+    pub deliveries: DeliveriesState,
     pub modals: ModalsState,
     pub compose: ComposeState,
     pub screen: Screen,
@@ -231,6 +233,13 @@ pub struct App {
     /// Set when the reply-later queue modal opens; the runtime drains
     /// this flag and dispatches a `Request::ListReplyQueue`.
     pub pending_reply_queue_refresh: bool,
+    /// Set when the Deliveries screen opens or its filter changes; the
+    /// runtime drains this and dispatches a `Request::ListDeliveries`.
+    pub pending_deliveries_refresh: bool,
+    /// Queued manual resolve/dismiss of a delivery (drained by the runtime,
+    /// which fires the IPC and re-refreshes the list).
+    pub pending_delivery_resolve: Option<mxr_core::DeliveryId>,
+    pub pending_delivery_dismiss: Option<mxr_core::DeliveryId>,
     /// Set when the activity modal opens (or the user requests a refresh);
     /// the runtime drains this and dispatches a `Request::ListActivity`.
     pub pending_activity_refresh: bool,
@@ -332,6 +341,7 @@ impl App {
             rules: RulesState::default(),
             diagnostics: DiagnosticsState::default(),
             analytics: AnalyticsState::default(),
+            deliveries: DeliveriesState::default(),
             modals: ModalsState {
                 snooze_config: snooze_config.clone(),
                 ..ModalsState::default()
@@ -359,6 +369,9 @@ impl App {
             pending_connection_retry: false,
             pending_snippets_refresh: false,
             pending_reply_queue_refresh: false,
+            pending_deliveries_refresh: false,
+            pending_delivery_resolve: None,
+            pending_delivery_dismiss: None,
             pending_activity_refresh: false,
             pending_activity_pause_toggle: false,
             pending_sender_profile_request: None,

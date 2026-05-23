@@ -80,6 +80,7 @@ typed_id!(RuleId);
 typed_id!(SignatureId);
 typed_id!(SemanticChunkId);
 typed_id!(SemanticProfileId);
+typed_id!(DeliveryId);
 
 #[cfg(test)]
 mod tests {

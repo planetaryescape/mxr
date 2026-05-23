@@ -41,6 +41,7 @@ pub mod selection;
 pub mod semantic;
 pub mod send_time;
 pub mod sender;
+pub mod deliveries;
 pub mod senders;
 pub mod setup;
 pub mod signatures;

@@ -88,6 +88,7 @@ members = [
     "crates/compose",
     "crates/config",
     "crates/core",
+    "crates/deliveries",
     "crates/export",
     "crates/keychain",
     "crates/humanizer",
@@ -141,6 +142,7 @@ todo = "warn"
 mxr-compose = { path = "crates/compose", version = "0.5.18" }
 mxr-config = { path = "crates/config", version = "0.5.18" }
 mxr-core = { path = "crates/core", version = "0.5.18" }
+mxr-deliveries = { path = "crates/deliveries", version = "0.5.18" }
 mxr-export = { path = "crates/export", version = "0.5.18" }
 mxr-keychain = { path = "crates/keychain", version = "0.5.18" }
 mxr-humanizer = { path = "crates/humanizer", version = "0.5.18" }
@@ -172,6 +174,10 @@ mxr-web = { path = "crates/web", version = "0.5.18" }
 glob-match = "0.2"
 shell-words = "1.1"
 which = "7"
+
+# Package/delivery detection: carrier tracking-number identification + checksum
+# validation (embeds the canonical tracking_number_data dataset).
+tracking-numbers = "0.1.2"
 
 # IMAP (fork with ENABLE/NAMESPACE support, published as mxr-async-imap)
 async-imap = { package = "mxr-async-imap", version = "0.10.6" }
@@ -288,6 +294,7 @@ utoipa-swagger-ui = { version = "9", features = ["axum", "vendored"] }
 mxr-compose = { workspace = true }
 mxr-config = { workspace = true }
 mxr-core = { workspace = true }
+mxr-deliveries = { workspace = true }
 mxr-export = { workspace = true }
 mxr-keychain = { workspace = true }
 mxr-humanizer = { workspace = true }

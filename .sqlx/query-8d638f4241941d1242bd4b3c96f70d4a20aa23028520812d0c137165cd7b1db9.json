@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT message_id as \"message_id!\"\n               FROM delivery_messages\n               WHERE delivery_id = ?\n               ORDER BY detected_at ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "message_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8d638f4241941d1242bd4b3c96f70d4a20aa23028520812d0c137165cd7b1db9"
+}

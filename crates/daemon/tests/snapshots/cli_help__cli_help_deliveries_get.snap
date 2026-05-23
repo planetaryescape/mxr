@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Show one delivery, including its source messages
+
+Usage: mxr deliveries get <DELIVERY_ID>
+
+Arguments:
+  <DELIVERY_ID>
+
+Options:
+  -h, --help  Print help

@@ -61,6 +61,7 @@ pub enum LlmFeature {
     DecisionLog,
     Briefing,
     Expert,
+    DeliveryExtraction,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

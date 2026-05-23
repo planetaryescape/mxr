@@ -9,6 +9,7 @@ import {
   Inbox,
   Mail,
   MessageSquareReply,
+  Package,
   Search,
   Send,
   Settings,
@@ -48,6 +49,7 @@ const primary: NavItem[] = [
   { to: "/screener", label: "Screener", Icon: Shield, shortcut: "5" },
   { to: "/subscriptions", label: "Subscriptions", Icon: Sparkles, shortcut: "6" },
   { to: "/reply-queue", label: "Reply queue", Icon: MessageSquareReply, shortcut: "7" },
+  { to: "/deliveries", label: "Deliveries", Icon: Package },
   { to: "/accounts", label: "Accounts", Icon: UserCog, shortcut: "8" },
 ];
 

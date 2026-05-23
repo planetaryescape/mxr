@@ -1,6 +1,6 @@
 use super::*;
 
-fn tab_titles() -> [&'static str; 6] {
+fn tab_titles() -> [&'static str; 7] {
     [
         "1 Mailbox",
         "2 Search",
@@ -8,6 +8,7 @@ fn tab_titles() -> [&'static str; 6] {
         "4 Accounts",
         "5 Diagnostics",
         "6 Analytics",
+        "7 Deliveries",
     ]
 }
 
@@ -19,6 +20,7 @@ fn selected_tab(screen: Screen) -> usize {
         Screen::Accounts => 3,
         Screen::Diagnostics => 4,
         Screen::Analytics => 5,
+        Screen::Deliveries => 6,
     }
 }
 
@@ -317,6 +319,9 @@ impl App {
             Screen::Analytics => {
                 ui::analytics_page::draw(frame, content_area, &self.analytics, theme);
             }
+            Screen::Deliveries => {
+                ui::deliveries_page::draw(frame, content_area, &self.deliveries, theme);
+            }
         }
 
         let status_bar = self.status_bar_state();
@@ -499,6 +504,7 @@ mod tests {
                 "4 Accounts",
                 "5 Diagnostics",
                 "6 Analytics",
+                "7 Deliveries",
             ]
         );
     }
@@ -519,5 +525,6 @@ mod tests {
         assert_eq!(selected_tab(Screen::Accounts), 3);
         assert_eq!(selected_tab(Screen::Diagnostics), 4);
         assert_eq!(selected_tab(Screen::Analytics), 5);
+        assert_eq!(selected_tab(Screen::Deliveries), 6);
     }
 }

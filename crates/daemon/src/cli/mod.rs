@@ -486,6 +486,13 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Track packages and deliveries detected in your mail
+    Deliveries {
+        #[command(subcommand)]
+        action: Option<DeliveriesAction>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Manage outgoing compose signatures
     Signatures {
         #[command(subcommand)]
@@ -1502,6 +1509,31 @@ pub enum SnippetsAction {
     },
     /// Delete a snippet by name
     Remove { name: String },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum DeliveriesAction {
+    /// List tracked deliveries (default).
+    List {
+        /// Which set: active (default), delivered, all, dismissed.
+        #[arg(long, default_value = "active")]
+        filter: String,
+    },
+    /// Show one delivery, including its source messages.
+    Get { delivery_id: String },
+    /// Mark a delivery delivered/done (leaves the active list).
+    Resolve { delivery_id: String },
+    /// Hide a delivery (false positive).
+    Dismiss { delivery_id: String },
+    /// Re-scan recent mail for deliveries.
+    Scan {
+        /// Window in days to scan (default 90).
+        #[arg(long)]
+        since_days: Option<u32>,
+        /// Preview detections without writing or calling the LLM.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]

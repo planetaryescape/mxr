@@ -3827,6 +3827,7 @@ dependencies = [
  "mxr-compose",
  "mxr-config",
  "mxr-core",
+ "mxr-deliveries",
  "mxr-export",
  "mxr-humanizer",
  "mxr-keychain",
@@ -3972,6 +3973,26 @@ dependencies = [
  "thiserror 2.0.18",
  "utoipa",
  "uuid",
+]
+
+[[package]]
+name = "mxr-deliveries"
+version = "0.5.34"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "mxr-core",
+ "mxr-llm",
+ "mxr-reader",
+ "mxr-store",
+ "once_cell",
+ "regex",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracking-numbers",
 ]
 
 [[package]]
@@ -4913,6 +4934,28 @@ checksum = "f8ed6a7761f76e3b9f92dfb0a60a6a6477c61024b775147ff0973a02653abaf2"
 dependencies = [
  "digest",
  "hmac",
+]
+
+[[package]]
+name = "pcre2"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e970b0fcce0c7ee6ef662744ff711f21ccd6f11b7cf03cd187a80e89797fc67"
+dependencies = [
+ "libc",
+ "log",
+ "pcre2-sys",
+]
+
+[[package]]
+name = "pcre2-sys"
+version = "0.2.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18b9073c1a2549bd409bf4a32c94d903bb1a09bf845bc306ae148897fa0760a4"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
 ]
 
 [[package]]
@@ -7489,6 +7532,20 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "tracking-numbers"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28ad3e7aa4d98df359d34a4c90e8036d9c933ad91404269d22bfc4f2d8ac6c69"
+dependencies = [
+ "include_dir",
+ "lazy_static",
+ "log",
+ "pcre2",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

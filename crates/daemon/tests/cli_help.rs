@@ -234,6 +234,18 @@ fn cli_help_snapshots_cover_all_commands() {
             "cli_help_snippets_remove",
             &["snippets", "remove", "--help"],
         ),
+        ("cli_help_deliveries", &["deliveries", "--help"]),
+        ("cli_help_deliveries_list", &["deliveries", "list", "--help"]),
+        ("cli_help_deliveries_get", &["deliveries", "get", "--help"]),
+        (
+            "cli_help_deliveries_resolve",
+            &["deliveries", "resolve", "--help"],
+        ),
+        (
+            "cli_help_deliveries_dismiss",
+            &["deliveries", "dismiss", "--help"],
+        ),
+        ("cli_help_deliveries_scan", &["deliveries", "scan", "--help"]),
         ("cli_help_sender", &["sender", "--help"]),
         ("cli_help_senders", &["senders", "--help"]),
         ("cli_help_screener", &["screener", "--help"]),
@@ -311,7 +323,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ),
     ];
 
-    assert_eq!(cases.len(), 171);
+    assert_eq!(cases.len(), 177);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

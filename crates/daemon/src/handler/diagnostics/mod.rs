@@ -705,6 +705,7 @@ fn llm_overrides_data(overrides: mxr_config::LlmOverrides) -> LlmOverridesData {
         decision_log: overrides.decision_log.map(llm_override_data),
         briefing: overrides.briefing.map(llm_override_data),
         expert: overrides.expert.map(llm_override_data),
+        delivery_extraction: overrides.delivery_extraction.map(llm_override_data),
     }
 }
 
@@ -776,6 +777,7 @@ fn normalize_llm_overrides(config: LlmOverridesData) -> Result<mxr_config::LlmOv
         decision_log: normalize_llm_override(config.decision_log)?,
         briefing: normalize_llm_override(config.briefing)?,
         expert: normalize_llm_override(config.expert)?,
+        delivery_extraction: normalize_llm_override(config.delivery_extraction)?,
     })
 }
 

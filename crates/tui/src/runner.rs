@@ -578,6 +578,78 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if app.pending_deliveries_refresh {
+            app.pending_deliveries_refresh = false;
+            let filter = app.deliveries.filter.as_str().to_string();
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::ListDeliveries {
+                        filter: Some(filter),
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Deliveries { deliveries },
+                    }) => Ok(deliveries),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::DeliveriesList(result)
+            });
+        }
+
+        if let Some(delivery_id) = app.pending_delivery_resolve.take() {
+            let filter = app.deliveries.filter.as_str().to_string();
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let _ = ipc_call(&bg, Request::ResolveDelivery { delivery_id }).await;
+                let resp = ipc_call(
+                    &bg,
+                    Request::ListDeliveries {
+                        filter: Some(filter),
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Deliveries { deliveries },
+                    }) => Ok(deliveries),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::DeliveriesList(result)
+            });
+        }
+
+        if let Some(delivery_id) = app.pending_delivery_dismiss.take() {
+            let filter = app.deliveries.filter.as_str().to_string();
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let _ = ipc_call(&bg, Request::DismissDelivery { delivery_id }).await;
+                let resp = ipc_call(
+                    &bg,
+                    Request::ListDeliveries {
+                        filter: Some(filter),
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Deliveries { deliveries },
+                    }) => Ok(deliveries),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::DeliveriesList(result)
+            });
+        }
+
         if app.pending_activity_refresh {
             app.pending_activity_refresh = false;
             let bg = bg.clone();
@@ -1850,6 +1922,19 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::ReplyQueueList(Err(e)) => {
                             app.modals.reply_queue.set_error(e.to_string());
                             app.status_message = Some(format!("Reply queue load failed: {e}"));
+                        }
+                        AsyncResult::DeliveriesList(Ok(rows)) => {
+                            let count = rows.len();
+                            app.deliveries.set_rows(rows);
+                            app.status_message = Some(if count == 0 {
+                                "No deliveries".into()
+                            } else {
+                                format!("{count} deliver{} tracked", if count == 1 { "y" } else { "ies" })
+                            });
+                        }
+                        AsyncResult::DeliveriesList(Err(e)) => {
+                            app.deliveries.set_error(e.to_string());
+                            app.status_message = Some(format!("Deliveries load failed: {e}"));
                         }
                         AsyncResult::ActivityList(Ok(entries)) => {
                             let count = entries.len();

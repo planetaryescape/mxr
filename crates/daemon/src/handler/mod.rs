@@ -17,6 +17,7 @@ mod briefing;
 mod commitments;
 mod commitments_extract;
 mod decisions_extract;
+pub(crate) mod deliveries;
 #[path = "diagnostics/mod.rs"]
 pub(crate) mod diagnostics_impl;
 mod draft_assist;
@@ -950,6 +951,20 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             snippets::set_snippet(state, name.clone(), body.clone(), vars.clone()).await
         }
         Request::DeleteSnippet { name } => snippets::delete_snippet(state, name).await,
+        Request::ListDeliveries { filter } => {
+            deliveries::list_deliveries(state, filter.as_deref()).await
+        }
+        Request::GetDelivery { delivery_id } => deliveries::get_delivery(state, delivery_id).await,
+        Request::ResolveDelivery { delivery_id } => {
+            deliveries::resolve_delivery(state, delivery_id).await
+        }
+        Request::DismissDelivery { delivery_id } => {
+            deliveries::dismiss_delivery(state, delivery_id).await
+        }
+        Request::ScanDeliveries {
+            since_days,
+            dry_run,
+        } => deliveries::scan_deliveries(state, *since_days, *dry_run).await,
         Request::ListSignatures => signatures::list_signatures(state).await,
         Request::ListSignatureDefaults => signatures::list_signature_defaults(state).await,
         Request::SetSignature { name, body } => {
@@ -1285,6 +1300,8 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::ListSnoozed
             | Request::ListReplyQueue
             | Request::ListSnippets
+            | Request::ListDeliveries { .. }
+            | Request::GetDelivery { .. }
             | Request::ListSignatures
             | Request::ListSignatureDefaults
             | Request::ResolveSignature { .. }
@@ -1404,6 +1421,11 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListSnippets => "list_snippets",
         Request::SetSnippet { .. } => "set_snippet",
         Request::DeleteSnippet { .. } => "delete_snippet",
+        Request::ListDeliveries { .. } => "list_deliveries",
+        Request::GetDelivery { .. } => "get_delivery",
+        Request::ResolveDelivery { .. } => "resolve_delivery",
+        Request::DismissDelivery { .. } => "dismiss_delivery",
+        Request::ScanDeliveries { .. } => "scan_deliveries",
         Request::ListSignatures => "list_signatures",
         Request::ListSignatureDefaults => "list_signature_defaults",
         Request::SetSignature { .. } => "set_signature",

@@ -316,6 +316,10 @@ fn llm_override_entries(
         (LlmFeature::DecisionLog, overrides.decision_log.as_ref()),
         (LlmFeature::Briefing, overrides.briefing.as_ref()),
         (LlmFeature::Expert, overrides.expert.as_ref()),
+        (
+            LlmFeature::DeliveryExtraction,
+            overrides.delivery_extraction.as_ref(),
+        ),
     ]
     .into_iter()
     .filter_map(|(feature, config)| config.map(|config| (feature, config)))

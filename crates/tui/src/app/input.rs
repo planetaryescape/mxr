@@ -1156,7 +1156,53 @@ impl App {
             Screen::Diagnostics => self.handle_diagnostics_screen_key(key),
             Screen::Accounts => self.handle_accounts_screen_key(key),
             Screen::Analytics => self.handle_analytics_screen_key(key),
+            Screen::Deliveries => self.handle_deliveries_screen_key(key),
             Screen::Mailbox => None,
+        }
+    }
+
+    fn handle_deliveries_screen_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> Option<Action> {
+        use crossterm::event::KeyCode;
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.deliveries.select_next();
+                None
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.deliveries.select_prev();
+                None
+            }
+            KeyCode::Char('g') => {
+                // Refresh the list.
+                self.deliveries.loading = true;
+                self.pending_deliveries_refresh = true;
+                None
+            }
+            KeyCode::Char('D') => {
+                // Cycle Active -> Delivered -> All and refetch.
+                self.deliveries.filter = self.deliveries.filter.next();
+                self.deliveries.loading = true;
+                self.pending_deliveries_refresh = true;
+                None
+            }
+            KeyCode::Char('r') => {
+                if let Some(row) = self.deliveries.selected_row() {
+                    self.pending_delivery_resolve = Some(row.id.clone());
+                    self.status_message = Some("Resolving delivery…".into());
+                }
+                None
+            }
+            KeyCode::Char('d') => {
+                if let Some(row) = self.deliveries.selected_row() {
+                    self.pending_delivery_dismiss = Some(row.id.clone());
+                    self.status_message = Some("Dismissing delivery…".into());
+                }
+                None
+            }
+            _ => None,
         }
     }
 

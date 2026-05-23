@@ -312,6 +312,24 @@ impl super::Store {
             .collect()
     }
 
+    /// Message ids with `date >= since`, newest first, across all accounts.
+    /// Backs the deliveries backfill scan. Unchecked query (like
+    /// `list_message_ids_by_account`) to avoid a `.sqlx` regen for an internal
+    /// maintenance query.
+    pub async fn list_message_ids_since(
+        &self,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<MessageId>, sqlx::Error> {
+        let since_ts = since.timestamp();
+        let rows = sqlx::query("SELECT id FROM messages WHERE date >= ?1 ORDER BY date DESC")
+            .bind(since_ts)
+            .fetch_all(self.reader())
+            .await?;
+        rows.into_iter()
+            .map(|row| decode_id(row.get::<String, _>("id").as_str()))
+            .collect()
+    }
+
     pub async fn list_envelopes_by_message_id_header(
         &self,
         account_id: &AccountId,

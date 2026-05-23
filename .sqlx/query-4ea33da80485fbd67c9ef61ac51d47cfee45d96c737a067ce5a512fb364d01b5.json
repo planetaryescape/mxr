@@ -1,0 +1,140 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id as \"id!\", account_id as \"account_id!\",\n                              dedup_key as \"dedup_key!\", merchant, carrier,\n                              tracking_number, tracking_url, order_number,\n                              status as \"status!\", eta_from, eta_until, delivered_at,\n                              items_json as \"items_json!\", confidence as \"confidence!: f64\",\n                              source as \"source!\", thread_id,\n                              last_event_at as \"last_event_at!\",\n                              created_at as \"created_at!\", updated_at as \"updated_at!\",\n                              resolved_at, dismissed_at\n                       FROM deliveries\n                       WHERE dismissed_at IS NULL AND delivered_at IS NOT NULL\n                       ORDER BY delivered_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "dedup_key!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "merchant",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "carrier",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "tracking_number",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "tracking_url",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "order_number",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "eta_from",
+        "ordinal": 9,
+        "type_info": "Integer"
+      },
+      {
+        "name": "eta_until",
+        "ordinal": 10,
+        "type_info": "Integer"
+      },
+      {
+        "name": "delivered_at",
+        "ordinal": 11,
+        "type_info": "Integer"
+      },
+      {
+        "name": "items_json!",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "confidence!: f64",
+        "ordinal": 13,
+        "type_info": "Float"
+      },
+      {
+        "name": "source!",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "thread_id",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_event_at!",
+        "ordinal": 16,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at!",
+        "ordinal": 17,
+        "type_info": "Integer"
+      },
+      {
+        "name": "updated_at!",
+        "ordinal": 18,
+        "type_info": "Integer"
+      },
+      {
+        "name": "resolved_at",
+        "ordinal": 19,
+        "type_info": "Integer"
+      },
+      {
+        "name": "dismissed_at",
+        "ordinal": 20,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "4ea33da80485fbd67c9ef61ac51d47cfee45d96c737a067ce5a512fb364d01b5"
+}

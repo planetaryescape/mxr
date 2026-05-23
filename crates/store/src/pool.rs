@@ -628,6 +628,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "message_keywords",
         kind: MigrationKind::Sql(include_str!("../migrations/041_message_keywords.sql")),
     },
+    Migration {
+        version: 42,
+        name: "deliveries",
+        kind: MigrationKind::Sql(include_str!("../migrations/042_deliveries.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

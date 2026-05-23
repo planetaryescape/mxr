@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO deliveries\n                   (id, account_id, dedup_key, merchant, carrier,\n                    tracking_number, tracking_url, order_number, status,\n                    eta_from, eta_until, delivered_at, items_json, confidence,\n                    source, thread_id, last_event_at, created_at, updated_at,\n                    resolved_at, dismissed_at)\n               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 21
+    },
+    "nullable": []
+  },
+  "hash": "791207e5d495a029e066ed5fbdb6c75efec959162f2726671d7de921e67e4410"
+}

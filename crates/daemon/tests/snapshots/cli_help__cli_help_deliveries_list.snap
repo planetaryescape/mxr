@@ -1,0 +1,11 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+List tracked deliveries (default)
+
+Usage: mxr deliveries list [OPTIONS]
+
+Options:
+      --filter <FILTER>  Which set: active (default), delivered, all, dismissed [default: active]
+  -h, --help             Print help

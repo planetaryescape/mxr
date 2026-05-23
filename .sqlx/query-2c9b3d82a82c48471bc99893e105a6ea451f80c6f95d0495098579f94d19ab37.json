@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE deliveries SET\n                   status = 'delivered',\n                   delivered_at = COALESCE(delivered_at, ?),\n                   resolved_at = COALESCE(resolved_at, ?),\n                   updated_at = ?\n               WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "2c9b3d82a82c48471bc99893e105a6ea451f80c6f95d0495098579f94d19ab37"
+}

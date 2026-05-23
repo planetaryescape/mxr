@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO delivery_messages\n                   (delivery_id, message_id, thread_id, email_kind, detected_at)\n               VALUES (?, ?, ?, ?, ?)\n               ON CONFLICT(delivery_id, message_id) DO UPDATE SET\n                   thread_id = excluded.thread_id,\n                   email_kind = excluded.email_kind,\n                   detected_at = excluded.detected_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "278620523f56625cc0a60cdce4a01f83340205ad5429e7e569f3fe957e1ffe22"
+}

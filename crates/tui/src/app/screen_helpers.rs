@@ -34,6 +34,7 @@ impl App {
                 }
             }
             Screen::Analytics => UiContext::Analytics,
+            Screen::Deliveries => UiContext::Deliveries,
         }
     }
 

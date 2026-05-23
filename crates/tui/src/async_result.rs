@@ -5,8 +5,8 @@ use mxr_core::types::SubscriptionSummary;
 use mxr_core::{Envelope, Label, MessageBody, MessageId, MxrError, Thread, ThreadId};
 use mxr_protocol::{
     AccountOperationResult, AccountSummaryData, AccountSyncStatus, AttachmentFile, AuthSessionData,
-    BodyFailure, DaemonEvent, ReplyContext, Response, RuleFormData, ScreenerQueueEntryData,
-    SenderProfileData, SnippetData, ThreadSummaryData,
+    BodyFailure, DaemonEvent, DeliveryData, ReplyContext, Response, RuleFormData,
+    ScreenerQueueEntryData, SenderProfileData, SnippetData, ThreadSummaryData,
 };
 use ratatui_image::thread::ResizeResponse;
 
@@ -159,6 +159,8 @@ pub(crate) enum AsyncResult {
     SnippetsList(Result<Vec<SnippetData>, MxrError>),
     /// Snapshot of the messages flagged for reply-later.
     ReplyQueueList(Result<Vec<Envelope>, MxrError>),
+    /// Snapshot of tracked deliveries for the Deliveries screen.
+    DeliveriesList(Result<Vec<DeliveryData>, MxrError>),
     /// Snapshot of recent activity log rows.
     ActivityList(Result<Vec<mxr_protocol::ActivityEntry>, MxrError>),
     /// Confirmation that a pause/resume toggle reached the daemon.

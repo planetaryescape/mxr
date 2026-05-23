@@ -272,6 +272,7 @@ impl InputHandler {
             (KeyState::Normal, KeyCode::Char('4'), KeyModifiers::NONE) => Some(Action::OpenTab4),
             (KeyState::Normal, KeyCode::Char('5'), KeyModifiers::NONE) => Some(Action::OpenTab5),
             (KeyState::Normal, KeyCode::Char('6'), KeyModifiers::NONE) => Some(Action::OpenTab6),
+            (KeyState::Normal, KeyCode::Char('7'), KeyModifiers::NONE) => Some(Action::OpenTab7),
 
             // Search navigation
             (KeyState::Normal, KeyCode::Char('n'), KeyModifiers::NONE) => {

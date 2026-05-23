@@ -1,0 +1,30 @@
+[package]
+name = "mxr-deliveries"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Internal: package/delivery detection and lifecycle for mxr"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+mxr-llm = { workspace = true }
+mxr-reader = { workspace = true }
+mxr-store = { workspace = true }
+tracking-numbers = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+once_cell = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }

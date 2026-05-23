@@ -2395,6 +2395,125 @@ async fn list_snoozed(
     }
 }
 
+#[derive(serde::Deserialize)]
+struct DeliveriesQuery {
+    token: Option<String>,
+    filter: Option<String>,
+}
+
+async fn list_deliveries(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<DeliveriesQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, q.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::ListDeliveries { filter: q.filter },
+    )
+    .await?
+    {
+        ResponseData::Deliveries { deliveries } => {
+            Ok(Json(json!({ "deliveries": deliveries })))
+        }
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn get_delivery(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    AxumPath(delivery_id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::GetDelivery {
+            delivery_id: parse_delivery_id(&delivery_id)?,
+        },
+    )
+    .await?
+    {
+        ResponseData::Delivery { delivery } => Ok(Json(json!({ "delivery": delivery }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn resolve_delivery(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    AxumPath(delivery_id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::ResolveDelivery {
+            delivery_id: parse_delivery_id(&delivery_id)?,
+        },
+    )
+    .await?
+    {
+        ResponseData::Delivery { delivery } => Ok(Json(json!({ "delivery": delivery }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn dismiss_delivery(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    AxumPath(delivery_id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::DismissDelivery {
+            delivery_id: parse_delivery_id(&delivery_id)?,
+        },
+    )
+    .await?
+    {
+        ResponseData::Ack => Ok(Json(json!({ "ok": true }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ScanDeliveriesRequest {
+    since_days: Option<u32>,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn scan_deliveries(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(req): Json<ScanDeliveriesRequest>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::ScanDeliveries {
+            since_days: req.since_days,
+            dry_run: req.dry_run,
+        },
+    )
+    .await?
+    {
+        ResponseData::DeliveryScan { summary } => Ok(Json(json!({ "summary": summary }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+fn parse_delivery_id(value: &str) -> Result<mxr_core::DeliveryId, BridgeError> {
+    Uuid::parse_str(value)
+        .map(mxr_core::DeliveryId::from_uuid)
+        .map_err(|_| BridgeError::Ipc(format!("invalid delivery id: {value}")))
+}
+
 async fn trigger_sync(
     State(state): State<AppState>,
     headers: HeaderMap,

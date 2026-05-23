@@ -546,6 +546,20 @@ async fn post_sync_fanout(
         tracing::error!(account = %account_id, %error, "rule execution failed");
     }
 
+    // Scan newly-upserted mail for deliveries (heuristic + optional LLM).
+    // Respects `[deliveries].enabled`; failures are logged, never propagated.
+    let delivery_summary =
+        crate::handler::deliveries::scan_messages(&state, &upserted_message_ids).await;
+    if delivery_summary.created > 0 || delivery_summary.updated > 0 {
+        tracing::info!(
+            account = %account_id,
+            created = delivery_summary.created,
+            updated = delivery_summary.updated,
+            shortlisted = delivery_summary.shortlisted,
+            "post-sync delivery scan"
+        );
+    }
+
     // Self-heal analytics derived data. Each step is a `WHERE column IS
     // NULL / = 'unknown'` filter so it costs near-zero on healthy data
     // and silently backfills the rest. Runs in the fan-out task — not

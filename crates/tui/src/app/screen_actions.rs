@@ -82,6 +82,11 @@ impl App {
             Action::OpenTab6 => {
                 self.apply(Action::OpenAnalyticsScreen);
             }
+            Action::OpenTab7 => {
+                self.screen = Screen::Deliveries;
+                self.deliveries.loading = true;
+                self.pending_deliveries_refresh = true;
+            }
             // Command palette
             Action::SyncNow => {
                 self.queue_mutation(

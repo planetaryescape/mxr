@@ -8,6 +8,7 @@ pub mod briefing_modal;
 pub mod bulk_confirm_modal;
 pub mod command_palette;
 pub mod compose_picker;
+pub mod deliveries_page;
 pub mod diagnostics_page;
 pub mod error_modal;
 pub mod expert_modal;

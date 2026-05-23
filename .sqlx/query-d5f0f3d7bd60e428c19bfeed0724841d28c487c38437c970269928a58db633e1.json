@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE deliveries SET\n                   dedup_key = ?, merchant = ?, carrier = ?,\n                   tracking_number = ?, tracking_url = ?, order_number = ?,\n                   status = ?, eta_from = ?, eta_until = ?, delivered_at = ?,\n                   items_json = ?, confidence = ?, source = ?, thread_id = ?,\n                   last_event_at = ?, updated_at = ?, resolved_at = ?,\n                   dismissed_at = ?\n               WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 19
+    },
+    "nullable": []
+  },
+  "hash": "d5f0f3d7bd60e428c19bfeed0724841d28c487c38437c970269928a58db633e1"
+}

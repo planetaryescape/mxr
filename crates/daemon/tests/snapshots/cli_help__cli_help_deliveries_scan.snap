@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Re-scan recent mail for deliveries
+
+Usage: mxr deliveries scan [OPTIONS]
+
+Options:
+      --since-days <SINCE_DAYS>  Window in days to scan (default 90)
+      --dry-run                  Preview detections without writing or calling the LLM
+  -h, --help                     Print help

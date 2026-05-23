@@ -138,6 +138,8 @@ pub struct LlmOverridesData {
     pub decision_log: Option<LlmOverrideData>,
     pub briefing: Option<LlmOverrideData>,
     pub expert: Option<LlmOverrideData>,
+    #[serde(default)]
+    pub delivery_extraction: Option<LlmOverrideData>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -774,6 +776,32 @@ pub enum Request {
     DeleteSnippet {
         name: String,
     },
+    /// List tracked deliveries. `filter` is one of "active" (default),
+    /// "delivered", "all", "dismissed".
+    ListDeliveries {
+        #[serde(default)]
+        filter: Option<String>,
+    },
+    /// Fetch a single delivery, including its source message ids.
+    GetDelivery {
+        delivery_id: DeliveryId,
+    },
+    /// Resolve a delivery (mark delivered/done so it leaves the active list).
+    ResolveDelivery {
+        delivery_id: DeliveryId,
+    },
+    /// Dismiss a delivery (hide a false positive).
+    DismissDelivery {
+        delivery_id: DeliveryId,
+    },
+    /// Re-scan recent mail for deliveries. `dry_run` reports what would be
+    /// created/updated without writing. `since_days` bounds the window.
+    ScanDeliveries {
+        #[serde(default)]
+        since_days: Option<u32>,
+        #[serde(default)]
+        dry_run: bool,
+    },
     /// List outgoing compose signatures, alphabetically by name.
     ListSignatures,
     /// List scoped signature defaults.
@@ -1221,6 +1249,11 @@ impl Request {
             | Self::ListSnippets
             | Self::SetSnippet { .. }
             | Self::DeleteSnippet { .. }
+            | Self::ListDeliveries { .. }
+            | Self::GetDelivery { .. }
+            | Self::ResolveDelivery { .. }
+            | Self::DismissDelivery { .. }
+            | Self::ScanDeliveries { .. }
             | Self::ListSignatures
             | Self::ListSignatureDefaults
             | Self::SetSignature { .. }
@@ -1665,6 +1698,15 @@ pub enum ResponseData {
     SnippetData {
         snippet: SnippetData,
     },
+    Deliveries {
+        deliveries: Vec<DeliveryData>,
+    },
+    Delivery {
+        delivery: DeliveryData,
+    },
+    DeliveryScan {
+        summary: DeliveryScanSummary,
+    },
     Signatures {
         signatures: Vec<SignatureData>,
     },
@@ -2004,6 +2046,9 @@ impl ResponseData {
             | Self::ReplyQueue { .. }
             | Self::Snippets { .. }
             | Self::SnippetData { .. }
+            | Self::Deliveries { .. }
+            | Self::Delivery { .. }
+            | Self::DeliveryScan { .. }
             | Self::Signatures { .. }
             | Self::SignatureData { .. }
             | Self::SignatureDefaults { .. }
@@ -2374,6 +2419,75 @@ pub struct SnippetData {
     pub vars: Vec<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// One ordered/shipped item within a delivery.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeliveryItemData {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quantity: Option<i64>,
+}
+
+/// A tracked delivery for the Deliveries surface (CLI/web/TUI).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeliveryData {
+    pub id: DeliveryId,
+    pub account_id: AccountId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merchant: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carrier: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracking_number: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracking_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order_number: Option<String>,
+    /// Normalized lifecycle status, e.g. "in_transit", "delivered".
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eta_from: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eta_until: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivered_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
+    pub items: Vec<DeliveryItemData>,
+    pub confidence: f64,
+    /// Detection source: "schema" | "llm" | "heuristic".
+    pub source: String,
+    /// Latest contributing thread, for "open in mailbox".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<ThreadId>,
+    pub last_event_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dismissed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Source message ids (provenance). Populated by GetDelivery.
+    #[serde(default)]
+    pub message_ids: Vec<MessageId>,
+}
+
+/// Result of a `ScanDeliveries` run.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeliveryScanSummary {
+    /// Messages examined in the window.
+    pub scanned: u32,
+    /// Candidates the heuristic created (or would create on a dry run).
+    pub created: u32,
+    /// Candidates merged into an existing delivery.
+    pub updated: u32,
+    /// Candidates handed to the LLM for confirmation.
+    pub shortlisted: u32,
+    /// Whether this was a preview (no writes).
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

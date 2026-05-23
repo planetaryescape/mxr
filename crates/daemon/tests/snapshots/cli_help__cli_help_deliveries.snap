@@ -1,0 +1,19 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Track packages and deliveries detected in your mail
+
+Usage: mxr deliveries [OPTIONS] [COMMAND]
+
+Commands:
+  list     List tracked deliveries (default)
+  get      Show one delivery, including its source messages
+  resolve  Mark a delivery delivered/done (leaves the active list)
+  dismiss  Hide a delivery (false positive)
+  scan     Re-scan recent mail for deliveries
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

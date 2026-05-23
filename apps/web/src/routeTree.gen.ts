@@ -17,6 +17,7 @@ import { Route as ReplyQueueRouteImport } from './routes/reply-queue'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as DiagnosticsRouteImport } from './routes/diagnostics'
 import { Route as DevRouteImport } from './routes/dev'
+import { Route as DeliveriesRouteImport } from './routes/deliveries'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as AccountsRouteImport } from './routes/accounts'
@@ -71,6 +72,11 @@ const DiagnosticsRoute = DiagnosticsRouteImport.update({
 const DevRoute = DevRouteImport.update({
   id: '/dev',
   path: '/dev',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeliveriesRoute = DeliveriesRouteImport.update({
+  id: '/deliveries',
+  path: '/deliveries',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AnalyticsRoute = AnalyticsRouteImport.update({
@@ -154,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/accounts': typeof AccountsRouteWithChildren
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
+  '/deliveries': typeof DeliveriesRoute
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
   '/onboarding': typeof OnboardingRoute
@@ -179,6 +186,7 @@ export interface FileRoutesByTo {
   '/accounts': typeof AccountsRouteWithChildren
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
+  '/deliveries': typeof DeliveriesRoute
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
   '/onboarding': typeof OnboardingRoute
@@ -205,6 +213,7 @@ export interface FileRoutesById {
   '/accounts': typeof AccountsRouteWithChildren
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
+  '/deliveries': typeof DeliveriesRoute
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
   '/onboarding': typeof OnboardingRoute
@@ -232,6 +241,7 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/activity'
     | '/analytics'
+    | '/deliveries'
     | '/dev'
     | '/diagnostics'
     | '/onboarding'
@@ -257,6 +267,7 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/activity'
     | '/analytics'
+    | '/deliveries'
     | '/dev'
     | '/diagnostics'
     | '/onboarding'
@@ -282,6 +293,7 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/activity'
     | '/analytics'
+    | '/deliveries'
     | '/dev'
     | '/diagnostics'
     | '/onboarding'
@@ -308,6 +320,7 @@ export interface RootRouteChildren {
   AccountsRoute: typeof AccountsRouteWithChildren
   ActivityRoute: typeof ActivityRoute
   AnalyticsRoute: typeof AnalyticsRouteWithChildren
+  DeliveriesRoute: typeof DeliveriesRoute
   DevRoute: typeof DevRoute
   DiagnosticsRoute: typeof DiagnosticsRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -381,6 +394,13 @@ declare module '@tanstack/react-router' {
       path: '/dev'
       fullPath: '/dev'
       preLoaderRoute: typeof DevRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/deliveries': {
+      id: '/deliveries'
+      path: '/deliveries'
+      fullPath: '/deliveries'
+      preLoaderRoute: typeof DeliveriesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/analytics': {
@@ -542,6 +562,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountsRoute: AccountsRouteWithChildren,
   ActivityRoute: ActivityRoute,
   AnalyticsRoute: AnalyticsRouteWithChildren,
+  DeliveriesRoute: DeliveriesRoute,
   DevRoute: DevRoute,
   DiagnosticsRoute: DiagnosticsRoute,
   OnboardingRoute: OnboardingRoute,

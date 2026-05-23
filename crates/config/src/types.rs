@@ -26,6 +26,23 @@ pub struct MxrConfig {
     pub llm: LlmConfig,
     pub humanizer: HumanizerConfig,
     pub activity: ActivityConfig,
+    pub deliveries: DeliveriesConfig,
+}
+
+/// Package/delivery tracking. Detection is local-first; the optional LLM
+/// enrichment is gated by the global LLM config plus its privacy policy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DeliveriesConfig {
+    /// Scan new mail for deliveries during the post-sync fan-out. On by
+    /// default; detection is fully local and cheap.
+    pub enabled: bool,
+}
+
+impl Default for DeliveriesConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }
 
 /// Configuration for the user-activity log. Strictly local; see
@@ -177,6 +194,7 @@ pub struct LlmOverrides {
     pub decision_log: Option<LlmOverrideConfig>,
     pub briefing: Option<LlmOverrideConfig>,
     pub expert: Option<LlmOverrideConfig>,
+    pub delivery_extraction: Option<LlmOverrideConfig>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

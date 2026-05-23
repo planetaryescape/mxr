@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Hide a delivery (false positive)
+
+Usage: mxr deliveries dismiss <DELIVERY_ID>
+
+Arguments:
+  <DELIVERY_ID>
+
+Options:
+  -h, --help  Print help

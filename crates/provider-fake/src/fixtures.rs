@@ -703,6 +703,19 @@ pub fn generate_demo_fixtures(
 
     let mut msg_num = 1usize;
     let mut thread_num = 0usize;
+    // Seed the personal account with shipping mail so the Deliveries surface
+    // is populated. Injected before the filler loop, which then tops up to
+    // `target_count`, so the total message count is unchanged.
+    if profile.email == "alex@demo.mxr.local" && profile.target_count >= 16 {
+        push_delivery_demo_threads(
+            &mut envelopes,
+            &mut bodies,
+            &mut msg_num,
+            account_id,
+            &self_addr,
+            now,
+        );
+    }
     while envelopes.len() < profile.target_count {
         let template_idx = thread_num % subject_templates.len();
         let category = thread_num % 13;
@@ -895,6 +908,19 @@ fn generate_curated_demo_fixtures(
 
     let mut msg_num = 1usize;
     let mut thread_num = 0usize;
+    // Personal account gets shipping mail so the curated showcase includes the
+    // Deliveries surface. Injected before the filler loop tops up to
+    // `target_count`, keeping the curated count stable.
+    if profile.email == "alex@demo.mxr.local" && profile.target_count >= 16 {
+        push_delivery_demo_threads(
+            &mut envelopes,
+            &mut bodies,
+            &mut msg_num,
+            account_id,
+            &self_addr,
+            now,
+        );
+    }
     while envelopes.len() < profile.target_count {
         let sender = senders[thread_num % senders.len()];
         let root_subject = subjects[thread_num % subjects.len()];
@@ -1213,6 +1239,155 @@ struct DemoMessage {
     label_provider_ids: Vec<String>,
     in_reply_to: Option<String>,
     references: Vec<String>,
+}
+
+/// Inject shipping/delivery mail so the demo profile populates the Deliveries
+/// surface. Senders are real carrier/merchant domains and the bodies carry
+/// checksum-valid tracking numbers, so the local detection heuristic creates
+/// deliveries without needing the LLM. Yields three tracked packages:
+///
+/// * an Amazon order whose confirmation → shipped → delivered emails collapse
+///   into a single delivery that resolves to `delivered` (lifecycle demo);
+/// * a UPS package `in_transit`;
+/// * a USPS package `out_for_delivery`.
+///
+/// Tracking numbers are valid fixtures from `tracking_number_data` so the
+/// `tracking-numbers` crate accepts them. Bodies deliberately avoid
+/// review/survey phrasing ("rate your delivery") which the detector treats as
+/// post-delivery noise.
+fn push_delivery_demo_threads(
+    envelopes: &mut Vec<Envelope>,
+    bodies: &mut HashMap<String, MessageBody>,
+    msg_num: &mut usize,
+    account_id: &AccountId,
+    self_addr: &Address,
+    now: chrono::DateTime<chrono::Utc>,
+) {
+    // --- Amazon: full lifecycle in one thread → resolves to delivered. ---
+    let order = "112-7480913-6624530";
+    let tracking = "TBA619632698000"; // Amazon Logistics (valid format)
+    let amazon = Address {
+        name: Some("Amazon.com".to_string()),
+        email: "shipment-tracking@amazon.com".to_string(),
+    };
+    let thread = ThreadId::new();
+    let lifecycle: [(i64, String, String, MessageFlags); 3] = [
+        (
+            6,
+            format!("Your Amazon.com order #{order} of \"USB-C Cable (2-pack)\""),
+            format!(
+                "Hello Alex,\n\nThank you for your order. We'll let you know when it ships.\n\nOrder #{order}\nItem: Anker USB-C Cable (2-pack)\nTracking number: {tracking}\nEstimated delivery: in a few days\n\nView your order in Your Orders."
+            ),
+            MessageFlags::READ,
+        ),
+        (
+            3,
+            "Shipped: your Amazon.com order is on the way".to_string(),
+            format!(
+                "Hello Alex,\n\nYour package has shipped and is on its way.\n\nOrder #{order}\nCarrier: Amazon Logistics\nTracking number: {tracking}\nTrack your package: https://track.amazon.com/?trackingId={tracking}\n\nArriving soon."
+            ),
+            MessageFlags::READ,
+        ),
+        (
+            1,
+            "Delivered: your Amazon.com package".to_string(),
+            format!(
+                "Hello Alex,\n\nYour package was delivered.\n\nOrder #{order}\nTracking number: {tracking}\nDelivered to: front door\n\nThank you for shopping with us."
+            ),
+            MessageFlags::empty(),
+        ),
+    ];
+    let mut references = Vec::new();
+    let mut previous_message_id: Option<String> = None;
+    for (days_ago, subject, body, flags) in lifecycle {
+        let header = push_demo_msg(
+            envelopes,
+            bodies,
+            msg_num,
+            account_id,
+            &thread,
+            DemoMessage {
+                from: amazon.clone(),
+                to: vec![self_addr.clone()],
+                cc: Vec::new(),
+                subject,
+                snippet: format!("Amazon order #{order} — tracking {tracking}"),
+                body_text: body,
+                date: now - Duration::days(days_ago),
+                flags,
+                has_attachments: false,
+                category: 5,
+                unsubscribe: UnsubscribeMethod::None,
+                label_provider_ids: vec!["INBOX".to_string()],
+                in_reply_to: previous_message_id.clone(),
+                references: references.clone(),
+            },
+        );
+        if previous_message_id.is_none() {
+            references.push(header.clone());
+        }
+        previous_message_id = Some(header);
+    }
+
+    // --- UPS: a single in-transit shipment from a boutique merchant. ---
+    push_demo_msg(
+        envelopes,
+        bodies,
+        msg_num,
+        account_id,
+        &ThreadId::new(),
+        DemoMessage {
+            from: Address {
+                name: Some("UPS".to_string()),
+                email: "mcinfo@ups.com".to_string(),
+            },
+            to: vec![self_addr.clone()],
+            cc: Vec::new(),
+            subject: "UPS Update: your Cedar & Sage package is on the way".to_string(),
+            snippet: "UPS 1Z5R89390357567127 — arriving Friday".to_string(),
+            body_text:
+                "Hello Alex,\n\nYour order from Cedar & Sage has shipped and is on the way.\n\nMerchant: Cedar & Sage\nTracking number: 1Z5R89390357567127\nScheduled delivery: Friday by end of day\nTrack: https://www.ups.com/track?tracknum=1Z5R89390357567127"
+                    .to_string(),
+            date: now - Duration::days(2),
+            flags: MessageFlags::empty(),
+            has_attachments: false,
+            category: 6,
+            unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: vec!["INBOX".to_string()],
+            in_reply_to: None,
+            references: Vec::new(),
+        },
+    );
+
+    // --- USPS: a single out-for-delivery shipment. ---
+    push_demo_msg(
+        envelopes,
+        bodies,
+        msg_num,
+        account_id,
+        &ThreadId::new(),
+        DemoMessage {
+            from: Address {
+                name: Some("USPS Informed Delivery".to_string()),
+                email: "auto-reply@usps.com".to_string(),
+            },
+            to: vec![self_addr.clone()],
+            cc: Vec::new(),
+            subject: "Your USPS package is out for delivery".to_string(),
+            snippet: "USPS 9400111899560438600329 — out for delivery today".to_string(),
+            body_text:
+                "Hello Alex,\n\nYour package is out for delivery and should arrive today.\n\nTracking number: 9400111899560438600329\nStatus: Out for Delivery\nTrack: https://tools.usps.com/go/TrackConfirmAction?tLabels=9400111899560438600329"
+                    .to_string(),
+            date: now - Duration::hours(5),
+            flags: MessageFlags::empty(),
+            has_attachments: false,
+            category: 6,
+            unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: vec!["INBOX".to_string()],
+            in_reply_to: None,
+            references: Vec::new(),
+        },
+    );
 }
 
 fn push_demo_msg(
@@ -1591,7 +1766,7 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
-    fn curated_demo_seed_is_50_messages_across_12_counterparties() {
+    fn curated_demo_seed_is_50_messages_across_15_counterparties() {
         let work_id = AccountId::from_provider_id("fake", "alex@work.demo.mxr.local");
         let personal_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
         let (work, work_bodies, _) = generate_demo_fixtures(&work_id, CURATED_DEMO_MESSAGE_COUNT);
@@ -1609,7 +1784,12 @@ mod tests {
             .chain(personal.iter())
             .flat_map(counterparty_emails)
             .collect::<HashSet<_>>();
-        assert_eq!(counterparties.len(), 12);
+        // 12 curated counterparties + 3 carriers/merchants from the seeded
+        // deliveries (Amazon, UPS, USPS), which land in the personal account.
+        assert_eq!(counterparties.len(), 15);
+        assert!(counterparties.contains("shipment-tracking@amazon.com"));
+        assert!(counterparties.contains("mcinfo@ups.com"));
+        assert!(counterparties.contains("auto-reply@usps.com"));
     }
 
     #[test]

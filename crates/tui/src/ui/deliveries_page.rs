@@ -15,7 +15,11 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DeliveriesState, theme: &crat
 }
 
 fn draw_table(frame: &mut Frame, area: Rect, state: &DeliveriesState, theme: &crate::theme::Theme) {
-    let title = format!(" Deliveries — {} ({}) ", state.filter.label(), state.rows.len());
+    let title = format!(
+        " Deliveries — {} ({}) ",
+        state.filter.label(),
+        state.rows.len()
+    );
 
     if let Some(error) = &state.error {
         let p = Paragraph::new(format!("Failed to load deliveries:\n{error}"))
@@ -84,7 +88,12 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &DeliveriesState, theme: &cr
     frame.render_stateful_widget(table, area, &mut table_state);
 }
 
-fn draw_footer(frame: &mut Frame, area: Rect, _state: &DeliveriesState, theme: &crate::theme::Theme) {
+fn draw_footer(
+    frame: &mut Frame,
+    area: Rect,
+    _state: &DeliveriesState,
+    theme: &crate::theme::Theme,
+) {
     let help = "j/k move · r resolve · d dismiss · D filter · g refresh";
     let p = Paragraph::new(help).style(Style::default().fg(theme.text_muted));
     frame.render_widget(p, area);

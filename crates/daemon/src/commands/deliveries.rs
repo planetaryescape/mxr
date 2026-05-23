@@ -60,7 +60,11 @@ pub async fn run(
             match resp {
                 Response::Ok {
                     data: ResponseData::Delivery { delivery },
-                } => println!("Resolved {} ({})", short(&delivery.id.to_string()), delivery.status),
+                } => println!(
+                    "Resolved {} ({})",
+                    short(&delivery.id.to_string()),
+                    delivery.status
+                ),
                 Response::Error { message, .. } => anyhow::bail!("{message}"),
                 _ => anyhow::bail!("Unexpected response"),
             }

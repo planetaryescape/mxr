@@ -82,10 +82,7 @@ impl SemanticServiceHandle {
     /// reader-pool size so background ingest can never starve
     /// interactive/status queries of connections. A permit is held
     /// across each per-message ingest unit (embedding compute + writes).
-    pub fn start(
-        engine: SemanticEngine,
-        background_db: Arc<Semaphore>,
-    ) -> (Self, JoinHandle<()>) {
+    pub fn start(engine: SemanticEngine, background_db: Arc<Semaphore>) -> (Self, JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel::<SemanticCommand>(32);
         let runtime_metrics = Arc::new(Mutex::new(SemanticRuntimeMetrics::default()));
         let worker_metrics = runtime_metrics.clone();

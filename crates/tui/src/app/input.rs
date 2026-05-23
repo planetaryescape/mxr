@@ -1161,10 +1161,7 @@ impl App {
         }
     }
 
-    fn handle_deliveries_screen_key(
-        &mut self,
-        key: crossterm::event::KeyEvent,
-    ) -> Option<Action> {
+    fn handle_deliveries_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         use crossterm::event::KeyCode;
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {

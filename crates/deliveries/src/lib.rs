@@ -262,19 +262,18 @@ pub fn detect(input: &DetectInput) -> DeliverySignal {
     );
     let carrier_sender = assessment.sender == heuristics::SenderClass::Carrier;
 
-    // Decision ladder (precision over recall).
-    let raw = if schema_present {
+    // Decision ladder (precision over recall). Create on a strong, directly
+    // actionable signal; otherwise hand plausible candidates to the LLM.
+    let create = schema_present
+        || (carrier_sender && valid_tracking)
+        || (score >= 0.8 && (valid_tracking || carrier_sender));
+    // Order confirmations from unknown merchant domains (the common case) score
+    // low but are worth an LLM look when there's a lifecycle stage plus an
+    // order number (or a known sender) to correlate on.
+    let shortlist = score >= 0.5 || (stage.is_some() && (order_number.is_some() || known_sender));
+    let raw = if create {
         Decision::Create
-    } else if carrier_sender && valid_tracking {
-        Decision::Create
-    } else if score >= 0.8 && (valid_tracking || carrier_sender) {
-        Decision::Create
-    } else if score >= 0.5 {
-        Decision::ShortlistLlm
-    } else if stage.is_some() && (order_number.is_some() || known_sender) {
-        // Order confirmations from unknown merchant domains (the common case)
-        // score low but are worth an LLM look when there's a lifecycle stage
-        // plus an order number to correlate on.
+    } else if shortlist {
         Decision::ShortlistLlm
     } else {
         Decision::Reject
@@ -343,9 +342,7 @@ pub const CORROBORATING_SIGNALS: &[&str] = &[
 
 /// True if any corroborating shipping-context signal fired.
 pub fn is_corroborated(signals: &[&str]) -> bool {
-    signals
-        .iter()
-        .any(|s| CORROBORATING_SIGNALS.contains(s))
+    signals.iter().any(|s| CORROBORATING_SIGNALS.contains(s))
 }
 
 /// Correlation key: the tracking number when known, else "merchant|order".
@@ -373,7 +370,12 @@ pub fn compute_dedup_key(
 mod tests {
     use super::*;
 
-    fn input<'a>(name: &'a str, domain: &'a str, subject: &'a str, body: &'a str) -> DetectInput<'a> {
+    fn input<'a>(
+        name: &'a str,
+        domain: &'a str,
+        subject: &'a str,
+        body: &'a str,
+    ) -> DetectInput<'a> {
         DetectInput {
             from_name: name,
             from_domain: domain,

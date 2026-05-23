@@ -235,7 +235,10 @@ fn cli_help_snapshots_cover_all_commands() {
             &["snippets", "remove", "--help"],
         ),
         ("cli_help_deliveries", &["deliveries", "--help"]),
-        ("cli_help_deliveries_list", &["deliveries", "list", "--help"]),
+        (
+            "cli_help_deliveries_list",
+            &["deliveries", "list", "--help"],
+        ),
         ("cli_help_deliveries_get", &["deliveries", "get", "--help"]),
         (
             "cli_help_deliveries_resolve",
@@ -245,7 +248,10 @@ fn cli_help_snapshots_cover_all_commands() {
             "cli_help_deliveries_dismiss",
             &["deliveries", "dismiss", "--help"],
         ),
-        ("cli_help_deliveries_scan", &["deliveries", "scan", "--help"]),
+        (
+            "cli_help_deliveries_scan",
+            &["deliveries", "scan", "--help"],
+        ),
         ("cli_help_sender", &["sender", "--help"]),
         ("cli_help_senders", &["senders", "--help"]),
         ("cli_help_screener", &["screener", "--help"]),

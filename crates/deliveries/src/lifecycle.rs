@@ -52,9 +52,11 @@ pub async fn apply(
     // email carrying a tracking number merges into the earlier order row.
     let mut existing = store.get_delivery_by_dedup(account_id, &primary).await?;
     if existing.is_none() {
-        if let Some(secondary) =
-            compute_dedup_key(None, signal.merchant.as_deref(), signal.order_number.as_deref())
-        {
+        if let Some(secondary) = compute_dedup_key(
+            None,
+            signal.merchant.as_deref(),
+            signal.order_number.as_deref(),
+        ) {
             if secondary != primary {
                 existing = store.get_delivery_by_dedup(account_id, &secondary).await?;
             }
@@ -236,7 +238,14 @@ mod tests {
     fn build_new_marks_delivered_resolved() {
         let acct = account();
         let s = signal(DeliveryStatus::Delivered, Some("1Z1"), None, None);
-        let d = build_new(&acct, "1Z1".into(), &s, DeliveryStatus::Delivered, None, now());
+        let d = build_new(
+            &acct,
+            "1Z1".into(),
+            &s,
+            DeliveryStatus::Delivered,
+            None,
+            now(),
+        );
         assert_eq!(d.status, "delivered");
         assert_eq!(d.delivered_at, Some(now()));
         assert_eq!(d.resolved_at, Some(now()));
@@ -246,18 +255,49 @@ mod tests {
     fn merge_advances_status_forward() {
         let acct = account();
         let ordered = signal(DeliveryStatus::Ordered, None, Some("Acme"), Some("A1"));
-        let mut d = build_new(&acct, "acme|a1".into(), &ordered, DeliveryStatus::Ordered, None, now());
+        let mut d = build_new(
+            &acct,
+            "acme|a1".into(),
+            &ordered,
+            DeliveryStatus::Ordered,
+            None,
+            now(),
+        );
 
         // Shipped email gains a tracking number → advance + migrate key.
-        let shipped = signal(DeliveryStatus::InTransit, Some("1Z9"), Some("Acme"), Some("A1"));
-        merge_into(&mut d, &shipped, DeliveryStatus::InTransit, "1Z9", None, now());
+        let shipped = signal(
+            DeliveryStatus::InTransit,
+            Some("1Z9"),
+            Some("Acme"),
+            Some("A1"),
+        );
+        merge_into(
+            &mut d,
+            &shipped,
+            DeliveryStatus::InTransit,
+            "1Z9",
+            None,
+            now(),
+        );
         assert_eq!(d.status, "in_transit");
         assert_eq!(d.dedup_key, "1Z9");
         assert_eq!(d.tracking_number.as_deref(), Some("1Z9"));
 
         // Delivered email closes it out.
-        let delivered = signal(DeliveryStatus::Delivered, Some("1Z9"), Some("Acme"), Some("A1"));
-        merge_into(&mut d, &delivered, DeliveryStatus::Delivered, "1Z9", None, now());
+        let delivered = signal(
+            DeliveryStatus::Delivered,
+            Some("1Z9"),
+            Some("Acme"),
+            Some("A1"),
+        );
+        merge_into(
+            &mut d,
+            &delivered,
+            DeliveryStatus::Delivered,
+            "1Z9",
+            None,
+            now(),
+        );
         assert_eq!(d.status, "delivered");
         assert!(d.delivered_at.is_some());
     }
@@ -266,11 +306,25 @@ mod tests {
     fn merge_never_regresses_terminal() {
         let acct = account();
         let delivered = signal(DeliveryStatus::Delivered, Some("1Z9"), None, None);
-        let mut d = build_new(&acct, "1Z9".into(), &delivered, DeliveryStatus::Delivered, None, now());
+        let mut d = build_new(
+            &acct,
+            "1Z9".into(),
+            &delivered,
+            DeliveryStatus::Delivered,
+            None,
+            now(),
+        );
 
         // A late, stale "in transit" email must not reopen it.
         let stale = signal(DeliveryStatus::InTransit, Some("1Z9"), None, None);
-        merge_into(&mut d, &stale, DeliveryStatus::InTransit, "1Z9", None, now());
+        merge_into(
+            &mut d,
+            &stale,
+            DeliveryStatus::InTransit,
+            "1Z9",
+            None,
+            now(),
+        );
         assert_eq!(d.status, "delivered", "terminal row stays delivered");
     }
 }

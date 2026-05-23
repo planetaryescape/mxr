@@ -1,5 +1,5 @@
 ---
-source: crates/web/src/lib.rs
+source: crates/web/src/tests.rs
 expression: summary
 ---
 {
@@ -65,6 +65,10 @@ expression: summary
     "DaemonEvent",
     "DaemonHealthClass",
     "DecisionLogEntryData",
+    "DeliveryData",
+    "DeliveryId",
+    "DeliveryItemData",
+    "DeliveryScanSummary",
     "DoctorDataStats",
     "DoctorFinding",
     "DoctorFindingCategory",

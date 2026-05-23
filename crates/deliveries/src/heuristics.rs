@@ -39,7 +39,8 @@ pub struct Assessment {
 }
 
 static ORDER_NUMBER: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)\border\s*(?:#|no\.?|number)?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-]{4,})").unwrap()
+    Regex::new(r"(?i)\border\s*(?:#|no\.?|number)?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-]{4,})")
+        .expect("valid order-number regex")
 });
 
 // ISO date near an ETA cue → eta_until. Conservative on purpose; schema/LLM
@@ -48,7 +49,7 @@ static ETA_ISO: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)(?:arriv\w*|expected|estimated delivery|deliver(?:y|ed)?\s+by|arrives)\D{0,30}(\d{4}-\d{2}-\d{2})",
     )
-    .unwrap()
+    .expect("valid eta-iso regex")
 });
 
 // Display-name fragments that are roles, not merchants.
@@ -129,13 +130,14 @@ pub fn assess(input: &DetectInput) -> Assessment {
     }
 
     // --- exclusions (negative) ---
-    let is_promo = contains_any(&subject_l, PROMO_KEYWORDS) || contains_any(&body_l, PROMO_KEYWORDS);
+    let is_promo =
+        contains_any(&subject_l, PROMO_KEYWORDS) || contains_any(&body_l, PROMO_KEYWORDS);
     if is_promo {
         score -= 0.4;
         signals.push("promo");
     }
-    let is_subscription =
-        contains_any(&subject_l, SUBSCRIPTION_KEYWORDS) || contains_any(&body_l, SUBSCRIPTION_KEYWORDS);
+    let is_subscription = contains_any(&subject_l, SUBSCRIPTION_KEYWORDS)
+        || contains_any(&body_l, SUBSCRIPTION_KEYWORDS);
     if is_subscription {
         score -= 0.4;
         signals.push("subscription");
@@ -261,7 +263,12 @@ fn parse_iso_eod(s: &str) -> Option<DateTime<Utc>> {
 mod tests {
     use super::*;
 
-    fn input<'a>(name: &'a str, domain: &'a str, subject: &'a str, body: &'a str) -> DetectInput<'a> {
+    fn input<'a>(
+        name: &'a str,
+        domain: &'a str,
+        subject: &'a str,
+        body: &'a str,
+    ) -> DetectInput<'a> {
         DetectInput {
             from_name: name,
             from_domain: domain,
@@ -348,7 +355,12 @@ mod tests {
 
     #[test]
     fn merchant_falls_back_to_domain_for_role_senders() {
-        let a = assess(&input("no-reply", "shop.acme.com", "Order confirmation", ""));
+        let a = assess(&input(
+            "no-reply",
+            "shop.acme.com",
+            "Order confirmation",
+            "",
+        ));
         assert_eq!(a.merchant.as_deref(), Some("Acme"));
     }
 

@@ -17,13 +17,15 @@ pub struct ValidatedTracking {
 
 // Contiguous alphanumeric run — catches numbers embedded in prose
 // ("USPS 9400111899560438600329 ships today").
-static CONTIGUOUS: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)[0-9A-Z]{8,35}").unwrap());
+static CONTIGUOUS: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)[0-9A-Z]{8,35}").expect("valid contiguous-token regex"));
 
 // Space/hyphen-grouped run of short chunks — catches numbers emails wrap into
 // groups ("1Z 5R8 939 03 5756 7127"). Bounded chunk length (<=6) so it does
 // not greedily merge whole sentences of words.
-static GROUPED: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)(?:[0-9A-Z]{1,6}[ \-]){2,}[0-9A-Z]{1,6}").unwrap());
+static GROUPED: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)(?:[0-9A-Z]{1,6}[ \-]){2,}[0-9A-Z]{1,6}").expect("valid grouped-token regex")
+});
 
 /// Extract and validate tracking numbers from free text (subject + body).
 /// Returns only checksum-valid numbers, de-duplicated by normalized number.
@@ -90,7 +92,11 @@ mod tests {
         // digit strings legitimately pass FedEx/USPS checksums; precision for
         // those is enforced downstream by sender/subject corroboration.)
         let valid_flipped = "ref 1Z5R89390357567128 here"; // last digit 7 -> 8
-        assert!(extract(valid_flipped).is_empty(), "{:?}", extract(valid_flipped));
+        assert!(
+            extract(valid_flipped).is_empty(),
+            "{:?}",
+            extract(valid_flipped)
+        );
         assert!(extract("just some words, no numbers").is_empty());
     }
 
@@ -98,7 +104,9 @@ mod tests {
     fn validates_amazon_tba() {
         let found = extract("Your Amazon package TBA619632698000 ships today");
         assert!(
-            found.iter().any(|t| t.number == "TBA619632698000" && t.carrier == "amazon"),
+            found
+                .iter()
+                .any(|t| t.number == "TBA619632698000" && t.carrier == "amazon"),
             "{found:?}"
         );
     }
@@ -112,5 +120,4 @@ mod tests {
             "spaced UPS not recovered: {found:?}"
         );
     }
-
 }

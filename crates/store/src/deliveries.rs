@@ -278,9 +278,8 @@ impl super::Store {
         // Each arm uses the same projection; only the predicate/order differs,
         // which `query!` requires as distinct literals.
         let rows = match filter {
-            DeliveryListFilter::Active => {
-                sqlx::query!(
-                    r#"SELECT id as "id!", account_id as "account_id!",
+            DeliveryListFilter::Active => sqlx::query!(
+                r#"SELECT id as "id!", account_id as "account_id!",
                               dedup_key as "dedup_key!", merchant, carrier,
                               tracking_number, tracking_url, order_number,
                               status as "status!", eta_from, eta_until, delivered_at,
@@ -292,16 +291,14 @@ impl super::Store {
                        FROM deliveries
                        WHERE dismissed_at IS NULL AND delivered_at IS NULL
                        ORDER BY last_event_at DESC"#,
-                )
-                .fetch_all(self.reader())
-                .await?
-                .into_iter()
-                .map(|r| delivery_from_row!(r))
-                .collect::<Result<Vec<_>, _>>()?
-            }
-            DeliveryListFilter::Delivered => {
-                sqlx::query!(
-                    r#"SELECT id as "id!", account_id as "account_id!",
+            )
+            .fetch_all(self.reader())
+            .await?
+            .into_iter()
+            .map(|r| delivery_from_row!(r))
+            .collect::<Result<Vec<_>, _>>()?,
+            DeliveryListFilter::Delivered => sqlx::query!(
+                r#"SELECT id as "id!", account_id as "account_id!",
                               dedup_key as "dedup_key!", merchant, carrier,
                               tracking_number, tracking_url, order_number,
                               status as "status!", eta_from, eta_until, delivered_at,
@@ -313,16 +310,14 @@ impl super::Store {
                        FROM deliveries
                        WHERE dismissed_at IS NULL AND delivered_at IS NOT NULL
                        ORDER BY delivered_at DESC"#,
-                )
-                .fetch_all(self.reader())
-                .await?
-                .into_iter()
-                .map(|r| delivery_from_row!(r))
-                .collect::<Result<Vec<_>, _>>()?
-            }
-            DeliveryListFilter::All => {
-                sqlx::query!(
-                    r#"SELECT id as "id!", account_id as "account_id!",
+            )
+            .fetch_all(self.reader())
+            .await?
+            .into_iter()
+            .map(|r| delivery_from_row!(r))
+            .collect::<Result<Vec<_>, _>>()?,
+            DeliveryListFilter::All => sqlx::query!(
+                r#"SELECT id as "id!", account_id as "account_id!",
                               dedup_key as "dedup_key!", merchant, carrier,
                               tracking_number, tracking_url, order_number,
                               status as "status!", eta_from, eta_until, delivered_at,
@@ -334,16 +329,14 @@ impl super::Store {
                        FROM deliveries
                        WHERE dismissed_at IS NULL
                        ORDER BY last_event_at DESC"#,
-                )
-                .fetch_all(self.reader())
-                .await?
-                .into_iter()
-                .map(|r| delivery_from_row!(r))
-                .collect::<Result<Vec<_>, _>>()?
-            }
-            DeliveryListFilter::Dismissed => {
-                sqlx::query!(
-                    r#"SELECT id as "id!", account_id as "account_id!",
+            )
+            .fetch_all(self.reader())
+            .await?
+            .into_iter()
+            .map(|r| delivery_from_row!(r))
+            .collect::<Result<Vec<_>, _>>()?,
+            DeliveryListFilter::Dismissed => sqlx::query!(
+                r#"SELECT id as "id!", account_id as "account_id!",
                               dedup_key as "dedup_key!", merchant, carrier,
                               tracking_number, tracking_url, order_number,
                               status as "status!", eta_from, eta_until, delivered_at,
@@ -355,13 +348,12 @@ impl super::Store {
                        FROM deliveries
                        WHERE dismissed_at IS NOT NULL
                        ORDER BY dismissed_at DESC"#,
-                )
-                .fetch_all(self.reader())
-                .await?
-                .into_iter()
-                .map(|r| delivery_from_row!(r))
-                .collect::<Result<Vec<_>, _>>()?
-            }
+            )
+            .fetch_all(self.reader())
+            .await?
+            .into_iter()
+            .map(|r| delivery_from_row!(r))
+            .collect::<Result<Vec<_>, _>>()?,
         };
         trace_query("deliveries.list", started_at, rows.len());
         Ok(rows)
@@ -584,7 +576,10 @@ mod tests {
 
         let ids = |v: Vec<Delivery>| v.into_iter().map(|d| d.id).collect::<Vec<_>>();
         assert_eq!(
-            ids(store.list_deliveries(DeliveryListFilter::Active).await.unwrap()),
+            ids(store
+                .list_deliveries(DeliveryListFilter::Active)
+                .await
+                .unwrap()),
             vec![active.id.clone()]
         );
         assert_eq!(
@@ -602,7 +597,10 @@ mod tests {
             vec![dismissed.id.clone()]
         );
         // All excludes only the dismissed row.
-        let all = ids(store.list_deliveries(DeliveryListFilter::All).await.unwrap());
+        let all = ids(store
+            .list_deliveries(DeliveryListFilter::All)
+            .await
+            .unwrap());
         assert_eq!(all.len(), 2);
         assert!(all.contains(&active.id) && all.contains(&delivered.id));
     }

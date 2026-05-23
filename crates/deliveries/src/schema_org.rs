@@ -37,7 +37,7 @@ impl SchemaExtract {
 
 static LD_JSON: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"(?is)<script[^>]+type\s*=\s*["']application/ld\+json["'][^>]*>(.*?)</script>"#)
-        .unwrap()
+        .expect("valid ld+json regex")
 });
 
 /// Parse the first meaningful `ParcelDelivery`/`Order` JSON-LD block from an

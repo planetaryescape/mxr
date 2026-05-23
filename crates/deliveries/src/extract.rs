@@ -275,7 +275,11 @@ mod tests {
         assert_eq!(merged.decision, Decision::Create);
         assert_eq!(merged.source, DetectionSource::Llm);
         assert_eq!(merged.stage, Some(DeliveryStatus::InTransit));
-        assert_eq!(merged.merchant.as_deref(), Some("Acme"), "base merchant kept");
+        assert_eq!(
+            merged.merchant.as_deref(),
+            Some("Acme"),
+            "base merchant kept"
+        );
         assert_eq!(merged.carrier.as_deref(), Some("ups"));
         assert_eq!(
             merged.primary_tracking_number().as_deref(),
@@ -302,7 +306,10 @@ mod tests {
             confidence: 0.5,
         };
         let merged = merge(base_signal(), llm);
-        assert!(merged.tracking_numbers.is_empty(), "checksum-invalid dropped");
+        assert!(
+            merged.tracking_numbers.is_empty(),
+            "checksum-invalid dropped"
+        );
         // Falls back to merchant|order dedup.
         assert_eq!(merged.dedup_key.as_deref(), Some("acme|a-9"));
     }

@@ -3,17 +3,12 @@
 use mxr_protocol::DeliveryData;
 
 /// Which slice of deliveries the screen is showing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DeliveryFilter {
+    #[default]
     Active,
     Delivered,
     All,
-}
-
-impl Default for DeliveryFilter {
-    fn default() -> Self {
-        Self::Active
-    }
 }
 
 impl DeliveryFilter {

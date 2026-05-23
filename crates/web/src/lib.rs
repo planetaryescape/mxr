@@ -2413,9 +2413,7 @@ async fn list_deliveries(
     )
     .await?
     {
-        ResponseData::Deliveries { deliveries } => {
-            Ok(Json(json!({ "deliveries": deliveries })))
-        }
+        ResponseData::Deliveries { deliveries } => Ok(Json(json!({ "deliveries": deliveries }))),
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }

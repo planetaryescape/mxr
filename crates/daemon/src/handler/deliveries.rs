@@ -299,12 +299,7 @@ fn parse_filter(filter: Option<&str>) -> DeliveryListFilter {
 }
 
 fn domain_of(email: &str) -> String {
-    email
-        .rsplit('@')
-        .next()
-        .unwrap_or("")
-        .trim()
-        .to_lowercase()
+    email.rsplit('@').next().unwrap_or("").trim().to_lowercase()
 }
 
 fn to_data(d: Delivery) -> DeliveryData {

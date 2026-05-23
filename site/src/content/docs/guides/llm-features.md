@@ -20,6 +20,7 @@ guide:
 | `mxr briefing thread` / `recipient` | [Briefings and loop-in](/guides/briefings-and-loop-in/) | dormant-thread / long-gap recap from existing source pack |
 | `mxr expert` reason text | [Briefings and loop-in](/guides/briefings-and-loop-in/#whos-the-expert) | improve the deterministic ranking's `reason` field |
 | `mxr whois` summary | [Briefings and loop-in](/guides/briefings-and-loop-in/#whois) | cited explanation of a person / project / term |
+| delivery extraction | [Deliveries](/guides/deliveries/) | confirm a shortlisted email is a real shipment, extract merchant / carrier / items / ETA |
 
 Every feature degrades cleanly when `[llm] enabled = false`: deterministic
 fallbacks return the retrieval set, the regex matches, or the cached

@@ -27,15 +27,13 @@ help modal (`?`).
 
 | Key | Action |
 |-----|--------|
-| `1` / `2` / `3` / `4` / `5` | Switch Mailbox / Search / Rules / Accounts / Diagnostics |
+| `1`–`7` | Switch Mailbox / Search / Rules / Accounts / Diagnostics / Analytics / Deliveries |
 | `Ctrl-p` | Open command palette |
 | `gc` | Edit config |
 | `gL` | Open logs |
 | `?` | Toggle help modal |
 | `Esc` | Back, close modal, dismiss pane, or clear selection |
 | `q` | Quit current view or exit |
-
-The Analytics screen has no default digit key; open it via `Ctrl-p` → "Analytics" or rebind `open_tab_6` to a key in `~/.config/mxr/keys.toml` (see [Custom keybindings](/reference/config/#custom-keybindings)).
 
 ## Mail list
 
@@ -102,7 +100,8 @@ The Analytics screen has no default digit key; open it via `Ctrl-p` → "Analyti
 | `3` | Rules |
 | `4` | Accounts |
 | `5` | Diagnostics |
-| _(unbound)_ | Analytics — via `Ctrl-p` → "Analytics" |
+| `6` | Analytics |
+| `7` | Deliveries |
 
 ### Go-to
 
@@ -142,7 +141,7 @@ The Analytics screen has no default digit key; open it via `Ctrl-p` → "Analyti
 | `s` | Star / unstar |
 | `I` | Mark read |
 | `U` | Mark unread |
-| `1`–`5` | Switch primary tab (Mailbox / Search / Rules / Accounts / Diagnostics) |
+| `1`–`7` | Switch primary tab (Mailbox / Search / Rules / Accounts / Diagnostics / Analytics / Deliveries) |
 | `gc` | Edit config |
 | `gL` | Show recent logs |
 | `D` | Unsubscribe |
@@ -172,7 +171,7 @@ The Analytics screen has no default digit key; open it via `Ctrl-p` → "Analyti
 | `I` | Mark read |
 | `U` | Mark unread |
 | `D` | Unsubscribe |
-| `1`–`5` | Switch primary tab |
+| `1`–`7` | Switch primary tab |
 | `gc` / `gL` | Edit config / show logs |
 
 ## Sidebar
@@ -216,6 +215,19 @@ The Analytics screen has six views. Cycle them with `Tab` / `Shift-Tab`; refresh
 | `r` | Refresh active view |
 | `Enter` | Drill down (sender → search filter; thread row → open conversation) |
 | `f` | Open the filter modal — every CLI flag for the active view as an editable field |
+| `Esc` | Return to Mailbox |
+
+## Deliveries screen
+
+Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your mail.
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move selection |
+| `r` | Resolve (mark delivered/done) |
+| `d` | Dismiss (hide a false positive) |
+| `D` | Cycle filter: active → delivered → all |
+| `g` | Refresh the list |
 | `Esc` | Return to Mailbox |
 
 ## Search query editor

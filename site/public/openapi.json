@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.5.10"
+    "version": "0.5.34"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -3541,6 +3541,10 @@
               "null"
             ]
           },
+          "is_update": {
+            "type": "boolean",
+            "description": "Derived: true when the daemon has seen a prior REQUEST with the same\nUID and a lower SEQUENCE — i.e. this is a rescheduled / amended\ninvite."
+          },
           "location": {
             "type": [
               "string",
@@ -3615,6 +3619,24 @@
               "null"
             ]
           },
+          "viewer_attendee_email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Derived: the email of the matched viewer attendee, as it appears in\nthe iCal `ATTENDEE` property. Used by the comment-compose path so the\nREPLY's `ATTENDEE` matches exactly."
+          },
+          "viewer_partstat": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CalendarPartstat",
+                "description": "Derived: the PARTSTAT of the attendee whose address matches one of the\nviewing account's addresses. `None` if no attendee matched or if\nmultiple matched ambiguously (the strict send path errors instead)."
+              }
+            ]
+          },
           "warnings": {
             "type": "array",
             "items": {
@@ -3622,6 +3644,17 @@
             }
           }
         }
+      },
+      "CalendarPartstat": {
+        "type": "string",
+        "description": "Typed view of an iCalendar `PARTSTAT` value, derived for the viewing\naccount's own attendee row. Maps 1:1 to the strings defined in RFC 5545.",
+        "enum": [
+          "needs_action",
+          "accepted",
+          "tentative",
+          "declined",
+          "delegated"
+        ]
       },
       "CalendarPerson": {
         "type": "object",
@@ -4351,6 +4384,205 @@
           }
         }
       },
+      "DeliveryData": {
+        "type": "object",
+        "description": "A tracked delivery for the Deliveries surface (CLI/web/TUI).",
+        "required": [
+          "id",
+          "account_id",
+          "status",
+          "confidence",
+          "source",
+          "last_event_at",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "carrier": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "format": "double"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "delivered_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "dismissed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "eta_from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "eta_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "$ref": "#/components/schemas/DeliveryId"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliveryItemData"
+            }
+          },
+          "last_event_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "merchant": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageId"
+            },
+            "description": "Source message ids (provenance). Populated by GetDelivery."
+          },
+          "order_number": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "source": {
+            "type": "string",
+            "description": "Detection source: \"schema\" | \"llm\" | \"heuristic\"."
+          },
+          "status": {
+            "type": "string",
+            "description": "Normalized lifecycle status, e.g. \"in_transit\", \"delivered\"."
+          },
+          "thread_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId",
+                "description": "Latest contributing thread, for \"open in mailbox\"."
+              }
+            ]
+          },
+          "tracking_number": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tracking_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DeliveryId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "DeliveryItemData": {
+        "type": "object",
+        "description": "One ordered/shipped item within a delivery.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "DeliveryScanSummary": {
+        "type": "object",
+        "description": "Result of a `ScanDeliveries` run.",
+        "required": [
+          "scanned",
+          "created",
+          "updated",
+          "shortlisted",
+          "dry_run"
+        ],
+        "properties": {
+          "created": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Candidates the heuristic created (or would create on a dry run).",
+            "minimum": 0
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "Whether this was a preview (no writes)."
+          },
+          "scanned": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages examined in the window.",
+            "minimum": 0
+          },
+          "shortlisted": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Candidates handed to the LLM for confirmation.",
+            "minimum": 0
+          },
+          "updated": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Candidates merged into an existing delivery.",
+            "minimum": 0
+          }
+        }
+      },
       "DoctorDataStats": {
         "type": "object",
         "required": [
@@ -4784,6 +5016,17 @@
           "id": {
             "$ref": "#/components/schemas/DraftId"
           },
+          "inline_calendar_reply": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InlineCalendarReply",
+                "description": "Set when this draft is the user-comment compose path for an iCal\ninvite REPLY. The outbound builder emits the special\n`multipart/alternative` (text/plain + text/calendar;method=REPLY)\nlayout when this is `Some`. The daemon's send-completion hook reads\n`source_message_id`+`partstat` to update the local store's PARTSTAT\nafter the email lands in Sent."
+              }
+            ]
+          },
           "intent": {
             "$ref": "#/components/schemas/DraftIntent"
           },
@@ -5197,6 +5440,14 @@
               "null"
             ]
           },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Custom IMAP-style keywords (`$Forwarded`, `$NotJunk`, user-defined\n`$Work`, etc.). System flags continue to live in `flags`. Stored\ncase-preserved as received; equality is case-sensitive to match\nIMAP atom semantics.",
+            "uniqueItems": true
+          },
           "label_provider_ids": {
             "type": "array",
             "items": {
@@ -5572,6 +5823,29 @@
           "repair_required"
         ]
       },
+      "InlineCalendarReply": {
+        "type": "object",
+        "required": [
+          "source_message_id",
+          "attendee_email",
+          "partstat",
+          "ics_body"
+        ],
+        "properties": {
+          "attendee_email": {
+            "type": "string"
+          },
+          "ics_body": {
+            "type": "string"
+          },
+          "partstat": {
+            "$ref": "#/components/schemas/CalendarPartstat"
+          },
+          "source_message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          }
+        }
+      },
       "IpcErrorKind": {
         "type": "string",
         "enum": [
@@ -5618,6 +5892,17 @@
           },
           "provider_id": {
             "type": "string"
+          },
+          "role": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Role",
+                "description": "Well-known semantic role this label/folder plays in the provider's\nmailbox model (Inbox, Sent, Drafts, …). Derived from IMAP SPECIAL-USE\nattributes (RFC 6154) or Gmail system labels at mapping time, and\nsurfaced to clients so they can render the right icon/affordance\nwithout re-parsing names. `None` for user-defined labels/folders.\nMatches MSP §2.3 Folder.role."
+              }
+            ]
           },
           "total_count": {
             "type": "integer",
@@ -5844,6 +6129,17 @@
             "default": null
           },
           "decision_log": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              }
+            ],
+            "default": null
+          },
+          "delivery_extraction": {
             "oneOf": [
               {
                 "type": "null"
@@ -6800,6 +7096,56 @@
           },
           {
             "type": "object",
+            "description": "Build (without sending) the iCal REPLY for an invite — used by the\n\"respond with comment\" compose path so the SPA / TUI receive the same\n`CalendarInviteResponsePreview` the auto-send path uses internally.",
+            "required": [
+              "message_id",
+              "action",
+              "cmd"
+            ],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/CalendarInviteActionData"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PrepareInviteResponse"
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Mark a previously-received invite as answered in the local store.\nCalled by the daemon's send-completion hook after a comment-compose\ndraft (`Draft.inline_calendar_reply.is_some()`) finishes sending, since\nthat path bypasses `RespondInvite`.",
+            "required": [
+              "message_id",
+              "attendee_email",
+              "partstat",
+              "cmd"
+            ],
+            "properties": {
+              "attendee_email": {
+                "type": "string"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "MarkInviteAnswered"
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "partstat": {
+                "$ref": "#/components/schemas/CalendarPartstat"
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "message_id",
               "allow_remote",
@@ -6907,6 +7253,63 @@
               },
               "thread_id": {
                 "$ref": "#/components/schemas/ThreadId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Paginated list of threads in date-descending order (most-recent\nfirst), with optional account/label filters. Each returned\n`Thread` carries its full `message_ids` member list.",
+            "required": [
+              "limit",
+              "offset",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListThreads"
+                ]
+              },
+              "label_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LabelId"
+                  }
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "offset": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "sort": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SortOrder"
+                  }
+                ]
               }
             }
           },
@@ -8888,6 +9291,110 @@
           },
           {
             "type": "object",
+            "description": "List tracked deliveries. `filter` is one of \"active\" (default),\n\"delivered\", \"all\", \"dismissed\".",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListDeliveries"
+                ]
+              },
+              "filter": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Fetch a single delivery, including its source message ids.",
+            "required": [
+              "delivery_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetDelivery"
+                ]
+              },
+              "delivery_id": {
+                "$ref": "#/components/schemas/DeliveryId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Resolve a delivery (mark delivered/done so it leaves the active list).",
+            "required": [
+              "delivery_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ResolveDelivery"
+                ]
+              },
+              "delivery_id": {
+                "$ref": "#/components/schemas/DeliveryId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Dismiss a delivery (hide a false positive).",
+            "required": [
+              "delivery_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DismissDelivery"
+                ]
+              },
+              "delivery_id": {
+                "$ref": "#/components/schemas/DeliveryId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Re-scan recent mail for deliveries. `dry_run` reports what would be\ncreated/updated without writing. `since_days` bounds the window.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ScanDeliveries"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "since_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "List outgoing compose signatures, alphabetically by name.",
             "required": [
               "cmd"
@@ -9638,7 +10145,7 @@
           },
           {
             "type": "object",
-            "description": "Extract per-draft commitment candidates (deterministic prefilter\n+ LLM, gated by `LlmFeature::Commitments`). Persists into\n`draft_commitment_candidates`; on successful send, candidates\npromote to `contact_commitments`.",
+            "description": "Extract per-draft commitment candidates (deterministic prefilter\nplus LLM, gated by `LlmFeature::Commitments`). Persists into\n`draft_commitment_candidates`; on successful send, candidates\npromote to `contact_commitments`.",
             "required": [
               "draft",
               "cmd"
@@ -10852,6 +11359,27 @@
           {
             "type": "object",
             "required": [
+              "threads",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Threads"
+                ]
+              },
+              "threads": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Thread"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "labels",
               "kind"
             ],
@@ -11139,6 +11667,63 @@
               },
               "snippet": {
                 "$ref": "#/components/schemas/SnippetData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "deliveries",
+              "kind"
+            ],
+            "properties": {
+              "deliveries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DeliveryData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Deliveries"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "delivery",
+              "kind"
+            ],
+            "properties": {
+              "delivery": {
+                "$ref": "#/components/schemas/DeliveryData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Delivery"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "summary",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "DeliveryScan"
+                ]
+              },
+              "summary": {
+                "$ref": "#/components/schemas/DeliveryScanSummary"
               }
             }
           },
@@ -12941,6 +13526,21 @@
           }
         }
       },
+      "Role": {
+        "type": "string",
+        "description": "Well-known role for a `Label`/folder, mirroring MSP §2.3. The set\ncovers the roles every consumer-mail provider exposes; provider-specific\nroles outside this set are represented as `None` so clients fall back\nto generic styling. New variants land additively under\n`#[non_exhaustive]` to keep wire compatibility cheap.",
+        "enum": [
+          "inbox",
+          "sent",
+          "drafts",
+          "trash",
+          "spam",
+          "archive",
+          "all_mail",
+          "important",
+          "starred"
+        ]
+      },
       "RuleFormData": {
         "type": "object",
         "required": [
@@ -14247,6 +14847,13 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "message_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageId"
+            },
+            "description": "Constituent message IDs ordered by `date` ascending, ties\nbroken by `MessageId` ascending. Empty `message_ids` denotes\na tombstoned thread (typically the loser side of a\nmail-threading merge); clients receiving such a Thread in\n`SyncBatch.threads_changed` SHOULD drop any cached metadata\nfor that id."
           },
           "participants": {
             "type": "array",

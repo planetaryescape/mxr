@@ -53,6 +53,7 @@ export default defineConfig({
             { label: 'Automated Follow-ups', slug: 'guides/automated-followups' },
             { label: 'Forgotten Work', slug: 'guides/forgotten-work' },
             { label: 'Archive Intelligence', slug: 'guides/archive-intelligence' },
+            { label: 'Deliveries', slug: 'guides/deliveries' },
             { label: 'Timing and Cadence', slug: 'guides/timing-and-cadence' },
             { label: 'Briefings and Loop-in', slug: 'guides/briefings-and-loop-in' },
             { label: 'Rules', slug: 'guides/rules' },

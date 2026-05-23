@@ -104,6 +104,8 @@ Response:
 | `GET` | `/mail/messages/{message_id}/html-images` | HTML-linked image asset list |
 | `GET` | `/mail/messages/{message_id}/headers` | Raw RFC 5322 headers |
 | `GET` | `/mail/snoozed` | List snoozed messages |
+| `GET` | `/mail/deliveries` | List tracked deliveries (`?filter=active\|delivered\|all\|dismissed`) |
+| `GET` | `/mail/deliveries/{id}` | One delivery + its source message ids |
 | `GET` | `/mail/count` | Count messages matching a query |
 | `GET` | `/mail/sync/status` | Per-account sync state |
 | `POST` | `/mail/export-search` | Export all threads matching a search |
@@ -139,6 +141,9 @@ clients can reconcile optimistically.
 | `POST` | `/mail/actions/snooze` | Snooze messages |
 | `POST` | `/mail/actions/unsubscribe` | Unsubscribe from list mail |
 | `POST` | `/mail/actions/invite/reply` | Dry-run or send a calendar invite RSVP |
+| `POST` | `/mail/deliveries/scan` | Backfill scan (`{since_days, dry_run}`) |
+| `POST` | `/mail/deliveries/{id}/resolve` | Mark a delivery delivered/done |
+| `POST` | `/mail/deliveries/{id}/dismiss` | Hide a false positive |
 | `POST` | `/mail/messages/{message_id}/flags` | Set message flags (bitmask in body) |
 
 ```bash

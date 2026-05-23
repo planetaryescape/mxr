@@ -28,6 +28,7 @@ mxr config path
 [llm.overrides.answer_coverage]
 [safety.recipients]
 [safety.tone]
+[deliveries]
 
 [accounts.work]
 ```
@@ -405,7 +406,8 @@ api_key_env = "OPENAI_API_KEY"
 
 Any field omitted from an override falls back to the top-level `[llm]`
 section. Feature keys: `summarize`, `draft_assist`, `draft_new`,
-`draft_refine`, `voice_match`, `answer_coverage`, `commitments`.
+`draft_refine`, `voice_match`, `answer_coverage`, `commitments`,
+`delivery_extraction` (confirm/enrich for [delivery tracking](/guides/deliveries/)).
 
 ## `safety`
 
@@ -442,6 +444,22 @@ formality_delta_threshold = 0.25
 Tone match needs at least 3 prior messages to a recipient — fewer than
 that and the check silently skips (no point warning when there's no
 stable baseline to compare against).
+
+## `deliveries`
+
+Controls package/shipment detection. See the [Deliveries guide](/guides/deliveries/) for the full pipeline.
+
+```toml
+[deliveries]
+enabled = true
+```
+
+- `enabled` — scan new mail for deliveries during the post-sync pass. Default `true`. Detection is local and cheap; turn it off to skip it entirely. The optional LLM confirm/enrich step is gated separately by `[llm]` (and its [`delivery_extraction` override](#per-feature-overrides)) — with no LLM configured, detection still runs heuristics plus checksum-valid tracking numbers.
+
+```bash
+mxr deliveries scan --since-days 30 --dry-run    # preview detection without writing
+mxr deliveries list                              # what's been found
+```
 
 ## Custom keybindings
 

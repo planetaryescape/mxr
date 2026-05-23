@@ -94,6 +94,8 @@ mxr ships citation-required AI features that run above the core mail model. None
 
 **Whois entity** — `mxr whois <name|email|term>` looks up a person, project, or jargon term using only locally cited mail evidence. Query-time only — there is no persisted `entities` table in v1. Ambiguous queries return `candidates`, not a synthesized definition.
 
+**Delivery** — a tracked package distilled from shipping mail. A local heuristic (carrier/merchant senders, shipping subjects, schema.org markup, checksum-valid tracking numbers) shortlists candidates; an optional LLM step confirms and extracts merchant/carrier/items/ETA; a lifecycle layer collapses an order's many emails into one row whose `status` only advances and resolves on "delivered". Browse with `mxr deliveries` or TUI tab `7`. `source` is `schema`, `llm`, or `heuristic`. See the [Deliveries guide](/guides/deliveries/).
+
 ## Display
 
 **Reader mode** — strips signatures, quoted text, tracking pixels, and remote-image references for distraction-free reading. Toggle with `R`.

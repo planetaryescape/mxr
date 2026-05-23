@@ -155,6 +155,15 @@ const COMMAND_EXAMPLES = {
       "mxr snippets remove hi",
     ],
   },
+  deliveries: {
+    use: "Track packages and shipments detected in your mail. Detection runs automatically on sync (a local heuristic plus optional LLM confirmation); these commands browse and manage the results. See [Deliveries](/guides/deliveries/).",
+    examples: [
+      "mxr deliveries list",
+      "mxr deliveries list --filter delivered --format json",
+      "mxr deliveries scan --since-days 90 --dry-run",
+      "mxr deliveries resolve DELIVERY_ID",
+    ],
+  },
   replies: { use: 'Manage the reply-later queue.', examples: ["mxr replies list --format ids", "mxr replies add MESSAGE_ID"] },
   remind: { use: 'Set reminders on outbound messages when you need a reply.', examples: ["mxr remind SENT_MESSAGE_ID --when 'friday 10am'"] },
   sender: { use: 'Inspect one sender before replying, unsubscribing, or writing an agent prompt.', examples: ["mxr sender alice@example.com --format json"] },

@@ -253,6 +253,16 @@ cross-account sweeps — same constraint as the TUI screener queue.
 account and renders the recent-messages list plus the relationship
 profile. The same right-rail panel still opens inside a thread.
 
+## Deliveries page
+
+The **Deliveries** entry in the sidebar opens `/deliveries` — the same tracked-packages list the [CLI and TUI](/guides/deliveries/) show. Each card has the merchant, carrier, status, ETA, tracking number, and:
+
+- **Active / Delivered / All** filter tabs.
+- A **resolve** (mark delivered) and **dismiss** (hide false positive) button per row.
+- An **Open email** link to the source thread, plus a **Track** link when the carrier provides a tracking URL.
+
+It reads `GET /mail/deliveries?filter=...` and posts to `/mail/deliveries/{id}/resolve` and `/dismiss` — see the [bridge reference](/reference/bridge/).
+
 ## Comparing surfaces
 
 | Surface | When you'd use it |

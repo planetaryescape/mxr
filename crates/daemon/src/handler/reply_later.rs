@@ -76,16 +76,8 @@ async fn refresh_reply_later_search_marker(
 }
 
 pub(super) async fn list_reply_queue(state: &AppState) -> HandlerResult {
-    let ids = state
-        .store
-        .list_reply_later()
-        .await
-        ?;
-    let messages = state
-        .store
-        .list_envelopes_by_ids(&ids)
-        .await
-        ?;
+    let ids = state.store.list_reply_later().await?;
+    let messages = state.store.list_envelopes_by_ids(&ids).await?;
     // The store returns IDs in set_at-desc order, but the join may
     // reshuffle envelopes. Re-sort to honor the original ordering so
     // the UI surfaces the most recently flagged message first.
@@ -109,15 +101,13 @@ pub(super) async fn set_auto_reminder(
     let envelope = state
         .store
         .get_envelope(sent_message_id)
-        .await
-        ?
+        .await?
         .ok_or_else(|| format!("unknown message id `{}`", sent_message_id.as_str()))?;
     let now = Utc::now();
     state
         .store
         .set_auto_reminder(sent_message_id, &envelope.account_id, remind_at, now)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::Ack)
 }
 
@@ -128,7 +118,6 @@ pub(super) async fn cancel_auto_reminder(
     state
         .store
         .cancel_auto_reminder(sent_message_id, Utc::now())
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::Ack)
 }

@@ -93,8 +93,7 @@ pub(super) async fn list_activity(
     let page = state
         .store
         .list_activity(&store_filter, limit, store_cursor)
-        .await
-        ?;
+        .await?;
     let entries: Vec<ActivityEntry> = page.rows.iter().map(store_row_to_proto).collect();
     let next_cursor = page
         .next_cursor
@@ -110,11 +109,7 @@ pub(super) async fn count_activity(
     filter: &ActivityFilter,
 ) -> HandlerResult {
     let store_filter = proto_filter_to_store(filter);
-    let count = state
-        .store
-        .count_activity(&store_filter)
-        .await
-        ?;
+    let count = state.store.count_activity(&store_filter).await?;
     Ok(ResponseData::ActivityCount { count })
 }
 
@@ -135,8 +130,7 @@ pub(super) async fn activity_stats(
                 .await
         }
         ActivityStatGroupBy::Hour => state.store.activity_stats_by_hour(since, until).await,
-    }
-    ?;
+    }?;
     let buckets = pairs
         .into_iter()
         .map(|(key, count)| ActivityStatBucket { key, count })
@@ -158,8 +152,7 @@ pub(super) async fn export_activity(
         let page = state
             .store
             .list_activity(&store_filter, 1000, cursor)
-            .await
-            ?;
+            .await?;
         let next = page.next_cursor;
         all_rows.extend(page.rows);
         match next {
@@ -171,9 +164,7 @@ pub(super) async fn export_activity(
     let count = entries.len() as i64;
 
     let body = match format {
-        ActivityExportFormat::Json => {
-            serde_json::to_string_pretty(&entries)?
-        }
+        ActivityExportFormat::Json => serde_json::to_string_pretty(&entries)?,
         ActivityExportFormat::Ndjson => {
             let mut s = String::new();
             for e in &entries {
@@ -226,7 +217,8 @@ pub(super) async fn export_activity(
         }),
         None => Err(format!(
             "inline export too large ({size_bytes} bytes); pass `path` to write to file"
-        ).into()),
+        )
+        .into()),
     }
 }
 
@@ -318,11 +310,7 @@ pub(super) async fn redact_activity(
             ids.len() as i64
         } else {
             let store_filter = proto_filter_to_store(filter.expect("filter checked above"));
-            state
-                .store
-                .count_activity(&store_filter)
-                .await
-                ?
+            state.store.count_activity(&store_filter).await?
         };
         return Ok(ResponseData::ActivityAffected {
             count,
@@ -331,19 +319,11 @@ pub(super) async fn redact_activity(
     }
 
     let (count, by) = if !ids.is_empty() {
-        let n = state
-            .store
-            .redact_activity_by_ids(ids)
-            .await
-            ?;
+        let n = state.store.redact_activity_by_ids(ids).await?;
         (n as i64, "ids")
     } else {
         let store_filter = proto_filter_to_store(filter.expect("filter checked above"));
-        let n = state
-            .store
-            .redact_activity_by_filter(&store_filter)
-            .await
-            ?;
+        let n = state.store.redact_activity_by_filter(&store_filter).await?;
         (n as i64, "filter")
     };
 
@@ -381,11 +361,7 @@ pub(super) async fn prune_activity(
         if let Some(t) = tier {
             store_filter.tiers = vec![proto_tier_to_store(t).as_str().to_owned()];
         }
-        let count = state
-            .store
-            .count_activity(&store_filter)
-            .await
-            ?;
+        let count = state.store.count_activity(&store_filter).await?;
         return Ok(ResponseData::ActivityAffected {
             count,
             dry_run: true,
@@ -396,8 +372,7 @@ pub(super) async fn prune_activity(
     let deleted = state
         .store
         .prune_activity_before(before_ts, store_tier)
-        .await
-        ?;
+        .await?;
 
     state.activity.record(OwnedEntry {
         ts: current_unix_ms(),
@@ -453,21 +428,13 @@ fn store_saved_to_proto(s: &store::SavedActivityFilter) -> SavedActivityFilterEn
 }
 
 pub(super) async fn list_saved_filters(state: &Arc<AppState>) -> HandlerResult {
-    let rows = state
-        .store
-        .list_saved_activity_filters()
-        .await
-        ?;
+    let rows = state.store.list_saved_activity_filters().await?;
     let entries = rows.iter().map(store_saved_to_proto).collect();
     Ok(ResponseData::SavedActivityFilters { entries })
 }
 
 pub(super) async fn get_saved_filter(state: &Arc<AppState>, slug: &str) -> HandlerResult {
-    let row = state
-        .store
-        .get_saved_activity_filter(slug)
-        .await
-        ?;
+    let row = state.store.get_saved_activity_filter(slug).await?;
     let entry = row.as_ref().map(store_saved_to_proto);
     if entry.is_some() {
         let _ = state.store.mark_saved_activity_filter_used(slug).await;
@@ -488,17 +455,12 @@ pub(super) async fn upsert_saved_filter(
     state
         .store
         .upsert_saved_activity_filter(slug, name, &filter_json)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::Acknowledged)
 }
 
 pub(super) async fn delete_saved_filter(state: &Arc<AppState>, slug: &str) -> HandlerResult {
-    let n = state
-        .store
-        .delete_saved_activity_filter(slug)
-        .await
-        ?;
+    let n = state.store.delete_saved_activity_filter(slug).await?;
     Ok(ResponseData::ActivityAffected {
         count: n as i64,
         dry_run: false,

@@ -97,8 +97,7 @@ pub(super) async fn list_envelopes(
     let enabled_accounts = state
         .store
         .list_accounts()
-        .await
-        ?
+        .await?
         .into_iter()
         .map(|account| account.id)
         .collect::<HashSet<_>>();
@@ -125,11 +124,7 @@ pub(super) async fn list_envelopes_by_ids(
     state: &AppState,
     message_ids: &[MessageId],
 ) -> HandlerResult {
-    let mut envelopes = state
-        .store
-        .list_envelopes_by_ids(message_ids)
-        .await
-        ?;
+    let mut envelopes = state.store.list_envelopes_by_ids(message_ids).await?;
     for envelope in &mut envelopes {
         if let Ok(labels) = state
             .store
@@ -143,12 +138,7 @@ pub(super) async fn list_envelopes_by_ids(
 }
 
 pub(super) async fn get_envelope(state: &AppState, message_id: &MessageId) -> HandlerResult {
-    match state
-        .store
-        .get_envelope(message_id)
-        .await
-        ?
-    {
+    match state.store.get_envelope(message_id).await? {
         Some(mut envelope) => {
             if let Ok(labels) = state
                 .store
@@ -172,8 +162,7 @@ pub(super) async fn get_invite(state: &AppState, message_id: &MessageId) -> Hand
     let invite = state
         .store
         .get_calendar_invite_for_message(message_id)
-        .await
-        ?
+        .await?
         .ok_or_else(|| format!("Calendar invite not found: {message_id}"))?;
     Ok(ResponseData::Invite {
         invite: CalendarInviteData {
@@ -237,11 +226,7 @@ pub(super) async fn list_invites(state: &AppState, limit: u32) -> HandlerResult 
 }
 
 pub(super) async fn backfill_invites(state: &AppState) -> HandlerResult {
-    let backfilled = state
-        .store
-        .backfill_calendar_invites_from_bodies()
-        .await
-        ?;
+    let backfilled = state.store.backfill_calendar_invites_from_bodies().await?;
     Ok(ResponseData::CalendarInviteBackfill { backfilled })
 }
 
@@ -260,8 +245,7 @@ pub(super) async fn respond_invite(
     let account = state
         .store
         .get_account(&account_id)
-        .await
-        ?
+        .await?
         .ok_or_else(|| "Account not found for calendar invite".to_string())?;
     let from = Address {
         name: Some(account.name),
@@ -280,13 +264,11 @@ pub(super) async fn respond_invite(
     };
     let receipt = sender
         .send_calendar_reply(&reply, &from, &rfc2822_message_id)
-        .await
-        ?;
+        .await?;
     state
         .store
         .update_calendar_invite_partstat(message_id, &preview.attendee_email, action.partstat())
-        .await
-        ?;
+        .await?;
 
     Ok(ResponseData::InviteResponseSent {
         result: CalendarInviteResponseResult {
@@ -316,8 +298,7 @@ pub(super) async fn mark_invite_answered(
     state
         .store
         .update_calendar_invite_partstat(message_id, attendee_email, partstat.as_ical())
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::Acknowledged)
 }
 
@@ -532,12 +513,10 @@ pub(super) async fn download_attachment(
     destination: Option<&std::path::Path>,
 ) -> HandlerResult {
     let file = match destination {
-        Some(path) => super::materialize_attachment_to_path(state, message_id, attachment_id, path)
-            .await
-            ?,
-        None => materialize_attachment_file(state, message_id, attachment_id)
-            .await
-            ?,
+        Some(path) => {
+            super::materialize_attachment_to_path(state, message_id, attachment_id, path).await?
+        }
+        None => materialize_attachment_file(state, message_id, attachment_id).await?,
     };
     Ok(ResponseData::AttachmentFile { file })
 }
@@ -547,9 +526,7 @@ pub(super) async fn open_attachment(
     message_id: &MessageId,
     attachment_id: &AttachmentId,
 ) -> HandlerResult {
-    let file = materialize_attachment_file(state, message_id, attachment_id)
-        .await
-        ?;
+    let file = materialize_attachment_file(state, message_id, attachment_id).await?;
     open_local_file(&file.path).map_err(|e| e.to_string())?;
     Ok(ResponseData::AttachmentFile { file })
 }
@@ -1112,8 +1089,7 @@ pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> Handle
     let thread = state
         .store
         .get_thread(thread_id)
-        .await
-        ?
+        .await?
         .ok_or_else(|| "Thread not found".to_string())?;
     let mut messages = state
         .store
@@ -1145,8 +1121,7 @@ pub(super) async fn list_threads(
     let threads = state
         .store
         .list_threads(account_id, label_id, limit, offset, sort)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::Threads { threads })
 }
 
@@ -1154,11 +1129,7 @@ pub(super) async fn list_labels(state: &AppState, account_id: Option<&AccountId>
     let Some(account_id) = resolve_local_account_id(state, account_id).await? else {
         return Ok(ResponseData::Labels { labels: Vec::new() });
     };
-    let labels = state
-        .store
-        .list_labels_by_account(&account_id)
-        .await
-        ?;
+    let labels = state.store.list_labels_by_account(&account_id).await?;
     Ok(ResponseData::Labels { labels })
 }
 
@@ -1170,18 +1141,11 @@ pub(super) async fn create_label(
 ) -> HandlerResult {
     let account_id = resolve_account_id(state, account_id)?;
     let provider = state.get_provider(Some(&account_id))?;
-    let mut label = provider
-        .create_label(name, color)
-        .await
-        ?;
+    let mut label = provider.create_label(name, color).await?;
     if label.account_id != account_id {
         label.account_id = account_id;
     }
-    state
-        .store
-        .upsert_label(&label)
-        .await
-        ?;
+    state.store.upsert_label(&label).await?;
     Ok(ResponseData::Label { label })
 }
 
@@ -1193,15 +1157,8 @@ pub(super) async fn delete_label(
     let account_id = resolve_account_id(state, account_id)?;
     let label = find_label_by_name(state, &account_id, name).await?;
     let provider = state.get_provider(Some(&account_id))?;
-    provider
-        .delete_label(&label.provider_id)
-        .await
-        ?;
-    state
-        .store
-        .delete_label(&label.id)
-        .await
-        ?;
+    provider.delete_label(&label.provider_id).await?;
+    state.store.delete_label(&label.id).await?;
     Ok(ResponseData::Ack)
 }
 
@@ -1214,17 +1171,10 @@ pub(super) async fn rename_label(
     let account_id = resolve_account_id(state, account_id)?;
     let existing = find_label_by_name(state, &account_id, old).await?;
     let provider = state.get_provider(Some(&account_id))?;
-    let mut label = provider
-        .rename_label(&existing.provider_id, new)
-        .await
-        ?;
+    let mut label = provider.rename_label(&existing.provider_id, new).await?;
     if label.account_id != account_id {
         label.account_id = account_id.clone();
     }
-    state
-        .store
-        .replace_label(&existing.id, &label)
-        .await
-        ?;
+    state.store.replace_label(&existing.id, &label).await?;
     Ok(ResponseData::Label { label })
 }

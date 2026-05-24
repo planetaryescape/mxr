@@ -34,11 +34,7 @@ pub(super) async fn list_queue(
     account_id: &AccountId,
     limit: u32,
 ) -> HandlerResult {
-    let entries = state
-        .store
-        .list_screener_queue(account_id, limit)
-        .await
-        ?;
+    let entries = state.store.list_screener_queue(account_id, limit).await?;
     let data: Vec<ScreenerQueueEntryData> = entries
         .into_iter()
         .map(|e| ScreenerQueueEntryData {
@@ -53,11 +49,7 @@ pub(super) async fn list_queue(
 }
 
 pub(super) async fn list_decisions(state: &AppState, account_id: &AccountId) -> HandlerResult {
-    let decisions = state
-        .store
-        .list_screener_decisions(account_id)
-        .await
-        ?;
+    let decisions = state.store.list_screener_decisions(account_id).await?;
     let data: Vec<ScreenerDecisionData> = decisions
         .into_iter()
         .map(|d| ScreenerDecisionData {
@@ -79,7 +71,9 @@ pub(super) async fn set_decision(
     route_label: Option<String>,
 ) -> HandlerResult {
     if sender_email.trim().is_empty() {
-        return Err(crate::handler::HandlerError::Message("sender email cannot be empty".to_string()));
+        return Err(crate::handler::HandlerError::Message(
+            "sender email cannot be empty".to_string(),
+        ));
     }
     let decision = ScreenerDecision {
         account_id: account_id.clone(),
@@ -88,11 +82,7 @@ pub(super) async fn set_decision(
         route_label,
         decided_at: Utc::now(),
     };
-    state
-        .store
-        .set_screener_decision(&decision)
-        .await
-        ?;
+    state.store.set_screener_decision(&decision).await?;
     Ok(ResponseData::Ack)
 }
 
@@ -104,7 +94,6 @@ pub(super) async fn clear_decision(
     state
         .store
         .delete_screener_decision(account_id, sender_email)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::Ack)
 }

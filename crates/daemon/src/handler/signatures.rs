@@ -66,8 +66,7 @@ pub(super) async fn list_signatures(state: &AppState) -> HandlerResult {
     let signatures = state
         .store
         .list_signatures()
-        .await
-        ?
+        .await?
         .into_iter()
         .map(to_data)
         .collect();
@@ -78,8 +77,7 @@ pub(super) async fn list_signature_defaults(state: &AppState) -> HandlerResult {
     let defaults = state
         .store
         .list_signature_defaults()
-        .await
-        ?
+        .await?
         .into_iter()
         .map(default_to_data)
         .collect();
@@ -89,18 +87,18 @@ pub(super) async fn list_signature_defaults(state: &AppState) -> HandlerResult {
 pub(super) async fn set_signature(state: &AppState, name: String, body: String) -> HandlerResult {
     let name = name.trim().to_string();
     if name.is_empty() {
-        return Err(crate::handler::HandlerError::Message("signature name cannot be empty".to_string()));
+        return Err(crate::handler::HandlerError::Message(
+            "signature name cannot be empty".to_string(),
+        ));
     }
     if body.trim().is_empty() {
-        return Err(crate::handler::HandlerError::Message("signature body cannot be empty".to_string()));
+        return Err(crate::handler::HandlerError::Message(
+            "signature body cannot be empty".to_string(),
+        ));
     }
 
     let now = Utc::now();
-    let existing = state
-        .store
-        .get_signature_by_name(&name)
-        .await
-        ?;
+    let existing = state.store.get_signature_by_name(&name).await?;
     let signature = Signature {
         id: existing
             .as_ref()
@@ -110,22 +108,14 @@ pub(super) async fn set_signature(state: &AppState, name: String, body: String) 
         created_at: existing.map_or(now, |signature| signature.created_at),
         updated_at: now,
     };
-    state
-        .store
-        .upsert_signature(&signature)
-        .await
-        ?;
+    state.store.upsert_signature(&signature).await?;
     Ok(ResponseData::SignatureData {
         signature: to_data(signature),
     })
 }
 
 pub(super) async fn delete_signature(state: &AppState, name: &str) -> HandlerResult {
-    state
-        .store
-        .delete_signature_by_name(name)
-        .await
-        ?;
+    state.store.delete_signature_by_name(name).await?;
     Ok(ResponseData::Ack)
 }
 
@@ -139,15 +129,13 @@ pub(super) async fn set_signature_default(
     let signature = state
         .store
         .get_signature_by_name(name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| format!("signature not found: {name}"))?;
     let scope = scope_from(account_id, from_email)?;
     state
         .store
         .set_signature_default(&scope, kind_from_data(kind), &signature.id)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::SignatureData {
         signature: to_data(signature),
     })
@@ -163,8 +151,7 @@ pub(super) async fn clear_signature_default(
     state
         .store
         .clear_signature_default(&scope, kind_from_data(kind))
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::Ack)
 }
 
@@ -179,8 +166,7 @@ pub(super) async fn resolve_signature(
         let signature = state
             .store
             .get_signature_by_name(name)
-            .await
-            ?
+            .await?
             .ok_or_else(|| format!("signature not found: {name}"))?;
         return Ok(ResponseData::ResolvedSignature {
             signature: Some(to_data(signature)),
@@ -192,14 +178,15 @@ pub(super) async fn resolve_signature(
             .map(str::trim)
             .is_some_and(|email| !email.is_empty())
     {
-        return Err(crate::handler::HandlerError::Message("signature resolution with from-email requires an account".to_string()));
+        return Err(crate::handler::HandlerError::Message(
+            "signature resolution with from-email requires an account".to_string(),
+        ));
     }
 
     let signature = state
         .store
         .resolve_signature(account_id, from_email, kind_from_data(kind))
-        .await
-        ?
+        .await?
         .map(to_data);
     Ok(ResponseData::ResolvedSignature { signature })
 }

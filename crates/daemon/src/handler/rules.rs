@@ -12,12 +12,7 @@ pub(super) async fn list_rules(state: &AppState) -> HandlerResult {
 }
 
 pub(super) async fn get_rule(state: &AppState, rule: &str) -> HandlerResult {
-    match state
-        .store
-        .get_rule_by_id_or_name(rule)
-        .await
-        ?
-    {
+    match state.store.get_rule_by_id_or_name(rule).await? {
         Some(row) => Ok(ResponseData::RuleData {
             rule: mxr_store::row_to_rule_json(&row),
         }),
@@ -26,15 +21,9 @@ pub(super) async fn get_rule(state: &AppState, rule: &str) -> HandlerResult {
 }
 
 pub(super) async fn get_rule_form(state: &AppState, rule: &str) -> HandlerResult {
-    match state
-        .store
-        .get_rule_by_id_or_name(rule)
-        .await
-        ?
-    {
+    match state.store.get_rule_by_id_or_name(rule).await? {
         Some(row) => {
-            let parsed: Rule = serde_json::from_value(mxr_store::row_to_rule_json(&row))
-                ?;
+            let parsed: Rule = serde_json::from_value(mxr_store::row_to_rule_json(&row))?;
             let form = rule_to_form_data(&parsed)?;
             Ok(ResponseData::RuleFormData { form })
         }
@@ -49,22 +38,13 @@ pub(super) async fn upsert_rule_value(state: &AppState, value: serde_json::Value
 }
 
 pub(super) async fn delete_rule(state: &AppState, rule: &str) -> HandlerResult {
-    match state
-        .store
-        .get_rule_by_id_or_name(rule)
-        .await
-        ?
-    {
+    match state.store.get_rule_by_id_or_name(rule).await? {
         Some(row) => {
             let id = mxr_store::row_to_rule_json(&row)["id"]
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
-            state
-                .store
-                .delete_rule(&id)
-                .await
-                ?;
+            state.store.delete_rule(&id).await?;
             Ok(ResponseData::Ack)
         }
         None => Err(format!("Rule not found: {rule}").into()),
@@ -101,12 +81,7 @@ pub(super) async fn list_rule_history(
     limit: u32,
 ) -> HandlerResult {
     let resolved_rule_id = if let Some(rule) = rule {
-        match state
-            .store
-            .get_rule_by_id_or_name(rule)
-            .await
-            ?
-        {
+        match state.store.get_rule_by_id_or_name(rule).await? {
             Some(row) => Some(
                 mxr_store::row_to_rule_json(&row)["id"]
                     .as_str()
@@ -122,8 +97,7 @@ pub(super) async fn list_rule_history(
     let rows = state
         .store
         .list_rule_logs(resolved_rule_id.as_deref(), limit)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::RuleHistory {
         entries: rows.iter().map(mxr_store::row_to_rule_log_json).collect(),
     })

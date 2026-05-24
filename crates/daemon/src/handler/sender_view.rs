@@ -13,11 +13,7 @@ pub(super) async fn get_sender_profile(
     account_id: &AccountId,
     email: &str,
 ) -> HandlerResult {
-    let profile = state
-        .store
-        .get_sender_profile(account_id, email)
-        .await
-        ?;
+    let profile = state.store.get_sender_profile(account_id, email).await?;
     let data = match profile {
         Some(p) => {
             let relationship =
@@ -25,8 +21,7 @@ pub(super) async fn get_sender_profile(
             let recent_messages = state
                 .store
                 .list_recent_sender_messages(account_id, email, 12)
-                .await
-                ?
+                .await?
                 .into_iter()
                 .map(|message| SenderEmailReferenceData {
                     message_id: message.message_id,

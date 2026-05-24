@@ -16,11 +16,7 @@ pub(super) async fn get_logs(
 }
 
 pub(super) async fn list_event_categories(state: &AppState) -> HandlerResult {
-    let categories = state
-        .store
-        .list_event_categories()
-        .await
-        ?;
+    let categories = state.store.list_event_categories().await?;
     Ok(mxr_protocol::ResponseData::EventCategories { categories })
 }
 
@@ -30,11 +26,7 @@ pub(super) async fn count_events(state: &AppState, filter: EventLogFilter<'_>) -
         offset: 0,
         ..filter
     };
-    let count = state
-        .store
-        .count_events_filtered(count_filter)
-        .await
-        ?;
+    let count = state.store.count_events_filtered(count_filter).await?;
     Ok(mxr_protocol::ResponseData::EventLogCount { count })
 }
 

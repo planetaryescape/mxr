@@ -1374,3 +1374,31 @@ fn deliveries_o_opens_source_thread() {
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
     assert_eq!(app.pending_delivery_open, Some(thread_id));
 }
+
+/// Opening a delivery's source thread shows it inline in the split preview
+/// and stays on the Deliveries screen (not the mailbox).
+#[test]
+fn open_delivery_thread_previews_inline_without_leaving_screen() {
+    let mut app = App::new();
+    app.screen = Screen::Deliveries;
+
+    app.open_delivery_thread(make_test_envelopes(1));
+
+    assert!(app.deliveries.preview_active);
+    assert_eq!(app.screen, Screen::Deliveries);
+    assert!(app.mailbox.viewing_envelope.is_some());
+}
+
+/// Esc closes the inline preview and drops the loaded message.
+#[test]
+fn deliveries_esc_closes_inline_preview() {
+    let mut app = App::new();
+    app.screen = Screen::Deliveries;
+    app.open_delivery_thread(make_test_envelopes(1));
+    assert!(app.deliveries.preview_active);
+
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert!(!app.deliveries.preview_active);
+    assert!(app.mailbox.viewing_envelope.is_none());
+}

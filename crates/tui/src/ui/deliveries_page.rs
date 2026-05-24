@@ -93,10 +93,14 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &DeliveriesState, theme: &cr
 fn draw_footer(
     frame: &mut Frame,
     area: Rect,
-    _state: &DeliveriesState,
+    state: &DeliveriesState,
     theme: &crate::theme::Theme,
 ) {
-    let help = "j/k move · o open · r resolve · d dismiss · D filter · g refresh";
+    let help = if state.preview_active {
+        "j/k move · o open · ^d/^u scroll · Esc close · r resolve · d dismiss"
+    } else {
+        "j/k move · o open · r resolve · d dismiss · D filter · g refresh"
+    };
     let p = Paragraph::new(help).style(Style::default().fg(theme.text_muted));
     frame.render_widget(p, area);
 }

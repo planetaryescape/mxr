@@ -46,6 +46,10 @@ pub struct DeliveriesState {
     pub loading: bool,
     pub error: Option<String>,
     pub filter: DeliveryFilter,
+    /// When true, a delivery's source email is open in a right-hand split
+    /// pane (driven by `o`/Enter). The message itself lives in the shared
+    /// mailbox view state; this just gates the split layout on the screen.
+    pub preview_active: bool,
 }
 
 impl DeliveriesState {

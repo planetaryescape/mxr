@@ -344,7 +344,31 @@ impl App {
                 ui::analytics_page::draw(frame, content_area, &self.analytics, theme);
             }
             Screen::Deliveries => {
-                ui::deliveries_page::draw(frame, content_area, &self.deliveries, theme);
+                if self.deliveries.preview_active && self.mailbox.viewing_envelope.is_some() {
+                    // Split: deliveries list on the left, the source email on
+                    // the right — mirrors how the mailbox opens a message.
+                    let cols = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                        .split(content_area);
+                    ui::deliveries_page::draw(frame, cols[0], &self.deliveries, theme);
+                    let preview_blocks = self.thread_message_blocks();
+                    let summary = self.thread_summary_block();
+                    ui::message_view::draw(
+                        frame,
+                        cols[1],
+                        &preview_blocks,
+                        ui::message_view::DrawOptions {
+                            summary,
+                            scroll_offset: self.mailbox.message_scroll_offset,
+                            active_pane: &self.mailbox.active_pane,
+                            theme,
+                            html_images: &mut self.html_image_assets,
+                        },
+                    );
+                } else {
+                    ui::deliveries_page::draw(frame, content_area, &self.deliveries, theme);
+                }
             }
         }
 

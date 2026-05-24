@@ -22,17 +22,17 @@ pub enum SyncStatus {
 impl SyncStatus {
     fn as_str(&self) -> &str {
         match self {
-            SyncStatus::Running => "running",
-            SyncStatus::Success => "success",
-            SyncStatus::Error => "error",
+            Self::Running => "running",
+            Self::Success => "success",
+            Self::Error => "error",
         }
     }
 
     fn from_str(s: &str) -> Self {
         match s {
-            "running" => SyncStatus::Running,
-            "success" => SyncStatus::Success,
-            _ => SyncStatus::Error,
+            "running" => Self::Running,
+            "success" => Self::Success,
+            _ => Self::Error,
         }
     }
 }

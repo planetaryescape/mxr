@@ -181,11 +181,7 @@ impl ImapSession for BenchImapSession {
 
     async fn select(&mut self, mailbox: &str) -> mxr_provider_imap::session::Result<MailboxInfo> {
         self.selected_mailbox = Some(mailbox.to_string());
-        let exists = self
-            .mailboxes
-            .get(mailbox)
-            .map(|items| items.len())
-            .unwrap_or(0) as u32;
+        let exists = self.mailboxes.get(mailbox).map_or(0, std::vec::Vec::len) as u32;
         Ok(MailboxInfo {
             uid_validity: 1,
             uid_next: exists + 1,

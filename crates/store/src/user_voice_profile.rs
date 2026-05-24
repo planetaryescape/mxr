@@ -24,7 +24,7 @@ pub struct UserVoiceProfileRecord {
     pub source_hash: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserVoiceMessageSample {
     pub message_id: MessageId,
     pub body: String,

@@ -6,7 +6,7 @@ use sqlx::Row;
 impl super::Store {
     pub async fn insert_saved_search(&self, search: &SavedSearch) -> Result<(), sqlx::Error> {
         let id = search.id.as_str();
-        let account_id = search.account_id.as_ref().map(|id| id.as_str());
+        let account_id = search.account_id.as_ref().map(mxr_core::AccountId::as_str);
         let search_mode = encode_json(&search.search_mode)?;
         let sort = encode_json(&search.sort)?;
         let created_at = search.created_at.timestamp();
@@ -91,15 +91,18 @@ impl super::Store {
             account_id: existing.account_id,
             name: update
                 .new_name
-                .map(|s| s.to_string())
+                .map(std::string::ToString::to_string)
                 .unwrap_or(existing.name),
             query: update
                 .query
-                .map(|s| s.to_string())
+                .map(std::string::ToString::to_string)
                 .unwrap_or(existing.query),
             search_mode: update.search_mode.cloned().unwrap_or(existing.search_mode),
             sort: update.sort.cloned().unwrap_or(existing.sort),
-            icon: update.icon.map(|s| s.to_string()).or(existing.icon),
+            icon: update
+                .icon
+                .map(std::string::ToString::to_string)
+                .or(existing.icon),
             position: update.position.unwrap_or(existing.position),
             created_at: existing.created_at,
         };

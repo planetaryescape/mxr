@@ -86,7 +86,7 @@ impl super::Store {
     ) -> Result<Vec<LargestMessageRow>, sqlx::Error> {
         let started_at = Instant::now();
         let lim = limit as i64;
-        let account_filter: Option<String> = account_id.map(|a| a.as_str());
+        let account_filter: Option<String> = account_id.map(mxr_core::AccountId::as_str);
         let since = since_unix.unwrap_or(0).max(EARLIEST_PLAUSIBLE_TS);
 
         let rows: Vec<(String, String, String, i64, i64)> = sqlx::query_as(
@@ -170,9 +170,9 @@ impl super::Store {
         since_days: Option<u32>,
     ) -> Result<ResponseTimeSummary, sqlx::Error> {
         let started_at = Instant::now();
-        let account_filter: Option<String> = account_id.map(|a| a.as_str());
+        let account_filter: Option<String> = account_id.map(mxr_core::AccountId::as_str);
         let direction_str = direction.as_db_str();
-        let counterparty_filter = counterparty.map(|c| c.to_lowercase());
+        let counterparty_filter = counterparty.map(str::to_lowercase);
         let since_cutoff: Option<i64> =
             since_days.map(|d| chrono::Utc::now().timestamp() - i64::from(d) * 86_400);
 
@@ -235,7 +235,7 @@ impl super::Store {
     ) -> Result<Vec<StaleThreadRow>, sqlx::Error> {
         let started_at = Instant::now();
         let lim = limit as i64;
-        let account_filter: Option<String> = account_id.map(|a| a.as_str());
+        let account_filter: Option<String> = account_id.map(mxr_core::AccountId::as_str);
         let direction_str = perspective.as_db_str();
         // Hard floor: drop messages with bogus Date: headers that fell back
         // to epoch 0 at parse time. Without this, a 1970 spam message ranks
@@ -316,7 +316,7 @@ impl super::Store {
         limit: u32,
     ) -> Result<Vec<StorageBucket>, sqlx::Error> {
         let started_at = Instant::now();
-        let account_filter: Option<String> = account_id.map(|a| a.as_str());
+        let account_filter: Option<String> = account_id.map(mxr_core::AccountId::as_str);
         let lim = limit as i64;
 
         let sql = match group_by {

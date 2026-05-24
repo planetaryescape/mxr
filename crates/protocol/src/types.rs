@@ -30,7 +30,7 @@ pub enum DraftSafetyModeData {
     ScheduledFlush,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DraftSafetyContextData {
     #[serde(default)]
@@ -1543,20 +1543,20 @@ pub enum IpcErrorKind {
 impl IpcErrorKind {
     pub fn as_code(self) -> &'static str {
         match self {
-            IpcErrorKind::InvalidRequest => "invalid_request",
-            IpcErrorKind::NotFound => "not_found",
-            IpcErrorKind::Auth => "auth",
-            IpcErrorKind::Policy => "policy",
-            IpcErrorKind::Provider => "provider",
-            IpcErrorKind::RateLimited => "rate_limited",
-            IpcErrorKind::Store => "store",
-            IpcErrorKind::Unsupported => "unsupported",
-            IpcErrorKind::Internal => "internal",
+            Self::InvalidRequest => "invalid_request",
+            Self::NotFound => "not_found",
+            Self::Auth => "auth",
+            Self::Policy => "policy",
+            Self::Provider => "provider",
+            Self::RateLimited => "rate_limited",
+            Self::Store => "store",
+            Self::Unsupported => "unsupported",
+            Self::Internal => "internal",
         }
     }
 
     pub fn is_retryable(self) -> bool {
-        matches!(self, IpcErrorKind::Provider | IpcErrorKind::RateLimited)
+        matches!(self, Self::Provider | Self::RateLimited)
     }
 }
 
@@ -2343,7 +2343,7 @@ pub enum ScreenerDispositionData {
     Unknown,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ScreenerDecisionData {
     pub account_id: AccountId,
@@ -2354,7 +2354,7 @@ pub struct ScreenerDecisionData {
     pub decided_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ScreenerQueueEntryData {
     pub sender_email: String,

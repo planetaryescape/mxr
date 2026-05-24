@@ -24,7 +24,7 @@ pub async fn run(
             limit,
             offset: 0,
             mode: mode.map(Into::into),
-            sort: Some(sort.map(Into::into).unwrap_or(SortOrder::DateDesc)),
+            sort: Some(sort.map_or(SortOrder::DateDesc, Into::into)),
             explain,
         })
         .await?;
@@ -151,10 +151,7 @@ pub async fn run(
                     let from_trunc: String = from.chars().take(20).collect();
                     let subject_trunc: String = env.subject.chars().take(45).collect();
                     let date = env.date.format("%Y-%m-%d").to_string();
-                    println!(
-                        "{} {:<20} {:<45} {}",
-                        unread, from_trunc, subject_trunc, date
-                    );
+                    println!("{unread} {from_trunc:<20} {subject_trunc:<45} {date}");
                 }
                 println!("\n{} results", envelopes.len());
             }

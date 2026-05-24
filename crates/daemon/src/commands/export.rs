@@ -23,7 +23,7 @@ fn parse_export_format(value: &str) -> anyhow::Result<ExportFormat> {
 
 fn parse_thread_id(value: &str) -> anyhow::Result<ThreadId> {
     let uuid = uuid::Uuid::parse_str(value)
-        .map_err(|e| anyhow::anyhow!("Invalid thread ID '{}': {}", value, e))?;
+        .map_err(|e| anyhow::anyhow!("Invalid thread ID '{value}': {e}"))?;
     Ok(ThreadId::from_uuid(uuid))
 }
 

@@ -79,9 +79,9 @@ impl AuthFlow {
         let ssh_session =
             std::env::var_os("SSH_CONNECTION").is_some() || std::env::var_os("SSH_TTY").is_some();
         if no_tty || no_display || ssh_session {
-            AuthFlow::Device
+            Self::Device
         } else {
-            AuthFlow::Installed
+            Self::Installed
         }
     }
 }
@@ -304,7 +304,7 @@ impl GmailAuth {
                             .await
                             .map_err(|e| AuthError::OAuth2(e.to_string()))?;
                         tok.token()
-                            .map(|t| t.to_string())
+                            .map(std::string::ToString::to_string)
                             .ok_or(AuthError::TokenExpired)
                     })
                 }));
@@ -339,7 +339,7 @@ impl GmailAuth {
                             .await
                             .map_err(|e| AuthError::OAuth2(e.to_string()))?;
                         tok.token()
-                            .map(|t| t.to_string())
+                            .map(std::string::ToString::to_string)
                             .ok_or(AuthError::TokenExpired)
                     })
                 }));
@@ -381,7 +381,7 @@ impl GmailAuth {
                     .await
                     .map_err(|e| AuthError::OAuth2(e.to_string()))?;
                 tok.token()
-                    .map(|t| t.to_string())
+                    .map(std::string::ToString::to_string)
                     .ok_or(AuthError::TokenExpired)
             })
         }));

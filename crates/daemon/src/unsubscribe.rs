@@ -96,7 +96,7 @@ mod tests {
                     "Success message should contain the address, got: {msg}"
                 );
             }
-            other => panic!("Expected Success, got: {:?}", other),
+            other => panic!("Expected Success, got: {other:?}"),
         }
     }
 

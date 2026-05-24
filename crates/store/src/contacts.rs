@@ -234,7 +234,7 @@ impl super::Store {
         let started_at = Instant::now();
         let lim = limit as i64;
         let min_in = min_inbound as i64;
-        let account_filter: Option<String> = account_id.map(|a| a.as_str());
+        let account_filter: Option<String> = account_id.map(mxr_core::AccountId::as_str);
 
         let rows: Vec<(String, Option<String>, i64, i64, i64)> = sqlx::query_as(
             r#"SELECT
@@ -319,7 +319,7 @@ impl super::Store {
         // dominate the result. Use whichever is later: the user-asked window or
         // the hard floor.
         let lookback_floor = max_lookback_unix.max(EARLIEST_PLAUSIBLE_TS);
-        let account_filter: Option<String> = account_id.map(|a| a.as_str());
+        let account_filter: Option<String> = account_id.map(mxr_core::AccountId::as_str);
 
         // Decay = inbound is more recent than outbound by more than threshold.
         // Excludes the boundary (>, not >=) per Slice 13's spec.

@@ -33,9 +33,13 @@ impl super::Store {
             return Ok(vec![]);
         }
         let cutoff = future_date_cutoff_timestamp();
-        let ids_json =
-            serde_json::to_string(&thread_ids.iter().map(|t| t.as_str()).collect::<Vec<_>>())
-                .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+        let ids_json = serde_json::to_string(
+            &thread_ids
+                .iter()
+                .map(mxr_core::ThreadId::as_str)
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
 
         let started_at = std::time::Instant::now();
         let aggregate_rows = sqlx::query!(
@@ -156,8 +160,8 @@ impl super::Store {
         sort: SortOrder,
     ) -> Result<Vec<Thread>, sqlx::Error> {
         let cutoff = future_date_cutoff_timestamp();
-        let account_filter = account_id.map(|a| a.as_str().to_string());
-        let label_filter = label_id.map(|l| l.as_str().to_string());
+        let account_filter = account_id.map(|a| a.as_str().clone());
+        let label_filter = label_id.map(|l| l.as_str().clone());
         let limit_i = limit as i64;
         let offset_i = offset as i64;
 

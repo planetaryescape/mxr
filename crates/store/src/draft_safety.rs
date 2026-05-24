@@ -46,7 +46,7 @@ impl super::Store {
     ) -> Result<String, sqlx::Error> {
         let id = Uuid::now_v7().to_string();
         let account = account_id.as_str();
-        let draft = draft_id.map(|d| d.as_str());
+        let draft = draft_id.map(mxr_core::DraftId::as_str);
         let verdict = match report.verdict {
             DraftSafetyVerdict::Safe => "safe",
             DraftSafetyVerdict::Warn => "warn",
@@ -78,7 +78,7 @@ impl super::Store {
         issue_kinds: &[DraftSafetyIssueCode],
     ) -> Result<String, sqlx::Error> {
         let token = Uuid::now_v7().to_string();
-        let draft = draft_id.map(|d| d.as_str());
+        let draft = draft_id.map(mxr_core::DraftId::as_str);
         let kinds_json = serde_json::to_string(issue_kinds).unwrap_or_else(|_| "[]".into());
         let now = Utc::now().timestamp();
         sqlx::query(

@@ -43,8 +43,7 @@ pub fn gmail_message_to_envelope(
         .payload
         .as_ref()
         .and_then(|p| p.headers.as_ref())
-        .map(|h| h.as_slice())
-        .unwrap_or(&[]);
+        .map_or(&[][..], std::vec::Vec::as_slice);
 
     let internal_date = parse_internal_date(msg.internal_date.as_deref())?;
     let header_pairs: Vec<(String, String)> = headers
@@ -146,15 +145,14 @@ pub fn parse_list_unsubscribe(headers: &[GmailHeader]) -> UnsubscribeMethod {
         .map(|header| (header.name.clone(), header.value.clone()))
         .collect();
     parse_headers_from_pairs(&header_pairs, Some(Utc::now()))
-        .map(|parsed| parsed.unsubscribe)
-        .unwrap_or(UnsubscribeMethod::None)
+        .map_or(UnsubscribeMethod::None, |parsed| parsed.unsubscribe)
 }
 
 pub fn parse_address(raw: &str) -> Address {
     parse_rfc_address_list(raw)
         .into_iter()
         .next()
-        .unwrap_or(Address {
+        .unwrap_or_else(|| Address {
             name: None,
             email: raw.trim().to_string(),
         })
@@ -260,9 +258,10 @@ fn walk_parts(
                 &format!("{provider_msg_id}:{provider_id}"),
             ),
             message_id: MessageId::from_scoped_provider_id(account_id, "gmail", provider_msg_id),
-            filename: filename
-                .map(|value| (*value).clone())
-                .unwrap_or_else(|| format!("attachment-{part_path}")),
+            filename: filename.map_or_else(
+                || format!("attachment-{part_path}"),
+                |value| (*value).clone(),
+            ),
             mime_type: mime.to_string(),
             disposition,
             content_id,

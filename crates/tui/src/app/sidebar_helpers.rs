@@ -240,10 +240,12 @@ impl App {
                 SidebarGroup::SystemLabels
             }
             Some(SidebarItem::Label(_)) => SidebarGroup::UserLabels,
-            Some(SidebarItem::Account(_))
-            | Some(SidebarItem::AllMail)
-            | Some(SidebarItem::Subscriptions)
-            | Some(SidebarItem::Owed)
+            Some(
+                SidebarItem::Account(_)
+                | SidebarItem::AllMail
+                | SidebarItem::Subscriptions
+                | SidebarItem::Owed,
+            )
             | None => SidebarGroup::SystemLabels,
         }
     }

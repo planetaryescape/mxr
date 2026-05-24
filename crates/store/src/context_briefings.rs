@@ -20,13 +20,13 @@ pub enum BriefingKind {
 impl BriefingKind {
     pub fn as_str(self) -> &'static str {
         match self {
-            BriefingKind::Thread => "thread",
-            BriefingKind::Recipient => "recipient",
+            Self::Thread => "thread",
+            Self::Recipient => "recipient",
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextBriefing {
     pub id: String,
     pub account_id: AccountId,

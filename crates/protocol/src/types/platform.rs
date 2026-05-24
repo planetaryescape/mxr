@@ -2,7 +2,7 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SenderEmailReferenceData {
     pub message_id: MessageId,
@@ -17,7 +17,7 @@ pub struct SenderEmailReferenceData {
     pub has_attachments: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SenderSummaryData {
     pub account_id: AccountId,

@@ -197,9 +197,7 @@ impl App {
                     }
                     None
                 }
-                (KeyCode::Esc | KeyCode::Enter, _)
-                | (KeyCode::Char('q'), _)
-                | (KeyCode::Char('x'), _) => {
+                (KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q' | 'x'), _) => {
                     self.modals.error = None;
                     None
                 }
@@ -209,9 +207,7 @@ impl App {
 
         if self.modals.platform.visible {
             return match (key.code, key.modifiers) {
-                (KeyCode::Esc | KeyCode::Enter, _)
-                | (KeyCode::Char('q'), _)
-                | (KeyCode::Char('x'), _) => {
+                (KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q' | 'x'), _) => {
                     self.modals.platform.close();
                     None
                 }
@@ -248,9 +244,7 @@ impl App {
 
         if self.modals.help_open {
             return match (key.code, key.modifiers) {
-                (KeyCode::Esc | KeyCode::Enter, _)
-                | (KeyCode::Char('?'), _)
-                | (KeyCode::Char('q'), _) => Some(Action::Help),
+                (KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?' | 'q'), _) => Some(Action::Help),
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
                     if self.help_search_active() {
                         self.help_select_next();
@@ -389,7 +383,7 @@ impl App {
 
         if self.modals.onboarding.visible {
             return match (key.code, key.modifiers) {
-                (KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l'), _) => {
+                (KeyCode::Enter | KeyCode::Char(' ' | 'l') | KeyCode::Right, _) => {
                     self.advance_feature_onboarding();
                     None
                 }
@@ -820,7 +814,10 @@ impl App {
         if let Some(ref mut url_state) = self.mailbox.url_modal {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter | KeyCode::Char('o'), _) => {
-                    if let Some(url) = url_state.selected_url().map(|s| s.to_string()) {
+                    if let Some(url) = url_state
+                        .selected_url()
+                        .map(std::string::ToString::to_string)
+                    {
                         ui::url_modal::open_url(&url);
                         self.status_message = Some(format!("Opening {url}"));
                     }
@@ -828,7 +825,10 @@ impl App {
                     return None;
                 }
                 (KeyCode::Char('y'), _) => {
-                    if let Some(url) = url_state.selected_url().map(|s| s.to_string()) {
+                    if let Some(url) = url_state
+                        .selected_url()
+                        .map(std::string::ToString::to_string)
+                    {
                         // Copy to clipboard via pbcopy (macOS) or xclip (Linux)
                         #[cfg(target_os = "macos")]
                         {
@@ -1683,13 +1683,13 @@ impl App {
                     // Cancel: clear both the input and the applied search.
                     match target_pane {
                         crate::app::DiagnosticsPaneKind::Events => {
-                            self.diagnostics.page.events_search.clear()
+                            self.diagnostics.page.events_search.clear();
                         }
                         crate::app::DiagnosticsPaneKind::Logs => {
-                            self.diagnostics.page.logs_search.clear()
+                            self.diagnostics.page.logs_search.clear();
                         }
                         crate::app::DiagnosticsPaneKind::Activity => {
-                            self.diagnostics.page.activity_search.clear()
+                            self.diagnostics.page.activity_search.clear();
                         }
                         _ => {}
                     }
@@ -1903,7 +1903,7 @@ impl App {
 
         if self.accounts.page.form.editing_field {
             return match (key.code, key.modifiers) {
-                (KeyCode::Esc, _) | (KeyCode::Enter, _) => {
+                (KeyCode::Esc | KeyCode::Enter, _) => {
                     self.accounts.page.form.editing_field = false;
                     None
                 }
@@ -1914,8 +1914,7 @@ impl App {
                         % self.account_form_field_count();
                     self.accounts.page.form.field_cursor =
                         account_form_field_value(&self.accounts.page.form)
-                            .map(|value| value.chars().count())
-                            .unwrap_or(0);
+                            .map_or(0, |value| value.chars().count());
                     None
                 }
                 (KeyCode::BackTab, _) => {
@@ -1924,8 +1923,7 @@ impl App {
                         self.accounts.page.form.active_field.saturating_sub(1);
                     self.accounts.page.form.field_cursor =
                         account_form_field_value(&self.accounts.page.form)
-                            .map(|value| value.chars().count())
-                            .unwrap_or(0);
+                            .map_or(0, |value| value.chars().count());
                     None
                 }
                 (KeyCode::Left, _) => {
@@ -1947,8 +1945,7 @@ impl App {
                 (KeyCode::End, _) => {
                     self.accounts.page.form.field_cursor =
                         account_form_field_value(&self.accounts.page.form)
-                            .map(|value| value.chars().count())
-                            .unwrap_or(0);
+                            .map_or(0, |value| value.chars().count());
                     None
                 }
                 (KeyCode::Backspace, _) => {
@@ -2021,8 +2018,7 @@ impl App {
                     self.accounts.page.form.editing_field = true;
                     self.accounts.page.form.field_cursor =
                         account_form_field_value(&self.accounts.page.form)
-                            .map(|value| value.chars().count())
-                            .unwrap_or(0);
+                            .map_or(0, |value| value.chars().count());
                 } else {
                     if self.accounts.page.form.active_field == 0 {
                         self.request_account_form_mode_change(true);

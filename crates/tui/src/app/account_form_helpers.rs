@@ -377,8 +377,7 @@ impl App {
             first_invalid_field.min(self.account_form_field_count().saturating_sub(1));
         self.accounts.page.form.editing_field = false;
         self.accounts.page.form.field_cursor = account_form_field_value(&self.accounts.page.form)
-            .map(|value| value.chars().count())
-            .unwrap_or(0);
+            .map_or(0, |value| value.chars().count());
     }
 
     pub(super) fn account_result_modal_hint(label: &str, detail: &str) -> Option<&'static str> {

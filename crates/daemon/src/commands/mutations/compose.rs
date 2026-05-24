@@ -570,10 +570,7 @@ pub async fn drafts_resume(draft_id: String) -> anyhow::Result<()> {
         Response::Ok {
             data: ResponseData::Ack,
         } => {
-            println!(
-                "Draft {} reset to 'draft' — retry with `mxr send {}`",
-                parsed, parsed
-            );
+            println!("Draft {parsed} reset to 'draft' — retry with `mxr send {parsed}`");
             Ok(())
         }
         Response::Error { message, .. } => anyhow::bail!("{message}"),
@@ -650,7 +647,7 @@ pub async fn send_draft(
         .await?;
     let receipt = expect_send_receipt(resp)?;
     set_auto_reminder_after_send(&mut client, receipt.as_ref(), remind_after.as_deref()).await?;
-    println!("Sent draft {}", draft_id);
+    println!("Sent draft {draft_id}");
     if let Some(info) = receipt.as_ref() {
         println!("Local message id: {}", info.local_message_id);
     }
@@ -819,7 +816,7 @@ fn print_safety_report_table(draft: &Draft, report: &mxr_core::DraftSafetyReport
         };
         println!("  [{sev}] {:?}: {}", issue.code, issue.message);
         if let Some(detail) = &issue.detail {
-            println!("        {}", detail);
+            println!("        {detail}");
         }
     }
 }
@@ -1063,7 +1060,7 @@ pub(crate) fn snippet_context_from_frontmatter(
                     .split('@')
                     .next()
                     .filter(|local| !local.is_empty())
-                    .map(|local| local.to_string())
+                    .map(std::string::ToString::to_string)
             })
         });
     let thread_subject = strip_reply_forward_prefix(&frontmatter.subject);

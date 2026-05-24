@@ -378,7 +378,10 @@ mod tests {
         {
             let mut cache = storage.cache.lock().unwrap();
             cache.push(StoredToken {
-                scopes: scopes.iter().map(|s| s.to_string()).collect(),
+                scopes: scopes
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect(),
                 token: fake_token("hello"),
             });
         }

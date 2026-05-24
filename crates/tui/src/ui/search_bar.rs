@@ -49,8 +49,7 @@ impl SearchBar {
             let prev = self.query[..self.cursor_pos]
                 .char_indices()
                 .last()
-                .map(|(i, _)| i)
-                .unwrap_or(0);
+                .map_or(0, |(i, _)| i);
             self.query.remove(prev);
             self.cursor_pos = prev;
         }

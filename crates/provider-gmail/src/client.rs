@@ -513,7 +513,7 @@ impl GmailApi for GmailClient {
         page_token: Option<&str>,
         max_results: u32,
     ) -> Result<GmailListResponse, GmailError> {
-        GmailClient::list_messages(self, query, page_token, max_results).await
+        Self::list_messages(self, query, page_token, max_results).await
     }
 
     async fn get_message(
@@ -521,7 +521,7 @@ impl GmailApi for GmailClient {
         message_id: &str,
         format: MessageFormat,
     ) -> Result<GmailMessage, GmailError> {
-        GmailClient::get_message(self, message_id, format).await
+        Self::get_message(self, message_id, format).await
     }
 
     async fn batch_get_messages(
@@ -529,7 +529,7 @@ impl GmailApi for GmailClient {
         message_ids: &[String],
         format: MessageFormat,
     ) -> Result<Vec<GmailMessage>, GmailError> {
-        GmailClient::batch_get_messages(self, message_ids, format).await
+        Self::batch_get_messages(self, message_ids, format).await
     }
 
     async fn list_history(
@@ -537,7 +537,7 @@ impl GmailApi for GmailClient {
         start_history_id: u64,
         page_token: Option<&str>,
     ) -> Result<GmailHistoryResponse, GmailError> {
-        GmailClient::list_history(self, start_history_id, page_token).await
+        Self::list_history(self, start_history_id, page_token).await
     }
 
     async fn modify_message(
@@ -546,15 +546,15 @@ impl GmailApi for GmailClient {
         add_labels: &[&str],
         remove_labels: &[&str],
     ) -> Result<(), GmailError> {
-        GmailClient::modify_message(self, message_id, add_labels, remove_labels).await
+        Self::modify_message(self, message_id, add_labels, remove_labels).await
     }
 
     async fn trash_message(&self, message_id: &str) -> Result<(), GmailError> {
-        GmailClient::trash_message(self, message_id).await
+        Self::trash_message(self, message_id).await
     }
 
     async fn send_message(&self, raw_base64url: &str) -> Result<serde_json::Value, GmailError> {
-        GmailClient::send_message(self, raw_base64url).await
+        Self::send_message(self, raw_base64url).await
     }
 
     async fn get_attachment(
@@ -562,15 +562,15 @@ impl GmailApi for GmailClient {
         message_id: &str,
         attachment_id: &str,
     ) -> Result<Vec<u8>, GmailError> {
-        GmailClient::get_attachment(self, message_id, attachment_id).await
+        Self::get_attachment(self, message_id, attachment_id).await
     }
 
     async fn create_draft(&self, raw_base64url: &str) -> Result<String, GmailError> {
-        GmailClient::create_draft(self, raw_base64url).await
+        Self::create_draft(self, raw_base64url).await
     }
 
     async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError> {
-        GmailClient::list_labels(self).await
+        Self::list_labels(self).await
     }
 
     async fn create_label(
@@ -578,15 +578,15 @@ impl GmailApi for GmailClient {
         name: &str,
         color: Option<&str>,
     ) -> Result<GmailLabel, GmailError> {
-        GmailClient::create_label(self, name, color).await
+        Self::create_label(self, name, color).await
     }
 
     async fn rename_label(&self, label_id: &str, new_name: &str) -> Result<GmailLabel, GmailError> {
-        GmailClient::rename_label(self, label_id, new_name).await
+        Self::rename_label(self, label_id, new_name).await
     }
 
     async fn delete_label(&self, label_id: &str) -> Result<(), GmailError> {
-        GmailClient::delete_label(self, label_id).await
+        Self::delete_label(self, label_id).await
     }
 }
 
@@ -600,7 +600,7 @@ mod urlencoding {
                     encoded.push(byte as char);
                 }
                 _ => {
-                    encoded.push_str(&format!("%{:02X}", byte));
+                    encoded.push_str(&format!("%{byte:02X}"));
                 }
             }
         }

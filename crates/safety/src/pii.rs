@@ -124,7 +124,7 @@ pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
 
     for m in CC_DIGITS.find_iter(&hay) {
         let raw = m.as_str();
-        let digits: String = raw.chars().filter(|c| c.is_ascii_digit()).collect();
+        let digits: String = raw.chars().filter(char::is_ascii_digit).collect();
         if (12..=19).contains(&digits.len()) && luhn_valid(&digits) {
             let last4 = &digits[digits.len() - 4..];
             issues.push(warn(

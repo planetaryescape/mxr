@@ -61,10 +61,10 @@ impl super::Store {
             account_id: account_id.clone(),
             last_attempt_at: update
                 .last_attempt_at
-                .or(existing.as_ref().and_then(|row| row.last_attempt_at)),
+                .or_else(|| existing.as_ref().and_then(|row| row.last_attempt_at)),
             last_success_at: update
                 .last_success_at
-                .or(existing.as_ref().and_then(|row| row.last_success_at)),
+                .or_else(|| existing.as_ref().and_then(|row| row.last_success_at)),
             last_error: update
                 .last_error
                 .clone()
@@ -73,32 +73,23 @@ impl super::Store {
                 .failure_class
                 .clone()
                 .unwrap_or_else(|| existing.as_ref().and_then(|row| row.failure_class.clone())),
-            consecutive_failures: update.consecutive_failures.unwrap_or_else(|| {
-                existing
-                    .as_ref()
-                    .map(|row| row.consecutive_failures)
-                    .unwrap_or(0)
-            }),
+            consecutive_failures: update
+                .consecutive_failures
+                .unwrap_or_else(|| existing.as_ref().map_or(0, |row| row.consecutive_failures)),
             backoff_until: update
                 .backoff_until
                 .unwrap_or_else(|| existing.as_ref().and_then(|row| row.backoff_until)),
-            sync_in_progress: update.sync_in_progress.unwrap_or_else(|| {
-                existing
-                    .as_ref()
-                    .map(|row| row.sync_in_progress)
-                    .unwrap_or(false)
-            }),
+            sync_in_progress: update
+                .sync_in_progress
+                .unwrap_or_else(|| existing.as_ref().is_some_and(|row| row.sync_in_progress)),
             current_cursor_summary: update.current_cursor_summary.clone().unwrap_or_else(|| {
                 existing
                     .as_ref()
                     .and_then(|row| row.current_cursor_summary.clone())
             }),
-            last_synced_count: update.last_synced_count.unwrap_or_else(|| {
-                existing
-                    .as_ref()
-                    .map(|row| row.last_synced_count)
-                    .unwrap_or(0)
-            }),
+            last_synced_count: update
+                .last_synced_count
+                .unwrap_or_else(|| existing.as_ref().map_or(0, |row| row.last_synced_count)),
             updated_at: now,
         };
 

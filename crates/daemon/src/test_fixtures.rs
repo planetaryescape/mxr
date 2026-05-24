@@ -111,7 +111,7 @@ impl TestEnvelopeBuilder {
 
     pub(crate) fn recipient_address(mut self, name: Option<&str>, email: &str) -> Self {
         self.to = vec![Address {
-            name: name.map(|n| n.to_string()),
+            name: name.map(std::string::ToString::to_string),
             email: email.to_string(),
         }];
         self

@@ -48,7 +48,7 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
             continue;
         }
         let ty = entry.file_type().ok();
-        if ty.map(|t| t.is_dir()).unwrap_or(false) {
+        if ty.is_some_and(|t| t.is_dir()) {
             walk(&path, out);
         } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
             out.push(path);

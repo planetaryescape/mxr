@@ -74,7 +74,7 @@ pub fn run(options: LogRunOptions) -> anyhow::Result<()> {
     let data_dir = mxr_config::data_dir();
     let log_dir = data_dir.join("logs");
     let log_path = log_dir.join("mxr.log");
-    let json_mode = matches!(format, Some(OutputFormat::Json) | Some(OutputFormat::Jsonl));
+    let json_mode = matches!(format, Some(OutputFormat::Json | OutputFormat::Jsonl));
 
     if purge {
         let config = mxr_config::load_config().unwrap_or_default();

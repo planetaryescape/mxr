@@ -201,13 +201,12 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
                             profile.dimensions,
                             profile
                                 .last_indexed_at
-                                .map(|v| v.to_rfc3339())
-                                .unwrap_or_else(|| "-".into())
+                                .map_or_else(|| "-".into(), |v| v.to_rfc3339())
                         );
                     }
                 }
             },
-            Response::Error { message, .. } => anyhow::bail!("{}", message),
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
             _ => anyhow::bail!("Unexpected response"),
         }
         if options.semantic_status && !options.reindex {
@@ -502,10 +501,7 @@ async fn collect_sync_statuses_from_store(store: &Store) -> anyhow::Result<Vec<A
             .as_ref()
             .and_then(|row| row.backoff_until)
             .map(|dt| dt.to_rfc3339());
-        let sync_in_progress = runtime
-            .as_ref()
-            .map(|row| row.sync_in_progress)
-            .unwrap_or(false);
+        let sync_in_progress = runtime.as_ref().is_some_and(|row| row.sync_in_progress);
 
         statuses.push(AccountSyncStatus {
             account_id: account.id,
@@ -517,10 +513,7 @@ async fn collect_sync_statuses_from_store(store: &Store) -> anyhow::Result<Vec<A
             last_success_at: last_success_at.clone(),
             last_error,
             failure_class: runtime.as_ref().and_then(|row| row.failure_class.clone()),
-            consecutive_failures: runtime
-                .as_ref()
-                .map(|row| row.consecutive_failures)
-                .unwrap_or(0),
+            consecutive_failures: runtime.as_ref().map_or(0, |row| row.consecutive_failures),
             backoff_until: backoff_until.clone(),
             sync_in_progress,
             current_cursor_summary: Some(
@@ -529,10 +522,7 @@ async fn collect_sync_statuses_from_store(store: &Store) -> anyhow::Result<Vec<A
                     .and_then(|row| row.current_cursor_summary.clone())
                     .unwrap_or_else(|| describe_cursor(cursor.as_ref())),
             ),
-            last_synced_count: runtime
-                .as_ref()
-                .map(|row| row.last_synced_count)
-                .unwrap_or(0),
+            last_synced_count: runtime.as_ref().map_or(0, |row| row.last_synced_count),
             healthy: !sync_in_progress
                 && backoff_until.is_none()
                 && last_success_at.is_some()
@@ -899,10 +889,10 @@ fn semantic_freshness_from_snapshot(
         Some(mxr_core::types::SemanticProfileStatus::Ready) => {
             mxr_protocol::IndexFreshness::Current
         }
-        Some(mxr_core::types::SemanticProfileStatus::Indexing)
-        | Some(mxr_core::types::SemanticProfileStatus::Pending) => {
-            mxr_protocol::IndexFreshness::Indexing
-        }
+        Some(
+            mxr_core::types::SemanticProfileStatus::Indexing
+            | mxr_core::types::SemanticProfileStatus::Pending,
+        ) => mxr_protocol::IndexFreshness::Indexing,
         Some(mxr_core::types::SemanticProfileStatus::Error) => mxr_protocol::IndexFreshness::Error,
         None => mxr_protocol::IndexFreshness::Stale,
     };
@@ -935,10 +925,10 @@ fn semantic_freshness_from_store(
         Some(mxr_core::types::SemanticProfileStatus::Ready) => {
             mxr_protocol::IndexFreshness::Current
         }
-        Some(mxr_core::types::SemanticProfileStatus::Indexing)
-        | Some(mxr_core::types::SemanticProfileStatus::Pending) => {
-            mxr_protocol::IndexFreshness::Indexing
-        }
+        Some(
+            mxr_core::types::SemanticProfileStatus::Indexing
+            | mxr_core::types::SemanticProfileStatus::Pending,
+        ) => mxr_protocol::IndexFreshness::Indexing,
         Some(mxr_core::types::SemanticProfileStatus::Error) => mxr_protocol::IndexFreshness::Error,
         None => mxr_protocol::IndexFreshness::Stale,
     };
@@ -1072,7 +1062,7 @@ impl ProgressPrinter {
                     message,
                     ..
                 } => {
-                    let total_str = total.map(|t| t.to_string()).unwrap_or_else(|| "?".into());
+                    let total_str = total.map_or_else(|| "?".into(), |t| t.to_string());
                     if json_mode {
                         if let Ok(s) = serde_json::to_string(&event) {
                             let _ = writeln!(stderr, "{s}");

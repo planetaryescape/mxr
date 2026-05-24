@@ -115,81 +115,54 @@ impl RuntimeTasks {
         *self.bridge_loop.lock() = Some(handle);
     }
 
+    /// Take a registered task handle out of its slot, holding the lock only for
+    /// the `take()` itself so the guard never spans the caller's control flow.
+    fn take_named(
+        slot: &ParkingMutex<Option<JoinHandle<()>>>,
+        name: &str,
+    ) -> Option<NamedTaskHandle> {
+        slot.lock().take().map(|handle| NamedTaskHandle {
+            name: name.to_string(),
+            handle,
+        })
+    }
+
     fn take_all(&self) -> Vec<NamedTaskHandle> {
         let mut handles = Vec::new();
 
-        if let Some(handle) = self.search_worker.lock().take() {
-            handles.push(NamedTaskHandle {
-                name: "search_worker".to_string(),
-                handle,
-            });
-        }
-        if let Some(handle) = self.semantic_worker.lock().take() {
-            handles.push(NamedTaskHandle {
-                name: "semantic_worker".to_string(),
-                handle,
-            });
-        }
-        if let Some(handle) = self.relationship_worker.lock().take() {
-            handles.push(NamedTaskHandle {
-                name: "relationship_worker".to_string(),
-                handle,
-            });
-        }
-        if let Some(handle) = self.contacts_refresh_worker.lock().take() {
-            handles.push(NamedTaskHandle {
-                name: "contacts_refresh_worker".to_string(),
-                handle,
-            });
-        }
-        if let Some(handle) = self.snooze_loop.lock().take() {
-            handles.push(NamedTaskHandle {
-                name: "snooze_loop".to_string(),
-                handle,
-            });
-        }
-        if let Some(handle) = self.auto_reminders_loop.lock().take() {
-            handles.push(NamedTaskHandle {
-                name: "auto_reminders_loop".to_string(),
-                handle,
-            });
-        }
-        if let Some(handle) = self.scheduled_sends_loop.lock().take() {
-            handles.push(NamedTaskHandle {
-                name: "scheduled_sends_loop".to_string(),
-                handle,
-            });
-        }
-        if let Some(handle) = self.reply_pair_reconciler.lock().take() {
-            handles.push(NamedTaskHandle {
-                name: "reply_pair_reconciler".to_string(),
-                handle,
-            });
-        }
-        if let Some(handle) = self.contacts_refresher.lock().take() {
-            handles.push(NamedTaskHandle {
-                name: "contacts_refresher".to_string(),
-                handle,
-            });
-        }
-        if let Some(handle) = self.wrapped_warmer.lock().take() {
-            handles.push(NamedTaskHandle {
-                name: "wrapped_warmer".to_string(),
-                handle,
-            });
-        }
-        if let Some(handle) = self.startup_maintenance.lock().take() {
-            handles.push(NamedTaskHandle {
-                name: "startup_maintenance".to_string(),
-                handle,
-            });
-        }
-        if let Some(handle) = self.bridge_loop.lock().take() {
-            handles.push(NamedTaskHandle {
-                name: "bridge_loop".to_string(),
-                handle,
-            });
-        }
+        handles.extend(Self::take_named(&self.search_worker, "search_worker"));
+        handles.extend(Self::take_named(&self.semantic_worker, "semantic_worker"));
+        handles.extend(Self::take_named(
+            &self.relationship_worker,
+            "relationship_worker",
+        ));
+        handles.extend(Self::take_named(
+            &self.contacts_refresh_worker,
+            "contacts_refresh_worker",
+        ));
+        handles.extend(Self::take_named(&self.snooze_loop, "snooze_loop"));
+        handles.extend(Self::take_named(
+            &self.auto_reminders_loop,
+            "auto_reminders_loop",
+        ));
+        handles.extend(Self::take_named(
+            &self.scheduled_sends_loop,
+            "scheduled_sends_loop",
+        ));
+        handles.extend(Self::take_named(
+            &self.reply_pair_reconciler,
+            "reply_pair_reconciler",
+        ));
+        handles.extend(Self::take_named(
+            &self.contacts_refresher,
+            "contacts_refresher",
+        ));
+        handles.extend(Self::take_named(&self.wrapped_warmer, "wrapped_warmer"));
+        handles.extend(Self::take_named(
+            &self.startup_maintenance,
+            "startup_maintenance",
+        ));
+        handles.extend(Self::take_named(&self.bridge_loop, "bridge_loop"));
 
         for (account_id, handle) in self.sync_loops.lock().drain() {
             handles.push(NamedTaskHandle {
@@ -614,9 +587,8 @@ impl AppState {
             let account_id = AccountId::from_provider_id(
                 provider_kind
                     .clone()
-                    .or(send_kind.clone())
-                    .map(provider_kind_name)
-                    .unwrap_or("account"),
+                    .or_else(|| send_kind.clone())
+                    .map_or("account", provider_kind_name),
                 &acct_config.email,
             );
 
@@ -1049,7 +1021,7 @@ impl AppState {
             match tokio::time::timeout(remaining, task.handle).await {
                 Ok(Ok(())) => tracing::trace!(task = %task.name, "runtime task stopped"),
                 Ok(Err(error)) => {
-                    tracing::warn!(task = %task.name, "runtime task join failed: {error}")
+                    tracing::warn!(task = %task.name, "runtime task join failed: {error}");
                 }
                 Err(_) => tracing::warn!(task = %task.name, "runtime task drain timed out"),
             }

@@ -39,7 +39,7 @@ mod tests {
     #[test]
     fn typed_id_display() {
         let id = AccountId::new();
-        let display = format!("{}", id);
+        let display = format!("{id}");
         assert!(!display.is_empty());
         assert_eq!(display, id.as_str());
     }

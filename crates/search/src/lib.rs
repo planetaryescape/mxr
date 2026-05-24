@@ -156,7 +156,7 @@ mod tests {
         ];
         let mut target_id = String::new();
         for (i, subj) in subjects.iter().enumerate() {
-            let env = make_envelope(subj, &format!("Snippet for msg {}", i), "Alice");
+            let env = make_envelope(subj, &format!("Snippet for msg {i}"), "Alice");
             if i == 0 {
                 target_id = env.id.as_str();
             }
@@ -404,8 +404,8 @@ mod tests {
         let results = e2e_search(&idx, "from:alice@example.com");
         assert_eq!(results.len(), 2);
         let alice_ids: Vec<String> = vec![
-            envelopes[0].id.as_str().to_string(),
-            envelopes[3].id.as_str().to_string(),
+            envelopes[0].id.as_str().clone(),
+            envelopes[3].id.as_str().clone(),
         ];
         for id in &results {
             assert!(alice_ids.contains(id));
@@ -419,8 +419,8 @@ mod tests {
         let results = e2e_search(&idx, "from:alice@example.com is:unread");
         assert_eq!(results.len(), 2);
         let alice_ids: Vec<String> = vec![
-            envelopes[0].id.as_str().to_string(),
-            envelopes[3].id.as_str().to_string(),
+            envelopes[0].id.as_str().clone(),
+            envelopes[3].id.as_str().clone(),
         ];
         for id in &results {
             assert!(alice_ids.contains(id));
@@ -441,8 +441,8 @@ mod tests {
         let results = e2e_search(&idx, "has:attachment");
         assert_eq!(results.len(), 2);
         let attachment_ids: Vec<String> = vec![
-            envelopes[1].id.as_str().to_string(),
-            envelopes[3].id.as_str().to_string(),
+            envelopes[1].id.as_str().clone(),
+            envelopes[3].id.as_str().clone(),
         ];
         for id in &results {
             assert!(attachment_ids.contains(id));
@@ -893,7 +893,7 @@ mod tests {
         idx.commit().unwrap();
 
         let results = e2e_search(&idx, "is:sent");
-        assert_eq!(results, vec![sent.id.as_str().to_string()]);
+        assert_eq!(results, vec![sent.id.as_str().clone()]);
     }
 
     #[test]
@@ -961,15 +961,15 @@ mod tests {
 
         assert_eq!(
             e2e_search(&idx, "body:canary"),
-            vec![env.id.as_str().to_string()]
+            vec![env.id.as_str().clone()]
         );
         assert_eq!(
             e2e_search(&idx, "filename:release-notes"),
-            vec![env.id.as_str().to_string()]
+            vec![env.id.as_str().clone()]
         );
         assert_eq!(
             e2e_search(&idx, "size:>=1000"),
-            vec![env.id.as_str().to_string()]
+            vec![env.id.as_str().clone()]
         );
     }
 }

@@ -642,8 +642,7 @@ impl ImapProvider {
             && mailbox_info.uid_validity
                 == old_mailbox
                     .as_ref()
-                    .map(|c| c.uid_validity)
-                    .unwrap_or(mailbox_info.uid_validity)
+                    .map_or(mailbox_info.uid_validity, |c| c.uid_validity)
         {
             if let Some(old) = old_mailbox.as_ref() {
                 if old.uid_next > 1 {

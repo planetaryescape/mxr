@@ -13,10 +13,12 @@ pub(crate) async fn load_accounts_page_accounts(
         Ok(Response::Ok {
             data: ResponseData::Accounts { accounts },
         }) if !accounts.is_empty() => Ok(accounts),
-        Ok(Response::Ok {
-            data: ResponseData::Accounts { .. },
-        })
-        | Ok(Response::Error { .. })
+        Ok(
+            Response::Ok {
+                data: ResponseData::Accounts { .. },
+            }
+            | Response::Error { .. },
+        )
         | Err(_) => load_config_account_summaries(bg).await,
         Ok(_) => Err(MxrError::Ipc("unexpected response".into())),
     }

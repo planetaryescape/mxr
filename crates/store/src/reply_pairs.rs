@@ -424,7 +424,7 @@ pub(crate) fn first_recipient_email(json: &str) -> Option<String> {
     first
         .get("email")
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
 }
 
 #[allow(dead_code)]

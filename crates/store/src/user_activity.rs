@@ -211,7 +211,7 @@ impl Store {
                 .await?
                 .flatten();
         let mut value: serde_json::Value = match existing.as_deref() {
-            Some(s) => serde_json::from_str(s).unwrap_or(serde_json::json!({})),
+            Some(s) => serde_json::from_str(s).unwrap_or_else(|_| serde_json::json!({})),
             None => serde_json::json!({}),
         };
         if !value.is_object() {

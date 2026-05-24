@@ -45,7 +45,7 @@ pub fn check(draft: &Draft, ctx: &SafetyContext) -> Vec<DraftSafetyIssue> {
 
     let mut named = Vec::new();
     for cap in VOCATIVE.captures_iter(head) {
-        let raw = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+        let raw = cap.get(1).map_or("", |m| m.as_str());
         if raw.is_empty() {
             continue;
         }
@@ -68,8 +68,7 @@ pub fn check(draft: &Draft, ctx: &SafetyContext) -> Vec<DraftSafetyIssue> {
     let display_match = draft.to.iter().chain(draft.cc.iter()).find(|addr| {
         addr.name
             .as_deref()
-            .map(|d| name_matches(d, target))
-            .unwrap_or(false)
+            .is_some_and(|d| name_matches(d, target))
             || name_matches(addr.email.split('@').next().unwrap_or(""), target)
     });
 
@@ -94,8 +93,7 @@ fn first_paragraph(text: &str) -> &str {
     let end = trimmed_start
         .find("\n\n")
         .or_else(|| trimmed_start.find("\r\n\r\n"))
-        .map(|i| offset + i)
-        .unwrap_or(text.len());
+        .map_or(text.len(), |i| offset + i);
     &text[..end]
 }
 

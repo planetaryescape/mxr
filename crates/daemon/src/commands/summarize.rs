@@ -74,7 +74,7 @@ pub async fn run(
                     if index > 0 {
                         println!();
                     }
-                    println!("--- {} ---", id);
+                    println!("--- {id} ---");
                 }
                 println!("{text}");
                 eprintln!("\n[via {model}]");

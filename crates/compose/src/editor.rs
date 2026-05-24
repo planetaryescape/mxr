@@ -8,9 +8,7 @@ pub fn resolve_editor(config_editor: Option<&str>) -> String {
     std::env::var("EDITOR")
         .or_else(|_| std::env::var("VISUAL"))
         .unwrap_or_else(|_| {
-            config_editor
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "vi".to_string())
+            config_editor.map_or_else(|| "vi".to_string(), std::string::ToString::to_string)
         })
 }
 

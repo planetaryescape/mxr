@@ -236,7 +236,7 @@ fn render_account_item<'a>(
     theme: &Theme,
 ) -> ListItem<'a> {
     let indicator = if is_default { " ●" } else { "" };
-    let name_part = format!("  {}", email);
+    let name_part = format!("  {email}");
     let line = if is_default {
         let padding = inner_width.saturating_sub(name_part.len() + indicator.len());
         format!("{}{}{}", name_part, " ".repeat(padding), indicator)
@@ -290,7 +290,7 @@ fn render_sidebar_link<'a>(
 ) -> ListItem<'a> {
     let line = format!("  {:<width$}", name, width = inner_width.saturating_sub(2));
     let line = if let Some(count) = count {
-        let name_part = format!("  {}", name);
+        let name_part = format!("  {name}");
         let padding = inner_width.saturating_sub(name_part.len() + count.len());
         format!("{}{}{}", name_part, " ".repeat(padding), count)
     } else {
@@ -313,9 +313,7 @@ fn render_label_item<'a>(
     active_label: Option<&mxr_core::LabelId>,
     theme: &Theme,
 ) -> ListItem<'a> {
-    let is_active = active_label
-        .map(|current| current == &label.id)
-        .unwrap_or(false);
+    let is_active = active_label.is_some_and(|current| current == &label.id);
     let display_name = humanize_label(&label.name);
 
     let count_str = if label.unread_count > 0 {
@@ -327,7 +325,7 @@ fn render_label_item<'a>(
     };
 
     // Right-align count: name on left, count on right
-    let name_part = format!("  {}", display_name);
+    let name_part = format!("  {display_name}");
     let line = if count_str.is_empty() {
         name_part
     } else {

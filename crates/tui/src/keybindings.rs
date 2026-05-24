@@ -646,7 +646,11 @@ mod tests {
         let config = default_keybindings();
 
         // Check that key actions are present
-        let actions: Vec<&str> = config.mail_list.values().map(|s| s.as_str()).collect();
+        let actions: Vec<&str> = config
+            .mail_list
+            .values()
+            .map(std::string::String::as_str)
+            .collect();
         assert!(actions.contains(&"compose"));
         assert!(actions.contains(&"reply"));
         assert!(actions.contains(&"reply_all"));

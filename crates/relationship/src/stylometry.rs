@@ -46,9 +46,7 @@ pub fn compute_metrics(text: &str) -> StylometryMetrics {
         non_ascii_symbol_count(text) as f64 * 1000.0,
         text.len().max(1) as f64,
     );
-    let lowercase_opener_rate = first_alpha(text)
-        .map(|ch| ch.is_lowercase() as u8 as f64)
-        .unwrap_or(0.0);
+    let lowercase_opener_rate = first_alpha(text).map_or(0.0, |ch| ch.is_lowercase() as u8 as f64);
     let casual_score = (contraction_rate * 3.0)
         + rate(exclamations, sentence_count as f64)
         + lowercase_opener_rate

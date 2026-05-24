@@ -558,7 +558,7 @@ async fn update_compose_session(
             error_kind = bridge_error_kind(&error),
             missing_file = bridge_error_is_missing_file(&error),
             draft_exists = path.exists(),
-            parent_exists = path.parent().is_some_and(|parent| parent.exists()),
+            parent_exists = path.parent().is_some_and(std::path::Path::exists),
             "bridge compose update failed"
         );
         return Err(error);
@@ -619,7 +619,7 @@ async fn send_compose_session(
     )
     .await
     {
-        Ok(ResponseData::Ack) | Ok(ResponseData::SendReceipt { .. }) => {
+        Ok(ResponseData::Ack | ResponseData::SendReceipt { .. }) => {
             tracing::info!(
                 request_id,
                 endpoint = "compose/send",

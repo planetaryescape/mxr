@@ -137,6 +137,19 @@ unused_must_use = "deny"
 unwrap_used = "warn"
 panic = "warn"
 todo = "warn"
+# Idiom lints, each driven to zero before enabling (see docs/idiomatic-rust.md).
+# CI runs `clippy -- -D warnings`, so these are enforced and regression-proof.
+uninlined_format_args = "warn"
+map_unwrap_or = "warn"
+or_fun_call = "warn"
+redundant_closure_for_method_calls = "warn"
+use_self = "warn"
+manual_string_new = "warn"
+implicit_clone = "warn"
+semicolon_if_nothing_returned = "warn"
+unnested_or_patterns = "warn"
+derive_partial_eq_without_eq = "warn"
+significant_drop_in_scrutinee = "warn"
 
 [workspace.dependencies]
 mxr-compose = { path = "crates/compose", version = "0.5.18" }

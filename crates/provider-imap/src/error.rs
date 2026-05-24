@@ -46,7 +46,7 @@ fn sanitize_imap_detail(detail: &str) -> String {
 
 impl From<ImapProviderError> for mxr_core::error::MxrError {
     fn from(e: ImapProviderError) -> Self {
-        mxr_core::error::MxrError::Provider(e.to_string())
+        Self::Provider(e.to_string())
     }
 }
 

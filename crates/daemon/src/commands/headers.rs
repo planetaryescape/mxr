@@ -67,7 +67,7 @@ pub async fn run(
             for id in &ids {
                 let headers = fetch_headers(&mut client, id.clone()).await?;
                 for (name, value) in &headers {
-                    writer.write_record(&[id.as_str().to_string(), name.clone(), value.clone()])?;
+                    writer.write_record(&[id.as_str().clone(), name.clone(), value.clone()])?;
                 }
             }
             println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());

@@ -71,9 +71,11 @@ pub(crate) async fn run_account_save_workflow(
 ) -> Result<AccountOperationResult, MxrError> {
     let mut result = if matches!(
         account.sync,
-        Some(AccountSyncConfigData::Gmail { .. })
-            | Some(AccountSyncConfigData::OutlookPersonal { .. })
-            | Some(AccountSyncConfigData::OutlookWork { .. })
+        Some(
+            AccountSyncConfigData::Gmail { .. }
+                | AccountSyncConfigData::OutlookPersonal { .. }
+                | AccountSyncConfigData::OutlookWork { .. }
+        )
     ) {
         request_account_operation(
             bg,

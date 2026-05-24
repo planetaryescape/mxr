@@ -8,9 +8,7 @@
 fn main() {
     println!("cargo:rerun-if-env-changed=DATABASE_URL");
     println!("cargo:rerun-if-env-changed=SQLX_OFFLINE");
-    let database_url_set = std::env::var("DATABASE_URL")
-        .map(|v| !v.trim().is_empty())
-        .unwrap_or(false);
+    let database_url_set = std::env::var("DATABASE_URL").is_ok_and(|v| !v.trim().is_empty());
     let sqlx_offline_set = std::env::var("SQLX_OFFLINE").is_ok();
     if !database_url_set && !sqlx_offline_set {
         println!("cargo:rustc-env=SQLX_OFFLINE=true");

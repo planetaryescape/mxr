@@ -11,7 +11,7 @@ impl super::Store {
         let account_id = event.account_id.as_str();
         let event_type = event.event_type.as_db_str();
         let source = event.source.as_db_str();
-        let label_id = event.label_id.as_ref().map(|l| l.as_str().to_string());
+        let label_id = event.label_id.as_ref().map(|l| l.as_str().clone());
         let occurred_at = event.occurred_at;
         let metadata_json = event.metadata_json.as_deref();
         sqlx::query!(

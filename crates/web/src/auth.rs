@@ -65,7 +65,7 @@ pub(super) fn extract_token<'a>(
         // browsers join multiple subprotocols with `, ` — e.g.
         // `bearer, abc123`. The token is the trailing item after the
         // `bearer` marker.
-        let mut parts = value.split(',').map(|s| s.trim());
+        let mut parts = value.split(',').map(str::trim);
         if parts.clone().any(|p| p == "bearer") {
             if let Some(candidate) = parts.find(|p| !p.is_empty() && *p != "bearer") {
                 return Some(candidate);

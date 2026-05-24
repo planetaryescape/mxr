@@ -124,15 +124,13 @@ fn whois_unknown_email_returns_structured_json() {
     assert!(
         resp["summary"]
             .as_str()
-            .map(|s| s.contains("No prior interaction"))
-            .unwrap_or(false),
+            .is_some_and(|s| s.contains("No prior interaction")),
         "summary says no prior interaction: {resp}"
     );
     assert!(
         resp["citations"]
             .as_array()
-            .map(|a| a.is_empty())
-            .unwrap_or(false),
+            .is_some_and(std::vec::Vec::is_empty),
         "no citations for unknown contact: {resp}"
     );
 }

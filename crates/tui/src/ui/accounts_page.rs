@@ -57,7 +57,7 @@ pub fn draw(
                     Style::default().fg(theme.text_primary).bold(),
                 ),
                 Span::styled(
-                    format!("  [{}]", badges),
+                    format!("  [{badges}]"),
                     Style::default().fg(theme.text_secondary),
                 ),
             ];
@@ -873,7 +873,7 @@ fn draw_device_code_overlay(
     let expiry_line = if let Some(expires_at) = session.expires_at_unix {
         let remaining = expires_at - chrono::Utc::now().timestamp();
         if remaining > 0 {
-            format!("Code expires in {}s", remaining)
+            format!("Code expires in {remaining}s")
         } else {
             "Code expired".to_string()
         }

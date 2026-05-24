@@ -133,10 +133,10 @@ pub fn build_message_with_id(
     } else {
         let mut mixed = MultiPart::mixed().multipart(alternative);
         for attachment in attachments {
-            let content_type = ContentType::parse(&attachment.mime_type).unwrap_or(
+            let content_type = ContentType::parse(&attachment.mime_type).unwrap_or_else(|_| {
                 ContentType::parse("application/octet-stream")
-                    .expect("static octet-stream content type should parse"),
-            );
+                    .expect("static octet-stream content type should parse")
+            });
             mixed = mixed.singlepart(
                 Attachment::new(attachment.filename.clone())
                     .body(attachment.bytes.clone(), content_type),

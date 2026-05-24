@@ -488,8 +488,8 @@ impl GmailProvider {
         add: &[String],
         remove: &[String],
     ) -> mxr_core::provider::Result<()> {
-        let add_refs: Vec<&str> = add.iter().map(|s| s.as_str()).collect();
-        let remove_refs: Vec<&str> = remove.iter().map(|s| s.as_str()).collect();
+        let add_refs: Vec<&str> = add.iter().map(std::string::String::as_str).collect();
+        let remove_refs: Vec<&str> = remove.iter().map(std::string::String::as_str).collect();
         self.client
             .modify_message(provider_message_id, &add_refs, &remove_refs)
             .await
@@ -547,8 +547,7 @@ struct IndexedSyncedMessage {
 
 fn gmail_parse_concurrency_limit(message_count: usize) -> usize {
     std::thread::available_parallelism()
-        .map(|parallelism| parallelism.get())
-        .unwrap_or(4)
+        .map_or(4, std::num::NonZero::get)
         .min(GMAIL_PARSE_FANOUT_MAX_CONCURRENCY)
         .min(message_count.max(1))
 }
@@ -789,7 +788,7 @@ impl MailSendProvider for GmailProvider {
             .await
             .map_err(MxrError::from)?;
 
-        let message_id = result["id"].as_str().map(|s| s.to_string());
+        let message_id = result["id"].as_str().map(std::string::ToString::to_string);
 
         Ok(SendReceipt {
             provider_message_id: message_id,
@@ -820,7 +819,7 @@ impl MailSendProvider for GmailProvider {
             .map_err(MxrError::from)?;
 
         Ok(SendReceipt {
-            provider_message_id: result["id"].as_str().map(|s| s.to_string()),
+            provider_message_id: result["id"].as_str().map(std::string::ToString::to_string),
             sent_at: chrono::Utc::now(),
             rfc2822_message_id: rfc2822_message_id.to_string(),
         })

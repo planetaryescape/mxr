@@ -101,7 +101,7 @@ fn print_detail(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                             "Citations: {}",
                             d.evidence_msg_ids
                                 .iter()
-                                .map(|m| m.to_string())
+                                .map(std::string::ToString::to_string)
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         );
@@ -141,7 +141,7 @@ fn print(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                             "    cite: {}",
                             d.evidence_msg_ids
                                 .iter()
-                                .map(|m| m.to_string())
+                                .map(std::string::ToString::to_string)
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         );

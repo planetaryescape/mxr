@@ -68,8 +68,7 @@ fn print(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                         .unwrap_or("?");
                     let hr = recommendation
                         .proposed_hour
-                        .map(|h| format!("{h:02}:00"))
-                        .unwrap_or_else(|| "??:??".into());
+                        .map_or_else(|| "??:??".into(), |h| format!("{h:02}:00"));
                     println!("Proposed slot:  {wd} {hr}");
                 }
                 println!();

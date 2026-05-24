@@ -65,8 +65,7 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
                 format!(
                     "Daemon PID: {}",
                     view.daemon_pid
-                        .map(|pid| pid.to_string())
-                        .unwrap_or_else(|| "unknown".to_string())
+                        .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                 ),
                 format!("Accounts: {}", view.accounts.join(", ")),
                 format!("Total messages: {}", view.total_messages),
@@ -171,7 +170,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                     )?
                 );
             }
-            Response::Error { message, .. } => anyhow::bail!("{}", message),
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
             _ => anyhow::bail!("Unexpected response"),
         }
 

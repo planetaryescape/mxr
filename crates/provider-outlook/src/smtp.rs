@@ -40,24 +40,19 @@ impl OutlookSmtpSendProvider {
 
         let creds = Credentials::new(self.username.clone(), token);
 
-        // Port 465 = implicit TLS, port 587 = STARTTLS
-        let transport = if self.port == 465 {
-            AsyncSmtpTransport::<Tokio1Executor>::relay(&self.host)
-                .map_err(|e| e.to_string())?
-                .port(self.port)
-                .authentication(vec![Mechanism::Xoauth2])
-                .credentials(creds)
-                .build()
+        // Port 465 = implicit TLS, port 587 = STARTTLS.
+        let builder = if self.port == 465 {
+            AsyncSmtpTransport::<Tokio1Executor>::relay(&self.host).map_err(|e| e.to_string())?
         } else {
             AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&self.host)
                 .map_err(|e| e.to_string())?
-                .port(self.port)
-                .authentication(vec![Mechanism::Xoauth2])
-                .credentials(creds)
-                .build()
         };
 
-        Ok(transport)
+        Ok(builder
+            .port(self.port)
+            .authentication(vec![Mechanism::Xoauth2])
+            .credentials(creds)
+            .build())
     }
 
     pub async fn test_connection(&self) -> Result<(), String> {

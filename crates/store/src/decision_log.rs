@@ -33,7 +33,7 @@ impl super::Store {
             &entry
                 .evidence_msg_ids
                 .iter()
-                .map(|m| m.as_str())
+                .map(mxr_core::MessageId::as_str)
                 .collect::<Vec<_>>(),
         )
         .unwrap_or_else(|_| "[]".into());
@@ -167,7 +167,10 @@ pub fn decision_id(
     h.update(b"|");
     h.update(normalized_decision.trim().to_lowercase().as_bytes());
     h.update(b"|");
-    let mut sorted: Vec<String> = evidence_msg_ids.iter().map(|m| m.to_string()).collect();
+    let mut sorted: Vec<String> = evidence_msg_ids
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
     sorted.sort();
     h.update(sorted.join(",").as_bytes());
     format!("{:x}", h.finalize())
@@ -180,7 +183,10 @@ pub fn source_hash(thread_text: &str, evidence_msg_ids: &[MessageId]) -> String 
     let mut h = Sha256::new();
     h.update(thread_text.trim().as_bytes());
     h.update(b"|");
-    let mut sorted: Vec<String> = evidence_msg_ids.iter().map(|m| m.to_string()).collect();
+    let mut sorted: Vec<String> = evidence_msg_ids
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
     sorted.sort();
     h.update(sorted.join(",").as_bytes());
     format!("{:x}", h.finalize())

@@ -230,11 +230,7 @@ pub(super) fn print_dry_run_output(
 }
 
 fn selection_message_ids(selection: &MutationSelection) -> Vec<String> {
-    selection
-        .ids
-        .iter()
-        .map(|id| id.as_str().to_owned())
-        .collect()
+    selection.ids.iter().map(|id| id.as_str().clone()).collect()
 }
 
 fn preview_records(selection: &MutationSelection) -> Vec<MutationPreviewRecord> {
@@ -247,7 +243,7 @@ fn preview_records(selection: &MutationSelection) -> Vec<MutationPreviewRecord> 
                 .iter()
                 .find(|envelope| envelope.id == *id);
             MutationPreviewRecord {
-                message_id: id.as_str().to_owned(),
+                message_id: id.as_str().clone(),
                 from: envelope
                     .map(|envelope| {
                         envelope
@@ -353,10 +349,7 @@ pub(super) fn handle_mutation_response(
             print_mutation_result_output(action, success_message, message_ids, result, format)?;
             if none_succeeded {
                 anyhow::bail!(
-                    "No messages changed (requested {}, skipped {}, failed {})",
-                    requested,
-                    skipped,
-                    failed
+                    "No messages changed (requested {requested}, skipped {skipped}, failed {failed})"
                 );
             }
         }
@@ -503,7 +496,7 @@ fn print_mutation_result_output(
                         result.succeeded.to_string(),
                         result.skipped.to_string(),
                         result.failed.to_string(),
-                        account.account_id.as_str().to_owned(),
+                        account.account_id.as_str().clone(),
                         account.account_name.clone(),
                         account.succeeded.to_string(),
                         account.skipped.to_string(),
@@ -607,10 +600,7 @@ pub(super) fn print_batch_mutation_output(
 }
 
 fn message_ids_to_strings(message_ids: &[MessageId]) -> Vec<String> {
-    message_ids
-        .iter()
-        .map(|id| id.as_str().to_owned())
-        .collect()
+    message_ids.iter().map(|id| id.as_str().clone()).collect()
 }
 
 pub(super) struct MutationRunOptions<'a> {

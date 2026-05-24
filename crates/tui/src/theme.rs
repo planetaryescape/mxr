@@ -223,7 +223,7 @@ impl Theme {
             "IMPORTANT" => Color::Yellow,
             _ => {
                 // Hash-based color for user labels
-                let hash: u8 = label_name.bytes().fold(0u8, |acc, b| acc.wrapping_add(b));
+                let hash: u8 = label_name.bytes().fold(0u8, u8::wrapping_add);
                 let colors = [
                     Color::Rgb(96, 165, 250),  // blue
                     Color::Rgb(52, 211, 153),  // emerald

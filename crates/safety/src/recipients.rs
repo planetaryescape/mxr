@@ -93,8 +93,7 @@ fn best_typo_candidate<'a>(email: &str, ctx: &'a SafetyContext) -> Option<&'a Kn
         .known_contacts
         .iter()
         .find(|c| c.email.eq_ignore_ascii_case(email))
-        .map(|c| c.total_inbound + c.total_outbound)
-        .unwrap_or(0);
+        .map_or(0, |c| c.total_inbound + c.total_outbound);
     if typed_strength >= 3 {
         return None;
     }

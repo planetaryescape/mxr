@@ -378,8 +378,7 @@ fn spawn_detached_web_child(args: &Args) -> anyhow::Result<u32> {
         .append(true)
         .create(true)
         .open(&stderr_path)
-        .map(std::process::Stdio::from)
-        .unwrap_or_else(|_| std::process::Stdio::null());
+        .map_or_else(|_| std::process::Stdio::null(), std::process::Stdio::from);
     command
         .arg("web")
         .arg("--foreground")

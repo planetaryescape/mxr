@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Conditions {
-    And { conditions: Vec<Conditions> },
-    Or { conditions: Vec<Conditions> },
-    Not { condition: Box<Conditions> },
+    And { conditions: Vec<Self> },
+    Or { conditions: Vec<Self> },
+    Not { condition: Box<Self> },
     Field(FieldCondition),
 }
 
@@ -105,12 +105,12 @@ impl StringMatch {
     /// Evaluate this match against a haystack string.
     pub fn matches(&self, haystack: &str) -> bool {
         match self {
-            StringMatch::Exact(s) => haystack == s,
-            StringMatch::Contains(s) => haystack.to_lowercase().contains(&s.to_lowercase()),
-            StringMatch::Regex(pattern) => regex::Regex::new(pattern)
-                .map(|re| re.is_match(haystack))
-                .unwrap_or(false),
-            StringMatch::Glob(pattern) => glob_match::glob_match(pattern, haystack),
+            Self::Exact(s) => haystack == s,
+            Self::Contains(s) => haystack.to_lowercase().contains(&s.to_lowercase()),
+            Self::Regex(pattern) => {
+                regex::Regex::new(pattern).is_ok_and(|re| re.is_match(haystack))
+            }
+            Self::Glob(pattern) => glob_match::glob_match(pattern, haystack),
         }
     }
 }
@@ -119,10 +119,10 @@ impl Conditions {
     /// Recursively evaluate the condition tree against a message.
     pub fn evaluate(&self, msg: &dyn MessageView) -> bool {
         match self {
-            Conditions::And { conditions } => conditions.iter().all(|c| c.evaluate(msg)),
-            Conditions::Or { conditions } => conditions.iter().any(|c| c.evaluate(msg)),
-            Conditions::Not { condition } => !condition.evaluate(msg),
-            Conditions::Field(field) => field.evaluate(msg),
+            Self::And { conditions } => conditions.iter().all(|c| c.evaluate(msg)),
+            Self::Or { conditions } => conditions.iter().any(|c| c.evaluate(msg)),
+            Self::Not { condition } => !condition.evaluate(msg),
+            Self::Field(field) => field.evaluate(msg),
         }
     }
 }
@@ -130,30 +130,31 @@ impl Conditions {
 impl FieldCondition {
     pub fn evaluate(&self, msg: &dyn MessageView) -> bool {
         match self {
-            FieldCondition::From { pattern } => pattern.matches(msg.sender_email()),
-            FieldCondition::To { pattern } => msg.to_emails().iter().any(|e| pattern.matches(e)),
-            FieldCondition::Subject { pattern } => pattern.matches(msg.subject()),
-            FieldCondition::HasLabel { label } => msg.labels().iter().any(|l| l == label),
-            FieldCondition::HasAttachment => msg.has_attachment(),
-            FieldCondition::SizeGreaterThan { bytes } => msg.size_bytes() > *bytes,
-            FieldCondition::SizeLessThan { bytes } => msg.size_bytes() < *bytes,
-            FieldCondition::DateAfter { date } => msg.date() > *date,
-            FieldCondition::DateBefore { date } => msg.date() < *date,
-            FieldCondition::IsUnread => msg.is_unread(),
-            FieldCondition::IsStarred => msg.is_starred(),
-            FieldCondition::HasUnsubscribe => msg.has_unsubscribe(),
-            FieldCondition::BodyContains { pattern } => {
+            Self::From { pattern } => pattern.matches(msg.sender_email()),
+            Self::To { pattern } => msg.to_emails().iter().any(|e| pattern.matches(e)),
+            Self::Subject { pattern } => pattern.matches(msg.subject()),
+            Self::HasLabel { label } => msg.labels().iter().any(|l| l == label),
+            Self::HasAttachment => msg.has_attachment(),
+            Self::SizeGreaterThan { bytes } => msg.size_bytes() > *bytes,
+            Self::SizeLessThan { bytes } => msg.size_bytes() < *bytes,
+            Self::DateAfter { date } => msg.date() > *date,
+            Self::DateBefore { date } => msg.date() < *date,
+            Self::IsUnread => msg.is_unread(),
+            Self::IsStarred => msg.is_starred(),
+            Self::HasUnsubscribe => msg.has_unsubscribe(),
+            Self::BodyContains { pattern } => {
                 msg.body_text().is_some_and(|body| pattern.matches(body))
             }
-            FieldCondition::LinkDensity { match_kind } => {
+            Self::LinkDensity { match_kind } => {
                 let (link_count, body_word_count) = msg.link_density_inputs();
                 let tier =
                     mxr_core::types::Envelope::classify_link_density(link_count, body_word_count);
                 matches!(
                     (match_kind, tier),
-                    (LinkDensityMatch::Any, mxr_core::types::LinkDensity::Some)
-                        | (LinkDensityMatch::Any, mxr_core::types::LinkDensity::Heavy)
-                        | (LinkDensityMatch::Heavy, mxr_core::types::LinkDensity::Heavy)
+                    (
+                        LinkDensityMatch::Any,
+                        mxr_core::types::LinkDensity::Some | mxr_core::types::LinkDensity::Heavy
+                    ) | (LinkDensityMatch::Heavy, mxr_core::types::LinkDensity::Heavy)
                         | (LinkDensityMatch::None, mxr_core::types::LinkDensity::None)
                 )
             }

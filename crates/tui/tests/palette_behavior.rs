@@ -54,8 +54,7 @@ fn palette_opens_from_any_screen() {
 
         assert!(
             app.command_palette.palette.visible,
-            "palette must open from screen {:?}",
-            screen
+            "palette must open from screen {screen:?}"
         );
     }
 }

@@ -481,14 +481,14 @@ pub async fn snooze(
             Response::Error { message, .. } => {
                 eprintln!("Skipped {} ({message})", id.as_str());
                 errors.push(BatchMutationError {
-                    message_id: id.as_str().to_owned(),
+                    message_id: id.as_str().clone(),
                     error: message,
                 });
             }
             _ => {
                 eprintln!("Skipped {} (unexpected response)", id.as_str());
                 errors.push(BatchMutationError {
-                    message_id: id.as_str().to_owned(),
+                    message_id: id.as_str().clone(),
                     error: "unexpected response".to_owned(),
                 });
             }
@@ -591,14 +591,14 @@ pub async fn unsnooze(
                         Response::Error { message, .. } => {
                             eprintln!("Failed to unsnooze {}: {message}", s.message_id);
                             errors.push(BatchMutationError {
-                                message_id: s.message_id.as_str().to_owned(),
+                                message_id: s.message_id.as_str().clone(),
                                 error: message,
                             });
                         }
                         _ => {
                             eprintln!("Failed to unsnooze {}: unexpected response", s.message_id);
                             errors.push(BatchMutationError {
-                                message_id: s.message_id.as_str().to_owned(),
+                                message_id: s.message_id.as_str().clone(),
                                 error: "unexpected response".to_owned(),
                             });
                         }
@@ -607,7 +607,7 @@ pub async fn unsnooze(
                 print_batch_mutation_output(
                     "unsnooze",
                     false,
-                    &format!("Unsnoozed {} message(s)", succeeded),
+                    &format!("Unsnoozed {succeeded} message(s)"),
                     &ids,
                     succeeded,
                     errors.clone(),
@@ -643,12 +643,12 @@ pub async fn unsnooze(
                 } => succeeded += 1,
                 Response::Error { message, .. } => {
                     errors.push(BatchMutationError {
-                        message_id: id.as_str().to_owned(),
+                        message_id: id.as_str().clone(),
                         error: message,
                     });
                 }
                 _ => errors.push(BatchMutationError {
-                    message_id: id.as_str().to_owned(),
+                    message_id: id.as_str().clone(),
                     error: "unexpected response".to_owned(),
                 }),
             }
@@ -656,7 +656,7 @@ pub async fn unsnooze(
         print_batch_mutation_output(
             "unsnooze",
             false,
-            &format!("Unsnoozed {} message(s)", succeeded),
+            &format!("Unsnoozed {succeeded} message(s)"),
             &selection.ids,
             succeeded,
             errors.clone(),
@@ -762,14 +762,14 @@ pub async fn unsubscribe(
             Response::Error { message, .. } => {
                 eprintln!("Skipped {} ({message})", id.as_str());
                 errors.push(BatchMutationError {
-                    message_id: id.as_str().to_owned(),
+                    message_id: id.as_str().clone(),
                     error: message,
                 });
             }
             _ => {
                 eprintln!("Skipped {} (unexpected response)", id.as_str());
                 errors.push(BatchMutationError {
-                    message_id: id.as_str().to_owned(),
+                    message_id: id.as_str().clone(),
                     error: "unexpected response".to_owned(),
                 });
             }
@@ -778,7 +778,7 @@ pub async fn unsubscribe(
     print_batch_mutation_output(
         "unsubscribe",
         false,
-        &format!("Unsubscribed from {} message(s)", succeeded),
+        &format!("Unsubscribed from {succeeded} message(s)"),
         &selection.ids,
         succeeded,
         errors.clone(),

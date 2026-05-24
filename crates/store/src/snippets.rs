@@ -108,7 +108,7 @@ mod tests {
         Snippet {
             name: name.into(),
             body: body.into(),
-            vars: vars.iter().map(|s| s.to_string()).collect(),
+            vars: vars.iter().map(std::string::ToString::to_string).collect(),
             created_at: anchor(),
             updated_at: anchor(),
         }

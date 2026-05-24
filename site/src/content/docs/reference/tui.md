@@ -41,6 +41,9 @@ Behavior:
 - Focused-thread-message targeting for reply and mutations
 - Explicit right-pane dismissal with `Esc`
 - Bulk selection with confirmation modals
+- Sidebar lenses replace the mail list in place: **Subscriptions**,
+  **Owed replies**, and **Calendar invites** (every detected invite with
+  inline RSVP — see [keybindings](/reference/keybindings/#calendar-invites-lens))
 
 ## Search screen
 

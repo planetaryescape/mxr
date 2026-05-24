@@ -5,8 +5,10 @@ description: Inspect, find, and RSVP to email calendar invites safely.
 
 Handle meeting invites without leaving mxr. mxr parses `text/calendar`
 parts and `.ics` attachments from stored mail, shows the invite in the
-message view, lets you find invite-bearing messages with search, and sends
-standards-based iMIP replies after a dry-run preview.
+message view, collects every detected invite into a dedicated **Calendar
+invites** page in the TUI and web app, lets you find invite-bearing
+messages with search, and sends standards-based iMIP replies after a
+dry-run preview.
 
 ## See what mxr found
 
@@ -160,10 +162,31 @@ What you get: an interactive invite picker keyed by time and summary.
 mxr invite reply MESSAGE_ID accept --dry-run --format json
 ```
 
+## In the apps
+
+The same invites are a dedicated, scrollable surface in both UIs — one
+place to see every detected invite and RSVP without opening each message.
+Rows are event-centric (when, summary, organizer, your RSVP status), built
+from the local invite table rather than plain message rows. All surfaces
+read the same `Request::ListInvites`, so the list is identical whether you
+use the CLI, TUI, or web.
+
+- **TUI:** open **Calendar invites** from the sidebar (below Owed). Then
+  `j`/`k` to move, `a` accept · `t` (or `m`) tentative · `d` decline,
+  `A`/`T`/`D` to reply with a comment, `Enter`/`o` to open the underlying
+  message, `h` back to the sidebar. An RSVP sends after a short window;
+  press `u` to undo before it goes out. The row's status refreshes once it
+  lands. See [keybindings](/reference/keybindings/#calendar-invites-lens).
+- **Web:** the **Calendar invites** entry in the sidebar opens `/invites` —
+  the same list with inline Accept / Tentative / Decline buttons (and a
+  "with comment" option in the row menu). See
+  [Web app](/guides/web-app/#calendar-invites-page).
+
 ## See also
 
 - [Search workflow](/guides/search/)
 - [Pre-send safety](/guides/pre-send-safety/)
+- [Web app](/guides/web-app/#calendar-invites-page)
 - [CLI: mxr invite](/reference/cli/invite/)
 - [CLI: mxr invites](/reference/cli/invites/)
 - [JSON output schemas](/reference/json-output/)

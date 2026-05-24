@@ -263,6 +263,23 @@ The **Deliveries** entry in the sidebar opens `/deliveries` — the same tracked
 
 It reads `GET /mail/deliveries?filter=...` and posts to `/mail/deliveries/{id}/resolve` and `/dismiss` — see the [bridge reference](/reference/bridge/).
 
+## Calendar invites page
+
+The **Calendar invites** entry in the sidebar opens `/invites` — the same
+detected-invites list the [CLI and TUI](/guides/calendar-invites/) show,
+across all accounts. Each row is event-centric (summary, when, location,
+organizer) and shows your current RSVP status, with:
+
+- Inline **Accept** / **Tentative** / **Decline** buttons for invites that
+  still need a response, and a row menu for the "with comment" variants.
+- A short undo window before the RSVP is sent (matching the TUI and the
+  in-thread invite card).
+- Cancelled and updated invites flagged inline.
+
+It reads `GET /mail/invites?limit=...` and reuses the existing invite-reply
+action (`POST /mail/actions/invite/reply`) — see the
+[bridge reference](/reference/bridge/).
+
 ## Comparing surfaces
 
 | Surface | When you'd use it |

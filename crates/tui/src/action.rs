@@ -68,6 +68,9 @@ pub enum Action {
     GoToAllMail,
     OpenSubscriptions,
     OpenOwedReplies,
+    /// Open the calendar-invites lens (sidebar item). Loads invites via
+    /// `Request::ListInvites` into the dedicated lens view.
+    OpenCalendarInvites,
     GoToLabel,
     // Command palette
     OpenCommandPalette,

@@ -1133,6 +1133,9 @@ impl App {
                 (KeyCode::Char('l') | KeyCode::Right, KeyModifiers::NONE) => self.sidebar_select(),
                 _ => self.contextual_input_action(key),
             },
+            ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::CalendarInvites => {
+                self.calendar_invites_key(key)
+            }
             ActivePane::MailList => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
@@ -1146,6 +1149,41 @@ impl App {
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
             },
+        }
+    }
+
+    /// Key handling for the calendar-invites lens (a list pane with inline
+    /// RSVP). Single keys a/t/d respond directly; A/T/D respond with a
+    /// comment; enter opens the underlying message. Unhandled keys fall
+    /// through to the shared vim/chord input so j/k/gg/G still navigate.
+    fn calendar_invites_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        use mxr_protocol::CalendarInviteActionData as Rsvp;
+        match (key.code, key.modifiers) {
+            (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
+            (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
+                self.mailbox.active_pane = ActivePane::Sidebar;
+                None
+            }
+            (KeyCode::Enter | KeyCode::Char('o') | KeyCode::Right, _) => {
+                Some(Action::OpenMessageView)
+            }
+            (KeyCode::Char('a'), KeyModifiers::NONE) => Some(Action::RespondInvite(Rsvp::Accept)),
+            (KeyCode::Char('t' | 'm'), KeyModifiers::NONE) => {
+                Some(Action::RespondInvite(Rsvp::Tentative))
+            }
+            (KeyCode::Char('d'), KeyModifiers::NONE) => Some(Action::RespondInvite(Rsvp::Decline)),
+            // Cancel a just-issued RSVP while it's still in its send window.
+            (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
+            (KeyCode::Char('A'), m) if plain_or_shift(m) => {
+                Some(Action::RespondInviteWithComment(Rsvp::Accept))
+            }
+            (KeyCode::Char('T' | 'M'), m) if plain_or_shift(m) => {
+                Some(Action::RespondInviteWithComment(Rsvp::Tentative))
+            }
+            (KeyCode::Char('D'), m) if plain_or_shift(m) => {
+                Some(Action::RespondInviteWithComment(Rsvp::Decline))
+            }
+            _ => self.contextual_input_action(key),
         }
     }
 

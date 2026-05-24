@@ -33,6 +33,10 @@ pub enum MailboxView {
     /// `Request::ListOwedReplies` and re-fetched after a successful
     /// reply send.
     Owed,
+    /// Calendar-invites lens. Entries are loaded via `Request::ListInvites`
+    /// from the dedicated `calendar_invites` store table and re-fetched
+    /// after an RSVP. Groundwork for future calendar/event features.
+    CalendarInvites,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -149,6 +153,7 @@ pub enum SidebarItem {
     AllMail,
     Subscriptions,
     Owed,
+    CalendarInvites,
     Label(Box<Label>),
     SavedSearch(Box<mxr_core::SavedSearch>),
 }
@@ -159,6 +164,7 @@ pub(crate) enum SidebarSelectionKey {
     AllMail,
     Subscriptions,
     Owed,
+    CalendarInvites,
     Label(mxr_core::LabelId),
     SavedSearch(String),
 }
@@ -171,6 +177,11 @@ pub struct SubscriptionsPageState {
 #[derive(Debug, Clone, Default)]
 pub struct OwedRepliesPageState {
     pub entries: Vec<mxr_protocol::OwedReplyRowData>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CalendarInvitesPageState {
+    pub entries: Vec<mxr_protocol::CalendarInviteData>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -251,6 +262,7 @@ pub struct MailboxState {
     pub saved_search_unread_counts: HashMap<mxr_core::id::SavedSearchId, u32>,
     pub subscriptions_page: SubscriptionsPageState,
     pub owed_page: OwedRepliesPageState,
+    pub calendar_invites_page: CalendarInvitesPageState,
     pub active_label: Option<mxr_core::LabelId>,
     pub pending_label_fetch: Option<mxr_core::LabelId>,
     pub pending_active_label: Option<mxr_core::LabelId>,
@@ -258,6 +270,11 @@ pub struct MailboxState {
     pub pending_all_envelopes_refresh: bool,
     pub pending_subscriptions_refresh: bool,
     pub pending_owed_refresh: bool,
+    pub pending_calendar_invites_refresh: bool,
+    /// Set when the user opens an invite from the calendar-invites lens.
+    /// The runtime fetches the envelope by id (`Request::GetEnvelope`) and
+    /// then opens the message view — invites carry only a `message_id`.
+    pub pending_invite_open: Option<MessageId>,
     pub pending_commitment_counts_refresh: bool,
     pub open_commitment_counts: HashMap<(mxr_core::AccountId, mxr_core::ThreadId), u32>,
     pub reply_later_message_ids: HashSet<MessageId>,
@@ -326,6 +343,7 @@ impl MailboxState {
             saved_search_unread_counts: HashMap::new(),
             subscriptions_page: SubscriptionsPageState::default(),
             owed_page: OwedRepliesPageState::default(),
+            calendar_invites_page: CalendarInvitesPageState::default(),
             active_label: None,
             pending_label_fetch: None,
             pending_active_label: None,
@@ -333,6 +351,8 @@ impl MailboxState {
             pending_all_envelopes_refresh: false,
             pending_subscriptions_refresh: false,
             pending_owed_refresh: false,
+            pending_calendar_invites_refresh: false,
+            pending_invite_open: None,
             pending_commitment_counts_refresh: false,
             open_commitment_counts: HashMap::new(),
             reply_later_message_ids: HashSet::new(),

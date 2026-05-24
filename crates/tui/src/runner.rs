@@ -1321,6 +1321,39 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if app.mailbox.pending_calendar_invites_refresh {
+            app.mailbox.pending_calendar_invites_refresh = false;
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, Request::ListInvites { limit: 200 }).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Invites { invites },
+                    }) => Ok(invites),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::CalendarInvites(result)
+            });
+        }
+
+        if let Some(message_id) = app.mailbox.pending_invite_open.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, Request::GetEnvelope { message_id }).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Envelope { envelope },
+                    }) => Ok(envelope),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::InviteEnvelopeOpened(result)
+            });
+        }
+
         if app.mailbox.pending_commitment_counts_refresh {
             app.mailbox.pending_commitment_counts_refresh = false;
             let bg = bg.clone();
@@ -2447,6 +2480,13 @@ pub async fn run() -> anyhow::Result<()> {
                                     app.pending_optimistic.clear(id);
                                     let show_completion_status = app.pending_mutation_count == 0;
                                     app.apply_mutation_completion(effect, show_completion_status);
+                                    // In the invites lens, a completed mutation is an
+                                    // RSVP — refetch so the row's RSVP status updates.
+                                    if app.mailbox.mailbox_view
+                                        == crate::app::MailboxView::CalendarInvites
+                                    {
+                                        app.mailbox.pending_calendar_invites_refresh = true;
+                                    }
                                 }
                                 Err(e) => {
                                     if app.should_retry_mutation_failure(&e) {
@@ -2554,6 +2594,25 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::OwedReplies(Err(e)) => {
                             app.status_message = Some(format!("Owed replies error: {e}"));
+                        }
+                        AsyncResult::CalendarInvites(Ok(invites)) => {
+                            app.mailbox.calendar_invites_page.entries = invites;
+                            app.mailbox.selected_index = app.mailbox.selected_index.min(
+                                app.mailbox
+                                    .calendar_invites_page
+                                    .entries
+                                    .len()
+                                    .saturating_sub(1),
+                            );
+                        }
+                        AsyncResult::CalendarInvites(Err(e)) => {
+                            app.status_message = Some(format!("Calendar invites error: {e}"));
+                        }
+                        AsyncResult::InviteEnvelopeOpened(Ok(envelope)) => {
+                            app.open_invite_envelope(envelope);
+                        }
+                        AsyncResult::InviteEnvelopeOpened(Err(e)) => {
+                            app.status_message = Some(format!("Open invite failed: {e}"));
                         }
                         AsyncResult::Briefing(Ok(briefing)) => {
                             app.modals.briefing.set_briefing(

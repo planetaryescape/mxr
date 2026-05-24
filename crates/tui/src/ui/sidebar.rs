@@ -19,6 +19,8 @@ pub struct SidebarView<'a> {
     pub subscription_count: usize,
     pub owed_active: bool,
     pub owed_count: usize,
+    pub calendar_invites_active: bool,
+    pub calendar_invites_count: usize,
     pub accounts: Vec<AccountInfo>,
     pub accounts_expanded: bool,
     pub system_expanded: bool,
@@ -30,6 +32,7 @@ pub struct SidebarView<'a> {
 struct SidebarBuildState<'a> {
     subscription_count: usize,
     owed_count: usize,
+    calendar_invites_count: usize,
     accounts: &'a [AccountInfo],
     accounts_expanded: bool,
     system_expanded: bool,
@@ -45,6 +48,7 @@ enum SidebarEntry<'a> {
     AllMail,
     Subscriptions { count: usize },
     Owed { count: usize },
+    CalendarInvites { count: usize },
     Label(&'a Label),
     SavedSearch(&'a SavedSearch),
 }
@@ -57,6 +61,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
     let build_state = SidebarBuildState {
         subscription_count: view.subscription_count,
         owed_count: view.owed_count,
+        calendar_invites_count: view.calendar_invites_count,
         accounts: &view.accounts,
         accounts_expanded: view.accounts_expanded,
         system_expanded: view.system_expanded,
@@ -93,6 +98,12 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
             SidebarEntry::Owed { count } => {
                 render_owed_item(inner_width, *count, view.owed_active, theme)
             }
+            SidebarEntry::CalendarInvites { count } => render_calendar_invites_item(
+                inner_width,
+                *count,
+                view.calendar_invites_active,
+                theme,
+            ),
             SidebarEntry::Label(label) => {
                 render_label_item(label, inner_width, view.active_label, theme)
             }
@@ -175,6 +186,9 @@ fn build_sidebar_entries<'a>(
     entries.push(SidebarEntry::Owed {
         count: state.owed_count,
     });
+    entries.push(SidebarEntry::CalendarInvites {
+        count: state.calendar_invites_count,
+    });
 
     if !user_labels.is_empty() {
         if !entries.is_empty() {
@@ -216,6 +230,7 @@ fn visual_index_for_selection(
             | SidebarEntry::AllMail
             | SidebarEntry::Subscriptions { .. }
             | SidebarEntry::Owed { .. }
+            | SidebarEntry::CalendarInvites { .. }
             | SidebarEntry::Label(_)
             | SidebarEntry::SavedSearch(_) => {
                 if selectable == sidebar_selected {
@@ -279,6 +294,22 @@ fn render_owed_item<'a>(
 ) -> ListItem<'a> {
     let count_str = (count > 0).then(|| count.to_string());
     render_sidebar_link(inner_width, "Owed", count_str.as_deref(), is_active, theme)
+}
+
+fn render_calendar_invites_item<'a>(
+    inner_width: usize,
+    count: usize,
+    is_active: bool,
+    theme: &Theme,
+) -> ListItem<'a> {
+    let count_str = (count > 0).then(|| count.to_string());
+    render_sidebar_link(
+        inner_width,
+        "Calendar invites",
+        count_str.as_deref(),
+        is_active,
+        theme,
+    )
 }
 
 fn render_sidebar_link<'a>(
@@ -426,6 +457,7 @@ mod tests {
         let state = SidebarBuildState {
             subscription_count: 3,
             owed_count: 0,
+            calendar_invites_count: 0,
             accounts: &[],
             accounts_expanded: true,
             system_expanded: true,
@@ -447,15 +479,19 @@ mod tests {
             SidebarEntry::Subscriptions { count: 3 }
         ));
         assert!(matches!(entries[4], SidebarEntry::Owed { count: 0 }));
-        assert!(matches!(entries[5], SidebarEntry::Separator));
         assert!(matches!(
-            entries[6],
+            entries[5],
+            SidebarEntry::CalendarInvites { count: 0 }
+        ));
+        assert!(matches!(entries[6], SidebarEntry::Separator));
+        assert!(matches!(
+            entries[7],
             SidebarEntry::Header {
                 title: "Labels",
                 ..
             }
         ));
-        assert!(matches!(entries[7], SidebarEntry::Label(label) if label.name == "Work"));
+        assert!(matches!(entries[8], SidebarEntry::Label(label) if label.name == "Work"));
     }
 
     #[test]
@@ -478,23 +514,25 @@ mod tests {
         let state = SidebarBuildState {
             subscription_count: 2,
             owed_count: 0,
+            calendar_invites_count: 0,
             accounts: &[],
             accounts_expanded: true,
             system_expanded: true,
             user_expanded: true,
             saved_searches_expanded: true,
         };
-        // Layout after Owed insertion:
+        // Layout after CalendarInvites insertion:
         // [0] Header(System), [1] Label(INBOX), [2] AllMail,
-        // [3] Subscriptions, [4] Owed, [5] Separator, [6] Header(Labels),
-        // [7] Label(Work), [8] Separator, [9] Header(Saved Searches),
-        // [10] SavedSearch(Unread)
+        // [3] Subscriptions, [4] Owed, [5] CalendarInvites, [6] Separator,
+        // [7] Header(Labels), [8] Label(Work), [9] Separator,
+        // [10] Header(Saved Searches), [11] SavedSearch(Unread)
         let entries = build_sidebar_entries(&labels, &searches, &state);
         assert_eq!(visual_index_for_selection(&entries, 0), Some(1));
         assert_eq!(visual_index_for_selection(&entries, 1), Some(2));
         assert_eq!(visual_index_for_selection(&entries, 2), Some(3));
         assert_eq!(visual_index_for_selection(&entries, 3), Some(4)); // Owed
-        assert_eq!(visual_index_for_selection(&entries, 4), Some(7)); // Work
-        assert_eq!(visual_index_for_selection(&entries, 5), Some(10)); // Unread
+        assert_eq!(visual_index_for_selection(&entries, 4), Some(5)); // CalendarInvites
+        assert_eq!(visual_index_for_selection(&entries, 5), Some(8)); // Work
+        assert_eq!(visual_index_for_selection(&entries, 6), Some(11)); // Unread
     }
 }

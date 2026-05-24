@@ -240,6 +240,10 @@ pub struct App {
     /// which fires the IPC and re-refreshes the list).
     pub pending_delivery_resolve: Option<mxr_core::DeliveryId>,
     pub pending_delivery_dismiss: Option<mxr_core::DeliveryId>,
+    /// Set when the user opens a delivery's source thread (`o`/Enter on the
+    /// Deliveries screen). The runtime fetches the thread by id and opens it
+    /// in the mailbox message view.
+    pub pending_delivery_open: Option<mxr_core::ThreadId>,
     /// Set when the activity modal opens (or the user requests a refresh);
     /// the runtime drains this and dispatches a `Request::ListActivity`.
     pub pending_activity_refresh: bool,
@@ -372,6 +376,7 @@ impl App {
             pending_deliveries_refresh: false,
             pending_delivery_resolve: None,
             pending_delivery_dismiss: None,
+            pending_delivery_open: None,
             pending_activity_refresh: false,
             pending_activity_pause_toggle: false,
             pending_sender_profile_request: None,

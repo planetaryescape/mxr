@@ -350,6 +350,21 @@ impl App {
         self.status_message = None;
     }
 
+    /// Called by the runtime once `Request::GetThread` resolves for a delivery
+    /// opened with `o`/Enter on the Deliveries screen. Switches to the mailbox
+    /// and opens the source thread's most recent message.
+    pub(crate) fn open_delivery_thread(&mut self, messages: Vec<Envelope>) {
+        let Some(env) = messages.last().cloned() else {
+            self.status_message = Some("No messages in this delivery's source thread".into());
+            return;
+        };
+        self.screen = Screen::Mailbox;
+        self.open_envelope(env);
+        self.mailbox.layout_mode = LayoutMode::ThreePane;
+        self.mailbox.active_pane = ActivePane::MessageView;
+        self.status_message = None;
+    }
+
     pub(super) fn open_envelope(&mut self, env: Envelope) {
         self.close_attachment_panel();
         self.mailbox.signature_expanded = false;

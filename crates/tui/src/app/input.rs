@@ -1237,7 +1237,22 @@ impl App {
                 }
                 None
             }
-            _ => None,
+            KeyCode::Char('o') | KeyCode::Enter | KeyCode::Right => {
+                if let Some(row) = self.deliveries.selected_row() {
+                    if let Some(thread_id) = row.thread_id.clone() {
+                        self.pending_delivery_open = Some(thread_id);
+                        self.status_message = Some("Opening source email…".into());
+                    } else {
+                        self.status_message =
+                            Some("No source thread recorded for this delivery".into());
+                    }
+                }
+                None
+            }
+            // Anything else (tab switches, quit, command palette, help, sync)
+            // falls through to the shared input handler — otherwise the
+            // Deliveries screen would trap the user with no way out.
+            _ => self.contextual_input_action(key),
         }
     }
 

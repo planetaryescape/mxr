@@ -1321,3 +1321,56 @@ fn cached_html_only_body_resolves_ready_state() {
             && metadata.mode == crate::app::BodyViewMode::Html
     ));
 }
+
+/// Regression: the Deliveries screen handler used to end in `_ => None`,
+/// swallowing every key except its own (j/k/r/d/D/g). That trapped the user
+/// — no tab switch, no quit, no command palette — which read as a hang.
+/// Global keys must fall through to the shared input handler.
+#[test]
+fn deliveries_screen_does_not_trap_global_navigation() {
+    let mut app = App::new();
+    app.screen = Screen::Deliveries;
+
+    let action = app.handle_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    assert_eq!(
+        action,
+        Some(Action::OpenTab1),
+        "a tab digit must still switch screens from Deliveries"
+    );
+}
+
+/// `o` on a delivery row queues opening its source thread in the mailbox.
+#[test]
+fn deliveries_o_opens_source_thread() {
+    let mut app = App::new();
+    let thread_id = ThreadId::new();
+    let now = chrono::Utc::now();
+    app.deliveries.rows = vec![mxr_protocol::DeliveryData {
+        id: DeliveryId::new(),
+        account_id: AccountId::new(),
+        merchant: Some("Bamboocut".into()),
+        carrier: Some("dhl".into()),
+        tracking_number: None,
+        tracking_url: None,
+        order_number: Some("AIPD-1512-KL10".into()),
+        status: "in_transit".into(),
+        eta_from: None,
+        eta_until: None,
+        delivered_at: None,
+        items: vec![],
+        confidence: 0.9,
+        source: "heuristic".into(),
+        thread_id: Some(thread_id.clone()),
+        last_event_at: now,
+        created_at: now,
+        updated_at: now,
+        resolved_at: None,
+        dismissed_at: None,
+        message_ids: vec![],
+    }];
+    app.deliveries.selected = 0;
+    app.screen = Screen::Deliveries;
+
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
+    assert_eq!(app.pending_delivery_open, Some(thread_id));
+}

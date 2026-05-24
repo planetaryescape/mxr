@@ -298,7 +298,7 @@ fn collect_semantic_terms(
             collect_semantic_terms(right, negated, parts, source_kinds, use_all_sources);
         }
         QueryNode::Not(inner) => {
-            collect_semantic_terms(inner, true, parts, source_kinds, use_all_sources)
+            collect_semantic_terms(inner, true, parts, source_kinds, use_all_sources);
         }
         _ => {}
     }

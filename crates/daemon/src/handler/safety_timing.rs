@@ -62,14 +62,13 @@ pub(crate) async fn check_send_time(
 
     let names: Vec<String> = slow.iter().map(|(email, _, _)| email.clone()).collect();
     let summary_recipients = names.join(", ");
-    let (best_label, faster_window) = slow
-        .iter()
-        .min_by_key(|(_, best, _)| *best)
-        .map(|(_, best, rec)| {
+    let (best_label, faster_window) = slow.iter().min_by_key(|(_, best, _)| *best).map_or_else(
+        || ("?".into(), "(unknown)".into()),
+        |(_, best, rec)| {
             let label = format_window(rec.best_weekday, rec.best_hour);
             (humanize_seconds(*best), label)
-        })
-        .unwrap_or_else(|| ("?".into(), "(unknown)".into()));
+        },
+    );
 
     let citations = slow
         .iter()

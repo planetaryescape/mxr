@@ -113,7 +113,7 @@ async fn dispatch_ping_returns_pong() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Pong,
         }) => {}
-        other => panic!("Expected Pong, got {:?}", other),
+        other => panic!("Expected Pong, got {other:?}"),
     }
 }
 
@@ -146,7 +146,7 @@ async fn dispatch_list_envelopes_after_sync() {
         }) => {
             assert_eq!(envelopes.len(), 55);
         }
-        other => panic!("Expected Envelopes, got {:?}", other),
+        other => panic!("Expected Envelopes, got {other:?}"),
     }
 }
 
@@ -171,7 +171,7 @@ async fn dispatch_list_envelopes_by_label() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Labels { labels },
         }) => labels,
-        other => panic!("Expected Labels, got {:?}", other),
+        other => panic!("Expected Labels, got {other:?}"),
     };
 
     // Find Inbox label
@@ -205,7 +205,7 @@ async fn dispatch_list_envelopes_by_label() {
         IpcPayload::Response(Response::Error { message, .. }) => {
             panic!("Got error response: {message}");
         }
-        other => panic!("Expected Envelopes, got {:?}", other),
+        other => panic!("Expected Envelopes, got {other:?}"),
     }
 }
 
@@ -224,7 +224,7 @@ async fn dispatch_list_labels_without_accounts_returns_empty() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Labels { labels },
         }) => assert!(labels.is_empty()),
-        other => panic!("Expected Labels, got {:?}", other),
+        other => panic!("Expected Labels, got {other:?}"),
     }
 }
 
@@ -248,7 +248,7 @@ async fn dispatch_list_envelopes_without_accounts_returns_empty() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Envelopes { envelopes },
         }) => assert!(envelopes.is_empty()),
-        other => panic!("Expected Envelopes, got {:?}", other),
+        other => panic!("Expected Envelopes, got {other:?}"),
     }
 }
 
@@ -333,7 +333,7 @@ async fn dispatch_read_only_mailbox_uses_local_account_when_provider_missing() {
             envelopes.iter().map(|env| &env.id).collect::<Vec<_>>(),
             vec![&message_id]
         ),
-        other => panic!("Expected Envelopes, got {:?}", other),
+        other => panic!("Expected Envelopes, got {other:?}"),
     }
 
     let labels_msg = IpcMessage {
@@ -349,7 +349,7 @@ async fn dispatch_read_only_mailbox_uses_local_account_when_provider_missing() {
             labels.iter().map(|label| &label.id).collect::<Vec<_>>(),
             vec![&label.id]
         ),
-        other => panic!("Expected Labels, got {:?}", other),
+        other => panic!("Expected Labels, got {other:?}"),
     }
 }
 
@@ -372,7 +372,7 @@ async fn dispatch_create_label_persists_and_returns_label() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Label { label },
         }) => label,
-        other => panic!("Expected Label, got {:?}", other),
+        other => panic!("Expected Label, got {other:?}"),
     };
     assert_eq!(created.name, "Urgent");
     assert_eq!(created.color.as_deref(), Some("#ff6600"));
@@ -392,7 +392,7 @@ async fn dispatch_create_label_persists_and_returns_label() {
         }) => {
             assert!(labels.iter().any(|label| label.name == "Urgent"));
         }
-        other => panic!("Expected Labels, got {:?}", other),
+        other => panic!("Expected Labels, got {other:?}"),
     }
 }
 
@@ -423,7 +423,7 @@ async fn dispatch_upsert_and_list_rules() {
         }) => {
             assert_eq!(returned["name"], "Archive newsletters");
         }
-        other => panic!("Expected RuleData, got {:?}", other),
+        other => panic!("Expected RuleData, got {other:?}"),
     }
 
     let list_msg = IpcMessage {
@@ -439,7 +439,7 @@ async fn dispatch_upsert_and_list_rules() {
             assert_eq!(rules.len(), 1);
             assert_eq!(rules[0]["id"], "rule-1");
         }
-        other => panic!("Expected Rules, got {:?}", other),
+        other => panic!("Expected Rules, got {other:?}"),
     }
 }
 
@@ -492,7 +492,7 @@ async fn dispatch_dry_run_rules_returns_matching_messages() {
                 .expect("matches should be an array");
             assert!(!matches.is_empty());
         }
-        other => panic!("Expected RuleDryRun, got {:?}", other),
+        other => panic!("Expected RuleDryRun, got {other:?}"),
     }
 }
 
@@ -520,7 +520,7 @@ async fn dispatch_upsert_rule_form_and_get_rule_form() {
             assert_eq!(rule["name"], "Archive unread");
             rule["id"].as_str().unwrap().to_string()
         }
-        other => panic!("Expected RuleData, got {:?}", other),
+        other => panic!("Expected RuleData, got {other:?}"),
     };
 
     let get_form_msg = IpcMessage {
@@ -539,7 +539,7 @@ async fn dispatch_upsert_rule_form_and_get_rule_form() {
             assert_eq!(form.priority, 25);
             assert!(form.enabled);
         }
-        other => panic!("Expected RuleFormData, got {:?}", other),
+        other => panic!("Expected RuleFormData, got {other:?}"),
     }
 }
 
@@ -576,7 +576,7 @@ async fn dispatch_rename_label_updates_visible_label() {
             assert_eq!(label.name, "Client Work");
             assert_eq!(label.provider_id, "Client Work");
         }
-        other => panic!("Expected Label, got {:?}", other),
+        other => panic!("Expected Label, got {other:?}"),
     }
 
     let list_msg = IpcMessage {
@@ -594,7 +594,7 @@ async fn dispatch_rename_label_updates_visible_label() {
             assert!(labels.iter().any(|label| label.name == "Client Work"));
             assert!(!labels.iter().any(|label| label.name == "Projects"));
         }
-        other => panic!("Expected Labels, got {:?}", other),
+        other => panic!("Expected Labels, got {other:?}"),
     }
 }
 
@@ -627,7 +627,7 @@ async fn dispatch_delete_label_removes_it_from_store() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected Ack, got {:?}", other),
+        other => panic!("Expected Ack, got {other:?}"),
     }
 
     let list_msg = IpcMessage {
@@ -644,7 +644,7 @@ async fn dispatch_delete_label_removes_it_from_store() {
         }) => {
             assert!(!labels.iter().any(|label| label.name == "Temporary"));
         }
-        other => panic!("Expected Labels, got {:?}", other),
+        other => panic!("Expected Labels, got {other:?}"),
     }
 }
 
@@ -674,7 +674,7 @@ async fn dispatch_count_after_sync() {
         }) => {
             assert!(count > 0, "Expected non-zero count for 'deployment'");
         }
-        other => panic!("Expected Count, got {:?}", other),
+        other => panic!("Expected Count, got {other:?}"),
     }
 }
 
@@ -695,7 +695,7 @@ async fn dispatch_list_saved_searches_empty() {
         }) => {
             assert!(searches.is_empty());
         }
-        other => panic!("Expected empty SavedSearches, got {:?}", other),
+        other => panic!("Expected empty SavedSearches, got {other:?}"),
     }
 }
 
@@ -722,7 +722,7 @@ async fn dispatch_create_and_list_saved_searches() {
             assert_eq!(search.query, "is:starred");
             assert_eq!(search.search_mode, mxr_core::SearchMode::Lexical);
         }
-        other => panic!("Expected SavedSearchData, got {:?}", other),
+        other => panic!("Expected SavedSearchData, got {other:?}"),
     }
 
     // List
@@ -740,7 +740,7 @@ async fn dispatch_create_and_list_saved_searches() {
             assert_eq!(searches[0].name, "Important");
             assert_eq!(searches[0].search_mode, mxr_core::SearchMode::Lexical);
         }
-        other => panic!("Expected SavedSearches, got {:?}", other),
+        other => panic!("Expected SavedSearches, got {other:?}"),
     }
 }
 
@@ -764,7 +764,7 @@ async fn dispatch_create_saved_search_persists_requested_mode() {
         }) => {
             assert_eq!(search.search_mode, mxr_core::SearchMode::Hybrid);
         }
-        other => panic!("Expected SavedSearchData, got {:?}", other),
+        other => panic!("Expected SavedSearchData, got {other:?}"),
     }
 
     let saved = state
@@ -826,7 +826,7 @@ async fn dispatch_run_saved_search_returns_results() {
                 "saved search should return lexical results"
             );
         }
-        other => panic!("Expected SearchResults, got {:?}", other),
+        other => panic!("Expected SearchResults, got {other:?}"),
     }
 }
 
@@ -868,7 +868,7 @@ async fn dispatch_status() {
             assert_ne!(daemon_build_id, "");
             assert!(!repair_required);
         }
-        other => panic!("Expected Status, got {:?}", other),
+        other => panic!("Expected Status, got {other:?}"),
     }
 }
 
@@ -929,7 +929,7 @@ async fn dispatch_status_does_not_block_when_search_is_busy() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Status { .. },
         }) => {}
-        other => panic!("Expected Status, got {:?}", other),
+        other => panic!("Expected Status, got {other:?}"),
     }
 }
 
@@ -948,7 +948,7 @@ async fn dispatch_shutdown_acknowledges_without_exiting() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected Ack, got {:?}", other),
+        other => panic!("Expected Ack, got {other:?}"),
     }
     assert!(state.shutdown_requested());
 }
@@ -974,7 +974,7 @@ async fn dispatch_doctor_report() {
             let daemon_build_id = report.daemon_build_id.expect("doctor report build id");
             assert_ne!(daemon_build_id, "");
         }
-        other => panic!("Expected DoctorReport, got {:?}", other),
+        other => panic!("Expected DoctorReport, got {other:?}"),
     }
 }
 
@@ -999,7 +999,7 @@ async fn dispatch_sync_status() {
                 .expect("sync status should include cursor summary");
             assert_ne!(summary, "");
         }
-        other => panic!("Expected SyncStatus, got {:?}", other),
+        other => panic!("Expected SyncStatus, got {other:?}"),
     }
 }
 
@@ -1039,7 +1039,7 @@ async fn dispatch_search_returns_results() {
             assert!(results.len() <= 10);
             assert_eq!(results[0].mode, mxr_core::SearchMode::Lexical);
         }
-        other => panic!("Expected SearchResults, got {:?}", other),
+        other => panic!("Expected SearchResults, got {other:?}"),
     }
 }
 
@@ -1083,10 +1083,7 @@ async fn dispatch_search_explain_returns_execution_details() {
             assert_eq!(explain.final_results as usize, results.len());
             assert_eq!(explain.results.len(), results.len());
         }
-        other => panic!(
-            "Expected SearchResults with explain payload, got {:?}",
-            other
-        ),
+        other => panic!("Expected SearchResults with explain payload, got {other:?}"),
     }
 }
 
@@ -1119,7 +1116,7 @@ async fn dispatch_structured_search_in_semantic_mode_falls_back_to_lexical() {
             assert!(!results.is_empty());
             assert!(results.len() <= 10);
         }
-        other => panic!("Expected SearchResults, got {:?}", other),
+        other => panic!("Expected SearchResults, got {other:?}"),
     }
 }
 
@@ -1163,10 +1160,7 @@ async fn dispatch_structured_search_in_semantic_mode_explains_fallback() {
                 .iter()
                 .any(|note| note.contains("no semantic text terms")));
         }
-        other => panic!(
-            "Expected SearchResults with explain payload, got {:?}",
-            other
-        ),
+        other => panic!("Expected SearchResults with explain payload, got {other:?}"),
     }
 }
 
@@ -1217,10 +1211,7 @@ async fn dispatch_fielded_semantic_query_explains_disabled_fallback() {
                 .iter()
                 .any(|note| note.contains("semantic search disabled in config")));
         }
-        other => panic!(
-            "Expected SearchResults with explain payload, got {:?}",
-            other
-        ),
+        other => panic!("Expected SearchResults with explain payload, got {other:?}"),
     }
 }
 
@@ -1246,7 +1237,7 @@ async fn dispatch_search_rejects_invalid_structured_query() {
             assert!(message.contains("Invalid search query"));
             assert!(message.contains("invalid date"));
         }
-        other => panic!("Expected Error, got {:?}", other),
+        other => panic!("Expected Error, got {other:?}"),
     }
 }
 
@@ -1279,7 +1270,7 @@ async fn dispatch_get_body_after_sync() {
             assert_eq!(envelopes.len(), 1);
             envelopes[0].id.clone()
         }
-        other => panic!("Expected Envelopes, got {:?}", other),
+        other => panic!("Expected Envelopes, got {other:?}"),
     };
 
     // Get body for that envelope
@@ -1301,7 +1292,7 @@ async fn dispatch_get_body_after_sync() {
                 "Body should have text_plain content"
             );
         }
-        other => panic!("Expected Body, got {:?}", other),
+        other => panic!("Expected Body, got {other:?}"),
     }
 }
 
@@ -1328,7 +1319,7 @@ async fn dispatch_list_bodies_omits_missing_rows() {
                 "missing body rows should be omitted so clients can retry"
             );
         }
-        other => panic!("Expected Bodies, got {:?}", other),
+        other => panic!("Expected Bodies, got {other:?}"),
     }
 }
 
@@ -1362,7 +1353,7 @@ async fn dispatch_get_body_rehydrates_missing_store_row_from_provider() {
                 "provider hydration should restore a readable body"
             );
         }
-        other => panic!("Expected Body, got {:?}", other),
+        other => panic!("Expected Body, got {other:?}"),
     }
 
     let stored = state.store.get_body(&id).await.unwrap().unwrap();
@@ -1410,7 +1401,7 @@ async fn dispatch_list_bodies_stays_local_when_store_row_is_missing() {
                 "bulk prefetch must not repair from provider and block the TUI queue"
             );
         }
-        other => panic!("Expected Bodies, got {:?}", other),
+        other => panic!("Expected Bodies, got {other:?}"),
     }
 }
 
@@ -1449,7 +1440,7 @@ async fn dispatch_get_body_rehydrates_legacy_best_effort_body_from_provider() {
                 "legacy synthesized body should be replaced with provider content"
             );
         }
-        other => panic!("Expected Body, got {:?}", other),
+        other => panic!("Expected Body, got {other:?}"),
     }
 
     let stored = state.store.get_body(&id).await.unwrap().unwrap();
@@ -1501,7 +1492,7 @@ async fn dispatch_get_body_rehydrates_best_effort_summary_when_snippet_implies_r
                 "stored best-effort summaries should be repaired when provider content exists"
             );
         }
-        other => panic!("Expected Body, got {:?}", other),
+        other => panic!("Expected Body, got {other:?}"),
     }
 }
 
@@ -1555,6 +1546,6 @@ async fn dispatch_list_bodies_preserves_attachments() {
             assert_eq!(bodies[0].attachments[0].id, attachment_id);
             assert_eq!(bodies[0].attachments[0].filename, "report.pdf");
         }
-        other => panic!("Expected Bodies, got {:?}", other),
+        other => panic!("Expected Bodies, got {other:?}"),
     }
 }

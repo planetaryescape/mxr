@@ -126,7 +126,7 @@ pub(crate) async fn extract_thread(
 
     let response = match runtime.complete(req).await {
         Ok(r) => r,
-        Err(LlmError::Disabled) | Err(LlmError::PrivacyBlocked(_)) => return Ok(0),
+        Err(LlmError::Disabled | LlmError::PrivacyBlocked(_)) => return Ok(0),
         Err(e) => return Err(format!("DecisionLog LLM error: {e}")),
     };
     let parsed: LlmDecisions = serde_json::from_str(response.content.trim())

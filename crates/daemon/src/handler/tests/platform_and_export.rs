@@ -32,7 +32,7 @@ async fn dispatch_unsubscribe_mailto_sends_via_provider() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected Ack for mailto unsubscribe, got {:?}", other),
+        other => panic!("Expected Ack for mailto unsubscribe, got {other:?}"),
     }
 
     let sent = fake.sent_drafts();
@@ -270,11 +270,10 @@ async fn dispatch_mutation_nonexistent_message() {
         IpcPayload::Response(Response::Error { message, .. }) => {
             assert!(
                 message.contains("not found") || message.contains("Not found"),
-                "Expected 'not found' error, got: {}",
-                message
+                "Expected 'not found' error, got: {message}"
             );
         }
-        other => panic!("Expected Error, got {:?}", other),
+        other => panic!("Expected Error, got {other:?}"),
     }
 }
 
@@ -294,7 +293,7 @@ async fn dispatch_list_drafts_empty() {
         }) => {
             assert!(drafts.is_empty(), "Expected empty drafts list");
         }
-        other => panic!("Expected Drafts, got {:?}", other),
+        other => panic!("Expected Drafts, got {other:?}"),
     }
 }
 
@@ -353,7 +352,7 @@ async fn dispatch_list_drafts_includes_all_accounts() {
             assert_eq!(drafts[0].id, new_draft.id);
             assert_eq!(drafts[1].id, old_draft.id);
         }
-        other => panic!("Expected Drafts, got {:?}", other),
+        other => panic!("Expected Drafts, got {other:?}"),
     }
 }
 
@@ -1035,7 +1034,7 @@ async fn dispatch_send_draft_preserves_parent_thread_for_synthetic_sent() {
                 local_message_id, ..
             },
         }) => local_message_id,
-        other => panic!("Expected SendReceipt, got {:?}", other),
+        other => panic!("Expected SendReceipt, got {other:?}"),
     };
     let sent = state
         .store
@@ -1121,7 +1120,7 @@ async fn dispatch_saved_search_delete() {
         }) => {
             assert_eq!(search.name, "ToDelete");
         }
-        other => panic!("Expected SavedSearchData, got {:?}", other),
+        other => panic!("Expected SavedSearchData, got {other:?}"),
     }
 
     // Verify it's in the list
@@ -1138,7 +1137,7 @@ async fn dispatch_saved_search_delete() {
             assert_eq!(searches.len(), 1);
             assert_eq!(searches[0].name, "ToDelete");
         }
-        other => panic!("Expected SavedSearches with 1 item, got {:?}", other),
+        other => panic!("Expected SavedSearches with 1 item, got {other:?}"),
     }
 
     // Delete it
@@ -1154,7 +1153,7 @@ async fn dispatch_saved_search_delete() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected Ack, got {:?}", other),
+        other => panic!("Expected Ack, got {other:?}"),
     }
 
     // Verify it's gone
@@ -1173,7 +1172,7 @@ async fn dispatch_saved_search_delete() {
                 "Saved searches should be empty after delete"
             );
         }
-        other => panic!("Expected empty SavedSearches, got {:?}", other),
+        other => panic!("Expected empty SavedSearches, got {other:?}"),
     }
 }
 
@@ -1204,7 +1203,7 @@ async fn dispatch_export_thread_markdown() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Envelopes { envelopes },
         }) => envelopes[0].thread_id.clone(),
-        other => panic!("Expected Envelopes, got {:?}", other),
+        other => panic!("Expected Envelopes, got {other:?}"),
     };
 
     // Export the thread as markdown
@@ -1223,12 +1222,11 @@ async fn dispatch_export_thread_markdown() {
         }) => {
             assert!(
                 content.starts_with("# Thread:"),
-                "Should be markdown: {}",
-                content
+                "Should be markdown: {content}"
             );
             assert!(content.contains("Exported from mxr"));
         }
-        other => panic!("Expected ExportResult, got {:?}", other),
+        other => panic!("Expected ExportResult, got {other:?}"),
     }
 }
 
@@ -1247,7 +1245,7 @@ async fn dispatch_sync_now_acknowledges() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected Ack, got {:?}", other),
+        other => panic!("Expected Ack, got {other:?}"),
     }
 }
 
@@ -1275,7 +1273,7 @@ async fn dispatch_export_thread_json_is_valid() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Envelopes { envelopes },
         }) => envelopes[0].thread_id.clone(),
-        other => panic!("Expected Envelopes, got {:?}", other),
+        other => panic!("Expected Envelopes, got {other:?}"),
     };
 
     let export_msg = IpcMessage {
@@ -1296,7 +1294,7 @@ async fn dispatch_export_thread_json_is_valid() {
             assert!(parsed["message_count"].as_u64().unwrap() >= 1);
             assert!(parsed["subject"].is_string());
         }
-        other => panic!("Expected ExportResult, got {:?}", other),
+        other => panic!("Expected ExportResult, got {other:?}"),
     }
 }
 
@@ -1324,7 +1322,7 @@ async fn dispatch_get_headers_includes_standards_metadata() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Headers { headers },
         }) => headers,
-        other => panic!("Expected Headers, got {:?}", other),
+        other => panic!("Expected Headers, got {other:?}"),
     };
 
     assert!(headers.iter().any(|(name, _)| name == "From"));
@@ -1371,7 +1369,7 @@ async fn dispatch_export_search_json_is_valid() {
             assert!(!messages.is_empty(), "export search should return results");
             assert!(messages[0].as_object().is_some());
         }
-        other => panic!("Expected ExportResult, got {:?}", other),
+        other => panic!("Expected ExportResult, got {other:?}"),
     }
 }
 
@@ -1409,6 +1407,6 @@ async fn dispatch_save_draft_to_server() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected Ack, got {:?}", other),
+        other => panic!("Expected Ack, got {other:?}"),
     }
 }

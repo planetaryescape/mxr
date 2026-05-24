@@ -39,9 +39,9 @@ pub(crate) async fn get_thread_briefing(
         .store
         .get_thread_envelopes(thread_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     if envelopes.is_empty() {
-        return Err(format!("thread {thread_id} not found"));
+        return Err(format!("thread {thread_id} not found").into());
     }
     let account_id = envelopes[0].account_id.clone();
 
@@ -104,7 +104,7 @@ pub(crate) async fn get_thread_briefing(
 
     let response = match runtime.complete(req).await {
         Ok(r) => r,
-        Err(LlmError::Disabled) | Err(LlmError::PrivacyBlocked(_)) => {
+        Err(LlmError::Disabled | LlmError::PrivacyBlocked(_)) => {
             // Deterministic fallback: list participants and most recent line.
             let fallback = deterministic_thread_fallback(&envelopes);
             let entry = ContextBriefing {
@@ -122,12 +122,13 @@ pub(crate) async fn get_thread_briefing(
                 briefing: to_thread_briefing(&entry, false),
             });
         }
-        Err(e) => return Err(format!("Briefing LLM error: {e}")),
+        Err(e) => return Err(format!("Briefing LLM error: {e}").into()),
     };
     let parsed: LlmBriefing = serde_json::from_str(response.content.trim())
         .map_err(|e| format!("Briefing: LLM returned non-JSON ({e})"))?;
 
-    let allowed_set: std::collections::HashSet<&str> = allowed.iter().map(|s| s.as_str()).collect();
+    let allowed_set: std::collections::HashSet<&str> =
+        allowed.iter().map(std::string::String::as_str).collect();
     let mut citations = Vec::new();
     for c in parsed.citations {
         if !allowed_set.contains(c.msg_id.as_str()) {
@@ -157,7 +158,7 @@ pub(crate) async fn get_thread_briefing(
         .store
         .upsert_context_briefing(&entry)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::ThreadBriefing {
         briefing: to_thread_briefing(&entry, false),
     })
@@ -275,7 +276,7 @@ pub(crate) async fn get_recipient_briefing(
                 .map(|o| o.summary)
                 .unwrap_or_default()
         }
-        Err(LlmError::Disabled) | Err(LlmError::PrivacyBlocked(_)) => {
+        Err(LlmError::Disabled | LlmError::PrivacyBlocked(_)) => {
             // Don't cache the deterministic-only fallback.
             return Ok(ResponseData::RecipientBriefing {
                 briefing: ThreadBriefingData {
@@ -287,7 +288,7 @@ pub(crate) async fn get_recipient_briefing(
                 },
             });
         }
-        Err(e) => return Err(format!("Briefing LLM error: {e}")),
+        Err(e) => return Err(format!("Briefing LLM error: {e}").into()),
     };
 
     let body_markdown = if body.is_empty() { baseline } else { body };
@@ -305,7 +306,7 @@ pub(crate) async fn get_recipient_briefing(
         .store
         .upsert_context_briefing(&entry)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::RecipientBriefing {
         briefing: to_recipient_briefing(&entry, false),
     })
@@ -358,16 +359,10 @@ fn recipient_content_hash(
     h.update(email.as_bytes());
     if let Some(c) = contact {
         h.update(b"|");
-        h.update(
-            c.last_inbound_at
-                .map(|d| d.timestamp())
-                .unwrap_or(0)
-                .to_le_bytes(),
-        );
+        h.update(c.last_inbound_at.map_or(0, |d| d.timestamp()).to_le_bytes());
         h.update(
             c.last_outbound_at
-                .map(|d| d.timestamp())
-                .unwrap_or(0)
+                .map_or(0, |d| d.timestamp())
                 .to_le_bytes(),
         );
         h.update((c.total_inbound as u64).to_le_bytes());

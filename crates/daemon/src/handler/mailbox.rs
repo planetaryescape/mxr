@@ -93,12 +93,12 @@ pub(super) async fn list_envelopes(
             .await
     };
 
-    let mut envelopes = result.map_err(|e| e.to_string())?;
+    let mut envelopes = result?;
     let enabled_accounts = state
         .store
         .list_accounts()
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .into_iter()
         .map(|account| account.id)
         .collect::<HashSet<_>>();
@@ -129,7 +129,7 @@ pub(super) async fn list_envelopes_by_ids(
         .store
         .list_envelopes_by_ids(message_ids)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     for envelope in &mut envelopes {
         if let Ok(labels) = state
             .store
@@ -147,7 +147,7 @@ pub(super) async fn get_envelope(state: &AppState, message_id: &MessageId) -> Ha
         .store
         .get_envelope(message_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
     {
         Some(mut envelope) => {
             if let Ok(labels) = state
@@ -159,7 +159,7 @@ pub(super) async fn get_envelope(state: &AppState, message_id: &MessageId) -> Ha
             }
             Ok(ResponseData::Envelope { envelope })
         }
-        None => Err(format!("Envelope not found: {message_id}")),
+        None => Err(format!("Envelope not found: {message_id}").into()),
     }
 }
 
@@ -173,7 +173,7 @@ pub(super) async fn get_invite(state: &AppState, message_id: &MessageId) -> Hand
         .store
         .get_calendar_invite_for_message(message_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .ok_or_else(|| format!("Calendar invite not found: {message_id}"))?;
     Ok(ResponseData::Invite {
         invite: CalendarInviteData {
@@ -192,7 +192,7 @@ pub(super) async fn list_invites(state: &AppState, limit: u32) -> HandlerResult 
         .store
         .list_calendar_invites(limit)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .into_iter()
         .map(|invite| CalendarInviteData {
             id: invite.id,
@@ -211,7 +211,7 @@ pub(super) async fn backfill_invites(state: &AppState) -> HandlerResult {
         .store
         .backfill_calendar_invites_from_bodies()
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::CalendarInviteBackfill { backfilled })
 }
 
@@ -231,7 +231,7 @@ pub(super) async fn respond_invite(
         .store
         .get_account(&account_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .ok_or_else(|| "Account not found for calendar invite".to_string())?;
     let from = Address {
         name: Some(account.name),
@@ -251,12 +251,12 @@ pub(super) async fn respond_invite(
     let receipt = sender
         .send_calendar_reply(&reply, &from, &rfc2822_message_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     state
         .store
         .update_calendar_invite_partstat(message_id, &preview.attendee_email, action.partstat())
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
 
     Ok(ResponseData::InviteResponseSent {
         result: CalendarInviteResponseResult {
@@ -287,7 +287,7 @@ pub(super) async fn mark_invite_answered(
         .store
         .update_calendar_invite_partstat(message_id, attendee_email, partstat.as_ical())
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Acknowledged)
 }
 
@@ -504,10 +504,10 @@ pub(super) async fn download_attachment(
     let file = match destination {
         Some(path) => super::materialize_attachment_to_path(state, message_id, attachment_id, path)
             .await
-            .map_err(|e| e.to_string())?,
+            ?,
         None => materialize_attachment_file(state, message_id, attachment_id)
             .await
-            .map_err(|e| e.to_string())?,
+            ?,
     };
     Ok(ResponseData::AttachmentFile { file })
 }
@@ -519,7 +519,7 @@ pub(super) async fn open_attachment(
 ) -> HandlerResult {
     let file = materialize_attachment_file(state, message_id, attachment_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     open_local_file(&file.path).map_err(|e| e.to_string())?;
     Ok(ResponseData::AttachmentFile { file })
 }
@@ -757,8 +757,7 @@ async fn hydrate_body_from_provider(
 
     if synced.envelope.id != envelope.id {
         return Err(format!(
-            "Provider body hydrate returned mismatched message id for {}",
-            message_id
+            "Provider body hydrate returned mismatched message id for {message_id}"
         ));
     }
 
@@ -952,12 +951,12 @@ fn normalize_location_tail(value: &str) -> Option<String> {
         return url
             .path_segments()
             .and_then(|mut segments| segments.next_back())
-            .map(|segment| segment.to_string());
+            .map(std::string::ToString::to_string);
     }
     Path::new(trimmed)
         .file_name()
         .and_then(|segment| segment.to_str())
-        .map(|segment| segment.to_string())
+        .map(std::string::ToString::to_string)
 }
 
 fn filename_matches(filename: &str, source: &str) -> bool {
@@ -1084,7 +1083,7 @@ pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> Handle
         .store
         .get_thread(thread_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .ok_or_else(|| "Thread not found".to_string())?;
     let mut messages = state
         .store
@@ -1117,7 +1116,7 @@ pub(super) async fn list_threads(
         .store
         .list_threads(account_id, label_id, limit, offset, sort)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Threads { threads })
 }
 
@@ -1129,7 +1128,7 @@ pub(super) async fn list_labels(state: &AppState, account_id: Option<&AccountId>
         .store
         .list_labels_by_account(&account_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Labels { labels })
 }
 
@@ -1144,7 +1143,7 @@ pub(super) async fn create_label(
     let mut label = provider
         .create_label(name, color)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     if label.account_id != account_id {
         label.account_id = account_id;
     }
@@ -1152,7 +1151,7 @@ pub(super) async fn create_label(
         .store
         .upsert_label(&label)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Label { label })
 }
 
@@ -1167,12 +1166,12 @@ pub(super) async fn delete_label(
     provider
         .delete_label(&label.provider_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     state
         .store
         .delete_label(&label.id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Ack)
 }
 
@@ -1188,7 +1187,7 @@ pub(super) async fn rename_label(
     let mut label = provider
         .rename_label(&existing.provider_id, new)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     if label.account_id != account_id {
         label.account_id = account_id.clone();
     }
@@ -1196,6 +1195,6 @@ pub(super) async fn rename_label(
         .store
         .replace_label(&existing.id, &label)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Label { label })
 }

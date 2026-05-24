@@ -131,7 +131,7 @@ pub(crate) async fn check_answer_coverage(
 
     let response = match runtime.complete(req).await {
         Ok(r) => r,
-        Err(LlmError::Disabled) | Err(LlmError::PrivacyBlocked(_)) => {
+        Err(LlmError::Disabled | LlmError::PrivacyBlocked(_)) => {
             return vec![degradation(
                 "answer-coverage skipped: LLM disabled or blocked by privacy policy".to_string(),
             )]

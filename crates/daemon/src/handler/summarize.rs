@@ -163,13 +163,13 @@ async fn load_summary_context(
         .get_thread(thread_id)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Thread {} not found", thread_id))?;
+        .ok_or_else(|| format!("Thread {thread_id} not found"))?;
     let envelopes = store
         .get_thread_envelopes(thread_id)
         .await
         .map_err(|e| e.to_string())?;
     if envelopes.is_empty() {
-        return Err(format!("Thread {} has no messages", thread_id));
+        return Err(format!("Thread {thread_id} has no messages"));
     }
     let owned_addresses = store
         .list_account_addresses(&thread.account_id)

@@ -10,9 +10,10 @@ use mxr_store as store;
 use std::sync::Arc;
 
 use crate::activity::{current_unix_ms, OwnedEntry};
+use crate::handler::HandlerError;
 use crate::state::AppState;
 
-type HandlerResult = Result<ResponseData, String>;
+type HandlerResult = Result<ResponseData, HandlerError>;
 
 const INLINE_EXPORT_CAP_BYTES: usize = 1_048_576; // 1 MiB
 
@@ -93,7 +94,7 @@ pub(super) async fn list_activity(
         .store
         .list_activity(&store_filter, limit, store_cursor)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     let entries: Vec<ActivityEntry> = page.rows.iter().map(store_row_to_proto).collect();
     let next_cursor = page
         .next_cursor
@@ -113,7 +114,7 @@ pub(super) async fn count_activity(
         .store
         .count_activity(&store_filter)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::ActivityCount { count })
 }
 
@@ -135,7 +136,7 @@ pub(super) async fn activity_stats(
         }
         ActivityStatGroupBy::Hour => state.store.activity_stats_by_hour(since, until).await,
     }
-    .map_err(|e| e.to_string())?;
+    ?;
     let buckets = pairs
         .into_iter()
         .map(|(key, count)| ActivityStatBucket { key, count })
@@ -158,7 +159,7 @@ pub(super) async fn export_activity(
             .store
             .list_activity(&store_filter, 1000, cursor)
             .await
-            .map_err(|e| e.to_string())?;
+            ?;
         let next = page.next_cursor;
         all_rows.extend(page.rows);
         match next {
@@ -171,12 +172,12 @@ pub(super) async fn export_activity(
 
     let body = match format {
         ActivityExportFormat::Json => {
-            serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?
+            serde_json::to_string_pretty(&entries)?
         }
         ActivityExportFormat::Ndjson => {
             let mut s = String::new();
             for e in &entries {
-                let line = serde_json::to_string(e).map_err(|e| e.to_string())?;
+                let line = serde_json::to_string(e)?;
                 s.push_str(&line);
                 s.push('\n');
             }
@@ -225,7 +226,7 @@ pub(super) async fn export_activity(
         }),
         None => Err(format!(
             "inline export too large ({size_bytes} bytes); pass `path` to write to file"
-        )),
+        ).into()),
     }
 }
 
@@ -321,7 +322,7 @@ pub(super) async fn redact_activity(
                 .store
                 .count_activity(&store_filter)
                 .await
-                .map_err(|e| e.to_string())?
+                ?
         };
         return Ok(ResponseData::ActivityAffected {
             count,
@@ -334,7 +335,7 @@ pub(super) async fn redact_activity(
             .store
             .redact_activity_by_ids(ids)
             .await
-            .map_err(|e| e.to_string())?;
+            ?;
         (n as i64, "ids")
     } else {
         let store_filter = proto_filter_to_store(filter.expect("filter checked above"));
@@ -342,7 +343,7 @@ pub(super) async fn redact_activity(
             .store
             .redact_activity_by_filter(&store_filter)
             .await
-            .map_err(|e| e.to_string())?;
+            ?;
         (n as i64, "filter")
     };
 
@@ -384,7 +385,7 @@ pub(super) async fn prune_activity(
             .store
             .count_activity(&store_filter)
             .await
-            .map_err(|e| e.to_string())?;
+            ?;
         return Ok(ResponseData::ActivityAffected {
             count,
             dry_run: true,
@@ -396,7 +397,7 @@ pub(super) async fn prune_activity(
         .store
         .prune_activity_before(before_ts, store_tier)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
 
     state.activity.record(OwnedEntry {
         ts: current_unix_ms(),
@@ -456,7 +457,7 @@ pub(super) async fn list_saved_filters(state: &Arc<AppState>) -> HandlerResult {
         .store
         .list_saved_activity_filters()
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     let entries = rows.iter().map(store_saved_to_proto).collect();
     Ok(ResponseData::SavedActivityFilters { entries })
 }
@@ -466,7 +467,7 @@ pub(super) async fn get_saved_filter(state: &Arc<AppState>, slug: &str) -> Handl
         .store
         .get_saved_activity_filter(slug)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     let entry = row.as_ref().map(store_saved_to_proto);
     if entry.is_some() {
         let _ = state.store.mark_saved_activity_filter_used(slug).await;
@@ -483,12 +484,12 @@ pub(super) async fn upsert_saved_filter(
     if slug.is_empty() {
         return Err("saved filter slug must not be empty".into());
     }
-    let filter_json = serde_json::to_string(filter).map_err(|e| e.to_string())?;
+    let filter_json = serde_json::to_string(filter)?;
     state
         .store
         .upsert_saved_activity_filter(slug, name, &filter_json)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Acknowledged)
 }
 
@@ -497,7 +498,7 @@ pub(super) async fn delete_saved_filter(state: &Arc<AppState>, slug: &str) -> Ha
         .store
         .delete_saved_activity_filter(slug)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::ActivityAffected {
         count: n as i64,
         dry_run: false,
@@ -583,7 +584,7 @@ mod tests {
     async fn redact_with_neither_ids_nor_filter_errors() {
         let s = state().await;
         let err = redact_activity(&s, &[], None, false).await.err().unwrap();
-        assert!(err.contains("redact"), "got: {err}");
+        assert!(err.to_string().contains("redact"), "got: {err}");
     }
 
     #[tokio::test]

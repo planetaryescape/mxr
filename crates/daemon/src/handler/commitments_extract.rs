@@ -88,7 +88,7 @@ pub(crate) async fn extract_and_store(
 
     let response = match runtime.complete(req).await {
         Ok(r) => r,
-        Err(LlmError::Disabled) | Err(LlmError::PrivacyBlocked(_)) => return Ok(Vec::new()),
+        Err(LlmError::Disabled | LlmError::PrivacyBlocked(_)) => return Ok(Vec::new()),
         Err(e) => return Err(format!("commitments LLM error: {e}")),
     };
 

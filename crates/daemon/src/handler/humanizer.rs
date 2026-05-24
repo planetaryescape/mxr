@@ -18,7 +18,7 @@ pub(super) async fn rewrite_text(
 ) -> HandlerResult {
     let (text, report, iterations) = rewrite_to_threshold(state, text.to_string(), max_iterations)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| error.clone())?;
     Ok(ResponseData::HumanizedText {
         text,
         report,

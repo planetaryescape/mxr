@@ -111,10 +111,10 @@ pub(super) async fn list_runtime_accounts(
             _ => AccountSourceData::Config,
         };
         summary.editable = AccountEditModeData::Full;
-        summary.capabilities = state
-            .get_provider(Some(&summary.account_id))
-            .map(|provider| AccountCapabilitiesData::from(provider.capabilities()))
-            .unwrap_or_else(|_| config_account_capabilities(&account));
+        summary.capabilities = state.get_provider(Some(&summary.account_id)).map_or_else(
+            |_| config_account_capabilities(&account),
+            |provider| AccountCapabilitiesData::from(provider.capabilities()),
+        );
         summary.capabilities.supports_send = summary.send_kind.is_some();
     }
 
@@ -219,12 +219,12 @@ pub(super) async fn set_default_account(
 ) -> Result<String, String> {
     let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
     if !config.accounts.contains_key(key) {
-        return Err(format!("Account '{}' cannot be set as default", key));
+        return Err(format!("Account '{key}' cannot be set as default"));
     }
     config.general.default_account = Some(key.to_string());
     mxr_config::save_config(&config).map_err(|e| e.to_string())?;
     state.reload_accounts_from_disk().await?;
-    Ok(format!("Default account set to '{}'.", key))
+    Ok(format!("Default account set to '{key}'."))
 }
 
 pub(super) async fn remove_account_config(
@@ -486,8 +486,7 @@ fn refresh_default_account(config: &mut mxr_config::MxrConfig) {
         .default_account
         .as_ref()
         .and_then(|key| config.accounts.get(key))
-        .map(|account| account.enabled)
-        .unwrap_or(false);
+        .is_some_and(|account| account.enabled);
     if current_default_is_enabled {
         return;
     }
@@ -764,7 +763,7 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
                                 match client.list_labels().await {
                                     Ok(response) => {
                                         let count =
-                                            response.labels.map(|labels| labels.len()).unwrap_or(0);
+                                            response.labels.map_or(0, |labels| labels.len());
                                         sync = Some(account_step(
                                             true,
                                             format!("Gmail sync ok: {count} labels"),

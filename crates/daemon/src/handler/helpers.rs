@@ -141,7 +141,7 @@ pub(crate) fn dir_size_sync(path: &Path) -> u64 {
 }
 
 pub(crate) fn file_size_sync(path: &Path) -> u64 {
-    std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0)
+    std::fs::metadata(path).map_or(0, |meta| meta.len())
 }
 
 pub(crate) fn should_fallback_to_tantivy(query: &str, error: &mxr_search::ParseError) -> bool {

@@ -420,8 +420,7 @@ async fn sync_loop_for_account(
                 let failure_class = classify_sync_error(&err_str);
                 let consecutive_failures = existing_status
                     .as_ref()
-                    .map(|status| status.consecutive_failures.saturating_add(1))
-                    .unwrap_or(1);
+                    .map_or(1, |status| status.consecutive_failures.saturating_add(1));
                 let mut backoff_until = None;
                 if let mxr_core::MxrError::RateLimited { retry_after_secs } = &e {
                     backoff_secs = retry_after_secs.saturating_add(10);
@@ -1133,7 +1132,7 @@ async fn warm_default_wrapped(state: &Arc<AppState>) {
                 state.wrapped_cache_put(cache_key, Arc::new(summary));
                 tracing::debug!(
                     label = %label,
-                    account = ?account_id.as_ref().map(|a| a.as_str()),
+                    account = ?account_id.as_ref().map(mxr_core::AccountId::as_str),
                     elapsed_ms = started.elapsed().as_millis() as u64,
                     "wrapped warmer primed cache"
                 );
@@ -1141,7 +1140,7 @@ async fn warm_default_wrapped(state: &Arc<AppState>) {
             Err(e) => {
                 tracing::warn!(
                     label = %label,
-                    account = ?account_id.as_ref().map(|a| a.as_str()),
+                    account = ?account_id.as_ref().map(mxr_core::AccountId::as_str),
                     "wrapped warmer failed: {e}"
                 );
             }
@@ -1223,7 +1222,7 @@ pub async fn process_due_scheduled_sends(
         match crate::handler::send_stored_draft(state, &draft_id, None).await {
             Ok(_) => tracing::debug!(draft_id = %draft_id, "scheduled-send: sent"),
             Err(e) => {
-                if e.contains("draft safety blocked send") {
+                if e.to_string().contains("draft safety blocked send") {
                     // Per docs/ai-email/01-pre-send-safety.md: keep the
                     // draft, clear the schedule, log a warning event so
                     // the user notices on next sync. Without this the
@@ -1482,7 +1481,7 @@ mod tests {
         let watcher_state = state.clone();
         let watcher_account = account_id.clone();
         let watcher_handle = tokio::spawn(async move {
-            idle_loop_for_account(watcher_state, watcher_account, provider, shutdown_rx).await
+            idle_loop_for_account(watcher_state, watcher_account, provider, shutdown_rx).await;
         });
 
         // Race: fire the trigger; the watcher's next_event awaits resolve;
@@ -1579,7 +1578,7 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::RuleHistory { entries },
             }) => assert_eq!(entries.len(), 1),
-            other => panic!("expected rule history, got {:?}", other),
+            other => panic!("expected rule history, got {other:?}"),
         }
     }
 }

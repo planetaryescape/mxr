@@ -5,7 +5,7 @@ use mxr_protocol::ResponseData;
 use mxr_rules::Rule;
 
 pub(super) async fn list_rules(state: &AppState) -> HandlerResult {
-    let rows = state.store.list_rules().await.map_err(|e| e.to_string())?;
+    let rows = state.store.list_rules().await?;
     Ok(ResponseData::Rules {
         rules: rows.iter().map(mxr_store::row_to_rule_json).collect(),
     })
@@ -16,12 +16,12 @@ pub(super) async fn get_rule(state: &AppState, rule: &str) -> HandlerResult {
         .store
         .get_rule_by_id_or_name(rule)
         .await
-        .map_err(|e| e.to_string())?
+        ?
     {
         Some(row) => Ok(ResponseData::RuleData {
             rule: mxr_store::row_to_rule_json(&row),
         }),
-        None => Err(format!("Rule not found: {rule}")),
+        None => Err(format!("Rule not found: {rule}").into()),
     }
 }
 
@@ -30,15 +30,15 @@ pub(super) async fn get_rule_form(state: &AppState, rule: &str) -> HandlerResult
         .store
         .get_rule_by_id_or_name(rule)
         .await
-        .map_err(|e| e.to_string())?
+        ?
     {
         Some(row) => {
             let parsed: Rule = serde_json::from_value(mxr_store::row_to_rule_json(&row))
-                .map_err(|e| e.to_string())?;
+                ?;
             let form = rule_to_form_data(&parsed)?;
             Ok(ResponseData::RuleFormData { form })
         }
-        None => Err(format!("Rule not found: {rule}")),
+        None => Err(format!("Rule not found: {rule}").into()),
     }
 }
 
@@ -53,7 +53,7 @@ pub(super) async fn delete_rule(state: &AppState, rule: &str) -> HandlerResult {
         .store
         .get_rule_by_id_or_name(rule)
         .await
-        .map_err(|e| e.to_string())?
+        ?
     {
         Some(row) => {
             let id = mxr_store::row_to_rule_json(&row)["id"]
@@ -64,10 +64,10 @@ pub(super) async fn delete_rule(state: &AppState, rule: &str) -> HandlerResult {
                 .store
                 .delete_rule(&id)
                 .await
-                .map_err(|e| e.to_string())?;
+                ?;
             Ok(ResponseData::Ack)
         }
-        None => Err(format!("Rule not found: {rule}")),
+        None => Err(format!("Rule not found: {rule}").into()),
     }
 }
 
@@ -90,7 +90,7 @@ pub(super) async fn upsert_rule_form(
         enabled,
     )
     .await?;
-    let value = serde_json::to_value(&rule).map_err(|e| e.to_string())?;
+    let value = serde_json::to_value(&rule)?;
     persist_rule(state, &rule).await?;
     Ok(ResponseData::RuleData { rule: value })
 }
@@ -105,7 +105,7 @@ pub(super) async fn list_rule_history(
             .store
             .get_rule_by_id_or_name(rule)
             .await
-            .map_err(|e| e.to_string())?
+            ?
         {
             Some(row) => Some(
                 mxr_store::row_to_rule_json(&row)["id"]
@@ -113,7 +113,7 @@ pub(super) async fn list_rule_history(
                     .unwrap_or_default()
                     .to_string(),
             ),
-            None => return Err(format!("Rule not found: {rule}")),
+            None => return Err(format!("Rule not found: {rule}").into()),
         }
     } else {
         None
@@ -123,7 +123,7 @@ pub(super) async fn list_rule_history(
         .store
         .list_rule_logs(resolved_rule_id.as_deref(), limit)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::RuleHistory {
         entries: rows.iter().map(mxr_store::row_to_rule_log_json).collect(),
     })

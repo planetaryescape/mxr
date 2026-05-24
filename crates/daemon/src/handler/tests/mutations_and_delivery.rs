@@ -17,7 +17,7 @@ async fn snooze_on_folder_provider_reanchors_to_reconciled_message_copy() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected Ack for Snooze, got {:?}", other),
+        other => panic!("Expected Ack for Snooze, got {other:?}"),
     }
 
     let snoozed = state.store.list_snoozed().await.unwrap();
@@ -55,7 +55,7 @@ async fn snooze_on_folder_provider_reanchors_to_reconciled_message_copy() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected Ack for Unsnooze, got {:?}", other),
+        other => panic!("Expected Ack for Unsnooze, got {other:?}"),
     }
 
     let inbox = state
@@ -100,10 +100,7 @@ async fn snooze_on_folder_provider_errors_when_reconciled_copy_is_missing() {
                 "expected missing reanchor error, got: {message}"
             );
         }
-        other => panic!(
-            "Expected Error for missing reconciled snooze copy, got {:?}",
-            other
-        ),
+        other => panic!("Expected Error for missing reconciled snooze copy, got {other:?}"),
     }
 
     assert!(
@@ -153,7 +150,7 @@ async fn dispatch_mutation_set_read() {
                 envelope.flags
             );
         }
-        other => panic!("Expected Envelope, got {:?}", other),
+        other => panic!("Expected Envelope, got {other:?}"),
     }
 }
 
@@ -519,7 +516,7 @@ async fn dispatch_prepare_reply() {
             assert!(context.reply_to.contains('@'));
             assert_eq!(context.subject, expected_subject);
         }
-        other => panic!("Expected ReplyContext, got {:?}", other),
+        other => panic!("Expected ReplyContext, got {other:?}"),
     }
 }
 
@@ -562,7 +559,7 @@ async fn dispatch_prepare_reply_all() {
             assert_eq!(context.subject, expected_subject);
             // cc may or may not be empty depending on the message, but the field should exist
         }
-        other => panic!("Expected ReplyContext, got {:?}", other),
+        other => panic!("Expected ReplyContext, got {other:?}"),
     }
 }
 
@@ -600,7 +597,7 @@ async fn dispatch_prepare_reply_renders_html_context() {
             assert!(context.thread_context.contains("Hello world"));
             assert!(!context.thread_context.contains("<p>"));
         }
-        other => panic!("Expected ReplyContext, got {:?}", other),
+        other => panic!("Expected ReplyContext, got {other:?}"),
     }
 }
 
@@ -642,7 +639,7 @@ async fn dispatch_prepare_forward() {
                 "forwarded_content should be non-empty"
             );
         }
-        other => panic!("Expected ForwardContext, got {:?}", other),
+        other => panic!("Expected ForwardContext, got {other:?}"),
     }
 }
 
@@ -664,7 +661,7 @@ async fn modify_labels_persists_to_store_immediately() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Label { label },
         }) => label,
-        other => panic!("Expected Label response, got {:?}", other),
+        other => panic!("Expected Label response, got {other:?}"),
     };
 
     let modify = IpcMessage {
@@ -701,7 +698,7 @@ async fn get_thread_includes_message_label_provider_ids() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Label { label },
         }) => label,
-        other => panic!("Expected Label response, got {:?}", other),
+        other => panic!("Expected Label response, got {other:?}"),
     };
 
     state
@@ -731,7 +728,7 @@ async fn get_thread_includes_message_label_provider_ids() {
                 .iter()
                 .any(|provider_id| provider_id == &label.provider_id));
         }
-        other => panic!("Expected Thread response, got {:?}", other),
+        other => panic!("Expected Thread response, got {other:?}"),
     }
 }
 
@@ -753,7 +750,7 @@ async fn list_envelopes_includes_message_label_provider_ids() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Label { label },
         }) => label,
-        other => panic!("Expected Label response, got {:?}", other),
+        other => panic!("Expected Label response, got {other:?}"),
     };
 
     state
@@ -786,7 +783,7 @@ async fn list_envelopes_includes_message_label_provider_ids() {
                 .iter()
                 .any(|provider_id| provider_id == &label.provider_id));
         }
-        other => panic!("Expected Envelopes response, got {:?}", other),
+        other => panic!("Expected Envelopes response, got {other:?}"),
     }
 }
 
@@ -810,7 +807,7 @@ async fn list_accounts_surfaces_runtime_accounts_without_config_entries() {
             assert_eq!(accounts[0].editable, AccountEditModeData::RuntimeOnly);
             assert!(accounts[0].is_default);
         }
-        other => panic!("Expected Accounts response, got {:?}", other),
+        other => panic!("Expected Accounts response, got {other:?}"),
     }
 }
 
@@ -835,7 +832,7 @@ async fn get_llm_status_reports_noop_provider_by_default() {
             assert_eq!(snapshot.base_url, None);
             assert_eq!(snapshot.context_window, 0);
         }
-        other => panic!("Expected LlmStatus response, got {:?}", other),
+        other => panic!("Expected LlmStatus response, got {other:?}"),
     }
 }
 
@@ -871,7 +868,7 @@ async fn config_reload_rebuilds_llm_provider_for_status() {
             assert_eq!(snapshot.context_window, 4096);
             assert_eq!(snapshot.request_timeout_secs, 30);
         }
-        other => panic!("Expected LlmStatus response, got {:?}", other),
+        other => panic!("Expected LlmStatus response, got {other:?}"),
     }
 }
 
@@ -1026,7 +1023,7 @@ async fn dispatch_send_draft() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::SendReceipt { .. },
         }) => {}
-        other => panic!("Expected SendReceipt, got {:?}", other),
+        other => panic!("Expected SendReceipt, got {other:?}"),
     }
 }
 
@@ -1068,7 +1065,7 @@ async fn draft_only_safety_policy_blocks_send_but_allows_local_draft() {
         IpcPayload::Response(Response::Error { message, .. }) => {
             assert!(message.contains("draft-only safety policy"));
         }
-        other => panic!("Expected safety policy error, got {:?}", other),
+        other => panic!("Expected safety policy error, got {other:?}"),
     }
 
     let save = IpcMessage {
@@ -1080,7 +1077,7 @@ async fn draft_only_safety_policy_blocks_send_but_allows_local_draft() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected SaveDraft Ack, got {:?}", other),
+        other => panic!("Expected SaveDraft Ack, got {other:?}"),
     }
 }
 
@@ -1103,7 +1100,7 @@ async fn read_only_safety_policy_blocks_mutations_but_allows_search() {
         IpcPayload::Response(Response::Error { message, .. }) => {
             assert!(message.contains("read-only safety policy"));
         }
-        other => panic!("Expected safety policy error, got {:?}", other),
+        other => panic!("Expected safety policy error, got {other:?}"),
     }
 
     let search = IpcMessage {
@@ -1122,7 +1119,7 @@ async fn read_only_safety_policy_blocks_mutations_but_allows_search() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::SearchResults { .. },
         }) => {}
-        other => panic!("Expected SearchResults, got {:?}", other),
+        other => panic!("Expected SearchResults, got {other:?}"),
     }
 }
 
@@ -1173,7 +1170,7 @@ async fn dispatch_send_draft_preserves_keychain_repair_error() {
             assert!(message.contains("consulting-smtp"));
             assert!(message.contains("mxr accounts repair"));
         }
-        other => panic!("Expected send error, got {:?}", other),
+        other => panic!("Expected send error, got {other:?}"),
     }
 }
 
@@ -1197,7 +1194,7 @@ async fn dispatch_snooze_and_list() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected Ack for Snooze, got {:?}", other),
+        other => panic!("Expected Ack for Snooze, got {other:?}"),
     }
 
     // List snoozed - should have 1
@@ -1213,7 +1210,7 @@ async fn dispatch_snooze_and_list() {
         }) => {
             assert_eq!(snoozed.len(), 1, "Expected 1 snoozed message");
         }
-        other => panic!("Expected SnoozedMessages, got {:?}", other),
+        other => panic!("Expected SnoozedMessages, got {other:?}"),
     }
 
     // Unsnooze
@@ -1227,7 +1224,7 @@ async fn dispatch_snooze_and_list() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected Ack for Unsnooze, got {:?}", other),
+        other => panic!("Expected Ack for Unsnooze, got {other:?}"),
     }
 
     // List snoozed - should have 0
@@ -1247,7 +1244,7 @@ async fn dispatch_snooze_and_list() {
                 "Expected 0 snoozed messages after unsnooze"
             );
         }
-        other => panic!("Expected SnoozedMessages, got {:?}", other),
+        other => panic!("Expected SnoozedMessages, got {other:?}"),
     }
 }
 
@@ -1280,7 +1277,7 @@ async fn snooze_removes_inbox_and_unsnooze_restores_it() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected Ack, got {:?}", other),
+        other => panic!("Expected Ack, got {other:?}"),
     }
 
     let snoozed_labels = state.store.get_message_label_ids(&id).await.unwrap();
@@ -1297,7 +1294,7 @@ async fn snooze_removes_inbox_and_unsnooze_restores_it() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected Ack, got {:?}", other),
+        other => panic!("Expected Ack, got {other:?}"),
     }
 
     let restored_labels = state.store.get_message_label_ids(&id).await.unwrap();
@@ -1324,7 +1321,7 @@ async fn dispatch_set_flags() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Ack,
         }) => {}
-        other => panic!("Expected Ack, got {:?}", other),
+        other => panic!("Expected Ack, got {other:?}"),
     }
 
     // Verify flags
@@ -1344,7 +1341,7 @@ async fn dispatch_set_flags() {
                 flags, envelope.flags
             );
         }
-        other => panic!("Expected Envelope, got {:?}", other),
+        other => panic!("Expected Envelope, got {other:?}"),
     }
 }
 
@@ -1364,10 +1361,9 @@ async fn dispatch_unsubscribe_no_method() {
         IpcPayload::Response(Response::Error { message, .. }) => {
             assert!(
                 message.contains("unsubscribe"),
-                "Expected error about unsubscribe, got: {}",
-                message
+                "Expected error about unsubscribe, got: {message}"
             );
         }
-        other => panic!("Expected Error for no unsubscribe method, got {:?}", other),
+        other => panic!("Expected Error for no unsubscribe method, got {other:?}"),
     }
 }

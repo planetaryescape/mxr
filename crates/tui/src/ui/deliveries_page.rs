@@ -61,8 +61,7 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &DeliveriesState, theme: &cr
             .delivered_at
             .or(d.eta_until)
             .or(d.eta_from)
-            .map(|t| t.format("%b %d").to_string())
-            .unwrap_or_else(|| "—".to_string());
+            .map_or_else(|| "—".to_string(), |t| t.format("%b %d").to_string());
         let tracking = d
             .tracking_number
             .clone()

@@ -481,7 +481,7 @@ pub struct WrappedContactRank {
     pub count: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedReplyDiscipline {
     pub sample_count: u32,
@@ -565,7 +565,7 @@ pub struct WrappedMostGhosted {
 /// Aggregate response-time summary for `mxr response-time`. p50/p90 in
 /// seconds; business-hours percentiles are `None` until the reconciler has
 /// backfilled the relevant rows.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ResponseTimeSummary {
     pub direction: ResponseTimeDirection,
@@ -653,7 +653,7 @@ pub struct ContactAsymmetryRow {
     pub last_seen_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ContactDecayRow {
     pub email: String,
@@ -851,17 +851,17 @@ impl Envelope {
 impl LinkDensity {
     pub fn as_db_u8(self) -> u8 {
         match self {
-            LinkDensity::None => 0,
-            LinkDensity::Some => 1,
-            LinkDensity::Heavy => 2,
+            Self::None => 0,
+            Self::Some => 1,
+            Self::Heavy => 2,
         }
     }
 
     pub fn from_db_u8(value: u8) -> Self {
         match value {
-            2 => LinkDensity::Heavy,
-            1 => LinkDensity::Some,
-            _ => LinkDensity::None,
+            2 => Self::Heavy,
+            1 => Self::Some,
+            _ => Self::None,
         }
     }
 }
@@ -1531,17 +1531,17 @@ pub enum DraftStatus {
 impl DraftStatus {
     pub fn as_db_str(self) -> &'static str {
         match self {
-            DraftStatus::Draft => "draft",
-            DraftStatus::Sending => "sending",
-            DraftStatus::Sent => "sent",
+            Self::Draft => "draft",
+            Self::Sending => "sending",
+            Self::Sent => "sent",
         }
     }
 
     pub fn from_db_str(s: &str) -> Option<Self> {
         match s {
-            "draft" => Some(DraftStatus::Draft),
-            "sending" => Some(DraftStatus::Sending),
-            "sent" => Some(DraftStatus::Sent),
+            "draft" => Some(Self::Draft),
+            "sending" => Some(Self::Sending),
+            "sent" => Some(Self::Sent),
             _ => None,
         }
     }
@@ -1912,22 +1912,22 @@ pub enum Mutation {
 impl Mutation {
     pub fn provider_message_id(&self) -> &str {
         match self {
-            Mutation::ModifyLabels {
+            Self::ModifyLabels {
                 provider_message_id,
                 ..
             }
-            | Mutation::Trash {
+            | Self::Trash {
                 provider_message_id,
             }
-            | Mutation::SetRead {
-                provider_message_id,
-                ..
-            }
-            | Mutation::SetStarred {
+            | Self::SetRead {
                 provider_message_id,
                 ..
             }
-            | Mutation::SetKeywords {
+            | Self::SetStarred {
+                provider_message_id,
+                ..
+            }
+            | Self::SetKeywords {
                 provider_message_id,
                 ..
             } => provider_message_id,

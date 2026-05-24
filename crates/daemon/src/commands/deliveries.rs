@@ -11,7 +11,7 @@ pub async fn run(
     action: Option<DeliveriesAction>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    let action = action.unwrap_or(DeliveriesAction::List {
+    let action = action.unwrap_or_else(|| DeliveriesAction::List {
         filter: "active".to_string(),
     });
     let mut client = IpcClient::connect().await?;
@@ -28,7 +28,7 @@ pub async fn run(
                     data: ResponseData::Deliveries { deliveries },
                 } => match resolve_format(format) {
                     OutputFormat::Json => {
-                        println!("{}", serde_json::to_string_pretty(&deliveries)?)
+                        println!("{}", serde_json::to_string_pretty(&deliveries)?);
                     }
                     OutputFormat::Jsonl => println!("{}", jsonl(&deliveries)?),
                     _ => print_table(&deliveries),
@@ -110,7 +110,7 @@ pub async fn run(
                     data: ResponseData::DeliveryScan { summary },
                 } => match resolve_format(format) {
                     OutputFormat::Json | OutputFormat::Jsonl => {
-                        println!("{}", serde_json::to_string_pretty(&summary)?)
+                        println!("{}", serde_json::to_string_pretty(&summary)?);
                     }
                     _ => println!(
                         "{}scanned {}, created {}, updated {}, shortlisted {}",
@@ -147,8 +147,7 @@ fn print_table(deliveries: &[DeliveryData]) {
             .unwrap_or("?");
         let eta = d
             .eta_until
-            .map(|e| e.format("%Y-%m-%d").to_string())
-            .unwrap_or_else(|| "—".to_string());
+            .map_or_else(|| "—".to_string(), |e| e.format("%Y-%m-%d").to_string());
         let tracking = d.tracking_number.as_deref().unwrap_or("—");
         println!(
             "  {:<16} {:<16} eta {:<10} {:<24} [{}]",

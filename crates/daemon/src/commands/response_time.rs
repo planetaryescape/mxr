@@ -39,12 +39,10 @@ fn render_table(summary: &ResponseTimeSummary) {
     );
     let bp50 = summary
         .business_hours_p50_seconds
-        .map(fmt_duration_secs)
-        .unwrap_or_else(|| "-".into());
+        .map_or_else(|| "-".into(), fmt_duration_secs);
     let bp90 = summary
         .business_hours_p90_seconds
-        .map(fmt_duration_secs)
-        .unwrap_or_else(|| "-".into());
+        .map_or_else(|| "-".into(), fmt_duration_secs);
     println!("{:<20} {:>12} {:>12}", "business-hours", bp50, bp90);
 }
 

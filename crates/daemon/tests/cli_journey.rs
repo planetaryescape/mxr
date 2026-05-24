@@ -537,8 +537,10 @@ fn cli_journey_archive_then_undo_restores_inbox() {
         .as_array()
         .and_then(|arr| arr.first())
         .and_then(|item| item["message_id"].as_str())
-        .map(str::to_string)
-        .unwrap_or_else(|| panic!("fixture must yield at least one inbox message; got: {inbox:#}"));
+        .map_or_else(
+            || panic!("fixture must yield at least one inbox message; got: {inbox:#}"),
+            str::to_string,
+        );
 
     // Archive it via the CLI. Capture stdout so we can extract the
     // mutation_id printed by handle_mutation_response.
@@ -581,13 +583,10 @@ fn cli_journey_archive_then_undo_restores_inbox() {
             "100",
         ],
     );
-    let in_inbox_after = inbox_after
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .any(|item| item["message_id"].as_str() == Some(target_id.as_str()))
-        })
-        .unwrap_or(false);
+    let in_inbox_after = inbox_after.as_array().is_some_and(|arr| {
+        arr.iter()
+            .any(|item| item["message_id"].as_str() == Some(target_id.as_str()))
+    });
     assert!(
         !in_inbox_after,
         "post-archive: {target_id} must not be in `label:inbox`"
@@ -622,17 +621,13 @@ fn cli_journey_archive_then_undo_restores_inbox() {
             "100",
         ],
     );
-    let restored = inbox_post
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .any(|item| item["message_id"].as_str() == Some(target_id.as_str()))
-        })
-        .unwrap_or(false);
+    let restored = inbox_post.as_array().is_some_and(|arr| {
+        arr.iter()
+            .any(|item| item["message_id"].as_str() == Some(target_id.as_str()))
+    });
     assert!(
         restored,
-        "post-undo: {target_id} must reappear in `label:inbox`; got {:?}",
-        inbox_post
+        "post-undo: {target_id} must reappear in `label:inbox`; got {inbox_post:?}"
     );
 }
 
@@ -676,7 +671,7 @@ fn cli_journey_saved_search_create_list_delete_round_trip() {
         &config_dir,
         &["saved", "--format", "json", "list"],
     );
-    let initial_count = initial.as_array().map(|a| a.len()).unwrap_or(0);
+    let initial_count = initial.as_array().map_or(0, std::vec::Vec::len);
 
     // Create. Behavior 1: after a successful create, the list contains
     // the new entry.
@@ -1290,13 +1285,10 @@ fn cli_journey_reply_later_flag_persists_across_daemon_restart() {
         &config_dir,
         &["replies", "--format", "json", "list"],
     );
-    let in_queue_before = queue_before
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .any(|env| env["id"].as_str() == Some(message_id.as_str()))
-        })
-        .unwrap_or(false);
+    let in_queue_before = queue_before.as_array().is_some_and(|arr| {
+        arr.iter()
+            .any(|env| env["id"].as_str() == Some(message_id.as_str()))
+    });
     assert!(
         in_queue_before,
         "flagged message must be visible in the reply queue before restart; got: {queue_before:#}"
@@ -1318,8 +1310,7 @@ fn cli_journey_reply_later_flag_persists_across_daemon_restart() {
             .stderr(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .status()
-            .map(|status: std::process::ExitStatus| status.success())
-            .unwrap_or(false);
+            .is_ok_and(|status: std::process::ExitStatus| status.success());
         if !alive {
             break;
         }
@@ -1352,13 +1343,10 @@ fn cli_journey_reply_later_flag_persists_across_daemon_restart() {
         &config_dir,
         &["replies", "--format", "json", "list"],
     );
-    let in_queue_after = queue_after
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .any(|env| env["id"].as_str() == Some(message_id.as_str()))
-        })
-        .unwrap_or(false);
+    let in_queue_after = queue_after.as_array().is_some_and(|arr| {
+        arr.iter()
+            .any(|env| env["id"].as_str() == Some(message_id.as_str()))
+    });
     assert!(
         in_queue_after,
         "reply-later flag must survive a daemon restart; got: {queue_after:#}"

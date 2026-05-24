@@ -91,5 +91,5 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &StatusBarState, theme: &crate
 /// Format a sync status string for display.
 pub fn format_sync_status(unread: usize, sync_status: Option<&str>) -> String {
     let sync_part = sync_status.unwrap_or("not synced");
-    format!("[INBOX] {} unread | {}", unread, sync_part)
+    format!("[INBOX] {unread} unread | {sync_part}")
 }

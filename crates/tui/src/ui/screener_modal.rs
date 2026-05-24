@@ -153,7 +153,7 @@ mod tests {
     fn entry(email: &str, display: Option<&str>, count: u32) -> ScreenerQueueEntryData {
         ScreenerQueueEntryData {
             sender_email: email.to_string(),
-            display_name: display.map(|s| s.to_string()),
+            display_name: display.map(std::string::ToString::to_string),
             message_count: count,
             latest_subject: format!("From {email}"),
             latest_at: Utc::now(),

@@ -8,7 +8,7 @@ pub fn export_markdown(thread: &ExportThread) -> String {
     for msg in &thread.messages {
         let sender = msg.from_name.as_deref().unwrap_or(&msg.from_email);
         let date = msg.date.format("%b %d, %Y %H:%M");
-        out.push_str(&format!("## {} — {}\n\n", sender, date));
+        out.push_str(&format!("## {sender} — {date}\n\n"));
 
         if let Some(text) = &msg.body_text {
             out.push_str(text.trim());

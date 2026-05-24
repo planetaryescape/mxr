@@ -420,8 +420,9 @@ impl App {
             }
             MutationEffect::RemoveFromList(mid) => self
                 .envelope_snapshot_clone(mid)
-                .map(|env| MutationSnapshot::RemovedFromLists(vec![env]))
-                .unwrap_or(MutationSnapshot::None),
+                .map_or(MutationSnapshot::None, |env| {
+                    MutationSnapshot::RemovedFromLists(vec![env])
+                }),
             MutationEffect::RemoveFromListMany(ids) => {
                 let mut seen = std::collections::HashSet::new();
                 let mut captured = Vec::new();

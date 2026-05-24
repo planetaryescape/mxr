@@ -1227,8 +1227,7 @@ mod tests {
         let err_msg = result.unwrap_err().to_string();
         assert!(
             err_msg.contains("simulated"),
-            "Error should contain provider message, got: {}",
-            err_msg
+            "Error should contain provider message, got: {err_msg}"
         );
     }
 
@@ -1493,8 +1492,7 @@ mod tests {
         let junction_after = store.count_message_labels().await.unwrap();
         assert_eq!(
             junction_before, junction_after,
-            "Junction table should survive delta sync (before={}, after={})",
-            junction_before, junction_after
+            "Junction table should survive delta sync (before={junction_before}, after={junction_after})"
         );
 
         // Verify label filtering still works
@@ -1545,8 +1543,7 @@ mod tests {
         let junction_after = store.count_message_labels().await.unwrap();
         assert!(
             junction_after > 0,
-            "Junction table should be repopulated after backfill (got {})",
-            junction_after
+            "Junction table should be repopulated after backfill (got {junction_after})"
         );
     }
 
@@ -1581,13 +1578,11 @@ mod tests {
         ];
         for (name, expected_pid) in &expected_mappings {
             let label = labels.iter().find(|l| l.name == *name);
-            assert!(label.is_some(), "Label '{}' should exist after sync", name);
+            assert!(label.is_some(), "Label '{name}' should exist after sync");
             assert_eq!(
                 label.unwrap().provider_id,
                 *expected_pid,
-                "Label '{}' should have provider_id '{}'",
-                name,
-                expected_pid
+                "Label '{name}' should have provider_id '{expected_pid}'"
             );
         }
 
@@ -1597,13 +1592,13 @@ mod tests {
             .await
             .unwrap();
         let label_ids: std::collections::HashSet<String> =
-            labels.iter().map(|l| l.id.as_str().to_string()).collect();
+            labels.iter().map(|l| l.id.as_str().clone()).collect();
 
         for env in &envelopes {
             let msg_label_ids = store.get_message_label_ids(&env.id).await.unwrap();
             for lid in &msg_label_ids {
                 assert!(
-                    label_ids.contains(&lid.as_str().to_string()),
+                    label_ids.contains(&lid.as_str().clone()),
                     "Junction entry for message {} points to nonexistent label {}",
                     env.id,
                     lid
@@ -1672,7 +1667,7 @@ mod tests {
             let keyword = env
                 .subject
                 .split_whitespace()
-                .find(|w| w.len() > 3 && w.chars().all(|c| c.is_alphanumeric()))
+                .find(|w| w.len() > 3 && w.chars().all(char::is_alphanumeric))
                 .unwrap_or(&env.subject);
             let results = search
                 .search(keyword, 100, 0, SortOrder::DateDesc)

@@ -276,10 +276,10 @@ impl App {
                                 message_ids: ids.clone(),
                                 add: vec![label_name.clone()],
                                 remove: vec![],
-                                status: format!("Applied label '{}'", label_name),
+                                status: format!("Applied label '{label_name}'"),
                             },
                             optimistic_effect: Some(optimistic_effect),
-                            status_message: format!("Applying label '{}'...", label_name),
+                            status_message: format!("Applying label '{label_name}'..."),
                             count: ids.len(),
                         });
                     }
@@ -310,7 +310,7 @@ impl App {
                             }),
                             effect: remove_from_list_effect(&ids),
                             optimistic_effect: Some(optimistic_effect),
-                            status_message: format!("Moving to '{}'...", label_name),
+                            status_message: format!("Moving to '{label_name}'..."),
                             count: ids.len(),
                         });
                     }

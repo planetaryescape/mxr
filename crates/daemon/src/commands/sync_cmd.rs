@@ -76,10 +76,9 @@ fn resolve_account_selection(config: &MxrConfig, selector: &str) -> anyhow::Resu
 
     match matches.as_slice() {
         [(_, account)] => Ok(account_id_from_config(account)),
-        [] => anyhow::bail!("Account '{}' not found", selector),
+        [] => anyhow::bail!("Account '{selector}' not found"),
         _ => anyhow::bail!(
-            "Account selector '{}' is ambiguous. Use the config key from `mxr accounts`.",
-            selector
+            "Account selector '{selector}' is ambiguous. Use the config key from `mxr accounts`."
         ),
     }
 }
@@ -133,14 +132,14 @@ pub async fn run(
                     "{}",
                     serde_json::to_string(&serde_json::json!({
                         "status": "triggered",
-                        "account_id": account_id.as_ref().map(|id| id.to_string()),
+                        "account_id": account_id.as_ref().map(std::string::ToString::to_string),
                     }))?
                 );
             }
             OutputFormat::Json | OutputFormat::Jsonl => {}
             _ => println!("Sync triggered"),
         },
-        Response::Error { message, .. } => anyhow::bail!("{}", message),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
 
@@ -180,7 +179,7 @@ async fn fetch_sync_statuses(
                 data: ResponseData::Status { sync_statuses, .. },
             },
         ) => Ok(sync_statuses),
-        (_, Response::Error { message, .. }) => anyhow::bail!("{}", message),
+        (_, Response::Error { message, .. }) => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response from daemon"),
     }
 }

@@ -118,7 +118,7 @@ impl super::Store {
         let id = d.id.as_str();
         let account_id = d.account_id.as_str();
         let items_json = encode_json(&d.items)?;
-        let thread_id = d.thread_id.as_ref().map(|t| t.as_str());
+        let thread_id = d.thread_id.as_ref().map(mxr_core::ThreadId::as_str);
         let eta_from = d.eta_from.map(|x| x.timestamp());
         let eta_until = d.eta_until.map(|x| x.timestamp());
         let delivered_at = d.delivered_at.map(|x| x.timestamp());
@@ -169,7 +169,7 @@ impl super::Store {
     pub async fn update_delivery(&self, d: &Delivery) -> Result<(), sqlx::Error> {
         let id = d.id.as_str();
         let items_json = encode_json(&d.items)?;
-        let thread_id = d.thread_id.as_ref().map(|t| t.as_str());
+        let thread_id = d.thread_id.as_ref().map(mxr_core::ThreadId::as_str);
         let eta_from = d.eta_from.map(|x| x.timestamp());
         let eta_until = d.eta_until.map(|x| x.timestamp());
         let delivered_at = d.delivered_at.map(|x| x.timestamp());
@@ -417,7 +417,7 @@ impl super::Store {
     ) -> Result<(), sqlx::Error> {
         let did = delivery_id.as_str();
         let mid = message_id.as_str();
-        let tid = thread_id.map(|t| t.as_str());
+        let tid = thread_id.map(mxr_core::ThreadId::as_str);
         let ts = detected_at.timestamp();
         sqlx::query!(
             r#"INSERT INTO delivery_messages

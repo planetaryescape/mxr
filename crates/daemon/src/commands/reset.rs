@@ -385,13 +385,12 @@ fn confirmation_strategy(
     }
 
     anyhow::bail!(
-        "Refusing destructive reset in non-interactive mode without {}. Re-run with --dry-run to preview.",
-        NON_INTERACTIVE_OVERRIDE_FLAG
+        "Refusing destructive reset in non-interactive mode without {NON_INTERACTIVE_OVERRIDE_FLAG}. Re-run with --dry-run to preview."
     )
 }
 
 fn prompt_for_confirmation_phrase(phrase: &str) -> anyhow::Result<()> {
-    print!("\nType {} to continue: ", phrase);
+    print!("\nType {phrase} to continue: ");
     std::io::stdout().flush()?;
 
     let mut input = String::new();

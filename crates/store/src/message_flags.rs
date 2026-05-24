@@ -73,7 +73,7 @@ impl super::Store {
         )
         .fetch_optional(self.reader())
         .await?;
-        Ok(row.map(|r| r.reply_later == 1).unwrap_or(false))
+        Ok(row.is_some_and(|r| r.reply_later == 1))
     }
 
     /// List message IDs currently flagged for reply-later, ordered by

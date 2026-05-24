@@ -59,43 +59,37 @@ impl SmtpSendProvider {
         Ok(())
     }
 
-    async fn build_transport(&self) -> Result<AsyncSmtpTransport<Tokio1Executor>, SmtpError> {
-        let transport = if self.config.use_tls {
-            if self.config.port == 465 {
-                let builder = AsyncSmtpTransport::<Tokio1Executor>::relay(&self.config.host)
-                    .map_err(|e| SmtpError::Transport(e.to_string()))?
-                    .port(self.config.port);
-                if self.config.auth_required {
-                    let password = self.config.resolve_password()?;
-                    let creds = Credentials::new(self.config.username.clone(), password);
-                    builder.credentials(creds).build()
-                } else {
-                    builder.build()
-                }
-            } else {
-                let builder =
-                    AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&self.config.host)
-                        .map_err(|e| SmtpError::Transport(e.to_string()))?
-                        .port(self.config.port);
-                if self.config.auth_required {
-                    let password = self.config.resolve_password()?;
-                    let creds = Credentials::new(self.config.username.clone(), password);
-                    builder.credentials(creds).build()
-                } else {
-                    builder.build()
-                }
-            }
+    /// Resolve SMTP credentials, or `None` when the server needs no auth.
+    fn resolve_credentials(&self) -> Result<Option<Credentials>, SmtpError> {
+        if self.config.auth_required {
+            let password = self.config.resolve_password()?;
+            Ok(Some(Credentials::new(
+                self.config.username.clone(),
+                password,
+            )))
         } else {
-            let builder =
-                AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&self.config.host)
-                    .port(self.config.port);
-            if self.config.auth_required {
-                let password = self.config.resolve_password()?;
-                let creds = Credentials::new(self.config.username.clone(), password);
-                builder.credentials(creds).build()
+            Ok(None)
+        }
+    }
+
+    async fn build_transport(&self) -> Result<AsyncSmtpTransport<Tokio1Executor>, SmtpError> {
+        let builder = if self.config.use_tls {
+            if self.config.port == 465 {
+                AsyncSmtpTransport::<Tokio1Executor>::relay(&self.config.host)
+                    .map_err(|e| SmtpError::Transport(e.to_string()))?
             } else {
-                builder.build()
+                AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&self.config.host)
+                    .map_err(|e| SmtpError::Transport(e.to_string()))?
             }
+            .port(self.config.port)
+        } else {
+            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&self.config.host)
+                .port(self.config.port)
+        };
+
+        let transport = match self.resolve_credentials()? {
+            Some(creds) => builder.credentials(creds).build(),
+            None => builder.build(),
         };
 
         Ok(transport)
@@ -276,6 +270,36 @@ mod tests {
         async fn test_connection(&self) -> Result<(), String> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn resolve_credentials_present_only_when_auth_required() {
+        let with_auth = SmtpConfig::new(
+            "smtp.example.com".into(),
+            587,
+            "user".into(),
+            "mxr/test".into(),
+            true,
+            true,
+        )
+        .with_password("pw".into());
+        assert!(SmtpSendProvider::new(with_auth)
+            .resolve_credentials()
+            .unwrap()
+            .is_some());
+
+        let no_auth = SmtpConfig::new(
+            "smtp.example.com".into(),
+            587,
+            "user".into(),
+            "mxr/test".into(),
+            false,
+            true,
+        );
+        assert!(SmtpSendProvider::new(no_auth)
+            .resolve_credentials()
+            .unwrap()
+            .is_none());
     }
 
     #[test]

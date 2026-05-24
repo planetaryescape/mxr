@@ -152,8 +152,7 @@ fn strip_json_fence(content: &str) -> &str {
         .strip_prefix("```json")
         .or_else(|| content.strip_prefix("```"))
         .and_then(|content| content.strip_suffix("```"))
-        .map(str::trim)
-        .unwrap_or(content)
+        .map_or(content, str::trim)
 }
 
 fn normalize_what(value: &str) -> String {

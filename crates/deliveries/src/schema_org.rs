@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::Value;
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SchemaExtract {
     pub status: Option<DeliveryStatus>,
     pub carrier: Option<String>,

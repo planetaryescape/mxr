@@ -144,11 +144,7 @@ async fn generate_report(options: &BugReportOptions) -> anyhow::Result<String> {
         Vec::new()
     };
     let snoozed_count = if let Some(store) = store.as_ref() {
-        store
-            .list_snoozed()
-            .await
-            .map(|items| items.len())
-            .unwrap_or(0)
+        store.list_snoozed().await.map_or(0, |items| items.len())
     } else {
         0
     };
@@ -304,24 +300,21 @@ async fn collect_account_summaries(
         let unread_count = labels
             .iter()
             .find(|label| label.name == "INBOX")
-            .map(|label| label.unread_count)
-            .unwrap_or(0);
+            .map_or(0, |label| label.unread_count);
         let total_messages = store
             .count_messages_by_account(&account.id)
             .await
             .unwrap_or(0);
         summaries.push(AccountSummary {
             name: account.name,
-            sync: account
-                .sync_backend
-                .as_ref()
-                .map(|backend| format!("{:?}", backend.provider_kind).to_ascii_lowercase())
-                .unwrap_or_else(|| "none".to_string()),
-            send: account
-                .send_backend
-                .as_ref()
-                .map(|backend| format!("{:?}", backend.provider_kind).to_ascii_lowercase())
-                .unwrap_or_else(|| "none".to_string()),
+            sync: account.sync_backend.as_ref().map_or_else(
+                || "none".to_string(),
+                |backend| format!("{:?}", backend.provider_kind).to_ascii_lowercase(),
+            ),
+            send: account.send_backend.as_ref().map_or_else(
+                || "none".to_string(),
+                |backend| format!("{:?}", backend.provider_kind).to_ascii_lowercase(),
+            ),
             unread_count,
             total_messages,
         });
@@ -339,15 +332,13 @@ fn build_daemon_lines(daemon: &DaemonSummary) -> Vec<String> {
             "- Uptime: {}",
             daemon
                 .uptime_secs
-                .map(format_duration)
-                .unwrap_or_else(|| "unknown".to_string())
+                .map_or_else(|| "unknown".to_string(), format_duration)
         ),
         format!(
             "- Total messages: {}",
             daemon
                 .total_messages
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "unknown".to_string())
+                .map_or_else(|| "unknown".to_string(), |value| value.to_string())
         ),
         format!(
             "- Accounts: {}",
@@ -403,8 +394,7 @@ fn push_section(out: &mut String, title: &str, lines: &[String]) {
 
 fn render_event_line(entry: &mxr_store::EventLogEntry) -> String {
     let timestamp = chrono::DateTime::<chrono::Utc>::from_timestamp(entry.timestamp, 0)
-        .map(|time| time.to_rfc3339())
-        .unwrap_or_else(|| entry.timestamp.to_string());
+        .map_or_else(|| entry.timestamp.to_string(), |time| time.to_rfc3339());
     format!(
         "- {} [{}:{}] {}",
         timestamp, entry.level, entry.category, entry.summary
@@ -467,14 +457,10 @@ fn read_recent_logs(
 
     if let Some(spec) = since {
         let cutoff = parse_since(spec)?;
-        lines.retain(|line| line_timestamp(line).map(|ts| ts >= cutoff).unwrap_or(true));
+        lines.retain(|line| line_timestamp(line).is_none_or(|ts| ts >= cutoff));
     } else if full_logs {
         let today = chrono::Utc::now().date_naive();
-        lines.retain(|line| {
-            line_timestamp(line)
-                .map(|ts| ts.date_naive() == today)
-                .unwrap_or(true)
-        });
+        lines.retain(|line| line_timestamp(line).is_none_or(|ts| ts.date_naive() == today));
     } else {
         let keep = if verbose {
             VERBOSE_LOG_LINES
@@ -494,9 +480,7 @@ fn read_recent_logs(
 }
 
 fn parse_since(value: &str) -> anyhow::Result<chrono::DateTime<chrono::Utc>> {
-    let (count, unit) = value
-        .chars()
-        .partition::<String, _>(|ch| ch.is_ascii_digit());
+    let (count, unit) = value.chars().partition::<String, _>(char::is_ascii_digit);
     let count = count.parse::<i64>()?;
     let duration = match unit.as_str() {
         "m" => chrono::Duration::minutes(count),
@@ -601,7 +585,7 @@ fn format_duration(seconds: u64) -> String {
 }
 
 fn file_size(path: &Path) -> u64 {
-    std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0)
+    std::fs::metadata(path).map_or(0, |meta| meta.len())
 }
 
 fn path_size(path: &Path) -> u64 {

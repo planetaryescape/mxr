@@ -1340,8 +1340,10 @@ pub async fn run() -> anyhow::Result<()> {
         if let Some(account) = app.accounts.pending_save.take() {
             let is_outlook = matches!(
                 account.sync,
-                Some(mxr_protocol::AccountSyncConfigData::OutlookPersonal { .. })
-                    | Some(mxr_protocol::AccountSyncConfigData::OutlookWork { .. })
+                Some(
+                    mxr_protocol::AccountSyncConfigData::OutlookPersonal { .. }
+                        | mxr_protocol::AccountSyncConfigData::OutlookWork { .. }
+                )
             );
             if is_outlook {
                 app.accounts.pending_auth_session_account = Some(account.clone());
@@ -1372,8 +1374,10 @@ pub async fn run() -> anyhow::Result<()> {
         if let Some((account, reauthorize)) = app.accounts.pending_authorize.take() {
             let is_outlook = matches!(
                 account.sync,
-                Some(mxr_protocol::AccountSyncConfigData::OutlookPersonal { .. })
-                    | Some(mxr_protocol::AccountSyncConfigData::OutlookWork { .. })
+                Some(
+                    mxr_protocol::AccountSyncConfigData::OutlookPersonal { .. }
+                        | mxr_protocol::AccountSyncConfigData::OutlookWork { .. }
+                )
             );
             if is_outlook {
                 app.accounts.pending_auth_session_account = Some(account.clone());
@@ -1967,8 +1971,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 .screener
                                 .account_id
                                 .as_ref()
-                                .map(|current| current == &account_id)
-                                .unwrap_or(false);
+                                .is_some_and(|current| current == &account_id);
                             if !still_relevant {
                                 continue;
                             }
@@ -2008,8 +2011,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 .sender_profile
                                 .email
                                 .as_deref()
-                                .map(|current| current == email)
-                                .unwrap_or(false);
+                                .is_some_and(|current| current == email);
                             if !still_relevant {
                                 continue;
                             }
@@ -2749,7 +2751,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 continue;
                             };
                             if let AsyncResult::DaemonEvent(event) = other {
-                                handle_daemon_event(&mut app, event)
+                                handle_daemon_event(&mut app, event);
                             }
                         }
                     }

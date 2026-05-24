@@ -497,8 +497,7 @@ pub(crate) fn current_build_id() -> String {
         .modified()
         .ok()
         .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0);
+        .map_or(0, |duration| duration.as_secs());
     format!("{version}:{}:{}:{modified}", path.display(), meta.len())
 }
 
@@ -729,8 +728,7 @@ async fn recover_broken_running_daemon(
         if !wait_for_process_exit(daemon_pid, Duration::from_secs(1)).await {
             eprintln!(" failed.");
             anyhow::bail!(
-                "Broken daemon pid {} did not exit cleanly. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`.",
-                daemon_pid
+                "Broken daemon pid {daemon_pid} did not exit cleanly. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`."
             );
         }
     }
@@ -889,8 +887,7 @@ async fn restart_daemon_process(
                 .map(|pid| format!(" (pid {pid})"))
                 .unwrap_or_default();
             anyhow::bail!(
-                "Existing daemon{} did not exit cleanly. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`.",
-                pid_note
+                "Existing daemon{pid_note} did not exit cleanly. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`."
             );
         }
         SocketState::Stale => {

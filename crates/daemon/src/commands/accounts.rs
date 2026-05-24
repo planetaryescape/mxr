@@ -61,8 +61,7 @@ pub async fn run(
                 "outlook" => add_outlook().await?,
                 "outlook-work" => add_outlook_work().await?,
                 other => anyhow::bail!(
-                    "Unknown provider '{}'. Supported: gmail, imap, smtp, imap-smtp, outlook, outlook-work",
-                    other
+                    "Unknown provider '{other}'. Supported: gmail, imap, smtp, imap-smtp, outlook, outlook-work"
                 ),
             }
         }
@@ -71,7 +70,7 @@ pub async fn run(
         Some(AccountsAction::Reauth { name }) => reauth_account(&name).await?,
         Some(AccountsAction::Repair { name }) => repair_account(&name).await?,
         Some(AccountsAction::Disable { name }) => {
-            run_account_operation(disable_account_request(&name)).await?
+            run_account_operation(disable_account_request(&name)).await?;
         }
         Some(AccountsAction::Remove {
             name,
@@ -347,7 +346,7 @@ async fn find_account_config(name: &str) -> anyhow::Result<AccountConfigData> {
         .await?
         .into_iter()
         .find(|account| account.key == name)
-        .ok_or_else(|| anyhow::anyhow!("Account '{}' not found", name))
+        .ok_or_else(|| anyhow::anyhow!("Account '{name}' not found"))
 }
 
 async fn run_account_operation(request: Request) -> anyhow::Result<()> {
@@ -743,7 +742,7 @@ async fn add_imap(include_smtp: bool, args: &AddArgs) -> anyhow::Result<()> {
     };
 
     run_account_operation(Request::UpsertAccountConfig { account }).await?;
-    println!("Account '{}' saved.", account_name);
+    println!("Account '{account_name}' saved.");
     Ok(())
 }
 
@@ -795,7 +794,7 @@ async fn add_smtp_only(args: &AddArgs) -> anyhow::Result<()> {
     };
 
     run_account_operation(Request::UpsertAccountConfig { account }).await?;
-    println!("Account '{}' saved.", account_name);
+    println!("Account '{account_name}' saved.");
     Ok(())
 }
 
@@ -812,7 +811,7 @@ async fn remove_account(
     if purge_local_data && !yes {
         run_account_operation(remove_account_request(name, true, true)).await?;
         if !prompt_bool(
-            &format!("Permanently purge cached mail for '{}'", name),
+            &format!("Permanently purge cached mail for '{name}'"),
             false,
         )? {
             anyhow::bail!("Aborted");
@@ -910,7 +909,7 @@ async fn repair_account(name: &str) -> anyhow::Result<()> {
     }) = &mut account.sync
     {
         if *auth_required {
-            *password = Some(prompt_secret(&format!("IMAP password for {}: ", username))?);
+            *password = Some(prompt_secret(&format!("IMAP password for {username}: "))?);
             repairable = true;
         }
     }
@@ -923,16 +922,13 @@ async fn repair_account(name: &str) -> anyhow::Result<()> {
     }) = &mut account.send
     {
         if *auth_required {
-            *password = Some(prompt_secret(&format!("SMTP password for {}: ", username))?);
+            *password = Some(prompt_secret(&format!("SMTP password for {username}: "))?);
             repairable = true;
         }
     }
 
     if !repairable {
-        anyhow::bail!(
-            "Account '{}' has no password-backed IMAP/SMTP credentials to repair",
-            name
-        );
+        anyhow::bail!("Account '{name}' has no password-backed IMAP/SMTP credentials to repair");
     }
 
     run_account_operation(Request::RepairAccountConfig { account }).await
@@ -944,7 +940,7 @@ async fn ensure_account_available(name: &str) -> anyhow::Result<()> {
         .iter()
         .any(|account| account.key == name)
     {
-        anyhow::bail!("Account '{}' already exists", name);
+        anyhow::bail!("Account '{name}' already exists");
     }
     Ok(())
 }

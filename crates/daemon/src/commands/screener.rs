@@ -38,7 +38,7 @@ pub async fn run(
                 ScreenerDispositionData::Allow,
                 label,
             )
-            .await?
+            .await?;
         }
         ScreenerAction::Deny {
             sender_email,
@@ -51,7 +51,7 @@ pub async fn run(
                 ScreenerDispositionData::Deny,
                 label,
             )
-            .await?
+            .await?;
         }
         ScreenerAction::Feed {
             sender_email,
@@ -64,7 +64,7 @@ pub async fn run(
                 ScreenerDispositionData::Feed,
                 label,
             )
-            .await?
+            .await?;
         }
         ScreenerAction::PaperTrail {
             sender_email,
@@ -77,7 +77,7 @@ pub async fn run(
                 ScreenerDispositionData::PaperTrail,
                 label,
             )
-            .await?
+            .await?;
         }
         ScreenerAction::Clear { sender_email } => {
             let resp = client

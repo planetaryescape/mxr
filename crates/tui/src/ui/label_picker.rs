@@ -210,7 +210,7 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &LabelPicker, theme: &crate::
             } else {
                 Style::default()
             };
-            ListItem::new(format!("  {}", display)).style(style)
+            ListItem::new(format!("  {display}")).style(style)
         })
         .collect();
 

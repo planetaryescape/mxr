@@ -56,7 +56,7 @@ pub fn check(draft: &Draft, ctx: &SafetyContext, cfg: &SafetyToneConfig) -> Vec<
             "more casual"
         };
         let detail = if report.notable_deltas.is_empty() {
-            format!("formality delta {:.2}", delta)
+            format!("formality delta {delta:.2}")
         } else {
             report.notable_deltas.join("; ")
         };

@@ -1056,10 +1056,10 @@ fn account_form_field_value(form: &AccountFormState) -> Option<&str> {
         (AccountFormMode::SmtpOnly, 7) => None,
         (AccountFormMode::SmtpOnly, 8) => Some(form.smtp_password_ref.as_str()),
         (AccountFormMode::SmtpOnly, 9) => Some(form.smtp_password.as_str()),
-        (AccountFormMode::OutlookPersonal, 4) | (AccountFormMode::OutlookWork, 4) => {
+        (AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork, 4) => {
             Some(form.outlook_client_id.as_str())
         }
-        (AccountFormMode::OutlookPersonal, 5) | (AccountFormMode::OutlookWork, 5) => None, // token_ref is read-only
+        (AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork, 5) => None, // token_ref is read-only
         _ => None,
     }
 }
@@ -1101,7 +1101,7 @@ where
         (AccountFormMode::SmtpOnly, 6) => &mut form.smtp_username,
         (AccountFormMode::SmtpOnly, 8) => &mut form.smtp_password_ref,
         (AccountFormMode::SmtpOnly, 9) => &mut form.smtp_password,
-        (AccountFormMode::OutlookPersonal, 4) | (AccountFormMode::OutlookWork, 4) => {
+        (AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork, 4) => {
             &mut form.outlook_client_id
         }
         _ => return,
@@ -1147,8 +1147,7 @@ fn char_to_byte_index(value: &str, char_index: usize) -> usize {
     value
         .char_indices()
         .nth(char_index)
-        .map(|(index, _)| index)
-        .unwrap_or(value.len())
+        .map_or(value.len(), |(index, _)| index)
 }
 
 fn next_gmail_credential_source(

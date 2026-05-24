@@ -18,9 +18,8 @@ pub(crate) struct CpuExecutor {
 #[cfg(feature = "local")]
 impl CpuExecutor {
     pub(crate) fn new() -> Self {
-        let thread_count = std::thread::available_parallelism()
-            .map(|parallelism| parallelism.get().max(2))
-            .unwrap_or(4);
+        let thread_count =
+            std::thread::available_parallelism().map_or(4, |parallelism| parallelism.get().max(2));
 
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(thread_count)

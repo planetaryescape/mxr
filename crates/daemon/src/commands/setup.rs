@@ -41,8 +41,7 @@ pub async fn run(demo: bool, key: String, force: bool) -> anyhow::Result<()> {
         .general
         .default_account
         .as_deref()
-        .map(|d| d.is_empty())
-        .unwrap_or(true)
+        .is_none_or(str::is_empty)
     {
         config.general.default_account = Some(key.clone());
     }

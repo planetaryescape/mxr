@@ -50,11 +50,10 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
                 account_id,
                 messages_synced,
             } => format!(
-                "sync account={} messages_synced={messages_synced}",
-                account_id
+                "sync account={account_id} messages_synced={messages_synced}"
             ),
             DaemonEvent::SyncError { account_id, error } => {
-                format!("error account={} {error}", account_id)
+                format!("error account={account_id} {error}")
             }
             DaemonEvent::NewMessages { envelopes } => {
                 format!("message new_messages={}", envelopes.len())
@@ -82,9 +81,7 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
                 message,
                 ..
             } => {
-                let total = total
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "?".into());
+                let total = total.map_or_else(|| "?".into(), |value| value.to_string());
                 format!(
                     "operation progress id={operation_id} operation={operation} current={current} total={total} {message}"
                 )

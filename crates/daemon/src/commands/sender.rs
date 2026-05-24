@@ -101,7 +101,7 @@ pub async fn run(
                 );
                 println!("  replied:  {} times", p.replied_count);
                 if let Some(cadence) = p.cadence_days_p50 {
-                    println!("  cadence:  {:.1} days (p50)", cadence);
+                    println!("  cadence:  {cadence:.1} days (p50)");
                 }
                 if let Some(last_in) = p.last_inbound_at {
                     println!(

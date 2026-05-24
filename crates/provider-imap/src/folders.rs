@@ -20,9 +20,7 @@ pub fn map_folder_to_label(
         Some("\\Sent") => ("SENT".to_string(), LabelKind::System, Some(Role::Sent)),
         Some("\\Drafts") => ("DRAFT".to_string(), LabelKind::System, Some(Role::Drafts)),
         Some("\\Trash") => ("TRASH".to_string(), LabelKind::System, Some(Role::Trash)),
-        Some("\\Junk") | Some("\\Spam") => {
-            ("SPAM".to_string(), LabelKind::System, Some(Role::Spam))
-        }
+        Some("\\Junk" | "\\Spam") => ("SPAM".to_string(), LabelKind::System, Some(Role::Spam)),
         Some("\\Archive") => (
             "ARCHIVE".to_string(),
             LabelKind::System,

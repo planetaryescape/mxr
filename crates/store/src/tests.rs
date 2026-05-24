@@ -726,7 +726,7 @@ async fn thread_aggregation() {
     let thread_id = ThreadId::new();
     for i in 0..3 {
         let mut env = test_envelope(&account.id);
-        env.provider_id = format!("fake-thread-{}", i);
+        env.provider_id = format!("fake-thread-{i}");
         env.thread_id = thread_id.clone();
         env.date = chrono::Utc::now() - chrono::Duration::hours(i);
         if i == 0 {
@@ -1249,7 +1249,7 @@ async fn recalculate_label_counts() {
     // Insert 3 messages: 2 read, 1 unread
     for i in 0..3 {
         let mut env = test_envelope(&account.id);
-        env.provider_id = format!("fake-label-{}", i);
+        env.provider_id = format!("fake-label-{i}");
         if i < 2 {
             env.flags = MessageFlags::READ;
         } else {
@@ -1484,8 +1484,7 @@ async fn set_message_labels_is_atomic_under_constraint_violation() {
         .await;
     assert!(
         result.is_err(),
-        "set_message_labels with duplicate label_ids should fail (got {:?})",
-        result
+        "set_message_labels with duplicate label_ids should fail (got {result:?})"
     );
 
     let by_a = store
@@ -1633,7 +1632,7 @@ async fn list_contacts_ordered_by_frequency() {
     // Insert 3 messages from alice, 2 from bob, 1 from carol
     for i in 0..3 {
         let mut env = test_envelope(&account.id);
-        env.provider_id = format!("fake-alice-{}", i);
+        env.provider_id = format!("fake-alice-{i}");
         env.from = Address {
             name: Some("Alice".to_string()),
             email: "alice@example.com".to_string(),
@@ -1642,7 +1641,7 @@ async fn list_contacts_ordered_by_frequency() {
     }
     for i in 0..2 {
         let mut env = test_envelope(&account.id);
-        env.provider_id = format!("fake-bob-{}", i);
+        env.provider_id = format!("fake-bob-{i}");
         env.from = Address {
             name: Some("Bob".to_string()),
             email: "bob@example.com".to_string(),
@@ -2633,7 +2632,7 @@ async fn list_stale_threads_filters_by_perspective_and_age() {
             .account_id(account_id.clone())
             .build();
         env.id = MessageId::new();
-        env.provider_id = format!("p-{}-{}", sender, days_ago);
+        env.provider_id = format!("p-{sender}-{days_ago}");
         env.thread_id = thread;
         env.from = Address {
             name: None,

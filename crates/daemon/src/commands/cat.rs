@@ -112,7 +112,7 @@ pub async fn run(options: CatRunOptions) -> anyhow::Result<()> {
             for id in &ids {
                 let body = fetch_body(&mut client, id.clone()).await?;
                 writer.write_record(&[
-                    id.as_str().to_string(),
+                    id.as_str().clone(),
                     body.text_plain.is_some().to_string(),
                     body.text_html.is_some().to_string(),
                     body.attachments.len().to_string(),
@@ -131,9 +131,7 @@ pub async fn run(options: CatRunOptions) -> anyhow::Result<()> {
                     BodyViewArg::Raw
                 } else if html {
                     BodyViewArg::Html
-                } else if mxr_config::load_config()
-                    .map(|config| config.render.reader_mode)
-                    .unwrap_or(true)
+                } else if mxr_config::load_config().map_or(true, |config| config.render.reader_mode)
                 {
                     BodyViewArg::Reader
                 } else {
@@ -199,9 +197,8 @@ async fn print_assets_for_ids(
     ids: &[MessageId],
     fmt: OutputFormat,
 ) -> anyhow::Result<()> {
-    let allow_remote = mxr_config::load_config()
-        .map(|config| config.render.html_remote_content)
-        .unwrap_or(true);
+    let allow_remote =
+        mxr_config::load_config().map_or(true, |config| config.render.html_remote_content);
 
     match fmt {
         OutputFormat::Json => {
@@ -267,15 +264,14 @@ async fn print_assets_for_ids(
                 })?;
                 for asset in &assets {
                     writer.write_record(&[
-                        id.as_str().to_string(),
+                        id.as_str().clone(),
                         format!("{:?}", asset.status).to_lowercase(),
                         format!("{:?}", asset.kind).to_lowercase(),
                         asset.source.clone(),
                         asset
                             .path
                             .as_ref()
-                            .map(|p| p.display().to_string())
-                            .unwrap_or_else(|| "-".into()),
+                            .map_or_else(|| "-".into(), |p| p.display().to_string()),
                     ])?;
                 }
             }
@@ -306,8 +302,7 @@ async fn print_assets_for_ids(
                     let path = asset
                         .path
                         .as_ref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "-".into());
+                        .map_or_else(|| "-".into(), |p| p.display().to_string());
                     println!(
                         "{:<10} {:<18} {} -> {}",
                         format!("{:?}", asset.status).to_lowercase(),

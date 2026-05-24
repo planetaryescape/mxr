@@ -571,7 +571,7 @@ fn apply_filter_modal_fields(
     fields: &[AnalyticsFilterField],
 ) -> Result<(), String> {
     use crate::app::AnalyticsView;
-    let get = |idx: usize| -> &str { fields.get(idx).map(|f| f.value.as_str()).unwrap_or("") };
+    let get = |idx: usize| -> &str { fields.get(idx).map_or("", |f| f.value.as_str()) };
     match view {
         AnalyticsView::Storage => match state.storage_mode {
             StorageMode::Breakdown => {

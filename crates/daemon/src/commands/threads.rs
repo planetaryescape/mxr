@@ -74,7 +74,7 @@ pub async fn run(
             writer.write_record(["thread_id", "subject", "message_count", "latest_date"])?;
             for thread in &threads {
                 writer.write_record(&[
-                    thread.id.as_str().to_string(),
+                    thread.id.as_str().clone(),
                     thread.subject.clone(),
                     thread.message_count.to_string(),
                     thread.latest_date.to_rfc3339(),

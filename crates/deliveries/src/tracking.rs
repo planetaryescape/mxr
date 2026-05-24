@@ -39,7 +39,7 @@ pub fn extract(text: &str) -> Vec<ValidatedTracking> {
     for raw in candidates {
         let normalized: String = raw
             .chars()
-            .filter(|c| c.is_ascii_alphanumeric())
+            .filter(char::is_ascii_alphanumeric)
             .collect::<String>()
             .to_uppercase();
         // Real tracking numbers contain digits and fit known formats; this

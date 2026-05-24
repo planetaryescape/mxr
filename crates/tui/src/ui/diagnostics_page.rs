@@ -40,15 +40,13 @@ fn render_selector(
         .iter()
         .map(|&pane| {
             let meta = match pane {
-                DiagnosticsPaneKind::Status => state
-                    .doctor
-                    .as_ref()
-                    .map(|report| report.health_class.as_str().to_string())
-                    .unwrap_or_else(|| "status".into()),
+                DiagnosticsPaneKind::Status => state.doctor.as_ref().map_or_else(
+                    || "status".into(),
+                    |report| report.health_class.as_str().to_string(),
+                ),
                 DiagnosticsPaneKind::Data => state
                     .total_messages
-                    .map(|count| format!("{count} msgs"))
-                    .unwrap_or_else(|| "storage".into()),
+                    .map_or_else(|| "storage".into(), |count| format!("{count} msgs")),
                 DiagnosticsPaneKind::Sync => format!("{} accounts", state.sync_statuses.len()),
                 DiagnosticsPaneKind::Events => format!("{} recent", state.events.len()),
                 DiagnosticsPaneKind::Logs => format!("{} lines", state.logs.len()),
@@ -187,13 +185,11 @@ fn render_summary(
     let health = state
         .doctor
         .as_ref()
-        .map(|report| report.health_class.as_str())
-        .unwrap_or("unknown");
+        .map_or("unknown", |report| report.health_class.as_str());
     let lexical = state
         .doctor
         .as_ref()
-        .map(|report| report.lexical_index_freshness.as_str())
-        .unwrap_or("unknown");
+        .map_or("unknown", |report| report.lexical_index_freshness.as_str());
 
     frame.render_widget(
         LineGauge::default()
@@ -287,16 +283,14 @@ fn summary_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec
                 state.status.as_deref().unwrap_or("unknown"),
                 state
                     .daemon_pid
-                    .map(|pid| pid.to_string())
-                    .unwrap_or_else(|| "unknown".into())
+                    .map_or_else(|| "unknown".into(), |pid| pid.to_string())
             )),
             Line::from(format!(
                 "accounts={}  messages={}",
                 state.accounts.len(),
                 state
                     .total_messages
-                    .map(|count| count.to_string())
-                    .unwrap_or_else(|| "unknown".into())
+                    .map_or_else(|| "unknown".into(), |count| count.to_string())
             )),
         ],
         DiagnosticsPaneKind::Data => vec![
@@ -350,22 +344,21 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
     let loading = state.pending_requests > 0;
     let doctor = state.doctor.as_ref();
     let empty_stats = DoctorDataStats::default();
-    let data_stats = doctor
-        .map(|report| &report.data_stats)
-        .unwrap_or(&empty_stats);
+    let data_stats = doctor.map_or(&empty_stats, |report| &report.data_stats);
     let total_messages = state
         .total_messages
         .filter(|count| *count > 0 || data_stats.messages == 0)
         .unwrap_or(data_stats.messages);
-    let health_text = doctor
-        .map(|report| report.health_class.as_str().to_string())
-        .unwrap_or_else(|| {
+    let health_text = doctor.map_or_else(
+        || {
             if loading {
                 "loading".to_string()
             } else {
                 "unknown".to_string()
             }
-        });
+        },
+        |report| report.health_class.as_str().to_string(),
+    );
     let status_text = state.status.clone().unwrap_or_else(|| {
         if loading {
             "loading".to_string()
@@ -400,44 +393,41 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
             format!("Health: {} status={}", health_text, status_text),
             format!(
                 "Lifecycle: restart={} repair={}",
-                yes_no(
-                    doctor
-                        .map(|report| report.restart_required)
-                        .unwrap_or(false)
-                ),
-                yes_no(doctor.map(|report| report.repair_required).unwrap_or(false)),
+                yes_no(doctor.is_some_and(|report| report.restart_required)),
+                yes_no(doctor.is_some_and(|report| report.repair_required)),
             ),
             format!(
                 "Uptime: {}",
-                state
-                    .uptime_secs
-                    .map(|secs| format!("{secs}s"))
-                    .unwrap_or_else(|| if loading {
+                state.uptime_secs.map_or_else(
+                    || if loading {
                         "loading".into()
                     } else {
                         "unknown".into()
-                    })
+                    },
+                    |secs| format!("{secs}s")
+                )
             ),
             format!(
                 "Daemon: pid={} version={} protocol={}",
-                state
-                    .daemon_pid
-                    .map(|pid| pid.to_string())
-                    .unwrap_or_else(|| if loading {
+                state.daemon_pid.map_or_else(
+                    || if loading {
                         "loading".into()
                     } else {
                         "unknown".into()
-                    }),
+                    },
+                    |pid| pid.to_string()
+                ),
                 doctor
                     .and_then(|report| report.daemon_version.as_deref())
                     .unwrap_or(if loading { "loading" } else { "unknown" }),
-                doctor
-                    .map(|report| report.daemon_protocol_version.to_string())
-                    .unwrap_or_else(|| if loading {
+                doctor.map_or_else(
+                    || if loading {
                         "loading".into()
                     } else {
                         "unknown".into()
-                    }),
+                    },
+                    |report| report.daemon_protocol_version.to_string()
+                ),
             ),
             format!(
                 "Messages: total={} unread={} starred={}",
@@ -453,37 +443,35 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
             ),
             format!(
                 "Freshness: lex={} sync={}",
-                doctor
-                    .map(|report| report.lexical_index_freshness.as_str())
-                    .unwrap_or("unknown"),
-                doctor
-                    .map(|report| format_timestamp_compact(
-                        report.last_successful_sync_at.as_deref(),
-                        "never"
-                    ))
-                    .unwrap_or_else(|| if loading {
+                doctor.map_or("unknown", |report| report.lexical_index_freshness.as_str()),
+                doctor.map_or_else(
+                    || if loading {
                         "loading".into()
                     } else {
                         "never".into()
-                    }),
+                    },
+                    |report| format_timestamp_compact(
+                        report.last_successful_sync_at.as_deref(),
+                        "never"
+                    )
+                ),
             ),
             format!(
                 "Lexical rebuilt: {}",
-                doctor
-                    .map(|report| format_timestamp_compact(
-                        report.lexical_last_rebuilt_at.as_deref(),
-                        "-"
-                    ))
-                    .unwrap_or_else(|| if loading {
+                doctor.map_or_else(
+                    || if loading {
                         "loading".into()
                     } else {
                         "-".into()
-                    }),
+                    },
+                    |report| format_timestamp_compact(
+                        report.lexical_last_rebuilt_at.as_deref(),
+                        "-"
+                    )
+                ),
             ),
             {
-                let findings = doctor
-                    .map(|report| report.findings.as_slice())
-                    .unwrap_or(&[]);
+                let findings = doctor.map_or(&[][..], |report| report.findings.as_slice());
                 if findings.is_empty() {
                     "Findings: none".to_string()
                 } else {
@@ -500,8 +488,7 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
         )
         .chain(
             doctor
-                .map(|report| report.findings.as_slice())
-                .unwrap_or(&[])
+                .map_or(&[][..], |report| report.findings.as_slice())
                 .iter()
                 .flat_map(format_finding_lines),
         )
@@ -535,9 +522,7 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
             ),
             format!(
                 "Semantic: {} p={} chunks={} e={} missing_chunks={} missing_embeddings={} drift={}",
-                doctor
-                    .map(|report| report.semantic_index_freshness.as_str())
-                    .unwrap_or("unknown"),
+                doctor.map_or("unknown", |report| report.semantic_index_freshness.as_str()),
                 data_stats.semantic_profiles,
                 data_stats.semantic_chunks,
                 data_stats.semantic_embeddings,
@@ -547,37 +532,39 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
             ),
             format!(
                 "Semantic indexed at: {}",
-                doctor
-                    .map(|report| format_timestamp_compact(
-                        report.semantic_last_indexed_at.as_deref(),
-                        "-"
-                    ))
-                    .unwrap_or_else(|| if loading {
+                doctor.map_or_else(
+                    || if loading {
                         "loading".into()
                     } else {
                         "-".into()
-                    }),
+                    },
+                    |report| format_timestamp_compact(
+                        report.semantic_last_indexed_at.as_deref(),
+                        "-"
+                    )
+                ),
             ),
             format!(
                 "Storage: db={} index={} logs={}",
-                doctor
-                    .map(|report| format_bytes(report.database_size_bytes))
-                    .unwrap_or_else(|| "-".into()),
-                doctor
-                    .map(|report| format_bytes(report.index_size_bytes))
-                    .unwrap_or_else(|| "-".into()),
-                doctor
-                    .map(|report| format_bytes(report.log_size_bytes))
-                    .unwrap_or_else(|| "-".into()),
+                doctor.map_or_else(
+                    || "-".into(),
+                    |report| format_bytes(report.database_size_bytes)
+                ),
+                doctor.map_or_else(
+                    || "-".into(),
+                    |report| format_bytes(report.index_size_bytes)
+                ),
+                doctor.map_or_else(|| "-".into(), |report| format_bytes(report.log_size_bytes)),
             ),
-            doctor
-                .map(|report| {
+            doctor.map_or_else(
+                || "Paths: loading".into(),
+                |report| {
                     format!(
                         "Paths: db={} index={} logs={}",
                         report.database_path, report.index_path, report.log_path
                     )
-                })
-                .unwrap_or_else(|| "Paths: loading".into()),
+                },
+            ),
         ],
         DiagnosticsPaneKind::Sync => {
             if sync_statuses.is_empty() {
@@ -627,8 +614,7 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                         || event
                             .details
                             .as_deref()
-                            .map(|d| d.to_lowercase().contains(&needle))
-                            .unwrap_or(false)
+                            .is_some_and(|d| d.to_lowercase().contains(&needle))
                 })
                 .collect();
             if filtered.is_empty() {
@@ -710,9 +696,10 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                 filtered
                     .iter()
                     .map(|e| {
-                        let ts = chrono::DateTime::from_timestamp_millis(e.ts)
-                            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                            .unwrap_or_else(|| e.ts.to_string());
+                        let ts = chrono::DateTime::from_timestamp_millis(e.ts).map_or_else(
+                            || e.ts.to_string(),
+                            |dt| dt.format("%Y-%m-%d %H:%M:%S").to_string(),
+                        );
                         let target = match (&e.target_kind, &e.target_id) {
                             (Some(k), Some(id)) => {
                                 let trimmed: String = id.chars().take(12).collect();
@@ -824,13 +811,15 @@ fn format_bytes(bytes: u64) -> String {
 fn format_timestamp_compact(value: Option<&str>, default: &str) -> String {
     value
         .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
-        .map(|value| {
-            value
-                .with_timezone(&chrono::Utc)
-                .format("%m-%d %H:%MZ")
-                .to_string()
-        })
-        .unwrap_or_else(|| default.to_string())
+        .map_or_else(
+            || default.to_string(),
+            |value| {
+                value
+                    .with_timezone(&chrono::Utc)
+                    .format("%m-%d %H:%MZ")
+                    .to_string()
+            },
+        )
 }
 
 #[cfg(test)]

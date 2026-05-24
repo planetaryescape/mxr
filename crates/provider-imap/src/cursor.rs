@@ -104,9 +104,7 @@ impl ImapCursor {
             .iter()
             .find(|m| m.mailbox.eq_ignore_ascii_case("INBOX"))
             .or_else(|| v.mailboxes.first());
-        let (uid_validity, uid_next) = fallback
-            .map(|m| (m.uid_validity, m.uid_next))
-            .unwrap_or((0, 0));
+        let (uid_validity, uid_next) = fallback.map_or((0, 0), |m| (m.uid_validity, m.uid_next));
         format!(
             "imap uid_validity={uid_validity} uid_next={uid_next} mailboxes={}",
             v.mailboxes.len()

@@ -73,7 +73,7 @@ async fn list_reply_queue(client: &mut IpcClient) -> anyhow::Result<Vec<Envelope
         Response::Ok {
             data: ResponseData::ReplyQueue { messages },
         } => Ok(messages),
-        Response::Error { message, .. } => anyhow::bail!("{}", message),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -208,7 +208,7 @@ fn ack_or_bail(resp: Response, success_message: &str) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Response::Error { message, .. } => anyhow::bail!("{}", message),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
 }

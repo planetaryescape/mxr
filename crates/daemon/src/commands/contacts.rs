@@ -182,8 +182,7 @@ fn render_decay_table(rows: &[ContactDecayRow]) {
         let email: String = row.email.chars().take(40).collect();
         let outbound = row
             .days_since_outbound
-            .map(|d| format!("{d}d"))
-            .unwrap_or_else(|| "-".into());
+            .map_or_else(|| "-".into(), |d| format!("{d}d"));
         println!(
             "{:<40} {:>9}d {:>10}",
             email, row.days_since_inbound, outbound,

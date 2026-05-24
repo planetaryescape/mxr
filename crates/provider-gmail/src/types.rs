@@ -34,7 +34,7 @@ pub struct GmailPayload {
     pub mime_type: Option<String>,
     pub headers: Option<Vec<GmailHeader>>,
     pub body: Option<GmailBody>,
-    pub parts: Option<Vec<GmailPayload>>,
+    pub parts: Option<Vec<Self>>,
     pub filename: Option<String>,
 }
 

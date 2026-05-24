@@ -77,8 +77,7 @@ fn print_list(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                 for e in entries {
                     let exp = e
                         .expected_days
-                        .map(|d| format!("{d:.1}d"))
-                        .unwrap_or_else(|| "auto".into());
+                        .map_or_else(|| "auto".into(), |d| format!("{d:.1}d"));
                     println!(
                         "{:<32}  expected={}  added={}",
                         e.email,

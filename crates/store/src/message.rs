@@ -992,7 +992,7 @@ impl super::Store {
         let archived_flag = MessageFlags::ARCHIVED.bits() as i64;
         let cutoff = future_date_cutoff_timestamp();
         let lim = limit as i64;
-        let account_id_str = account_id.map(|id| id.to_string());
+        let account_id_str = account_id.map(std::string::ToString::to_string);
 
         let rows = sqlx::query(
             r#"WITH ranked AS (
@@ -1249,14 +1249,14 @@ pub(crate) fn record_to_envelope(record: EnvelopeRecord<'_>) -> Result<Envelope,
         account_id: decode_id(account_id)?,
         provider_id: provider_id.to_string(),
         thread_id: decode_id(thread_id)?,
-        message_id_header: message_id_header.map(|s| s.to_string()),
-        in_reply_to: in_reply_to.map(|s| s.to_string()),
+        message_id_header: message_id_header.map(std::string::ToString::to_string),
+        in_reply_to: in_reply_to.map(std::string::ToString::to_string),
         references: reference_headers
             .map(decode_json::<Vec<String>>)
             .transpose()?
             .unwrap_or_default(),
         from: Address {
-            name: from_name.map(|s| s.to_string()),
+            name: from_name.map(std::string::ToString::to_string),
             email: from_email.to_string(),
         },
         to: decode_json(to_addrs)?,

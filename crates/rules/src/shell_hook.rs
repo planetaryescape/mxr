@@ -158,7 +158,7 @@ mod tests {
             Err(ShellHookError::NonZeroExit { stderr, .. }) => {
                 assert!(stderr.contains("oops"));
             }
-            other => panic!("Expected NonZeroExit, got {:?}", other),
+            other => panic!("Expected NonZeroExit, got {other:?}"),
         }
     }
 

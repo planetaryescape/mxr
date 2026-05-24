@@ -10,7 +10,9 @@ impl App {
             Action::ToggleRuleEnabled => {
                 if let Some(rule) = self.selected_rule().cloned() {
                     let mut updated = rule.clone();
-                    if let Some(enabled) = updated.get("enabled").and_then(|v| v.as_bool()) {
+                    if let Some(enabled) =
+                        updated.get("enabled").and_then(serde_json::Value::as_bool)
+                    {
                         updated["enabled"] = serde_json::Value::Bool(!enabled);
                         self.rules.pending_upsert = Some(updated);
                         self.rules.page.status = Some(if enabled {

@@ -186,7 +186,7 @@ fn build_row<'a>(
         (false, false) => " ",
     };
     let line_number_style = match (is_selected, is_in_set) {
-        (true, true) | (true, false) => Style::default().fg(row_fg).bold(),
+        (true, true | false) => Style::default().fg(row_fg).bold(),
         (false, true) => Style::default().fg(row_fg).bold(),
         (false, false) => Style::default().fg(row_marker_fg),
     };
@@ -502,7 +502,7 @@ fn format_byte_size(bytes: u32) -> String {
     } else if bytes >= KIB {
         format!("{}K", bytes / KIB)
     } else {
-        format!("{}B", bytes)
+        format!("{bytes}B")
     }
 }
 
@@ -569,10 +569,10 @@ pub fn format_date_relative(date: &chrono::DateTime<Utc>, now: &chrono::DateTime
         return "now".to_string();
     }
     if minutes < 60 {
-        return format!("{}m", minutes);
+        return format!("{minutes}m");
     }
     if hours < 24 {
-        return format!("{}h", hours);
+        return format!("{hours}h");
     }
     if days < 7 {
         return date.with_timezone(&Local).format("%a").to_string();

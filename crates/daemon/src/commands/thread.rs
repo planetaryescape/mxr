@@ -60,7 +60,7 @@ pub async fn run(
             for id in &ids {
                 let (thread, _) = fetch_thread(&mut client, id.clone()).await?;
                 writer.write_record(&[
-                    id.as_str().to_string(),
+                    id.as_str().clone(),
                     thread.subject.clone(),
                     thread.message_count.to_string(),
                 ])?;

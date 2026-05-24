@@ -273,7 +273,7 @@ async fn analytics_storage_breakdown(
 ) -> Result<Json<Value>, BridgeError> {
     let group_by = match query.group_by.as_deref() {
         Some("sender") | None => StorageGroupBy::Sender,
-        Some("mimetype") | Some("mime") => StorageGroupBy::Mimetype,
+        Some("mimetype" | "mime") => StorageGroupBy::Mimetype,
         Some("label") => StorageGroupBy::Label,
         Some(other) => {
             return Err(BridgeError::Ipc(format!("unknown group_by={other}")));
@@ -499,10 +499,10 @@ async fn analytics_response_time(
     Query(query): Query<ResponseTimeQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let direction = match query.direction.as_deref() {
-        None | Some("they_replied") | Some("they-replied") | Some("outgoing") => {
+        None | Some("they_replied" | "they-replied" | "outgoing") => {
             ResponseTimeDirection::TheyReplied
         }
-        Some("i_replied") | Some("i-replied") | Some("incoming") => ResponseTimeDirection::IReplied,
+        Some("i_replied" | "i-replied" | "incoming") => ResponseTimeDirection::IReplied,
         Some(other) => {
             return Err(BridgeError::Ipc(format!("unknown direction={other}")));
         }

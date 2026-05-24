@@ -231,7 +231,7 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker, theme: &crate
                 .flat_map(|r| {
                     vec![
                         Span::styled(
-                            format!(" {} ", r),
+                            format!(" {r} "),
                             Style::default()
                                 .bg(theme.selection_bg)
                                 .fg(theme.text_primary),
@@ -280,7 +280,7 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker, theme: &crate
             } else {
                 Style::default()
             };
-            ListItem::new(format!("  {}", display)).style(style)
+            ListItem::new(format!("  {display}")).style(style)
         })
         .collect();
 

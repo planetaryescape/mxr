@@ -466,7 +466,7 @@ fn normalize(value: &str) -> String {
     value
         .chars()
         .filter(|ch| ch.is_alphanumeric())
-        .flat_map(|ch| ch.to_lowercase())
+        .flat_map(char::to_lowercase)
         .collect()
 }
 
@@ -481,7 +481,7 @@ fn acronym(value: &str) -> String {
         .split(|ch: char| !ch.is_alphanumeric())
         .filter(|word| !word.is_empty())
         .filter_map(|word| word.chars().next())
-        .flat_map(|ch| ch.to_lowercase())
+        .flat_map(char::to_lowercase)
         .collect()
 }
 
@@ -639,9 +639,19 @@ fn draw_search_results(
         &mut scrollbar_state,
     );
 
-    let footer_text = results
-        .get(selected)
-        .map(|result| {
+    let footer_text = results.get(selected).map_or_else(
+        || {
+            Line::from(vec![
+                Span::styled(
+                    "No matching help entries",
+                    Style::default().fg(theme.text_muted),
+                ),
+                Span::raw("   "),
+                Span::styled("Esc", Style::default().fg(theme.accent).bold()),
+                Span::styled(" close", Style::default().fg(theme.text_secondary)),
+            ])
+        },
+        |result| {
             Line::from(vec![
                 Span::styled("type ", Style::default().fg(theme.accent).bold()),
                 Span::styled("search", Style::default().fg(theme.text_secondary)),
@@ -667,18 +677,8 @@ fn draw_search_results(
                     Style::default().fg(theme.text_muted),
                 ),
             ])
-        })
-        .unwrap_or_else(|| {
-            Line::from(vec![
-                Span::styled(
-                    "No matching help entries",
-                    Style::default().fg(theme.text_muted),
-                ),
-                Span::raw("   "),
-                Span::styled("Esc", Style::default().fg(theme.accent).bold()),
-                Span::styled(" close", Style::default().fg(theme.text_secondary)),
-            ])
-        });
+        },
+    );
     let footer = Paragraph::new(footer_text).block(
         Block::bordered()
             .border_type(BorderType::Rounded)

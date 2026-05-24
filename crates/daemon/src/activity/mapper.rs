@@ -56,38 +56,38 @@ pub fn map_request(
             MutationCommand::Archive { message_ids } => (
                 "mail.archive",
                 Some("message"),
-                message_ids.first().map(|m| m.as_str().to_string()),
+                message_ids.first().map(|m| m.as_str().clone()),
                 Some(serde_json::json!({
                     "count": message_ids.len(),
-                    "target_ids": message_ids.iter().map(|m| m.as_str()).collect::<Vec<_>>(),
+                    "target_ids": message_ids.iter().map(mxr_core::MessageId::as_str).collect::<Vec<_>>(),
                 })),
             ),
             MutationCommand::ReadAndArchive { message_ids } => (
                 "mail.archive",
                 Some("message"),
-                message_ids.first().map(|m| m.as_str().to_string()),
+                message_ids.first().map(|m| m.as_str().clone()),
                 Some(serde_json::json!({
                     "count": message_ids.len(),
                     "read_then_archive": true,
-                    "target_ids": message_ids.iter().map(|m| m.as_str()).collect::<Vec<_>>(),
+                    "target_ids": message_ids.iter().map(mxr_core::MessageId::as_str).collect::<Vec<_>>(),
                 })),
             ),
             MutationCommand::Trash { message_ids } => (
                 "mail.trash",
                 Some("message"),
-                message_ids.first().map(|m| m.as_str().to_string()),
+                message_ids.first().map(|m| m.as_str().clone()),
                 Some(serde_json::json!({
                     "count": message_ids.len(),
-                    "target_ids": message_ids.iter().map(|m| m.as_str()).collect::<Vec<_>>(),
+                    "target_ids": message_ids.iter().map(mxr_core::MessageId::as_str).collect::<Vec<_>>(),
                 })),
             ),
             MutationCommand::Spam { message_ids } => (
                 "mail.mark_spam",
                 Some("message"),
-                message_ids.first().map(|m| m.as_str().to_string()),
+                message_ids.first().map(|m| m.as_str().clone()),
                 Some(serde_json::json!({
                     "count": message_ids.len(),
-                    "target_ids": message_ids.iter().map(|m| m.as_str()).collect::<Vec<_>>(),
+                    "target_ids": message_ids.iter().map(mxr_core::MessageId::as_str).collect::<Vec<_>>(),
                 })),
             ),
             MutationCommand::Star {
@@ -96,19 +96,19 @@ pub fn map_request(
             } => (
                 if *starred { "mail.star" } else { "mail.unstar" },
                 Some("message"),
-                message_ids.first().map(|m| m.as_str().to_string()),
+                message_ids.first().map(|m| m.as_str().clone()),
                 Some(serde_json::json!({
                     "count": message_ids.len(),
-                    "target_ids": message_ids.iter().map(|m| m.as_str()).collect::<Vec<_>>(),
+                    "target_ids": message_ids.iter().map(mxr_core::MessageId::as_str).collect::<Vec<_>>(),
                 })),
             ),
             MutationCommand::SetRead { message_ids, read } => (
                 if *read { "mail.read" } else { "mail.unread" },
                 Some("message"),
-                message_ids.first().map(|m| m.as_str().to_string()),
+                message_ids.first().map(|m| m.as_str().clone()),
                 Some(serde_json::json!({
                     "count": message_ids.len(),
-                    "target_ids": message_ids.iter().map(|m| m.as_str()).collect::<Vec<_>>(),
+                    "target_ids": message_ids.iter().map(mxr_core::MessageId::as_str).collect::<Vec<_>>(),
                 })),
             ),
             MutationCommand::ModifyLabels {
@@ -127,12 +127,12 @@ pub fn map_request(
                 (
                     action,
                     Some("message"),
-                    message_ids.first().map(|m| m.as_str().to_string()),
+                    message_ids.first().map(|m| m.as_str().clone()),
                     Some(serde_json::json!({
                         "count": message_ids.len(),
                         "add": add,
                         "remove": remove,
-                        "target_ids": message_ids.iter().map(|m| m.as_str()).collect::<Vec<_>>(),
+                        "target_ids": message_ids.iter().map(mxr_core::MessageId::as_str).collect::<Vec<_>>(),
                     })),
                 )
             }
@@ -142,11 +142,11 @@ pub fn map_request(
             } => (
                 "mail.move",
                 Some("message"),
-                message_ids.first().map(|m| m.as_str().to_string()),
+                message_ids.first().map(|m| m.as_str().clone()),
                 Some(serde_json::json!({
                     "count": message_ids.len(),
                     "to": target_label,
-                    "target_ids": message_ids.iter().map(|m| m.as_str()).collect::<Vec<_>>(),
+                    "target_ids": message_ids.iter().map(mxr_core::MessageId::as_str).collect::<Vec<_>>(),
                 })),
             ),
         },
@@ -158,7 +158,7 @@ pub fn map_request(
         } => (
             "mail.read",
             Some("message"),
-            Some(message_id.as_str().to_string()),
+            Some(message_id.as_str().clone()),
             Some(serde_json::json!({ "via": "set_flags" })),
         ),
 
@@ -169,7 +169,7 @@ pub fn map_request(
         } => (
             "mail.snooze",
             Some("message"),
-            Some(message_id.as_str().to_string()),
+            Some(message_id.as_str().clone()),
             Some(serde_json::json!({
                 "until": wake_at.timestamp_millis(),
             })),
@@ -177,7 +177,7 @@ pub fn map_request(
         Request::Unsnooze { message_id } => (
             "mail.unsnooze",
             Some("message"),
-            Some(message_id.as_str().to_string()),
+            Some(message_id.as_str().clone()),
             None,
         ),
 
@@ -185,7 +185,7 @@ pub fn map_request(
         Request::Unsubscribe { message_id } => (
             "mail.unsubscribe",
             Some("message"),
-            Some(message_id.as_str().to_string()),
+            Some(message_id.as_str().clone()),
             None,
         ),
 
@@ -197,7 +197,7 @@ pub fn map_request(
                 "thread.unflag_reply_later"
             },
             Some("message"),
-            Some(message_id.as_str().to_string()),
+            Some(message_id.as_str().clone()),
             None,
         ),
 
@@ -205,13 +205,13 @@ pub fn map_request(
         Request::GetThread { thread_id } => (
             "thread.open",
             Some("thread"),
-            Some(thread_id.as_str().to_string()),
+            Some(thread_id.as_str().clone()),
             None,
         ),
         Request::SummarizeThread { thread_id, .. } => (
             "thread.summarize",
             Some("thread"),
-            Some(thread_id.as_str().to_string()),
+            Some(thread_id.as_str().clone()),
             None,
         ),
 
@@ -221,25 +221,25 @@ pub fn map_request(
         Request::SaveDraft { draft } => (
             "draft.save",
             Some("draft"),
-            Some(draft.id.as_str().to_string()),
+            Some(draft.id.as_str().clone()),
             None,
         ),
         Request::DeleteDraft { draft_id } => (
             "draft.discard",
             Some("draft"),
-            Some(draft_id.as_str().to_string()),
+            Some(draft_id.as_str().clone()),
             None,
         ),
         Request::PrepareReply { message_id, .. } => (
             "mail.reply",
             Some("message"),
-            Some(message_id.as_str().to_string()),
+            Some(message_id.as_str().clone()),
             None,
         ),
         Request::PrepareForward { message_id, .. } => (
             "mail.forward",
             Some("message"),
-            Some(message_id.as_str().to_string()),
+            Some(message_id.as_str().clone()),
             None,
         ),
 
@@ -247,7 +247,7 @@ pub fn map_request(
         Request::SendDraft { draft, .. } => (
             "mail.send",
             Some("draft"),
-            Some(draft.id.as_str().to_string()),
+            Some(draft.id.as_str().clone()),
             Some(serde_json::json!({
                 "subject": truncate(&draft.subject, SUBJECT_LIMIT),
                 "to_count": draft.to.len(),
@@ -259,7 +259,7 @@ pub fn map_request(
         Request::SendStoredDraft { draft_id, .. } => (
             "mail.send",
             Some("draft"),
-            Some(draft_id.as_str().to_string()),
+            Some(draft_id.as_str().clone()),
             None,
         ),
         Request::RespondInvite {
@@ -269,7 +269,7 @@ pub fn map_request(
         } => (
             "mail.calendar_rsvp",
             Some("message"),
-            Some(message_id.as_str().to_string()),
+            Some(message_id.as_str().clone()),
             Some(serde_json::json!({
                 "action": action.partstat(),
                 "dry_run": dry_run,
@@ -278,7 +278,7 @@ pub fn map_request(
         Request::ScheduleSend { draft_id, send_at } => (
             "mail.send",
             Some("draft"),
-            Some(draft_id.as_str().to_string()),
+            Some(draft_id.as_str().clone()),
             Some(serde_json::json!({
                 "scheduled": true,
                 "when": send_at.timestamp_millis(),
@@ -287,7 +287,7 @@ pub fn map_request(
         Request::CancelScheduledSend { draft_id } => (
             "draft.discard",
             Some("draft"),
-            Some(draft_id.as_str().to_string()),
+            Some(draft_id.as_str().clone()),
             Some(serde_json::json!({ "kind": "cancel_scheduled" })),
         ),
 
@@ -382,13 +382,13 @@ pub fn map_request(
         } => (
             "reminder.set",
             Some("message"),
-            Some(sent_message_id.as_str().to_string()),
+            Some(sent_message_id.as_str().clone()),
             Some(serde_json::json!({ "when": remind_at.timestamp_millis() })),
         ),
         Request::CancelAutoReminder { sent_message_id } => (
             "reminder.clear",
             Some("message"),
-            Some(sent_message_id.as_str().to_string()),
+            Some(sent_message_id.as_str().clone()),
             None,
         ),
 
@@ -473,7 +473,7 @@ pub fn map_request(
         } => (
             "account.sync",
             Some("account"),
-            account.as_ref().map(|a| a.as_str().to_string()),
+            account.as_ref().map(|a| a.as_str().clone()),
             None,
         ),
         Request::SetDefaultAccount { key } => (
@@ -496,7 +496,7 @@ pub fn map_request(
         Request::ExportThread { thread_id, .. } => (
             "thread.summarize",
             Some("thread"),
-            Some(thread_id.as_str().to_string()),
+            Some(thread_id.as_str().clone()),
             Some(serde_json::json!({ "kind": "export" })),
         ),
         Request::ExportSearch { query, .. } => (

@@ -138,8 +138,10 @@ pub fn imap_fetch_to_synced_message(
         .text_plain
         .as_deref()
         .or(body.text_html.as_deref())
-        .map(|text| text.chars().take(200).collect::<String>())
-        .unwrap_or_else(|| parsed_headers.subject.chars().take(100).collect());
+        .map_or_else(
+            || parsed_headers.subject.chars().take(100).collect(),
+            |text| text.chars().take(200).collect::<String>(),
+        );
 
     let (mut flags, keywords) = flags_and_keywords_from_imap(&msg.flags);
     let mailbox_lower = mailbox.to_lowercase();
@@ -214,10 +216,10 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
 
                 let disposition = attachment_disposition(part);
                 if is_attachment_part(part, disposition) {
-                    let filename = part
-                        .attachment_name()
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| format!("attachment-{idx}"));
+                    let filename = part.attachment_name().map_or_else(
+                        || format!("attachment-{idx}"),
+                        std::string::ToString::to_string,
+                    );
                     attachments.push(AttachmentMeta {
                         id: AttachmentId::from_provider_id("imap", &format!("{message_id}:{idx}")),
                         message_id: message_id.clone(),
@@ -284,8 +286,7 @@ fn parse_text_plain_format_from_content_type(
 
     let delsp = content_type
         .attribute("delsp")
-        .map(|value| value.eq_ignore_ascii_case("yes"))
-        .unwrap_or(false);
+        .is_some_and(|value| value.eq_ignore_ascii_case("yes"));
 
     match content_type.attribute("format") {
         Some(value) if value.eq_ignore_ascii_case("flowed") => {
@@ -329,12 +330,13 @@ fn is_attachment_part(
 }
 
 fn part_mime_type(part: &mail_parser::MessagePart<'_>) -> String {
-    part.content_type()
-        .map(|content_type| {
+    part.content_type().map_or_else(
+        || "application/octet-stream".to_string(),
+        |content_type| {
             let subtype = content_type.subtype().unwrap_or("octet-stream");
             format!("{}/{}", content_type.ctype(), subtype)
-        })
-        .unwrap_or_else(|| "application/octet-stream".to_string())
+        },
+    )
 }
 
 fn normalize_content_id(content_id: Option<&str>) -> Option<String> {

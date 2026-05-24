@@ -372,7 +372,12 @@ fn property_param<'a>(property: &'a ParsedCalendarProperty<'a>, name: &str) -> O
         .params
         .iter()
         .find(|param| param.key.as_str().eq_ignore_ascii_case(name))
-        .and_then(|param| param.val.as_ref().map(|value| value.as_str()))
+        .and_then(|param| {
+            param
+                .val
+                .as_ref()
+                .map(icalendar::parser::ParseString::as_str)
+        })
 }
 
 fn calendar_email_from_uri(uri: &str) -> String {
@@ -394,7 +399,7 @@ pub fn extract_parsed_headers(
         bcc: message.bcc().map(extract_addrs).unwrap_or_default(),
         subject: message
             .subject()
-            .map(|subject| subject.to_string())
+            .map(std::string::ToString::to_string)
             .unwrap_or_default(),
         date: message
             .date()
@@ -432,10 +437,13 @@ fn extract_metadata(message: &Message<'_>, raw_headers: Option<String>) -> Messa
 
     let auth_results = message
         .header_values("Authentication-Results")
-        .filter_map(|value| value.as_text().map(|value| value.to_string()))
+        .filter_map(|value| value.as_text().map(std::string::ToString::to_string))
         .collect();
 
-    let list_id = message.list_id().as_text().map(|value| value.to_string());
+    let list_id = message
+        .list_id()
+        .as_text()
+        .map(std::string::ToString::to_string);
     let text_plain_format = message.content_type().and_then(parse_text_plain_format);
 
     MessageMetadata {
@@ -463,8 +471,7 @@ fn parse_text_plain_format(content_type: &mail_parser::ContentType<'_>) -> Optio
     let format = content_type.attribute("format");
     let delsp = content_type
         .attribute("delsp")
-        .map(|value| value.eq_ignore_ascii_case("yes"))
-        .unwrap_or(false);
+        .is_some_and(|value| value.eq_ignore_ascii_case("yes"));
 
     match format {
         Some(value) if value.eq_ignore_ascii_case("flowed") => {
@@ -516,7 +523,7 @@ fn extract_addrs(addr: &mail_parser::Address<'_>) -> Vec<Address> {
 
 fn to_address(addr: &mail_parser::Addr<'_>) -> Address {
     Address {
-        name: addr.name().map(|name| name.to_string()),
+        name: addr.name().map(std::string::ToString::to_string),
         email: addr.address().unwrap_or_default().to_string(),
     }
 }

@@ -16,8 +16,7 @@ pub fn inbox_unread_count(labels: &[Label]) -> u32 {
     labels
         .iter()
         .find(|label| label.name == "INBOX")
-        .map(|label| label.unread_count)
-        .unwrap_or(0)
+        .map_or(0, |label| label.unread_count)
 }
 
 pub fn render_notify(unread: u32, format: OutputFormat) -> anyhow::Result<String> {
@@ -49,7 +48,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                     render_notify(inbox_unread_count(&labels), fmt.clone())?
                 );
             }
-            Response::Error { message, .. } => anyhow::bail!("{}", message),
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
             _ => anyhow::bail!("Unexpected response"),
         }
 

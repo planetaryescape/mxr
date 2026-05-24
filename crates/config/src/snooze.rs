@@ -132,7 +132,9 @@ pub fn next_weekday_at(from: DateTime<Utc>, target: Weekday, hour: u32) -> DateT
         target_day - current
     };
     let date = (from + Duration::days(i64::from(days_ahead))).date_naive();
-    let time = NaiveTime::from_hms_opt(hour, 0, 0).expect("validated weekday snooze hour");
+    // Clamp to a valid wall-clock hour: a hand-edited config could carry an
+    // out-of-range hour, and the daemon must never panic on user input.
+    let time = NaiveTime::from_hms_opt(hour.min(23), 0, 0).expect("hour clamped to 0..=23");
     Utc.from_utc_datetime(&date.and_time(time))
 }
 
@@ -141,7 +143,9 @@ fn local_datetime_utc<Tz: TimeZone>(
     hour: u32,
     timezone: &Tz,
 ) -> DateTime<Utc> {
-    let time = NaiveTime::from_hms_opt(hour, 0, 0).expect("validated snooze hour");
+    // Clamp to a valid wall-clock hour (see `next_weekday_at`): never panic on a
+    // hand-edited out-of-range config hour.
+    let time = NaiveTime::from_hms_opt(hour.min(23), 0, 0).expect("hour clamped to 0..=23");
     let candidate = date.and_time(time);
     timezone
         .from_local_datetime(&candidate)
@@ -337,5 +341,25 @@ mod tests {
         assert!(label.contains("09:00"));
         let label = format_preset(SnoozeOption::Tonight, &config);
         assert!(label.contains("18:00"));
+    }
+
+    #[test]
+    fn out_of_range_config_hour_clamps_instead_of_panicking() {
+        // A hand-edited config with an impossible hour must not crash the
+        // daemon. Per the rubric "no panics" rule it clamps to the last valid
+        // wall-clock hour (23:00) rather than feeding 99 to `from_hms_opt`.
+        let config = SnoozeConfig {
+            morning_hour: 99,
+            ..SnoozeConfig::default()
+        };
+        let tz = FixedOffset::east_opt(0).expect("valid test offset");
+        let now = tz
+            .with_ymd_and_hms(2026, 5, 11, 8, 0, 0)
+            .single()
+            .expect("valid test time");
+
+        let wake = resolve_snooze_time_from(SnoozeOption::TomorrowMorning, &config, &now);
+
+        assert_eq!(wake.with_timezone(&tz).hour(), 23);
     }
 }

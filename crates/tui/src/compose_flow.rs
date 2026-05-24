@@ -377,10 +377,16 @@ pub(crate) async fn pending_send_from_edited_draft(
         }
     })?;
     let save_issues = mxr_compose::validate_draft_for_save(&fm, &body);
-    if save_issues.iter().any(|issue| issue.is_error()) {
+    if save_issues
+        .iter()
+        .any(mxr_compose::ComposeValidation::is_error)
+    {
         return Err(ComposeValidationError {
             kind: ComposeValidationKind::DraftIssues,
-            issues: save_issues.iter().map(|issue| issue.to_string()).collect(),
+            issues: save_issues
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
         });
     }
 
@@ -397,7 +403,10 @@ pub(crate) async fn pending_send_from_edited_draft(
     } else {
         return Err(ComposeValidationError {
             kind: ComposeValidationKind::DraftIssues,
-            issues: send_issues.iter().map(|issue| issue.to_string()).collect(),
+            issues: send_issues
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
         });
     };
 
@@ -480,7 +489,7 @@ async fn stamp_safety_report(pending: &mut PendingSend, bg: &mpsc::UnboundedSend
             pending.override_token = report.issues.iter().find_map(|i| i.override_token.clone());
             pending.safety_report = Some(report);
         }
-        Ok(Response::Ok { .. }) | Ok(Response::Error { .. }) => {
+        Ok(Response::Ok { .. } | Response::Error { .. }) => {
             // Unexpected variant or daemon error: leave safety_report
             // unset so the modal renders without the safety block.
         }

@@ -23,9 +23,10 @@ fn render_table(entries: &[EventLogEntry]) {
     );
     println!("{}", "-".repeat(122));
     for entry in entries {
-        let timestamp = chrono::DateTime::from_timestamp(entry.timestamp, 0)
-            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-            .unwrap_or_else(|| entry.timestamp.to_string());
+        let timestamp = chrono::DateTime::from_timestamp(entry.timestamp, 0).map_or_else(
+            || entry.timestamp.to_string(),
+            |dt| dt.format("%Y-%m-%d %H:%M:%S").to_string(),
+        );
         let message_id = entry.message_id.as_deref().unwrap_or("-");
         let summary: String = entry.summary.chars().take(44).collect();
         println!(
@@ -103,8 +104,7 @@ pub fn parse_history_time(s: &str) -> anyhow::Result<i64> {
     if let Ok(date) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
         return Ok(date
             .and_hms_opt(0, 0, 0)
-            .map(|dt| dt.and_utc().timestamp())
-            .unwrap_or(0));
+            .map_or(0, |dt| dt.and_utc().timestamp()));
     }
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
         return Ok(dt.timestamp());

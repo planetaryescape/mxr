@@ -657,7 +657,7 @@ impl SyncEngine {
             .get_body(message_id)
             .await
             .map_err(|e| MxrError::Store(e.to_string()))?
-            .ok_or_else(|| MxrError::NotFound(format!("Body for message {}", message_id)))
+            .ok_or_else(|| MxrError::NotFound(format!("Body for message {message_id}")))
     }
 
     pub async fn check_snoozes(&self) -> Result<Vec<MessageId>, MxrError> {

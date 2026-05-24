@@ -220,15 +220,13 @@ editor = "emacs"
             let file = config_file_path();
             assert!(
                 file.ends_with("config.toml"),
-                "config_file_path should end with 'config.toml': {:?}",
-                file
+                "config_file_path should end with 'config.toml': {file:?}"
             );
 
             let socket = socket_path();
             assert!(
                 socket.ends_with("mxr.sock"),
-                "socket_path should end with 'mxr.sock': {:?}",
-                socket
+                "socket_path should end with 'mxr.sock': {socket:?}"
             );
 
             assert_eq!(bridge_token_path(), config_dir().join("bridge-token"));
@@ -320,7 +318,7 @@ editor = "emacs"
             ConfigError::ParseToml { path, .. } => {
                 assert_eq!(path, config_path);
             }
-            other => panic!("expected ParseToml, got: {:?}", other),
+            other => panic!("expected ParseToml, got: {other:?}"),
         }
     }
 

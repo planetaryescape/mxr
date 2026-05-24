@@ -33,17 +33,17 @@ fn make_test_envelopes(count: usize) -> Vec<Envelope> {
     (0..count)
         .map(|i| {
             TestEnvelopeBuilder::new()
-                .provider_id(format!("fake-{}", i))
-                .with_from_address(&format!("User {}", i), &format!("user{}@example.com", i))
+                .provider_id(format!("fake-{i}"))
+                .with_from_address(&format!("User {i}"), &format!("user{i}@example.com"))
                 .to(vec![])
-                .subject(format!("Subject {}", i))
+                .subject(format!("Subject {i}"))
                 .message_id_header(None)
                 .flags(if i % 2 == 0 {
                     MessageFlags::READ
                 } else {
                     MessageFlags::empty()
                 })
-                .snippet(format!("Snippet {}", i))
+                .snippet(format!("Snippet {i}"))
                 .size_bytes(1000)
                 .build()
         })

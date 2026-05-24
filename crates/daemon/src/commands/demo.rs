@@ -558,7 +558,7 @@ async fn seed_demo_labels(client: &mut IpcClient) -> anyhow::Result<()> {
         match client
             .request(Request::CreateLabel {
                 name: (*name).to_string(),
-                color: color.map(|color| color.to_string()),
+                color: color.map(std::string::ToString::to_string),
                 account_id: None,
             })
             .await?
@@ -654,7 +654,7 @@ async fn seed_demo_screener(client: &mut IpcClient) -> anyhow::Result<()> {
                 account_id: (*account_id).clone(),
                 sender_email: (*sender_email).to_string(),
                 disposition: *disposition,
-                route_label: route_label.map(|label| label.to_string()),
+                route_label: route_label.map(std::string::ToString::to_string),
             })
             .await?
         {

@@ -178,7 +178,7 @@ impl super::Store {
             sql.push_str(" AND status = ?");
         }
         sql.push_str(" ORDER BY extracted_at DESC");
-        let mut query = sqlx::query(&sql).bind(account_id.as_str().to_string());
+        let mut query = sqlx::query(&sql).bind(account_id.as_str().clone());
         if let Some(email) = email {
             query = query.bind(email.to_string());
         }

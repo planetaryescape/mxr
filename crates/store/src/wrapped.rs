@@ -41,7 +41,7 @@ impl super::Store {
         label: &str,
     ) -> Result<WrappedSummary, sqlx::Error> {
         let started_at = Instant::now();
-        let acct: Option<String> = account_id.map(|a| a.as_str());
+        let acct: Option<String> = account_id.map(mxr_core::AccountId::as_str);
         let floor = since_unix.max(EARLIEST_PLAUSIBLE_TS);
 
         // The seven sub-aggregates are fully independent — they share no
@@ -217,7 +217,7 @@ impl super::Store {
                 Some((ts, _)) => Some(decode_timestamp(ts)?),
                 None => None,
             },
-            busiest_date_count: day.map(|(_, c)| c.max(0) as u32).unwrap_or(0),
+            busiest_date_count: day.map_or(0, |(_, c)| c.max(0) as u32),
             hour_distribution,
             day_of_week_distribution,
         })

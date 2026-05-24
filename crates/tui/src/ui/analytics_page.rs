@@ -327,8 +327,7 @@ fn draw_storage(
     let top_share = state
         .storage_rows
         .first()
-        .map(|r| share_pct(r.bytes, total_bytes))
-        .unwrap_or(0.0);
+        .map_or(0.0, |r| share_pct(r.bytes, total_bytes));
 
     let (strip, table) = strip_and_table(area);
     let cards = three_up(strip);
@@ -798,8 +797,7 @@ fn draw_largest_messages(
     let biggest = state
         .largest_message_rows
         .first()
-        .map(|r| r.size_bytes)
-        .unwrap_or(0);
+        .map_or(0, |r| r.size_bytes);
 
     let (strip, table) = strip_and_table(area);
     let cards = three_up(strip);
@@ -951,8 +949,7 @@ fn draw_decay(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
                 row.email.clone(),
                 row.days_since_inbound.to_string(),
                 row.days_since_outbound
-                    .map(|d| d.to_string())
-                    .unwrap_or_else(|| "-".into()),
+                    .map_or_else(|| "-".into(), |d| d.to_string()),
             ])
         })
         .collect();
@@ -1036,8 +1033,7 @@ fn draw_cadence_drift(
                 format!("{:.1}d", row.drift_days),
                 format!("{:.1}d", row.expected_days),
                 row.last_contact_at
-                    .map(|dt| dt.format("%Y-%m-%d").to_string())
-                    .unwrap_or_else(|| "never".into()),
+                    .map_or_else(|| "never".into(), |dt| dt.format("%Y-%m-%d").to_string()),
                 row.total_volume.to_string(),
             ])
         })
@@ -1424,18 +1420,16 @@ fn wrapped_story_lines<'a>(
         (None, Some(hour)) => format!("Rhythm: {hour:02}:00 UTC was the busiest hour."),
         (None, None) => "Rhythm: not enough dated mail to find a peak.".into(),
     };
-    let contact = summary
-        .top_contacts
-        .most_emailed_to_me
-        .first()
-        .map(|top| {
+    let contact = summary.top_contacts.most_emailed_to_me.first().map_or_else(
+        || "Cast: no dominant inbound sender.".into(),
+        |top| {
             format!(
                 "Cast: {} sent the most inbound mail ({}).",
                 short_email(&top.email),
                 format_count(top.count as u64)
             )
-        })
-        .unwrap_or_else(|| "Cast: no dominant inbound sender.".into());
+        },
+    );
 
     vec![
         Line::from(""),
@@ -1627,7 +1621,7 @@ fn ratio_label(a: u32, b: u32) -> String {
     }
     let ratio = (a as f64) / (b as f64);
     if ratio >= 1.0 {
-        format!("{:.0}:1", ratio)
+        format!("{ratio:.0}:1")
     } else {
         format!("1:{:.0}", 1.0 / ratio)
     }
@@ -1643,8 +1637,7 @@ fn draw_wrapped_when(
     let pat = &summary.time_patterns;
     let peak = pat
         .busiest_hour_utc
-        .map(|h| format!("{h:02}:00 UTC"))
-        .unwrap_or_else(|| "—".into());
+        .map_or_else(|| "—".into(), |h| format!("{h:02}:00 UTC"));
     let title = format!("When · peak {peak}");
 
     // 24-hour sparkline + AM/PM split + busiest day-of-week headline.

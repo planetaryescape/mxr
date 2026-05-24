@@ -563,7 +563,7 @@ fn tokenize_text_value(value: &str) -> Vec<String> {
     value
         .split(|ch: char| !ch.is_alphanumeric())
         .filter(|part| !part.is_empty())
-        .map(|part| part.to_lowercase())
+        .map(str::to_lowercase)
         .collect()
 }
 
@@ -604,7 +604,7 @@ mod tests {
             .message_id_header(None)
             .flags(flags)
             .has_attachments(has_attachments)
-            .snippet(format!("Snippet for {}", subject))
+            .snippet(format!("Snippet for {subject}"))
             .size_bytes(1000)
             .build()
     }

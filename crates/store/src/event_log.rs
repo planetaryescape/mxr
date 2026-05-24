@@ -48,7 +48,7 @@ impl super::Store {
         details: Option<&str>,
     ) -> Result<(), sqlx::Error> {
         let now = chrono::Utc::now().timestamp();
-        let aid = refs.account_id.map(|account_id| account_id.as_str());
+        let aid = refs.account_id.map(mxr_core::AccountId::as_str);
         sqlx::query(
             "INSERT INTO event_log (
                 timestamp,

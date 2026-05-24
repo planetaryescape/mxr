@@ -256,9 +256,10 @@ fn render_list_table(entries: &[ActivityEntry], next_cursor: Option<ActivityCurs
     );
     println!("{}", "-".repeat(110));
     for e in entries {
-        let ts = chrono::DateTime::from_timestamp_millis(e.ts)
-            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-            .unwrap_or_else(|| e.ts.to_string());
+        let ts = chrono::DateTime::from_timestamp_millis(e.ts).map_or_else(
+            || e.ts.to_string(),
+            |dt| dt.format("%Y-%m-%d %H:%M:%S").to_string(),
+        );
         let target = format!(
             "{}{}",
             e.target_kind.as_deref().unwrap_or("-"),
@@ -274,7 +275,7 @@ fn render_list_table(entries: &[ActivityEntry], next_cursor: Option<ActivityCurs
                 let s = serde_json::to_string(c).unwrap_or_default();
                 s.chars().take(60).collect()
             }
-            (false, None) => "".to_string(),
+            (false, None) => String::new(),
         };
         println!(
             "{:<19} {:<4} {:<22} {:<24} {}",
@@ -778,8 +779,10 @@ fn render_saved_table(entries: &[SavedActivityFilterEntry]) {
         let last = e
             .last_used_at
             .and_then(chrono::DateTime::from_timestamp_millis)
-            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-            .unwrap_or_else(|| "—".to_string());
+            .map_or_else(
+                || "—".to_string(),
+                |dt| dt.format("%Y-%m-%d %H:%M").to_string(),
+            );
         println!("{:<20} {:<30} {:<20}", e.slug, e.name, last);
     }
 }
@@ -815,7 +818,7 @@ async fn run_tail(
     for e in &entries {
         emit_tail_row(e, &fmt)?;
     }
-    let mut last_seen_ts = entries.last().map(|e| e.ts).unwrap_or(0);
+    let mut last_seen_ts = entries.last().map_or(0, |e| e.ts);
 
     // Follow loop.
     let interval = std::time::Duration::from_secs(interval_secs.max(1));
@@ -854,9 +857,10 @@ fn emit_tail_row(e: &ActivityEntry, fmt: &OutputFormat) -> anyhow::Result<()> {
             println!("{}", serde_json::to_string(e)?);
         }
         _ => {
-            let ts = chrono::DateTime::from_timestamp_millis(e.ts)
-                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                .unwrap_or_else(|| e.ts.to_string());
+            let ts = chrono::DateTime::from_timestamp_millis(e.ts).map_or_else(
+                || e.ts.to_string(),
+                |dt| dt.format("%Y-%m-%d %H:%M:%S").to_string(),
+            );
             let target = e.target_id.as_deref().unwrap_or("-");
             let target: String = target.chars().take(12).collect();
             println!("{ts}  {:<4} {:<22} {target}", e.source.as_str(), e.action);

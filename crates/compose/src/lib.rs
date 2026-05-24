@@ -50,9 +50,7 @@ pub struct ComposeSignature {
 
 /// Create a draft file on disk and return its path + the cursor line.
 pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usize), ComposeError> {
-    let (path, cursor_line, content) = build_draft_file(kind, from, None)?;
-    std::fs::write(&path, &content)?;
-    Ok((path, cursor_line))
+    create_draft_file_with_signature(kind, from, None)
 }
 
 pub fn create_draft_file_with_signature(
@@ -68,9 +66,7 @@ pub fn create_draft_file_with_signature(
 /// Build the seed frontmatter for a compose kind without touching the filesystem.
 /// Use this when the caller wants to skip $EDITOR (inline body, dry-run, etc.).
 pub fn seed_frontmatter(kind: ComposeKind, from: &str) -> Result<ComposeFrontmatter, ComposeError> {
-    let (_path, _cursor, content) = build_draft_file(kind, from, None)?;
-    let (frontmatter, _body) = frontmatter::parse_compose_file(&content)?;
-    Ok(frontmatter)
+    seed_frontmatter_with_signature(kind, from, None)
 }
 
 pub fn seed_frontmatter_with_signature(
@@ -87,9 +83,7 @@ pub async fn create_draft_file_async(
     kind: ComposeKind,
     from: &str,
 ) -> Result<(PathBuf, usize), ComposeError> {
-    let (path, cursor_line, content) = build_draft_file(kind, from, None)?;
-    tokio::fs::write(&path, &content).await?;
-    Ok((path, cursor_line))
+    create_draft_file_async_with_signature(kind, from, None).await
 }
 
 pub async fn create_draft_file_async_with_signature(
@@ -346,25 +340,22 @@ pub enum ComposeValidation {
 
 impl ComposeValidation {
     pub fn is_error(&self) -> bool {
-        matches!(
-            self,
-            ComposeValidation::MissingRecipients | ComposeValidation::Error(_)
-        )
+        matches!(self, Self::MissingRecipients | Self::Error(_))
     }
 
     pub fn is_missing_recipients(&self) -> bool {
-        matches!(self, ComposeValidation::MissingRecipients)
+        matches!(self, Self::MissingRecipients)
     }
 }
 
 impl std::fmt::Display for ComposeValidation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ComposeValidation::MissingRecipients => {
+            Self::MissingRecipients => {
                 write!(f, "Error: No recipients (to: field is empty)")
             }
-            ComposeValidation::Error(msg) => write!(f, "Error: {msg}"),
-            ComposeValidation::Warning(msg) => write!(f, "Warning: {msg}"),
+            Self::Error(msg) => write!(f, "Error: {msg}"),
+            Self::Warning(msg) => write!(f, "Warning: {msg}"),
         }
     }
 }

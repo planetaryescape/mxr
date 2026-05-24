@@ -128,8 +128,7 @@ pub fn draw(
                 .map(|a| {
                     a.name
                         .as_ref()
-                        .map(|n| format!("{} <{}>", n, a.email))
-                        .unwrap_or_else(|| a.email.clone())
+                        .map_or_else(|| a.email.clone(), |n| format!("{} <{}>", n, a.email))
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -162,7 +161,7 @@ pub fn draw(
             }
             for label in &message.labels {
                 chips.push(Span::styled(
-                    format!(" {} ", label),
+                    format!(" {label} "),
                     Style::default()
                         .bg(Theme::label_color(label))
                         .fg(Color::Black),
@@ -387,8 +386,7 @@ fn calendar_invite_lines(
         || calendar
             .status
             .as_deref()
-            .map(|s| s.eq_ignore_ascii_case("CANCELLED"))
-            .unwrap_or(false);
+            .is_some_and(|s| s.eq_ignore_ascii_case("CANCELLED"));
     let parse_failed = calendar
         .warnings
         .iter()
@@ -462,11 +460,10 @@ fn calendar_invite_lines(
         ]));
     }
     if let Some(organizer) = calendar.organizer.as_ref() {
-        let organizer_label = organizer
-            .name
-            .as_ref()
-            .map(|name| format!("{} <{}>", name, organizer.email))
-            .unwrap_or_else(|| organizer.email.clone());
+        let organizer_label = organizer.name.as_ref().map_or_else(
+            || organizer.email.clone(),
+            |name| format!("{} <{}>", name, organizer.email),
+        );
         lines.push(Line::from(vec![
             Span::styled(format!("{:<label_width$}", "Org:"), label_style),
             Span::styled(organizer_label, value_style),
@@ -533,8 +530,10 @@ fn calendar_invite_lines(
                 )));
             }
             None
-            | Some(mxr_core::types::CalendarPartstat::NeedsAction)
-            | Some(mxr_core::types::CalendarPartstat::Delegated) => {
+            | Some(
+                mxr_core::types::CalendarPartstat::NeedsAction
+                | mxr_core::types::CalendarPartstat::Delegated,
+            ) => {
                 let key_style = Style::default().fg(theme.text_primary).bold();
                 let sep_style = Style::default().fg(theme.text_muted);
                 lines.push(Line::from(vec![
@@ -654,7 +653,7 @@ fn process_body_lines(
         } else {
             let count = signature_lines.len();
             lines.push(Line::from(Span::styled(
-                format!("-- signature ({} lines, press S to expand) --", count),
+                format!("-- signature ({count} lines, press S to expand) --"),
                 Style::default()
                     .fg(theme.text_muted)
                     .add_modifier(Modifier::ITALIC),
@@ -699,7 +698,7 @@ fn render_blocks(
 
         match block {
             RenderBlock::Text(lines) => {
-                render_text_block(frame, block_area, &lines, remaining_scroll)
+                render_text_block(frame, block_area, &lines, remaining_scroll);
             }
             RenderBlock::Image(image) => render_image_block(
                 frame,
@@ -758,8 +757,9 @@ fn image_block_total_height(
     let image_height = html_images
         .get(&image.message_id)
         .and_then(|assets| assets.get(&image.source))
-        .map(|entry| entry.height_for(width, max_image_height(viewport_height)))
-        .unwrap_or(3);
+        .map_or(3, |entry| {
+            entry.height_for(width, max_image_height(viewport_height))
+        });
     image_height + caption_height
 }
 

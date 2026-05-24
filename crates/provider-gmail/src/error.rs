@@ -31,11 +31,9 @@ pub enum GmailError {
 impl From<GmailError> for MxrError {
     fn from(e: GmailError) -> Self {
         match e {
-            GmailError::NotFound(msg) => MxrError::NotFound(msg),
-            GmailError::RateLimited { retry_after_secs } => {
-                MxrError::RateLimited { retry_after_secs }
-            }
-            other => MxrError::Provider(other.to_string()),
+            GmailError::NotFound(msg) => Self::NotFound(msg),
+            GmailError::RateLimited { retry_after_secs } => Self::RateLimited { retry_after_secs },
+            other => Self::Provider(other.to_string()),
         }
     }
 }

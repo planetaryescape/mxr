@@ -72,8 +72,7 @@ pub async fn run(
                         profile.dimensions,
                         profile
                             .last_indexed_at
-                            .map(|v| v.to_rfc3339())
-                            .unwrap_or_else(|| "-".to_string())
+                            .map_or_else(|| "-".to_string(), |v| v.to_rfc3339())
                     );
                 }
             }

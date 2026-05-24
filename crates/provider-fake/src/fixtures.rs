@@ -1679,7 +1679,7 @@ fn push_msg(
         unsubscribe,
     } = message;
     let msg_id = MessageId::new();
-    let provider_id = format!("fake-msg-{}", msg_num);
+    let provider_id = format!("fake-msg-{msg_num}");
     *msg_num += 1;
 
     let mut attachments = vec![];
@@ -1687,14 +1687,14 @@ fn push_msg(
         attachments.push(AttachmentMeta {
             id: AttachmentId::new(),
             message_id: msg_id.clone(),
-            filename: format!("attachment-{}.pdf", msg_num),
+            filename: format!("attachment-{msg_num}.pdf"),
             mime_type: "application/pdf".to_string(),
             disposition: AttachmentDisposition::Attachment,
             content_id: None,
             content_location: None,
             size_bytes: 25000,
             local_path: None,
-            provider_id: format!("att-{}", msg_num),
+            provider_id: format!("att-{msg_num}"),
         });
     }
 
@@ -1703,7 +1703,7 @@ fn push_msg(
         account_id: account_id.clone(),
         provider_id: provider_id.clone(),
         thread_id: thread_id.clone(),
-        message_id_header: Some(format!("<msg-{}@fake.mxr>", msg_num)),
+        message_id_header: Some(format!("<msg-{msg_num}@fake.mxr>")),
         in_reply_to: None,
         references: vec![],
         from: Address {

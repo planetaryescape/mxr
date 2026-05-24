@@ -230,7 +230,7 @@ impl App {
             | Action::ShowOnboarding
             | Action::OpenDiagnosticsPaneDetails => self.apply_diagnostics_action(action),
             Action::Compose | Action::Reply | Action::ReplyAll | Action::Forward => {
-                self.apply_compose_action(action)
+                self.apply_compose_action(action);
             }
             Action::Archive
             | Action::MarkReadAndArchive
@@ -262,7 +262,7 @@ impl App {
             | Action::ToggleFullscreen
             | Action::ExportThread => self.apply_message_action(action),
             Action::OpenCommandPalette | Action::CloseCommandPalette | Action::Help => {
-                self.apply_modal_action(action)
+                self.apply_modal_action(action);
             }
         }
     }

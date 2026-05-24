@@ -343,8 +343,7 @@ fn process_is_alive(pid: u64) -> bool {
         .arg("-0")
         .arg(pid.to_string())
         .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+        .is_ok_and(|status| status.success())
 }
 
 fn wait_for_process_exit(pid: u64) {

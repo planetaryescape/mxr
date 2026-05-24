@@ -276,7 +276,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Mark Read and Archive".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::MarkReadAndArchive,
             category: "Mail".into(),
         },
@@ -642,85 +642,85 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Open Mailbox".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenMailboxScreen,
             category: "Navigation".into(),
         },
         PaletteCommand {
             label: "Open Search Page".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenSearchScreen,
             category: "Navigation".into(),
         },
         PaletteCommand {
             label: "Open Rules Page".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenRulesScreen,
             category: "Navigation".into(),
         },
         PaletteCommand {
             label: "Open Diagnostics Page".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenDiagnosticsScreen,
             category: "Navigation".into(),
         },
         PaletteCommand {
             label: "Open Accounts Page".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenAccountsScreen,
             category: "Navigation".into(),
         },
         PaletteCommand {
             label: "Refresh Rules".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::RefreshRules,
             category: "Rules".into(),
         },
         PaletteCommand {
             label: "New Rule".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenRuleFormNew,
             category: "Rules".into(),
         },
         PaletteCommand {
             label: "Edit Rule".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenRuleFormEdit,
             category: "Rules".into(),
         },
         PaletteCommand {
             label: "Toggle Rule Enabled".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::ToggleRuleEnabled,
             category: "Rules".into(),
         },
         PaletteCommand {
             label: "Rule Dry Run".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::ShowRuleDryRun,
             category: "Rules".into(),
         },
         PaletteCommand {
             label: "Rule History".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::ShowRuleHistory,
             category: "Rules".into(),
         },
         PaletteCommand {
             label: "Delete Rule".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::DeleteRule,
             category: "Rules".into(),
         },
         PaletteCommand {
             label: "Refresh Diagnostics".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::RefreshDiagnostics,
             category: "Diagnostics".into(),
         },
         PaletteCommand {
             label: "Generate Bug Report".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::GenerateBugReport,
             category: "Diagnostics".into(),
         },
@@ -732,31 +732,31 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Refresh Accounts".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::RefreshAccounts,
             category: "Accounts".into(),
         },
         PaletteCommand {
             label: "New IMAP/SMTP Account".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenAccountFormNew,
             category: "Accounts".into(),
         },
         PaletteCommand {
             label: "Test Account".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::TestAccountForm,
             category: "Accounts".into(),
         },
         PaletteCommand {
             label: "Set Default Account".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::SetDefaultAccount,
             category: "Accounts".into(),
         },
         PaletteCommand {
             label: "Toggle Thread/Message List".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::ToggleMailListMode,
             category: "View".into(),
         },
@@ -774,115 +774,115 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Sync now".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::SyncNow,
             category: "Sync".into(),
         },
         PaletteCommand {
             label: "Analytics: Storage".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenAnalyticsView(crate::app::AnalyticsView::Storage),
             category: "Analytics".into(),
         },
         PaletteCommand {
             label: "Analytics: Stale Threads".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenAnalyticsView(crate::app::AnalyticsView::StaleThreads),
             category: "Analytics".into(),
         },
         PaletteCommand {
             label: "Analytics: Contacts".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenAnalyticsView(crate::app::AnalyticsView::Contacts),
             category: "Analytics".into(),
         },
         PaletteCommand {
             label: "Analytics: Cadence Drift".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenAnalyticsView(crate::app::AnalyticsView::CadenceDrift),
             category: "Analytics".into(),
         },
         PaletteCommand {
             label: "Analytics: Response Time".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenAnalyticsView(crate::app::AnalyticsView::ResponseTime),
             category: "Analytics".into(),
         },
         PaletteCommand {
             label: "Analytics: Subscriptions".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenAnalyticsView(crate::app::AnalyticsView::Subscriptions),
             category: "Analytics".into(),
         },
         PaletteCommand {
             label: "Analytics: Wrapped".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenAnalyticsView(crate::app::AnalyticsView::Wrapped),
             category: "Analytics".into(),
         },
         PaletteCommand {
             label: "Semantic: Enable".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::EnableSemantic,
             category: "Semantic".into(),
         },
         PaletteCommand {
             label: "Semantic: Disable".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::DisableSemantic,
             category: "Semantic".into(),
         },
         PaletteCommand {
             label: "Semantic: Reindex".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::ReindexSemantic,
             category: "Semantic".into(),
         },
         PaletteCommand {
             label: "Semantic: Backfill Missing".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::BackfillSemantic,
             category: "Semantic".into(),
         },
         PaletteCommand {
             label: "Draft: Assist Current Thread".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::DraftAssistCurrentThread,
             category: "AI".into(),
         },
         PaletteCommand {
             label: "Draft: New For Sender".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::DraftNewForSender,
             category: "AI".into(),
         },
         PaletteCommand {
             label: "Voice: Show Profile".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenVoiceProfile,
             category: "AI".into(),
         },
         PaletteCommand {
             label: "Voice: Rebuild Profile".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::RebuildUserVoice,
             category: "AI".into(),
         },
         PaletteCommand {
             label: "Commitments: Show Open".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::OpenCommitments,
             category: "AI".into(),
         },
         PaletteCommand {
             label: "Semantic: Install Profile (BGE Small EN)".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::InstallSemanticProfile(mxr_core::types::SemanticProfile::BgeSmallEnV15),
             category: "Semantic".into(),
         },
         PaletteCommand {
             label: "Semantic: Install Profile (Multilingual E5)".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::InstallSemanticProfile(
                 mxr_core::types::SemanticProfile::MultilingualE5Small,
             ),
@@ -890,19 +890,19 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Semantic: Install Profile (BGE-M3)".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::InstallSemanticProfile(mxr_core::types::SemanticProfile::BgeM3),
             category: "Semantic".into(),
         },
         PaletteCommand {
             label: "Semantic: Use Profile (BGE Small EN)".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::UseSemanticProfile(mxr_core::types::SemanticProfile::BgeSmallEnV15),
             category: "Semantic".into(),
         },
         PaletteCommand {
             label: "Semantic: Use Profile (Multilingual E5)".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::UseSemanticProfile(
                 mxr_core::types::SemanticProfile::MultilingualE5Small,
             ),
@@ -910,7 +910,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Semantic: Use Profile (BGE-M3)".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::UseSemanticProfile(mxr_core::types::SemanticProfile::BgeM3),
             category: "Semantic".into(),
         },
@@ -922,13 +922,13 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Start Here".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::ShowOnboarding,
             category: "System".into(),
         },
         PaletteCommand {
             label: "Find expert".into(),
-            shortcut: "".into(),
+            shortcut: String::new(),
             action: Action::FindExpertOnFocusedMessage,
             category: "AI".into(),
         },
@@ -1100,8 +1100,14 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
         &mut scrollbar_state,
     );
 
-    let footer_text = selected_command
-        .map(|cmd| {
+    let footer_text = selected_command.map_or_else(
+        || {
+            Line::from(Span::styled(
+                "No matching commands",
+                Style::default().fg(theme.text_muted),
+            ))
+        },
+        |cmd| {
             let shortcut = if cmd.shortcut.is_empty() {
                 "palette".to_string()
             } else {
@@ -1127,13 +1133,8 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
                     Style::default().fg(theme.text_muted),
                 ),
             ])
-        })
-        .unwrap_or_else(|| {
-            Line::from(Span::styled(
-                "No matching commands",
-                Style::default().fg(theme.text_muted),
-            ))
-        });
+        },
+    );
     let footer = Paragraph::new(footer_text).block(
         Block::bordered()
             .border_type(BorderType::Rounded)

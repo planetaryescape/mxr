@@ -101,7 +101,7 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             message,
             ..
         } => {
-            let total_str = total.map(|t| t.to_string()).unwrap_or_else(|| "?".into());
+            let total_str = total.map_or_else(|| "?".into(), |t| t.to_string());
             app.status_message = Some(format!("{operation} [{current}/{total_str}]: {message}"));
         }
         DaemonEvent::OperationCompleted {
@@ -152,8 +152,7 @@ pub(super) fn apply_thread_summary_loaded(
     }
     let still_relevant = app
         .context_envelope()
-        .map(|env| env.thread_id == thread_id)
-        .unwrap_or(false);
+        .is_some_and(|env| env.thread_id == thread_id);
     if !still_relevant {
         return;
     }

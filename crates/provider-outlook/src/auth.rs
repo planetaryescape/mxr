@@ -212,7 +212,7 @@ impl OutlookAuth {
                 Some("authorization_declined") => {
                     return Err(OutlookError::AuthDeclined);
                 }
-                Some("expired_token") | Some("bad_verification_code") => {
+                Some("expired_token" | "bad_verification_code") => {
                     return Err(OutlookError::DeviceCodeExpired);
                 }
                 Some(other) => {

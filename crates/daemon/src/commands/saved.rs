@@ -48,7 +48,7 @@ pub async fn run(action: Option<SavedAction>, format: Option<OutputFormat>) -> a
                         }
                     }
                 },
-                Response::Error { message, .. } => anyhow::bail!("{}", message),
+                Response::Error { message, .. } => anyhow::bail!("{message}"),
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -57,9 +57,7 @@ pub async fn run(action: Option<SavedAction>, format: Option<OutputFormat>) -> a
                 .request(Request::CreateSavedSearch {
                     name,
                     query,
-                    search_mode: mode
-                        .map(Into::into)
-                        .unwrap_or(mxr_core::SearchMode::Lexical),
+                    search_mode: mode.map_or(mxr_core::SearchMode::Lexical, Into::into),
                 })
                 .await?;
             match resp {
@@ -68,7 +66,7 @@ pub async fn run(action: Option<SavedAction>, format: Option<OutputFormat>) -> a
                 } => {
                     println!("Created saved search: {} -> {}", search.name, search.query);
                 }
-                Response::Error { message, .. } => anyhow::bail!("{}", message),
+                Response::Error { message, .. } => anyhow::bail!("{message}"),
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -80,9 +78,9 @@ pub async fn run(action: Option<SavedAction>, format: Option<OutputFormat>) -> a
                 Response::Ok {
                     data: ResponseData::Ack,
                 } => {
-                    println!("Deleted saved search: {}", name);
+                    println!("Deleted saved search: {name}");
                 }
-                Response::Error { message, .. } => anyhow::bail!("{}", message),
+                Response::Error { message, .. } => anyhow::bail!("{message}"),
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -133,7 +131,7 @@ pub async fn run(action: Option<SavedAction>, format: Option<OutputFormat>) -> a
                         }
                     }
                 },
-                Response::Error { message, .. } => anyhow::bail!("{}", message),
+                Response::Error { message, .. } => anyhow::bail!("{message}"),
                 _ => anyhow::bail!("Unexpected response"),
             }
         }

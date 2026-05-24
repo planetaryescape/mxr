@@ -65,14 +65,14 @@ pub enum HtmlRenderError {
 impl std::fmt::Display for HtmlRenderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            HtmlRenderError::EmptyCommand => write!(f, "html_command is empty"),
-            HtmlRenderError::CommandNotFound {
+            Self::EmptyCommand => write!(f, "html_command is empty"),
+            Self::CommandNotFound {
                 command,
                 suggestion,
-            } => write!(f, "Command '{}' not found. {}", command, suggestion),
-            HtmlRenderError::ExecutionFailed(e) => write!(f, "Command failed: {}", e),
-            HtmlRenderError::NonZeroExit { command, code } => {
-                write!(f, "Command '{}' exited with code {:?}", command, code)
+            } => write!(f, "Command '{command}' not found. {suggestion}"),
+            Self::ExecutionFailed(e) => write!(f, "Command failed: {e}"),
+            Self::NonZeroExit { command, code } => {
+                write!(f, "Command '{command}' exited with code {code:?}")
             }
         }
     }
@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn empty_command_string_falls_back() {
         let config = ReaderConfig {
-            html_command: Some("".into()),
+            html_command: Some(String::new()),
             ..Default::default()
         };
         let result = to_plain_text("<p>Still works</p>", &config);

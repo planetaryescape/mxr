@@ -27,7 +27,7 @@ fn host_only(raw: &str) -> &str {
         }
     }
     // IPv4 / hostname: `localhost:7777` -> `localhost`
-    raw.rsplit_once(':').map(|(host, _)| host).unwrap_or(raw)
+    raw.rsplit_once(':').map_or(raw, |(host, _)| host)
 }
 
 /// Configurable Host-header allowlist applied to every request. Loopback

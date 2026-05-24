@@ -24,7 +24,7 @@ pub struct ContactStyleRecord {
     pub drift_detected_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelationshipMessageSample {
     pub message_id: MessageId,
     pub account_id: AccountId,

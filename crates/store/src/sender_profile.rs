@@ -43,7 +43,7 @@ pub struct SenderProfile {
     pub weekly_activity: Vec<SenderWeeklyActivity>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SenderEmailReference {
     pub message_id: MessageId,
     pub thread_id: ThreadId,
@@ -56,7 +56,7 @@ pub struct SenderEmailReference {
     pub has_attachments: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SenderSummary {
     pub account_id: AccountId,
     pub display_name: Option<String>,

@@ -967,7 +967,7 @@ fn read_spreadsheet_tables(path: &StdPath) -> Option<String> {
     let mut workbook = open_workbook_auto(path).ok()?;
     let mut sections = Vec::new();
 
-    for sheet_name in workbook.sheet_names().to_owned() {
+    for sheet_name in workbook.sheet_names().clone() {
         let Ok(range) = workbook.worksheet_range(&sheet_name) else {
             continue;
         };

@@ -112,13 +112,12 @@ fn render(kind: FeatureKind, req: &CompletionRequest) -> String {
         .messages
         .iter()
         .find(|message| matches!(message.role, ChatRole::User))
-        .map(|message| message.content.as_str())
-        .unwrap_or("");
+        .map_or("", |message| message.content.as_str());
     let subject_hint = extract_subject(user);
 
     match kind {
         FeatureKind::Summarize => format!(
-            "Summary of {subject}:\n\
+            "Summary of {subject_hint}:\n\
              - Alex and the build team agreed to ship the v0.6 cut by Friday.\n\
              - Open question: should the migration run before or after the freeze window?\n\
              - Diana flagged a perf regression in the search path that needs a follow-up.\n\
@@ -126,17 +125,15 @@ fn render(kind: FeatureKind, req: &CompletionRequest) -> String {
              Next steps:\n\
              - Reply to Alex confirming the Friday cut.\n\
              - Loop Diana in on the perf thread.",
-            subject = subject_hint,
         ),
         FeatureKind::Briefing => format!(
-            "Briefing — {subject}\n\
+            "Briefing — {subject_hint}\n\
              \n\
              People: Alex (lead), Diana (review), Carol (platform).\n\
              Status: on track, two open follow-ups.\n\
              Decisions: ship v0.6 on Friday; defer migration to next week.\n\
              Commitments: you owe Alex a Friday confirmation; Diana owes a perf summary.\n\
              Risk: search regression is unconfirmed but plausible.",
-            subject = subject_hint,
         ),
         FeatureKind::DraftAssist | FeatureKind::DraftNew => "Thanks for the heads-up — that timing works on my end. \
              I'll have the Friday cut ready and will loop you in once the migration window is locked. \

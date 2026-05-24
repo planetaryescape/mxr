@@ -113,8 +113,7 @@ impl App {
                 .diagnostics
                 .page
                 .total_messages
-                .map(|count| count as usize)
-                .unwrap_or_else(|| self.mailbox.all_envelopes.len()),
+                .map_or_else(|| self.mailbox.all_envelopes.len(), |count| count as usize),
             unread_count,
             starred_count,
             body_status,
@@ -180,8 +179,10 @@ impl App {
             .filter_map(|sync| sync.last_success_at.as_deref())
             .filter_map(Self::format_sync_age)
             .max_by_key(|(_, sort_key)| *sort_key)
-            .map(|(display, _)| format!("synced {display}"))
-            .unwrap_or_else(|| "not synced".into())
+            .map_or_else(
+                || "not synced".into(),
+                |(display, _)| format!("synced {display}"),
+            )
     }
 
     pub(super) fn format_sync_age(timestamp: &str) -> Option<(String, i64)> {

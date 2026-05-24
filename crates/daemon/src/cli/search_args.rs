@@ -26,8 +26,8 @@ impl From<SearchModeArg> for mxr_core::SearchMode {
 impl From<SearchSortArg> for mxr_core::types::SortOrder {
     fn from(value: SearchSortArg) -> Self {
         match value {
-            SearchSortArg::Date => mxr_core::types::SortOrder::DateDesc,
-            SearchSortArg::Relevance => mxr_core::types::SortOrder::Relevance,
+            SearchSortArg::Date => Self::DateDesc,
+            SearchSortArg::Relevance => Self::Relevance,
         }
     }
 }

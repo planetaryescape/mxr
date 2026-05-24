@@ -10,7 +10,6 @@
 //! preferred) used as the denominator for the heavy-density tier.
 
 use mxr_core::types::MessageBody;
-use std::sync::OnceLock;
 
 /// Hostname suffixes that should NOT be counted toward the visible link
 /// total. Suffix-matched against the URL host, lowercased. Keep the list
@@ -103,8 +102,7 @@ fn count_external_urls(text: &str) -> u32 {
                         '/' | '?' | '#' | '>' | '<' | '"' | '\'' | ')' | ']' | '}'
                     )
             })
-            .map(|offset| host_start + offset)
-            .unwrap_or(lower.len());
+            .map_or(lower.len(), |offset| host_start + offset);
         if host_end > host_start {
             let host = &lower[host_start..host_end];
             if !is_tracker_host(host) {
@@ -117,9 +115,9 @@ fn count_external_urls(text: &str) -> u32 {
 }
 
 fn is_tracker_host(host: &str) -> bool {
-    static SUFFIXES: OnceLock<Vec<&'static str>> = OnceLock::new();
-    let suffixes = SUFFIXES.get_or_init(|| TRACKER_HOSTNAME_SUFFIXES.to_vec());
-    suffixes.iter().any(|suffix| host.contains(suffix))
+    TRACKER_HOSTNAME_SUFFIXES
+        .iter()
+        .any(|suffix| host.contains(suffix))
 }
 
 /// Crude HTML-to-text stripper: drops everything between `<` and `>`, keeps

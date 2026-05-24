@@ -2485,90 +2485,92 @@ mod tests {
             let cli = Cli::try_parse_from(*args)
                 .unwrap_or_else(|error| panic!("{args:?} should parse: {error}"));
             match cli.command {
-                Some(Command::Archive {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                })
-                | Some(Command::ReadArchive {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                })
-                | Some(Command::Trash {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                })
-                | Some(Command::Spam {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                })
-                | Some(Command::Star {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                })
-                | Some(Command::Unstar {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                })
-                | Some(Command::MarkRead {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                })
-                | Some(Command::Unread {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                })
-                | Some(Command::Label {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                })
-                | Some(Command::Unlabel {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                })
-                | Some(Command::MoveMsg {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                })
-                | Some(Command::Snooze {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                })
-                | Some(Command::Unsnooze {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                })
-                | Some(Command::Unsubscribe {
-                    message_ids,
-                    dry_run,
-                    format,
-                    ..
-                }) => {
+                Some(
+                    Command::Archive {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::ReadArchive {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::Trash {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::Spam {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::Star {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::Unstar {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::MarkRead {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::Unread {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::Label {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::Unlabel {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::MoveMsg {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::Snooze {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::Unsnooze {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::Unsubscribe {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    },
+                ) => {
                     assert!(message_ids.is_empty(), "{args:?} should allow stdin IDs");
                     assert!(dry_run, "{args:?} should set dry_run");
                     assert_eq!(

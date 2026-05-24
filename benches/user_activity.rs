@@ -74,7 +74,7 @@ fn bench_insert_serial(c: &mut Criterion) {
                     .await
                     .expect("record");
             });
-        })
+        });
     });
     group.finish();
 }
@@ -96,7 +96,7 @@ fn bench_list_unfiltered(c: &mut Criterion) {
                     .expect("list");
                 black_box(page.rows.len());
             });
-        })
+        });
     });
     group.finish();
 }
@@ -120,7 +120,7 @@ fn bench_list_by_action_prefix(c: &mut Criterion) {
                 let page = store.list_activity(&filter, 50, None).await.expect("list");
                 black_box(page.rows.len());
             });
-        })
+        });
     });
     group.finish();
 }
@@ -142,7 +142,7 @@ fn bench_stats_by_action(c: &mut Criterion) {
                     .expect("stats");
                 black_box(buckets.len());
             });
-        })
+        });
     });
     group.finish();
 }

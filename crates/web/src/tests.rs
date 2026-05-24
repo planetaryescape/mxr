@@ -533,7 +533,7 @@ async fn websocket_auth_accepts_sec_websocket_protocol_subprotocol() {
         response
             .headers()
             .get("sec-websocket-protocol")
-            .map(|v| v.as_bytes()),
+            .map(axum::http::HeaderValue::as_bytes),
         Some(b"bearer".as_slice()),
         "server must echo `bearer` as the negotiated subprotocol"
     );
@@ -826,7 +826,7 @@ async fn openapi_spec_snapshot() {
     let mut schema_names: Vec<&str> = json
         .pointer("/components/schemas")
         .and_then(|v| v.as_object())
-        .map(|m| m.keys().map(|k| k.as_str()).collect())
+        .map(|m| m.keys().map(std::string::String::as_str).collect())
         .unwrap_or_default();
     schema_names.sort();
 

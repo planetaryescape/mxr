@@ -100,7 +100,7 @@ pub async fn run(options: DraftAssistRunOptions) -> anyhow::Result<()> {
                     if index > 0 {
                         println!();
                     }
-                    println!("--- {} ---", id);
+                    println!("--- {id} ---");
                 }
                 println!("{}", suggestion.body);
                 eprintln!("\n[via {} — review before sending]", suggestion.model);

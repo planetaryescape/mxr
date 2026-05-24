@@ -309,8 +309,7 @@ fn overview_lines(state: &RulesPageState) -> Vec<Line<'static>> {
             "Priority: {}",
             rule["priority"]
                 .as_i64()
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "100".into())
+                .map_or_else(|| "100".into(), |value| value.to_string())
         )),
         Line::from(""),
         Line::from("Condition"),
@@ -455,7 +454,7 @@ fn field_or_dash(value: &serde_json::Value, keys: &[&str]) -> String {
                 return text.to_string();
             }
         }
-        if let Some(number) = value.get(*key).and_then(|candidate| candidate.as_i64()) {
+        if let Some(number) = value.get(*key).and_then(serde_json::Value::as_i64) {
             return number.to_string();
         }
     }

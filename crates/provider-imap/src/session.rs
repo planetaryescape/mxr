@@ -583,7 +583,7 @@ impl ImapSession for RealImapSession {
             vanished: response
                 .vanished
                 .into_iter()
-                .flat_map(|range| range.collect::<Vec<_>>())
+                .flat_map(std::iter::Iterator::collect::<Vec<_>>)
                 .collect(),
             changed: response
                 .fetches
@@ -977,11 +977,14 @@ pub mod mock {
                 .unwrap()
                 .commands
                 .push(format!("SELECT {mailbox} QRESYNC"));
-            Ok(self.qresync_response.clone().unwrap_or(QresyncInfo {
-                mailbox: self.mailbox_info.clone(),
-                vanished: vec![],
-                changed: vec![],
-            }))
+            Ok(self
+                .qresync_response
+                .clone()
+                .unwrap_or_else(|| QresyncInfo {
+                    mailbox: self.mailbox_info.clone(),
+                    vanished: vec![],
+                    changed: vec![],
+                }))
         }
 
         async fn uid_fetch(&mut self, uid_set: &str, query: &str) -> Result<Vec<FetchedMessage>> {

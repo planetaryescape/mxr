@@ -93,10 +93,10 @@ fn resolve_one_path(path: &Path) -> Result<ResolvedAttachment, AttachmentError> 
         return Err(AttachmentError::NotFound(path.display().to_string()));
     }
 
-    let filename = path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| "attachment".to_string());
+    let filename = path.file_name().map_or_else(
+        || "attachment".to_string(),
+        |name| name.to_string_lossy().to_string(),
+    );
 
     let mime_type = match path.extension().and_then(|extension| extension.to_str()) {
         Some("pdf") => "application/pdf",

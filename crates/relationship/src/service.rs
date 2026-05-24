@@ -298,7 +298,7 @@ async fn rebuild_contact_style_with_options(
                 "relationship",
                 "Relationship voice drift detected",
                 Some(account_id),
-                Some(&format!("email={} reason={}", email, reason)),
+                Some(&format!("email={email} reason={reason}")),
             )
             .await?;
     }

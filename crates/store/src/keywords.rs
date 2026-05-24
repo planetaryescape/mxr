@@ -18,7 +18,7 @@ impl super::Store {
         message_id: &MessageId,
         keywords: &BTreeSet<String>,
     ) -> Result<(), sqlx::Error> {
-        let mid = message_id.as_str().to_string();
+        let mid = message_id.as_str().clone();
         let mut tx = self.writer().begin().await?;
         sqlx::query("DELETE FROM message_keywords WHERE message_id = ?")
             .bind(&mid)
@@ -98,7 +98,7 @@ impl super::Store {
         let rows = query.fetch_all(self.reader()).await?;
         let by_id: HashMap<String, MessageId> = message_ids
             .iter()
-            .map(|id| (id.as_str().to_string(), id.clone()))
+            .map(|id| (id.as_str().clone(), id.clone()))
             .collect();
         for row in rows {
             let mid_str: String = row.try_get("message_id")?;

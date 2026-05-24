@@ -87,8 +87,7 @@ impl App {
                     let primary = normalized_email(&row.representative.from);
                     row.other_participant_count = participants
                         .get(&row.thread_id)
-                        .map(|set| set.iter().filter(|e| *e != &primary).count())
-                        .unwrap_or(0);
+                        .map_or(0, |set| set.iter().filter(|e| *e != &primary).count());
                 }
                 collected
             }
@@ -243,14 +242,16 @@ impl App {
             .labels
             .iter()
             .find(|label| label.name.eq_ignore_ascii_case("STARRED"))
-            .map(|label| label.total_count as usize)
-            .unwrap_or_else(|| {
-                self.mailbox
-                    .all_envelopes
-                    .iter()
-                    .filter(|envelope| envelope.flags.contains(MessageFlags::STARRED))
-                    .count()
-            })
+            .map_or_else(
+                || {
+                    self.mailbox
+                        .all_envelopes
+                        .iter()
+                        .filter(|envelope| envelope.flags.contains(MessageFlags::STARRED))
+                        .count()
+                },
+                |label| label.total_count as usize,
+            )
     }
 
     pub fn resolve_desired_system_mailbox(&mut self) {
@@ -752,8 +753,8 @@ pub(crate) fn auto_summary_eligible(
             if body.metadata.calendar.is_some() {
                 return false;
             }
-            let plain_words = body.text_plain.as_deref().map(count_words).unwrap_or(0);
-            let html_words = body.text_html.as_deref().map(count_words).unwrap_or(0);
+            let plain_words = body.text_plain.as_deref().map_or(0, count_words);
+            let html_words = body.text_html.as_deref().map_or(0, count_words);
             let cached_words = plain_words.max(html_words);
             body_text_words = body_text_words.saturating_add(cached_words);
             if cached_words > 0 {

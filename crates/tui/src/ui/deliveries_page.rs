@@ -45,7 +45,7 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &DeliveriesState, theme: &cr
         Constraint::Length(18), // status
         Constraint::Length(22), // merchant
         Constraint::Length(10), // carrier
-        Constraint::Length(12), // ETA
+        Constraint::Length(14), // ETA
         Constraint::Fill(1),    // tracking / order
     ];
     let header = Row::new(["Status", "Merchant", "Carrier", "ETA", "Tracking"])
@@ -57,11 +57,14 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &DeliveriesState, theme: &cr
             .as_deref()
             .or(d.carrier.as_deref())
             .unwrap_or("?");
-        let eta = d
-            .delivered_at
-            .or(d.eta_until)
-            .or(d.eta_from)
-            .map_or_else(|| "—".to_string(), |t| t.format("%b %d").to_string());
+        let eta = d.delivered_at.or(d.eta_until).or(d.eta_from).map_or_else(
+            || "—".to_string(),
+            |t| {
+                t.with_timezone(&chrono::Local)
+                    .format("%b %-d, %Y")
+                    .to_string()
+            },
+        );
         let tracking = d
             .tracking_number
             .clone()
@@ -93,7 +96,7 @@ fn draw_footer(
     _state: &DeliveriesState,
     theme: &crate::theme::Theme,
 ) {
-    let help = "j/k move · r resolve · d dismiss · D filter · g refresh";
+    let help = "j/k move · o open · r resolve · d dismiss · D filter · g refresh";
     let p = Paragraph::new(help).style(Style::default().fg(theme.text_muted));
     frame.render_widget(p, area);
 }

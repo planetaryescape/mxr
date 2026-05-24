@@ -650,6 +650,22 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if let Some(thread_id) = app.pending_delivery_open.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, Request::GetThread { thread_id }).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Thread { messages, .. },
+                    }) => Ok(messages),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::DeliveryThreadOpened(result)
+            });
+        }
+
         if app.pending_activity_refresh {
             app.pending_activity_refresh = false;
             let bg = bg.clone();
@@ -1972,6 +1988,12 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::DeliveriesList(Err(e)) => {
                             app.deliveries.set_error(e.to_string());
                             app.status_message = Some(format!("Deliveries load failed: {e}"));
+                        }
+                        AsyncResult::DeliveryThreadOpened(Ok(messages)) => {
+                            app.open_delivery_thread(messages);
+                        }
+                        AsyncResult::DeliveryThreadOpened(Err(e)) => {
+                            app.status_message = Some(format!("Open source email failed: {e}"));
                         }
                         AsyncResult::ActivityList(Ok(entries)) => {
                             let count = entries.len();

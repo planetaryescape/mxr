@@ -164,6 +164,9 @@ pub(crate) enum AsyncResult {
     ReplyQueueList(Result<Vec<Envelope>, MxrError>),
     /// Snapshot of tracked deliveries for the Deliveries screen.
     DeliveriesList(Result<Vec<DeliveryData>, MxrError>),
+    /// Messages of a delivery's source thread, opened via `o`/Enter on the
+    /// Deliveries screen.
+    DeliveryThreadOpened(Result<Vec<Envelope>, MxrError>),
     /// Snapshot of recent activity log rows.
     ActivityList(Result<Vec<mxr_protocol::ActivityEntry>, MxrError>),
     /// Confirmation that a pause/resume toggle reached the daemon.

@@ -218,10 +218,10 @@ pub fn hints_for_context(
         ],
         UiContext::Deliveries => vec![
             ("j/k".to_string(), "Move".to_string()),
+            ("o".to_string(), "Open".to_string()),
             ("r".to_string(), "Resolve".to_string()),
             ("d".to_string(), "Dismiss".to_string()),
             ("D".to_string(), "Filter".to_string()),
-            ("g".to_string(), "Refresh".to_string()),
         ],
     };
     hints.truncate(HINT_BAR_MAX_HINTS);

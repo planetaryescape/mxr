@@ -145,6 +145,18 @@ impl App {
                                 &self.mailbox.owed_page.entries,
                                 theme,
                             );
+                        } else if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
+                            ui::calendar_invites_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::calendar_invites_lens::CalendarInvitesView {
+                                    entries: &self.mailbox.calendar_invites_page.entries,
+                                    selected_index: self.mailbox.selected_index,
+                                    scroll_offset: self.mailbox.scroll_offset,
+                                    active_pane: &self.mailbox.active_pane,
+                                },
+                                theme,
+                            );
                         } else {
                             let mail_title = self.mail_list_title();
                             ui::mail_list::draw_view(
@@ -201,6 +213,18 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &self.mailbox.owed_page.entries,
+                                theme,
+                            );
+                        } else if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
+                            ui::calendar_invites_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::calendar_invites_lens::CalendarInvitesView {
+                                    entries: &self.mailbox.calendar_invites_page.entries,
+                                    selected_index: self.mailbox.selected_index,
+                                    scroll_offset: self.mailbox.scroll_offset,
+                                    active_pane: &self.mailbox.active_pane,
+                                },
                                 theme,
                             );
                         } else {
@@ -461,6 +485,7 @@ impl App {
     fn draw_saved_search_tabs(&self, frame: &mut Frame, area: Rect, theme: &Theme) -> Rect {
         if self.mailbox.saved_searches.is_empty()
             || self.mailbox.mailbox_view == MailboxView::Subscriptions
+            || self.mailbox.mailbox_view == MailboxView::CalendarInvites
         {
             return area;
         }

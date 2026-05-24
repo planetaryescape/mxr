@@ -15,6 +15,7 @@ import { Route as ScreenerRouteImport } from './routes/screener'
 import { Route as RulesRouteImport } from './routes/rules'
 import { Route as ReplyQueueRouteImport } from './routes/reply-queue'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as InvitesRouteImport } from './routes/invites'
 import { Route as DiagnosticsRouteImport } from './routes/diagnostics'
 import { Route as DevRouteImport } from './routes/dev'
 import { Route as DeliveriesRouteImport } from './routes/deliveries'
@@ -62,6 +63,11 @@ const ReplyQueueRoute = ReplyQueueRouteImport.update({
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvitesRoute = InvitesRouteImport.update({
+  id: '/invites',
+  path: '/invites',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DiagnosticsRoute = DiagnosticsRouteImport.update({
@@ -163,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/deliveries': typeof DeliveriesRoute
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
+  '/invites': typeof InvitesRoute
   '/onboarding': typeof OnboardingRoute
   '/reply-queue': typeof ReplyQueueRoute
   '/rules': typeof RulesRouteWithChildren
@@ -189,6 +196,7 @@ export interface FileRoutesByTo {
   '/deliveries': typeof DeliveriesRoute
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
+  '/invites': typeof InvitesRoute
   '/onboarding': typeof OnboardingRoute
   '/reply-queue': typeof ReplyQueueRoute
   '/rules': typeof RulesRouteWithChildren
@@ -216,6 +224,7 @@ export interface FileRoutesById {
   '/deliveries': typeof DeliveriesRoute
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
+  '/invites': typeof InvitesRoute
   '/onboarding': typeof OnboardingRoute
   '/reply-queue': typeof ReplyQueueRoute
   '/rules': typeof RulesRouteWithChildren
@@ -244,6 +253,7 @@ export interface FileRouteTypes {
     | '/deliveries'
     | '/dev'
     | '/diagnostics'
+    | '/invites'
     | '/onboarding'
     | '/reply-queue'
     | '/rules'
@@ -270,6 +280,7 @@ export interface FileRouteTypes {
     | '/deliveries'
     | '/dev'
     | '/diagnostics'
+    | '/invites'
     | '/onboarding'
     | '/reply-queue'
     | '/rules'
@@ -296,6 +307,7 @@ export interface FileRouteTypes {
     | '/deliveries'
     | '/dev'
     | '/diagnostics'
+    | '/invites'
     | '/onboarding'
     | '/reply-queue'
     | '/rules'
@@ -323,6 +335,7 @@ export interface RootRouteChildren {
   DeliveriesRoute: typeof DeliveriesRoute
   DevRoute: typeof DevRoute
   DiagnosticsRoute: typeof DiagnosticsRoute
+  InvitesRoute: typeof InvitesRoute
   OnboardingRoute: typeof OnboardingRoute
   ReplyQueueRoute: typeof ReplyQueueRoute
   RulesRoute: typeof RulesRouteWithChildren
@@ -380,6 +393,13 @@ declare module '@tanstack/react-router' {
       path: '/onboarding'
       fullPath: '/onboarding'
       preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invites': {
+      id: '/invites'
+      path: '/invites'
+      fullPath: '/invites'
+      preLoaderRoute: typeof InvitesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/diagnostics': {
@@ -565,6 +585,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeliveriesRoute: DeliveriesRoute,
   DevRoute: DevRoute,
   DiagnosticsRoute: DiagnosticsRoute,
+  InvitesRoute: InvitesRoute,
   OnboardingRoute: OnboardingRoute,
   ReplyQueueRoute: ReplyQueueRoute,
   RulesRoute: RulesRouteWithChildren,

@@ -188,21 +188,51 @@ pub(super) async fn get_invite(state: &AppState, message_id: &MessageId) -> Hand
 }
 
 pub(super) async fn list_invites(state: &AppState, limit: u32) -> HandlerResult {
-    let invites = state
-        .store
-        .list_calendar_invites(limit)
-        .await
-        ?
-        .into_iter()
-        .map(|invite| CalendarInviteData {
+    let records = state.store.list_calendar_invites(limit).await?;
+    // Cache account addresses so a page of invites across a handful of
+    // accounts doesn't issue one address query per row.
+    let mut address_cache: std::collections::HashMap<AccountId, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut invites = Vec::with_capacity(records.len());
+    for invite in records {
+        let mut metadata = invite.metadata;
+        let addresses = match address_cache.get(&invite.account_id) {
+            Some(addresses) => addresses.clone(),
+            None => {
+                let addresses = state
+                    .store
+                    .list_account_addresses(&invite.account_id)
+                    .await?
+                    .into_iter()
+                    .map(|a| a.email)
+                    .collect::<Vec<_>>();
+                address_cache.insert(invite.account_id.clone(), addresses.clone());
+                addresses
+            }
+        };
+        // Derive the viewer's own RSVP status so the invites list can show
+        // it without each client re-walking attendees. Mirrors the GetBody
+        // enrichment in `enrich_calendar_viewer_fields`.
+        if let Some((email, partstat)) =
+            mxr_mail_parse::matching_attendee_lenient(&metadata, &addresses).map(|a| {
+                (
+                    a.email.clone(),
+                    a.partstat.as_deref().and_then(CalendarPartstat::parse),
+                )
+            })
+        {
+            metadata.viewer_attendee_email = Some(email);
+            metadata.viewer_partstat = partstat;
+        }
+        invites.push(CalendarInviteData {
             id: invite.id,
             account_id: invite.account_id,
             message_id: invite.message_id,
-            metadata: invite.metadata,
+            metadata,
             created_at: invite.created_at,
             updated_at: invite.updated_at,
-        })
-        .collect();
+        });
+    }
     Ok(ResponseData::Invites { invites })
 }
 

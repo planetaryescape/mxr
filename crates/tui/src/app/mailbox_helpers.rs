@@ -23,6 +23,9 @@ impl App {
         if self.mailbox.mailbox_view == MailboxView::Subscriptions {
             return self.mailbox.subscriptions_page.entries.len();
         }
+        if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
+            return self.mailbox.calendar_invites_page.entries.len();
+        }
         self.mail_list_rows().len()
     }
 
@@ -326,6 +329,25 @@ impl App {
         for id in ids {
             self.queue_body_fetch(id);
         }
+    }
+
+    /// Open the underlying message for the selected calendar invite. Invites
+    /// carry only a `message_id`, so the runtime fetches the envelope via
+    /// `Request::GetEnvelope` and then opens the message view.
+    pub(super) fn open_selected_invite_message(&mut self) {
+        if let Some(invite) = self.selected_invite() {
+            self.mailbox.pending_invite_open = Some(invite.message_id.clone());
+            self.status_message = Some("Opening invite…".into());
+        }
+    }
+
+    /// Called by the runtime once `Request::GetEnvelope` resolves for an
+    /// invite opened from the calendar-invites lens. Opens the message view.
+    pub(crate) fn open_invite_envelope(&mut self, env: Envelope) {
+        self.open_envelope(env);
+        self.mailbox.layout_mode = LayoutMode::ThreePane;
+        self.mailbox.active_pane = ActivePane::MessageView;
+        self.status_message = None;
     }
 
     pub(super) fn open_envelope(&mut self, env: Envelope) {

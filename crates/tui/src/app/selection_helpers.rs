@@ -98,7 +98,10 @@ impl App {
     }
 
     pub fn selected_mail_row(&self) -> Option<MailListRow> {
-        if self.mailbox.mailbox_view == MailboxView::Subscriptions {
+        if matches!(
+            self.mailbox.mailbox_view,
+            MailboxView::Subscriptions | MailboxView::CalendarInvites
+        ) {
             return None;
         }
         self.mail_list_rows()
@@ -109,6 +112,13 @@ impl App {
     pub fn selected_subscription_entry(&self) -> Option<&SubscriptionEntry> {
         self.mailbox
             .subscriptions_page
+            .entries
+            .get(self.mailbox.selected_index)
+    }
+
+    pub fn selected_invite(&self) -> Option<&mxr_protocol::CalendarInviteData> {
+        self.mailbox
+            .calendar_invites_page
             .entries
             .get(self.mailbox.selected_index)
     }

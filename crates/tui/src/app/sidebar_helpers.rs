@@ -44,6 +44,7 @@ impl App {
         items.push(SidebarItem::AllMail);
         items.push(SidebarItem::Subscriptions);
         items.push(SidebarItem::Owed);
+        items.push(SidebarItem::CalendarInvites);
         if self.mailbox.sidebar_user_expanded {
             items.extend(
                 user_labels
@@ -91,6 +92,8 @@ impl App {
             subscription_count: self.mailbox.subscriptions_page.entries.len(),
             owed_active: self.mailbox.mailbox_view == MailboxView::Owed,
             owed_count: self.mailbox.owed_page.entries.len(),
+            calendar_invites_active: self.mailbox.mailbox_view == MailboxView::CalendarInvites,
+            calendar_invites_count: self.mailbox.calendar_invites_page.entries.len(),
             accounts,
             accounts_expanded: self.mailbox.sidebar_accounts_expanded,
             system_expanded: self.mailbox.sidebar_system_expanded,
@@ -118,6 +121,7 @@ impl App {
             SidebarItem::AllMail => SidebarSelectionKey::AllMail,
             SidebarItem::Subscriptions => SidebarSelectionKey::Subscriptions,
             SidebarItem::Owed => SidebarSelectionKey::Owed,
+            SidebarItem::CalendarInvites => SidebarSelectionKey::CalendarInvites,
             SidebarItem::Label(label) => SidebarSelectionKey::Label(label.id),
             SidebarItem::SavedSearch(search) => SidebarSelectionKey::SavedSearch(search.name),
         })
@@ -133,6 +137,7 @@ impl App {
                 (SidebarItem::AllMail, SidebarSelectionKey::AllMail) => true,
                 (SidebarItem::Subscriptions, SidebarSelectionKey::Subscriptions) => true,
                 (SidebarItem::Owed, SidebarSelectionKey::Owed) => true,
+                (SidebarItem::CalendarInvites, SidebarSelectionKey::CalendarInvites) => true,
                 (SidebarItem::Label(label), SidebarSelectionKey::Label(label_id)) => {
                     label.id == *label_id
                 }
@@ -218,6 +223,7 @@ impl App {
             Some(SidebarItem::AllMail) => Some(Action::GoToAllMail),
             Some(SidebarItem::Subscriptions) => Some(Action::OpenSubscriptions),
             Some(SidebarItem::Owed) => Some(Action::OpenOwedReplies),
+            Some(SidebarItem::CalendarInvites) => Some(Action::OpenCalendarInvites),
             Some(SidebarItem::Label(label)) => Some(Action::SelectLabel(label.id)),
             Some(SidebarItem::SavedSearch(search)) => {
                 Some(Action::SelectSavedSearch(search.query, search.search_mode))
@@ -244,7 +250,8 @@ impl App {
                 SidebarItem::Account(_)
                 | SidebarItem::AllMail
                 | SidebarItem::Subscriptions
-                | SidebarItem::Owed,
+                | SidebarItem::Owed
+                | SidebarItem::CalendarInvites,
             )
             | None => SidebarGroup::SystemLabels,
         }

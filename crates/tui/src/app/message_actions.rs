@@ -106,6 +106,9 @@ impl App {
                             // the lens. (A future slice can wire enter →
                             // navigate to the underlying thread.)
                         }
+                        MailboxView::CalendarInvites => {
+                            self.open_selected_invite_message();
+                        }
                     }
                 }
             }

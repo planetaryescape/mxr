@@ -93,6 +93,7 @@ fn mail_router() -> Router<AppState> {
         .route("/threads/{thread_id}/export", get(export_thread))
         .route("/drafts", get(list_drafts))
         .route("/snoozed", get(list_snoozed))
+        .route("/invites", get(list_invites))
         .route("/deliveries", get(list_deliveries))
         .route("/deliveries/scan", post(scan_deliveries))
         .route("/deliveries/{delivery_id}", get(get_delivery))

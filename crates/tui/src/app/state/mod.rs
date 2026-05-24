@@ -25,9 +25,10 @@ pub(in crate::app) use mailbox::PendingPreviewRead;
 pub(crate) use mailbox::SidebarSelectionKey;
 pub use mailbox::{
     ActivePane, AttachmentOperation, AttachmentPanelState, AttachmentSummary, BodySource,
-    BodyViewMetadata, BodyViewMode, BodyViewState, LayoutMode, MailListMode, MailListRow,
-    MailboxState, MailboxView, OwedRepliesPageState, PendingAttachmentAction, PendingBrowserOpen,
-    SidebarItem, SidebarSection, SubscriptionEntry, SubscriptionsPageState, ThreadSummaryPreview,
+    BodyViewMetadata, BodyViewMode, BodyViewState, CalendarInvitesPageState, LayoutMode,
+    MailListMode, MailListRow, MailboxState, MailboxView, OwedRepliesPageState,
+    PendingAttachmentAction, PendingBrowserOpen, SidebarItem, SidebarSection, SubscriptionEntry,
+    SubscriptionsPageState, ThreadSummaryPreview,
 };
 pub use modals::{
     ActivityModalState, AnalyticsFilterField, AnalyticsFilterModalState, BriefingModalState,

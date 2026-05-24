@@ -314,6 +314,8 @@ fn sidebar_snapshot() {
                 subscription_count: 2,
                 owed_active: false,
                 owed_count: 0,
+                calendar_invites_active: false,
+                calendar_invites_count: 0,
                 accounts: Vec::new(),
                 accounts_expanded: true,
                 system_expanded: true,

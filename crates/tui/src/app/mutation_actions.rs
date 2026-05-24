@@ -385,52 +385,75 @@ impl App {
                 }
             }
             Action::RespondInvite(action) => {
-                let Some(env) = self.context_envelope().cloned() else {
-                    self.status_message = Some("No message selected".into());
-                    return;
+                let message_id = if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
+                    // In the invites lens the selected row is known to be an
+                    // invite, so skip the body-cache calendar check.
+                    let Some(invite) = self.selected_invite() else {
+                        self.status_message = Some("No invite selected".into());
+                        return;
+                    };
+                    invite.message_id.clone()
+                } else {
+                    let Some(env) = self.context_envelope().cloned() else {
+                        self.status_message = Some("No message selected".into());
+                        return;
+                    };
+                    if self
+                        .mailbox
+                        .body_cache
+                        .get(&env.id)
+                        .and_then(|body| body.metadata.calendar.as_ref())
+                        .is_none()
+                    {
+                        self.status_message =
+                            Some("No calendar invite found for this message".into());
+                        return;
+                    }
+                    env.id
                 };
-                if self
-                    .mailbox
-                    .body_cache
-                    .get(&env.id)
-                    .and_then(|body| body.metadata.calendar.as_ref())
-                    .is_none()
-                {
-                    self.status_message = Some("No calendar invite found for this message".into());
-                    return;
-                }
                 let partstat = invite_action_partstat(action);
                 let status_label = mxr_core::i18n::EN
                     .invite_status_pending_for(partstat)
                     .to_string();
                 self.status_message = Some(status_label.clone());
                 self.pending_invite_send = Some(crate::app::PendingInviteSend {
-                    message_id: env.id,
+                    message_id,
                     action,
                     dispatch_at: std::time::Instant::now() + std::time::Duration::from_secs(1),
                     status_label,
                 });
             }
             Action::RespondInviteWithComment(action) => {
-                let Some(env) = self.context_envelope().cloned() else {
-                    self.status_message = Some("No message selected".into());
-                    return;
-                };
-                if self
-                    .mailbox
-                    .body_cache
-                    .get(&env.id)
-                    .and_then(|body| body.metadata.calendar.as_ref())
-                    .is_none()
-                {
-                    self.status_message = Some("No calendar invite found for this message".into());
-                    return;
-                }
+                let (message_id, account_id) =
+                    if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
+                        let Some(invite) = self.selected_invite() else {
+                            self.status_message = Some("No invite selected".into());
+                            return;
+                        };
+                        (invite.message_id.clone(), invite.account_id.clone())
+                    } else {
+                        let Some(env) = self.context_envelope().cloned() else {
+                            self.status_message = Some("No message selected".into());
+                            return;
+                        };
+                        if self
+                            .mailbox
+                            .body_cache
+                            .get(&env.id)
+                            .and_then(|body| body.metadata.calendar.as_ref())
+                            .is_none()
+                        {
+                            self.status_message =
+                                Some("No calendar invite found for this message".into());
+                            return;
+                        }
+                        (env.id, env.account_id.clone())
+                    };
                 self.status_message = Some("Preparing invite reply...".into());
                 self.compose.pending_compose =
                     Some(crate::app::ComposeAction::InviteReplyWithComment {
-                        message_id: env.id,
-                        account_id: env.account_id.clone(),
+                        message_id,
+                        account_id,
                         action,
                     });
             }

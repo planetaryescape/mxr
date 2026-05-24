@@ -2396,6 +2396,25 @@ async fn list_snoozed(
 }
 
 #[derive(serde::Deserialize)]
+struct InvitesQuery {
+    token: Option<String>,
+    limit: Option<u32>,
+}
+
+async fn list_invites(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<InvitesQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, q.token.as_deref(), &state.config.auth_token)?;
+    let limit = q.limit.unwrap_or(200);
+    match ipc_request(&state.config.socket_path, Request::ListInvites { limit }).await? {
+        ResponseData::Invites { invites } => Ok(Json(json!({ "invites": invites }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+#[derive(serde::Deserialize)]
 struct DeliveriesQuery {
     token: Option<String>,
     filter: Option<String>,

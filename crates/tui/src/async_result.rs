@@ -50,6 +50,9 @@ pub(crate) enum AsyncResult {
     AllEnvelopes(Result<Vec<Envelope>, MxrError>),
     Subscriptions(Result<Vec<SubscriptionSummary>, MxrError>),
     OwedReplies(Result<Vec<mxr_protocol::OwedReplyRowData>, MxrError>),
+    CalendarInvites(Result<Vec<mxr_protocol::CalendarInviteData>, MxrError>),
+    /// Envelope fetched for an invite opened from the calendar-invites lens.
+    InviteEnvelopeOpened(Result<Envelope, MxrError>),
     Briefing(Result<mxr_protocol::ThreadBriefingData, MxrError>),
     Whois(Result<mxr_protocol::EntityExplanationData, MxrError>),
     Expert(Result<Vec<mxr_protocol::ExpertSuggestionData>, MxrError>),

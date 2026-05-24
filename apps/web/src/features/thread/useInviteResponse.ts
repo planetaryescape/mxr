@@ -20,7 +20,12 @@ const UNDO_WINDOW_MS = 1000;
 
 interface UseInviteResponseArgs {
   messageId: string;
-  threadId: string;
+  /// Thread to invalidate on success (the thread-view invite card). Omit
+  /// when responding from a context without a thread, e.g. the invites list.
+  threadId?: string;
+  /// Extra React Query keys to invalidate on success. The invites list page
+  /// passes `[["invites"]]` so its RSVP column refreshes.
+  invalidateKeys?: readonly unknown[][];
 }
 
 /// Hold-and-send for a calendar invite RSVP. The 1s window lets the user
@@ -29,6 +34,7 @@ interface UseInviteResponseArgs {
 export function useInviteResponse({
   messageId,
   threadId,
+  invalidateKeys,
 }: UseInviteResponseArgs) {
   const qc = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -42,7 +48,12 @@ export function useInviteResponse({
         body,
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["thread", threadId] });
+      if (threadId) {
+        qc.invalidateQueries({ queryKey: ["thread", threadId] });
+      }
+      for (const key of invalidateKeys ?? []) {
+        qc.invalidateQueries({ queryKey: key });
+      }
     },
   });
 

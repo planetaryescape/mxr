@@ -147,6 +147,7 @@ impl App {
             | Action::GoToAllMail
             | Action::OpenSubscriptions
             | Action::OpenOwedReplies
+            | Action::OpenCalendarInvites
             | Action::GoToLabel
             | Action::SelectLabel(_)
             | Action::SelectSavedSearch(_, _)

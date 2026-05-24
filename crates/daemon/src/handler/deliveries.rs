@@ -20,11 +20,7 @@ use mxr_store::{Delivery, DeliveryListFilter};
 // ---------------------------------------------------------------------------
 
 pub(super) async fn list_deliveries(state: &AppState, filter: Option<&str>) -> HandlerResult {
-    let rows = state
-        .store
-        .list_deliveries(parse_filter(filter))
-        .await
-        ?;
+    let rows = state.store.list_deliveries(parse_filter(filter)).await?;
     let deliveries = rows.into_iter().map(to_data).collect();
     Ok(ResponseData::Deliveries { deliveries })
 }
@@ -33,15 +29,10 @@ pub(super) async fn get_delivery(state: &AppState, delivery_id: &DeliveryId) -> 
     let row = state
         .store
         .get_delivery(delivery_id)
-        .await
-        ?
+        .await?
         .ok_or_else(|| "delivery not found".to_string())?;
     let mut data = to_data(row);
-    data.message_ids = state
-        .store
-        .delivery_message_ids(delivery_id)
-        .await
-        ?;
+    data.message_ids = state.store.delivery_message_ids(delivery_id).await?;
     Ok(ResponseData::Delivery { delivery: data })
 }
 
@@ -49,13 +40,11 @@ pub(super) async fn resolve_delivery(state: &AppState, delivery_id: &DeliveryId)
     state
         .store
         .resolve_delivery(delivery_id, Utc::now())
-        .await
-        ?;
+        .await?;
     let row = state
         .store
         .get_delivery(delivery_id)
-        .await
-        ?
+        .await?
         .ok_or_else(|| "delivery not found".to_string())?;
     Ok(ResponseData::Delivery {
         delivery: to_data(row),
@@ -66,8 +55,7 @@ pub(super) async fn dismiss_delivery(state: &AppState, delivery_id: &DeliveryId)
     state
         .store
         .dismiss_delivery(delivery_id, Utc::now())
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::Ack)
 }
 

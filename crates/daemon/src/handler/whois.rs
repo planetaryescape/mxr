@@ -32,8 +32,7 @@ pub(crate) async fn explain(
     let page = state
         .search
         .search(trimmed, 30, 0, SortOrder::Relevance)
-        .await
-        ?;
+        .await?;
 
     if page.results.is_empty() {
         return Ok(ResponseData::EntityExplanation {
@@ -146,8 +145,7 @@ async fn explain_email(
     .bind(account_id.as_str())
     .bind(email)
     .fetch_optional(state.store.reader())
-    .await
-    ?;
+    .await?;
 
     match row {
         None => Ok(ResponseData::EntityExplanation {

@@ -184,7 +184,8 @@ pub(crate) async fn ask(
             return Err(format!(
                 "ArchiveAsk: LLM cited unknown msg_id {} (not in retrieved set)",
                 citation.msg_id
-            ).into());
+            )
+            .into());
         }
         let source = citation_sources
             .get(citation.msg_id.as_str())
@@ -677,7 +678,8 @@ mod tests {
         .await;
         let err = res.expect_err("must reject unknown msg_id citation");
         assert!(
-            err.to_string().contains("00000000-0000-0000-0000-000000000099"),
+            err.to_string()
+                .contains("00000000-0000-0000-0000-000000000099"),
             "error must name the bad citation: {err}"
         );
     }

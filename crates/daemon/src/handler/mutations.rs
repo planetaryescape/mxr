@@ -493,8 +493,7 @@ pub(super) async fn mutation(
         let envelope = state
             .store
             .get_envelope(message_id)
-            .await
-            ?
+            .await?
             .ok_or_else(|| format!("Message not found: {message_id}"))?;
         grouped
             .entry(envelope.account_id.clone())
@@ -649,15 +648,12 @@ fn undoable_kind(cmd: &MutationCommand) -> Option<UndoableMutationKind> {
 /// and we surface that as an "irreversible" error rather than leaving
 /// the local store and provider out of sync.
 pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> HandlerResult {
-    let entry = state
-        .store
-        .read_undo_entry(mutation_id)
-        .await
-        ?;
+    let entry = state.store.read_undo_entry(mutation_id).await?;
     let Some(entry) = entry else {
         return Err(format!(
             "undo: mutation `{mutation_id}` not found (expired or already undone)"
-        ).into());
+        )
+        .into());
     };
     let now = chrono::Utc::now().timestamp();
     if entry.expires_at <= now {
@@ -704,9 +700,7 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
 
     if restored == 0 {
         let detail = last_error.unwrap_or_else(|| "no messages restored".into());
-        return Err(format!(
-            "undo: irreversible ({irreversible} message(s)) — {detail}"
-        ).into());
+        return Err(format!("undo: irreversible ({irreversible} message(s)) — {detail}").into());
     }
 
     // Successful undo: drop the entry so the same id can't be replayed.
@@ -1244,12 +1238,7 @@ pub(super) async fn snooze(
     wake_at: &chrono::DateTime<chrono::Utc>,
 ) -> HandlerResult {
     apply_snooze(state, message_id, wake_at).await?;
-    if let Some(envelope) = state
-        .store
-        .get_envelope(message_id)
-        .await
-        ?
-    {
+    if let Some(envelope) = state.store.get_envelope(message_id).await? {
         if let Err(error) = log_mutation(
             state,
             &envelope,
@@ -1269,17 +1258,9 @@ pub(super) async fn snooze(
 }
 
 pub(super) async fn unsnooze(state: &AppState, message_id: &mxr_core::MessageId) -> HandlerResult {
-    let snoozed = state
-        .store
-        .get_snooze(message_id)
-        .await
-        ?;
+    let snoozed = state.store.get_snooze(message_id).await?;
     if let Some(snoozed) = snoozed {
-        let envelope = state
-            .store
-            .get_envelope(message_id)
-            .await
-            ?;
+        let envelope = state.store.get_envelope(message_id).await?;
         restore_snoozed_message(state, &snoozed).await?;
         if let Some(envelope) = envelope {
             if let Err(error) = log_mutation(
@@ -1298,29 +1279,15 @@ pub(super) async fn unsnooze(state: &AppState, message_id: &mxr_core::MessageId)
 }
 
 pub(super) async fn list_snoozed(state: &AppState) -> HandlerResult {
-    let snoozed = state
-        .store
-        .list_snoozed()
-        .await
-        ?;
+    let snoozed = state.store.list_snoozed().await?;
     Ok(ResponseData::SnoozedMessages { snoozed })
 }
 
 pub(super) async fn list_drafts(state: &AppState) -> HandlerResult {
-    let accounts = state
-        .store
-        .list_accounts()
-        .await
-        ?;
+    let accounts = state.store.list_accounts().await?;
     let mut drafts = Vec::new();
     for account in accounts {
-        drafts.extend(
-            state
-                .store
-                .list_drafts(&account.id)
-                .await
-                ?,
-        );
+        drafts.extend(state.store.list_drafts(&account.id).await?);
     }
     drafts.sort_by_key(|draft| std::cmp::Reverse(draft.updated_at));
     Ok(ResponseData::Drafts { drafts })
@@ -1331,11 +1298,7 @@ pub(super) async fn list_drafts(state: &AppState) -> HandlerResult {
 /// CLI surfaces what would be auto-reset, only earlier.
 pub(super) async fn list_orphaned_drafts(state: &AppState) -> HandlerResult {
     let cutoff = chrono::Utc::now() - chrono::Duration::hours(1);
-    let orphan_ids = state
-        .store
-        .list_orphaned_sending_drafts(cutoff)
-        .await
-        ?;
+    let orphan_ids = state.store.list_orphaned_sending_drafts(cutoff).await?;
     let mut drafts = Vec::with_capacity(orphan_ids.len());
     for id in &orphan_ids {
         if let Some(draft) = state.store.get_draft(id).await? {
@@ -1354,29 +1317,17 @@ pub(super) async fn reset_orphaned_draft(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
 ) -> HandlerResult {
-    state
-        .store
-        .reset_orphaned_draft(draft_id)
-        .await
-        ?;
+    state.store.reset_orphaned_draft(draft_id).await?;
     Ok(ResponseData::Ack)
 }
 
 pub(super) async fn save_draft(state: &AppState, draft: &Draft) -> HandlerResult {
-    state
-        .store
-        .insert_draft(draft)
-        .await
-        ?;
+    state.store.insert_draft(draft).await?;
     Ok(ResponseData::Ack)
 }
 
 pub(super) async fn delete_draft(state: &AppState, draft_id: &mxr_core::DraftId) -> HandlerResult {
-    state
-        .store
-        .delete_draft(draft_id)
-        .await
-        ?;
+    state.store.delete_draft(draft_id).await?;
     Ok(ResponseData::Ack)
 }
 
@@ -1388,8 +1339,7 @@ pub(super) async fn prepare_reply(
     let envelope = state
         .store
         .get_envelope(message_id)
-        .await
-        ?
+        .await?
         .ok_or_else(|| "Message not found".to_string())?;
 
     let from = state
@@ -1454,8 +1404,7 @@ pub(super) async fn prepare_forward(
     let envelope = state
         .store
         .get_envelope(message_id)
-        .await
-        ?
+        .await?
         .ok_or_else(|| "Message not found".to_string())?;
 
     let from = state
@@ -1507,10 +1456,7 @@ pub(super) async fn send_draft(
     let sender = state.send_provider_for_account(&draft.account_id)?;
     let from = resolve_from_address(state, draft).await;
     let rfc2822_message_id = mxr_outbound::email::generate_message_id(&from);
-    let receipt = sender
-        .send(draft, &from, &rfc2822_message_id)
-        .await
-        ?;
+    let receipt = sender.send(draft, &from, &rfc2822_message_id).await?;
     clear_reply_later_for_reply_parent(state, draft).await;
     // Ingest synthetic Sent envelope so the message is searchable as `is:sent`
     // immediately, without waiting for the next sync. Failures here are
@@ -1546,11 +1492,7 @@ pub(super) async fn schedule_send(
     draft_id: &mxr_core::DraftId,
     send_at: chrono::DateTime<chrono::Utc>,
 ) -> HandlerResult {
-    state
-        .store
-        .schedule_send(draft_id, send_at)
-        .await
-        ?;
+    state.store.schedule_send(draft_id, send_at).await?;
     Ok(ResponseData::Ack)
 }
 
@@ -1558,11 +1500,7 @@ pub(super) async fn cancel_scheduled_send(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
 ) -> HandlerResult {
-    state
-        .store
-        .cancel_scheduled_send(draft_id)
-        .await
-        ?;
+    state.store.cancel_scheduled_send(draft_id).await?;
     Ok(ResponseData::Ack)
 }
 
@@ -1574,8 +1512,7 @@ pub(crate) async fn send_stored_draft(
     let draft = state
         .store
         .get_draft(draft_id)
-        .await
-        ?
+        .await?
         .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
 
     enforce_draft_safety_with_override(state, &draft, override_safety_token).await?;
@@ -1586,20 +1523,20 @@ pub(crate) async fn send_stored_draft(
     let advanced = state
         .store
         .cas_draft_status(draft_id, DraftStatus::Draft, DraftStatus::Sending)
-        .await
-        ?;
+        .await?;
     if !advanced {
         let current = state
             .store
             .get_draft_status(draft_id)
-            .await
-            ?
+            .await?
             .unwrap_or(DraftStatus::Draft);
         return Err(match current {
-            DraftStatus::Sent => crate::handler::HandlerError::Message("draft already sent".to_string()),
-            DraftStatus::Sending => {
-                crate::handler::HandlerError::Message("draft is already being sent (resolve via `mxr drafts resolve`)".to_string())
+            DraftStatus::Sent => {
+                crate::handler::HandlerError::Message("draft already sent".to_string())
             }
+            DraftStatus::Sending => crate::handler::HandlerError::Message(
+                "draft is already being sent (resolve via `mxr drafts resolve`)".to_string(),
+            ),
             DraftStatus::Draft => {
                 crate::handler::HandlerError::Message("draft state mismatch; retry".to_string())
             }
@@ -1626,12 +1563,7 @@ pub(crate) async fn send_stored_draft(
         }
     };
     let from = resolve_from_address(state, &draft).await;
-    let rfc2822_message_id = match state
-        .store
-        .get_draft_message_id_header(draft_id)
-        .await
-        ?
-    {
+    let rfc2822_message_id = match state.store.get_draft_message_id_header(draft_id).await? {
         Some(existing) => existing,
         None => {
             let generated = mxr_outbound::email::generate_message_id(&from);
@@ -1931,8 +1863,7 @@ pub(super) async fn unsubscribe(
     let envelope = state
         .store
         .get_envelope(message_id)
-        .await
-        ?
+        .await?
         .ok_or_else(|| "Message not found".to_string())?;
 
     // Idempotency: if we already logged a successful unsubscribe for
@@ -1943,8 +1874,7 @@ pub(super) async fn unsubscribe(
     if state
         .store
         .has_event_for_message_with_summary(&message_id.as_str(), "mutation", "unsubscrib")
-        .await
-        ?
+        .await?
     {
         return Ok(ResponseData::Ack);
     }
@@ -1985,10 +1915,7 @@ pub(super) async fn unsubscribe(
                 updated_at: now,
             };
             let rfc2822_message_id = mxr_outbound::email::generate_message_id(&from);
-            sender
-                .send(&draft, &from, &rfc2822_message_id)
-                .await
-                ?;
+            sender.send(&draft, &from, &rfc2822_message_id).await?;
             if let Err(error) = log_mutation(
                 state,
                 &envelope,
@@ -2020,9 +1947,13 @@ pub(super) async fn unsubscribe(
                     }
                     Ok(ResponseData::Ack)
                 }
-                crate::unsubscribe::UnsubscribeResult::Failed(message) => Err(crate::handler::HandlerError::Message(message)),
+                crate::unsubscribe::UnsubscribeResult::Failed(message) => {
+                    Err(crate::handler::HandlerError::Message(message))
+                }
                 crate::unsubscribe::UnsubscribeResult::NoMethod => {
-                    Err(crate::handler::HandlerError::Message("No unsubscribe method available for this message".to_string()))
+                    Err(crate::handler::HandlerError::Message(
+                        "No unsubscribe method available for this message".to_string(),
+                    ))
                 }
             }
         }
@@ -2056,17 +1987,16 @@ pub(super) async fn set_flags(
     let envelope = state
         .store
         .get_envelope(message_id)
-        .await
-        ?
+        .await?
         .ok_or_else(|| format!("Message not found: {message_id}"))?;
 
     let supported = MessageFlags::READ | MessageFlags::STARRED;
     let unsupported_changed_bits = (envelope.flags.bits() ^ flags.bits()) & !supported.bits();
     if unsupported_changed_bits != 0 {
-        return Err(
-            crate::handler::HandlerError::Message("SetFlags only supports provider-routed READ and STARRED changes; use typed mutations"
-                .to_string()),
-        );
+        return Err(crate::handler::HandlerError::Message(
+            "SetFlags only supports provider-routed READ and STARRED changes; use typed mutations"
+                .to_string(),
+        ));
     }
 
     let provider = state.get_provider(Some(&envelope.account_id))?;
@@ -2083,8 +2013,7 @@ pub(super) async fn set_flags(
                     read,
                 },
             )
-            .await
-            ?;
+            .await?;
         let now = chrono::Utc::now().timestamp();
         if let Err(error) = state
             .store
@@ -2101,8 +2030,7 @@ pub(super) async fn set_flags(
         state
             .store
             .set_read(message_id, read, mxr_core::EventSource::User)
-            .await
-            ?;
+            .await?;
     }
 
     let starred = flags.contains(MessageFlags::STARRED);
@@ -2115,8 +2043,7 @@ pub(super) async fn set_flags(
                     starred,
                 },
             )
-            .await
-            ?;
+            .await?;
         let now = chrono::Utc::now().timestamp();
         if let Err(error) = state
             .store
@@ -2133,8 +2060,7 @@ pub(super) async fn set_flags(
         state
             .store
             .set_starred(message_id, starred, mxr_core::EventSource::User)
-            .await
-            ?;
+            .await?;
     }
 
     reindex_message_in_search(state, message_id).await?;

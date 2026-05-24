@@ -96,11 +96,7 @@ async fn unwatch_cadence(
     account_id: &mxr_core::AccountId,
     email: &str,
 ) -> HandlerResult {
-    state
-        .store
-        .unwatch_cadence(account_id, email)
-        .await
-        ?;
+    state.store.unwatch_cadence(account_id, email).await?;
     Ok(ResponseData::Ack)
 }
 
@@ -108,11 +104,7 @@ async fn list_cadence_watch(
     state: &Arc<AppState>,
     account_id: &mxr_core::AccountId,
 ) -> HandlerResult {
-    let rows = state
-        .store
-        .list_cadence_watch(account_id)
-        .await
-        ?;
+    let rows = state.store.list_cadence_watch(account_id).await?;
     Ok(ResponseData::CadenceWatchList {
         entries: rows
             .into_iter()
@@ -131,11 +123,7 @@ async fn list_cadence_drift(
     state: &Arc<AppState>,
     account_id: &mxr_core::AccountId,
 ) -> HandlerResult {
-    let rows = state
-        .store
-        .list_cadence_drift(account_id)
-        .await
-        ?;
+    let rows = state.store.list_cadence_drift(account_id).await?;
     Ok(ResponseData::CadenceDriftList {
         rows: rows
             .into_iter()
@@ -181,8 +169,7 @@ async fn send_time_recommendation(
         let rec = state
             .store
             .send_time_recommendation(account_id, &recipient)
-            .await
-            ?;
+            .await?;
         let row_confidence = send_time_confidence_data(rec.confidence);
         confidence = min_send_time_confidence(confidence, row_confidence);
         let row_windows = best_windows_for_recipient(&rec);
@@ -275,8 +262,7 @@ async fn list_decision_log(
     let rows = state
         .store
         .list_decisions(account_id, topic, since_days, limit)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::DecisionLog {
         decisions: rows
             .into_iter()
@@ -296,11 +282,7 @@ async fn list_decision_log(
 }
 
 async fn get_decision(state: &Arc<AppState>, id: &str) -> HandlerResult {
-    let row = state
-        .store
-        .get_decision(id)
-        .await
-        ?;
+    let row = state.store.get_decision(id).await?;
     Ok(ResponseData::DecisionDetail {
         decision: row.map(|r| mxr_protocol::DecisionLogEntryData {
             id: r.id,
@@ -326,8 +308,7 @@ async fn list_owed_replies(
     let rows = state
         .store
         .list_owed_replies(account_id, older_than_days, within_days, limit)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::OwedReplies {
         rows: rows
             .into_iter()

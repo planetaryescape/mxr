@@ -18,11 +18,7 @@ fn to_data(snippet: Snippet) -> SnippetData {
 }
 
 pub(super) async fn list_snippets(state: &AppState) -> HandlerResult {
-    let snippets = state
-        .store
-        .list_snippets()
-        .await
-        ?;
+    let snippets = state.store.list_snippets().await?;
     let data: Vec<SnippetData> = snippets.into_iter().map(to_data).collect();
     Ok(ResponseData::Snippets { snippets: data })
 }
@@ -34,16 +30,13 @@ pub(super) async fn set_snippet(
     vars: Vec<String>,
 ) -> HandlerResult {
     if name.trim().is_empty() {
-        return Err(crate::handler::HandlerError::Message("snippet name cannot be empty".to_string()));
+        return Err(crate::handler::HandlerError::Message(
+            "snippet name cannot be empty".to_string(),
+        ));
     }
     let now = Utc::now();
     // Preserve created_at on update; only updated_at advances.
-    let created_at = match state
-        .store
-        .get_snippet(&name)
-        .await
-        ?
-    {
+    let created_at = match state.store.get_snippet(&name).await? {
         Some(existing) => existing.created_at,
         None => now,
     };
@@ -54,21 +47,13 @@ pub(super) async fn set_snippet(
         created_at,
         updated_at: now,
     };
-    state
-        .store
-        .upsert_snippet(&snippet)
-        .await
-        ?;
+    state.store.upsert_snippet(&snippet).await?;
     Ok(ResponseData::SnippetData {
         snippet: to_data(snippet),
     })
 }
 
 pub(super) async fn delete_snippet(state: &AppState, name: &str) -> HandlerResult {
-    state
-        .store
-        .delete_snippet(name)
-        .await
-        ?;
+    state.store.delete_snippet(name).await?;
     Ok(ResponseData::Ack)
 }

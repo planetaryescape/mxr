@@ -16,11 +16,7 @@ pub(super) async fn list_saved_searches(state: &AppState) -> HandlerResult {
 pub(super) async fn list_saved_search_unread_counts(state: &AppState) -> HandlerResult {
     use std::collections::HashMap;
 
-    let saved = state
-        .store
-        .list_saved_searches()
-        .await
-        ?;
+    let saved = state.store.list_saved_searches().await?;
     let mut counts = HashMap::with_capacity(saved.len());
     for entry in saved {
         let combined = if entry.query.trim().is_empty() {
@@ -63,8 +59,7 @@ pub(super) async fn list_senders(
     let senders = state
         .store
         .list_top_senders_since(limit, since_unix)
-        .await
-        ?
+        .await?
         .into_iter()
         .map(|row| mxr_protocol::SenderSummaryData {
             account_id: row.account_id,

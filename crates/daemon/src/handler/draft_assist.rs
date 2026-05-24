@@ -41,11 +41,7 @@ pub(super) async fn draft_assist(
     thread_id: &ThreadId,
     instruction: &str,
 ) -> HandlerResult {
-    let envelopes = state
-        .store
-        .get_thread_envelopes(thread_id)
-        .await
-        ?;
+    let envelopes = state.store.get_thread_envelopes(thread_id).await?;
     if envelopes.is_empty() {
         return Err(format!("Thread {thread_id} has no messages to reply to").into());
     }
@@ -121,11 +117,11 @@ pub(super) async fn draft_assist(
                 rewrite_iterations,
             })
         }
-        Err(LlmError::Disabled) => Err(
-            crate::handler::HandlerError::Message("LLM is disabled. Enable it in [llm] in your config and configure a model \
+        Err(LlmError::Disabled) => Err(crate::handler::HandlerError::Message(
+            "LLM is disabled. Enable it in [llm] in your config and configure a model \
              (Ollama / LM Studio / OpenAI). See `mxr config`."
-                .to_string()),
-        ),
+                .to_string(),
+        )),
         Err(e) => Err(format!("LLM error: {e}").into()),
     }
 }

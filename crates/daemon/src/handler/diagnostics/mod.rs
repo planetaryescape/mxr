@@ -46,11 +46,7 @@ pub(crate) async fn list_events(
     state: &AppState,
     filter: mxr_store::EventLogFilter<'_>,
 ) -> HandlerResult {
-    let entries = state
-        .store
-        .list_events_filtered(filter)
-        .await
-        ?;
+    let entries = state.store.list_events_filtered(filter).await?;
     Ok(ResponseData::EventLogEntries {
         entries: entries.into_iter().map(protocol_event_entry).collect(),
     })
@@ -144,12 +140,7 @@ pub(crate) async fn count_search_matches(
 }
 
 pub(crate) async fn get_headers(state: &AppState, message_id: &MessageId) -> HandlerResult {
-    match state
-        .store
-        .get_envelope(message_id)
-        .await
-        ?
-    {
+    match state.store.get_envelope(message_id).await? {
         Some(envelope) => {
             let mut headers = Vec::new();
             headers.push((
@@ -196,16 +187,14 @@ pub(crate) async fn get_headers(state: &AppState, message_id: &MessageId) -> Han
             }
             Ok(ResponseData::Headers { headers })
         }
-        None => Err(crate::handler::HandlerError::Message("Not found".to_string())),
+        None => Err(crate::handler::HandlerError::Message(
+            "Not found".to_string(),
+        )),
     }
 }
 
 pub(crate) async fn list_saved_searches(state: &AppState) -> HandlerResult {
-    let searches = state
-        .store
-        .list_saved_searches()
-        .await
-        ?;
+    let searches = state.store.list_saved_searches().await?;
     Ok(ResponseData::SavedSearches { searches })
 }
 
@@ -221,8 +210,7 @@ pub(crate) async fn list_subscriptions(
     let subscriptions = state
         .store
         .list_subscriptions(resolved.as_ref(), limit)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::Subscriptions { subscriptions })
 }
 
@@ -238,8 +226,7 @@ pub(crate) async fn list_storage_breakdown(
     let rows = state
         .store
         .storage_breakdown(resolved.as_ref(), group_by, limit)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::StorageBreakdown { rows })
 }
 
@@ -256,8 +243,7 @@ pub(crate) async fn list_largest_messages(
     let rows = state
         .store
         .largest_messages(resolved.as_ref(), since_unix, limit)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::LargestMessages { rows })
 }
 
@@ -283,8 +269,7 @@ pub(crate) async fn wrapped(
     let summary = state
         .store
         .wrapped_summary(resolved.as_ref(), since_unix, until_unix, label)
-        .await
-        ?;
+        .await?;
     state.wrapped_cache_put(cache_key, std::sync::Arc::new(summary.clone()));
     Ok(ResponseData::Wrapped { summary })
 }
@@ -312,8 +297,7 @@ pub(crate) async fn list_stale_threads(
             within_unix,
             limit,
         )
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::StaleThreads { rows })
 }
 
@@ -329,8 +313,7 @@ pub(crate) async fn list_contact_asymmetry(
     let rows = state
         .store
         .list_contact_asymmetry(resolved.as_ref(), min_inbound, limit)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::ContactAsymmetry { rows })
 }
 
@@ -347,17 +330,12 @@ pub(crate) async fn list_contact_decay(
     let rows = state
         .store
         .list_contact_decay(resolved.as_ref(), threshold_days, max_lookback_days, limit)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::ContactDecay { rows })
 }
 
 pub(crate) async fn refresh_contacts(state: &AppState) -> HandlerResult {
-    let rows = state
-        .store
-        .refresh_contacts()
-        .await
-        ?;
+    let rows = state.store.refresh_contacts().await?;
     Ok(ResponseData::RefreshedContacts { rows })
 }
 
@@ -375,8 +353,7 @@ pub(crate) async fn recompute_link_counts(state: &AppState) -> HandlerResult {
         let envelopes = state
             .store
             .list_all_envelopes_paginated(page_size, offset)
-            .await
-            ?;
+            .await?;
         if envelopes.is_empty() {
             break;
         }
@@ -563,8 +540,7 @@ pub(crate) async fn list_response_time(
     let summary = state
         .store
         .list_response_time(resolved.as_ref(), direction, counterparty, since_days)
-        .await
-        ?;
+        .await?;
     Ok(ResponseData::ResponseTime { summary })
 }
 
@@ -572,11 +548,7 @@ pub(crate) async fn list_account_addresses(
     state: &AppState,
     account_id: &AccountId,
 ) -> HandlerResult {
-    let addresses = state
-        .store
-        .list_account_addresses(account_id)
-        .await
-        ?;
+    let addresses = state.store.list_account_addresses(account_id).await?;
     Ok(ResponseData::AccountAddresses { addresses })
 }
 
@@ -589,8 +561,7 @@ pub(crate) async fn add_account_address(
     state
         .store
         .add_account_address(account_id, email, primary)
-        .await
-        ?;
+        .await?;
     state.refresh_account_addresses().await;
     Ok(ResponseData::Ack)
 }
@@ -603,8 +574,7 @@ pub(crate) async fn remove_account_address(
     state
         .store
         .remove_account_address(account_id, email)
-        .await
-        ?;
+        .await?;
     state.refresh_account_addresses().await;
     Ok(ResponseData::Ack)
 }
@@ -614,11 +584,7 @@ pub(crate) async fn set_primary_account_address(
     account_id: &AccountId,
     email: &str,
 ) -> HandlerResult {
-    state
-        .store
-        .set_primary_address(account_id, email)
-        .await
-        ?;
+    state.store.set_primary_address(account_id, email).await?;
     state.refresh_account_addresses().await;
     Ok(ResponseData::Ack)
 }
@@ -905,11 +871,7 @@ pub(crate) async fn create_saved_search(
         position: 0,
         created_at: chrono::Utc::now(),
     };
-    state
-        .store
-        .insert_saved_search(&search)
-        .await
-        ?;
+    state.store.insert_saved_search(&search).await?;
     Ok(ResponseData::SavedSearchData { search })
 }
 
@@ -921,19 +883,13 @@ pub(crate) async fn update_saved_search(
     let updated = state
         .store
         .update_saved_search_by_name(name, update)
-        .await
-        ?
+        .await?
         .ok_or_else(|| format!("Saved search '{name}' not found"))?;
     Ok(ResponseData::SavedSearchData { search: updated })
 }
 
 pub(crate) async fn delete_saved_search(state: &AppState, name: &str) -> HandlerResult {
-    match state
-        .store
-        .delete_saved_search_by_name(name)
-        .await
-        ?
-    {
+    match state.store.delete_saved_search_by_name(name).await? {
         true => Ok(ResponseData::Ack),
         false => Err(format!("Saved search '{name}' not found").into()),
     }
@@ -943,8 +899,7 @@ pub(crate) async fn run_saved_search(state: &AppState, name: &str, limit: u32) -
     let saved = state
         .store
         .get_saved_search_by_name(name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| format!("Saved search '{name}' not found"))?;
     let execution = execute_search(
         state,
@@ -1255,7 +1210,9 @@ pub(crate) async fn export_thread(
 ) -> HandlerResult {
     match handle_export_thread(state, thread_id, format).await {
         mxr_protocol::Response::Ok { data } => Ok(data),
-        mxr_protocol::Response::Error { message, .. } => Err(crate::handler::HandlerError::Message(message)),
+        mxr_protocol::Response::Error { message, .. } => {
+            Err(crate::handler::HandlerError::Message(message))
+        }
     }
 }
 
@@ -1266,7 +1223,9 @@ pub(crate) async fn export_search(
 ) -> HandlerResult {
     match handle_export_search(state, query, format).await {
         mxr_protocol::Response::Ok { data } => Ok(data),
-        mxr_protocol::Response::Error { message, .. } => Err(crate::handler::HandlerError::Message(message)),
+        mxr_protocol::Response::Error { message, .. } => {
+            Err(crate::handler::HandlerError::Message(message))
+        }
     }
 }
 

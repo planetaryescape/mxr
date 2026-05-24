@@ -25,8 +25,7 @@ pub(crate) async fn find(
     let page = state
         .search
         .search(query, 50, 0, SortOrder::Relevance)
-        .await
-        ?;
+        .await?;
 
     let self_addresses = self_addresses_for(state, account_id).await;
 

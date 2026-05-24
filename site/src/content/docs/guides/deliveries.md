@@ -97,7 +97,7 @@ list its merchant, tracking number, and source email ids from
 
 ## In the apps
 
-- **TUI:** press `7` for the **Deliveries** tab. `j`/`k` to move, `r` to resolve, `d` to dismiss, `D` to cycle the active/delivered/all filter, `g` to refresh. See [keybindings](/reference/keybindings/).
+- **TUI:** press `7` for the **Deliveries** tab. `j`/`k` to move, `o`/`Enter` to open the source email inline in a split preview (`Ctrl-d`/`Ctrl-u` scroll it, `Esc` closes it), `r` to resolve, `d` to dismiss, `D` to cycle the active/delivered/all filter, `g` to refresh. Opening the source email is handy for inspecting a false positive — e.g. a phishing "DHL" mail misread as a shipment — before dismissing it. See [keybindings](/reference/keybindings/).
 - **Web:** the **Deliveries** page in the sidebar shows the same list with resolve/dismiss buttons and a link to each delivery's thread. See [Web app](/guides/web-app/).
 
 ## See also

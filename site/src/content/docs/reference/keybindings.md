@@ -240,11 +240,13 @@ Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your ma
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Move selection |
+| `o` / `Enter` | Open the source email inline in a split preview |
+| `Ctrl-d` / `Ctrl-u` | Scroll the open email (when the preview is showing) |
 | `r` | Resolve (mark delivered/done) |
 | `d` | Dismiss (hide a false positive) |
 | `D` | Cycle filter: active → delivered → all |
 | `g` | Refresh the list |
-| `Esc` | Return to Mailbox |
+| `Esc` | Close the preview, then return to Mailbox |
 
 ## Search query editor
 

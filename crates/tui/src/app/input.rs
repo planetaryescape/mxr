@@ -1200,53 +1200,70 @@ impl App {
     }
 
     fn handle_deliveries_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
-        use crossterm::event::KeyCode;
-        match key.code {
-            KeyCode::Char('j') | KeyCode::Down => {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        match (key.code, key.modifiers) {
+            // Scroll the open email in the split preview.
+            (KeyCode::Char('d'), KeyModifiers::CONTROL) if self.deliveries.preview_active => {
+                self.mailbox.message_scroll_offset =
+                    self.mailbox.message_scroll_offset.saturating_add(10);
+                None
+            }
+            (KeyCode::Char('u'), KeyModifiers::CONTROL) if self.deliveries.preview_active => {
+                self.mailbox.message_scroll_offset =
+                    self.mailbox.message_scroll_offset.saturating_sub(10);
+                None
+            }
+            (KeyCode::Char('j') | KeyCode::Down, _) => {
                 self.deliveries.select_next();
                 None
             }
-            KeyCode::Char('k') | KeyCode::Up => {
+            (KeyCode::Char('k') | KeyCode::Up, _) => {
                 self.deliveries.select_prev();
                 None
             }
-            KeyCode::Char('g') => {
+            (KeyCode::Char('g'), _) => {
                 // Refresh the list.
                 self.deliveries.loading = true;
                 self.pending_deliveries_refresh = true;
                 None
             }
-            KeyCode::Char('D') => {
+            (KeyCode::Char('D'), _) => {
                 // Cycle Active -> Delivered -> All and refetch.
                 self.deliveries.filter = self.deliveries.filter.next();
                 self.deliveries.loading = true;
                 self.pending_deliveries_refresh = true;
                 None
             }
-            KeyCode::Char('r') => {
+            (KeyCode::Char('r'), _) => {
                 if let Some(row) = self.deliveries.selected_row() {
                     self.pending_delivery_resolve = Some(row.id.clone());
                     self.status_message = Some("Resolving delivery…".into());
                 }
                 None
             }
-            KeyCode::Char('d') => {
+            (KeyCode::Char('d'), _) => {
                 if let Some(row) = self.deliveries.selected_row() {
                     self.pending_delivery_dismiss = Some(row.id.clone());
                     self.status_message = Some("Dismissing delivery…".into());
                 }
                 None
             }
-            KeyCode::Char('o') | KeyCode::Enter | KeyCode::Right => {
+            (KeyCode::Char('o') | KeyCode::Enter | KeyCode::Right, _) => {
                 if let Some(row) = self.deliveries.selected_row() {
                     if let Some(thread_id) = row.thread_id.clone() {
                         self.pending_delivery_open = Some(thread_id);
+                        self.mailbox.message_scroll_offset = 0;
                         self.status_message = Some("Opening source email…".into());
                     } else {
                         self.status_message =
                             Some("No source thread recorded for this delivery".into());
                     }
                 }
+                None
+            }
+            // Esc closes the split preview before falling through.
+            (KeyCode::Esc, _) if self.deliveries.preview_active => {
+                self.close_delivery_preview();
                 None
             }
             // Anything else (tab switches, quit, command palette, help, sync)

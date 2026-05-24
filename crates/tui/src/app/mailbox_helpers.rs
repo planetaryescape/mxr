@@ -351,18 +351,23 @@ impl App {
     }
 
     /// Called by the runtime once `Request::GetThread` resolves for a delivery
-    /// opened with `o`/Enter on the Deliveries screen. Switches to the mailbox
-    /// and opens the source thread's most recent message.
+    /// opened with `o`/Enter on the Deliveries screen. Opens the source
+    /// thread's most recent message inline in a right-hand split pane,
+    /// staying on the Deliveries screen.
     pub(crate) fn open_delivery_thread(&mut self, messages: Vec<Envelope>) {
         let Some(env) = messages.last().cloned() else {
             self.status_message = Some("No messages in this delivery's source thread".into());
             return;
         };
-        self.screen = Screen::Mailbox;
         self.open_envelope(env);
-        self.mailbox.layout_mode = LayoutMode::ThreePane;
-        self.mailbox.active_pane = ActivePane::MessageView;
+        self.deliveries.preview_active = true;
         self.status_message = None;
+    }
+
+    /// Close the Deliveries split preview and drop the loaded message state.
+    pub(super) fn close_delivery_preview(&mut self) {
+        self.deliveries.preview_active = false;
+        self.clear_message_view_state();
     }
 
     pub(super) fn open_envelope(&mut self, env: Envelope) {

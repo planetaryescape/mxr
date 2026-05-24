@@ -185,6 +185,22 @@ help modal (`?`).
 | `g 1`–`g 9` | Jump to saved-search 1–9 |
 | `g 0` | Clear saved-search filter (return to default inbox) |
 
+## Calendar invites lens
+
+Open from the **Calendar invites** sidebar item. The list pane shows every
+detected invite with inline RSVP.
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move down / up |
+| `a` | Accept |
+| `t` or `m` | Tentative |
+| `d` | Decline |
+| `A` / `T` (or `M`) / `D` | Accept / Tentative / Decline **with a comment** (opens compose) |
+| `u` | Undo the just-issued RSVP (within its send window) |
+| `Enter` / `o` | Open the underlying message |
+| `h` | Back to the sidebar |
+
 ## Analytics screen
 
 The Analytics screen has six views. Cycle them with `Tab` / `Shift-Tab`; refresh the active view with `r`.

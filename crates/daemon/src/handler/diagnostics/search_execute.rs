@@ -40,10 +40,7 @@ pub(super) async fn execute_search(
         explain,
     };
     let parsed_ast = parse_query(query).ok();
-    let needs_owed_filter = parsed_ast
-        .as_ref()
-        .map(ast_contains_owed_reply)
-        .unwrap_or(false);
+    let needs_owed_filter = parsed_ast.as_ref().is_some_and(ast_contains_owed_reply);
     let mut execution = match parse_query(query) {
         Ok(ast) => execute_search_ast(state, query, &ast, &options).await?,
         Err(error) => {
@@ -122,7 +119,7 @@ async fn filter_to_owed_threads(
         {
             Ok(rows) => {
                 for row in rows {
-                    owed_thread_ids.insert(row.thread_id.as_str().to_string());
+                    owed_thread_ids.insert(row.thread_id.as_str().clone());
                 }
             }
             Err(e) => {
@@ -622,10 +619,10 @@ mod owed_reply_filter_tests {
             .await
             .unwrap()
             .into_iter()
-            .map(|r| r.thread_id.as_str().to_string())
+            .map(|r| r.thread_id.as_str().clone())
             .collect();
         assert!(
-            listed.contains(&thread_id.as_str().to_string()),
+            listed.contains(&thread_id.as_str().clone()),
             "test setup: list_owed_replies should include the seeded thread, got {listed:?}"
         );
 
@@ -646,7 +643,7 @@ mod owed_reply_filter_tests {
             .map(|r| r.thread_id.clone())
             .collect();
         assert!(
-            searched_threads.contains(&thread_id.as_str().to_string()),
+            searched_threads.contains(&thread_id.as_str().clone()),
             "is:owed-reply search must include the same thread; got {searched_threads:?}"
         );
     }
@@ -704,7 +701,7 @@ mod owed_reply_filter_tests {
             .map(|r| r.thread_id.clone())
             .collect();
         assert!(
-            !searched_threads.contains(&thread_id.as_str().to_string()),
+            !searched_threads.contains(&thread_id.as_str().clone()),
             "thread with later outbound reply must not match is:owed-reply, got {searched_threads:?}"
         );
     }

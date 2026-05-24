@@ -13,14 +13,14 @@ async fn build_export_thread(
         .store
         .get_thread(thread_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .ok_or_else(|| format!("Thread not found: {thread_id}"))?;
 
     let envelopes = state
         .store
         .get_thread_envelopes(thread_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
 
     let mut messages = Vec::with_capacity(envelopes.len());
     for env in &envelopes {
@@ -28,7 +28,7 @@ async fn build_export_thread(
             .store
             .get_body(&env.id)
             .await
-            .map_err(|e| e.to_string())?;
+            ?;
 
         messages.push(ExportMessage {
             id: env.id.to_string(),

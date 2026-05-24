@@ -279,7 +279,7 @@ pub(super) fn get_auth_session(state: &Arc<AppState>, session_id: &AuthSessionId
         .get(session_id)
         .map(|runtime| runtime.status.lock().clone())
     else {
-        return Err(format!("auth session '{}' not found", session_id.0));
+        return Err(format!("auth session '{}' not found", session_id.0).into());
     };
     Ok(ResponseData::AuthSession { session: runtime })
 }
@@ -289,7 +289,7 @@ pub(super) fn cancel_auth_session(
     session_id: &AuthSessionId,
 ) -> HandlerResult {
     let Some(runtime) = state.auth_sessions.lock().remove(session_id) else {
-        return Err(format!("auth session '{}' not found", session_id.0));
+        return Err(format!("auth session '{}' not found", session_id.0).into());
     };
     runtime.handle.abort();
     update_session(&runtime.status, |session| {
@@ -309,7 +309,7 @@ pub(super) async fn complete_auth_session(
     let (account, status) = {
         let sessions = state.auth_sessions.lock();
         let Some(runtime) = sessions.get(session_id) else {
-            return Err(format!("auth session '{}' not found", session_id.0));
+            return Err(format!("auth session '{}' not found", session_id.0).into());
         };
         (runtime.account.clone(), runtime.status.clone())
     };

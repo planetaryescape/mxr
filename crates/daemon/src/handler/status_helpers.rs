@@ -306,8 +306,7 @@ fn llm_feature_health(
     state
         .llm
         .feature_block_reason(feature)
-        .map(|reason| FeatureHealth::Degraded { reason })
-        .unwrap_or(default)
+        .map_or(default, |reason| FeatureHealth::Degraded { reason })
 }
 
 /// Classify the doctor's raw signals into structured findings with
@@ -629,10 +628,10 @@ pub(super) fn semantic_freshness_from_snapshot(
         Some(mxr_core::types::SemanticProfileStatus::Ready) => {
             mxr_protocol::IndexFreshness::Current
         }
-        Some(mxr_core::types::SemanticProfileStatus::Indexing)
-        | Some(mxr_core::types::SemanticProfileStatus::Pending) => {
-            mxr_protocol::IndexFreshness::Indexing
-        }
+        Some(
+            mxr_core::types::SemanticProfileStatus::Indexing
+            | mxr_core::types::SemanticProfileStatus::Pending,
+        ) => mxr_protocol::IndexFreshness::Indexing,
         Some(mxr_core::types::SemanticProfileStatus::Error) => mxr_protocol::IndexFreshness::Error,
         None => mxr_protocol::IndexFreshness::Stale,
     };

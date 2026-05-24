@@ -45,9 +45,9 @@ pub(super) async fn draft_assist(
         .store
         .get_thread_envelopes(thread_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     if envelopes.is_empty() {
-        return Err(format!("Thread {} has no messages to reply to", thread_id));
+        return Err(format!("Thread {thread_id} has no messages to reply to").into());
     }
 
     // Build a transcript for the model. Most recent last so the LLM's
@@ -122,11 +122,11 @@ pub(super) async fn draft_assist(
             })
         }
         Err(LlmError::Disabled) => Err(
-            "LLM is disabled. Enable it in [llm] in your config and configure a model \
+            crate::handler::HandlerError::Message("LLM is disabled. Enable it in [llm] in your config and configure a model \
              (Ollama / LM Studio / OpenAI). See `mxr config`."
-                .to_string(),
+                .to_string()),
         ),
-        Err(e) => Err(format!("LLM error: {e}")),
+        Err(e) => Err(format!("LLM error: {e}").into()),
     }
 }
 

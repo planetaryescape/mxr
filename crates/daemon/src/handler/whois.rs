@@ -33,7 +33,7 @@ pub(crate) async fn explain(
         .search
         .search(trimmed, 30, 0, SortOrder::Relevance)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
 
     if page.results.is_empty() {
         return Ok(ResponseData::EntityExplanation {
@@ -74,12 +74,14 @@ pub(crate) async fn explain(
             quote: env.subject.clone(),
         });
         let key = env.from.email.to_lowercase();
-        let entry = by_sender.entry(key.clone()).or_insert(EntityCandidateData {
-            kind: "person".into(),
-            value: key,
-            display_name: env.from.name.clone(),
-            mention_count: 0,
-        });
+        let entry = by_sender
+            .entry(key.clone())
+            .or_insert_with(|| EntityCandidateData {
+                kind: "person".into(),
+                value: key,
+                display_name: env.from.name.clone(),
+                mention_count: 0,
+            });
         entry.mention_count += 1;
         if entry.display_name.is_none() {
             entry.display_name = env.from.name.clone();
@@ -145,7 +147,7 @@ async fn explain_email(
     .bind(email)
     .fetch_optional(state.store.reader())
     .await
-    .map_err(|e| e.to_string())?;
+    ?;
 
     match row {
         None => Ok(ResponseData::EntityExplanation {
@@ -362,6 +364,6 @@ mod tests {
         let err = explain(&state, &account, "   ", 10)
             .await
             .expect_err("must reject blank");
-        assert!(err.contains("cannot be empty"));
+        assert!(err.to_string().contains("cannot be empty"));
     }
 }

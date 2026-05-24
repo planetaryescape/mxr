@@ -24,7 +24,7 @@ pub(super) async fn list_deliveries(state: &AppState, filter: Option<&str>) -> H
         .store
         .list_deliveries(parse_filter(filter))
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     let deliveries = rows.into_iter().map(to_data).collect();
     Ok(ResponseData::Deliveries { deliveries })
 }
@@ -34,14 +34,14 @@ pub(super) async fn get_delivery(state: &AppState, delivery_id: &DeliveryId) -> 
         .store
         .get_delivery(delivery_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .ok_or_else(|| "delivery not found".to_string())?;
     let mut data = to_data(row);
     data.message_ids = state
         .store
         .delivery_message_ids(delivery_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Delivery { delivery: data })
 }
 
@@ -50,12 +50,12 @@ pub(super) async fn resolve_delivery(state: &AppState, delivery_id: &DeliveryId)
         .store
         .resolve_delivery(delivery_id, Utc::now())
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     let row = state
         .store
         .get_delivery(delivery_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .ok_or_else(|| "delivery not found".to_string())?;
     Ok(ResponseData::Delivery {
         delivery: to_data(row),
@@ -67,7 +67,7 @@ pub(super) async fn dismiss_delivery(state: &AppState, delivery_id: &DeliveryId)
         .store
         .dismiss_delivery(delivery_id, Utc::now())
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Ack)
 }
 
@@ -100,7 +100,7 @@ pub(crate) async fn scan_messages(
         match scan_one(state, message_id, llm_enabled, false).await {
             Ok(outcome) => summary_add(&mut summary, outcome),
             Err(error) => {
-                tracing::warn!(message = %message_id, %error, "delivery scan failed")
+                tracing::warn!(message = %message_id, %error, "delivery scan failed");
             }
         }
     }
@@ -131,7 +131,7 @@ async fn scan_recent(
         match scan_one(state, message_id, llm_enabled, dry_run).await {
             Ok(outcome) => summary_add(&mut summary, outcome),
             Err(error) => {
-                tracing::warn!(message = %message_id, %error, "delivery backfill scan failed")
+                tracing::warn!(message = %message_id, %error, "delivery backfill scan failed");
             }
         }
     }

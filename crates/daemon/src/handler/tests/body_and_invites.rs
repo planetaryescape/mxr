@@ -53,7 +53,7 @@ async fn dispatch_get_body_synthesizes_readable_summary_for_calendar_only_messag
             assert!(text.contains("Summary: Demo call"));
             assert!(text.contains("invite.ics"));
         }
-        other => panic!("Expected Body, got {:?}", other),
+        other => panic!("Expected Body, got {other:?}"),
     }
 
     let repaired = state.store.get_body(&id).await.unwrap().unwrap();
@@ -96,7 +96,7 @@ async fn dispatch_respond_invite_dry_run_builds_imip_preview_without_sending() {
             assert!(preview.ics.contains("SEQUENCE:3"));
             assert!(preview.ics.contains("PARTSTAT=ACCEPTED"));
         }
-        other => panic!("Expected InviteResponsePreview, got {:?}", other),
+        other => panic!("Expected InviteResponsePreview, got {other:?}"),
     }
     assert!(fake.sent_drafts().is_empty());
 }
@@ -135,7 +135,7 @@ async fn dispatch_respond_invite_sends_reply_and_updates_local_partstat() {
                 .as_deref()
                 .is_some_and(|id| id.starts_with("fake-calendar-sent-")));
         }
-        other => panic!("Expected InviteResponseSent, got {:?}", other),
+        other => panic!("Expected InviteResponseSent, got {other:?}"),
     }
 
     let sent = fake.sent_drafts();
@@ -311,7 +311,7 @@ async fn dispatch_respond_invite_blocks_stale_sequence_when_newer_invite_exists(
         IpcPayload::Response(Response::Error { message, .. }) => {
             assert!(message.contains("newer update"));
         }
-        other => panic!("Expected stale invite error, got {:?}", other),
+        other => panic!("Expected stale invite error, got {other:?}"),
     }
     assert!(fake.sent_drafts().is_empty());
 }
@@ -387,7 +387,7 @@ async fn dispatch_respond_invite_warns_when_same_uid_has_different_organizer() {
             .warnings
             .iter()
             .any(|warning| warning.contains("different organizer"))),
-        other => panic!("Expected organizer warning preview, got {:?}", other),
+        other => panic!("Expected organizer warning preview, got {other:?}"),
     }
 }
 
@@ -459,7 +459,7 @@ async fn dispatch_respond_invite_blocks_fatal_parser_warning() {
         IpcPayload::Response(Response::Error { message, .. }) => {
             assert!(message.contains("fatal parser warnings"));
         }
-        other => panic!("Expected fatal parser warning error, got {:?}", other),
+        other => panic!("Expected fatal parser warning error, got {other:?}"),
     }
     assert!(fake.sent_drafts().is_empty());
 }
@@ -535,7 +535,7 @@ async fn dispatch_get_body_preserves_exact_sources_and_inline_metadata() {
                 Some("https://example.com/logo.png")
             );
         }
-        other => panic!("Expected Body, got {:?}", other),
+        other => panic!("Expected Body, got {other:?}"),
     }
 }
 
@@ -606,8 +606,7 @@ async fn dispatch_get_html_image_assets_resolves_inline_and_blocks_remote() {
             assert_eq!(
                 embedded.status,
                 mxr_core::types::HtmlImageAssetStatus::Ready,
-                "embedded asset: {:?}",
-                embedded
+                "embedded asset: {embedded:?}"
             );
             assert!(embedded.path.as_ref().is_some_and(|path| path.exists()));
 
@@ -621,7 +620,7 @@ async fn dispatch_get_html_image_assets_resolves_inline_and_blocks_remote() {
             );
             assert!(remote.path.is_none());
         }
-        other => panic!("Expected HtmlImageAssets, got {:?}", other),
+        other => panic!("Expected HtmlImageAssets, got {other:?}"),
     }
 }
 
@@ -678,7 +677,7 @@ async fn dispatch_get_html_image_assets_fetches_remote_when_enabled() {
             assert!(path.exists());
             assert_eq!(std::fs::read(path).unwrap(), tiny_png_bytes());
         }
-        other => panic!("Expected HtmlImageAssets, got {:?}", other),
+        other => panic!("Expected HtmlImageAssets, got {other:?}"),
     }
 }
 
@@ -714,7 +713,7 @@ async fn dispatch_download_attachment_persists_local_path() {
             .into_iter()
             .find(|envelope| envelope.has_attachments)
             .expect("fixture should include an attachment"),
-        other => panic!("Expected Envelopes, got {:?}", other),
+        other => panic!("Expected Envelopes, got {other:?}"),
     };
 
     let body_msg = IpcMessage {
@@ -729,7 +728,7 @@ async fn dispatch_download_attachment_persists_local_path() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Body { body },
         }) => body.attachments[0].id.clone(),
-        other => panic!("Expected Body, got {:?}", other),
+        other => panic!("Expected Body, got {other:?}"),
     };
 
     let download_msg = IpcMessage {
@@ -746,7 +745,7 @@ async fn dispatch_download_attachment_persists_local_path() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::AttachmentFile { file },
         }) => std::path::PathBuf::from(file.path),
-        other => panic!("Expected AttachmentFile, got {:?}", other),
+        other => panic!("Expected AttachmentFile, got {other:?}"),
     };
 
     assert!(path.exists(), "downloaded attachment should exist on disk");
@@ -1296,7 +1295,7 @@ async fn dispatch_mutation_star() {
                 envelope.flags
             );
         }
-        other => panic!("Expected Envelope, got {:?}", other),
+        other => panic!("Expected Envelope, got {other:?}"),
     }
 }
 

@@ -20,7 +20,7 @@ pub(super) async fn list_event_categories(state: &AppState) -> HandlerResult {
         .store
         .list_event_categories()
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(mxr_protocol::ResponseData::EventCategories { categories })
 }
 
@@ -34,7 +34,7 @@ pub(super) async fn count_events(state: &AppState, filter: EventLogFilter<'_>) -
         .store
         .count_events_filtered(count_filter)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(mxr_protocol::ResponseData::EventLogCount { count })
 }
 

@@ -173,8 +173,7 @@ async fn enforce_draft_safety_with_override(
                     return Ok(());
                 } else {
                     return Err(format!(
-                        "override token does not cover blocker(s): {:?}",
-                        unauthorized
+                        "override token does not cover blocker(s): {unauthorized:?}"
                     ));
                 }
             }
@@ -495,7 +494,7 @@ pub(super) async fn mutation(
             .store
             .get_envelope(message_id)
             .await
-            .map_err(|e| e.to_string())?
+            ?
             .ok_or_else(|| format!("Message not found: {message_id}"))?;
         grouped
             .entry(envelope.account_id.clone())
@@ -516,8 +515,7 @@ pub(super) async fn mutation(
             .await
             .ok()
             .flatten()
-            .map(|account| account.name)
-            .unwrap_or_else(|| account_id.to_string());
+            .map_or_else(|| account_id.to_string(), |account| account.name);
 
         let mut account_result = AccountMutationResultData {
             account_id: account_id.clone(),
@@ -655,16 +653,16 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
         .store
         .read_undo_entry(mutation_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     let Some(entry) = entry else {
         return Err(format!(
             "undo: mutation `{mutation_id}` not found (expired or already undone)"
-        ));
+        ).into());
     };
     let now = chrono::Utc::now().timestamp();
     if entry.expires_at <= now {
         let _ = state.store.delete_undo_entry(&entry.mutation_id).await;
-        return Err(format!("undo: window expired for mutation `{mutation_id}`"));
+        return Err(format!("undo: window expired for mutation `{mutation_id}`").into());
     }
 
     // Group snapshots by account so we resolve the provider once per
@@ -708,7 +706,7 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
         let detail = last_error.unwrap_or_else(|| "no messages restored".into());
         return Err(format!(
             "undo: irreversible ({irreversible} message(s)) — {detail}"
-        ));
+        ).into());
     }
 
     // Successful undo: drop the entry so the same id can't be replayed.
@@ -1250,7 +1248,7 @@ pub(super) async fn snooze(
         .store
         .get_envelope(message_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
     {
         if let Err(error) = log_mutation(
             state,
@@ -1275,13 +1273,13 @@ pub(super) async fn unsnooze(state: &AppState, message_id: &mxr_core::MessageId)
         .store
         .get_snooze(message_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     if let Some(snoozed) = snoozed {
         let envelope = state
             .store
             .get_envelope(message_id)
             .await
-            .map_err(|e| e.to_string())?;
+            ?;
         restore_snoozed_message(state, &snoozed).await?;
         if let Some(envelope) = envelope {
             if let Err(error) = log_mutation(
@@ -1304,7 +1302,7 @@ pub(super) async fn list_snoozed(state: &AppState) -> HandlerResult {
         .store
         .list_snoozed()
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::SnoozedMessages { snoozed })
 }
 
@@ -1313,7 +1311,7 @@ pub(super) async fn list_drafts(state: &AppState) -> HandlerResult {
         .store
         .list_accounts()
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     let mut drafts = Vec::new();
     for account in accounts {
         drafts.extend(
@@ -1321,7 +1319,7 @@ pub(super) async fn list_drafts(state: &AppState) -> HandlerResult {
                 .store
                 .list_drafts(&account.id)
                 .await
-                .map_err(|e| e.to_string())?,
+                ?,
         );
     }
     drafts.sort_by_key(|draft| std::cmp::Reverse(draft.updated_at));
@@ -1337,10 +1335,10 @@ pub(super) async fn list_orphaned_drafts(state: &AppState) -> HandlerResult {
         .store
         .list_orphaned_sending_drafts(cutoff)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     let mut drafts = Vec::with_capacity(orphan_ids.len());
     for id in &orphan_ids {
-        if let Some(draft) = state.store.get_draft(id).await.map_err(|e| e.to_string())? {
+        if let Some(draft) = state.store.get_draft(id).await? {
             drafts.push(draft);
         }
     }
@@ -1360,7 +1358,7 @@ pub(super) async fn reset_orphaned_draft(
         .store
         .reset_orphaned_draft(draft_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Ack)
 }
 
@@ -1369,7 +1367,7 @@ pub(super) async fn save_draft(state: &AppState, draft: &Draft) -> HandlerResult
         .store
         .insert_draft(draft)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Ack)
 }
 
@@ -1378,7 +1376,7 @@ pub(super) async fn delete_draft(state: &AppState, draft_id: &mxr_core::DraftId)
         .store
         .delete_draft(draft_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Ack)
 }
 
@@ -1391,7 +1389,7 @@ pub(super) async fn prepare_reply(
         .store
         .get_envelope(message_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .ok_or_else(|| "Message not found".to_string())?;
 
     let from = state
@@ -1457,7 +1455,7 @@ pub(super) async fn prepare_forward(
         .store
         .get_envelope(message_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .ok_or_else(|| "Message not found".to_string())?;
 
     let from = state
@@ -1493,10 +1491,10 @@ async fn resolve_from_address(state: &AppState, draft: &Draft) -> Address {
         .flatten();
     Address {
         name: account.as_ref().map(|account| account.name.clone()),
-        email: account
-            .as_ref()
-            .map(|account| account.email.clone())
-            .unwrap_or_else(|| "user@example.com".to_string()),
+        email: account.as_ref().map_or_else(
+            || "user@example.com".to_string(),
+            |account| account.email.clone(),
+        ),
     }
 }
 
@@ -1512,7 +1510,7 @@ pub(super) async fn send_draft(
     let receipt = sender
         .send(draft, &from, &rfc2822_message_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     clear_reply_later_for_reply_parent(state, draft).await;
     // Ingest synthetic Sent envelope so the message is searchable as `is:sent`
     // immediately, without waiting for the next sync. Failures here are
@@ -1552,7 +1550,7 @@ pub(super) async fn schedule_send(
         .store
         .schedule_send(draft_id, send_at)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Ack)
 }
 
@@ -1564,7 +1562,7 @@ pub(super) async fn cancel_scheduled_send(
         .store
         .cancel_scheduled_send(draft_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Ack)
 }
 
@@ -1577,7 +1575,7 @@ pub(crate) async fn send_stored_draft(
         .store
         .get_draft(draft_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
 
     enforce_draft_safety_with_override(state, &draft, override_safety_token).await?;
@@ -1589,20 +1587,22 @@ pub(crate) async fn send_stored_draft(
         .store
         .cas_draft_status(draft_id, DraftStatus::Draft, DraftStatus::Sending)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     if !advanced {
         let current = state
             .store
             .get_draft_status(draft_id)
             .await
-            .map_err(|e| e.to_string())?
+            ?
             .unwrap_or(DraftStatus::Draft);
         return Err(match current {
-            DraftStatus::Sent => "draft already sent".to_string(),
+            DraftStatus::Sent => crate::handler::HandlerError::Message("draft already sent".to_string()),
             DraftStatus::Sending => {
-                "draft is already being sent (resolve via `mxr drafts resolve`)".to_string()
+                crate::handler::HandlerError::Message("draft is already being sent (resolve via `mxr drafts resolve`)".to_string())
             }
-            DraftStatus::Draft => "draft state mismatch; retry".to_string(),
+            DraftStatus::Draft => {
+                crate::handler::HandlerError::Message("draft state mismatch; retry".to_string())
+            }
         });
     }
 
@@ -1622,7 +1622,7 @@ pub(crate) async fn send_stored_draft(
                 .store
                 .update_draft_status(draft_id, DraftStatus::Draft)
                 .await;
-            return Err(e);
+            return Err(crate::handler::HandlerError::Message(e));
         }
     };
     let from = resolve_from_address(state, &draft).await;
@@ -1630,7 +1630,7 @@ pub(crate) async fn send_stored_draft(
         .store
         .get_draft_message_id_header(draft_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
     {
         Some(existing) => existing,
         None => {
@@ -1644,7 +1644,7 @@ pub(crate) async fn send_stored_draft(
                     .store
                     .update_draft_status(draft_id, DraftStatus::Draft)
                     .await;
-                return Err(e.to_string());
+                return Err(crate::handler::HandlerError::Message(e.to_string()));
             }
             generated
         }
@@ -1657,7 +1657,7 @@ pub(crate) async fn send_stored_draft(
                 .store
                 .update_draft_status(draft_id, DraftStatus::Draft)
                 .await;
-            return Err(e.to_string());
+            return Err(crate::handler::HandlerError::Message(e.to_string()));
         }
     };
     clear_reply_later_for_reply_parent(state, &draft).await;
@@ -1672,7 +1672,7 @@ pub(crate) async fn send_stored_draft(
                 .store
                 .update_draft_status(draft_id, DraftStatus::Sent)
                 .await;
-            return Err(format!("send succeeded but local ingest failed: {e}"));
+            return Err(format!("send succeeded but local ingest failed: {e}").into());
         }
     };
 
@@ -1906,10 +1906,10 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
         .flatten();
     let from = Address {
         name: account.as_ref().map(|account| account.name.clone()),
-        email: account
-            .as_ref()
-            .map(|account| account.email.clone())
-            .unwrap_or_else(|| "user@example.com".to_string()),
+        email: account.as_ref().map_or_else(
+            || "user@example.com".to_string(),
+            |account| account.email.clone(),
+        ),
     };
     match sender.save_draft(draft, &from).await {
         Ok(Some(draft_id)) => {
@@ -1920,7 +1920,7 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
             tracing::info!("Provider does not support server-side drafts; saving local draft");
             save_draft(state, draft).await
         }
-        Err(error) => Err(format!("Failed to save draft: {error}")),
+        Err(error) => Err(format!("Failed to save draft: {error}").into()),
     }
 }
 
@@ -1932,7 +1932,7 @@ pub(super) async fn unsubscribe(
         .store
         .get_envelope(message_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .ok_or_else(|| "Message not found".to_string())?;
 
     // Idempotency: if we already logged a successful unsubscribe for
@@ -1944,7 +1944,7 @@ pub(super) async fn unsubscribe(
         .store
         .has_event_for_message_with_summary(&message_id.as_str(), "mutation", "unsubscrib")
         .await
-        .map_err(|e| e.to_string())?
+        ?
     {
         return Ok(ResponseData::Ack);
     }
@@ -1960,10 +1960,10 @@ pub(super) async fn unsubscribe(
                 .flatten();
             let from = Address {
                 name: account.as_ref().map(|account| account.name.clone()),
-                email: account
-                    .as_ref()
-                    .map(|account| account.email.clone())
-                    .unwrap_or_else(|| "user@example.com".to_string()),
+                email: account.as_ref().map_or_else(
+                    || "user@example.com".to_string(),
+                    |account| account.email.clone(),
+                ),
             };
             let now = chrono::Utc::now();
             let draft = Draft {
@@ -1988,7 +1988,7 @@ pub(super) async fn unsubscribe(
             sender
                 .send(&draft, &from, &rfc2822_message_id)
                 .await
-                .map_err(|e| e.to_string())?;
+                ?;
             if let Err(error) = log_mutation(
                 state,
                 &envelope,
@@ -2020,9 +2020,9 @@ pub(super) async fn unsubscribe(
                     }
                     Ok(ResponseData::Ack)
                 }
-                crate::unsubscribe::UnsubscribeResult::Failed(message) => Err(message),
+                crate::unsubscribe::UnsubscribeResult::Failed(message) => Err(crate::handler::HandlerError::Message(message)),
                 crate::unsubscribe::UnsubscribeResult::NoMethod => {
-                    Err("No unsubscribe method available for this message".to_string())
+                    Err(crate::handler::HandlerError::Message("No unsubscribe method available for this message".to_string()))
                 }
             }
         }
@@ -2043,8 +2043,7 @@ fn resolve_to_provider_ids(labels: &[mxr_core::types::Label], refs: &[String]) -
             labels
                 .iter()
                 .find(|l| l.name == *label_ref || l.provider_id == *label_ref)
-                .map(|l| l.provider_id.clone())
-                .unwrap_or_else(|| label_ref.clone())
+                .map_or_else(|| label_ref.clone(), |l| l.provider_id.clone())
         })
         .collect()
 }
@@ -2058,15 +2057,15 @@ pub(super) async fn set_flags(
         .store
         .get_envelope(message_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .ok_or_else(|| format!("Message not found: {message_id}"))?;
 
     let supported = MessageFlags::READ | MessageFlags::STARRED;
     let unsupported_changed_bits = (envelope.flags.bits() ^ flags.bits()) & !supported.bits();
     if unsupported_changed_bits != 0 {
         return Err(
-            "SetFlags only supports provider-routed READ and STARRED changes; use typed mutations"
-                .to_string(),
+            crate::handler::HandlerError::Message("SetFlags only supports provider-routed READ and STARRED changes; use typed mutations"
+                .to_string()),
         );
     }
 
@@ -2085,7 +2084,7 @@ pub(super) async fn set_flags(
                 },
             )
             .await
-            .map_err(|e| e.to_string())?;
+            ?;
         let now = chrono::Utc::now().timestamp();
         if let Err(error) = state
             .store
@@ -2103,7 +2102,7 @@ pub(super) async fn set_flags(
             .store
             .set_read(message_id, read, mxr_core::EventSource::User)
             .await
-            .map_err(|e| e.to_string())?;
+            ?;
     }
 
     let starred = flags.contains(MessageFlags::STARRED);
@@ -2117,7 +2116,7 @@ pub(super) async fn set_flags(
                 },
             )
             .await
-            .map_err(|e| e.to_string())?;
+            ?;
         let now = chrono::Utc::now().timestamp();
         if let Err(error) = state
             .store
@@ -2135,7 +2134,7 @@ pub(super) async fn set_flags(
             .store
             .set_starred(message_id, starred, mxr_core::EventSource::User)
             .await
-            .map_err(|e| e.to_string())?;
+            ?;
     }
 
     reindex_message_in_search(state, message_id).await?;
@@ -2407,8 +2406,7 @@ mod safety_context_wiring_tests {
             .collect();
         assert!(
             reply_all_warns.is_empty(),
-            "Sam is a thread participant; reply-all warning should be suppressed, got {:?}",
-            reply_all_warns
+            "Sam is a thread participant; reply-all warning should be suppressed, got {reply_all_warns:?}"
         );
     }
 

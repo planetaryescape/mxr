@@ -87,8 +87,8 @@ pub(super) async fn draft_refine(
         .await
     {
         Ok(response) => response,
-        Err(LlmError::Disabled) => return Err("LLM is disabled. Enable it in [llm].".to_string()),
-        Err(error) => return Err(format!("LLM error: {error}")),
+        Err(LlmError::Disabled) => return Err(crate::handler::HandlerError::Message("LLM is disabled. Enable it in [llm].".to_string())),
+        Err(error) => return Err(format!("LLM error: {error}").into()),
     };
     finish_draft_suggestion(
         state,

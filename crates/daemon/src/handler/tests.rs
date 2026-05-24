@@ -311,8 +311,7 @@ impl mxr_core::MailSyncProvider for FolderCopyProvider {
 
         let source_folder = provider_message_id
             .rsplit_once(':')
-            .map(|(folder, _)| folder.to_string())
-            .unwrap_or_else(|| "INBOX".to_string());
+            .map_or_else(|| "INBOX".to_string(), |(folder, _)| folder.to_string());
         let mut folders = self.folders.lock().unwrap();
 
         let added_folders: Vec<String> = add
@@ -499,7 +498,7 @@ async fn sync_and_get_first_id(state: &Arc<AppState>) -> mxr_core::MessageId {
             assert_eq!(envelopes.len(), 1);
             envelopes[0].id.clone()
         }
-        other => panic!("Expected Envelopes, got {:?}", other),
+        other => panic!("Expected Envelopes, got {other:?}"),
     }
 }
 
@@ -514,7 +513,7 @@ fn assert_mutation_succeeded(payload: IpcPayload) -> MutationResultData {
             );
             result
         }
-        other => panic!("Expected MutationResult success, got {:?}", other),
+        other => panic!("Expected MutationResult success, got {other:?}"),
     }
 }
 

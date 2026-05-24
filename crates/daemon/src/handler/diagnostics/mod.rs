@@ -50,7 +50,7 @@ pub(crate) async fn list_events(
         .store
         .list_events_filtered(filter)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::EventLogEntries {
         entries: entries.into_iter().map(protocol_event_entry).collect(),
     })
@@ -126,7 +126,7 @@ pub(crate) async fn search(
 pub(crate) async fn count(state: &AppState, query: &str, mode: SearchMode) -> HandlerResult {
     let results = execute_search(state, query, 10_000, 0, mode, SortOrder::DateDesc, false).await;
     Ok(ResponseData::Count {
-        count: results.map_err(|e| e.to_string())?.results.len() as u32,
+        count: results.map_err(|e| e.clone())?.results.len() as u32,
     })
 }
 
@@ -148,7 +148,7 @@ pub(crate) async fn get_headers(state: &AppState, message_id: &MessageId) -> Han
         .store
         .get_envelope(message_id)
         .await
-        .map_err(|e| e.to_string())?
+        ?
     {
         Some(envelope) => {
             let mut headers = Vec::new();
@@ -196,7 +196,7 @@ pub(crate) async fn get_headers(state: &AppState, message_id: &MessageId) -> Han
             }
             Ok(ResponseData::Headers { headers })
         }
-        None => Err("Not found".to_string()),
+        None => Err(crate::handler::HandlerError::Message("Not found".to_string())),
     }
 }
 
@@ -205,7 +205,7 @@ pub(crate) async fn list_saved_searches(state: &AppState) -> HandlerResult {
         .store
         .list_saved_searches()
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::SavedSearches { searches })
 }
 
@@ -222,7 +222,7 @@ pub(crate) async fn list_subscriptions(
         .store
         .list_subscriptions(resolved.as_ref(), limit)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Subscriptions { subscriptions })
 }
 
@@ -239,7 +239,7 @@ pub(crate) async fn list_storage_breakdown(
         .store
         .storage_breakdown(resolved.as_ref(), group_by, limit)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::StorageBreakdown { rows })
 }
 
@@ -257,7 +257,7 @@ pub(crate) async fn list_largest_messages(
         .store
         .largest_messages(resolved.as_ref(), since_unix, limit)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::LargestMessages { rows })
 }
 
@@ -284,7 +284,7 @@ pub(crate) async fn wrapped(
         .store
         .wrapped_summary(resolved.as_ref(), since_unix, until_unix, label)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     state.wrapped_cache_put(cache_key, std::sync::Arc::new(summary.clone()));
     Ok(ResponseData::Wrapped { summary })
 }
@@ -313,7 +313,7 @@ pub(crate) async fn list_stale_threads(
             limit,
         )
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::StaleThreads { rows })
 }
 
@@ -330,7 +330,7 @@ pub(crate) async fn list_contact_asymmetry(
         .store
         .list_contact_asymmetry(resolved.as_ref(), min_inbound, limit)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::ContactAsymmetry { rows })
 }
 
@@ -348,7 +348,7 @@ pub(crate) async fn list_contact_decay(
         .store
         .list_contact_decay(resolved.as_ref(), threshold_days, max_lookback_days, limit)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::ContactDecay { rows })
 }
 
@@ -357,7 +357,7 @@ pub(crate) async fn refresh_contacts(state: &AppState) -> HandlerResult {
         .store
         .refresh_contacts()
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::RefreshedContacts { rows })
 }
 
@@ -376,7 +376,7 @@ pub(crate) async fn recompute_link_counts(state: &AppState) -> HandlerResult {
             .store
             .list_all_envelopes_paginated(page_size, offset)
             .await
-            .map_err(|e| e.to_string())?;
+            ?;
         if envelopes.is_empty() {
             break;
         }
@@ -463,7 +463,7 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
         Err(e) => {
             let err = e.to_string();
             emit_operation_event(state, fail(&err, true));
-            return Err(err);
+            return Err(crate::handler::HandlerError::Message(err));
         }
     };
 
@@ -473,7 +473,7 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
         Err(e) => {
             let err = e.to_string();
             emit_operation_event(state, fail(&err, true));
-            return Err(err);
+            return Err(crate::handler::HandlerError::Message(err));
         }
     };
 
@@ -489,7 +489,7 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
         Err(e) => {
             let err = e.to_string();
             emit_operation_event(state, fail(&err, true));
-            return Err(err);
+            return Err(crate::handler::HandlerError::Message(err));
         }
     };
 
@@ -499,7 +499,7 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
         Err(e) => {
             let err = e.to_string();
             emit_operation_event(state, fail(&err, true));
-            return Err(err);
+            return Err(crate::handler::HandlerError::Message(err));
         }
     };
     let reply_pairs_resolved = backfilled + pending_resolved;
@@ -513,7 +513,7 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
         Err(e) => {
             let err = e.to_string();
             emit_operation_event(state, fail(&err, true));
-            return Err(err);
+            return Err(crate::handler::HandlerError::Message(err));
         }
     };
 
@@ -523,7 +523,7 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
         Err(e) => {
             let err = e.to_string();
             emit_operation_event(state, fail(&err, true));
-            return Err(err);
+            return Err(crate::handler::HandlerError::Message(err));
         }
     };
 
@@ -564,7 +564,7 @@ pub(crate) async fn list_response_time(
         .store
         .list_response_time(resolved.as_ref(), direction, counterparty, since_days)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::ResponseTime { summary })
 }
 
@@ -576,7 +576,7 @@ pub(crate) async fn list_account_addresses(
         .store
         .list_account_addresses(account_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::AccountAddresses { addresses })
 }
 
@@ -590,7 +590,7 @@ pub(crate) async fn add_account_address(
         .store
         .add_account_address(account_id, email, primary)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     state.refresh_account_addresses().await;
     Ok(ResponseData::Ack)
 }
@@ -604,7 +604,7 @@ pub(crate) async fn remove_account_address(
         .store
         .remove_account_address(account_id, email)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     state.refresh_account_addresses().await;
     Ok(ResponseData::Ack)
 }
@@ -618,7 +618,7 @@ pub(crate) async fn set_primary_account_address(
         .store
         .set_primary_address(account_id, email)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     state.refresh_account_addresses().await;
     Ok(ResponseData::Ack)
 }
@@ -909,7 +909,7 @@ pub(crate) async fn create_saved_search(
         .store
         .insert_saved_search(&search)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::SavedSearchData { search })
 }
 
@@ -922,7 +922,7 @@ pub(crate) async fn update_saved_search(
         .store
         .update_saved_search_by_name(name, update)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .ok_or_else(|| format!("Saved search '{name}' not found"))?;
     Ok(ResponseData::SavedSearchData { search: updated })
 }
@@ -932,10 +932,10 @@ pub(crate) async fn delete_saved_search(state: &AppState, name: &str) -> Handler
         .store
         .delete_saved_search_by_name(name)
         .await
-        .map_err(|e| e.to_string())?
+        ?
     {
         true => Ok(ResponseData::Ack),
-        false => Err(format!("Saved search '{name}' not found")),
+        false => Err(format!("Saved search '{name}' not found").into()),
     }
 }
 
@@ -944,7 +944,7 @@ pub(crate) async fn run_saved_search(state: &AppState, name: &str, limit: u32) -
         .store
         .get_saved_search_by_name(name)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .ok_or_else(|| format!("Saved search '{name}' not found"))?;
     let execution = execute_search(
         state,
@@ -983,7 +983,7 @@ pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
             Ok(Ok((accounts, total_messages, sync_statuses))) => {
                 (accounts, total_messages, sync_statuses, false)
             }
-            Ok(Err(e)) => return Err(e),
+            Ok(Err(e)) => return Err(crate::handler::HandlerError::Message(e)),
             Err(_elapsed) => {
                 tracing::warn!(
                     budget_ms = STATUS_SNAPSHOT_BUDGET.as_millis(),
@@ -1046,7 +1046,7 @@ pub(crate) async fn sync_now(state: &AppState, account_id: Option<&AccountId>) -
                     retryable: false,
                 },
             );
-            return Err(error);
+            return Err(crate::handler::HandlerError::Message(error));
         }
     };
 
@@ -1080,7 +1080,7 @@ pub(crate) async fn sync_now(state: &AppState, account_id: Option<&AccountId>) -
                     retryable: true,
                 },
             );
-            return Err(error);
+            return Err(crate::handler::HandlerError::Message(error));
         }
     };
     if !outcome.upserted_message_ids.is_empty() {
@@ -1255,7 +1255,7 @@ pub(crate) async fn export_thread(
 ) -> HandlerResult {
     match handle_export_thread(state, thread_id, format).await {
         mxr_protocol::Response::Ok { data } => Ok(data),
-        mxr_protocol::Response::Error { message, .. } => Err(message),
+        mxr_protocol::Response::Error { message, .. } => Err(crate::handler::HandlerError::Message(message)),
     }
 }
 
@@ -1266,7 +1266,7 @@ pub(crate) async fn export_search(
 ) -> HandlerResult {
     match handle_export_search(state, query, format).await {
         mxr_protocol::Response::Ok { data } => Ok(data),
-        mxr_protocol::Response::Error { message, .. } => Err(message),
+        mxr_protocol::Response::Error { message, .. } => Err(crate::handler::HandlerError::Message(message)),
     }
 }
 
@@ -1388,7 +1388,7 @@ fn reciprocal_rank_fusion(
         fused
             .entry(result.message_id.clone())
             .and_modify(|entry| entry.0 += score)
-            .or_insert((score, result.clone()));
+            .or_insert_with(|| (score, result.clone()));
     }
 
     for (rank, result) in dense.iter().enumerate() {
@@ -1396,7 +1396,7 @@ fn reciprocal_rank_fusion(
         fused
             .entry(result.message_id.clone())
             .and_modify(|entry| entry.0 += score)
-            .or_insert((score, result.clone()));
+            .or_insert_with(|| (score, result.clone()));
     }
 
     let mut results = fused

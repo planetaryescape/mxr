@@ -23,6 +23,7 @@ pub(crate) mod diagnostics_impl;
 mod draft_assist;
 mod draft_new;
 mod draft_refine;
+mod error;
 mod expert;
 mod helpers;
 mod humanizer;
@@ -67,7 +68,9 @@ pub(crate) use status_helpers::{
     build_doctor_findings, doctor_data_stats, latest_successful_sync_at, DoctorFindingInputs,
 };
 
-type HandlerResult = Result<ResponseData, String>;
+pub(crate) use error::HandlerError;
+
+type HandlerResult = Result<ResponseData, HandlerError>;
 
 async fn watch_cadence(
     state: &Arc<AppState>,
@@ -97,7 +100,7 @@ async fn unwatch_cadence(
         .store
         .unwatch_cadence(account_id, email)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::Ack)
 }
 
@@ -109,7 +112,7 @@ async fn list_cadence_watch(
         .store
         .list_cadence_watch(account_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::CadenceWatchList {
         entries: rows
             .into_iter()
@@ -132,7 +135,7 @@ async fn list_cadence_drift(
         .store
         .list_cadence_drift(account_id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::CadenceDriftList {
         rows: rows
             .into_iter()
@@ -165,13 +168,11 @@ async fn send_time_recommendation(
         return Err("at least one recipient is required".into());
     }
 
-    let (proposed_weekday, proposed_hour) = proposed_at
-        .map(|at| {
-            let wd = at.weekday().num_days_from_monday() as u8;
-            let hr = at.hour() as u8;
-            (Some(wd), Some(hr))
-        })
-        .unwrap_or((None, None));
+    let (proposed_weekday, proposed_hour) = proposed_at.map_or((None, None), |at| {
+        let wd = at.weekday().num_days_from_monday() as u8;
+        let hr = at.hour() as u8;
+        (Some(wd), Some(hr))
+    });
 
     let mut rows = Vec::new();
     let mut best_windows = Vec::new();
@@ -181,7 +182,7 @@ async fn send_time_recommendation(
             .store
             .send_time_recommendation(account_id, &recipient)
             .await
-            .map_err(|e| e.to_string())?;
+            ?;
         let row_confidence = send_time_confidence_data(rec.confidence);
         confidence = min_send_time_confidence(confidence, row_confidence);
         let row_windows = best_windows_for_recipient(&rec);
@@ -275,7 +276,7 @@ async fn list_decision_log(
         .store
         .list_decisions(account_id, topic, since_days, limit)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::DecisionLog {
         decisions: rows
             .into_iter()
@@ -299,7 +300,7 @@ async fn get_decision(state: &Arc<AppState>, id: &str) -> HandlerResult {
         .store
         .get_decision(id)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::DecisionDetail {
         decision: row.map(|r| mxr_protocol::DecisionLogEntryData {
             id: r.id,
@@ -326,7 +327,7 @@ async fn list_owed_replies(
         .store
         .list_owed_replies(account_id, older_than_days, within_days, limit)
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     Ok(ResponseData::OwedReplies {
         rows: rows
             .into_iter()
@@ -432,8 +433,7 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
         IpcPayload::Request(req) => {
             let request = request_kind(req);
             let account_id_str = request_account_id(req)
-                .map(|id| id.as_str())
-                .unwrap_or_else(|| "-".to_string());
+                .map_or_else(|| "-".to_string(), mxr_core::AccountId::as_str);
             let account_key = request_account_key(req).unwrap_or("-");
             let span = tracing::info_span!(
                 "ipc_request",
@@ -447,7 +447,7 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
             // Activity capture seam. Fire-and-forget; never propagates errors.
             // See `docs/activity-log.md`.
             let ok = matches!(&response, Response::Ok { .. });
-            let account_id_for_activity = request_account_id(req).map(|id| id.as_str());
+            let account_id_for_activity = request_account_id(req).map(mxr_core::AccountId::as_str);
             if let Some(entry) = crate::activity::mapper::map_request(
                 req,
                 msg.source,
@@ -472,9 +472,8 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
 async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
     let started_at = std::time::Instant::now();
     let request = request_kind(req);
-    let account_id = request_account_id(req)
-        .map(|id| id.as_str())
-        .unwrap_or_else(|| "-".to_string());
+    let account_id =
+        request_account_id(req).map_or_else(|| "-".to_string(), mxr_core::AccountId::as_str);
     let account_key = request_account_key(req).unwrap_or("-");
     tracing::debug!(request, account_id, account_key, "handling request");
 
@@ -1600,7 +1599,7 @@ async fn build_export_thread(
         .get_thread(thread_id)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Thread not found: {}", thread_id))?;
+        .ok_or_else(|| format!("Thread not found: {thread_id}"))?;
 
     let envelopes = state
         .store
@@ -1837,12 +1836,10 @@ async fn find_reconciled_message_id(
     match candidates.len() {
         1 => Ok(candidates.remove(0).id),
         0 => Err(format!(
-            "Reconciled message not found after folder mutation for {}",
-            previous_message_id
+            "Reconciled message not found after folder mutation for {previous_message_id}"
         )),
         _ => Err(format!(
-            "Ambiguous reconciled message after folder mutation for {}",
-            previous_message_id
+            "Ambiguous reconciled message after folder mutation for {previous_message_id}"
         )),
     }
 }
@@ -2012,7 +2009,7 @@ async fn build_rule_from_form(
         priority,
         conditions: parse_rule_condition_string(condition)?,
         actions: vec![parse_rule_action_string(action)?],
-        created_at: existing.as_ref().map(|rule| rule.created_at).unwrap_or(now),
+        created_at: existing.as_ref().map_or(now, |rule| rule.created_at),
         updated_at: now,
     })
 }

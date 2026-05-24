@@ -21,7 +21,7 @@ pub(super) async fn build_rule_from_form(
             .store
             .get_rule_by_id_or_name(rule)
             .await
-            .map_err(|e| e.to_string())?
+            ?
             .map(|row| {
                 serde_json::from_value::<Rule>(mxr_store::row_to_rule_json(&row))
                     .map_err(|e| e.to_string())
@@ -48,7 +48,7 @@ pub(super) async fn build_rule_from_form(
 }
 
 fn parse_rule_condition_string(input: &str) -> Result<Conditions, String> {
-    let ast = parse_query(input).map_err(|e| e.to_string())?;
+    let ast = parse_query(input)?;
     query_ast_to_conditions(ast)
 }
 

@@ -148,7 +148,7 @@ pub(crate) async fn ask(
 
     let response = match runtime.complete(req).await {
         Ok(r) => r,
-        Err(LlmError::Disabled) | Err(LlmError::PrivacyBlocked(_)) => {
+        Err(LlmError::Disabled | LlmError::PrivacyBlocked(_)) => {
             return Ok(ResponseData::ArchiveAnswer {
                 answer: ArchiveAnswerData {
                     text: "Synthesis unavailable; showing retrieved archive evidence instead."
@@ -166,7 +166,7 @@ pub(crate) async fn ask(
                 },
             });
         }
-        Err(e) => return Err(format!("ArchiveAsk LLM error: {e}")),
+        Err(e) => return Err(format!("ArchiveAsk LLM error: {e}").into()),
     };
 
     let parsed: LlmAsk = serde_json::from_str(response.content.trim())
@@ -176,14 +176,15 @@ pub(crate) async fn ask(
         return Err("ArchiveAsk: answer requires at least one citation".into());
     }
 
-    let allowed_set: std::collections::HashSet<&str> = allowed.iter().map(|s| s.as_str()).collect();
+    let allowed_set: std::collections::HashSet<&str> =
+        allowed.iter().map(std::string::String::as_str).collect();
     let mut citations = Vec::new();
     for citation in parsed.citations {
         if !allowed_set.contains(citation.msg_id.as_str()) {
             return Err(format!(
                 "ArchiveAsk: LLM cited unknown msg_id {} (not in retrieved set)",
                 citation.msg_id
-            ));
+            ).into());
         }
         let source = citation_sources
             .get(citation.msg_id.as_str())
@@ -246,8 +247,7 @@ async fn retrieve_candidates(
         .semantic
         .status_snapshot()
         .await
-        .map(|s| s.enabled)
-        .unwrap_or(false);
+        .is_ok_and(|s| s.enabled);
 
     let want_lexical =
         matches!(requested, ArchiveAskMode::Lexical | ArchiveAskMode::Hybrid) || !semantic_enabled;
@@ -653,7 +653,7 @@ mod tests {
         .expect_err("answers without evidence must be rejected");
 
         assert!(
-            err.contains("citation") || err.contains("evidence"),
+            err.to_string().contains("citation") || err.to_string().contains("evidence"),
             "error must explain missing evidence: {err}"
         );
     }
@@ -677,7 +677,7 @@ mod tests {
         .await;
         let err = res.expect_err("must reject unknown msg_id citation");
         assert!(
-            err.contains("00000000-0000-0000-0000-000000000099"),
+            err.to_string().contains("00000000-0000-0000-0000-000000000099"),
             "error must name the bad citation: {err}"
         );
     }
@@ -692,7 +692,7 @@ mod tests {
         let err = ask(&state, "   ", &ArchiveAskFiltersData::default(), 5)
             .await
             .expect_err("blank question must be rejected before LLM");
-        assert!(err.contains("question cannot be empty"));
+        assert!(err.to_string().contains("question cannot be empty"));
     }
 
     /// Slice 3.1 wiring contract (C2.3): semantic disabled, lexical
@@ -889,7 +889,7 @@ mod tests {
         .await
         .expect_err("out-of-scope Bob citation must be rejected");
         assert!(
-            err.contains(&env_bob.id.to_string()),
+            err.to_string().contains(&env_bob.id.to_string()),
             "error must name the out-of-scope cited message: {err}"
         );
     }
@@ -928,7 +928,7 @@ mod tests {
         .await
         .expect_err("out-of-range old citation must be rejected");
         assert!(
-            err.contains(&ids[2].to_string()),
+            err.to_string().contains(&ids[2].to_string()),
             "error must name the out-of-range cited message: {err}"
         );
     }

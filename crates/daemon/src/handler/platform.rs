@@ -20,7 +20,7 @@ pub(super) async fn list_saved_search_unread_counts(state: &AppState) -> Handler
         .store
         .list_saved_searches()
         .await
-        .map_err(|e| e.to_string())?;
+        ?;
     let mut counts = HashMap::with_capacity(saved.len());
     for entry in saved {
         let combined = if entry.query.trim().is_empty() {
@@ -64,7 +64,7 @@ pub(super) async fn list_senders(
         .store
         .list_top_senders_since(limit, since_unix)
         .await
-        .map_err(|e| e.to_string())?
+        ?
         .into_iter()
         .map(|row| mxr_protocol::SenderSummaryData {
             account_id: row.account_id,

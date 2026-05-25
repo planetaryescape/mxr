@@ -431,6 +431,30 @@ mod tests {
     }
 
     #[test]
+    fn order_is_confirmed_phrasing_is_shortlisted_not_rejected() {
+        // Google Store order confirmations say "Your order is confirmed"
+        // (not "order confirmation") and ship from google.com, an unknown
+        // delivery domain. They carry an order number but no carrier tracking,
+        // and the VAT "invoice" boilerplate trips the subscription penalty.
+        // The order-confirmation stage must still route them to the LLM rather
+        // than rejecting outright.
+        let sig = detect(&input(
+            "Google Store",
+            "google.com",
+            "Your order is confirmed",
+            "Order confirmed. Order number: GS.9175-8733-9584. Delivers 31 May - \
+             5 Jun. Google Fitbit Air (Obsidian). For your VAT invoice, visit \
+             payments.google.com.",
+        ));
+        assert_eq!(sig.stage, Some(DeliveryStatus::Ordered));
+        assert_eq!(sig.decision, Decision::ShortlistLlm);
+        assert_eq!(
+            sig.dedup_key.as_deref(),
+            Some("google store|gs.9175-8733-9584")
+        );
+    }
+
+    #[test]
     fn bare_tracking_match_from_unknown_sender_is_not_auto_created() {
         // A string that validates as a tracking number inside an unrelated
         // email (no carrier/merchant sender, no shipping subject) must not

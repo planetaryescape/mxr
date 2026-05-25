@@ -39,7 +39,10 @@ pub struct Assessment {
 }
 
 static ORDER_NUMBER: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)\border\s*(?:#|no\.?|number)?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-]{4,})")
+    // `.` is allowed inside the token so dotted IDs like Google's
+    // "GS.9175-8733-9584" capture whole; a trailing one is trimmed by the
+    // caller. The leading `[A-Z0-9]` still anchors on an alphanumeric.
+    Regex::new(r"(?i)\border\s*(?:#|no\.?|number)?\s*[:#]?\s*([A-Z0-9][A-Z0-9.\-]{4,})")
         .expect("valid order-number regex")
 });
 
@@ -116,14 +119,17 @@ pub fn assess(input: &DetectInput) -> Assessment {
     }
 
     // --- order number ---
+    // Scan every "order …" match (subject first, then body) and take the first
+    // that contains a digit. Real order numbers have a digit; this skips prose
+    // like "Order confirmed" → "confirmed" to reach "Order number: GS.9175-…".
     let order_number = ORDER_NUMBER
-        .captures(input.subject)
-        .or_else(|| ORDER_NUMBER.captures(input.body_text))
-        .and_then(|c| c.get(1))
-        .map(|m| m.as_str().trim_end_matches(['.', ',']).to_string())
-        // Real order numbers contain a digit; this rejects the next word after
-        // "order" ("...your order. Thank you..." → "Thank").
-        .filter(|s| s.chars().any(|c| c.is_ascii_digit()));
+        .captures_iter(input.subject)
+        .chain(ORDER_NUMBER.captures_iter(input.body_text))
+        .filter_map(|c| {
+            c.get(1)
+                .map(|m| m.as_str().trim_end_matches(['.', ',']).to_string())
+        })
+        .find(|s| s.chars().any(|c| c.is_ascii_digit()));
     if order_number.is_some() {
         score += 0.1;
         signals.push("order_number");

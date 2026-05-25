@@ -199,6 +199,8 @@ pub const STAGE_KEYWORDS: &[(DeliveryStatus, &[&str])] = &[
         DeliveryStatus::Ordered,
         &[
             "order confirmation",
+            "order confirmed",
+            "order is confirmed",
             "thanks for your order",
             "thank you for your order",
             "we received your order",

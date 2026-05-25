@@ -226,8 +226,84 @@ pub(super) async fn list_invites(state: &AppState, limit: u32) -> HandlerResult 
 }
 
 pub(super) async fn backfill_invites(state: &AppState) -> HandlerResult {
+    // First recover attachment-only invites: messages whose `.ics` arrived as
+    // an attachment with no inline `text/calendar` part have no parsed calendar
+    // metadata in their stored body, so the row rebuild below cannot see them.
+    // Re-hydrate them from the provider (whose body fetch now parses calendar
+    // attachments) before rebuilding rows from body metadata.
+    let rehydrated = rehydrate_attachment_only_invites(state).await;
     let backfilled = state.store.backfill_calendar_invites_from_bodies().await?;
-    Ok(ResponseData::CalendarInviteBackfill { backfilled })
+    Ok(ResponseData::CalendarInviteBackfill {
+        backfilled,
+        rehydrated,
+    })
+}
+
+/// Re-fetch messages that carry a calendar attachment but have no parsed
+/// calendar metadata, persisting the re-parsed body (which now populates
+/// `metadata.calendar` and the `calendar_invites` row). Returns the count of
+/// messages that gained calendar metadata. Per-message failures are logged and
+/// skipped so one bad message never aborts the whole pass.
+async fn rehydrate_attachment_only_invites(state: &AppState) -> u64 {
+    let page_size: u32 = 200;
+    let mut offset: u32 = 0;
+    let mut rehydrated: u64 = 0;
+    loop {
+        let envelopes = match state
+            .store
+            .list_all_envelopes_paginated(page_size, offset)
+            .await
+        {
+            Ok(envelopes) => envelopes,
+            Err(error) => {
+                tracing::warn!("backfill_invites: list envelopes failed: {error}");
+                break;
+            }
+        };
+        if envelopes.is_empty() {
+            break;
+        }
+        let batch_len = envelopes.len() as u32;
+        for envelope in &envelopes {
+            let body = match state.store.get_body(&envelope.id).await {
+                Ok(Some(body)) => body,
+                Ok(None) => continue,
+                Err(error) => {
+                    tracing::warn!(message_id = %envelope.id, "backfill_invites: get_body failed: {error}");
+                    continue;
+                }
+            };
+            // Already has calendar metadata, or has no calendar attachment to
+            // recover from — nothing to re-hydrate.
+            if body.metadata.calendar.is_some()
+                || !body.attachments.iter().any(|att| att.is_calendar())
+            {
+                continue;
+            }
+            let Some(provider) = state.sync_provider_for_account(&envelope.account_id) else {
+                continue;
+            };
+            match provider.fetch_message(&envelope.provider_id).await {
+                Ok(Some(synced)) if synced.body.metadata.calendar.is_some() => {
+                    if let Err(error) = state.sync_engine.persist_synced_message(&synced).await {
+                        tracing::warn!(message_id = %envelope.id, "backfill_invites: persist failed: {error}");
+                        continue;
+                    }
+                    rehydrated += 1;
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::warn!(message_id = %envelope.id, "backfill_invites: provider fetch failed: {error}");
+                }
+            }
+        }
+        if batch_len < page_size {
+            break;
+        }
+        offset += page_size;
+    }
+    tracing::info!(rehydrated, "backfill_invites: re-hydrated attachment-only invites");
+    rehydrated
 }
 
 pub(super) async fn respond_invite(

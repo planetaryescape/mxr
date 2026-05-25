@@ -1621,7 +1621,15 @@ pub enum ResponseData {
         invites: Vec<CalendarInviteData>,
     },
     CalendarInviteBackfill {
+        /// Calendar-invite rows rebuilt from body metadata that was already
+        /// parsed but missing a `calendar_invites` row.
         backfilled: u64,
+        /// Messages re-hydrated from the provider because they carried a
+        /// calendar attachment but no parsed calendar metadata (e.g. Gmail
+        /// invites whose `.ics` arrived only as an attachment). Defaults to 0
+        /// for older daemons.
+        #[serde(default)]
+        rehydrated: u64,
     },
     InviteResponsePreview {
         preview: CalendarInviteResponsePreview,

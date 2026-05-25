@@ -38,32 +38,33 @@ pub async fn list(limit: u32, format: Option<OutputFormat>) -> anyhow::Result<()
 pub async fn backfill(format: Option<OutputFormat>) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let resp = client.request(Request::BackfillCalendarInvites).await?;
-    let backfilled = expect_response(resp, |response| match response {
+    let (backfilled, rehydrated) = expect_response(resp, |response| match response {
         Response::Ok {
-            data: ResponseData::CalendarInviteBackfill { backfilled },
-        } => Some(backfilled),
+            data:
+                ResponseData::CalendarInviteBackfill {
+                    backfilled,
+                    rehydrated,
+                },
+        } => Some((backfilled, rehydrated)),
         _ => None,
     })?;
 
+    let payload = serde_json::json!({ "backfilled": backfilled, "rehydrated": rehydrated });
     match resolve_format(format) {
-        OutputFormat::Json => println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({ "backfilled": backfilled }))?
-        ),
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&payload)?),
         OutputFormat::Jsonl => {
-            println!(
-                "{}",
-                serde_json::to_string(&serde_json::json!({ "backfilled": backfilled }))?
-            );
+            println!("{}", serde_json::to_string(&payload)?);
         }
         OutputFormat::Csv => {
             let mut writer = csv::Writer::from_writer(Vec::new());
-            writer.write_record(["backfilled"])?;
-            writer.write_record([backfilled.to_string()])?;
+            writer.write_record(["backfilled", "rehydrated"])?;
+            writer.write_record([backfilled.to_string(), rehydrated.to_string()])?;
             println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
         }
         OutputFormat::Ids => println!("{backfilled}"),
-        OutputFormat::Table => println!("Backfilled {backfilled} calendar invites"),
+        OutputFormat::Table => println!(
+            "Re-hydrated {rehydrated} attachment-only invite(s); rebuilt {backfilled} calendar-invite row(s)"
+        ),
     }
     Ok(())
 }

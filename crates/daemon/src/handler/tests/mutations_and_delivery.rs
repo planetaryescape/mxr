@@ -1367,3 +1367,91 @@ async fn dispatch_unsubscribe_no_method() {
         other => panic!("Expected Error for no unsubscribe method, got {other:?}"),
     }
 }
+
+/// Regression: phishing that spoofs carriers (fake "DHL"/tracking) lands in
+/// Spam, and the delivery detector used to classify it as a real shipment.
+/// Spam/trash mail must be skipped — even when its content would otherwise
+/// create a delivery.
+#[tokio::test]
+async fn spam_or_trash_mail_is_never_detected_as_a_delivery() {
+    let state = folder_copy_state().await;
+    let account_id = state.default_account_id_opt().unwrap();
+
+    // Carrier sender + checksum-valid UPS tracking number: exactly the shape
+    // that creates a delivery. Flagged SPAM, it must be skipped.
+    let spam_id = seed_carrier_shipment(
+        &state,
+        &account_id,
+        "spam-ups",
+        mxr_core::MessageFlags::SPAM,
+    )
+    .await;
+    let summary =
+        crate::handler::deliveries::scan_messages(&state, std::slice::from_ref(&spam_id)).await;
+    assert_eq!(summary.scanned, 1);
+    assert_eq!(summary.created, 0, "spam mail must not create a delivery");
+
+    // Same in TRASH — also skipped.
+    let trash_id = seed_carrier_shipment(
+        &state,
+        &account_id,
+        "trash-ups",
+        mxr_core::MessageFlags::TRASH,
+    )
+    .await;
+    let summary =
+        crate::handler::deliveries::scan_messages(&state, std::slice::from_ref(&trash_id)).await;
+    assert_eq!(
+        summary.created, 0,
+        "trashed mail must not create a delivery"
+    );
+
+    // Identical content without the flag DOES create — proves the guard, not
+    // the content, is what suppresses the spam/trash cases.
+    let clean_id = seed_carrier_shipment(
+        &state,
+        &account_id,
+        "clean-ups",
+        mxr_core::MessageFlags::empty(),
+    )
+    .await;
+    let summary =
+        crate::handler::deliveries::scan_messages(&state, std::slice::from_ref(&clean_id)).await;
+    assert_eq!(
+        summary.created, 1,
+        "a genuine carrier shipment should create a delivery"
+    );
+}
+
+async fn seed_carrier_shipment(
+    state: &AppState,
+    account_id: &mxr_core::AccountId,
+    provider_id: &str,
+    flags: mxr_core::MessageFlags,
+) -> mxr_core::MessageId {
+    let mut envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .account_id(account_id.clone())
+        .provider_id(provider_id)
+        .subject("Your package has shipped")
+        .sender_address("UPS", "ship@ups.com")
+        .recipient_address(Some("User"), "user@example.com")
+        .flags(flags)
+        .build();
+    envelope.body_word_count = 80;
+    envelope.link_count = 1;
+    let id = envelope.id.clone();
+    state.store.upsert_envelope(&envelope).await.unwrap();
+    state
+        .store
+        .insert_body(&mxr_core::types::MessageBody {
+            message_id: id.clone(),
+            text_plain: Some("Your package has shipped. Tracking: 1Z5R89390357567127".into()),
+            text_html: None,
+            attachments: Vec::new(),
+            fetched_at: chrono::Utc::now(),
+            metadata: mxr_core::types::MessageMetadata::default(),
+        })
+        .await
+        .unwrap();
+    id
+}

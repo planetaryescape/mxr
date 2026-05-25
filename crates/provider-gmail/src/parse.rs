@@ -12,7 +12,8 @@ use base64::Engine;
 use chrono::{TimeZone, Utc};
 use mxr_core::{
     AccountId, Address, AttachmentDisposition, AttachmentId, AttachmentMeta, BodyPartSource,
-    Envelope, MessageBody, MessageFlags, MessageId, TextPlainFormat, ThreadId, UnsubscribeMethod,
+    CalendarMetadata, Envelope, MessageBody, MessageFlags, MessageId, TextPlainFormat, ThreadId,
+    UnsubscribeMethod,
 };
 use mxr_mail_parse::{
     body_unsubscribe_from_html, calendar_metadata_from_text,
@@ -408,6 +409,12 @@ fn find_header_value<'a>(headers: Option<&'a [GmailHeader]>, name: &str) -> Opti
         .iter()
         .find(|header| header.name.eq_ignore_ascii_case(name))
         .map(|header| header.value.as_str())
+}
+
+/// Parse iCalendar metadata from raw `.ics` attachment bytes.
+pub(crate) fn calendar_metadata_from_attachment_bytes(bytes: &[u8]) -> Option<CalendarMetadata> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    calendar_metadata_from_text(text)
 }
 
 fn parse_text_plain_format_from_payload(payload: &GmailPayload) -> Option<TextPlainFormat> {

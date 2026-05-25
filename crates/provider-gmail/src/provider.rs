@@ -18,7 +18,10 @@ use tracing::{debug, warn};
 use crate::client::{GmailApi, GmailClient, MessageFormat};
 use crate::cursor::GmailCursor;
 use crate::error::GmailError;
-use crate::parse::{extract_message_body_for_account, gmail_message_to_envelope};
+use crate::parse::{
+    calendar_metadata_from_attachment_bytes, extract_message_body_for_account,
+    gmail_message_to_envelope,
+};
 use crate::send;
 use mxr_core::types::SyncedMessage;
 
@@ -175,57 +178,140 @@ impl GmailProvider {
         &self,
         messages: Vec<crate::types::GmailMessage>,
     ) -> Result<Vec<SyncedMessage>, MxrError> {
-        if messages.len() < GMAIL_PARSE_FANOUT_THRESHOLD {
-            return Ok(messages
+        let parsed: Vec<(String, SyncedMessage)> =
+            if messages.len() < GMAIL_PARSE_FANOUT_THRESHOLD {
+                messages
+                    .into_iter()
+                    .filter_map(|message| {
+                        let provider_message_id = message.id.clone();
+                        parse_synced_message(
+                            self.account_id.clone(),
+                            message,
+                            #[cfg(test)]
+                            self.parse_observer.clone(),
+                        )
+                        .map(|synced| (provider_message_id, synced))
+                    })
+                    .collect()
+            } else {
+                let concurrency = gmail_parse_concurrency_limit(messages.len());
+                let account_id = self.account_id.clone();
+                #[cfg(test)]
+                let parse_observer = self.parse_observer.clone();
+
+                let results = stream::iter(messages.into_iter().enumerate().map(
+                    |(index, message)| {
+                        let account_id = account_id.clone();
+                        #[cfg(test)]
+                        let parse_observer = parse_observer.clone();
+
+                        async move {
+                            let provider_message_id = message.id.clone();
+                            tokio::task::spawn_blocking(move || {
+                                parse_synced_message(
+                                    account_id,
+                                    message,
+                                    #[cfg(test)]
+                                    parse_observer,
+                                )
+                                .map(|synced| {
+                                    (provider_message_id, IndexedSyncedMessage { index, synced })
+                                })
+                            })
+                            .await
+                            .map_err(|error| {
+                                MxrError::Provider(format!("gmail parse task failed: {error}"))
+                            })
+                        }
+                    },
+                ))
+                .buffer_unordered(concurrency)
+                .collect::<Vec<_>>()
+                .await;
+
+                let mut parsed = Vec::new();
+                for result in results {
+                    if let Some((provider_message_id, message)) = result? {
+                        parsed.push((provider_message_id, message));
+                    }
+                }
+                parsed.sort_by_key(|(_, message)| message.index);
+
+                parsed
+                    .into_iter()
+                    .map(|(provider_message_id, message)| (provider_message_id, message.synced))
+                    .collect()
+            };
+
+        // Invites whose iCalendar payload arrives only as an attachment leave
+        // `metadata.calendar` empty after the synchronous body parse, because
+        // Gmail keeps attachment bytes behind a separate fetch. Backfill those.
+        let enrich_concurrency = gmail_parse_concurrency_limit(parsed.len());
+        let mut enriched: Vec<(usize, SyncedMessage)> = stream::iter(
+            parsed
                 .into_iter()
-                .filter_map(|message| {
-                    parse_synced_message(
-                        self.account_id.clone(),
-                        message,
-                        #[cfg(test)]
-                        self.parse_observer.clone(),
-                    )
-                })
-                .collect());
-        }
-
-        let concurrency = gmail_parse_concurrency_limit(messages.len());
-        let account_id = self.account_id.clone();
-        #[cfg(test)]
-        let parse_observer = self.parse_observer.clone();
-
-        let results = stream::iter(messages.into_iter().enumerate().map(|(index, message)| {
-            let account_id = account_id.clone();
-            #[cfg(test)]
-            let parse_observer = parse_observer.clone();
-
-            async move {
-                tokio::task::spawn_blocking(move || {
-                    parse_synced_message(
-                        account_id,
-                        message,
-                        #[cfg(test)]
-                        parse_observer,
-                    )
-                    .map(|synced| IndexedSyncedMessage { index, synced })
-                })
-                .await
-                .map_err(|error| MxrError::Provider(format!("gmail parse task failed: {error}")))
-            }
-        }))
-        .buffer_unordered(concurrency)
-        .collect::<Vec<_>>()
+                .enumerate()
+                .map(|(index, (provider_message_id, mut synced))| async move {
+                    self.enrich_calendar_from_attachment(&provider_message_id, &mut synced)
+                        .await;
+                    (index, synced)
+                }),
+        )
+        .buffer_unordered(enrich_concurrency)
+        .collect()
         .await;
+        enriched.sort_by_key(|(index, _)| *index);
 
-        let mut parsed = Vec::new();
-        for result in results {
-            if let Some(message) = result? {
-                parsed.push(message);
+        Ok(enriched.into_iter().map(|(_, synced)| synced).collect())
+    }
+
+    /// When a message has no inline calendar metadata but carries a calendar
+    /// attachment (`.ics` / `text/calendar` / `application/ics`), fetch that
+    /// attachment and parse its iCalendar payload into `metadata.calendar`.
+    ///
+    /// A no-op for the common case (no calendar attachment, or calendar already
+    /// parsed from an inline part), so it costs a network round-trip only for
+    /// attachment-delivered invites.
+    async fn enrich_calendar_from_attachment(
+        &self,
+        provider_message_id: &str,
+        synced: &mut SyncedMessage,
+    ) {
+        if synced.body.metadata.calendar.is_some() {
+            return;
+        }
+        let Some(provider_attachment_id) = synced
+            .body
+            .attachments
+            .iter()
+            .find(|attachment| attachment.is_calendar())
+            .map(|attachment| attachment.provider_id.clone())
+        else {
+            return;
+        };
+
+        match self
+            .client
+            .get_attachment(provider_message_id, &provider_attachment_id)
+            .await
+        {
+            Ok(bytes) => {
+                synced.body.metadata.calendar = calendar_metadata_from_attachment_bytes(&bytes);
+                if synced.body.metadata.calendar.is_none() {
+                    warn!(
+                        msg_id = %provider_message_id,
+                        "calendar attachment did not parse into calendar metadata"
+                    );
+                }
+            }
+            Err(error) => {
+                warn!(
+                    msg_id = %provider_message_id,
+                    error = %error,
+                    "failed to fetch calendar attachment for calendar metadata"
+                );
             }
         }
-        parsed.sort_by_key(|message| message.index);
-
-        Ok(parsed.into_iter().map(|message| message.synced).collect())
     }
 
     async fn initial_sync(&self) -> Result<SyncBatch, MxrError> {
@@ -661,12 +747,17 @@ impl MailSyncProvider for GmailProvider {
             .get_message(provider_message_id, MessageFormat::Full)
             .await
             .map_err(MxrError::from)?;
-        Ok(parse_synced_message(
+        let mut synced = parse_synced_message(
             self.account_id.clone(),
             message,
             #[cfg(test)]
             self.parse_observer.clone(),
-        ))
+        );
+        if let Some(ref mut synced) = synced {
+            self.enrich_calendar_from_attachment(provider_message_id, synced)
+                .await;
+        }
+        Ok(synced)
     }
 
     async fn fetch_attachment(
@@ -1000,8 +1091,11 @@ mod tests {
         async fn get_attachment(
             &self,
             _message_id: &str,
-            _attachment_id: &str,
+            attachment_id: &str,
         ) -> Result<Vec<u8>, GmailError> {
+            if attachment_id == "att-cal" {
+                return Ok(SAMPLE_INVITE_ICS.as_bytes().to_vec());
+            }
             Ok(b"Hello".to_vec())
         }
 
@@ -1075,6 +1169,7 @@ mod tests {
                 "Backfill message",
             ))
             .unwrap(),
+            serde_json::from_value::<GmailMessage>(gmail_calendar_attachment_message()).unwrap(),
         ] {
             messages.insert(message.id.clone(), message);
         }
@@ -1169,6 +1264,56 @@ mod tests {
                         "mimeType": "application/pdf",
                         "filename": "report.pdf",
                         "body": {"attachmentId": "att-1", "size": 5}
+                    }
+                ]
+            }
+        })
+    }
+
+    const SAMPLE_INVITE_ICS: &str = "BEGIN:VCALENDAR\r\n\
+VERSION:2.0\r\n\
+PRODID:-//Google Inc//Google Calendar 70.9054//EN\r\n\
+METHOD:REQUEST\r\n\
+BEGIN:VEVENT\r\n\
+UID:cal-attach-uid@google.com\r\n\
+SUMMARY:Attachment-only invite\r\n\
+DTSTART:20260525T144500Z\r\n\
+DTEND:20260525T151500Z\r\n\
+ORGANIZER;CN=Bhekani:mailto:hello@faithbench.com\r\n\
+ATTENDEE;CN=Bob;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:bob@example.com\r\n\
+END:VEVENT\r\n\
+END:VCALENDAR\r\n";
+
+    /// A Google-style invite whose iCalendar payload is delivered only as a
+    /// `text/calendar` attachment, with no inline `text/calendar` part. The
+    /// attachment bytes live behind `attachmentId`, mirroring Gmail's API.
+    fn gmail_calendar_attachment_message() -> serde_json::Value {
+        json!({
+            "id": "msg-cal-attach",
+            "threadId": "thread-cal-attach",
+            "labelIds": ["INBOX", "UNREAD"],
+            "snippet": "Invitation: Attachment-only invite",
+            "historyId": "24",
+            "internalDate": "1779700625000",
+            "sizeEstimate": 2048,
+            "payload": {
+                "mimeType": "multipart/mixed",
+                "headers": [
+                    {"name": "From", "value": "Bhekani <hello@faithbench.com>"},
+                    {"name": "To", "value": "Bob Example <bob@example.com>"},
+                    {"name": "Subject", "value": "Invitation: Attachment-only invite"},
+                    {"name": "Date", "value": "Mon, 25 May 2026 09:17:05 +0000"},
+                    {"name": "Message-ID", "value": "<calendar-attach@google.com>"}
+                ],
+                "parts": [
+                    {
+                        "mimeType": "text/plain",
+                        "body": {"size": 16, "data": "QXR0YWNobWVudCBib2R5"}
+                    },
+                    {
+                        "mimeType": "text/calendar",
+                        "filename": "invite.ics",
+                        "body": {"attachmentId": "att-cal", "size": 256}
                     }
                 ]
             }
@@ -1316,6 +1461,29 @@ mod tests {
         let provider = gmail_provider();
         mxr_provider_fake::conformance::run_sync_conformance(&provider).await;
         mxr_provider_fake::conformance::run_send_conformance(&provider).await;
+    }
+
+    #[tokio::test]
+    async fn gmail_fetch_message_parses_calendar_from_ics_attachment() {
+        // The invite delivers its iCalendar payload only as a text/calendar
+        // attachment (no inline part), so the synchronous body parse cannot
+        // see it. fetch_message must backfill calendar metadata by fetching
+        // the attachment bytes.
+        let provider = gmail_provider();
+        let synced = provider
+            .fetch_message("msg-cal-attach")
+            .await
+            .unwrap()
+            .expect("calendar attachment message should parse");
+
+        let calendar = synced
+            .body
+            .metadata
+            .calendar
+            .expect("calendar metadata should be backfilled from the .ics attachment");
+        assert_eq!(calendar.method.as_deref(), Some("REQUEST"));
+        assert_eq!(calendar.summary.as_deref(), Some("Attachment-only invite"));
+        assert_eq!(calendar.uid.as_deref(), Some("cal-attach-uid@google.com"));
     }
 
     #[tokio::test]

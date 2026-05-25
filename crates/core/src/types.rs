@@ -1183,6 +1183,16 @@ pub struct AttachmentMeta {
 }
 
 impl AttachmentMeta {
+    /// Whether this attachment carries an iCalendar payload. Some providers
+    /// (notably Gmail for self-invites/forwards) deliver an invite's `.ics`
+    /// only as an attachment with no inline `text/calendar` part.
+    pub fn is_calendar(&self) -> bool {
+        let mime = self.mime_type.to_ascii_lowercase();
+        mime.starts_with("text/calendar")
+            || mime == "application/ics"
+            || self.filename.to_ascii_lowercase().ends_with(".ics")
+    }
+
     fn summary_line(&self) -> String {
         let filename = if self.filename.is_empty() {
             "(unnamed attachment)"

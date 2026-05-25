@@ -7,7 +7,7 @@ use super::HandlerResult;
 use crate::state::AppState;
 use chrono::{Duration, Utc};
 use mxr_core::id::{AccountId, DeliveryId, MessageId};
-use mxr_core::types::UnsubscribeMethod;
+use mxr_core::types::{MessageFlags, UnsubscribeMethod};
 use mxr_deliveries::lifecycle::ApplyOutcome;
 use mxr_deliveries::{detect, extract, lifecycle, Decision, DeliverySignal, DetectInput};
 use mxr_llm::LlmFeature;
@@ -150,6 +150,17 @@ async fn scan_one(
         return Ok(outcome);
     };
     outcome.scanned = 1;
+
+    // Never treat spam or trashed mail as a delivery. Phishing that spoofs
+    // carriers — fake "DHL" senders with bogus tracking numbers — lands in
+    // Spam; a genuine shipping notice does not. Skipping these is a cheap,
+    // high-precision guard against false-positive deliveries.
+    if envelope
+        .flags
+        .intersects(MessageFlags::SPAM | MessageFlags::TRASH)
+    {
+        return Ok(outcome);
+    }
 
     let body = state
         .store

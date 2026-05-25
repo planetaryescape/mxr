@@ -61,29 +61,43 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     if let Some(parent) = sock_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    match inspect_socket_state(&sock_path).await {
-        SocketState::Reachable => {
-            anyhow::bail!(
-                "Daemon already running at {}. Use `mxr status` or `mxr logs --level error`, or stop the existing daemon before rerunning `mxr daemon --foreground`.",
-                sock_path.display()
-            );
-        }
-        SocketState::Stale => {
-            let _ = std::fs::remove_file(&sock_path);
-        }
-        SocketState::Missing => {}
+    // A responsive daemon already owns the socket — refuse immediately,
+    // without touching anything.
+    if matches!(
+        inspect_socket_state(&sock_path).await,
+        SocketState::Reachable
+    ) {
+        anyhow::bail!(
+            "Daemon already running at {}. Use `mxr status` or `mxr logs --level error`, or stop the existing daemon before rerunning `mxr daemon --foreground`.",
+            sock_path.display()
+        );
     }
 
+    // Acquire exclusive resources (the search-index write lock) BEFORE
+    // touching the socket file. The index lock — not the socket probe — is
+    // the authoritative singleton guard: a busy daemon whose socket probe
+    // momentarily times out still holds it, so we bail here with its socket
+    // left intact.
+    //
+    // Ordering is load-bearing. The previous code removed a "stale" socket
+    // first, then failed `AppState::new` on the lock and exited — which
+    // orphaned the still-running daemon with no socket and permanently
+    // wedged IPC (clients could neither connect nor restart it).
     let state = Arc::new(match AppState::new().await {
         Ok(state) => state,
         Err(error) if is_index_lock_error(&error.to_string()) => {
             anyhow::bail!(
-                "Search index is locked by another process. Try `mxr status`, `mxr logs --level error`, or `mxr daemon --foreground`.\nOriginal error: {error}"
+                "Daemon already running (search index is locked by another process) at {}. Use `mxr status` or `mxr logs --level error`, or stop the existing daemon.\nOriginal error: {error}",
+                sock_path.display()
             );
         }
         Err(error) => return Err(error),
     });
 
+    // We hold the exclusive lock, so we are the sole daemon. Any socket file
+    // present now is genuinely stale (left by a fully-exited daemon); clear
+    // it and bind ours.
+    let _ = std::fs::remove_file(&sock_path);
     let listener = UnixListener::bind(&sock_path)?;
     write_daemon_pid_file()?;
     tracing::info!("Daemon listening on {}", sock_path.display());

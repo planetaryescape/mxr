@@ -142,6 +142,7 @@ impl Client {
                 query: query.to_string(),
                 limit,
                 offset: 0,
+                account_id: None,
                 mode: None,
                 sort: Some(mxr_core::types::SortOrder::DateDesc),
                 explain: false,

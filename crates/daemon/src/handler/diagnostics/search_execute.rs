@@ -5,6 +5,7 @@ use super::search_filter::{
 };
 use super::{build_execution, ExecutionExplainInput, SearchExecution};
 use crate::state::AppState;
+use mxr_core::id::AccountId;
 use mxr_core::types::{Label, SearchMode, SortOrder};
 use mxr_search::{ast::QueryNode, parse_query, MxrSchema, QueryBuilder, SearchPage, SearchResult};
 use mxr_semantic::{should_use_semantic, SemanticHit};
@@ -19,6 +20,7 @@ use mxr_protocol::SearchExplain;
 struct SearchExecutionOptions {
     limit: usize,
     offset: usize,
+    account_id: Option<AccountId>,
     mode: SearchMode,
     sort: SortOrder,
     explain: bool,
@@ -29,6 +31,7 @@ pub(super) async fn execute_search(
     query: &str,
     limit: usize,
     offset: usize,
+    account_id: Option<&AccountId>,
     mode: SearchMode,
     sort: SortOrder,
     explain: bool,
@@ -36,6 +39,7 @@ pub(super) async fn execute_search(
     let options = SearchExecutionOptions {
         limit,
         offset,
+        account_id: account_id.cloned(),
         mode,
         sort,
         explain,
@@ -58,9 +62,16 @@ pub(super) async fn execute_search(
         }
         Err(error) => {
             if should_fallback_to_tantivy(query, &error) {
+                let account_id = options.account_id.as_ref().map(AccountId::as_str);
                 let page = state
                     .search
-                    .search(query, options.limit, options.offset, options.sort)
+                    .search_in_account(
+                        query,
+                        account_id.as_deref(),
+                        options.limit,
+                        options.offset,
+                        options.sort,
+                    )
                     .await
                     .map_err(|e| e.to_string())?;
                 let explain = options.explain.then(|| SearchExplain {
@@ -264,6 +275,7 @@ async fn execute_search_ast(
     let lexical_page = lexical_search(
         state,
         ast,
+        options.account_id.as_ref(),
         if options.mode == SearchMode::Lexical {
             options.limit
         } else {
@@ -436,7 +448,8 @@ async fn execute_search_ast(
         }
     };
 
-    let dense_results = filter_dense_hits(state, ast, semantic_hits).await?;
+    let dense_results =
+        filter_dense_hits(state, ast, options.account_id.as_ref(), semantic_hits).await?;
     if options.mode == SearchMode::Semantic {
         if dense_results.is_empty() {
             let page = paginate_results(lexical_results.clone(), options.offset, options.limit);
@@ -517,13 +530,19 @@ async fn execute_search_ast(
 pub(super) async fn lexical_search(
     state: &AppState,
     ast: &QueryNode,
+    account_id: Option<&AccountId>,
     limit: usize,
     offset: usize,
     sort: SortOrder,
 ) -> Result<SearchPage, String> {
     let schema = MxrSchema::build();
     let builder = QueryBuilder::new(&schema);
-    let tantivy_query = builder.build(ast);
+    let tantivy_query = if let Some(account_id) = account_id {
+        let account_id = account_id.as_str();
+        builder.build_in_account(ast, &account_id)
+    } else {
+        builder.build(ast)
+    };
     state
         .search
         .search_ast(tantivy_query, limit, offset, sort)
@@ -534,6 +553,7 @@ pub(super) async fn lexical_search(
 pub(super) async fn filter_dense_hits(
     state: &AppState,
     ast: &QueryNode,
+    account_id: Option<&AccountId>,
     hits: Vec<SemanticHit>,
 ) -> Result<Vec<SearchResult>, String> {
     if hits.is_empty() {
@@ -559,6 +579,9 @@ pub(super) async fn filter_dense_hits(
         let Some(envelope) = envelopes_by_id.get(&hit.message_id) else {
             continue;
         };
+        if account_id.is_some_and(|account_id| &envelope.account_id != account_id) {
+            continue;
+        }
         if !matches_structured_filters(ast, envelope) {
             continue;
         }
@@ -582,6 +605,7 @@ mod owed_reply_filter_tests {
     use crate::state::AppState;
     use mxr_core::types::{Address, Envelope, MessageDirection, MessageFlags, UnsubscribeMethod};
     use mxr_core::{AccountId, MessageId, ThreadId};
+    use mxr_protocol::ResponseData;
     use mxr_search::{SearchIndexEntry, SearchUpdateBatch};
     use std::sync::Arc;
 
@@ -678,6 +702,7 @@ mod owed_reply_filter_tests {
             "is:owed-reply",
             100,
             0,
+            None,
             SearchMode::Lexical,
             SortOrder::DateDesc,
             false,
@@ -736,6 +761,7 @@ mod owed_reply_filter_tests {
             "is:owed-reply",
             100,
             0,
+            None,
             SearchMode::Lexical,
             SortOrder::DateDesc,
             false,
@@ -797,6 +823,7 @@ mod owed_reply_filter_tests {
             "label:Notto",
             100,
             0,
+            None,
             SearchMode::Lexical,
             SortOrder::DateDesc,
             false,
@@ -857,6 +884,7 @@ mod owed_reply_filter_tests {
                 query,
                 100,
                 0,
+                None,
                 SearchMode::Lexical,
                 SortOrder::DateDesc,
                 false,
@@ -872,6 +900,109 @@ mod owed_reply_filter_tests {
                 hit_ids.contains(&envelope.id.as_str()),
                 "query {query:?} should match Label_42 envelope; got {hit_ids:?}"
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn account_scoped_search_filters_before_pagination() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let default_account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let other_account_id = AccountId::new();
+        let other_account = crate::test_fixtures::test_account_with_id(other_account_id.clone());
+        state.store.insert_account(&other_account).await.unwrap();
+
+        let default_thread = ThreadId::new();
+        let default_envelope = envelope_inbound(
+            &default_account_id,
+            &default_thread,
+            "alice@example.com",
+            10,
+        );
+        state
+            .store
+            .upsert_envelope(&default_envelope)
+            .await
+            .unwrap();
+        index_envelope(&state, &default_envelope).await;
+
+        let other_thread = ThreadId::new();
+        let other_envelope =
+            envelope_inbound(&other_account_id, &other_thread, "alice@example.com", 0);
+        state.store.upsert_envelope(&other_envelope).await.unwrap();
+        index_envelope(&state, &other_envelope).await;
+
+        let scoped = execute_search(
+            &state,
+            "friday",
+            1,
+            0,
+            Some(&default_account_id),
+            SearchMode::Lexical,
+            SortOrder::DateDesc,
+            true,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(scoped.results.len(), 1);
+        assert_eq!(scoped.results[0].message_id, default_envelope.id.as_str());
+        let explain = scoped.explain.as_ref().unwrap();
+        assert_eq!(explain.final_results, 1);
+        assert_eq!(explain.results.len(), 1);
+        assert_eq!(
+            explain.results[0].message_id.as_str(),
+            default_envelope.id.as_str()
+        );
+    }
+
+    #[tokio::test]
+    async fn saved_search_account_id_scopes_results() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let default_account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let other_account_id = AccountId::new();
+        let other_account = crate::test_fixtures::test_account_with_id(other_account_id.clone());
+        state.store.insert_account(&other_account).await.unwrap();
+
+        let default_thread = ThreadId::new();
+        let default_envelope =
+            envelope_inbound(&default_account_id, &default_thread, "alice@example.com", 1);
+        state
+            .store
+            .upsert_envelope(&default_envelope)
+            .await
+            .unwrap();
+        index_envelope(&state, &default_envelope).await;
+
+        let other_thread = ThreadId::new();
+        let other_envelope =
+            envelope_inbound(&other_account_id, &other_thread, "alice@example.com", 1);
+        state.store.upsert_envelope(&other_envelope).await.unwrap();
+        index_envelope(&state, &other_envelope).await;
+
+        let saved = mxr_core::types::SavedSearch {
+            id: mxr_core::SavedSearchId::new(),
+            account_id: Some(other_account_id.clone()),
+            name: "Other Friday".into(),
+            query: "friday".into(),
+            search_mode: SearchMode::Lexical,
+            sort: SortOrder::DateDesc,
+            icon: None,
+            position: 0,
+            created_at: chrono::Utc::now(),
+        };
+        state.store.insert_saved_search(&saved).await.unwrap();
+
+        let response = super::super::run_saved_search(&state, "Other Friday", 10, None)
+            .await
+            .unwrap();
+        match response {
+            ResponseData::SearchResults { results, .. } => {
+                assert_eq!(results.len(), 1);
+                assert_eq!(results[0].message_id, other_envelope.id);
+            }
+            other => panic!("expected search results, got {other:?}"),
         }
     }
 }
@@ -1020,6 +1151,7 @@ mod tests {
             "subject:deployment",
             1,
             0,
+            None,
             SearchMode::Hybrid,
             SortOrder::Relevance,
             true,
@@ -1045,6 +1177,7 @@ mod tests {
             "body:deployment",
             1,
             0,
+            None,
             SearchMode::Hybrid,
             SortOrder::Relevance,
             false,
@@ -1063,6 +1196,7 @@ mod tests {
             "filename:deployment",
             1,
             0,
+            None,
             SearchMode::Hybrid,
             SortOrder::Relevance,
             false,
@@ -1089,6 +1223,7 @@ mod tests {
             "body:deployment -filename:report",
             10,
             0,
+            None,
             SearchMode::Hybrid,
             SortOrder::Relevance,
             true,
@@ -1153,6 +1288,7 @@ mod tests {
             "body:deployment",
             10,
             0,
+            None,
             SearchMode::Hybrid,
             SortOrder::Relevance,
             true,
@@ -1216,6 +1352,7 @@ mod tests {
             "body:deployment",
             10,
             0,
+            None,
             SearchMode::Hybrid,
             SortOrder::Relevance,
             true,

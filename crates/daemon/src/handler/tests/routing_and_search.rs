@@ -672,6 +672,7 @@ async fn dispatch_count_after_sync() {
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Count {
             query: "deployment".to_string(),
+            account_id: None,
             mode: None,
         }),
     };
@@ -719,6 +720,7 @@ async fn dispatch_create_and_list_saved_searches() {
         payload: IpcPayload::Request(Request::CreateSavedSearch {
             name: "Important".to_string(),
             query: "is:starred".to_string(),
+            account_id: None,
             search_mode: mxr_core::SearchMode::Lexical,
         }),
     };
@@ -762,6 +764,7 @@ async fn dispatch_create_saved_search_persists_requested_mode() {
         payload: IpcPayload::Request(Request::CreateSavedSearch {
             name: "Hybrid".to_string(),
             query: "deployment".to_string(),
+            account_id: None,
             search_mode: mxr_core::SearchMode::Hybrid,
         }),
     };
@@ -800,6 +803,7 @@ async fn dispatch_run_saved_search_returns_results() {
         payload: IpcPayload::Request(Request::CreateSavedSearch {
             name: "Deploy".into(),
             query: "deployment".into(),
+            account_id: None,
             search_mode: mxr_core::SearchMode::Lexical,
         }),
     };
@@ -811,6 +815,7 @@ async fn dispatch_run_saved_search_returns_results() {
         payload: IpcPayload::Request(Request::RunSavedSearch {
             name: "Deploy".into(),
             limit: 10,
+            account_id: None,
         }),
     };
     let resp = handle_request(&state, &msg).await;
@@ -1030,6 +1035,7 @@ async fn dispatch_search_returns_results() {
             query: "deployment".to_string(),
             limit: 10,
             offset: 0,
+            account_id: None,
             mode: None,
             sort: None,
             explain: false,
@@ -1068,6 +1074,7 @@ async fn dispatch_search_explain_returns_execution_details() {
             query: "deployment".to_string(),
             limit: 5,
             offset: 0,
+            account_id: None,
             mode: Some(mxr_core::SearchMode::Lexical),
             sort: Some(mxr_core::types::SortOrder::DateDesc),
             explain: true,
@@ -1112,6 +1119,7 @@ async fn dispatch_structured_search_in_semantic_mode_falls_back_to_lexical() {
             query: "is:unread".to_string(),
             limit: 10,
             offset: 0,
+            account_id: None,
             mode: Some(mxr_core::SearchMode::Semantic),
             sort: Some(mxr_core::types::SortOrder::DateDesc),
             explain: false,
@@ -1148,6 +1156,7 @@ async fn dispatch_structured_search_in_semantic_mode_explains_fallback() {
             query: "is:unread".to_string(),
             limit: 10,
             offset: 0,
+            account_id: None,
             mode: Some(mxr_core::SearchMode::Semantic),
             sort: Some(mxr_core::types::SortOrder::DateDesc),
             explain: true,
@@ -1196,6 +1205,7 @@ async fn dispatch_fielded_semantic_query_explains_disabled_fallback() {
             query: "body:deployment".to_string(),
             limit: 10,
             offset: 0,
+            account_id: None,
             mode: Some(mxr_core::SearchMode::Hybrid),
             sort: Some(mxr_core::types::SortOrder::DateDesc),
             explain: true,
@@ -1234,6 +1244,7 @@ async fn dispatch_search_rejects_invalid_structured_query() {
             query: "older:30q".to_string(),
             limit: 10,
             offset: 0,
+            account_id: None,
             mode: None,
             sort: None,
             explain: false,

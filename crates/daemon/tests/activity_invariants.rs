@@ -68,6 +68,7 @@ fn no_forbidden_keys_appear_in_recorder_outputs() {
         query: "user@example.com password reset".into(),
         limit: 50,
         offset: 0,
+        account_id: None,
         mode: None,
         sort: None,
         explain: false,

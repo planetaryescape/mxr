@@ -599,6 +599,7 @@ async fn run_saved_search(
         Request::RunSavedSearch {
             name: body.name,
             limit: body.limit,
+            account_id: None,
         },
     )
     .await?;
@@ -889,6 +890,7 @@ async fn count_messages(
         query.token.as_deref(),
         Request::Count {
             query: query.query,
+            account_id: None,
             mode,
         },
     )
@@ -1190,6 +1192,7 @@ async fn contacts_autocomplete(
         &headers,
         query.token.as_deref(),
         Request::ListSenders {
+            account_id: None,
             limit: scan_limit,
             since_unix: None,
         },
@@ -1750,6 +1753,7 @@ async fn export_search(
         auth.token.as_deref(),
         Request::ExportSearch {
             query: body.query,
+            account_id: None,
             format: body.format,
         },
     )

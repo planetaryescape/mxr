@@ -1,14 +1,14 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 13
 expression: stdout
 ---
 Cancel a previously-scheduled send. The draft itself is preserved
 
-Usage: mxr unsend <DRAFT_ID>
+Usage: mxr unsend [OPTIONS] <DRAFT_ID>
 
 Arguments:
   <DRAFT_ID>  Draft ID with a scheduled send to cancel
 
 Options:
-  -h, --help  Print help
+      --account <ACCOUNT>
+  -h, --help               Print help

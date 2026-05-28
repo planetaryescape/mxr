@@ -11,7 +11,8 @@ Arguments:
 
 Options:
       --search <SEARCH>
+      --account <ACCOUNT>
       --first
       --limit <LIMIT>
-      --yes              Required when `--search` resolves to more than one match. Confirms you actually want N browser tabs
-  -h, --help             Print help
+      --yes                Required when `--search` resolves to more than one match. Confirms you actually want N browser tabs
+  -h, --help               Print help

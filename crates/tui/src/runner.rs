@@ -586,6 +586,7 @@ pub async fn run() -> anyhow::Result<()> {
                 let resp = ipc_call(
                     &bg,
                     Request::ListDeliveries {
+                        account_id: None,
                         filter: Some(filter),
                     },
                 )
@@ -610,6 +611,7 @@ pub async fn run() -> anyhow::Result<()> {
                 let resp = ipc_call(
                     &bg,
                     Request::ListDeliveries {
+                        account_id: None,
                         filter: Some(filter),
                     },
                 )
@@ -634,6 +636,7 @@ pub async fn run() -> anyhow::Result<()> {
                 let resp = ipc_call(
                     &bg,
                     Request::ListDeliveries {
+                        account_id: None,
                         filter: Some(filter),
                     },
                 )
@@ -1341,7 +1344,14 @@ pub async fn run() -> anyhow::Result<()> {
             app.mailbox.pending_calendar_invites_refresh = false;
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
-                let resp = ipc_call(&bg, Request::ListInvites { limit: 200 }).await;
+                let resp = ipc_call(
+                    &bg,
+                    Request::ListInvites {
+                        account_id: None,
+                        limit: 200,
+                    },
+                )
+                .await;
                 let result = match resp {
                     Ok(Response::Ok {
                         data: ResponseData::Invites { invites },

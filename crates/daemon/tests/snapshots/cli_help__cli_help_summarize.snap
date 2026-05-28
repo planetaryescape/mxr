@@ -11,7 +11,8 @@ Arguments:
 
 Options:
       --search <SEARCH>
-      --first            Summarize only the most recent matching thread
-      --limit <LIMIT>    Cap the number of threads summarized when --search is used. Each summary is an LLM call — keep this low when targeting metered cloud endpoints
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+      --account <ACCOUNT>
+      --first              Summarize only the most recent matching thread
+      --limit <LIMIT>      Cap the number of threads summarized when --search is used. Each summary is an LLM call — keep this low when targeting metered cloud endpoints
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

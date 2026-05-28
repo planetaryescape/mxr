@@ -36,16 +36,31 @@ impl super::Store {
     pub async fn list_calendar_invites(
         &self,
         limit: u32,
+        account_id: Option<&AccountId>,
     ) -> Result<Vec<CalendarInviteRecord>, sqlx::Error> {
-        let rows = sqlx::query(
-            "SELECT id, account_id, message_id, metadata_json, created_at, updated_at
-             FROM calendar_invites
-             ORDER BY COALESCE(starts_at, updated_at) DESC
-             LIMIT ?",
-        )
-        .bind(limit as i64)
-        .fetch_all(self.reader())
-        .await?;
+        let rows = if let Some(account_id) = account_id {
+            sqlx::query(
+                "SELECT id, account_id, message_id, metadata_json, created_at, updated_at
+                 FROM calendar_invites
+                 WHERE account_id = ?
+                 ORDER BY COALESCE(starts_at, updated_at) DESC
+                 LIMIT ?",
+            )
+            .bind(account_id.as_str())
+            .bind(limit as i64)
+            .fetch_all(self.reader())
+            .await?
+        } else {
+            sqlx::query(
+                "SELECT id, account_id, message_id, metadata_json, created_at, updated_at
+                 FROM calendar_invites
+                 ORDER BY COALESCE(starts_at, updated_at) DESC
+                 LIMIT ?",
+            )
+            .bind(limit as i64)
+            .fetch_all(self.reader())
+            .await?
+        };
 
         rows.into_iter()
             .map(row_to_calendar_invite_record)
@@ -170,14 +185,29 @@ impl super::Store {
         Ok(count > 0)
     }
 
-    pub async fn backfill_calendar_invites_from_bodies(&self) -> Result<u64, sqlx::Error> {
-        let rows = sqlx::query(
-            "SELECT message_id, metadata_json
-             FROM bodies
-             WHERE metadata_json LIKE '%\"calendar\"%'",
-        )
-        .fetch_all(self.reader())
-        .await?;
+    pub async fn backfill_calendar_invites_from_bodies(
+        &self,
+        account_id: Option<&AccountId>,
+    ) -> Result<u64, sqlx::Error> {
+        let rows = if let Some(account_id) = account_id {
+            sqlx::query(
+                "SELECT bodies.message_id, bodies.metadata_json
+                 FROM bodies
+                 JOIN messages ON messages.id = bodies.message_id
+                 WHERE bodies.metadata_json LIKE '%\"calendar\"%' AND messages.account_id = ?",
+            )
+            .bind(account_id.as_str())
+            .fetch_all(self.reader())
+            .await?
+        } else {
+            sqlx::query(
+                "SELECT message_id, metadata_json
+                 FROM bodies
+                 WHERE metadata_json LIKE '%\"calendar\"%'",
+            )
+            .fetch_all(self.reader())
+            .await?
+        };
 
         let mut backfilled = 0;
         for row in rows {

@@ -319,12 +319,23 @@ impl super::Store {
     pub async fn list_message_ids_since(
         &self,
         since: chrono::DateTime<chrono::Utc>,
+        account_id: Option<&AccountId>,
     ) -> Result<Vec<MessageId>, sqlx::Error> {
         let since_ts = since.timestamp();
-        let rows = sqlx::query("SELECT id FROM messages WHERE date >= ?1 ORDER BY date DESC")
+        let rows = if let Some(account_id) = account_id {
+            sqlx::query(
+                "SELECT id FROM messages WHERE date >= ?1 AND account_id = ?2 ORDER BY date DESC",
+            )
             .bind(since_ts)
+            .bind(account_id.as_str())
             .fetch_all(self.reader())
-            .await?;
+            .await?
+        } else {
+            sqlx::query("SELECT id FROM messages WHERE date >= ?1 ORDER BY date DESC")
+                .bind(since_ts)
+                .fetch_all(self.reader())
+                .await?
+        };
         rows.into_iter()
             .map(|row| decode_id(row.get::<String, _>("id").as_str()))
             .collect()

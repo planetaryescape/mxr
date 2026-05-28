@@ -97,6 +97,7 @@ pub(crate) async fn search(
     query: &str,
     limit: u32,
     offset: u32,
+    account_id: Option<&AccountId>,
     mode: SearchMode,
     sort: SortOrder,
     explain: bool,
@@ -106,6 +107,7 @@ pub(crate) async fn search(
         query,
         limit as usize,
         offset as usize,
+        account_id,
         mode,
         sort,
         explain,
@@ -120,8 +122,23 @@ pub(crate) async fn search(
     })
 }
 
-pub(crate) async fn count(state: &AppState, query: &str, mode: SearchMode) -> HandlerResult {
-    let results = execute_search(state, query, 10_000, 0, mode, SortOrder::DateDesc, false).await;
+pub(crate) async fn count(
+    state: &AppState,
+    query: &str,
+    account_id: Option<&AccountId>,
+    mode: SearchMode,
+) -> HandlerResult {
+    let results = execute_search(
+        state,
+        query,
+        10_000,
+        0,
+        account_id,
+        mode,
+        SortOrder::DateDesc,
+        false,
+    )
+    .await;
     Ok(ResponseData::Count {
         count: results.map_err(|e| e.clone())?.results.len() as u32,
     })
@@ -133,10 +150,20 @@ pub(crate) async fn count(state: &AppState, query: &str, mode: SearchMode) -> Ha
 pub(crate) async fn count_search_matches(
     state: &AppState,
     query: &str,
+    account_id: Option<&AccountId>,
     mode: SearchMode,
 ) -> Result<u32, String> {
-    let execution =
-        execute_search(state, query, 10_000, 0, mode, SortOrder::DateDesc, false).await?;
+    let execution = execute_search(
+        state,
+        query,
+        10_000,
+        0,
+        account_id,
+        mode,
+        SortOrder::DateDesc,
+        false,
+    )
+    .await?;
     Ok(execution.results.len() as u32)
 }
 
@@ -859,11 +886,12 @@ pub(crate) async fn create_saved_search(
     state: &AppState,
     name: &str,
     query: &str,
+    account_id: Option<AccountId>,
     search_mode: SearchMode,
 ) -> HandlerResult {
     let search = mxr_core::types::SavedSearch {
         id: mxr_core::SavedSearchId::new(),
-        account_id: None,
+        account_id,
         name: name.to_string(),
         query: query.to_string(),
         search_mode,
@@ -896,7 +924,12 @@ pub(crate) async fn delete_saved_search(state: &AppState, name: &str) -> Handler
     }
 }
 
-pub(crate) async fn run_saved_search(state: &AppState, name: &str, limit: u32) -> HandlerResult {
+pub(crate) async fn run_saved_search(
+    state: &AppState,
+    name: &str,
+    limit: u32,
+    account_id: Option<&AccountId>,
+) -> HandlerResult {
     let saved = state
         .store
         .get_saved_search_by_name(name)
@@ -907,6 +940,7 @@ pub(crate) async fn run_saved_search(state: &AppState, name: &str, limit: u32) -
         &saved.query,
         limit as usize,
         0,
+        account_id.or(saved.account_id.as_ref()),
         saved.search_mode,
         SortOrder::DateDesc,
         false,
@@ -1220,9 +1254,10 @@ pub(crate) async fn export_thread(
 pub(crate) async fn export_search(
     state: &AppState,
     query: &str,
+    account_id: Option<&AccountId>,
     format: &ExportFormat,
 ) -> HandlerResult {
-    match handle_export_search(state, query, format).await {
+    match handle_export_search(state, query, account_id, format).await {
         mxr_protocol::Response::Ok { data } => Ok(data),
         mxr_protocol::Response::Error { message, .. } => {
             Err(crate::handler::HandlerError::Message(message))

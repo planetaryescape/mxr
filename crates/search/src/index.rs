@@ -6,8 +6,8 @@ use mxr_core::MxrError;
 use std::path::Path;
 use tantivy::{
     collector::{Count, TopDocs},
-    query::Query,
-    query::QueryParser,
+    query::{BooleanQuery, Occur, Query, QueryParser, TermQuery},
+    schema::IndexRecordOption,
     schema::Value,
     Index, IndexReader, IndexWriter, Order, ReloadPolicy, TantivyDocument,
 };
@@ -404,6 +404,17 @@ impl SearchIndex {
         offset: usize,
         sort: SortOrder,
     ) -> Result<SearchPage, MxrError> {
+        self.search_in_account(query_str, None, limit, offset, sort)
+    }
+
+    pub fn search_in_account(
+        &self,
+        query_str: &str,
+        account_id: Option<&str>,
+        limit: usize,
+        offset: usize,
+        sort: SortOrder,
+    ) -> Result<SearchPage, MxrError> {
         let s = &self.schema;
 
         let mut query_parser = QueryParser::for_index(
@@ -426,6 +437,19 @@ impl SearchIndex {
         let query = query_parser
             .parse_query(query_str)
             .map_err(|e| MxrError::Search(e.to_string()))?;
+        let query = match account_id {
+            Some(account_id) => {
+                let account_term = tantivy::Term::from_field_text(s.account_id, account_id);
+                Box::new(BooleanQuery::new(vec![
+                    (Occur::Must, query),
+                    (
+                        Occur::Must,
+                        Box::new(TermQuery::new(account_term, IndexRecordOption::Basic)),
+                    ),
+                ])) as Box<dyn Query>
+            }
+            None => query,
+        };
 
         let searcher = self.reader.searcher();
         let total = searcher

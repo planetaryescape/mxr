@@ -1,5 +1,6 @@
 use crate::cli::OutputFormat;
 use crate::commands::selection::{resolve_message_ids, SelectionLimit};
+use crate::commands::{ensure_message_account, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::{AttachmentMeta, MessageId};
@@ -18,15 +19,18 @@ use super::helpers::{
 pub async fn attachments_list(
     message_id: Option<String>,
     search: Option<String>,
+    account: Option<String>,
     first: bool,
     limit: Option<u32>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let ids = resolve_message_ids(
         &mut client,
         message_id.into_iter().collect(),
         search,
+        account_id.as_ref(),
         SelectionLimit::from_flags(first, limit),
     )
     .await?;
@@ -171,11 +175,14 @@ async fn print_one_message_attachments(
 
 pub async fn attachments_download(
     message_id: String,
+    account: Option<String>,
     index: Option<usize>,
     dir: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     let id = parse_id_for_legacy(&message_id)?;
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    ensure_message_account(&mut client, &id, account_id.as_ref()).await?;
     let attachments = load_attachments(&mut client, &id).await?;
 
     let selected: Vec<(usize, &mxr_core::AttachmentMeta)> = match index {
@@ -216,9 +223,15 @@ pub async fn attachments_download(
     Ok(())
 }
 
-pub async fn attachments_open(message_id: String, index: usize) -> anyhow::Result<()> {
+pub async fn attachments_open(
+    message_id: String,
+    account: Option<String>,
+    index: usize,
+) -> anyhow::Result<()> {
     let id = parse_id_for_legacy(&message_id)?;
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    ensure_message_account(&mut client, &id, account_id.as_ref()).await?;
     let attachments = load_attachments(&mut client, &id).await?;
     let attachment = attachment_by_index(&attachments, index)?;
 

@@ -7,5 +7,6 @@ List snoozed messages
 Usage: mxr snoozed [OPTIONS]
 
 Options:
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+      --account <ACCOUNT>
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

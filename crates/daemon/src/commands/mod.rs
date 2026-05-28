@@ -62,7 +62,8 @@ pub mod whois;
 pub mod wrapped;
 
 use crate::ipc_client::IpcClient;
-use mxr_protocol::{Request, Response, ResponseData};
+use mxr_core::{AccountId, DraftId, MessageId};
+use mxr_protocol::{AccountSummaryData, Request, Response, ResponseData};
 
 /// Extract a typed value from a daemon `Response`, converting `Response::Error`
 /// into an `anyhow` error and rejecting unexpected variants.
@@ -79,7 +80,7 @@ where
 pub(crate) async fn resolve_account(
     client: &mut IpcClient,
     explicit: Option<&str>,
-) -> anyhow::Result<mxr_core::AccountId> {
+) -> anyhow::Result<AccountId> {
     let resp = client.request(Request::ListAccounts).await?;
     let accounts = match resp {
         Response::Ok {
@@ -89,15 +90,7 @@ pub(crate) async fn resolve_account(
         _ => anyhow::bail!("Unexpected response"),
     };
     if let Some(key) = explicit {
-        return accounts
-            .into_iter()
-            .find(|account| {
-                account.key.as_deref() == Some(key)
-                    || account.email == key
-                    || account.account_id.to_string() == key
-            })
-            .map(|account| account.account_id)
-            .ok_or_else(|| anyhow::anyhow!("No account matching '{key}'"));
+        return resolve_account_from_list(&accounts, key);
     }
     if let [account] = accounts.as_slice() {
         return Ok(account.account_id.clone());
@@ -106,4 +99,86 @@ pub(crate) async fn resolve_account(
         return Ok(default.account_id.clone());
     }
     anyhow::bail!("Multiple accounts configured; pass --account <key>")
+}
+
+pub(crate) async fn resolve_optional_account(
+    client: &mut IpcClient,
+    explicit: Option<&str>,
+) -> anyhow::Result<Option<AccountId>> {
+    match explicit {
+        Some(selector) => resolve_account(client, Some(selector)).await.map(Some),
+        None => Ok(None),
+    }
+}
+
+pub(crate) async fn ensure_message_account(
+    client: &mut IpcClient,
+    message_id: &MessageId,
+    account_id: Option<&AccountId>,
+) -> anyhow::Result<()> {
+    let Some(account_id) = account_id else {
+        return Ok(());
+    };
+    let resp = client
+        .request(Request::GetEnvelope {
+            message_id: message_id.clone(),
+        })
+        .await?;
+    let envelope = expect_response(resp, |response| match response {
+        Response::Ok {
+            data: ResponseData::Envelope { envelope },
+        } => Some(envelope),
+        _ => None,
+    })?;
+    if &envelope.account_id != account_id {
+        anyhow::bail!(
+            "Message {} belongs to a different account",
+            message_id.as_str()
+        );
+    }
+    Ok(())
+}
+
+pub(crate) async fn get_draft_for_account(
+    client: &mut IpcClient,
+    draft_id: &DraftId,
+    account_id: Option<&AccountId>,
+) -> anyhow::Result<mxr_core::Draft> {
+    let resp = client.request(Request::ListDrafts).await?;
+    let drafts = expect_response(resp, |response| match response {
+        Response::Ok {
+            data: ResponseData::Drafts { drafts },
+        } => Some(drafts),
+        _ => None,
+    })?;
+    let draft = drafts
+        .into_iter()
+        .find(|draft| &draft.id == draft_id)
+        .ok_or_else(|| anyhow::anyhow!("Draft not found: {draft_id}"))?;
+    if account_id.is_some_and(|account_id| draft.account_id != *account_id) {
+        anyhow::bail!("Draft {draft_id} belongs to a different account");
+    }
+    Ok(draft)
+}
+
+fn resolve_account_from_list(
+    accounts: &[AccountSummaryData],
+    selector: &str,
+) -> anyhow::Result<AccountId> {
+    let matches: Vec<_> = accounts
+        .iter()
+        .filter(|account| account_matches(account, selector))
+        .collect();
+    match matches.as_slice() {
+        [account] => Ok(account.account_id.clone()),
+        [] => anyhow::bail!("No account matching '{selector}'"),
+        _ => anyhow::bail!("Account selector '{selector}' is ambiguous"),
+    }
+}
+
+fn account_matches(account: &AccountSummaryData, selector: &str) -> bool {
+    account.key.as_deref() == Some(selector)
+        || account.email == selector
+        || account.name == selector
+        || account.account_id.to_string() == selector
 }

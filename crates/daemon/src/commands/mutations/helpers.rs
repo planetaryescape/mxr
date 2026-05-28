@@ -24,20 +24,34 @@ pub(super) async fn resolve_mutation_selection(
     client: &mut IpcClient,
     message_ids: Vec<String>,
     search: Option<String>,
+    account_id: Option<&mxr_core::AccountId>,
 ) -> anyhow::Result<MutationSelection> {
-    resolve_mutation_selection_with_limit(client, message_ids, search, SelectionLimit::Unbounded)
-        .await
+    resolve_mutation_selection_with_limit(
+        client,
+        message_ids,
+        search,
+        account_id,
+        SelectionLimit::Unbounded,
+    )
+    .await
 }
 
 pub(super) async fn resolve_mutation_selection_with_limit(
     client: &mut IpcClient,
     message_ids: Vec<String>,
     search: Option<String>,
+    account_id: Option<&mxr_core::AccountId>,
     limit: SelectionLimit,
 ) -> anyhow::Result<MutationSelection> {
     let used_search = message_ids.is_empty() && search.is_some();
-    let ids =
-        crate::commands::selection::resolve_message_ids(client, message_ids, search, limit).await?;
+    let ids = crate::commands::selection::resolve_message_ids(
+        client,
+        message_ids,
+        search,
+        account_id,
+        limit,
+    )
+    .await?;
     let envelopes = if ids.is_empty() {
         Vec::new()
     } else {
@@ -54,6 +68,14 @@ pub(super) async fn resolve_mutation_selection_with_limit(
             _ => anyhow::bail!("Unexpected response from envelope lookup"),
         }
     };
+    if let Some(account_id) = account_id {
+        if let Some(envelope) = envelopes.iter().find(|env| &env.account_id != account_id) {
+            anyhow::bail!(
+                "Message {} belongs to a different account",
+                envelope.id.as_str()
+            );
+        }
+    }
 
     Ok(MutationSelection {
         ids,

@@ -8,15 +8,21 @@ pub(super) async fn search(
     query: &str,
     limit: u32,
     offset: u32,
+    account_id: Option<&AccountId>,
     mode: SearchMode,
     sort: SortOrder,
     explain: bool,
 ) -> HandlerResult {
-    diagnostics_impl::search(state, query, limit, offset, mode, sort, explain).await
+    diagnostics_impl::search(state, query, limit, offset, account_id, mode, sort, explain).await
 }
 
-pub(super) async fn count(state: &AppState, query: &str, mode: SearchMode) -> HandlerResult {
-    diagnostics_impl::count(state, query, mode).await
+pub(super) async fn count(
+    state: &AppState,
+    query: &str,
+    account_id: Option<&AccountId>,
+    mode: SearchMode,
+) -> HandlerResult {
+    diagnostics_impl::count(state, query, account_id, mode).await
 }
 
 pub(super) async fn get_headers(state: &AppState, message_id: &MessageId) -> HandlerResult {
@@ -38,9 +44,10 @@ pub(super) async fn export_thread(
 pub(super) async fn export_search(
     state: &AppState,
     query: &str,
+    account_id: Option<&AccountId>,
     format: &ExportFormat,
 ) -> HandlerResult {
-    diagnostics_impl::export_search(state, query, format).await
+    diagnostics_impl::export_search(state, query, account_id, format).await
 }
 
 pub(super) async fn get_sync_status(state: &AppState, account_id: &AccountId) -> HandlerResult {

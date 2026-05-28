@@ -11,5 +11,6 @@ Arguments:
   [INDEX]       Attachment index (1-based, omit for all)
 
 Options:
-      --dir <DIR>  Output directory
-  -h, --help       Print help
+      --account <ACCOUNT>
+      --dir <DIR>          Output directory
+  -h, --help               Print help

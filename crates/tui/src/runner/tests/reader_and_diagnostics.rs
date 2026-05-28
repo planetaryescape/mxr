@@ -656,6 +656,7 @@ fn saved_search_form_for_new_submits_create_request() {
         mxr_protocol::Request::CreateSavedSearch {
             name,
             query,
+            account_id: _,
             search_mode,
         } => {
             assert_eq!(name, "Work overdue");

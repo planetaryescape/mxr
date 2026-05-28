@@ -19,9 +19,17 @@ use mxr_store::{Delivery, DeliveryListFilter};
 // IPC handlers
 // ---------------------------------------------------------------------------
 
-pub(super) async fn list_deliveries(state: &AppState, filter: Option<&str>) -> HandlerResult {
+pub(super) async fn list_deliveries(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    filter: Option<&str>,
+) -> HandlerResult {
     let rows = state.store.list_deliveries(parse_filter(filter)).await?;
-    let deliveries = rows.into_iter().map(to_data).collect();
+    let deliveries = rows
+        .into_iter()
+        .filter(|row| account_id.is_none_or(|account_id| row.account_id == *account_id))
+        .map(to_data)
+        .collect();
     Ok(ResponseData::Deliveries { deliveries })
 }
 
@@ -61,10 +69,11 @@ pub(super) async fn dismiss_delivery(state: &AppState, delivery_id: &DeliveryId)
 
 pub(super) async fn scan_deliveries(
     state: &AppState,
+    account_id: Option<&AccountId>,
     since_days: Option<u32>,
     dry_run: bool,
 ) -> HandlerResult {
-    let summary = scan_recent(state, since_days.unwrap_or(90), dry_run).await?;
+    let summary = scan_recent(state, account_id, since_days.unwrap_or(90), dry_run).await?;
     Ok(ResponseData::DeliveryScan { summary })
 }
 
@@ -100,6 +109,7 @@ pub(crate) async fn scan_messages(
 /// calling the LLM or writing.
 async fn scan_recent(
     state: &AppState,
+    account_id: Option<&AccountId>,
     since_days: u32,
     dry_run: bool,
 ) -> Result<DeliveryScanSummary, String> {
@@ -108,7 +118,7 @@ async fn scan_recent(
     let since = Utc::now() - Duration::days(i64::from(since_days));
     let ids = state
         .store
-        .list_message_ids_since(since)
+        .list_message_ids_since(since, account_id)
         .await
         .map_err(|e| e.to_string())?;
     let mut summary = DeliveryScanSummary {

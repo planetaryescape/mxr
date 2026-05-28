@@ -1,6 +1,5 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 14
 expression: stdout
 ---
 List top inbound senders by message volume.
@@ -12,6 +11,9 @@ Usage: mxr senders [OPTIONS]
 Options:
       --top <TOP>
           [default: 20]
+
+      --account <ACCOUNT>
+
 
       --since <SINCE>
           Only count messages received within this window. Defaults to unbounded (all-time)

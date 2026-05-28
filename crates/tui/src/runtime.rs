@@ -188,6 +188,7 @@ async fn execute_replaceable_request(
                 bg,
                 Request::Count {
                     query: pending.query,
+                    account_id: None,
                     mode: Some(pending.mode),
                 },
             )

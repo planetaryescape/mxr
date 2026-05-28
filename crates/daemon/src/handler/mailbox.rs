@@ -178,8 +178,12 @@ pub(super) async fn get_invite(state: &AppState, message_id: &MessageId) -> Hand
     })
 }
 
-pub(super) async fn list_invites(state: &AppState, limit: u32) -> HandlerResult {
-    let records = state.store.list_calendar_invites(limit).await?;
+pub(super) async fn list_invites(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    limit: u32,
+) -> HandlerResult {
+    let records = state.store.list_calendar_invites(limit, account_id).await?;
     // Cache account addresses so a page of invites across a handful of
     // accounts doesn't issue one address query per row.
     let mut address_cache: std::collections::HashMap<AccountId, Vec<String>> =
@@ -227,14 +231,20 @@ pub(super) async fn list_invites(state: &AppState, limit: u32) -> HandlerResult 
     Ok(ResponseData::Invites { invites })
 }
 
-pub(super) async fn backfill_invites(state: &AppState) -> HandlerResult {
+pub(super) async fn backfill_invites(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+) -> HandlerResult {
     // First recover attachment-only invites: messages whose `.ics` arrived as
     // an attachment with no inline `text/calendar` part have no parsed calendar
     // metadata in their stored body, so the row rebuild below cannot see them.
     // Re-hydrate them from the provider (whose body fetch now parses calendar
     // attachments) before rebuilding rows from body metadata.
-    let rehydrated = rehydrate_attachment_only_invites(state).await;
-    let backfilled = state.store.backfill_calendar_invites_from_bodies().await?;
+    let rehydrated = rehydrate_attachment_only_invites(state, account_id).await;
+    let backfilled = state
+        .store
+        .backfill_calendar_invites_from_bodies(account_id)
+        .await?;
     Ok(ResponseData::CalendarInviteBackfill {
         backfilled,
         rehydrated,
@@ -246,16 +256,26 @@ pub(super) async fn backfill_invites(state: &AppState) -> HandlerResult {
 /// `metadata.calendar` and the `calendar_invites` row). Returns the count of
 /// messages that gained calendar metadata. Per-message failures are logged and
 /// skipped so one bad message never aborts the whole pass.
-async fn rehydrate_attachment_only_invites(state: &AppState) -> u64 {
+async fn rehydrate_attachment_only_invites(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+) -> u64 {
     let page_size: u32 = 200;
     let mut offset: u32 = 0;
     let mut rehydrated: u64 = 0;
     loop {
-        let envelopes = match state
-            .store
-            .list_all_envelopes_paginated(page_size, offset)
-            .await
-        {
+        let envelopes_result = if let Some(account_id) = account_id {
+            state
+                .store
+                .list_envelopes_by_account(account_id, page_size, offset)
+                .await
+        } else {
+            state
+                .store
+                .list_all_envelopes_paginated(page_size, offset)
+                .await
+        };
+        let envelopes = match envelopes_result {
             Ok(envelopes) => envelopes,
             Err(error) => {
                 tracing::warn!("backfill_invites: list envelopes failed: {error}");

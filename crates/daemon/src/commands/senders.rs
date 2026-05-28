@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_protocol::{Request, Response, ResponseData, SenderSummaryData};
@@ -37,10 +38,12 @@ fn render_table(senders: &[SenderSummaryData]) {
 
 pub async fn run(
     top: u32,
+    account: Option<String>,
     since: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let since_unix = since
         .as_deref()
         .map(parse_since)
@@ -54,6 +57,7 @@ pub async fn run(
         .map(|dt| dt.timestamp());
     let resp = client
         .request(Request::ListSenders {
+            account_id,
             limit: top,
             since_unix,
         })

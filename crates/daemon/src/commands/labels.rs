@@ -7,6 +7,7 @@
 )]
 
 use crate::cli::{LabelsAction, OutputFormat};
+use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::types::Label;
@@ -57,13 +58,20 @@ fn render_labels(labels: &[Label], format: OutputFormat) -> anyhow::Result<Strin
     })
 }
 
-pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> anyhow::Result<()> {
+pub async fn run(
+    action: Option<LabelsAction>,
+    account: Option<String>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
 
     match action {
         None => {
             let resp = client
-                .request(Request::ListLabels { account_id: None })
+                .request(Request::ListLabels {
+                    account_id: account_id.clone(),
+                })
                 .await?;
             match resp {
                 Response::Ok {
@@ -94,7 +102,7 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
                 .request(Request::CreateLabel {
                     name,
                     color,
-                    account_id: None,
+                    account_id: account_id.clone(),
                 })
                 .await?;
             match resp {
@@ -123,7 +131,7 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
             let resp = client
                 .request(Request::DeleteLabel {
                     name,
-                    account_id: None,
+                    account_id: account_id.clone(),
                 })
                 .await?;
             match resp {
@@ -154,7 +162,7 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
                 .request(Request::RenameLabel {
                     old,
                     new,
-                    account_id: None,
+                    account_id: account_id.clone(),
                 })
                 .await?;
             match resp {

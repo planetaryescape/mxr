@@ -1,6 +1,6 @@
 use crate::cli::OutputFormat;
-use crate::commands::expect_response;
 use crate::commands::selection::parse_message_id;
+use crate::commands::{ensure_message_account, expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_protocol::{
@@ -8,9 +8,15 @@ use mxr_protocol::{
     ResponseData,
 };
 
-pub async fn show(message_id: String, format: Option<OutputFormat>) -> anyhow::Result<()> {
+pub async fn show(
+    message_id: String,
+    account: Option<String>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let message_id = parse_message_id(&message_id)?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    ensure_message_account(&mut client, &message_id, account_id.as_ref()).await?;
     let resp = client.request(Request::GetInvite { message_id }).await?;
     let invite = expect_response(resp, |response| match response {
         Response::Ok {
@@ -22,22 +28,43 @@ pub async fn show(message_id: String, format: Option<OutputFormat>) -> anyhow::R
     print_invites(&[invite], resolve_format(format))
 }
 
-pub async fn list(limit: u32, format: Option<OutputFormat>) -> anyhow::Result<()> {
+pub async fn list(
+    limit: u32,
+    account: Option<String>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let resp = client.request(Request::ListInvites { limit }).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let resp = client
+        .request(Request::ListInvites {
+            account_id: account_id.clone(),
+            limit,
+        })
+        .await?;
     let invites = expect_response(resp, |response| match response {
         Response::Ok {
             data: ResponseData::Invites { invites },
         } => Some(invites),
         _ => None,
     })?;
+    let invites: Vec<_> = invites
+        .into_iter()
+        .filter(|invite| {
+            account_id
+                .as_ref()
+                .is_none_or(|id| invite.account_id == *id)
+        })
+        .collect();
 
     print_invites(&invites, resolve_format(format))
 }
 
-pub async fn backfill(format: Option<OutputFormat>) -> anyhow::Result<()> {
+pub async fn backfill(account: Option<String>, format: Option<OutputFormat>) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let resp = client.request(Request::BackfillCalendarInvites).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let resp = client
+        .request(Request::BackfillCalendarInvites { account_id })
+        .await?;
     let (backfilled, rehydrated) = expect_response(resp, |response| match response {
         Response::Ok {
             data:
@@ -71,12 +98,15 @@ pub async fn backfill(format: Option<OutputFormat>) -> anyhow::Result<()> {
 
 pub async fn reply(
     message_id: String,
+    account: Option<String>,
     action: CalendarInviteActionData,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let message_id = parse_message_id(&message_id)?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    ensure_message_account(&mut client, &message_id, account_id.as_ref()).await?;
     let resp = client
         .request(Request::RespondInvite {
             message_id,

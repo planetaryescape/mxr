@@ -13,7 +13,7 @@
 //! returns its sorted (date-desc) results.
 
 use crate::ipc_client::IpcClient;
-use mxr_core::id::{MessageId, ThreadId};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::SortOrder;
 use mxr_protocol::*;
 use std::io::{IsTerminal, Read};
@@ -108,6 +108,7 @@ pub async fn resolve_message_ids(
     client: &mut IpcClient,
     positional: Vec<String>,
     search: Option<String>,
+    account_id: Option<&AccountId>,
     limit: SelectionLimit,
 ) -> anyhow::Result<Vec<MessageId>> {
     match (positional.is_empty(), search) {
@@ -119,6 +120,7 @@ pub async fn resolve_message_ids(
                     query,
                     limit: limit.cap(),
                     offset: 0,
+                    account_id: account_id.cloned(),
                     mode: None,
                     sort: Some(SortOrder::DateDesc),
                     explain: false,
@@ -149,6 +151,7 @@ pub async fn resolve_thread_ids(
     client: &mut IpcClient,
     positional: Vec<String>,
     search: Option<String>,
+    account_id: Option<&AccountId>,
     limit: SelectionLimit,
 ) -> anyhow::Result<Vec<ThreadId>> {
     match (positional.is_empty(), search) {
@@ -165,6 +168,7 @@ pub async fn resolve_thread_ids(
                     query,
                     limit: fetch_cap,
                     offset: 0,
+                    account_id: account_id.cloned(),
                     mode: None,
                     sort: Some(SortOrder::DateDesc),
                     explain: false,

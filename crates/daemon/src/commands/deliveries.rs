@@ -1,6 +1,7 @@
 //! `mxr deliveries` — track packages and deliveries detected in your mail.
 
 use crate::cli::{DeliveriesAction, OutputFormat};
+use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::id::DeliveryId;
@@ -9,17 +10,20 @@ use std::str::FromStr;
 
 pub async fn run(
     action: Option<DeliveriesAction>,
+    account: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let action = action.unwrap_or_else(|| DeliveriesAction::List {
         filter: "active".to_string(),
     });
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
 
     match action {
         DeliveriesAction::List { filter } => {
             let resp = client
                 .request(Request::ListDeliveries {
+                    account_id: account_id.clone(),
                     filter: Some(filter),
                 })
                 .await?;
@@ -46,12 +50,16 @@ pub async fn run(
             match resp {
                 Response::Ok {
                     data: ResponseData::Delivery { delivery },
-                } => println!("{}", serde_json::to_string_pretty(&delivery)?),
+                } => {
+                    ensure_delivery_account(&delivery, account_id.as_ref())?;
+                    println!("{}", serde_json::to_string_pretty(&delivery)?);
+                }
                 Response::Error { message, .. } => anyhow::bail!("{message}"),
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
         DeliveriesAction::Resolve { delivery_id } => {
+            ensure_delivery_id_account(&mut client, &delivery_id, account_id.as_ref()).await?;
             let resp = client
                 .request(Request::ResolveDelivery {
                     delivery_id: parse_id(&delivery_id)?,
@@ -70,6 +78,7 @@ pub async fn run(
             }
         }
         DeliveriesAction::Dismiss { delivery_id } => {
+            ensure_delivery_id_account(&mut client, &delivery_id, account_id.as_ref()).await?;
             let resp = client
                 .request(Request::DismissDelivery {
                     delivery_id: parse_id(&delivery_id)?,
@@ -99,6 +108,7 @@ pub async fn run(
             let resp = client
                 .request_with_events(
                     Request::ScanDeliveries {
+                        account_id: account_id.clone(),
                         since_days,
                         dry_run,
                     },
@@ -132,6 +142,38 @@ pub async fn run(
 
 fn parse_id(s: &str) -> anyhow::Result<DeliveryId> {
     DeliveryId::from_str(s).map_err(|_| anyhow::anyhow!("invalid delivery id: {s}"))
+}
+
+async fn ensure_delivery_id_account(
+    client: &mut IpcClient,
+    delivery_id: &str,
+    account_id: Option<&mxr_core::AccountId>,
+) -> anyhow::Result<()> {
+    let Some(account_id) = account_id else {
+        return Ok(());
+    };
+    let resp = client
+        .request(Request::GetDelivery {
+            delivery_id: parse_id(delivery_id)?,
+        })
+        .await?;
+    let delivery = crate::commands::expect_response(resp, |response| match response {
+        Response::Ok {
+            data: ResponseData::Delivery { delivery },
+        } => Some(delivery),
+        _ => None,
+    })?;
+    ensure_delivery_account(&delivery, Some(account_id))
+}
+
+fn ensure_delivery_account(
+    delivery: &DeliveryData,
+    account_id: Option<&mxr_core::AccountId>,
+) -> anyhow::Result<()> {
+    if account_id.is_some_and(|account_id| delivery.account_id != *account_id) {
+        anyhow::bail!("Delivery {} belongs to a different account", delivery.id);
+    }
+    Ok(())
 }
 
 fn print_table(deliveries: &[DeliveryData]) {

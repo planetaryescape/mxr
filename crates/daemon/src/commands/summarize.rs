@@ -3,6 +3,7 @@
 //! threads in one go (one LLM call per thread).
 
 use crate::cli::OutputFormat;
+use crate::commands::resolve_optional_account;
 use crate::commands::selection::{resolve_thread_ids, SelectionLimit};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -12,15 +13,18 @@ use mxr_protocol::*;
 pub async fn run(
     thread_id: Option<String>,
     search: Option<String>,
+    account: Option<String>,
     first: bool,
     limit: Option<u32>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let ids = resolve_thread_ids(
         &mut client,
         thread_id.into_iter().collect(),
         search,
+        account_id.as_ref(),
         SelectionLimit::from_flags(first, limit),
     )
     .await?;

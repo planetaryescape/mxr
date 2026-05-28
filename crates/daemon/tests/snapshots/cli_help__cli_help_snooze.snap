@@ -10,9 +10,10 @@ Arguments:
   [MESSAGE_ID]...
 
 Options:
-      --until <UNTIL>    When to resurface. Accepts: configured presets (tomorrow|monday|weekend|tonight), conversational forms (`in 2h`, `monday 5pm`, `tomorrow 9am`), and RFC3339 timestamps (`2026-06-01T15:00:00Z`)
+      --until <UNTIL>      When to resurface. Accepts: configured presets (tomorrow|monday|weekend|tonight), conversational forms (`in 2h`, `monday 5pm`, `tomorrow 9am`), and RFC3339 timestamps (`2026-06-01T15:00:00Z`)
       --search <SEARCH>
+      --account <ACCOUNT>
       --yes
       --dry-run
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

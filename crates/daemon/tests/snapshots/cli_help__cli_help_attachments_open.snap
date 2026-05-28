@@ -4,11 +4,12 @@ expression: stdout
 ---
 Open attachment with system handler
 
-Usage: mxr attachments open <MESSAGE_ID> <INDEX>
+Usage: mxr attachments open [OPTIONS] <MESSAGE_ID> <INDEX>
 
 Arguments:
   <MESSAGE_ID>
   <INDEX>       Attachment index (1-based)
 
 Options:
-  -h, --help  Print help
+      --account <ACCOUNT>
+  -h, --help               Print help

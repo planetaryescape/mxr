@@ -10,6 +10,7 @@ Arguments:
   <MESSAGE_ID>  Message ID to forward
 
 Options:
+      --account <ACCOUNT>
       --to <TO>                Forward to recipient(s)
       --body <BODY>            Inline body
       --body-stdin             Read body from stdin

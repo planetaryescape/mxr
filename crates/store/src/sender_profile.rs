@@ -444,7 +444,7 @@ impl super::Store {
     }
 
     pub async fn list_top_senders(&self, limit: u32) -> Result<Vec<SenderSummary>, sqlx::Error> {
-        self.list_top_senders_since(limit, None).await
+        self.list_top_senders_since(limit, None, None).await
     }
 
     /// Like [`Self::list_top_senders`] but only counts (and ranks)
@@ -455,6 +455,7 @@ impl super::Store {
     pub async fn list_top_senders_since(
         &self,
         limit: u32,
+        account_id: Option<&mxr_core::AccountId>,
         since_unix: Option<i64>,
     ) -> Result<Vec<SenderSummary>, sqlx::Error> {
         let started_at = std::time::Instant::now();
@@ -468,6 +469,9 @@ impl super::Store {
                    FROM messages
                    WHERE direction = 'inbound' AND from_email != ''"#,
         );
+        if account_id.is_some() {
+            sql.push_str(" AND account_id = ?");
+        }
         if since_unix.is_some() {
             sql.push_str(" AND date >= ?");
         }
@@ -490,6 +494,9 @@ impl super::Store {
         );
 
         let mut query = sqlx::query(&sql);
+        if let Some(account_id) = account_id {
+            query = query.bind(account_id.as_str());
+        }
         if let Some(since) = since_unix {
             query = query.bind(since);
         }
@@ -931,7 +938,7 @@ mod tests {
         }
 
         // No bound: both senders appear.
-        let unbounded = store.list_top_senders_since(10, None).await.unwrap();
+        let unbounded = store.list_top_senders_since(10, None, None).await.unwrap();
         assert_eq!(unbounded.len(), 2, "unbounded list returns both");
 
         // Cutoff between the two dates: only the recent one.
@@ -940,7 +947,7 @@ mod tests {
             .unwrap()
             .timestamp();
         let bounded = store
-            .list_top_senders_since(10, Some(cutoff))
+            .list_top_senders_since(10, None, Some(cutoff))
             .await
             .unwrap();
         assert_eq!(bounded.len(), 1, "since-cutoff drops the older sender");
@@ -976,7 +983,7 @@ mod tests {
             .unwrap()
             .timestamp();
         let rows = store
-            .list_top_senders_since(10, Some(cutoff))
+            .list_top_senders_since(10, None, Some(cutoff))
             .await
             .unwrap();
         assert!(rows.is_empty(), "future cutoff filters everything out");

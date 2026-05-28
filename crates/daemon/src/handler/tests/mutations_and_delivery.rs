@@ -1110,6 +1110,7 @@ async fn read_only_safety_policy_blocks_mutations_but_allows_search() {
             query: "hello".into(),
             limit: 10,
             offset: 0,
+            account_id: None,
             mode: None,
             sort: None,
             explain: false,

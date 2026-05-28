@@ -10,7 +10,8 @@ Arguments:
   [MESSAGE_ID]...
 
 Options:
-      --all              Unsnooze all
-      --dry-run          Show which messages would be unsnoozed without performing the mutation
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+      --account <ACCOUNT>
+      --all                Unsnooze all
+      --dry-run            Show which messages would be unsnoozed without performing the mutation
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

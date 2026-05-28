@@ -10,8 +10,9 @@ Arguments:
   [MESSAGE_ID]...  Message ID(s). If omitted, reads IDs from stdin when stdin is piped
 
 Options:
-      --search <SEARCH>  Operate on messages matching search query
-      --yes              Skip confirmation
-      --dry-run          Show what would happen
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+      --search <SEARCH>    Operate on messages matching search query
+      --account <ACCOUNT>
+      --yes                Skip confirmation
+      --dry-run            Show what would happen
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

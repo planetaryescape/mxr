@@ -1110,6 +1110,7 @@ async fn dispatch_saved_search_delete() {
         payload: IpcPayload::Request(Request::CreateSavedSearch {
             name: "ToDelete".to_string(),
             query: "is:unread".to_string(),
+            account_id: None,
             search_mode: mxr_core::SearchMode::Lexical,
         }),
     };
@@ -1352,6 +1353,7 @@ async fn dispatch_export_search_json_is_valid() {
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ExportSearch {
             query: "deployment".into(),
+            account_id: None,
             format: mxr_core::types::ExportFormat::Json,
         }),
     };

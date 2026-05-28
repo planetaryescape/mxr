@@ -10,12 +10,13 @@ Arguments:
   [MESSAGE_ID]  Message ID (or omit when piping IDs / using --search)
 
 Options:
-      --search <SEARCH>  Resolve target(s) by query instead of a positional ID. Iterates over each match with a separator
-      --first            Only display the most recent match (when --search is used)
-      --limit <LIMIT>    Cap the number of matches displayed (when --search is used)
-      --view <VIEW>      [possible values: reader, raw, html, headers]
+      --search <SEARCH>    Resolve target(s) by query instead of a positional ID. Iterates over each match with a separator
+      --account <ACCOUNT>
+      --first              Only display the most recent match (when --search is used)
+      --limit <LIMIT>      Cap the number of matches displayed (when --search is used)
+      --view <VIEW>        [possible values: reader, raw, html, headers]
       --assets
       --raw
       --html
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

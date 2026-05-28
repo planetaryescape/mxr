@@ -2,15 +2,23 @@
 //! message. Reuses the conversational time parser from `mxr-core` so
 //! `--when` accepts the same forms as `mxr snooze --until`.
 
+use crate::commands::{ensure_message_account, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use mxr_core::id::MessageId;
 use mxr_protocol::*;
 
-pub async fn run(message_id: String, when: Option<String>, cancel: bool) -> anyhow::Result<()> {
+pub async fn run(
+    message_id: String,
+    account: Option<String>,
+    when: Option<String>,
+    cancel: bool,
+) -> anyhow::Result<()> {
     let id: MessageId = message_id
         .parse()
         .map_err(|e| anyhow::anyhow!("invalid message id `{message_id}`: {e}"))?;
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    ensure_message_account(&mut client, &id, account_id.as_ref()).await?;
 
     if cancel {
         let resp = client

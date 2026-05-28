@@ -32,6 +32,7 @@ pub(crate) async fn ipc_search_segment(
             query: query.to_owned(),
             limit,
             offset,
+            account_id: None,
             mode: Some(mode),
             sort: Some(sort),
             explain: false,

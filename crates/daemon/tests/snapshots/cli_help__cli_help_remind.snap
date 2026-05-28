@@ -10,6 +10,7 @@ Arguments:
   <MESSAGE_ID>
 
 Options:
-      --when <WHEN>  When to fire the reminder. Same forms accepted by `mxr snooze --until`: `in 2h`, `in 5d`, `tomorrow 9am`, `monday 17:00`, RFC3339
-      --cancel       Cancel an existing reminder on this message
-  -h, --help         Print help
+      --account <ACCOUNT>
+      --when <WHEN>        When to fire the reminder. Same forms accepted by `mxr snooze --until`: `in 2h`, `in 5d`, `tomorrow 9am`, `monday 17:00`, RFC3339
+      --cancel             Cancel an existing reminder on this message
+  -h, --help               Print help

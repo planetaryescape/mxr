@@ -1,6 +1,5 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 14
 expression: stdout
 ---
 Reply to a message
@@ -11,6 +10,7 @@ Arguments:
   <MESSAGE_ID>  Message ID to reply to
 
 Options:
+      --account <ACCOUNT>
       --body <BODY>            Inline reply body (skip $EDITOR)
       --body-stdin             Read reply body from stdin
       --signature <SIGNATURE>  Insert this signature by name instead of the scoped default

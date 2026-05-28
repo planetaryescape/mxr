@@ -24,7 +24,14 @@ pub(super) async fn list_saved_search_unread_counts(state: &AppState) -> Handler
         } else {
             format!("({}) AND is:unread", entry.query)
         };
-        match diagnostics_impl::count_search_matches(state, &combined, entry.search_mode).await {
+        match diagnostics_impl::count_search_matches(
+            state,
+            &combined,
+            entry.account_id.as_ref(),
+            entry.search_mode,
+        )
+        .await
+        {
             Ok(count) => {
                 counts.insert(entry.id, count);
             }
@@ -53,12 +60,13 @@ pub(super) async fn list_subscriptions(
 
 pub(super) async fn list_senders(
     state: &AppState,
+    account_id: Option<&AccountId>,
     limit: u32,
     since_unix: Option<i64>,
 ) -> HandlerResult {
     let senders = state
         .store
-        .list_top_senders_since(limit, since_unix)
+        .list_top_senders_since(limit, account_id, since_unix)
         .await?
         .into_iter()
         .map(|row| mxr_protocol::SenderSummaryData {
@@ -251,9 +259,10 @@ pub(super) async fn create_saved_search(
     state: &AppState,
     name: &str,
     query: &str,
+    account_id: Option<AccountId>,
     search_mode: SearchMode,
 ) -> HandlerResult {
-    diagnostics_impl::create_saved_search(state, name, query, search_mode).await
+    diagnostics_impl::create_saved_search(state, name, query, account_id, search_mode).await
 }
 
 pub(super) async fn delete_saved_search(state: &AppState, name: &str) -> HandlerResult {
@@ -268,6 +277,11 @@ pub(super) async fn update_saved_search(
     diagnostics_impl::update_saved_search(state, name, update).await
 }
 
-pub(super) async fn run_saved_search(state: &AppState, name: &str, limit: u32) -> HandlerResult {
-    diagnostics_impl::run_saved_search(state, name, limit).await
+pub(super) async fn run_saved_search(
+    state: &AppState,
+    name: &str,
+    limit: u32,
+    account_id: Option<&AccountId>,
+) -> HandlerResult {
+    diagnostics_impl::run_saved_search(state, name, limit, account_id).await
 }

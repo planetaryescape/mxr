@@ -1,5 +1,6 @@
 use crate::cli::{BodyViewArg, OutputFormat};
 use crate::commands::expect_response;
+use crate::commands::resolve_optional_account;
 use crate::commands::selection::{resolve_message_ids, SelectionLimit};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -49,6 +50,7 @@ fn render_body_view(
 pub struct CatRunOptions {
     pub message_id: Option<String>,
     pub search: Option<String>,
+    pub account: Option<String>,
     pub first: bool,
     pub limit: Option<u32>,
     pub view: Option<BodyViewArg>,
@@ -62,6 +64,7 @@ pub async fn run(options: CatRunOptions) -> anyhow::Result<()> {
     let CatRunOptions {
         message_id,
         search,
+        account,
         first,
         limit,
         view,
@@ -71,10 +74,12 @@ pub async fn run(options: CatRunOptions) -> anyhow::Result<()> {
         format,
     } = options;
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let ids = resolve_message_ids(
         &mut client,
         message_id.into_iter().collect(),
         search,
+        account_id.as_ref(),
         SelectionLimit::from_flags(first, limit),
     )
     .await?;

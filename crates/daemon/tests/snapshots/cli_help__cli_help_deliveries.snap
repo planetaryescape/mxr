@@ -15,5 +15,6 @@ Commands:
   help     Print this message or the help of the given subcommand(s)
 
 Options:
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+      --account <ACCOUNT>
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

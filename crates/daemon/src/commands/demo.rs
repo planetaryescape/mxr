@@ -588,6 +588,7 @@ async fn seed_demo_saved_searches(client: &mut IpcClient) -> anyhow::Result<()> 
             .request(Request::CreateSavedSearch {
                 name: (*name).to_string(),
                 query: (*query).to_string(),
+                account_id: None,
                 search_mode: mxr_core::types::SearchMode::Lexical,
             })
             .await?

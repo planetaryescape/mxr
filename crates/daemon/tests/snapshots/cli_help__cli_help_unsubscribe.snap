@@ -1,6 +1,5 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 14
 expression: stdout
 ---
 Unsubscribe from a mailing list.
@@ -18,6 +17,9 @@ Options:
 
 
       --search <SEARCH>
+
+
+      --account <ACCOUNT>
 
 
       --dry-run

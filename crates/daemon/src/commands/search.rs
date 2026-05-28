@@ -1,4 +1,5 @@
 use crate::cli::{OutputFormat, SearchModeArg, SearchSortArg};
+use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::types::{Envelope, MessageFlags, SortOrder};
@@ -6,6 +7,7 @@ use mxr_protocol::{Request, Response, ResponseData, SearchExplain};
 
 pub async fn run(
     query: Option<String>,
+    account: Option<String>,
     format: Option<OutputFormat>,
     limit: Option<u32>,
     mode: Option<SearchModeArg>,
@@ -18,11 +20,13 @@ pub async fn run(
     }
     let limit = limit.unwrap_or(50);
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let resp = client
         .request(Request::Search {
             query,
             limit,
             offset: 0,
+            account_id,
             mode: mode.map(Into::into),
             sort: Some(sort.map_or(SortOrder::DateDesc, Into::into)),
             explain,

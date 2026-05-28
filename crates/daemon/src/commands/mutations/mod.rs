@@ -42,6 +42,7 @@ pub async fn undo(
 }
 
 use crate::cli::OutputFormat;
+use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use helpers::{
@@ -112,22 +113,25 @@ fn print_undo_output(
 pub async fn archive(
     message_ids: Vec<String>,
     search: Option<String>,
+    account: Option<String>,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let address = address_positional(&message_ids, search.as_deref())?;
     let selection = if let Some(address) = address {
         resolve_mutation_selection_with_limit(
             &mut client,
             Vec::new(),
             Some(format!("from:{address}")),
+            account_id.as_ref(),
             crate::commands::selection::SelectionLimit::First,
         )
         .await?
     } else {
-        resolve_mutation_selection(&mut client, message_ids, search).await?
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?
     };
     run_simple_mutation(
         &mut client,
@@ -148,12 +152,15 @@ pub async fn archive(
 pub async fn read_archive(
     message_ids: Vec<String>,
     search: Option<String>,
+    account: Option<String>,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -173,12 +180,15 @@ pub async fn read_archive(
 pub async fn trash(
     message_ids: Vec<String>,
     search: Option<String>,
+    account: Option<String>,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -198,12 +208,15 @@ pub async fn trash(
 pub async fn spam(
     message_ids: Vec<String>,
     search: Option<String>,
+    account: Option<String>,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -223,12 +236,15 @@ pub async fn spam(
 pub async fn star(
     message_ids: Vec<String>,
     search: Option<String>,
+    account: Option<String>,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -253,12 +269,15 @@ pub async fn star(
 pub async fn unstar(
     message_ids: Vec<String>,
     search: Option<String>,
+    account: Option<String>,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -283,12 +302,15 @@ pub async fn unstar(
 pub async fn mark_read(
     message_ids: Vec<String>,
     search: Option<String>,
+    account: Option<String>,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -313,12 +335,15 @@ pub async fn mark_read(
 pub async fn unread(
     message_ids: Vec<String>,
     search: Option<String>,
+    account: Option<String>,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -348,12 +373,15 @@ pub async fn label(
     name: String,
     message_ids: Vec<String>,
     search: Option<String>,
+    account: Option<String>,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -380,12 +408,15 @@ pub async fn unlabel(
     name: String,
     message_ids: Vec<String>,
     search: Option<String>,
+    account: Option<String>,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -412,12 +443,15 @@ pub async fn move_msg(
     target_label: String,
     message_ids: Vec<String>,
     search: Option<String>,
+    account: Option<String>,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -447,13 +481,16 @@ pub async fn snooze(
     message_ids: Vec<String>,
     until: String,
     search: Option<String>,
+    account: Option<String>,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let wake_at = parse_snooze_until(&until)?;
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     if selection.ids.is_empty() {
         anyhow::bail!("No messages matched");
     }
@@ -533,17 +570,27 @@ fn address_positional<'a>(
 
 pub async fn unsnooze(
     message_ids: Vec<String>,
+    account: Option<String>,
     all: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     if all {
         let resp = client.request(Request::ListSnoozed).await?;
         match resp {
             Response::Ok {
                 data: ResponseData::SnoozedMessages { snoozed },
             } => {
+                let snoozed: Vec<_> = snoozed
+                    .into_iter()
+                    .filter(|s| {
+                        account_id
+                            .as_ref()
+                            .is_none_or(|account_id| &s.account_id == account_id)
+                    })
+                    .collect();
                 let ids: Vec<_> = snoozed.iter().map(|s| s.message_id.clone()).collect();
                 if snoozed.is_empty() {
                     print_batch_mutation_output(
@@ -621,7 +668,8 @@ pub async fn unsnooze(
             _ => anyhow::bail!("Unexpected response"),
         }
     } else {
-        let selection = resolve_mutation_selection(&mut client, message_ids, None).await?;
+        let selection =
+            resolve_mutation_selection(&mut client, message_ids, None, account_id.as_ref()).await?;
         if selection.ids.is_empty() {
             anyhow::bail!("No messages matched");
         }
@@ -669,54 +717,65 @@ pub async fn unsnooze(
     Ok(())
 }
 
-pub async fn snoozed(format: Option<OutputFormat>) -> anyhow::Result<()> {
+pub async fn snoozed(account: Option<String>, format: Option<OutputFormat>) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let resp = client.request(Request::ListSnoozed).await?;
     match resp {
         Response::Ok {
             data: ResponseData::SnoozedMessages { snoozed },
-        } => match resolve_format(format) {
-            OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&snoozed)?),
-            OutputFormat::Jsonl => println!("{}", jsonl(&snoozed)?),
-            OutputFormat::Csv => {
-                let mut writer = csv::Writer::from_writer(Vec::new());
-                writer.write_record(["message_id", "account_id", "snoozed_at", "wake_at"])?;
-                for s in &snoozed {
-                    writer.write_record([
-                        s.message_id.as_str(),
-                        s.account_id.as_str(),
-                        s.snoozed_at.to_rfc3339(),
-                        s.wake_at.to_rfc3339(),
-                    ])?;
-                }
-                println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
-            }
-            OutputFormat::Ids => {
-                for s in &snoozed {
-                    println!("{}", s.message_id);
-                }
-            }
-            OutputFormat::Table => {
-                if snoozed.is_empty() {
-                    println!("No snoozed messages");
-                } else {
-                    println!(
-                        "{:<38} {:<25} {:<25}",
-                        "MESSAGE ID", "SNOOZED AT", "WAKE AT"
-                    );
-                    println!("{}", "-".repeat(88));
+        } => {
+            let snoozed: Vec<_> = snoozed
+                .into_iter()
+                .filter(|s| {
+                    account_id
+                        .as_ref()
+                        .is_none_or(|account_id| &s.account_id == account_id)
+                })
+                .collect();
+            match resolve_format(format) {
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&snoozed)?),
+                OutputFormat::Jsonl => println!("{}", jsonl(&snoozed)?),
+                OutputFormat::Csv => {
+                    let mut writer = csv::Writer::from_writer(Vec::new());
+                    writer.write_record(["message_id", "account_id", "snoozed_at", "wake_at"])?;
                     for s in &snoozed {
-                        println!(
-                            "{:<38} {:<25} {:<25}",
+                        writer.write_record([
                             s.message_id.as_str(),
+                            s.account_id.as_str(),
                             s.snoozed_at.to_rfc3339(),
                             s.wake_at.to_rfc3339(),
-                        );
+                        ])?;
                     }
-                    println!("\n{} snoozed message(s)", snoozed.len());
+                    println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+                }
+                OutputFormat::Ids => {
+                    for s in &snoozed {
+                        println!("{}", s.message_id);
+                    }
+                }
+                OutputFormat::Table => {
+                    if snoozed.is_empty() {
+                        println!("No snoozed messages");
+                    } else {
+                        println!(
+                            "{:<38} {:<25} {:<25}",
+                            "MESSAGE ID", "SNOOZED AT", "WAKE AT"
+                        );
+                        println!("{}", "-".repeat(88));
+                        for s in &snoozed {
+                            println!(
+                                "{:<38} {:<25} {:<25}",
+                                s.message_id.as_str(),
+                                s.snoozed_at.to_rfc3339(),
+                                s.wake_at.to_rfc3339(),
+                            );
+                        }
+                        println!("\n{} snoozed message(s)", snoozed.len());
+                    }
                 }
             }
-        },
+        }
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
@@ -731,12 +790,15 @@ pub async fn unsubscribe(
     message_ids: Vec<String>,
     yes: bool,
     search: Option<String>,
+    account: Option<String>,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let (message_ids, search) = rewrite_unsubscribe_positional(message_ids, search);
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     if selection.ids.is_empty() {
         anyhow::bail!("No messages matched");
     }
@@ -851,15 +913,18 @@ fn looks_like_email(value: &str) -> bool {
 pub async fn open_in_browser(
     message_id: Option<String>,
     search: Option<String>,
+    account: Option<String>,
     first: bool,
     limit: Option<u32>,
     yes: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let ids = crate::commands::selection::resolve_message_ids(
         &mut client,
         message_id.into_iter().collect(),
         search,
+        account_id.as_ref(),
         crate::commands::selection::SelectionLimit::from_flags(first, limit),
     )
     .await?;

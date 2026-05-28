@@ -8,6 +8,7 @@
 )]
 
 use crate::cli::OutputFormat;
+use crate::commands::{get_draft_for_account, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::{AccountId, Address, Draft, DraftId, ReplyHeaders};
@@ -160,6 +161,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
 
 pub struct ReplyCommand {
     pub message_id: String,
+    pub account: Option<String>,
     pub body: Option<String>,
     pub body_stdin: bool,
     pub signature: Option<String>,
@@ -181,6 +183,7 @@ pub async fn reply_all(command: ReplyCommand) -> anyhow::Result<()> {
 async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<()> {
     let ReplyCommand {
         message_id,
+        account,
         body,
         body_stdin,
         signature,
@@ -192,6 +195,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
     } = command;
     let id = parse_message_id(&message_id)?;
     let mut client = IpcClient::connect().await?;
+    let explicit_account = resolve_optional_account(&mut client, account.as_deref()).await?;
 
     let resp = client
         .request(Request::PrepareReply {
@@ -206,6 +210,12 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     };
+    if explicit_account
+        .as_ref()
+        .is_some_and(|account_id| ctx.account_id != *account_id)
+    {
+        anyhow::bail!("Message {message_id} belongs to a different account");
+    }
 
     let kind = mxr_compose::ComposeKind::Reply {
         reply_all,
@@ -265,6 +275,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
 
 pub struct ForwardCommand {
     pub message_id: String,
+    pub account: Option<String>,
     pub to: Option<String>,
     pub body: Option<String>,
     pub body_stdin: bool,
@@ -278,6 +289,7 @@ pub struct ForwardCommand {
 pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
     let ForwardCommand {
         message_id,
+        account,
         to,
         body,
         body_stdin,
@@ -289,6 +301,7 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
     } = command;
     let id = parse_message_id(&message_id)?;
     let mut client = IpcClient::connect().await?;
+    let explicit_account = resolve_optional_account(&mut client, account.as_deref()).await?;
 
     let resp = client
         .request(Request::PrepareForward { message_id: id })
@@ -300,6 +313,12 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     };
+    if explicit_account
+        .as_ref()
+        .is_some_and(|account_id| ctx.account_id != *account_id)
+    {
+        anyhow::bail!("Message {message_id} belongs to a different account");
+    }
 
     let kind = mxr_compose::ComposeKind::Forward {
         subject: ctx.subject.clone(),
@@ -461,59 +480,74 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     Ok(())
 }
 
-pub async fn drafts(format: Option<OutputFormat>) -> anyhow::Result<()> {
+pub async fn drafts(account: Option<String>, format: Option<OutputFormat>) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let resp = client.request(Request::ListDrafts).await?;
     match resp {
         Response::Ok {
             data: ResponseData::Drafts { drafts },
-        } => match resolve_format(format) {
-            OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&drafts)?),
-            OutputFormat::Jsonl => println!("{}", jsonl(&drafts)?),
-            OutputFormat::Csv => {
-                let mut writer = csv::Writer::from_writer(Vec::new());
-                writer.write_record(["draft_id", "account_id", "subject", "updated_at"])?;
-                for draft in &drafts {
-                    writer.write_record(vec![
-                        draft.id.as_str(),
-                        draft.account_id.as_str(),
-                        draft.subject.clone(),
-                        draft.updated_at.to_rfc3339(),
-                    ])?;
+        } => {
+            let drafts = filter_drafts_by_account(drafts, account_id.as_ref());
+            match resolve_format(format) {
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&drafts)?),
+                OutputFormat::Jsonl => println!("{}", jsonl(&drafts)?),
+                OutputFormat::Csv => {
+                    let mut writer = csv::Writer::from_writer(Vec::new());
+                    writer.write_record(["draft_id", "account_id", "subject", "updated_at"])?;
+                    for draft in &drafts {
+                        writer.write_record(vec![
+                            draft.id.as_str(),
+                            draft.account_id.as_str(),
+                            draft.subject.clone(),
+                            draft.updated_at.to_rfc3339(),
+                        ])?;
+                    }
+                    println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
                 }
-                println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
-            }
-            OutputFormat::Ids => {
-                for draft in &drafts {
-                    println!("{}", draft.id);
+                OutputFormat::Ids => {
+                    for draft in &drafts {
+                        println!("{}", draft.id);
+                    }
                 }
-            }
-            OutputFormat::Table => {
-                if drafts.is_empty() {
-                    println!("No drafts");
-                } else {
-                    for d in &drafts {
-                        println!("  {} — {}", d.id, d.subject);
+                OutputFormat::Table => {
+                    if drafts.is_empty() {
+                        println!("No drafts");
+                    } else {
+                        for d in &drafts {
+                            println!("  {} — {}", d.id, d.subject);
+                        }
                     }
                 }
             }
-        },
+        }
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
 }
 
+fn filter_drafts_by_account(drafts: Vec<Draft>, account_id: Option<&AccountId>) -> Vec<Draft> {
+    drafts
+        .into_iter()
+        .filter(|draft| account_id.is_none_or(|account_id| draft.account_id == *account_id))
+        .collect()
+}
+
 /// CLI surface for `mxr drafts recover`. Surfaces drafts the daemon
 /// believes are orphaned mid-send (status `'sending'` with stale
 /// activity) so the user can decide between resume and discard.
-pub async fn drafts_recover(format: Option<OutputFormat>) -> anyhow::Result<()> {
+pub async fn drafts_recover(
+    account: Option<String>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let resp = client.request(Request::ListOrphanedDrafts).await?;
     let drafts = match resp {
         Response::Ok {
             data: ResponseData::Drafts { drafts },
-        } => drafts,
+        } => filter_drafts_by_account(drafts, account_id.as_ref()),
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     };
@@ -558,9 +592,11 @@ pub async fn drafts_recover(format: Option<OutputFormat>) -> anyhow::Result<()> 
 /// CLI surface for `mxr drafts resume <id>`. Force-resets the draft to
 /// `'draft'` status so the user can retry the send via the normal
 /// pipeline. Idempotent — already-`'draft'` drafts are a no-op.
-pub async fn drafts_resume(draft_id: String) -> anyhow::Result<()> {
+pub async fn drafts_resume(draft_id: String, account: Option<String>) -> anyhow::Result<()> {
     let parsed = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    get_draft_for_account(&mut client, &parsed, account_id.as_ref()).await?;
     let resp = client
         .request(Request::ResetOrphanedDraft {
             draft_id: parsed.clone(),
@@ -580,9 +616,11 @@ pub async fn drafts_resume(draft_id: String) -> anyhow::Result<()> {
 
 /// CLI surface for `mxr drafts discard <id>`. Permanently deletes the
 /// draft. Use after `mxr drafts recover` when you don't want to retry.
-pub async fn drafts_discard(draft_id: String) -> anyhow::Result<()> {
+pub async fn drafts_discard(draft_id: String, account: Option<String>) -> anyhow::Result<()> {
     let parsed = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    get_draft_for_account(&mut client, &parsed, account_id.as_ref()).await?;
     let resp = client
         .request(Request::DeleteDraft {
             draft_id: parsed.clone(),
@@ -602,6 +640,7 @@ pub async fn drafts_discard(draft_id: String) -> anyhow::Result<()> {
 
 pub async fn send_draft(
     draft_id: String,
+    account: Option<String>,
     dry_run: bool,
     format: Option<OutputFormat>,
     override_safety_token: Option<String>,
@@ -609,20 +648,10 @@ pub async fn send_draft(
 ) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
 
     if dry_run {
-        let resp = client.request(Request::ListDrafts).await?;
-        let drafts = match resp {
-            Response::Ok {
-                data: ResponseData::Drafts { drafts },
-            } => drafts,
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
-            _ => anyhow::bail!("Unexpected response"),
-        };
-        let draft = drafts
-            .into_iter()
-            .find(|d| d.id == draft_id)
-            .ok_or_else(|| anyhow::anyhow!("Draft not found: {draft_id}"))?;
+        let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
 
         let recipients = draft
             .to
@@ -639,6 +668,7 @@ pub async fn send_draft(
         return Ok(());
     }
 
+    get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
     let resp = client
         .request(Request::SendStoredDraft {
             draft_id: draft_id.clone(),
@@ -685,23 +715,14 @@ pub(crate) fn build_check_context(
 /// non-zero when at least one Blocker issue is present.
 pub async fn check_send(
     draft_id: String,
+    account: Option<String>,
     format: Option<OutputFormat>,
     no_llm: bool,
 ) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
-    let resp = client.request(Request::ListDrafts).await?;
-    let drafts = match resp {
-        Response::Ok {
-            data: ResponseData::Drafts { drafts },
-        } => drafts,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
-        _ => anyhow::bail!("Unexpected response listing drafts"),
-    };
-    let draft = drafts
-        .into_iter()
-        .find(|d| d.id == draft_id)
-        .ok_or_else(|| anyhow::anyhow!("Draft not found: {draft_id}"))?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
 
     let context = build_check_context(&draft, no_llm, chrono::Utc::now());
     let resp = client
@@ -821,7 +842,11 @@ fn print_safety_report_table(draft: &Draft, report: &mxr_core::DraftSafetyReport
     }
 }
 
-pub async fn schedule_send(draft_id: String, when: String) -> anyhow::Result<()> {
+pub async fn schedule_send(
+    draft_id: String,
+    account: Option<String>,
+    when: String,
+) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let send_at = mxr_core::parse_relative_time(&when, chrono::Utc::now()).map_err(|e| {
         anyhow::anyhow!(
@@ -829,6 +854,8 @@ pub async fn schedule_send(draft_id: String, when: String) -> anyhow::Result<()>
         )
     })?;
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
     let resp = client
         .request(Request::ScheduleSend {
             draft_id: draft_id.clone(),
@@ -850,9 +877,14 @@ pub async fn schedule_send(draft_id: String, when: String) -> anyhow::Result<()>
     }
 }
 
-pub async fn cancel_scheduled_send(draft_id: String) -> anyhow::Result<()> {
+pub async fn cancel_scheduled_send(
+    draft_id: String,
+    account: Option<String>,
+) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
     let resp = client
         .request(Request::CancelScheduledSend {
             draft_id: draft_id.clone(),

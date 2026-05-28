@@ -77,6 +77,7 @@ pub(crate) async fn run_saved_search(
         Request::RunSavedSearch {
             name: name.to_string(),
             limit,
+            account_id: None,
         },
     )
     .await?
@@ -99,6 +100,7 @@ pub(crate) async fn search_envelopes(
             query: query.to_string(),
             limit,
             offset: 0,
+            account_id: None,
             mode: Some(SearchMode::Lexical),
             sort: Some(SortOrder::DateDesc),
             explain: false,

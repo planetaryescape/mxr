@@ -11,6 +11,7 @@ Arguments:
   <ACTION>      [possible values: accept, tentative, decline]
 
 Options:
+      --account <ACCOUNT>
       --dry-run
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

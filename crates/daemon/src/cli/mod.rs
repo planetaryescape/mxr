@@ -50,6 +50,8 @@ pub enum Command {
     Search {
         query: Option<String>,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         format: Option<OutputFormat>,
         #[arg(long, default_value = "50")]
         limit: Option<u32>,
@@ -63,6 +65,8 @@ pub enum Command {
     /// Count matching messages
     Count {
         query: String,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long, value_enum)]
         mode: Option<SearchModeArg>,
         #[arg(long, value_enum)]
@@ -78,6 +82,8 @@ pub enum Command {
         /// over each match with a separator.
         #[arg(long, conflicts_with = "message_id")]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         /// Only display the most recent match (when --search is used).
         #[arg(long, requires = "search", conflicts_with = "limit")]
         first: bool,
@@ -108,6 +114,8 @@ pub enum Command {
         thread_id: Option<String>,
         #[arg(long, conflicts_with = "thread_id")]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long, requires = "search", conflicts_with = "limit")]
         first: bool,
         #[arg(long, requires = "search")]
@@ -137,6 +145,8 @@ pub enum Command {
         thread_id: Option<String>,
         #[arg(long)]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long, default_value = "markdown")]
         format: String,
         #[arg(long)]
@@ -148,6 +158,8 @@ pub enum Command {
         message_id: Option<String>,
         #[arg(long, conflicts_with = "message_id")]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long, requires = "search", conflicts_with = "limit")]
         first: bool,
         #[arg(long, requires = "search")]
@@ -160,12 +172,16 @@ pub enum Command {
         #[command(subcommand)]
         action: Option<SavedAction>,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         format: Option<OutputFormat>,
     },
     /// Manage the reply-later queue
     Replies {
         #[command(subcommand)]
         action: Option<RepliesAction>,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -179,6 +195,8 @@ pub enum Command {
         thread_id: Option<String>,
         #[arg(long, conflicts_with = "thread_id")]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         /// Summarize only the most recent matching thread.
         #[arg(long, requires = "search", conflicts_with = "limit")]
         first: bool,
@@ -210,6 +228,8 @@ pub enum Command {
         /// Resolve target thread by query instead of a positional ID.
         #[arg(long, conflicts_with = "thread_id")]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         /// Use only the most recent matching thread.
         #[arg(long, requires = "search", conflicts_with = "limit")]
         first: bool,
@@ -491,6 +511,8 @@ pub enum Command {
         #[command(subcommand)]
         action: Option<DeliveriesAction>,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         format: Option<OutputFormat>,
     },
     /// Manage outgoing compose signatures
@@ -505,6 +527,8 @@ pub enum Command {
     /// surfacing the message back to the user as a follow-up.
     Remind {
         message_id: String,
+        #[arg(long)]
+        account: Option<String>,
         /// When to fire the reminder. Same forms accepted by `mxr snooze --until`:
         /// `in 2h`, `in 5d`, `tomorrow 9am`, `monday 17:00`, RFC3339.
         #[arg(long, conflicts_with = "cancel")]
@@ -532,6 +556,8 @@ pub enum Command {
     Subscriptions {
         #[arg(long, default_value = "200")]
         limit: u32,
+        #[arg(long)]
+        account: Option<String>,
         /// Rank by newsletter ROI: lowest open-rate first, ties broken by
         /// archived-unread descending. Highlights the lists most worth dropping.
         #[arg(long)]
@@ -548,6 +574,8 @@ pub enum Command {
     Senders {
         #[arg(long, default_value = "20")]
         top: u32,
+        #[arg(long)]
+        account: Option<String>,
         /// Only count messages received within this window. Defaults
         /// to unbounded (all-time).
         #[arg(long)]
@@ -861,6 +889,8 @@ pub enum Command {
         #[command(subcommand)]
         action: Option<LabelsAction>,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         format: Option<OutputFormat>,
     },
     /// Manage rules
@@ -928,6 +958,8 @@ pub enum Command {
     Reply {
         /// Message ID to reply to
         message_id: String,
+        #[arg(long)]
+        account: Option<String>,
         /// Inline reply body (skip $EDITOR)
         #[arg(long)]
         body: Option<String>,
@@ -963,6 +995,8 @@ pub enum Command {
     ReplyAll {
         /// Message ID to reply to
         message_id: String,
+        #[arg(long)]
+        account: Option<String>,
         /// Inline reply body
         #[arg(long)]
         body: Option<String>,
@@ -998,6 +1032,8 @@ pub enum Command {
     Forward {
         /// Message ID to forward
         message_id: String,
+        #[arg(long)]
+        account: Option<String>,
         /// Forward to recipient(s)
         #[arg(long)]
         to: Option<String>,
@@ -1028,12 +1064,16 @@ pub enum Command {
         #[command(subcommand)]
         action: Option<DraftsAction>,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         format: Option<OutputFormat>,
     },
     /// Send a draft by ID
     Send {
         /// Draft ID to send
         draft_id: String,
+        #[arg(long)]
+        account: Option<String>,
         /// Show what would be sent (sender, recipients, subject, byte count) without sending
         #[arg(long)]
         dry_run: bool,
@@ -1067,6 +1107,8 @@ pub enum Command {
     Unsend {
         /// Draft ID with a scheduled send to cancel
         draft_id: String,
+        #[arg(long)]
+        account: Option<String>,
     },
 
     // --- Phase 2: Mutations ---
@@ -1078,6 +1120,8 @@ pub enum Command {
         /// Operate on messages matching search query
         #[arg(long)]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         /// Skip confirmation
         #[arg(long)]
         yes: bool,
@@ -1095,6 +1139,8 @@ pub enum Command {
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
@@ -1107,6 +1153,8 @@ pub enum Command {
         message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
@@ -1121,6 +1169,8 @@ pub enum Command {
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
@@ -1134,6 +1184,8 @@ pub enum Command {
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
@@ -1146,6 +1198,8 @@ pub enum Command {
         message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
@@ -1161,6 +1215,8 @@ pub enum Command {
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
@@ -1173,6 +1229,8 @@ pub enum Command {
         message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
@@ -1190,6 +1248,8 @@ pub enum Command {
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
@@ -1205,6 +1265,8 @@ pub enum Command {
         message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
@@ -1222,6 +1284,8 @@ pub enum Command {
         message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
@@ -1256,6 +1320,8 @@ pub enum Command {
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
@@ -1266,6 +1332,8 @@ pub enum Command {
     Unsnooze {
         #[arg(value_name = "MESSAGE_ID", conflicts_with = "all")]
         message_ids: Vec<String>,
+        #[arg(long)]
+        account: Option<String>,
         /// Unsnooze all
         #[arg(long)]
         all: bool,
@@ -1277,6 +1345,8 @@ pub enum Command {
     },
     /// List snoozed messages
     Snoozed {
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1298,6 +1368,8 @@ pub enum Command {
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         dry_run: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
@@ -1310,6 +1382,8 @@ pub enum Command {
         message_id: Option<String>,
         #[arg(long, conflicts_with = "message_id")]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long, requires = "search", conflicts_with = "limit")]
         first: bool,
         #[arg(long, requires = "search")]
@@ -1654,11 +1728,15 @@ pub enum InviteAction {
     Show {
         message_id: String,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         format: Option<OutputFormat>,
     },
     /// Reply to a calendar invite
     Reply {
         message_id: String,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(value_enum)]
         action: InviteReplyActionArg,
         #[arg(long)]
@@ -1675,10 +1753,14 @@ pub enum InvitesAction {
         #[arg(long, default_value_t = 50)]
         limit: u32,
         #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
         format: Option<OutputFormat>,
     },
     /// Backfill invite rows from already stored message bodies
     Backfill {
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -2141,6 +2223,7 @@ mod tests {
             Some(Command::Export {
                 thread_id: None,
                 search: Some(search),
+                account: None,
                 format,
                 output: None,
             }) => {

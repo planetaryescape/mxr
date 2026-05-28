@@ -10,6 +10,7 @@ Arguments:
   <QUERY>
 
 Options:
-      --mode <MODE>      [possible values: lexical, hybrid, semantic]
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+      --account <ACCOUNT>
+      --mode <MODE>        [possible values: lexical, hybrid, semantic]
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

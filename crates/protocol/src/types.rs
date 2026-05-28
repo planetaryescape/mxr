@@ -355,9 +355,14 @@ pub enum Request {
         message_id: MessageId,
     },
     ListInvites {
+        #[serde(default)]
+        account_id: Option<AccountId>,
         limit: u32,
     },
-    BackfillCalendarInvites,
+    BackfillCalendarInvites {
+        #[serde(default)]
+        account_id: Option<AccountId>,
+    },
     RespondInvite {
         message_id: MessageId,
         action: CalendarInviteActionData,
@@ -598,6 +603,8 @@ pub enum Request {
     CreateSavedSearch {
         name: String,
         query: String,
+        #[serde(default)]
+        account_id: Option<AccountId>,
         search_mode: SearchMode,
     },
     DeleteSavedSearch {
@@ -618,6 +625,8 @@ pub enum Request {
     RunSavedSearch {
         name: String,
         limit: u32,
+        #[serde(default)]
+        account_id: Option<AccountId>,
     },
 
     // Admin / maintenance / operational. Legitimate daemon features, fenced off
@@ -681,6 +690,8 @@ pub enum Request {
         limit: u32,
         #[serde(default)]
         offset: u32,
+        #[serde(default)]
+        account_id: Option<AccountId>,
         mode: Option<SearchMode>,
         #[serde(default)]
         sort: Option<SortOrder>,
@@ -699,6 +710,8 @@ pub enum Request {
     },
     Count {
         query: String,
+        #[serde(default)]
+        account_id: Option<AccountId>,
         mode: Option<SearchMode>,
     },
     GetHeaders {
@@ -780,6 +793,8 @@ pub enum Request {
     /// "delivered", "all", "dismissed".
     ListDeliveries {
         #[serde(default)]
+        account_id: Option<AccountId>,
+        #[serde(default)]
         filter: Option<String>,
     },
     /// Fetch a single delivery, including its source message ids.
@@ -797,6 +812,8 @@ pub enum Request {
     /// Re-scan recent mail for deliveries. `dry_run` reports what would be
     /// created/updated without writing. `since_days` bounds the window.
     ScanDeliveries {
+        #[serde(default)]
+        account_id: Option<AccountId>,
         #[serde(default)]
         since_days: Option<u32>,
         #[serde(default)]
@@ -843,6 +860,8 @@ pub enum Request {
         email: String,
     },
     ListSenders {
+        #[serde(default)]
+        account_id: Option<AccountId>,
         #[serde(default = "default_sender_limit")]
         limit: u32,
         /// Restrict counts to messages whose `date >= since_unix`.
@@ -1121,6 +1140,8 @@ pub enum Request {
     },
     ExportSearch {
         query: String,
+        #[serde(default)]
+        account_id: Option<AccountId>,
         format: ExportFormat,
     },
 
@@ -1213,7 +1234,7 @@ impl Request {
             | Self::GetBody { .. }
             | Self::GetInvite { .. }
             | Self::ListInvites { .. }
-            | Self::BackfillCalendarInvites
+            | Self::BackfillCalendarInvites { .. }
             | Self::RespondInvite { .. }
             | Self::PrepareInviteResponse { .. }
             | Self::MarkInviteAnswered { .. }

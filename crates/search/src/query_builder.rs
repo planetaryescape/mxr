@@ -12,6 +12,7 @@ use tantivy::schema::{Field, IndexRecordOption};
 use tantivy::Term;
 
 pub struct QueryBuilder {
+    account_id: Field,
     subject: Field,
     from_name: Field,
     from_email: Field,
@@ -45,6 +46,7 @@ pub struct QueryBuilder {
 impl QueryBuilder {
     pub fn new(schema: &MxrSchema) -> Self {
         Self {
+            account_id: schema.account_id,
             subject: schema.subject,
             from_name: schema.from_name,
             from_email: schema.from_email,
@@ -123,6 +125,18 @@ impl QueryBuilder {
             // Forward-compat for #[non_exhaustive] mail-query additions.
             _ => Box::new(AllQuery),
         }
+    }
+
+    pub fn build_in_account(&self, node: &QueryNode, account_id: &str) -> Box<dyn Query> {
+        Box::new(BooleanQuery::new(vec![
+            (Occur::Must, self.build(node)),
+            (Occur::Must, self.build_account_query(account_id)),
+        ]))
+    }
+
+    fn build_account_query(&self, account_id: &str) -> Box<dyn Query> {
+        let term = Term::from_field_text(self.account_id, account_id);
+        Box::new(TermQuery::new(term, IndexRecordOption::Basic))
     }
 
     fn build_text_query(&self, text: &str) -> Box<dyn Query> {

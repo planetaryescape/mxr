@@ -281,6 +281,8 @@ pub enum AttachmentAction {
         message_id: Option<String>,
         #[arg(long, conflicts_with = "message_id")]
         search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long, requires = "search", conflicts_with = "limit")]
         first: bool,
         #[arg(long, requires = "search")]
@@ -291,6 +293,8 @@ pub enum AttachmentAction {
     /// Download attachment(s)
     Download {
         message_id: String,
+        #[arg(long)]
+        account: Option<String>,
         /// Attachment index (1-based, omit for all)
         index: Option<usize>,
         /// Output directory
@@ -301,6 +305,8 @@ pub enum AttachmentAction {
     #[command(name = "open")]
     OpenAttachment {
         message_id: String,
+        #[arg(long)]
+        account: Option<String>,
         /// Attachment index (1-based)
         index: usize,
     },

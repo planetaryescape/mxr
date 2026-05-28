@@ -385,6 +385,7 @@ async fn search(
             query: query.q,
             limit: query.limit,
             offset: query.offset,
+            account_id: None,
             mode: query.mode,
             sort: Some(sort),
             explain: query.explain,
@@ -2186,6 +2187,7 @@ async fn create_saved_search(
         Request::CreateSavedSearch {
             name: body.name,
             query: body.query,
+            account_id: None,
             search_mode: body.search_mode.unwrap_or(SearchMode::Lexical),
         },
     )
@@ -2408,7 +2410,15 @@ async fn list_invites(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, q.token.as_deref(), &state.config.auth_token)?;
     let limit = q.limit.unwrap_or(200);
-    match ipc_request(&state.config.socket_path, Request::ListInvites { limit }).await? {
+    match ipc_request(
+        &state.config.socket_path,
+        Request::ListInvites {
+            account_id: None,
+            limit,
+        },
+    )
+    .await?
+    {
         ResponseData::Invites { invites } => Ok(Json(json!({ "invites": invites }))),
         _ => Err(BridgeError::UnexpectedResponse),
     }
@@ -2428,7 +2438,10 @@ async fn list_deliveries(
     ensure_authorized(&headers, q.token.as_deref(), &state.config.auth_token)?;
     match ipc_request(
         &state.config.socket_path,
-        Request::ListDeliveries { filter: q.filter },
+        Request::ListDeliveries {
+            account_id: None,
+            filter: q.filter,
+        },
     )
     .await?
     {
@@ -2514,6 +2527,7 @@ async fn scan_deliveries(
     match ipc_request(
         &state.config.socket_path,
         Request::ScanDeliveries {
+            account_id: None,
             since_days: req.since_days,
             dry_run: req.dry_run,
         },

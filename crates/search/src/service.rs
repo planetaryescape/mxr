@@ -31,6 +31,7 @@ enum SearchCommand {
     },
     Search {
         query: String,
+        account_id: Option<String>,
         limit: usize,
         offset: usize,
         sort: SortOrder,
@@ -70,12 +71,19 @@ impl SearchServiceHandle {
                     }
                     SearchCommand::Search {
                         query,
+                        account_id,
                         limit,
                         offset,
                         sort,
                         resp,
                     } => {
-                        let _ = resp.send(index.search(&query, limit, offset, sort));
+                        let _ = resp.send(index.search_in_account(
+                            &query,
+                            account_id.as_deref(),
+                            limit,
+                            offset,
+                            sort,
+                        ));
                     }
                     SearchCommand::SearchAst {
                         query,
@@ -128,6 +136,30 @@ impl SearchServiceHandle {
         self.tx
             .send(SearchCommand::Search {
                 query: query.to_string(),
+                account_id: None,
+                limit,
+                offset,
+                sort,
+                resp: resp_tx,
+            })
+            .await
+            .map_err(closed_error)?;
+        resp_rx.await.map_err(|_| worker_stopped())?
+    }
+
+    pub async fn search_in_account(
+        &self,
+        query: &str,
+        account_id: Option<&str>,
+        limit: usize,
+        offset: usize,
+        sort: SortOrder,
+    ) -> Result<SearchPage, MxrError> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.tx
+            .send(SearchCommand::Search {
+                query: query.to_string(),
+                account_id: account_id.map(ToString::to_string),
                 limit,
                 offset,
                 sort,

@@ -11,6 +11,7 @@ Arguments:
 
 Options:
       --search <SEARCH>
-      --format <FORMAT>  [default: markdown]
+      --account <ACCOUNT>
+      --format <FORMAT>    [default: markdown]
       --output <OUTPUT>
-  -h, --help             Print help
+  -h, --help               Print help

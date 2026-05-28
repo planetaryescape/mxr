@@ -391,7 +391,7 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::RebuildUserVoice { .. }
         | Request::RecomputeLinkCounts
         | Request::RefreshContacts
-        | Request::BackfillCalendarInvites
+        | Request::BackfillCalendarInvites { .. }
         | Request::ReindexSemantic
         | Request::BackfillSemantic
         | Request::InstallSemanticProfile { .. }
@@ -487,8 +487,12 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::GetEnvelope { message_id } => mailbox::get_envelope(state, message_id).await,
         Request::GetBody { message_id } => mailbox::get_body(state, message_id).await,
         Request::GetInvite { message_id } => mailbox::get_invite(state, message_id).await,
-        Request::ListInvites { limit } => mailbox::list_invites(state, *limit).await,
-        Request::BackfillCalendarInvites => mailbox::backfill_invites(state).await,
+        Request::ListInvites { account_id, limit } => {
+            mailbox::list_invites(state, account_id.as_ref(), *limit).await
+        }
+        Request::BackfillCalendarInvites { account_id } => {
+            mailbox::backfill_invites(state, account_id.as_ref()).await
+        }
         Request::RespondInvite {
             message_id,
             action,
@@ -731,8 +735,12 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::CreateSavedSearch {
             name,
             query,
+            account_id,
             search_mode,
-        } => platform::create_saved_search(state, name, query, *search_mode).await,
+        } => {
+            platform::create_saved_search(state, name, query, account_id.clone(), *search_mode)
+                .await
+        }
         Request::DeleteSavedSearch { name } => platform::delete_saved_search(state, name).await,
         Request::UpdateSavedSearch {
             name,
@@ -757,9 +765,11 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             )
             .await
         }
-        Request::RunSavedSearch { name, limit } => {
-            platform::run_saved_search(state, name, *limit).await
-        }
+        Request::RunSavedSearch {
+            name,
+            limit,
+            account_id,
+        } => platform::run_saved_search(state, name, *limit, account_id.as_ref()).await,
 
         // admin / maintenance / operational
         Request::ListEvents {
@@ -868,6 +878,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             query,
             limit,
             offset,
+            account_id,
             mode,
             sort,
             explain,
@@ -877,16 +888,22 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                 query,
                 *limit,
                 *offset,
+                account_id.as_ref(),
                 mode.unwrap_or(state.config_snapshot().search.default_mode),
                 sort.clone().unwrap_or(mxr_core::types::SortOrder::DateDesc),
                 *explain,
             )
             .await
         }
-        Request::Count { query, mode } => {
+        Request::Count {
+            query,
+            account_id,
+            mode,
+        } => {
             runtime::count(
                 state,
                 query,
+                account_id.as_ref(),
                 mode.unwrap_or(state.config_snapshot().search.default_mode),
             )
             .await
@@ -896,9 +913,11 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::ExportThread { thread_id, format } => {
             runtime::export_thread(state, thread_id, format).await
         }
-        Request::ExportSearch { query, format } => {
-            runtime::export_search(state, query, format).await
-        }
+        Request::ExportSearch {
+            query,
+            account_id,
+            format,
+        } => runtime::export_search(state, query, account_id.as_ref(), format).await,
         Request::Mutation {
             mutation: cmd,
             client_correlation_id,
@@ -932,8 +951,8 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             snippets::set_snippet(state, name.clone(), body.clone(), vars.clone()).await
         }
         Request::DeleteSnippet { name } => snippets::delete_snippet(state, name).await,
-        Request::ListDeliveries { filter } => {
-            deliveries::list_deliveries(state, filter.as_deref()).await
+        Request::ListDeliveries { account_id, filter } => {
+            deliveries::list_deliveries(state, account_id.as_ref(), filter.as_deref()).await
         }
         Request::GetDelivery { delivery_id } => deliveries::get_delivery(state, delivery_id).await,
         Request::ResolveDelivery { delivery_id } => {
@@ -943,9 +962,10 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             deliveries::dismiss_delivery(state, delivery_id).await
         }
         Request::ScanDeliveries {
+            account_id,
             since_days,
             dry_run,
-        } => deliveries::scan_deliveries(state, *since_days, *dry_run).await,
+        } => deliveries::scan_deliveries(state, account_id.as_ref(), *since_days, *dry_run).await,
         Request::ListSignatures => signatures::list_signatures(state).await,
         Request::ListSignatureDefaults => signatures::list_signature_defaults(state).await,
         Request::SetSignature { name, body } => {
@@ -998,9 +1018,11 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::GetSenderProfile { account_id, email } => {
             sender_view::get_sender_profile(state, account_id, email).await
         }
-        Request::ListSenders { limit, since_unix } => {
-            platform::list_senders(state, *limit, *since_unix).await
-        }
+        Request::ListSenders {
+            account_id,
+            limit,
+            since_unix,
+        } => platform::list_senders(state, account_id.as_ref(), *limit, *since_unix).await,
         Request::GetRelationshipProfile { account_id, email } => {
             relationship_profile::get_relationship_profile(state, account_id, email).await
         }
@@ -1312,7 +1334,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetBody { .. } => "get_body",
         Request::GetInvite { .. } => "get_invite",
         Request::ListInvites { .. } => "list_invites",
-        Request::BackfillCalendarInvites => "backfill_calendar_invites",
+        Request::BackfillCalendarInvites { .. } => "backfill_calendar_invites",
         Request::RespondInvite { .. } => "respond_invite",
         Request::PrepareInviteResponse { .. } => "prepare_invite_response",
         Request::MarkInviteAnswered { .. } => "mark_invite_answered",
@@ -1503,6 +1525,11 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::CreateLabel { account_id, .. }
         | Request::RenameLabel { account_id, .. }
         | Request::ListSubscriptions { account_id, .. }
+        | Request::ListInvites { account_id, .. }
+        | Request::BackfillCalendarInvites { account_id }
+        | Request::ListDeliveries { account_id, .. }
+        | Request::ScanDeliveries { account_id, .. }
+        | Request::ListSenders { account_id, .. }
         | Request::ListStorageBreakdown { account_id, .. }
         | Request::ListLargestMessages { account_id, .. }
         | Request::Wrapped { account_id, .. }
@@ -2310,12 +2337,34 @@ async fn handle_export_thread(
     }
 }
 
-async fn handle_export_search(state: &AppState, query: &str, format: &ExportFormat) -> Response {
-    let search_results = match state
-        .search
-        .search(query, 100, 0, mxr_core::types::SortOrder::DateDesc)
-        .await
-    {
+async fn handle_export_search(
+    state: &AppState,
+    query: &str,
+    account_id: Option<&mxr_core::AccountId>,
+    format: &ExportFormat,
+) -> Response {
+    let search_result = match account_id {
+        Some(account_id) => {
+            let account_id = account_id.as_str();
+            state
+                .search
+                .search_in_account(
+                    query,
+                    Some(account_id.as_str()),
+                    100,
+                    0,
+                    mxr_core::types::SortOrder::DateDesc,
+                )
+                .await
+        }
+        None => {
+            state
+                .search
+                .search(query, 100, 0, mxr_core::types::SortOrder::DateDesc)
+                .await
+        }
+    };
+    let search_results = match search_result {
         Ok(results) => results,
         Err(e) => {
             return Response::error(e.to_string());

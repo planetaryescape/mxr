@@ -84,13 +84,31 @@ pub(super) async fn handle_export_thread(
 pub(super) async fn handle_export_search(
     state: &AppState,
     query: &str,
+    account_id: Option<&mxr_core::AccountId>,
     format: &ExportFormat,
 ) -> Response {
-    let search_results = match state
-        .search
-        .search(query, 100, 0, mxr_core::types::SortOrder::DateDesc)
-        .await
-    {
+    let search_result = match account_id {
+        Some(account_id) => {
+            let account_id = account_id.as_str();
+            state
+                .search
+                .search_in_account(
+                    query,
+                    Some(account_id.as_str()),
+                    100,
+                    0,
+                    mxr_core::types::SortOrder::DateDesc,
+                )
+                .await
+        }
+        None => {
+            state
+                .search
+                .search(query, 100, 0, mxr_core::types::SortOrder::DateDesc)
+                .await
+        }
+    };
+    let search_results = match search_result {
         Ok(results) => results,
         Err(e) => {
             return Response::error(e.to_string());

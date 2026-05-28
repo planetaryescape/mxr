@@ -7,6 +7,7 @@
 )]
 
 use crate::cli::OutputFormat;
+use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::types::SubscriptionSummary;
@@ -91,13 +92,16 @@ fn open_rate(s: &SubscriptionSummary) -> f64 {
     }
 }
 
-pub async fn run(limit: u32, rank: bool, format: Option<OutputFormat>) -> anyhow::Result<()> {
+pub async fn run(
+    limit: u32,
+    account: Option<String>,
+    rank: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let resp = client
-        .request(Request::ListSubscriptions {
-            account_id: None,
-            limit,
-        })
+        .request(Request::ListSubscriptions { account_id, limit })
         .await?;
 
     let fmt = resolve_format(format);

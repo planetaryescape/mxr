@@ -344,7 +344,10 @@ mod tests {
             .unwrap()
             .is_none());
 
-        let backfilled = store.backfill_calendar_invites_from_bodies().await.unwrap();
+        let backfilled = store
+            .backfill_calendar_invites_from_bodies(None)
+            .await
+            .unwrap();
 
         assert_eq!(backfilled, 1);
         assert!(store

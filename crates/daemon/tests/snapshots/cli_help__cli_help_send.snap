@@ -1,6 +1,5 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 14
 expression: stdout
 ---
 Send a draft by ID
@@ -11,6 +10,7 @@ Arguments:
   <DRAFT_ID>  Draft ID to send
 
 Options:
+      --account <ACCOUNT>
       --dry-run                  Show what would be sent (sender, recipients, subject, byte count) without sending
       --format <FORMAT>          [possible values: table, json, jsonl, csv, ids]
       --at <TIME>                Schedule the draft to be sent later instead of sending now. Same forms as `mxr snooze --until`: `in 2h`, `tomorrow 9am`, `monday 17:00`, RFC3339. Use `mxr unsend <draft-id>` to cancel

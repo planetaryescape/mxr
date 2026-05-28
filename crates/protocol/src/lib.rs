@@ -359,6 +359,7 @@ mod tests {
                 Request::CreateSavedSearch {
                     name: "Unread".into(),
                     query: "is:unread".into(),
+                    account_id: None,
                     search_mode: SearchMode::Lexical,
                 },
                 IpcCategory::MxrPlatform,
@@ -373,6 +374,7 @@ mod tests {
                 Request::RunSavedSearch {
                     name: "Unread".into(),
                     limit: 10,
+                    account_id: None,
                 },
                 IpcCategory::MxrPlatform,
             ),
@@ -411,6 +413,7 @@ mod tests {
                     query: "inbox".into(),
                     limit: 10,
                     offset: 0,
+                    account_id: None,
                     mode: Some(SearchMode::Lexical),
                     sort: Some(SortOrder::DateDesc),
                     explain: false,
@@ -434,6 +437,7 @@ mod tests {
             (
                 Request::Count {
                     query: "inbox".into(),
+                    account_id: None,
                     mode: Some(SearchMode::Lexical),
                 },
                 IpcCategory::CoreMail,
@@ -533,6 +537,7 @@ mod tests {
             (
                 Request::ExportSearch {
                     query: "inbox".into(),
+                    account_id: None,
                     format: ExportFormat::Markdown,
                 },
                 IpcCategory::CoreMail,
@@ -938,6 +943,7 @@ mod tests {
                 query: "test".to_string(),
                 limit: 10,
                 offset: 0,
+                account_id: None,
                 mode: None,
                 sort: None,
                 explain: false,
@@ -1345,6 +1351,84 @@ mod tests {
         }
     }
 
+    #[test]
+    fn search_request_deserializes_without_account_id() {
+        let json = serde_json::json!({
+            "cmd": "Search",
+            "query": "inbox",
+            "limit": 10,
+            "offset": 0,
+            "mode": null,
+            "sort": null,
+            "explain": false
+        });
+        let parsed: Request = serde_json::from_value(json).unwrap();
+        match parsed {
+            Request::Search { account_id, .. } => assert!(account_id.is_none()),
+            other => panic!("unexpected request: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn account_scoped_requests_deserialize_legacy_payloads() {
+        let count: Request = serde_json::from_value(serde_json::json!({
+            "cmd": "Count",
+            "query": "inbox",
+            "mode": null
+        }))
+        .unwrap();
+        assert!(matches!(
+            count,
+            Request::Count {
+                account_id: None,
+                ..
+            }
+        ));
+
+        let create: Request = serde_json::from_value(serde_json::json!({
+            "cmd": "CreateSavedSearch",
+            "name": "Inbox",
+            "query": "inbox",
+            "search_mode": "lexical"
+        }))
+        .unwrap();
+        assert!(matches!(
+            create,
+            Request::CreateSavedSearch {
+                account_id: None,
+                ..
+            }
+        ));
+
+        let run: Request = serde_json::from_value(serde_json::json!({
+            "cmd": "RunSavedSearch",
+            "name": "Inbox",
+            "limit": 10
+        }))
+        .unwrap();
+        assert!(matches!(
+            run,
+            Request::RunSavedSearch {
+                account_id: None,
+                ..
+            }
+        ));
+
+        let export: Request = serde_json::from_value(serde_json::json!({
+            "cmd": "ExportSearch",
+            "query": "inbox",
+            "format": "Markdown"
+        }))
+        .unwrap();
+        assert!(matches!(
+            export,
+            Request::ExportSearch {
+                account_id: None,
+                ..
+            }
+        ));
+    }
+
     proptest! {
         #[test]
         fn search_ipc_message_serde_roundtrip(
@@ -1361,6 +1445,7 @@ mod tests {
                     query: query.clone(),
                     limit,
                     offset,
+                    account_id: None,
                     mode: Some(SearchMode::Lexical),
                     sort: Some(SortOrder::DateDesc),
                     explain,

@@ -636,6 +636,7 @@ impl App {
         let request = mxr_protocol::Request::CreateSavedSearch {
             name: form.name.clone(),
             query: form.query.clone(),
+            account_id: None,
             search_mode: form.search_mode,
         };
         self.modals.saved_search_form = None;
@@ -658,6 +659,7 @@ impl App {
         requests.push(mxr_protocol::Request::CreateSavedSearch {
             name: form.name.clone(),
             query: form.query.clone(),
+            account_id: None,
             search_mode: form.search_mode,
         });
         self.modals.saved_search_form = None;

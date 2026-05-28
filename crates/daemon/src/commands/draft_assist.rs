@@ -4,6 +4,7 @@
 //! `--limit N` to draft for multiple threads in one go.
 
 use crate::cli::OutputFormat;
+use crate::commands::resolve_optional_account;
 use crate::commands::selection::{resolve_thread_ids, SelectionLimit};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -21,6 +22,7 @@ struct DraftAssistSuggestion {
 pub struct DraftAssistRunOptions {
     pub thread_id: Option<String>,
     pub search: Option<String>,
+    pub account: Option<String>,
     pub first: bool,
     pub limit: Option<u32>,
     pub instruction: String,
@@ -31,16 +33,19 @@ pub async fn run(options: DraftAssistRunOptions) -> anyhow::Result<()> {
     let DraftAssistRunOptions {
         thread_id,
         search,
+        account,
         first,
         limit,
         instruction,
         format,
     } = options;
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let ids = resolve_thread_ids(
         &mut client,
         thread_id.into_iter().collect(),
         search,
+        account_id.as_ref(),
         SelectionLimit::from_flags(first, limit),
     )
     .await?;

@@ -5,6 +5,7 @@
 //! never roundtrip to the provider.
 
 use crate::cli::{OutputFormat, RepliesAction};
+use crate::commands::{ensure_message_account, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::id::MessageId;
@@ -14,14 +15,17 @@ use std::io::Write;
 
 pub async fn run(
     action: Option<RepliesAction>,
+    account: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let action = action.unwrap_or(RepliesAction::List);
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
 
     match action {
         RepliesAction::List => {
-            let messages = list_reply_queue(&mut client).await?;
+            let messages =
+                filter_reply_queue(list_reply_queue(&mut client).await?, account_id.as_ref());
             let fmt = resolve_format(format);
             match fmt {
                 OutputFormat::Json => {
@@ -41,9 +45,10 @@ pub async fn run(
                 }
             }
         }
-        RepliesAction::Walk => walk_reply_queue(&mut client).await?,
+        RepliesAction::Walk => walk_reply_queue(&mut client, account_id.as_ref()).await?,
         RepliesAction::Add { message_id } => {
             let id = parse_message_id(&message_id)?;
+            ensure_message_account(&mut client, &id, account_id.as_ref()).await?;
             let resp = client
                 .request(Request::SetReplyLater {
                     message_id: id,
@@ -54,6 +59,7 @@ pub async fn run(
         }
         RepliesAction::Remove { message_id } => {
             let id = parse_message_id(&message_id)?;
+            ensure_message_account(&mut client, &id, account_id.as_ref()).await?;
             let resp = client
                 .request(Request::SetReplyLater {
                     message_id: id,
@@ -78,8 +84,11 @@ async fn list_reply_queue(client: &mut IpcClient) -> anyhow::Result<Vec<Envelope
     }
 }
 
-async fn walk_reply_queue(client: &mut IpcClient) -> anyhow::Result<()> {
-    let mut messages = list_reply_queue(client).await?;
+async fn walk_reply_queue(
+    client: &mut IpcClient,
+    account_id: Option<&mxr_core::AccountId>,
+) -> anyhow::Result<()> {
+    let mut messages = filter_reply_queue(list_reply_queue(client).await?, account_id);
     if messages.is_empty() {
         println!("Reply-later queue is empty");
         return Ok(());
@@ -112,6 +121,7 @@ async fn walk_reply_queue(client: &mut IpcClient) -> anyhow::Result<()> {
                     dry_run: false,
                     remind_after: None,
                     format: None,
+                    account: None,
                 })
                 .await?;
                 clear_reply_later(client, &env.id).await?;
@@ -131,6 +141,16 @@ async fn walk_reply_queue(client: &mut IpcClient) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn filter_reply_queue(
+    messages: Vec<Envelope>,
+    account_id: Option<&mxr_core::AccountId>,
+) -> Vec<Envelope> {
+    messages
+        .into_iter()
+        .filter(|message| account_id.is_none_or(|account_id| message.account_id == *account_id))
+        .collect()
 }
 
 /// Decoded user input for an iteration of `mxr replies walk`.

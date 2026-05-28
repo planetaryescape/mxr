@@ -6,6 +6,7 @@
     )
 )]
 
+use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use mxr_core::{ExportFormat, ThreadId};
 use mxr_protocol::*;
@@ -39,11 +40,13 @@ fn emit(content: String, output: Option<PathBuf>) -> anyhow::Result<()> {
 pub async fn run(
     thread_id: Option<String>,
     search: Option<String>,
+    account: Option<String>,
     format: String,
     output: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     let format = parse_export_format(&format)?;
     let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
 
     let response = match (thread_id, search) {
         (Some(thread_id), None) => {
@@ -56,7 +59,11 @@ pub async fn run(
         }
         (None, Some(query)) => {
             client
-                .request(Request::ExportSearch { query, format })
+                .request(Request::ExportSearch {
+                    query,
+                    account_id,
+                    format,
+                })
                 .await?
         }
         (Some(_), Some(_)) => anyhow::bail!("Choose either THREAD_ID or --search, not both"),

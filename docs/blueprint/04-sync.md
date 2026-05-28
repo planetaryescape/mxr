@@ -134,13 +134,15 @@ Note the boundary:
 
 Envelopes and bodies are always fetched together during sync. The `SyncBatch` contains `Vec<SyncedMessage>` where each `SyncedMessage` pairs an `Envelope` with a `MessageBody`.
 
-- Gmail: `batch_get_messages` uses `MessageFormat::Full` to get headers + body in one API call
+- Gmail: `batch_get_messages` uses bounded concurrent `messages.get(format=full)` requests to get headers + body during sync
 - IMAP: `BODY.PEEK[]` fetches the full RFC822 message; both envelope and body are parsed from it
 
-When the user opens a message, the TUI sends `GetBody { message_id }` to the daemon, which reads the body directly from SQLite — no network call, no loading state.
+When the user opens a message, the TUI batches body reads through `ListBodies`. That path reads SQLite only — no provider hydration, no network call, no normal loading state.
+
+`GetBody` remains an explicit repair-capable path for single-message reads such as CLI `mxr cat`: if a legacy or missing body row is detected, the daemon may hydrate from the provider and persist the repaired row. That repair behavior is intentionally outside the TUI bulk preview path.
 
 This approach means:
-- Opening any message is instant (pure SQLite read)
+- Opening any correctly synced message is instant (pure SQLite read)
 - Full-text lexical search works immediately after sync (body text indexed at sync time)
 - Offline access works for all synced messages
 - Storage grows proportionally to mailbox size (all bodies stored)

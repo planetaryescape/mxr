@@ -187,11 +187,18 @@ pub fn app(config: WebServerConfig) -> Router {
         .nest("/platform", routes_v6::extend_platform(platform_router()))
         .nest("/client", client_router())
         .route("/events", get(events))
-        .with_state(state);
+        .with_state(state.clone());
 
-    let router = Router::new().nest("/api/v1", v1).merge(
-        SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::ApiDoc::openapi()),
-    );
+    let docs_router = Router::new()
+        .merge(
+            SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::ApiDoc::openapi()),
+        )
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::require_bridge_auth,
+        ));
+
+    let router = Router::new().nest("/api/v1", v1).merge(docs_router);
 
     #[cfg(feature = "web-ui")]
     let router = router.merge(spa::router());
@@ -203,6 +210,7 @@ pub fn app(config: WebServerConfig) -> Router {
             middleware::host_allowlist,
         ))
         .layer(cors)
+        .layer(axum::middleware::from_fn(middleware::security_headers))
 }
 
 pub async fn serve(listener: TcpListener, config: WebServerConfig) -> std::io::Result<()> {

@@ -14,7 +14,7 @@ The TUI has six top-level screens:
 - Diagnostics (`5`)
 - Analytics (no digit; open via `Ctrl-p` → "Analytics")
 
-Open the first five with `1`-`5`. Analytics has no default digit key today — open it from the command palette (`Ctrl-p` then type "Analytics") or rebind the open action in `~/.config/mxr/keys.toml` (see [Custom keybindings](/reference/config/#custom-keybindings)).
+Open the first five with `1`-`5`. Analytics has no default digit key today — open it from the command palette (`Ctrl-p` then type "Analytics") or rebind the open action in `keys.toml` next to the file printed by `mxr config path` (see [Custom keybindings](/reference/config/#custom-keybindings)).
 
 ## Discoverability
 
@@ -44,6 +44,22 @@ Behavior:
 - Sidebar lenses replace the mail list in place: **Subscriptions**,
   **Owed replies**, and **Calendar invites** (every detected invite with
   inline RSVP — see [keybindings](/reference/keybindings/#calendar-invites-lens))
+
+## Thread summaries
+
+Press `y` or run `Ctrl-p` → **Summarize Thread** from the mailbox, message, or
+thread view. The LLM request runs in the background, so navigation, body loads,
+and other mail actions keep working.
+
+Cached summaries appear above the message body when a thread opens. If a long
+uncached thread is worth summarizing, the TUI may also start the same background
+request after a short debounce. While it runs, the message pane shows a
+**Summary** block with a refreshing state; when it finishes, the Markdown
+summary replaces that loading text. The CLI equivalent is:
+
+```bash
+mxr summarize THREAD_ID
+```
 
 ## Search screen
 
@@ -142,8 +158,6 @@ Two cross-view interactions:
   email and `Enter` / `o` opens it.
 - Screener queue — triage list with `a`/`d`/`f`/`p` disposition keys
   (allow / deny / feed / paper-trail) wired to `Request::SetScreenerDecision`
-- Thread summary — LLM-generated Markdown summary and next steps, opened with
-  `Ctrl-p → Summarize Thread`
 - Welcome / setup — first-launch modal with `d` (demo), `g` (Gmail),
   `i` (IMAP) shortcuts; `Enter` opens the new-account form
 - Doctor findings — surfaced inside the Diagnostics Status pane with
@@ -157,6 +171,13 @@ Two cross-view interactions:
 - Attachment indicators appear in the mail list and message/thread header
 - Thread counts are styled separately from sender names
 - Label and saved-search scopes drive the mail list header and query state
+- Message bodies are fetched through bulk `ListBodies` reads and should
+  already be cached from sync. The TUI does not use body preview as a
+  provider repair path.
+- Mailbox mutations are optimistic. Transient IPC/database failures get
+  bounded retry while the optimistic UI stays in place; explicit
+  mutations surface an error after retries are exhausted. Preview
+  auto-mark-read is best-effort and reconciles quietly.
 
 ## Discovery model
 

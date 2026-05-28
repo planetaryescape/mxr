@@ -23,7 +23,7 @@ Built-in: `html2text` Rust crate. Handles basic structure, links, emphasis.
 Configurable override for power users:
 
 ```toml
-# ~/.config/mxr/config.toml
+# file printed by `mxr config path`
 [render]
 # Use external tool for better HTML rendering (tables, complex layouts)
 html_command = "w3m -T text/html -dump"

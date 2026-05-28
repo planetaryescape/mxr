@@ -65,7 +65,7 @@ re-snapshotting; don't hand-edit a generated reference page.
 | CLI examples | `site/scripts/generate-cli-reference.mjs` `COMMAND_EXAMPLES` map | Same |
 | Config keys | `crates/config/src/types.rs` | Hand-written `site/src/content/docs/reference/config.md` |
 | IPC | `crates/protocol/src/types.rs` | Hand-written `site/src/content/docs/reference/json-output.md` + OpenAPI dump |
-| Search operators | `crates/search/src/parser.rs` | Hand-written `site/src/content/docs/guides/search.md` + `reference/cli/concepts.md` |
+| Search operators | `mail-query` crate + mxr custom filters in `crates/search/src/lib.rs` | Hand-written `site/src/content/docs/guides/search.md` + `reference/cli/concepts.md` |
 | Keybindings | `crates/tui/src/keys.rs` + `keys.toml` | Hand-written `site/src/content/docs/reference/keybindings.md` |
 
 ### 3. Recipes are mandatory where composition is possible

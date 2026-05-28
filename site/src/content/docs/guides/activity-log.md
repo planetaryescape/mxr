@@ -241,7 +241,7 @@ inbox-processing hour."
 
 ## Storage and retention
 
-Three tiers with separate retention windows. Configure in `~/.config/mxr/config.toml`:
+Three tiers with separate retention windows. Configure in the file printed by `mxr config path`:
 
 ```toml
 [activity]

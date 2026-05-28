@@ -1,7 +1,7 @@
 # HTTP Bridge
 
 > **Audience:** contributors. This page is the **internal architecture + security model** for the bridge.
-> Canonical endpoint reference for users lives at [/reference/bridge](https://mxr.planetaryescape.dev/reference/bridge/) (source: `site/src/content/docs/reference/bridge.md`).
+> Canonical endpoint reference for users lives at [/reference/bridge](https://mxr-mail.vercel.app/reference/bridge/) (source: `site/src/content/docs/reference/bridge.md`).
 
 `mxr daemon` exposes an HTTP/WebSocket surface so non-terminal clients —
 browser apps, mobile clients, agents, scripts — can drive the same
@@ -14,19 +14,21 @@ supported API with an OpenAPI 3.1 spec.
 # Bridge starts automatically with the daemon.
 mxr daemon --foreground
 
-# Discover endpoints.
-curl http://mxr.localhost:42829/api/v1/openapi.json | jq .info
-
 # Liveness probe (no auth needed).
 curl http://mxr.localhost:42829/api/v1/health
 
-# Anything else needs the bearer token.
-TOKEN="$(cat ~/.config/mxr/bridge-token)"
+# Authority-bearing routes, including OpenAPI and Swagger UI, need the bearer token.
+CONFIG_PATH="$(mxr config path)"
+TOKEN="$(cat "$(dirname "$CONFIG_PATH")/bridge-token")"
 curl -H "Authorization: Bearer $TOKEN" \
      http://mxr.localhost:42829/api/v1/admin/status
 
-# Interactive docs.
-open http://mxr.localhost:42829/api/v1/docs
+# Discover endpoints.
+curl -H "Authorization: Bearer $TOKEN" \
+     http://mxr.localhost:42829/api/v1/openapi.json | jq .info
+
+# Swagger UI is auth-gated too. Prefer the OpenAPI JSON curl above for
+# codegen; use an auth-capable HTTP client for interactive docs.
 ```
 
 ## Architecture
@@ -40,7 +42,7 @@ Two ways to run the bridge — both serve the same router code:
 
 The default port is **42829** (loopback) — a high unprivileged port
 chosen to avoid the common dev-server set (3000/5173/8000/8080/7777).
-Configurable via `~/.config/mxr/config.toml`:
+Configurable in the file printed by `mxr config path`:
 
 ```toml
 [bridge]
@@ -50,7 +52,7 @@ port = 42829                        # stable local web URL port
 cors_allowlist = []                 # additive to localhost defaults
 host_allowlist = []                 # additive to loopback (only honoured on non-loopback binds)
 auto_local_token = true             # let loopback callers auto-fetch the token (see below)
-# token_path = "..."                # default ~/.config/mxr/bridge-token
+# token_path = "..."                # default <config_dir>/bridge-token
 ```
 
 CLI overrides:
@@ -77,10 +79,13 @@ it.
 
 ## Authentication
 
-Every route except `/api/v1/health` and `/api/v1/auth/local-token`
-requires a bearer token. Token is in `~/.config/mxr/bridge-token` (mode
-0600, generated on first daemon start). Rotate it by deleting that file
-and restarting the daemon.
+Every route except `/api/v1/health`, `/api/v1/auth/local-token`, and
+`/api/v1/i18n` requires a bearer token. That includes
+`/api/v1/openapi.json` and `/api/v1/docs`; the API shape is not secret,
+but it is still part of the local daemon capability surface. By default the token is `<config_dir>/bridge-token`
+(mode 0600, generated on first daemon start), where `<config_dir>` is
+the active runtime identity's config directory. Rotate it by deleting
+that file and restarting the daemon.
 
 The bridge accepts the token via four mechanisms:
 
@@ -124,8 +129,9 @@ where one user shouldn't auto-claim another's bridge token).
 /api/v1/client/*      — client-specific UI shaping
 /api/v1/events        — WebSocket event stream (10 DaemonEvent variants)
 /api/v1/health        — unauthenticated liveness probe
-/api/v1/openapi.json  — OpenAPI 3.1 spec
-/api/v1/docs          — Swagger UI
+/api/v1/i18n          — unauthenticated locale bundle for the first-party SPA
+/api/v1/openapi.json  — OpenAPI 3.1 spec (authenticated)
+/api/v1/docs          — Swagger UI (authenticated)
 ```
 
 The IPC bucket layer matches mxr's internal IPC contract — see
@@ -163,7 +169,8 @@ Web clients should use `Authorization: Bearer <token>` for HTTP and
 ### `curl`
 
 ```bash
-TOKEN="$(cat ~/.config/mxr/bridge-token)"
+CONFIG_PATH="$(mxr config path)"
+TOKEN="$(cat "$(dirname "$CONFIG_PATH")/bridge-token")"
 
 # List inbox threads
 curl -H "Authorization: Bearer $TOKEN" \
@@ -197,14 +204,15 @@ const ws = new WebSocket(
 
 ### Generate a typed client
 
-The bridge ships an OpenAPI 3.1 spec. Any language with an
-[OpenAPI Generator](https://openapi-generator.tech/) target works:
+The bridge ships an authenticated OpenAPI 3.1 spec. Any language with an
+[OpenAPI Generator](https://openapi-generator.tech/) target works after
+you dump the spec locally:
 
 ```bash
 # TypeScript fetch client
-npx openapi-typescript \
-  http://mxr.localhost:42829/api/v1/openapi.json \
-  -o src/api.ts
+curl -H "Authorization: Bearer $TOKEN" \
+  http://mxr.localhost:42829/api/v1/openapi.json > spec.json
+npx openapi-typescript spec.json -o src/api.ts
 
 # Or with the dump example (no running daemon needed):
 cargo run --quiet --example dump_openapi_spec -p mxr-web > spec.json
@@ -239,7 +247,8 @@ Requirements for manual remote-host mode:
 - Configure `[bridge]` `cors_allowlist` and `host_allowlist` for the
   public origin/host you expose.
 - Copy the remote bridge token to the client machine at
-  `~/.config/mxr/bridge-tokens/<host>.token` with mode `0600`.
+  `bridge-tokens/<host>.token` next to the active config file with mode
+  `0600`.
 
 `mxr web --remote-host mxr.example.com` reads that per-host token, opens
 `https://mxr.example.com/#token=...&remote=mxr.example.com`, and the SPA
@@ -252,8 +261,10 @@ malicious page in the user's browser can resolve `attacker.com` to
 `127.0.0.1` and issue same-origin requests to the bridge. The bridge
 defends with three layers:
 
-1. **Bearer auth required everywhere** (except `/health`) — even on
-   loopback. A page without the token can't do anything useful.
+1. **Every authority-bearing route requires bearer auth** — even on
+   loopback. Only `/health`, `/auth/local-token`, and `/i18n` are
+   unauthenticated bootstrap/read-only routes. A page without the token
+   can't do anything useful.
 2. **Host-header allowlist** — `localhost`, `mxr.localhost`, `127.0.0.1`,
    `[::1]` are always allowed; everything else returns 403. Mismatches
    are how DNS rebinding requests look from the server's side.

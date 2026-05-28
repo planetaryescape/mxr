@@ -43,7 +43,7 @@ git tag -a v0.1.0 -m "v0.1.0
 
 **What happened:** A commit was made with `-c commit.gpgsign=false` because there was unfounded worry the signing might fail in a different working directory.
 
-**Why it was a near-miss:** the user's CLAUDE.md says: *"Never skip hooks (`--no-verify`) or bypass signing (`--no-gpg-sign`, `-c commit.gpgsign=false`) unless the user has explicitly asked for it."* Bypassing signing breaks the audit chain. The commit had to be amended to re-sign:
+**Why it was a near-miss:** the then-current agent instructions explicitly forbade skipping hooks (`--no-verify`) or bypassing signing (`--no-gpg-sign`, `-c commit.gpgsign=false`) unless the user asked for it. Bypassing signing breaks the audit chain. The commit had to be amended to re-sign:
 
 ```bash
 git commit --amend --no-edit

@@ -77,14 +77,24 @@ Tantivy indexes:
 
 - subject
 - sender name/email
-- recipient email
+- recipient email (`to`, `cc`, `bcc`)
 - snippet
 - cleaned body text
 - attachment filenames
+- RFC 822 Message-ID header
+- List-Id header
+- Delivered-To / X-Original-To addresses
+- rich content hints derived from body/html/list-id/attachment metadata
 - labels
+- IMAP-style keywords
 - flags
 - date
+- size
 - attachment presence
+- calendar invite presence
+- link presence/density
+- user-label presence
+- reply-later state
 
 ### Semantic
 
@@ -126,16 +136,32 @@ If PDF text extraction fails, mxr skips semantic text extraction for that PDF.
 
 The user-facing query language does not change when semantic search is enabled.
 
+The parser is the public `mail-query` crate. mxr re-exports its AST from
+`mxr_search` for existing consumers, registers mxr-specific filters
+(`is:owed-reply`, `is:reply-later`, and dynamic `is:$keyword` IMAP
+keywords), then maps the AST onto local Tantivy/SQLite/semantic
+execution. Parser support and backend support are intentionally separate
+contracts: a query may be syntactically valid while execution maps it to
+mxr's closest local semantics.
+
 Examples:
 
 ```text
 invoice
 "deployment plan"
++unicorn
 subject:quarterly report
 body:house of cards
 filename:roadmap
 from:alice subject:invoice is:unread
 from:alice -subject:spam
+{from:amy from:david}
+subject:(dinner movie)
+holiday AROUND 10 vacation
+deliveredto:alias@example.com
+rfc822msgid:200503292@example.com
+has:userlabels
+has:drive
 ```
 
 ### Lexical semantics
@@ -184,15 +210,32 @@ Literal lexical matches should usually remain stronger in the final ranking. Den
 Structured filters stay authoritative and are never delegated to embeddings:
 
 - `label:`
+- `in:`
+- `category:`
 - `is:`
 - `has:`
 - `after:`
 - `before:`
 - `date:`
 - `size:`
+- `larger:`
+- `smaller:`
 - account scoping
 
 If a query has no semantic text terms, or negates semantic text terms, mxr falls back to the lexical/filter path.
+
+Known local-semantics caveats:
+
+- `+word` is preserved as `QueryNode::Exact`, but current Tantivy
+  execution treats it like normal text because the index does not yet
+  maintain a non-stemmed mirror field.
+- Gmail color-star variants parse, but execute as boolean `is:starred`
+  because mxr stores star state as a flag rather than per-color star
+  metadata.
+- `has:drive`, `has:document`, `has:spreadsheet`, `has:presentation`,
+  `has:youtube`, and `has:inline` use indexed content hints from body,
+  HTML, list-id, and attachment metadata. They do not inspect a remote
+  Gmail-only attachment/link model at query time.
 
 ## Ranking
 

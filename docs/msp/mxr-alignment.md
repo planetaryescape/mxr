@@ -134,8 +134,8 @@ Pure addition.
 **mxr today:** `SyncedMessage` carries `envelope + body` together
 (`crates/core/src/types.rs:1776-1779`). Bodies fetch eagerly during
 sync. Opening a message is a pure SQLite read — no network call,
-no loading state. This is the local-first principle in `AGENTS.md`
-rule 3 and an intentional UX commitment.
+no loading state. This is the local-first principle in the blueprint and
+the scoped `mxr-development` skill, and an intentional UX commitment.
 
 **Gap:** **None of substance.** Earlier drafts of MSP made
 `fetch_body` foundational and bodies-out-of-delta a hard MUST. That

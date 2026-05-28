@@ -69,7 +69,7 @@ Core mail mutations accept either explicit message IDs as positional args, `--se
 - **`mxr` (no args)** — launches the TUI. There is no `--format json` for "the TUI."
 - **`mxr daemon`** — is a long-running process; structured output is on `mxr status` / `mxr events` / `mxr logs`.
 - **`mxr compose` / `mxr reply` / `mxr reply-all` / `mxr forward`** — open `$EDITOR` by default. For scripts, use `--body`, `--body-stdin`, `--yes`, and `--dry-run`, or use the [HTTP bridge's compose endpoints](/reference/bridge/).
-- **`mxr setup`** — interactive (with `--demo` for unattended fake-provider).
+- **`mxr setup`** — interactive first-run account setup. `mxr setup --demo` is legacy; use `mxr demo` for an isolated fake-provider profile.
 - **`mxr accounts add`** — interactive _wizard_ by default, but goes non-interactive when you pass enough flags AND set `MXR_IMAP_PASSWORD` / `MXR_SMTP_PASSWORD` / `MXR_GMAIL_CLIENT_SECRET` env vars.
 
 ## Safe agent loop

@@ -1,9 +1,13 @@
 ---
 title: Briefings and loop-in
-description: Re-enter dormant threads, suggest who to Cc, find local experts, and look people up — all citation-backed.
+description: Re-enter dormant threads, suggest who to Cc, find local experts, and look people up.
 ---
 
-Four related "context recovery" surfaces. Each one starts from the same source pack — your local mail, the relationship engine's profiles, and the lexical/semantic indexes — and produces a small, cited answer instead of a dashboard.
+Five related "context recovery" surfaces. Each one starts from local mail and
+the existing profile/index tables that apply to that question, then produces a
+small answer instead of a dashboard. Surfaces that synthesize from message
+evidence carry citations; deterministic profile-only fallbacks may return an
+empty citation list.
 
 | Surface | Question it answers |
 |---|---|
@@ -14,36 +18,45 @@ Four related "context recovery" surfaces. Each one starts from the same source p
 | `mxr whois` | Who/what is this name? |
 
 :::tip[The one-line mental model]
-These features **suggest**, never **mutate**. None of them auto-Cc, auto-summarize a thread into your draft, or invent details the corpus doesn't support. Every output cites a message id.
+These features **suggest**, never **mutate**. None of them auto-Cc, auto-summarize a thread into your draft, or invent details the corpus doesn't support.
 :::
 
 ## Thread briefing — `mxr briefing thread`
 
-When a thread has been dormant for a month or more, opening it cold is expensive. `mxr briefing thread` synthesizes a structured recap from the existing thread summary, the relationship profile, open commitments, and decision-log entries.
+When a thread has been dormant for a month or more, opening it cold is
+expensive. `mxr briefing thread` synthesizes a Markdown recap from the local
+thread transcript. It does not require a cached thread summary first.
 
 ```bash
 mxr briefing thread THREAD_ID
 mxr briefing thread THREAD_ID --format json
 ```
 
-What you get: `{ thread_id, generated_at, dormant_days, summary, active_people, decisions, pending_commitments, open_questions, citations }`. Each section either has cited message ids or is omitted — empty fields are not papered over with prose.
+What you get: `{ thread_id, body_markdown, citations, generated_at, from_cache }`.
+Each citation points at a message in the thread. If the model cites an unknown
+message id, mxr ignores that citation instead of passing through unsupported
+evidence.
 
 ### Cached, hash-invalidated
 
-The briefing is cached in `context_briefings` keyed by thread id and a content hash that includes the thread itself, the relationship summary, open commitments, and decision-log entries. New mail or a refreshed relationship summary invalidates the cache; a duplicate request returns instantly.
+The briefing is cached in `context_briefings` keyed by thread id and a content
+hash of the thread's message ids and dates. New mail invalidates the cache; a
+duplicate request returns instantly.
 
 ```bash
-# Force a regenerate (e.g. after a fresh decision-log rebuild):
+# Force a regenerate (e.g. after changing the briefing model):
 mxr briefing thread THREAD_ID --refresh
 ```
 
 ### When the LLM is off
 
-With `[llm] enabled = false`, `mxr briefing thread` returns the deterministic source pack — existing thread summary + structured commitments + decision entries — and labels the synthesized fields as "LLM disabled". No invented summaries.
+With `[llm] enabled = false`, `mxr briefing thread` returns a deterministic
+thread snapshot: message count, participant count, and latest message. No
+invented summary.
 
 ```bash
 mxr briefing thread THREAD_ID --format json \
-  | jq '{commitments: .pending_commitments, decisions, citations}'
+  | jq '{thread_id, body_markdown, citations}'
 ```
 
 ## Recipient briefing — `mxr briefing recipient`
@@ -55,13 +68,19 @@ mxr briefing recipient alice@example.com
 mxr briefing recipient alice@example.com --format json
 ```
 
-What you get: `{ email, last_interaction_at, last_thread_id, relationship_summary, open_commitments, tone_note, cadence_note, citations }`. `tone_note` and `cadence_note` come from deterministic stylometry — they exist even when the LLM is off.
+What you get: `{ thread_id, body_markdown, citations, generated_at, from_cache }`,
+where `thread_id` is the recipient email. The deterministic baseline includes
+message counts and last inbound/outbound dates when mxr has them; the LLM can
+turn that baseline into prose when enabled.
 
 The TUI compose flow shows a quiet `Last contact 14mo ago. Press B for context.` hint when you're composing to someone past the gap threshold (default 180 days). The hint is never auto-inserted into the draft body — only shown above it.
 
 ### Privacy
 
-`mxr briefing recipient` consults the relationship profile, which can contain personal context (topics discussed, commitments owed, communication style). When `[llm.relationship_privacy] allow_cloud = false`, the synthesis path is blocked for cloud LLMs and a deterministic fallback is returned instead. Local LLMs see the full profile.
+`mxr briefing recipient` consults the relationship profile, which can contain
+personal context. When `llm.allow_cloud_relationship_data = false`, relationship
+synthesis is blocked for non-local LLM endpoints and a deterministic fallback is
+returned instead. Local LLMs see the full profile.
 
 ## Maybe include — `mxr suggest-recipients`
 
@@ -120,9 +139,9 @@ What you get: `{ email, display_name, score, reason, answered_threads, citations
 | Thread later has "thanks"/"that worked" or no further ask | Strong |
 | They are a current thread participant | Excluded by default (`--include-self` to keep) |
 
-### When the LLM is off
+### LLM behavior
 
-Ranking is deterministic. The LLM is used only to improve the `reason` text into a short human-readable phrase. Without it, `reason` is a structured signal list and the rest of the row is unchanged.
+Ranking and `reason` text are deterministic today. `mxr expert` does not call the LLM, so disabling `[llm]` does not change the returned rows.
 
 ```bash
 # Compose with --include-self when you're the expert and want to confirm:
@@ -131,7 +150,7 @@ mxr expert MESSAGE_ID --include-self --format json
 
 ## Personal knowledge graph — `mxr whois`
 
-Lightweight, citation-required explanations for people, projects, and jargon. Query-time only — there is no persisted entity table in v1, by design.
+Lightweight, citation-required explanations for people and free-text terms. Query-time only — there is no persisted entity table in v1, by design.
 
 ```bash
 mxr whois sam
@@ -139,11 +158,13 @@ mxr whois alice@example.com --format json
 mxr whois "Project Apollo" --limit 20 --format json
 ```
 
-What you get: `{ canonical_name, kind, summary, first_seen_at, last_seen_at, topics, citations }`. `kind` is `person`, `email`, `project`, or `term`. When evidence doesn't support a confident answer, `summary` is omitted and `candidates` lists the alternatives instead — never a synthesized definition.
+What you get: `{ canonical_name, kind, summary, first_seen_at, last_seen_at, topics, citations, candidates }`. `kind` is `person`, `term`, `ambiguous`, or `unknown`. Email queries return `person`; project and jargon names use the free-text `term` / `ambiguous` path until a persisted entity table exists.
+
+When evidence is weak, `summary` says so and `candidates` lists alternatives instead of inventing a definition.
 
 ### Email vs. free-text
 
-When the query is an email, the path uses the sender/relationship profile directly. Otherwise the path is a hybrid search over messages and a citation pass that filters mentions down to confident ones. The same `--limit` controls the citation budget either way.
+When the query is an email, the path uses the sender/relationship profile directly. Otherwise the path is lexical search over messages plus a citation pass that filters mentions down to confident ones. The same `--limit` controls the citation budget either way.
 
 ```bash
 # Disambiguate an ambiguous name:
@@ -154,8 +175,8 @@ What you get: a list of candidate entities with first/last-seen timestamps — p
 
 ## In real life
 
-- **Reopening a 3-month-old thread:** `mxr briefing thread THREAD_ID --format json` first; reply with confidence, having read the decisions and pending commitments.
-- **Composing to a contact after a year:** `mxr briefing recipient alice@example.com` before opening the draft; check the `last_interaction_at` and any open commitment they're owed.
+- **Reopening a 3-month-old thread:** `mxr briefing thread THREAD_ID --format json` first; read the `.body_markdown` recap and inspect `.citations`.
+- **Composing to a contact after a year:** `mxr briefing recipient alice@example.com` before opening the draft; read the deterministic relationship baseline or LLM prose in `.body_markdown`.
 - **Forwarding an inbound question:** `mxr expert MESSAGE_ID --format json | jq '.[0]'`; forward to the top answerer with a one-line context.
 - **Reading a meeting note that mentions "Sam":** `mxr whois Sam --format json | jq '.candidates // .canonical_name'`; disambiguate without leaving the terminal.
 - **Pre-send Cc check:** `mxr suggest-recipients --draft DRAFT_ID --format json` before hitting send on a topic you don't normally own — your normal collaborators may be missing.
@@ -164,9 +185,9 @@ What you get: a list of candidate entities with first/last-seen timestamps — p
 
 ```text
 "Before I reply on dormant thread THREAD_ID, run `mxr briefing thread
-THREAD_ID --format json`. Quote the `.summary`, list each
-`.pending_commitments[].what` with its `evidence_msg_id`, and end with
-a one-line recommended next step."
+THREAD_ID --format json`. Quote `.body_markdown`, then list each
+`.citations[].quote` with its message id. End with a one-line recommended
+next step."
 ```
 
 ```text
@@ -185,6 +206,6 @@ one-line reason. Ask me which to add. Never edit the draft yourself."
 
 - [Pre-send safety](/guides/pre-send-safety/) — the gate the suggest-recipients hint appears inside
 - [Archive intelligence](/guides/archive-intelligence/) — same citation discipline for `mxr ask` / `mxr decisions`
-- [LLM features](/guides/llm-features/) — configure the model used for briefings, expert reasons, and whois synthesis
+- [LLM features](/guides/llm-features/) — configure the model used for briefings
 - [Sender view](/guides/sender-view/) — the per-contact view that links into recipient briefings
 - [CLI — `mxr briefing`](/reference/cli/briefing/), [`mxr suggest-recipients`](/reference/cli/suggest-recipients/), [`mxr expert`](/reference/cli/expert/), [`mxr whois`](/reference/cli/whois/)

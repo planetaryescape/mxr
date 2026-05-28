@@ -285,6 +285,12 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Verify release artifact checksums
+        if: needs.build-binaries.result == 'success'
+        run: |
+          cd artifacts
+          sha256sum -c ./*.sha256
+
       - uses: softprops/action-gh-release@v3.0.0
         if: needs.build-binaries.result == 'success'
         with:

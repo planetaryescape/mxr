@@ -5,13 +5,30 @@ description: Top-level mxr configuration model.
 
 ## Location
 
-mxr uses a TOML config file under the standard config directory for your platform.
+mxr resolves a runtime identity first, then places config, data, socket,
+token, and bridge files under that identity. Release builds default to
+`mxr`; debug `cargo run` defaults to `mxr-dev`; demo mode uses
+`mxr-demo`. Override with `MXR_INSTANCE` only when you want an explicit
+profile.
 
 To inspect the resolved path:
 
 ```bash
 mxr config path
+mxr status --format json
 ```
+
+For the active `<instance>`, the default roots are:
+
+| Kind | Linux / XDG | macOS |
+|---|---|---|
+| Config | `$XDG_CONFIG_HOME/<instance>/config.toml` | `~/Library/Application Support/<instance>/config.toml` |
+| Data | `$XDG_DATA_HOME/<instance>/` | `~/Library/Application Support/<instance>/` |
+| Socket | `$XDG_RUNTIME_DIR/<instance>/mxr.sock` | `~/Library/Application Support/<instance>/mxr.sock` |
+
+`MXR_CONFIG_DIR`, `MXR_DATA_DIR`, `MXR_TOKEN_DIR`, `MXR_SOCKET_PATH`,
+`MXR_BRIDGE_TOKEN_PATH`, and `MXR_BRIDGE_PORT_PATH` override individual
+paths when needed.
 
 ## Top-level sections
 
@@ -42,16 +59,17 @@ that `mxr config path` prints, then adjust:
 [general]
 editor = "nvim"                    # or "code -w", "subl -w", "$EDITOR"
 default_account = "personal"       # used when commands omit --account
-sync_interval = 300                # seconds; how often the daemon polls
+sync_interval = 60                 # seconds; how often the daemon polls
 hook_timeout = 30                  # seconds; max time a shell hook may run
 safety_policy = "full"             # full | restricted | draft-only | read-only
-attachment_dir = "~/Downloads/mxr"
+attachment_dir = "~/mxr/attachments" # optional internal attachment cache override
+download_dir = "~/Downloads"        # default destination for user-initiated saves
 
 [render]
 html_command = "w3m -dump"         # how plain-text HTML view is rendered
 reader_mode = true                 # default to reader on open
-show_reader_stats = false
-html_remote_content = false        # never fetch remote images by default
+show_reader_stats = true
+html_remote_content = true         # allow remote images in HTML view; tracking pixels are still stripped
 
 [search]
 default_sort = "date_desc"
@@ -78,7 +96,7 @@ port = 42829                       # stable local web URL port
 cors_allowlist = []
 host_allowlist = []
 auto_local_token = true            # loopback callers can auto-fetch the token
-token_path = "~/.config/mxr/bridge-token"
+# token_path = "/absolute/path/to/custom-bridge-token"
 
 [llm]
 enabled = false
@@ -139,9 +157,10 @@ use_tls = true
 |-----|------|---------|---------|
 | `editor` | string | `$EDITOR` | Used by `mxr compose`, `mxr config edit`, and the TUI compose flow |
 | `default_account` | string | first enabled | Account selected when commands omit `--account` |
-| `sync_interval` | integer (seconds) | `300` | How often the daemon polls each account |
+| `sync_interval` | integer (seconds) | `60` | How often the daemon polls each account |
 | `hook_timeout` | integer (seconds) | `30` | Max wall-time for a shell hook |
-| `attachment_dir` | path | `~/Downloads/mxr` | Where `mxr attachments download` lands files |
+| `attachment_dir` | path | `<data_dir>/attachments` | Internal cache for opened/inline attachments |
+| `download_dir` | path | platform downloads dir | Default destination for user-initiated attachment saves |
 | `safety_policy` | enum | `full` | Daemon-wide guardrail — see below |
 
 ### `safety_policy`
@@ -173,7 +192,7 @@ Sub-tables:
 - `[accounts.<key>.sync]` — inbound provider; `type = "gmail" | "imap" | "outlook_personal" | "outlook_work" | "fake"`
 - `[accounts.<key>.send]` — outbound provider; `type = "gmail" | "smtp" | "outlook_personal" | "outlook_work" | "fake"`
 
-The `fake` provider is a deterministic in-memory adapter used by `mxr setup --demo`
+The `fake` provider is a deterministic in-memory adapter used by `mxr demo`
 and the test suite — useful when you want a dry-run install without real credentials.
 
 ### Gmail sync provider
@@ -216,8 +235,8 @@ the SMTP server accepts the message without credentials.
 |-----|------|---------|---------|
 | `html_command` | string | `w3m -dump` | Shell command to render HTML to plain text |
 | `reader_mode` | bool | `true` | Default to reader mode when opening a message |
-| `show_reader_stats` | bool | `false` | Display word/reading-time on opened messages |
-| `html_remote_content` | bool | `false` | Allow remote image fetches; off by default for privacy |
+| `show_reader_stats` | bool | `true` | Display word/reading-time on opened messages |
+| `html_remote_content` | bool | `true` | Allow remote image fetches in HTML view; tracking pixels are still stripped |
 
 ## `search`
 
@@ -351,7 +370,7 @@ HTTP bridge configuration.
 - `cors_allowlist` — additional origins (defaults already cover loopback).
 - `host_allowlist` — additional hostnames for non-loopback binds.
 - `auto_local_token` — when `true` (default), `GET /api/v1/auth/local-token` returns the bridge token to callers whose TCP peer is a loopback IP. Lets the web SPA bootstrap on the same machine without a paste prompt. Set to `false` for paranoid setups that want strict bearer auth even on loopback. Non-loopback peers never receive the token regardless of this setting.
-- `token_path` — path to the auth token file (default `~/.config/mxr/bridge-token`).
+- `token_path` — path to the auth token file. Omit it to use `<config_dir>/bridge-token` for the active runtime identity.
 
 ## `llm`
 
@@ -374,11 +393,17 @@ model = "qwen2.5:3b-instruct"
 api_key_env = ""                    # name of the env var; empty = no auth header
 context_window = 8192
 request_timeout_secs = 120
+allow_cloud_relationship_data = false
 ```
 
 The API key is read from `api_key_env` at runtime and is never persisted
 to the config file. Empty `api_key_env` means no `Authorization` header
 is sent — correct for Ollama and LM Studio.
+
+`allow_cloud_relationship_data = false` blocks relationship/profile context
+from being sent to non-local LLM endpoints. Set it to `true` only when you want
+cloud providers to receive that context for relationship-aware summaries,
+briefings, and draft assistance.
 
 Use `mxr llm status` to inspect the running provider, model, context
 window, timeout, and whether the configured API-key environment variable
@@ -463,7 +488,7 @@ mxr deliveries list                              # what's been found
 
 ## Custom keybindings
 
-Default TUI keybindings can be overridden via `~/.config/mxr/keys.toml` (or wherever `mxr config path` resolves). The file is split into three view contexts that match the TUI's input router:
+Default TUI keybindings can be overridden via `keys.toml` next to the active config file. Run `mxr config path` and put `keys.toml` in that directory. The file is split into three view contexts that match the TUI's input router:
 
 ```toml
 [mail_list]

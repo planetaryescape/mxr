@@ -484,14 +484,13 @@ Situation: you're about to reply on a 3-month-old thread.
 
 ```bash
 mxr briefing thread THREAD_ID --format json \
-  | jq -r '"\(.dormant_days)d quiet — \(.summary)\n",
-           "Pending you owe:",
-           (.pending_commitments[] | "  - \(.what) (msg: \(.evidence_msg_id))"),
-           "\nOpen questions:",
-           (.open_questions[] | "  - \(.text) (msg: \(.evidence_msg_id))")'
+  | jq -r '.body_markdown,
+           "\nCitations:",
+           (.citations[]? | "  - \(.message_id // .thread_id): \(.quote)")'
 ```
 
-What you get: dormancy header, summary paragraph, your open commitments on the thread, and any unaddressed inbound questions — all cited. Cached, so the second run is instant.
+What you get: a Markdown recap plus citations when the model grounded claims in
+specific messages. Cached, so the second run is instant.
 
 ### Pick a send slot that matches the recipient
 
@@ -520,7 +519,7 @@ or high, propose the better slot. Don't auto-reschedule."
 - [Automation contract](/guides/automation-contract/) — which commands support `--format json`, `--dry-run`, stdin IDs.
 - [JSON output schemas](/reference/json-output/) — canonical field names for piping into `jq`.
 - [HTTP bridge](/reference/bridge/) — same surface over HTTP for web, mobile, and agent clients.
-- [API explorer](/api/bridge/) — interactive Scalar reference; try requests against your local daemon.
+- [API explorer](/reference/api-explorer/) — interactive Scalar reference; try requests against your local daemon.
 - [For agents](/guides/for-agents/) — boundaries and safe defaults when an LLM is driving.
 - [AI agent skill](/guides/agent-skill/) — install the mxr skill into Claude / Cursor / Continue.
 - [Forgotten work](/guides/forgotten-work/) — commitments and owed-reply lens behind the recipes above.

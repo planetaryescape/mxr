@@ -36,7 +36,7 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 **Lexical search** — Tantivy BM25 only. Exact, fast, deterministic. The default mode.
 
-**Semantic search** — dense retrieval using local embeddings. Useful when you don't know the keywords. Disabled by default; enable in `[search.semantic] enabled = true`. Runs entirely on-device.
+**Semantic search** — dense retrieval using local embeddings. Useful when you don't know the keywords. Semantic work is enabled in the built-in config, but lexical search remains the default mode and mxr falls back to lexical when dense retrieval is unavailable. Runs entirely on-device.
 
 **Hybrid search** — lexical + semantic, fused with reciprocal-rank fusion. Best recall; the keyword-aware default for "I want it to find what I mean."
 
@@ -56,7 +56,7 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 **Owed reply** — a thread where you're the bottleneck: the latest message is inbound, no later outbound from you exists, the sender isn't a newsletter or screener-denied. mxr ranks them by `waiting_days / expected_days` (using the recipient's cadence baseline). Reachable via `mxr owed`, `mxr search 'is:owed-reply'`, or the TUI sidebar (Owed). See the [search guide](/guides/search/#common-patterns).
 
-**Commitment** — a promise mxr extracted from your sent mail (e.g. "I'll send the deck Friday"). Persisted to `contact_commitments` after every successful `mxr send`. Browse with `mxr commitments --status open`. See the [follow-up work spec](https://github.com/planetaryescape/mxr/blob/main/docs/ai-email/02-follow-up-work.md).
+**Commitment** — a promise mxr extracted from your sent mail (e.g. "I'll send the deck Friday"). Persisted to `contact_commitments` after every successful `mxr send`. Browse with `mxr commitments --status open`. See [Forgotten work](/guides/forgotten-work/).
 
 ## Pre-send safety
 
@@ -64,7 +64,7 @@ mxr gates every send through a [six-check pipeline](/guides/pre-send-safety/) be
 
 **Verdict** — the rollup decision from the safety pipeline: `Safe` (no issues), `Warn` (one or more Warnings, no Blockers), or `Blocked` (at least one Blocker). The CLI `mxr send --check` exits 0 on Safe/Warn and exit code 2 on Blocked.
 
-**Issue** — a single finding from one check. Has a code (`WrongRecipient`, `MissingAttachment`, `ReplyAll`, `PiiSecret`, `ToneMismatch`, `AnswerCoverage`), a severity (`Info`, `Warning`, `Blocker`), a message, optional detail/citations, and — for Blockers — an `override_token`.
+**Issue** — a single finding from one check. Has a code (`WrongRecipient`, `MissingAttachment`, `ReplyAll`, `PiiSecret`, `ToneMismatch`, `AnswerCoverage`, plus structural codes like `NoRecipients`), a severity (`Info`, `Warning`, `Blocker`), a message, optional detail/citations, and an `override_token` for Blockers.
 
 **Override token** — a single-use, draft-scoped token that bypasses Blocker issues for one send. Minted by `mxr send --check` when a Blocker is present. Consumed atomically on the next `mxr send DRAFT_ID --override-safety TOKEN`. Subsequent attempts with the same token fail. Editing the draft and adding a new Blocker kind invalidates the token.
 
@@ -72,17 +72,19 @@ mxr gates every send through a [six-check pipeline](/guides/pre-send-safety/) be
 
 ## AI features
 
-mxr ships citation-required AI features that run above the core mail model. None of them mutate anything; all of them cite. See [archive intelligence](/guides/archive-intelligence/), [briefings and loop-in](/guides/briefings-and-loop-in/), and [timing and cadence](/guides/timing-and-cadence/).
+mxr ships AI features that run above the core mail model. None of them mutate
+anything; synthesis from message evidence is citation-backed, while
+deterministic profile fallbacks may return no citations. See [archive intelligence](/guides/archive-intelligence/), [briefings and loop-in](/guides/briefings-and-loop-in/), and [timing and cadence](/guides/timing-and-cadence/).
 
 **Archive ask** — `mxr ask "<question>"` runs a hybrid (or lexical, or semantic) retrieval over your local mail and synthesizes a Markdown answer with cited message ids. The daemon rejects any LLM citation that points outside the retrieved set; "not enough evidence" is a valid answer.
 
-**Citation** — a structured reference to a source message: `{ message_id, thread_id, subject, date, quote }`. Every synthesis feature (ask, briefing, expert reasons, whois summaries, decisions) carries citations; uncited output is rejected before reaching the user.
+**Citation** — a structured reference to source evidence. Briefing citations use `{ message_id?, thread_id?, field, quote }`; whois and archive-answer surfaces carry their own cited evidence shapes. LLM-backed synthesis validates citations against the candidate set before trusting them.
 
 **Decision log** — `mxr decisions` is a queryable ledger of explicit decisions extracted from threads ("we agreed on Postgres"). Rows are stable across rebuilds: `id = hash(account, thread, normalized_decision, evidence_ids)`. Rebuild with `mxr decisions rebuild --since N` — idempotent on unchanged threads.
 
-**Thread briefing** — `mxr briefing thread <id>` is a cached, citation-backed recap of a dormant thread (default threshold: 30 days). Synthesized from existing thread summary + relationship profile + open commitments + decision log. Invalidated by content hash; force regenerate with `--refresh`.
+**Thread briefing** — `mxr briefing thread <id>` is a cached, citation-backed recap of a dormant thread (default threshold: 30 days). Synthesized from the local thread transcript, cached in `context_briefings`, and invalidated when the thread's message ids/dates change. Force regenerate with `--refresh`.
 
-**Recipient briefing** — `mxr briefing recipient <email>` is the same primitive scoped to a person: last interaction, open commitments, tone, cadence. The TUI compose flow surfaces it as a quiet hint after a long gap; never auto-inserts into the draft.
+**Recipient briefing** — `mxr briefing recipient <email>` is the same cached briefing primitive scoped to a person. Its deterministic baseline includes known interaction counts and last inbound/outbound dates; the LLM can turn that baseline into prose when enabled. The TUI compose flow surfaces it as a quiet hint after a long gap; never auto-inserts into the draft.
 
 **Cadence watchlist** — `relationship_watchlist` is an explicit, account-scoped table of "relationships I chose to maintain". `mxr cadence watch <email> --every <N>d` adds a row; `mxr cadence drift` lists watched contacts whose interval has drifted past expected. mxr never auto-watches contacts.
 
@@ -92,7 +94,7 @@ mxr ships citation-required AI features that run above the core mail model. None
 
 **Expert** — `mxr expert <message-id>` or `--query "<text>"` ranks locally cited answerers of similar questions, not askers. Citations point at *answer* messages — replies that follow a question, contain explanatory content, and are followed by thanks or no further unresolved ask.
 
-**Whois entity** — `mxr whois <name|email|term>` looks up a person, project, or jargon term using only locally cited mail evidence. Query-time only — there is no persisted `entities` table in v1. Ambiguous queries return `candidates`, not a synthesized definition.
+**Whois entity** — `mxr whois <name|email|term>` looks up a person or free-text term using only locally cited mail evidence. Project names currently use the free-text `term` / `ambiguous` path. Query-time only — there is no persisted `entities` table in v1. Ambiguous queries return `candidates`, not a synthesized definition.
 
 **Delivery** — a tracked package distilled from shipping mail. A local heuristic (carrier/merchant senders, shipping subjects, schema.org markup, checksum-valid tracking numbers) shortlists candidates; an optional LLM step confirms and extracts merchant/carrier/items/ETA; a lifecycle layer collapses an order's many emails into one row whose `status` only advances and resolves on "delivered". Browse with `mxr deliveries` or TUI tab `7`. `source` is `schema`, `llm`, or `heuristic`. See the [Deliveries guide](/guides/deliveries/).
 
@@ -100,7 +102,7 @@ mxr ships citation-required AI features that run above the core mail model. None
 
 **Reader mode** — strips signatures, quoted text, tracking pixels, and remote-image references for distraction-free reading. Toggle with `R`.
 
-**Plain text first** — mxr renders text/plain bodies if they exist, falling back to HTML→text only when needed. Remote content is off by default.
+**Plain text first** — mxr renders text/plain bodies if they exist, falling back to HTML→text only when needed. HTML remote images are controlled by `render.html_remote_content`; tracking pixels are stripped separately.
 
 ## Provider quirks (the seam)
 

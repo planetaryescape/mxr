@@ -18,12 +18,12 @@ mxr ships a bundled OAuth `client_id` and `client_secret` using Google's "Deskto
 
 ### How it works
 
-1. User runs `mxr account add gmail`.
+1. User runs `mxr accounts add gmail`.
 2. mxr uses the bundled client ID to initiate the OAuth2 installed-app flow via yup-oauth2.
 3. Browser opens to Google's consent screen.
 4. User grants access. Token is returned to the localhost redirect.
-5. yup-oauth2 persists the token to disk (`~/.config/mxr/tokens/<account>/oauth.json`).
-6. Subsequent API calls use the cached token. yup-oauth2 handles refresh automatically.
+5. mxr stores the yup-oauth2 token cache in the OS keychain/keyring under the Gmail OAuth service name, while retaining the legacy private on-disk cache as a fallback/migration source.
+6. Subsequent API calls use the cached token. yup-oauth2 handles refresh automatically through mxr's storage adapter.
 
 ### Scopes requested
 
@@ -72,18 +72,21 @@ When the app exceeds 100 users, Google requires:
 
 ### Current approach
 
-yup-oauth2 persists tokens to disk at `~/.config/mxr/tokens/<account>/oauth.json`. The file contains:
+mxr wraps yup-oauth2 with `KeychainTokenStorage` (`crates/provider-gmail/src/auth_storage.rs`). The primary store is the OS credential store:
+
+- macOS: Keychain Access via Security.framework
+- Linux: Secret Service via the `keyring` crate
+
+The keychain service is `mxr-gmail-oauth` for the production instance, scoped per non-production instance by `mxr_config::gmail_oauth_keychain_service()`.
+
+The token cache contains:
 
 - Access token (short-lived, ~1 hour)
 - Refresh token (long-lived)
 - Expiry timestamp
 - Token type
 
-File permissions are set to `0600` (owner read/write only).
-
-### Future enhancement: keyring integration
-
-A future version may support OS keyring storage (macOS Keychain, GNOME Keyring, Windows Credential Manager) via the `keyring` crate. This is a nice-to-have, not a launch blocker. The disk-based approach is standard for CLI tools (gcloud, gh, and aws-cli all store tokens on disk).
+Legacy token files under the mxr data-dir token directory may still exist. On load, mxr can mirror a legacy disk cache into the keychain and keeps the disk cache available as a controlled fallback so noninteractive keychain failures do not strand an otherwise valid account.
 
 ---
 
@@ -93,7 +96,7 @@ Users who prefer to use their own Google Cloud project (or who hit the 100-user 
 
 ### Configuration
 
-In `~/.config/mxr/config.toml`:
+In the file printed by `mxr config path`:
 
 ```toml
 [accounts.personal]
@@ -219,10 +222,12 @@ client_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 Outlook tokens are stored as JSON at:
 
 ```
-~/.local/share/mxr/tokens/<token_ref>.json
+<token_dir>/<sanitized-token-ref>.json
 ```
 
-File permissions: `0600`.
+`<token_dir>` defaults to `<data_dir>/tokens` for the active runtime
+identity and can be overridden with `MXR_TOKEN_DIR`. File permissions:
+`0600`.
 
 The token file contains:
 - `access_token` — short-lived (~1 hour)

@@ -1,4 +1,4 @@
-//! Slice 4.2 of docs/ai-email/04-timing-cadence.md.
+//! Slice 4.2 of docs/reference/ai-email.md
 //!
 //! User-curated cadence watchlist. Add/remove contacts the user
 //! wants alerted on when relationship cadence drifts past expected.

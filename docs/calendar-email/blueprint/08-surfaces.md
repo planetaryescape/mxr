@@ -2,6 +2,11 @@
 
 Calendar invite support must be CLI-first and daemon-backed.
 
+Current code truth lives in [Current State](02-current-state.md). This file
+preserves the design surface; the shipped protocol names are
+`GetInvite`, `ListInvites`, `BackfillCalendarInvites`, `RespondInvite`,
+`PrepareInviteResponse`, and `MarkInviteAnswered`.
+
 ## IPC
 
 Likely requests:
@@ -98,4 +103,3 @@ Record user action locally:
 - dry-run response previewed if useful
 
 Use daemon activity recorder only. Never direct SQL writes outside `crates/daemon/src/activity/`.
-

@@ -27,9 +27,9 @@ The mxr skill teaches an agent how to use the CLI that already exists. It is a m
 
 ```bash
 mkdir -p ~/.claude/skills/mxr/references
-curl -fsSL https://raw.githubusercontent.com/planetaryescape/mxr/main/.claude/skills/mxr/SKILL.md \
+curl -fsSL https://raw.githubusercontent.com/planetaryescape/mxr/main/.agents/skills/mxr/SKILL.md \
   -o ~/.claude/skills/mxr/SKILL.md
-curl -fsSL https://raw.githubusercontent.com/planetaryescape/mxr/main/.claude/skills/mxr/references/commands.md \
+curl -fsSL https://raw.githubusercontent.com/planetaryescape/mxr/main/.agents/skills/mxr/references/commands.md \
   -o ~/.claude/skills/mxr/references/commands.md
 ```
 
@@ -136,11 +136,11 @@ mxr send <draft_id> --at "monday 9am"
 mxr unsend <draft_id>                                       # Before it fires
 ```
 
-For the full skill content, see [SKILL.md on GitHub](https://github.com/planetaryescape/mxr/blob/main/.claude/skills/mxr/SKILL.md) and [references/commands.md](https://github.com/planetaryescape/mxr/blob/main/.claude/skills/mxr/references/commands.md). For the human-facing surface, see [the CLI overview](/reference/cli/) and the [automation contract](/guides/automation-contract/).
+For the full skill content, see [SKILL.md on GitHub](https://github.com/planetaryescape/mxr/blob/main/.agents/skills/mxr/SKILL.md) and [references/commands.md](https://github.com/planetaryescape/mxr/blob/main/.agents/skills/mxr/references/commands.md). For the human-facing surface, see [the CLI overview](/reference/cli/) and the [automation contract](/guides/automation-contract/).
 
 ## Install — Cursor
 
-1. Copy the contents of [SKILL.md](https://github.com/planetaryescape/mxr/blob/main/.claude/skills/mxr/SKILL.md).
+1. Copy the contents of [SKILL.md](https://github.com/planetaryescape/mxr/blob/main/.agents/skills/mxr/SKILL.md).
 2. Open Cursor → Settings → Rules for AI.
 3. Paste the SKILL.md body into the rules field.
 4. Save.
@@ -168,7 +168,7 @@ Then `/mxr archive newsletters older than 30 days` invokes the skill.
 ## Install — Aider
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/planetaryescape/mxr/main/.claude/skills/mxr/SKILL.md \
+curl -fsSL https://raw.githubusercontent.com/planetaryescape/mxr/main/.agents/skills/mxr/SKILL.md \
   -o ~/.aider/mxr-skill.md
 
 aider --read-only ~/.aider/mxr-skill.md
@@ -182,7 +182,7 @@ Copy the SKILL.md content into the system prompt. The agent now knows the mxr CL
 
 ## Token budgets
 
-The skill itself is ~3KB. The full command reference (auto-generated from `--help` snapshots, see [/reference/cli/](/reference/cli/)) is ~50KB across all commands; agents shouldn't ingest all of it. Pull only the pages relevant to the active task — `mxr archive --help` plus `mxr search --help` is usually enough for triage.
+The skill itself is intentionally small. The full command reference (auto-generated from `--help` snapshots, see [/reference/cli/](/reference/cli/)) is much larger; agents shouldn't ingest all of it. Pull only the pages relevant to the active task — `mxr archive --help` plus `mxr search --help` is usually enough for triage.
 
 ## What this is _not_
 
@@ -197,4 +197,4 @@ The point of the skill is not magic. It's that the agent uses the same CLI a hum
 - [For agents](/guides/for-agents/) — three worked examples and the safety primitives
 - [Automation contract](/guides/automation-contract/) — what's safe to script
 - [HTTP bridge](/reference/bridge/) — same surface over HTTP for non-shell agents
-- [API explorer](/api/bridge/) — try requests interactively
+- [API explorer](/reference/api-explorer/) — try requests interactively

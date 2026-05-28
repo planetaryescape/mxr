@@ -1,4 +1,4 @@
-//! Slice 6.1 of docs/ai-email/06-collaboration-loop-in.md.
+//! Slice 6.1 of docs/reference/ai-email.md
 //!
 //! Query-time entity explainer. No new schema -- per the doc,
 //! `entities`/`entity_mentions` are deferred until query-time

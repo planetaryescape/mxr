@@ -180,7 +180,7 @@ POST /gmail/v1/users/me/messages/{id}/modify
 POST /gmail/v1/users/me/messages/send
 (raw RFC 2822 message as base64url)
 
-# Batch (up to 100 operations in one HTTP request)
+# Batch modify (label mutation, up to Gmail's batchModify limit)
 POST /gmail/v1/users/me/messages/batchModify
 
 # Labels
@@ -192,7 +192,7 @@ GET /gmail/v1/users/me/labels
 This is Gmail's killer sync feature. Instead of re-listing all messages, you ask "what changed since historyId X?" and get back only the deltas: messages added, deleted, label changes. This makes subsequent syncs extremely fast (often just a handful of API calls even for active inboxes).
 
 The sync loop:
-1. First sync: list all messages, store the latest `historyId`
+1. First sync: list all messages, fetch `format=full` message payloads in bounded concurrent chunks, store the latest `historyId`
 2. Subsequent syncs: call `history.list` with the stored `historyId`
 3. Apply the returned deltas to local store
 4. Update the stored `historyId`
@@ -267,7 +267,7 @@ Outlook uses the OAuth2 device code flow — no browser redirect required:
 2. mxr calls the Azure device authorization endpoint and prints a short user code + URL.
 3. User visits the URL and enters the code in a browser (any device).
 4. mxr polls the token endpoint until the user approves.
-5. Access + refresh tokens are stored at `~/.local/share/mxr/tokens/<token_ref>.json` (permissions `0600`).
+5. Access + refresh tokens are stored under the active token dir (`<data_dir>/tokens` by default, `MXR_TOKEN_DIR` when set). The filename is the sanitized `token_ref` plus `.json` and uses permissions `0600`.
 6. On subsequent runs, the access token is auto-refreshed when within 5 minutes of expiry.
 
 **Why device code flow?** The OAuth2 installed-app (localhost redirect) flow requires a browser on the same machine. Device code works in headless environments and is the standard pattern for CLI tools targeting Microsoft identity.
@@ -309,7 +309,7 @@ provider = "outlook-work"
 token_ref = "mxr/work-outlook"
 ```
 
-The `token_ref` value is a path under `~/.local/share/mxr/tokens/` (without the `.json` extension). Both sync and send share the same token file.
+The `token_ref` value identifies the shared Outlook token cache. Both sync and send use the same `token_ref`; mxr stores it under the active token dir with filesystem-unsafe characters sanitized.
 
 ---
 

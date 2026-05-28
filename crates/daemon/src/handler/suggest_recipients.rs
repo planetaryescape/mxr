@@ -1,4 +1,4 @@
-//! Slice 5.3 of docs/ai-email/05-context-briefings.md.
+//! Slice 5.3 of docs/reference/ai-email.md
 //!
 //! "Maybe include" recipient suggestions. Build a query from the
 //! draft, hybrid-retrieve prior threads (lexical for the slice;

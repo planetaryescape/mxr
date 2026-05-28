@@ -1223,7 +1223,7 @@ pub async fn process_due_scheduled_sends(
             Ok(_) => tracing::debug!(draft_id = %draft_id, "scheduled-send: sent"),
             Err(e) => {
                 if e.to_string().contains("draft safety blocked send") {
-                    // Per docs/ai-email/01-pre-send-safety.md: keep the
+                    // Per docs/reference/ai-email.md: keep the
                     // draft, clear the schedule, log a warning event so
                     // the user notices on next sync. Without this the
                     // flusher would retry every tick forever.

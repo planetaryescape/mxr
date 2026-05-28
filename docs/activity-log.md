@@ -25,7 +25,7 @@ The differentiation trade-off test passes: a competitor *could* credibly claim t
 7. **Link-click capture is opt-in**. `activity.track_link_clicks` defaults to `false`. URL history reveals a lot; making it explicit means users who *do* enable it know what they're trading.
 8. **Search query bodies are stored verbatim** with a per-row redact path. We accepted the privacy trade-off because the alternative — auto-redacting every query — destroyed the recall feature ("what did I search for last week?"). Users with sensitive query habits can disable `track_search_queries` or clear with `mxr activity clear`.
 9. **Export formats**: CSV, JSON, NDJSON. All three required. NDJSON is for piping into shell tools (`jq`, `awk`); without it the CLI ergonomics drop a lot of value.
-10. **Cross-device sync is strictly forbidden** — the activity table is never replicated, never exported automatically, never sent to a server. Hard invariant. Codified in `AGENTS.md` and enforced by the structural single-writer test.
+10. **Cross-device sync is strictly forbidden** — the activity table is never replicated, never exported automatically, never sent to a server. Hard invariant. Summarized in `AGENTS.md`, expanded in the scoped `mxr-development` skill, and enforced by the structural single-writer test.
 11. **Encryption at rest is out of scope for v1**. Relies on user's filesystem encryption (FileVault, LUKS). Documented as a known limitation. Revisit when account-key infra exists.
 12. **Pause is observable**. `mxr activity pause` writes one `activity.paused` marker *before* the pause flag flips, so the diary itself shows the gap. Auto-resume writes a synthesized `activity.resumed` marker so the user can see when recording came back. We considered silent pause; rejected it because hidden pauses undermine the entire "diary" framing.
 13. **Browser-history-style clear**: `mxr activity clear --last 1h|1d|7d|30d|all`. Tombstones matching rows. Doesn't hard-delete — retention prune still runs deterministically and explicitly.
@@ -88,7 +88,7 @@ The differentiation trade-off test passes: a competitor *could* credibly claim t
 | Web React surface | `apps/web/src/features/activity/{ActivityRoute.tsx,api.ts}` + `apps/web/src/routes/activity.tsx` |
 | Web diagnostics integration | `apps/web/src/features/diagnostics/{DiagnosticsRoute.tsx,EventsPanel.tsx,LogsPanel.tsx}` |
 | Config | `crates/config/src/types.rs::ActivityConfig` + `ActivityRetentionConfig` |
-| AGENTS.md invariants | `AGENTS.md` "Activity Log Invariants" section |
+| Agent context summary | `AGENTS.md` activity/privacy invariant + `.agents/skills/mxr-development/SKILL.md` |
 | PII audit + structural test | `crates/daemon/tests/activity_invariants.rs` |
 | Bench harness | `benches/user_activity.rs` |
 
@@ -320,7 +320,8 @@ mxr activity status
 # Web:   /activity route, or /diagnostics → Activity tab.
 
 # Inspect the schema:
-sqlite3 ~/.local/share/mxr/mxr.db \
+DATA_DIR="$(mxr status --format json | jq -r .data_dir)"
+sqlite3 "$DATA_DIR/mxr.db" \
   "SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 5;"
 # Expect 37 (saved_activity_filters), 36 (user_activity_fts), 35 (user_activity) + earlier.
 
@@ -341,4 +342,4 @@ If you're tempted to short-cut a future phase ("we don't need a recorder, just s
 - Config reference: [`site/src/content/docs/reference/config.md`](../site/src/content/docs/reference/config.md) (`[activity]` section)
 - Diagnostics integration: [`site/src/content/docs/guides/observability.md`](../site/src/content/docs/guides/observability.md)
 - Architecture sketch: [`ARCHITECTURE.md`](../ARCHITECTURE.md) (Activity log section)
-- Invariants in agent context: [`AGENTS.md`](../AGENTS.md) (Activity Log Invariants section)
+- Agent context summary: [`AGENTS.md`](../AGENTS.md) + [`mxr-development` skill](../.agents/skills/mxr-development/SKILL.md)

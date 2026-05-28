@@ -17,6 +17,9 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 /// the only hosts that don't expose us to DNS-rebinding attacks because
 /// they cannot be poisoned by a malicious authoritative DNS server.
 const LOOPBACK_HOSTS: &[&str] = &["localhost", "mxr.localhost", "127.0.0.1", "[::1]", "::1"];
+const X_FRAME_OPTIONS: &str = "x-frame-options";
+const X_CONTENT_TYPE_OPTIONS: &str = "x-content-type-options";
+const REFERRER_POLICY: &str = "referrer-policy";
 
 /// Strip an optional `:port` suffix from a Host header value.
 fn host_only(raw: &str) -> &str {
@@ -94,6 +97,36 @@ pub fn cors_layer(extra_origins: &[String]) -> CorsLayer {
         .allow_headers(tower_http::cors::Any)
 }
 
+pub async fn security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert(X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    headers.insert(REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+    response
+}
+
+pub async fn require_bridge_auth(
+    State(state): State<crate::AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let query_token = request.uri().query().and_then(query_token);
+    if crate::auth::extract_token(request.headers(), query_token.as_deref())
+        == Some(state.config.auth_token.as_str())
+    {
+        return next.run(request).await;
+    }
+    crate::auth::BridgeError::Unauthorized.into_response()
+}
+
+fn query_token(query: &str) -> Option<String> {
+    query.split('&').find_map(|pair| {
+        let (key, value) = pair.split_once('=')?;
+        (key == "token").then(|| value.to_string())
+    })
+}
+
 /// `http(s)://(localhost|127.0.0.1|[::1])(:port)?`
 fn is_loopback_origin(origin: &str) -> bool {
     let rest = origin
@@ -129,5 +162,15 @@ mod tests {
         assert!(is_loopback_origin("http://[::1]:7777"));
         assert!(!is_loopback_origin("http://evil.example.com"));
         assert!(!is_loopback_origin("https://localhost.evil.com"));
+    }
+
+    #[test]
+    fn query_token_extracts_token_param() {
+        assert_eq!(query_token("token=abc-123"), Some("abc-123".to_string()));
+        assert_eq!(
+            query_token("a=1&token=abc-123"),
+            Some("abc-123".to_string())
+        );
+        assert_eq!(query_token("a=1"), None);
     }
 }

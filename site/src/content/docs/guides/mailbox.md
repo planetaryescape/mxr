@@ -59,6 +59,26 @@ Inside a thread:
 - Message headers show label chips and attachment metadata
 - Reader mode and attachment actions work from the focused message
 
+## Body loading
+
+Message bodies are synced eagerly with envelopes, so opening a synced
+message in the TUI should read from local SQLite. The TUI batches body
+loads through the daemon's `ListBodies` path; that path does not repair
+missing rows by calling the provider while you wait.
+
+```bash
+id="$(mxr search 'label:inbox' --format ids --limit 1)"
+mxr cat "$id" --view reader
+```
+
+What you get: the same cached body content the TUI expects to render,
+with reader mode applied.
+
+If a body row is missing, that is local-store drift rather than the
+normal opening flow. The single-message CLI read path may repair a
+missing body, but the TUI preview path stays local so mailbox navigation
+does not turn into a hidden network repair job.
+
 ## Search in the TUI
 
 Two search flows:
@@ -93,6 +113,25 @@ Common bulk actions:
 - Star
 - Apply label
 - Move to label
+
+## Mutation feedback
+
+The TUI applies mailbox mutations optimistically: rows move, flags flip,
+and labels update before the daemon reply returns. Transient daemon or
+SQLite pool failures are retried briefly before the UI reconciles.
+
+```bash
+mxr archive --search 'from:noreply older:30d' --dry-run
+mxr archive --search 'from:noreply older:30d' --yes
+```
+
+What you get: a dry-run count first, then an explicit mutation that can
+retry transient failures and still reports a real failure if retries are
+exhausted.
+
+Preview auto-mark-read is quieter because it is background behavior. It
+retries transient failures too, but if it cannot land, the mailbox
+refreshes without a blocking mutation-failed modal.
 
 ## Attachments
 
@@ -151,6 +190,7 @@ each batch."
 
 ## See also
 
+- [Unsubscribe](/guides/unsubscribe/)
 - [Triage flow](/guides/triage-flow/)
 - [Search workflow](/guides/search/)
 - [Recipes — interactive pickers](/guides/recipes/#with-fzf--interactive-picker)

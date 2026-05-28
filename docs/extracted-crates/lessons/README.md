@@ -1,7 +1,7 @@
-# Lessons from extracting `mail-threading`
+# Lessons from extracting public email crates
 
 Status: active playbook
-source extraction: `mail-threading`
+source extractions: `mail-threading`, `list-unsubscribe`, `mail-query`, `mailbox-formats`
 use for: every future package in `docs/extractable-crates`
 
 ## Companion files
@@ -70,9 +70,10 @@ contract others can evaluate."
 For the next package, start by naming the contract:
 
 ```bash
-sed -n '1,220p' docs/extractable-crates/01-list-unsubscribe.md
-sed -n '1,220p' docs/extractable-crates/04-format-flowed.md
-sed -n '1,220p' docs/extractable-crates/03-gmail-query.md
+sed -n '1,220p' docs/extractable-crates/done/01-list-unsubscribe.md
+sed -n '1,220p' docs/extractable-crates/done/03-gmail-query.md
+sed -n '1,220p' docs/extractable-crates/wont-do/04-format-flowed.md
+sed -n '1,220p' docs/extractable-crates/07-sync-engine.md
 ```
 
 Ask:
@@ -510,6 +511,19 @@ If the answer is mostly no, defer.
 
 ### Shipped
 
+`mail-threading`:
+
+- Shipped on 2026-05-15 as
+  [`mail-threading v0.1.0`](https://crates.io/crates/mail-threading)
+  at [`planetaryescape/mail-threading`](https://github.com/planetaryescape/mail-threading).
+- The extraction that raised the bar: README as trust surface, RFC 5256/JWZ
+  coverage matrix, portable JSON conformance corpus, documented divergences,
+  and policy knobs.
+- The runbooks are at
+  [`../implementation/01-jwz-threading.md`](../implementation/01-jwz-threading.md)
+  and
+  [`../implementation/02-mail-threading-external-repo.md`](../implementation/02-mail-threading-external-repo.md).
+
 `list-unsubscribe`:
 
 - Shipped on 2026-05-16 as
@@ -543,7 +557,7 @@ If the answer is mostly no, defer.
 - The runbook is at
   [`../implementation/05-mailbox-formats-external-repo.md`](../implementation/05-mailbox-formats-external-repo.md).
 
-### Strong next candidates
+### Current active candidate
 
 `sync-engine`:
 
@@ -552,15 +566,8 @@ If the answer is mostly no, defer.
 - Real ecosystem gap; highest impact of any remaining candidate
 - 2-3 day discovery before commit; wait for mxr's sync surface to
   stabilise
-
-### High-risk or not now
-
-`sync-engine`:
-
-- real ecosystem gap
-- high coupling risk
-- hard to define a small public contract
-- 2-3 day discovery before commit; wait until mxr's sync surface stabilises
+- High coupling risk; the hard part is defining a small public contract rather
+  than exporting mxr's product-shaped sync policy.
 
 ### Won't do
 

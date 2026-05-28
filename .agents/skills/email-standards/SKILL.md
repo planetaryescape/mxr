@@ -46,7 +46,7 @@ Quick-access reference for email protocol decisions. For comprehensive RFC listi
 | Flag mapping | IMAP flags spec | `\Seen`→READ, `\Flagged`→STARRED, `\Draft`→DRAFT, `\Deleted`→TRASH, `\Answered`→ANSWERED |
 | Internationalized email | RFC 6530-6533 | Not yet implemented |
 | format=flowed | RFC 3676 | Not yet implemented |
-| Calendar invitations | RFC 5545 + RFC 6047 | Not yet implemented |
+| Calendar invitations | RFC 5545 + RFC 5546 + RFC 6047 | Implemented for mail-derived invites: parse `text/calendar`/`.ics`, persist local invite rows, search `has:calendar`, and send iMIP `METHOD:REPLY` through outbound mail |
 | Authentication display | RFC 8601 | Not yet implemented |
 
 ## Library → RFC Coverage
@@ -105,9 +105,11 @@ Note: mxr bypasses lettre's Message builder in Gmail send path (constructs RFC 2
 2. **Incomplete References in replies**: Only sets `References: {in_reply_to}` — should copy the original References chain and append the parent Message-ID.
 3. **Message-ID domain**: Uses `@localhost` instead of the sender's domain.
 4. **No List-Unsubscribe in IMAP**: Parsing only implemented in Gmail adapter. IMAP adapter has raw headers via mail-parser but doesn't extract List-Unsubscribe.
-5. **No format=flowed (RFC 3676)**: Plain text not wrapped/reflowed per format=flowed parameter.
-6. **SMTP attachments**: `draft.attachments` populated but not used in lettre message construction.
-7. **Comment syntax in addresses**: Gmail custom parser doesn't handle `addr (comment)` form.
+5. **No full calendar product**: mxr handles email invitations over iMIP, not CalDAV sync, standalone calendar views, reminders, free/busy, or provider calendar APIs.
+6. **Constrained manual calendar reply builder**: Parsing uses `icalendar`; RSVP generation currently uses a small daemon-owned `METHOD:REPLY` builder that must stay tightly tested.
+7. **No format=flowed (RFC 3676)**: Plain text not wrapped/reflowed per format=flowed parameter.
+8. **SMTP attachments**: `draft.attachments` populated but not used in lettre message construction.
+9. **Comment syntax in addresses**: Gmail custom parser doesn't handle `addr (comment)` form.
 
 ## Decision Guidance
 

@@ -1,4 +1,4 @@
-//! Slice 2.3 of docs/ai-email/02-follow-up-work.md.
+//! Slice 2.3 of docs/reference/ai-email.md
 //!
 //! Renders a list of `OwedReplyRowData` rows ordered by overdue
 //! score. The view is a pure render function; the surrounding

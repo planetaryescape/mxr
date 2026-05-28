@@ -7,7 +7,7 @@ six tracks (pre-send safety, forgotten work, archive intelligence, timing,
 briefings, collaboration) and the constraints any future change must respect.
 
 Every track is shipped end-to-end across store, protocol, daemon, CLI, and TUI
-as of 2026-05-14. The "where it lives" sections below point at the entry
+as of 2026-05-28. The "where it lives" sections below point at the entry
 points; treat code as the source of truth for current shape.
 
 ## Why these features and not others
@@ -45,10 +45,13 @@ These are load-bearing constraints, not preferences.
    before or alongside TUI. The TUI is a daemon client; it never invents
    behavior the daemon does not expose. Scripts and agents are first-class
    consumers.
-4. **Citations required.** Any synthesis feature (archive ask, decisions,
-   briefings, expert, whois) cites message ids or thread ids. The validator
-   rejects LLM output whose citation ids are not in the retrieved candidate
-   set — this is the single most important guardrail and must not be relaxed.
+4. **Citations required for message-evidence synthesis.** Archive ask,
+   decisions, thread briefings, expert, and whois must tie claims back to
+   retrieved message or thread evidence. Profile-only deterministic fallbacks
+   may return an empty citation list, but they must not pretend to be cited
+   synthesis. The validator rejects LLM output whose citation ids are not in
+   the retrieved candidate set — this is the single most important guardrail
+   and must not be relaxed.
 5. **Warnings are reviewable, blockers are explicit.** `--yes` does not bypass
    safety blockers; a separate single-use override token does. Override tokens
    live in `draft_safety_overrides` and are consumed on use.
@@ -81,8 +84,15 @@ already existed when this work started:
 If a new feature needs a new table, justify why the existing tables cannot
 hold it (e.g. cardinality, freshness, query shape). Materialized caches like
 `recipient_reply_latency_buckets`, `expertise_index`, `collaborator_patterns`,
-and `entities` were deliberately deferred until query-time performance forces
-the issue. Don't add them speculatively.
+`entities`, and `entity_mentions` are deliberately documented future caches,
+not current schema. Add them only when query-time performance forces the issue.
+
+Thread summaries are demand-driven, not sync backfill. `GetThread` returns a
+valid cached row from `thread_summaries` when the content/relationship hash
+still matches; `SummarizeThread` refreshes it through the LLM bulk lane. The
+TUI and web clients may lazily request a missing summary after opening a thread,
+but the request must stay backgrounded and visible in the reader instead of
+blocking navigation.
 
 ---
 
@@ -135,7 +145,7 @@ through it.
   audit row) is what lets us be strict-by-default without painting the user
   into a corner. Don't loosen it to "session overrides" without a fresh
   threat-model conversation.
-- Adding a new check means: new `SafetyCheckKindData` variant, deterministic
+- Adding a new check means: new `DraftSafetyIssueCode` variant, deterministic
   unit tests in `mxr-safety`, integration test through the daemon, snapshot
   refresh, and a TUI modal verdict path.
 
@@ -214,9 +224,10 @@ keeps the rebuild affordable.
 
 Deliberately kept query-time with no `entities`/`entity_mentions` tables.
 For an email query we use sender profile + relationship profile; for a
-free-text query we hybrid-search and summarize cited mentions. Ambiguity
-returns candidates rather than a synthesized answer. Persistence is a
-materialization decision — make it when query latency forces it, not before.
+free-text query we run lexical search and return deterministic cited
+matches/candidates. Ambiguity returns candidates rather than a synthesized
+answer. Persistence is a materialization decision — make it when query
+latency forces it, not before.
 
 ---
 
@@ -258,9 +269,10 @@ remove in a cleanup pass.
 ### Briefings (`mxr briefing thread|recipient`)
 
 Cached in `context_briefings` keyed by content hash. One table, two `kind`
-values (`thread`, `recipient`). The cache hash mixes thread content hash,
-relationship summary hashes, open commitment ids/status, and decision ids —
-any one of those changing invalidates the briefing.
+values (`thread`, `recipient`). Thread briefings currently hash thread message
+ids and dates; recipient briefings hash account/email plus contact counters and
+last-contact timestamps. Relationship summaries, commitments, and decisions are
+not part of the current thread briefing source pack.
 
 Threshold gating matters: thread briefings only surface a TUI hint when a
 thread is dormant past the configured threshold (default 30 days);
@@ -288,7 +300,7 @@ message follows a question, contains explanatory content, thread later has
 thanks/no further ask). People who asked similar questions but did not
 answer are not ranked. Citations point to **answer** messages, not the
 matching question messages — that's the invariant. LLM can polish reason
-text; ranking works without it.
+text later, but the current handler returns deterministic reason strings.
 
 ---
 
@@ -320,12 +332,14 @@ forward-only migration, no destructive rewrite of existing rows.
 The pre-send pipeline standardized a few shapes that the rest of the AI
 layer reuses. The conventions:
 
-- `Citation`-style structs always carry `message_id`, `thread_id`, optional
-  `quote`, optional `field`. Anything synthesized cites in this shape.
+- `Citation`-style structs carry source ids plus quote/field context, but the
+  exact fields differ by surface. `CitationRefData` uses optional
+  `message_id` / `thread_id` plus required `field` and `quote`; whois and
+  archive-answer surfaces carry their own evidence shapes.
 - Reports have a `verdict` (`Safe` / `Warn` / `Blocked`) and a flat list of
-  `issues` with `kind`, `severity`, `title`, `detail`, `citations`,
-  `override_token`. CLI/JSON output is the verdict + ordered issues; do
-  not nest by check kind.
+  `issues` with `code`, `severity`, `message`, optional `detail`,
+  `citations`, and `override_token`. CLI/JSON output is the verdict +
+  ordered issues; do not nest by check kind.
 - IPC `*Data` structs are stable contracts. Renames need an OpenAPI snapshot
   refresh (`mxr-web` carries the public schema) and a migration plan for
   the web client (`apps/web`).
@@ -383,7 +397,7 @@ not an AI-email regression.
 
 ---
 
-## Pointers (current as of 2026-05-14; verify against code)
+## Pointers (current as of 2026-05-28; verify against code)
 
 - Safety crate: `crates/safety/`
 - Safety enforcement: `crates/daemon/src/handler/mutations.rs`
@@ -397,5 +411,5 @@ not an AI-email regression.
 - Whois: `crates/daemon/src/handler/whois.rs`
 - TUI send confirm modal: `crates/tui/src/ui/send_confirm_modal.rs`
 - TUI owed lens: `crates/tui/src/ui/owed_lens.rs`
-- Web client OpenAPI snapshot: `crates/mxr-web/` (snapshot
-  `mxr_web__tests__openapi_spec_summary.snap`)
+- Web client OpenAPI snapshot:
+  `crates/web/src/snapshots/mxr_web__tests__openapi_spec_summary.snap`

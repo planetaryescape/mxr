@@ -2,8 +2,9 @@
  * Shared action registry types. Pure types — zero React imports.
  *
  * The registry is consumed by the command palette, the global keymap, and the
- * help dialog. Each surface filters by `when` and groups by `group`. Every
- * TUI action defined in `crates/tui/src/action.rs` ships as one entry here.
+ * help dialog. Each surface filters by `when` and groups by `group`. Durable
+ * app-level actions live here; page-local motion and terminal-only TUI state
+ * stay close to the view that owns them.
  */
 
 import type { ComponentType } from "react";

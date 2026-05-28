@@ -2,7 +2,10 @@ use super::helpers::{dry_run_rules, persist_rule};
 use super::{build_rule_from_form, parse_rule_value, rule_to_form_data, HandlerResult};
 use crate::state::AppState;
 use mxr_protocol::ResponseData;
-use mxr_rules::Rule;
+use mxr_rules::{Rule, RuleAction};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static SHELL_HOOK_WARNING_EMITTED: AtomicBool = AtomicBool::new(false);
 
 pub(super) async fn list_rules(state: &AppState) -> HandlerResult {
     let rows = state.store.list_rules().await?;
@@ -33,6 +36,7 @@ pub(super) async fn get_rule_form(state: &AppState, rule: &str) -> HandlerResult
 
 pub(super) async fn upsert_rule_value(state: &AppState, value: serde_json::Value) -> HandlerResult {
     let rule = parse_rule_value(value.clone())?;
+    warn_once_for_enabled_shell_hook(&rule);
     persist_rule(state, &rule).await?;
     Ok(ResponseData::RuleData { rule: value })
 }
@@ -71,8 +75,26 @@ pub(super) async fn upsert_rule_form(
     )
     .await?;
     let value = serde_json::to_value(&rule)?;
+    warn_once_for_enabled_shell_hook(&rule);
     persist_rule(state, &rule).await?;
     Ok(ResponseData::RuleData { rule: value })
+}
+
+fn warn_once_for_enabled_shell_hook(rule: &Rule) {
+    if !rule.enabled
+        || !rule
+            .actions
+            .iter()
+            .any(|action| matches!(action, RuleAction::ShellHook { .. }))
+    {
+        return;
+    }
+    if !SHELL_HOOK_WARNING_EMITTED.swap(true, Ordering::Relaxed) {
+        tracing::warn!(
+            rule_id = %rule.id,
+            "enabled shell-hook rule; hook commands are trusted local configuration and execute with the user's OS privileges"
+        );
+    }
 }
 
 pub(super) async fn list_rule_history(

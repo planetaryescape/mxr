@@ -11,7 +11,9 @@ yanked = "warn"
 ignore = [
     # Transitive dependencies with no safe upgrade available.
     # These are pulled in by upstream crates we don't control.
+    { id = "RUSTSEC-2023-0071", reason = "rsa is transitive through sqlx; mxr does not expose externally observable RSA operations and no patched upstream version is available yet" },
     { id = "RUSTSEC-2025-0052", reason = "async-std remains through mxr-async-imap/provider-imap; no async-imap-compatible upgrade path yet" },
+    { id = "RUSTSEC-2026-0097", reason = "rand 0.9.2 advisory requires custom rand-using logger conditions that mxr does not install; upgrade when patched upstream" },
 ]
 
 [licenses]

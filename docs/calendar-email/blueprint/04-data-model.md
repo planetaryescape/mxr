@@ -2,6 +2,10 @@
 
 Calendar invites should become first-class mail-derived data, not just a larger `MessageMetadata.calendar` blob.
 
+Current code truth lives in [Current State](02-current-state.md). This file is
+the design target that shaped the shipped slice; some names differ from the
+implemented `CalendarMetadata` and `calendar_invites` schema.
+
 ## Principles
 
 - SQLite remains canonical.
@@ -130,4 +134,3 @@ pub struct CalendarMetadata {
 ```
 
 Do not stuff all invite data into `MessageMetadata`; use store tables for first-class workflows.
-

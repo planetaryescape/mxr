@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.5.34"
+    "version": "0.5.43"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -11205,6 +11205,7 @@
               "backfilled": {
                 "type": "integer",
                 "format": "int64",
+                "description": "Calendar-invite rows rebuilt from body metadata that was already\nparsed but missing a `calendar_invites` row.",
                 "minimum": 0
               },
               "kind": {
@@ -11212,6 +11213,12 @@
                 "enum": [
                   "CalendarInviteBackfill"
                 ]
+              },
+              "rehydrated": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Messages re-hydrated from the provider because they carried a\ncalendar attachment but no parsed calendar metadata (e.g. Gmail\ninvites whose `.ics` arrived only as an attachment). Defaults to 0\nfor older daemons.",
+                "minimum": 0
               }
             }
           },

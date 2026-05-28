@@ -753,10 +753,9 @@ async fn v1_status_endpoint_returns_same_payload_as_legacy() {
     assert_eq!(json["uptime_secs"], 99);
 }
 
-/// Slice 2 — utoipa scaffold: spec is served at /api/v1/openapi.json,
-/// is valid OpenAPI 3.1, and includes the metadata + bearer security
-/// scheme that downstream tooling (Swagger UI, openapi-typescript-codegen,
-/// Schemathesis) needs to discover.
+/// Slice 2 — utoipa scaffold: spec is served at /api/v1/openapi.json
+/// behind bridge auth, is valid OpenAPI 3.1, and includes the metadata
+/// + bearer security scheme that downstream tooling needs to discover.
 #[tokio::test]
 async fn openapi_spec_is_served_at_api_v1_path() {
     let temp = TempDir::new().unwrap();
@@ -771,13 +770,28 @@ async fn openapi_spec_is_served_at_api_v1_path() {
     .await
     .unwrap();
 
-    let response = reqwest::get(format!("http://{addr}/api/v1/openapi.json"))
+    let client = reqwest::Client::new();
+    let unauthenticated = client
+        .get(format!("http://{addr}/api/v1/openapi.json"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        unauthenticated.status(),
+        reqwest::StatusCode::UNAUTHORIZED,
+        "openapi.json must require bridge auth"
+    );
+
+    let response = client
+        .get(format!("http://{addr}/api/v1/openapi.json"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .send()
         .await
         .unwrap();
     assert_eq!(
         response.status(),
         reqwest::StatusCode::OK,
-        "openapi.json must be served unauthenticated for discovery"
+        "openapi.json must be served to authenticated local clients"
     );
 
     let json: serde_json::Value = response.json().await.unwrap();
@@ -813,7 +827,10 @@ async fn openapi_spec_snapshot() {
     .await
     .unwrap();
 
-    let json: serde_json::Value = reqwest::get(format!("http://{addr}/api/v1/openapi.json"))
+    let json: serde_json::Value = reqwest::Client::new()
+        .get(format!("http://{addr}/api/v1/openapi.json"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .send()
         .await
         .unwrap()
         .json()
@@ -840,8 +857,8 @@ async fn openapi_spec_snapshot() {
     insta::assert_json_snapshot!("openapi_spec_summary", summary);
 }
 
-/// Slice 2 — Swagger UI is served so newcomers can explore the API
-/// interactively without leaving the daemon host.
+/// Slice 2 — Swagger UI is served to authenticated local clients so
+/// users can explore the API interactively without leaving the daemon host.
 #[tokio::test]
 async fn swagger_ui_is_served_at_api_v1_docs() {
     let temp = TempDir::new().unwrap();
@@ -856,11 +873,20 @@ async fn swagger_ui_is_served_at_api_v1_docs() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::builder()
+    let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::default())
         .build()
-        .unwrap()
+        .unwrap();
+    let unauthenticated = client
         .get(format!("http://{addr}/api/v1/docs/"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unauthenticated.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    let response = client
+        .get(format!("http://{addr}/api/v1/docs/"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
         .await
         .unwrap();

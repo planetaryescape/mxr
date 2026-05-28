@@ -17,14 +17,14 @@ Do not implement iCalendar parsing by hand. Calendar syntax has folded lines, pr
 
 ## Implementation Decision
 
-The implementation uses `icalendar` for production parsing and constrained
-`METHOD:REPLY` generation.
+The implementation uses `icalendar` for production parsing. The constrained
+`METHOD:REPLY` path is currently a small manual builder in the daemon, backed
+by tests and safety checks.
 
 `calcard` was the preferred first spike candidate, but `icalendar` fit the
 current slice better: it parses unfolded RFC 5545 calendars through a maintained
-Rust crate, exposes raw property names/values/parameters needed by mxr's
-provider-agnostic model, and keeps reply generation in Rust without adding a C
-or JS runtime dependency.
+Rust crate, and exposes raw property names/values/parameters needed by mxr's
+provider-agnostic model without adding a C or JS runtime dependency.
 
 This is not a full iTIP engine. mxr still owns scheduling policy: stale
 sequence checks, organizer-change warnings, attendee matching, dry-run previews,
@@ -41,12 +41,13 @@ The selected parser path must continue to satisfy:
 - Exposes `UID`, `SEQUENCE`, `RECURRENCE-ID`, `DTSTAMP`.
 - Exposes `ORGANIZER` and `ATTENDEE` params such as `PARTSTAT`, `RSVP`, `ROLE`, `CN`.
 - Handles `TZID` and `VTIMEZONE` enough to display local time safely or mark unresolved.
-- Can serialize/generate a valid `METHOD:REPLY`, or can be paired with `icalendar`.
+- Can support a valid `METHOD:REPLY` path, either through library generation or a narrow audited builder.
 - Does not pull provider-specific or heavy runtime dependencies into low-level crates.
 
-Reply generation is intentionally constrained to `METHOD:REPLY` and backed by
-tests. Wider calendar publishing, free/busy, CalDAV, recurrence expansion, and
-time-zone resolution remain separate future work.
+Reply generation is intentionally constrained to `METHOD:REPLY`, implemented in
+one daemon builder, and backed by tests. Wider calendar publishing, free/busy,
+CalDAV, recurrence expansion, and time-zone resolution remain separate future
+work.
 
 ## Sources
 

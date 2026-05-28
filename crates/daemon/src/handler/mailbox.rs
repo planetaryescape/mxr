@@ -18,6 +18,8 @@ use scraper::{Html, Selector};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+const MAX_REMOTE_ASSET_BYTES: u64 = 25 * 1024 * 1024;
+
 fn resolve_account_id(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -302,7 +304,10 @@ async fn rehydrate_attachment_only_invites(state: &AppState) -> u64 {
         }
         offset += page_size;
     }
-    tracing::info!(rehydrated, "backfill_invites: re-hydrated attachment-only invites");
+    tracing::info!(
+        rehydrated,
+        "backfill_invites: re-hydrated attachment-only invites"
+    );
     rehydrated
 }
 
@@ -1073,6 +1078,9 @@ async fn materialize_data_uri_asset(
         tokio::fs::write(&path, bytes)
             .await
             .map_err(|error| error.to_string())?;
+        set_private_file_permissions(&path)
+            .await
+            .map_err(|error| error.to_string())?;
     }
     Ok((path, mime_type))
 }
@@ -1123,16 +1131,55 @@ async fn materialize_remote_asset(
     if !response.status().is_success() {
         return Err(format!("remote image fetch failed: {}", response.status()));
     }
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_REMOTE_ASSET_BYTES)
+    {
+        return Err(format!(
+            "remote image exceeds {} byte limit",
+            MAX_REMOTE_ASSET_BYTES
+        ));
+    }
     let mime_type = response
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .map(|value| value.split(';').next().unwrap_or(value).trim().to_string());
-    let bytes = response.bytes().await.map_err(|error| error.to_string())?;
+    let bytes = read_capped_remote_asset(response).await?;
     tokio::fs::write(&path, bytes)
         .await
         .map_err(|error| error.to_string())?;
+    set_private_file_permissions(&path)
+        .await
+        .map_err(|error| error.to_string())?;
     Ok((path, mime_type))
+}
+
+async fn read_capped_remote_asset(mut response: reqwest::Response) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|error| error.to_string())? {
+        let next_len = bytes.len().saturating_add(chunk.len());
+        if next_len as u64 > MAX_REMOTE_ASSET_BYTES {
+            return Err(format!(
+                "remote image exceeds {} byte limit",
+                MAX_REMOTE_ASSET_BYTES
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
+#[cfg(unix)]
+async fn set_private_file_permissions(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).await
+}
+
+#[cfg(not(unix))]
+async fn set_private_file_permissions(_path: &Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 fn html_image_dir(state: &AppState, message_id: &MessageId) -> PathBuf {

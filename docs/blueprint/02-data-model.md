@@ -212,6 +212,11 @@ Bodies are fetched alongside envelopes during sync and then cached in SQLite. Th
 - Full-text search can index body text immediately
 - Offline access works for all synced messages
 
+Current read-path boundary:
+
+- TUI preview/thread body loads use the bulk `ListBodies` IPC path, which reads cached SQLite rows only. If a row is missing, the daemon returns a per-message failure rather than repairing through the provider while the user waits.
+- Single-message `GetBody` may repair a missing or legacy body row by hydrating from the provider and persisting it. That is an explicit repair escape hatch, not the normal TUI open path.
+
 ### AttachmentMeta
 
 ```rust

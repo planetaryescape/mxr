@@ -1,6 +1,6 @@
 //! Daemon-backed CLI smoke tests for Track 4 (Timing & Cadence).
 //!
-//! Pairs with `docs/ai-email/04-timing-cadence.md`. Asserts the JSON
+//! Pairs with `docs/reference/ai-email.md`. Asserts the JSON
 //! acceptance criteria for `mxr send-time` and `mxr cadence watch/
 //! list/drift/unwatch` against a real daemon over the Unix socket.
 //!

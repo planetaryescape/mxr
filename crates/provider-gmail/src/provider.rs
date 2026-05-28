@@ -178,88 +178,82 @@ impl GmailProvider {
         &self,
         messages: Vec<crate::types::GmailMessage>,
     ) -> Result<Vec<SyncedMessage>, MxrError> {
-        let parsed: Vec<(String, SyncedMessage)> =
-            if messages.len() < GMAIL_PARSE_FANOUT_THRESHOLD {
-                messages
-                    .into_iter()
-                    .filter_map(|message| {
-                        let provider_message_id = message.id.clone();
+        let parsed: Vec<(String, SyncedMessage)> = if messages.len() < GMAIL_PARSE_FANOUT_THRESHOLD
+        {
+            messages
+                .into_iter()
+                .filter_map(|message| {
+                    let provider_message_id = message.id.clone();
+                    parse_synced_message(
+                        self.account_id.clone(),
+                        message,
+                        #[cfg(test)]
+                        self.parse_observer.clone(),
+                    )
+                    .map(|synced| (provider_message_id, synced))
+                })
+                .collect()
+        } else {
+            let concurrency = gmail_parse_concurrency_limit(messages.len());
+            let account_id = self.account_id.clone();
+            #[cfg(test)]
+            let parse_observer = self.parse_observer.clone();
+
+            let results = stream::iter(messages.into_iter().enumerate().map(|(index, message)| {
+                let account_id = account_id.clone();
+                #[cfg(test)]
+                let parse_observer = parse_observer.clone();
+
+                async move {
+                    let provider_message_id = message.id.clone();
+                    tokio::task::spawn_blocking(move || {
                         parse_synced_message(
-                            self.account_id.clone(),
+                            account_id,
                             message,
                             #[cfg(test)]
-                            self.parse_observer.clone(),
+                            parse_observer,
                         )
-                        .map(|synced| (provider_message_id, synced))
+                        .map(|synced| (provider_message_id, IndexedSyncedMessage { index, synced }))
                     })
-                    .collect()
-            } else {
-                let concurrency = gmail_parse_concurrency_limit(messages.len());
-                let account_id = self.account_id.clone();
-                #[cfg(test)]
-                let parse_observer = self.parse_observer.clone();
-
-                let results = stream::iter(messages.into_iter().enumerate().map(
-                    |(index, message)| {
-                        let account_id = account_id.clone();
-                        #[cfg(test)]
-                        let parse_observer = parse_observer.clone();
-
-                        async move {
-                            let provider_message_id = message.id.clone();
-                            tokio::task::spawn_blocking(move || {
-                                parse_synced_message(
-                                    account_id,
-                                    message,
-                                    #[cfg(test)]
-                                    parse_observer,
-                                )
-                                .map(|synced| {
-                                    (provider_message_id, IndexedSyncedMessage { index, synced })
-                                })
-                            })
-                            .await
-                            .map_err(|error| {
-                                MxrError::Provider(format!("gmail parse task failed: {error}"))
-                            })
-                        }
-                    },
-                ))
-                .buffer_unordered(concurrency)
-                .collect::<Vec<_>>()
-                .await;
-
-                let mut parsed = Vec::new();
-                for result in results {
-                    if let Some((provider_message_id, message)) = result? {
-                        parsed.push((provider_message_id, message));
-                    }
+                    .await
+                    .map_err(|error| {
+                        MxrError::Provider(format!("gmail parse task failed: {error}"))
+                    })
                 }
-                parsed.sort_by_key(|(_, message)| message.index);
+            }))
+            .buffer_unordered(concurrency)
+            .collect::<Vec<_>>()
+            .await;
 
-                parsed
-                    .into_iter()
-                    .map(|(provider_message_id, message)| (provider_message_id, message.synced))
-                    .collect()
-            };
+            let mut parsed = Vec::new();
+            for result in results {
+                if let Some((provider_message_id, message)) = result? {
+                    parsed.push((provider_message_id, message));
+                }
+            }
+            parsed.sort_by_key(|(_, message)| message.index);
+
+            parsed
+                .into_iter()
+                .map(|(provider_message_id, message)| (provider_message_id, message.synced))
+                .collect()
+        };
 
         // Invites whose iCalendar payload arrives only as an attachment leave
         // `metadata.calendar` empty after the synchronous body parse, because
         // Gmail keeps attachment bytes behind a separate fetch. Backfill those.
         let enrich_concurrency = gmail_parse_concurrency_limit(parsed.len());
-        let mut enriched: Vec<(usize, SyncedMessage)> = stream::iter(
-            parsed
-                .into_iter()
-                .enumerate()
-                .map(|(index, (provider_message_id, mut synced))| async move {
+        let mut enriched: Vec<(usize, SyncedMessage)> =
+            stream::iter(parsed.into_iter().enumerate().map(
+                |(index, (provider_message_id, mut synced))| async move {
                     self.enrich_calendar_from_attachment(&provider_message_id, &mut synced)
                         .await;
                     (index, synced)
-                }),
-        )
-        .buffer_unordered(enrich_concurrency)
-        .collect()
-        .await;
+                },
+            ))
+            .buffer_unordered(enrich_concurrency)
+            .collect()
+            .await;
         enriched.sort_by_key(|(index, _)| *index);
 
         Ok(enriched.into_iter().map(|(_, synced)| synced).collect())

@@ -63,7 +63,7 @@ behaviour change; mxr is strictly better afterwards.
 **Exit gate met:**
 - Three commits landed, each green on `cargo test -p <touched-crate>
   --tests`. Workspace-wide `cargo check --tests` clean.
-- Daemon smoke test (per AGENTS.md): `mxr daemon --foreground` boots
+- Daemon smoke test (per the scoped `mxr-development` skill): `mxr daemon --foreground` boots
   cleanly, `mxr doctor`, `mxr accounts --format json`, `mxr count`,
   `mxr search --limit 2 --format json` all return correct JSON.
   Real Gmail sync cycle ran end-to-end (cursor saved, no regression).
@@ -237,7 +237,7 @@ Append below as the roadmap evolves. Most recent first.
   `fetch_body` method. No body cache. Opening a message stays
   a pure SQLite read.
 - **Decision (user-driven):** the eager-fetch UX is the
-  intentional local-first commitment from AGENTS.md rule 3 and
+  intentional local-first commitment from mxr's blueprint and
   isn't a degenerate case to retrofit. Protocols accommodate
   their clients; clients don't bend to their protocols.
 - Phase G as a future code-side initiative is **removed from the

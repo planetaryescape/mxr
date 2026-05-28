@@ -4,7 +4,7 @@ This document replaces the phased implementation tree under `docs/implementation
 
 **Canonical references**
 
-- Product architecture and crate boundaries: `AGENTS.md`, `docs/blueprint/01-architecture.md`, `docs/blueprint/crate-boundary-audit.md`
+- Product architecture and crate boundaries: `docs/blueprint/01-architecture.md`, `docs/blueprint/crate-boundary-audit.md`, `.agents/skills/mxr-development/SKILL.md`
 - Settled decisions: `docs/blueprint/15-decision-log.md`, `docs/blueprint/16-addendum.md`
 - HTTP bridge behavior and security: `docs/guides/http-bridge.md`, `site/src/content/docs/reference/bridge.md`
 - Release and install: `docs/blueprint/17-release-pipeline.md`, `.github/workflows/release.yml`
@@ -14,7 +14,7 @@ This document replaces the phased implementation tree under `docs/implementation
 
 ## 1. Why phased plans existed
 
-Early development used **phase documents** (0 → 4) so agents and contributors could execute dependency-ordered work: each phase ended in something **usable**, not speculative infrastructure. The phases were always **descriptive execution aids**; the **normative** contract for the product is the blueprint + IPC + CLI parity rules in `AGENTS.md`.
+Early development used **phase documents** (0 → 4) so agents and contributors could execute dependency-ordered work: each phase ended in something **usable**, not speculative infrastructure. The phases were always **descriptive execution aids**; the **normative** contract for the product is the blueprint, IPC, CLI parity rules, and the scoped `mxr-development` skill.
 
 **Layout note (important for readers of old notes):** Plans referred to crates as `mxr-core`, `mxr-store`, etc. The repo today uses short directory names (`crates/core`, `crates/store`, …) with the **repo-root `mxr` package** as the single install surface. Internal crates are `publish = false`; shipping is `cargo install --git …`, Homebrew, etc. — not publishing twenty crates to crates.io (that multi-crate publish story in old Phase 4 text is **historical**).
 
@@ -133,7 +133,7 @@ Early development used **phase documents** (0 → 4) so agents and contributors 
 2. Add semantic schema + profile lifecycle in SQLite.
 3. Prove behavior with fake/deterministic embeddings before real models.
 4. Default English profile + lazy download; heavier/multilingual profiles explicit opt-in.
-5. Attachment-derived text is format-specific; **no OCR** for semantic indexing — image-only content simply does not become dense text (product rule in `AGENTS.md`).
+5. Attachment-derived text is format-specific; **no OCR** for semantic indexing — image-only content simply does not become dense text (product rule in `docs/blueprint/semantic-search-audit.md` and the scoped `mxr-development` skill).
 
 **Operator expectations:** Semantic enable/install/reindex/status must fail **open** to lexical search; rebuild-from-SQLite must remain possible after corruption or profile swap.
 
@@ -171,7 +171,7 @@ Phase docs mapped features to addenda; today, use **`docs/blueprint/16-addendum.
 - **Provider-specific behavior** lives in adapters; the CLI/daemon UX stays provider-agnostic (“re-link this account”).
 - **Document remediation** in doctor/status copy should **match** the shipped command once it exists.
 
-**Suggested implementation order:** IPC handler reuse audit → CLI subcommand (thin wrapper) → TUI action → update remediation strings and `AGENTS.md` CLI-first checklist.
+**Suggested implementation order:** IPC handler reuse audit → CLI subcommand (thin wrapper) → TUI action → update remediation strings and the scoped `mxr-development` checklist.
 
 ---
 

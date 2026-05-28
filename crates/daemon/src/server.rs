@@ -99,6 +99,7 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     // it and bind ours.
     let _ = std::fs::remove_file(&sock_path);
     let listener = UnixListener::bind(&sock_path)?;
+    set_socket_permissions(&sock_path)?;
     write_daemon_pid_file()?;
     tracing::info!("Daemon listening on {}", sock_path.display());
     let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
@@ -250,6 +251,18 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     state.shutdown_runtime_tasks(Duration::from_secs(5)).await;
     let _ = std::fs::remove_file(&sock_path);
     clear_daemon_pid_file();
+    Ok(())
+}
+
+#[cfg(unix)]
+fn set_socket_permissions(sock_path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::set_permissions(sock_path, std::fs::Permissions::from_mode(0o600))
+}
+
+#[cfg(not(unix))]
+fn set_socket_permissions(_sock_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 

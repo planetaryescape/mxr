@@ -2,7 +2,7 @@
 //! draft path: build a Draft from CLI args, run the safety pipeline
 //! against it without persisting, exit non-zero only on Blocker issues.
 //!
-//! Pairs with the spec in `docs/ai-email/01-pre-send-safety.md` (User
+//! Pairs with the spec in `docs/reference/ai-email.md` (User
 //! Journey: `mxr compose --to alice@example.com --body "see attached"
 //! --check`).
 
@@ -66,7 +66,7 @@ fn compose_check_warns_on_missing_attachment_without_files() {
 
 /// PEM private key in the body must be a Blocker, exiting code 2.
 /// This is a non-negotiable correctness check (per
-/// `docs/ai-email/01-pre-send-safety.md` "PEM private key blocks").
+/// `docs/reference/ai-email.md` "PEM private key blocks").
 #[test]
 fn compose_check_blocks_pem_private_key() {
     let _guard = daemon_lock();

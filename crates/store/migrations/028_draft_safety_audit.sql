@@ -1,5 +1,5 @@
 -- Slice 1.3: persistent audit + override tokens for the pre-send
--- safety pipeline. Per docs/ai-email/01-pre-send-safety.md:
+-- safety pipeline. Per docs/reference/ai-email.md:
 -- - draft_safety_runs:    one row per check, redacted previews only
 -- - draft_safety_overrides: single-use tokens for blocker bypass
 --

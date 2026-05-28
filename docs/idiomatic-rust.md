@@ -12,7 +12,7 @@ repo:
   **Any** warning fails CI. Therefore a lint is only enabled in
   `[workspace.lints]` once its violation count is driven to **zero** — that is
   what makes the rule self-enforcing instead of aspirational.
-- Crate dependency rules in `CLAUDE.md` are part of "idiomatic" here: `core` is a
+- Crate dependency rules in `.agents/skills/mxr-development/SKILL.md` are part of "idiomatic" here: `core` is a
   leaf, providers never import `store`/`sync`, clients (`tui`/`web`) never import
   `daemon`. Architectural seams are Cargo seams.
 - `unwrap_used`, `panic`, `todo` are already `warn` (→ deny in CI). Convention:

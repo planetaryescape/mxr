@@ -1,4 +1,4 @@
--- Slice 3.2 of docs/ai-email/03-archive-intelligence.md.
+-- Slice 3.2 of docs/reference/ai-email.md
 -- Decision log entries extracted from threads. Stable id is a hash of
 -- (account_id, thread_id, normalized decision text, evidence msg ids)
 -- so a re-extraction with unchanged content is idempotent.

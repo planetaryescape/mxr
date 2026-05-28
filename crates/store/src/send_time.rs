@@ -1,4 +1,4 @@
-//! Slice 4.1 of docs/ai-email/04-timing-cadence.md.
+//! Slice 4.1 of docs/reference/ai-email.md
 //!
 //! Send-time optimizer: bucket `reply_pairs WHERE direction='they_replied'`
 //! by recipient + (local weekday, hour) of the parent's `parent_received_at`,

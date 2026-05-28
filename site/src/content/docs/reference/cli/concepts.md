@@ -49,23 +49,33 @@ The query parser accepts Gmail-style operators. The same grammar drives `mxr sea
 
 | Operator | Example | Notes |
 |---|---|---|
-| `from:` / `to:` / `cc:` / `bcc:` | `from:alice@example.com` | substring + display-name match |
+| bare text | `invoice receipt` | full-text across subject, sender name/email, snippet, body text, and attachment filenames |
+| quoted phrase | `"quarterly review"` | phrase search across text fields |
+| `+` | `+unicorn` | parsed as Gmail's exact/no-stemming hint; current Tantivy execution treats it like normal text until a non-stemmed mirror field exists |
+| `from:` / `to:` / `cc:` / `bcc:` | `from:alice@example.com` | email-address fields |
 | `subject:` | `subject:"quarterly review"` | quoted phrase, exact within tokens |
 | `body:` | `body:reimbursement` | full-text body |
 | `label:` | `label:inbox` | matches by `provider_id` (case-insensitive) |
-| `in:` | `in:sent` | folder/label shortcut |
+| `in:` | `in:sent`, `in:anywhere`, `in:archive`, `in:snoozed` | folder/system-label shortcut |
 | `category:` | `category:promotions` | provider category mapped to labels where available |
 | `list:` | `list:<newsletter.example.com>` | List-Id header |
 | `deliveredto:` | `deliveredto:alias@example.com` | Delivered-To header |
 | `rfc822msgid:` | `rfc822msgid:abc@example.com` | RFC 822 Message-ID header |
-| `is:` | `is:unread`, `is:starred`, `is:answered` | flags |
-| `has:` | `has:attachment`, `has:pdf`, `has:image`, `has:calendar`, `has:link`, `has:link-heavy`, `has:link-none` | attachment/body metadata where indexed. `has:calendar` (aliases `has:invite`, `has:invites`) matches email calendar invites. `has:link` matches any external link (excludes trackers/unsubscribe URLs). `has:link-heavy` matches newsletter-shaped mail. `has:link-none` matches plain conversation threads. |
-| `before:` / `after:` | `after:2026-01-01` | YYYY-MM-DD |
-| `older_than:` / `newer_than:` | `older_than:30d`, `newer_than:7d` | days |
+| `is:` | `is:unread`, `is:starred`, `is:answered`, `is:important`, `is:muted`, `is:$forwarded` | flags, labels, and registered custom filters. IMAP keywords use `is:$keyword`. |
+| `has:` | `has:attachment`, `has:calendar`, `has:link`, `has:link-heavy`, `has:link-none`, `has:drive`, `has:document`, `has:spreadsheet`, `has:presentation`, `has:youtube`, `has:inline` | attachment/body metadata where indexed. `has:calendar` (aliases `has:invite`, `has:invites`) matches email calendar invites. `has:link` matches any external link (excludes trackers/unsubscribe URLs). `has:link-heavy` matches newsletter-shaped mail. Gmail rich-content filters search indexed body/html/attachment hints. |
+| `has:userlabels` / `has:nouserlabels` | `has:userlabels` | messages with or without non-system labels |
+| star variants | `has:yellow-star`, `has:purple-question` | normalized to starred because mxr stores a boolean star, not Gmail's per-color star variant |
+| `before:` / `after:` / `date:` | `after:2026-01-01`, `before:04/18/2004`, `date:today` | `YYYY-MM-DD`, `YYYY/MM/DD`, `MM/DD/YYYY`, plus `today`, `yesterday`, `this-week`, `this-month` |
+| `older_than:` / `newer_than:` | `older_than:30d`, `newer_than:2w` | relative durations with `d`, `w`, `m`, or `y` |
 | `older:` / `newer:` | `older:30d`, `newer:7d` | aliases for `older_than:` / `newer_than:` |
 | `size:` / `larger:` / `smaller:` | `larger:10m` | message size filters |
 | `filename:` | `filename:invoice.pdf` | attachment names |
-| `OR`, `AND`, `NOT`, `(...)` | `from:vendor AND (label:bills OR label:travel)` | `AND` is implicit between bare terms |
+| `OR`, `{...}` | `from:amy OR from:david`, `{from:amy from:david}` | match any term |
+| `AND`, `NOT`, `-`, `(...)` | `from:vendor AND (label:bills OR label:travel)`, `dinner -movie` | `AND` is implicit between adjacent terms |
+| field groups | `subject:(dinner movie)` | applies the field to each grouped term |
+| `AROUND` | `holiday AROUND 10 vacation` | word proximity where supported by the lexical index |
+
+The parser lives in the public `mail-query` crate. mxr re-exports its AST and maps that AST onto local Tantivy/SQLite/semantic execution. That means parser parity and execution parity are related, but not identical: some Gmail vocabulary maps exactly, some maps to mxr's local model, and some future Gmail/custom filters intentionally fail closed unless registered.
 
 ## Search modes
 

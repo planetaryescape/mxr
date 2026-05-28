@@ -749,6 +749,13 @@ async fn dispatch_download_attachment_persists_local_path() {
     };
 
     assert!(path.exists(), "downloaded attachment should exist on disk");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "downloaded attachments must be private");
+    }
 
     let body = state
         .store

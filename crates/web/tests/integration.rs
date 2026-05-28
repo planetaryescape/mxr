@@ -106,7 +106,10 @@ async fn openapi_spec_is_3_1_and_lists_v1_paths() {
     let _server = spawn_fake(&socket, |_| None, vec![]);
     let addr = boot_bridge(socket).await;
 
-    let response = reqwest::get(format!("http://{addr}/api/v1/openapi.json"))
+    let response = reqwest::Client::new()
+        .get(format!("http://{addr}/api/v1/openapi.json"))
+        .header("x-mxr-bridge-token", TEST_TOKEN)
+        .send()
         .await
         .unwrap();
     assert_eq!(response.status(), 200);

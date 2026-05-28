@@ -1,4 +1,4 @@
-//! Slice 3.1 of docs/ai-email/03-archive-intelligence.md.
+//! Slice 3.1 of docs/reference/ai-email.md
 //!
 //! `mxr ask "<question>"` runs a citation-validated retrieval against
 //! the local archive. Flow:

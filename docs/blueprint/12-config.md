@@ -1,14 +1,27 @@
 # mxr — Configuration
 
-## Config file location
+## Runtime identity and file locations
 
-Following XDG:
+mxr resolves a runtime identity first, then derives local paths from it.
+Release builds default to `mxr`, debug builds default to `mxr-dev`, and
+`mxr demo` uses `mxr-demo`. Override with `MXR_INSTANCE` when you need an
+explicit profile.
 
-- config: `$XDG_CONFIG_HOME/mxr/config.toml`
-- data: `$XDG_DATA_HOME/mxr/`
-- runtime: `$XDG_RUNTIME_DIR/mxr/mxr.sock`
+Inspect the active paths before editing or deleting anything:
 
-macOS equivalents live under `~/Library/Application Support/mxr/`.
+```bash
+mxr config path
+mxr status --format json
+```
+
+Following XDG, for the active `<instance>`:
+
+- config: `$XDG_CONFIG_HOME/<instance>/config.toml`
+- data: `$XDG_DATA_HOME/<instance>/`
+- runtime: `$XDG_RUNTIME_DIR/<instance>/mxr.sock`
+
+macOS config, data, and socket paths live under
+`~/Library/Application Support/<instance>/`.
 
 Data dir highlights:
 
@@ -16,6 +29,17 @@ Data dir highlights:
 - `search_index/` — Tantivy
 - `models/` — local semantic model cache
 - `attachments/` — downloaded attachments
+- `tokens/` — OAuth disk fallback / Outlook token files for this instance
+
+Bridge token and port files live in the active config dir by default:
+
+- `<config_dir>/bridge-token`
+- `<config_dir>/bridge-port`
+
+Production keeps legacy keychain service names for compatibility.
+Non-production instances scope credential refs and Gmail OAuth keychain
+services by instance so `cargo run` cannot read or overwrite the
+installed daemon's credentials.
 
 ## Example config
 
@@ -25,6 +49,7 @@ editor = "nvim"
 default_account = "personal"
 sync_interval = 60
 attachment_dir = "~/mxr/attachments"
+download_dir = "~/Downloads"
 
 [render]
 reader_mode = true
@@ -212,15 +237,22 @@ Credentials are never stored raw in `config.toml`.
 
 - Linux: Secret Service / GNOME Keyring / KDE Wallet
 - macOS: Keychain
-- fallback: encrypted file in data dir
+- Gmail OAuth: OS keychain first, with a private disk fallback under the active token dir
+- Outlook OAuth: JSON token files under the active token dir
+- IMAP/SMTP passwords: OS keychain/keyring via `password_ref`
 
 ## Resolution order
 
 Later wins:
 
 1. built-in defaults
-2. `config.toml`
-3. environment
-4. CLI flags
+2. active `config.toml`
+3. environment overrides such as `MXR_EDITOR`, `MXR_SYNC_INTERVAL`, `MXR_DEFAULT_ACCOUNT`, `MXR_ATTACHMENT_DIR`, `MXR_DOWNLOAD_DIR`, and `MXR_SAFETY_POLICY`
+
+Path roots are resolved outside the TOML model:
+
+- `MXR_INSTANCE` picks the runtime identity (`mxr`, `mxr-dev`, `mxr-demo`, or custom)
+- `MXR_CONFIG_DIR`, `MXR_DATA_DIR`, `MXR_TOKEN_DIR`, and `MXR_SOCKET_PATH` override individual roots
+- `MXR_BRIDGE_TOKEN_PATH` and `MXR_BRIDGE_PORT_PATH` override bridge files
 
 `mxr config` shows resolved values.

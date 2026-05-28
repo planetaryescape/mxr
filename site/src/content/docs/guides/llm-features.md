@@ -17,14 +17,14 @@ guide:
 | `mxr send --check` commitment candidates | [Forgotten work](/guides/forgotten-work/#commitments--promises-you-made) | extract "I'll send the deck Friday" promises from drafts |
 | `mxr ask` | [Archive intelligence](/guides/archive-intelligence/) | retrieval-grounded answer over local mail, every claim cited |
 | `mxr decisions rebuild` | [Archive intelligence](/guides/archive-intelligence/#the-decision-log) | extract explicit decisions from threads |
-| `mxr briefing thread` / `recipient` | [Briefings and loop-in](/guides/briefings-and-loop-in/) | dormant-thread / long-gap recap from existing source pack |
-| `mxr expert` reason text | [Briefings and loop-in](/guides/briefings-and-loop-in/#whos-the-expert) | improve the deterministic ranking's `reason` field |
-| `mxr whois` summary | [Briefings and loop-in](/guides/briefings-and-loop-in/#whois) | cited explanation of a person / project / term |
+| `mxr briefing thread` / `recipient` | [Briefings and loop-in](/guides/briefings-and-loop-in/) | dormant-thread / long-gap recap from the local thread transcript or relationship baseline |
 | delivery extraction | [Deliveries](/guides/deliveries/) | confirm a shortlisted email is a real shipment, extract merchant / carrier / items / ETA |
 
-Every feature degrades cleanly when `[llm] enabled = false`: deterministic
-fallbacks return the retrieval set, the regex matches, or the cached
-data; the synthesis section is omitted or labeled `LLM disabled`.
+Every feature has an explicit disabled path when `[llm] enabled = false`.
+Pure LLM commands such as `mxr summarize` and `mxr draft-assist` return
+`LLM is disabled`; features with deterministic substrate, such as briefings
+or safety checks, return the local fallback instead of pretending synthesis
+succeeded.
 
 Enable LLM features by setting `[llm] enabled = true` in your config and
 pointing at any backend that speaks the **OpenAI Chat Completions**
@@ -52,7 +52,7 @@ opt-in via the same single config block.
 
 ## Configuration
 
-In `~/.config/mxr/config.toml`:
+In the file printed by `mxr config path`:
 
 ```toml
 [llm]
@@ -132,6 +132,12 @@ Draft JSON includes the generated body, model id, humanizer score summary,
 voice-match metadata when a relationship profile exists, and rewrite iteration
 count.
 
+In the TUI, press `y` or `Ctrl-p` → **Summarize Thread**. The summary runs in
+the background and renders above the message body; opening a long uncached
+thread can also start a debounced background summary. In the web reader, the
+**Summary** button or `y` calls the same daemon request and renders the result
+in the **AI overview** collapsible above the thread.
+
 ## What the prompts look like
 
 Both features use a tuned system prompt followed by the thread
@@ -152,6 +158,11 @@ background guidance. The current thread and your explicit instruction
 override it, and the prompt tells the model not to invent familiarity
 outside stored known topics, commitments, or summaries.
 
+Relationship/profile context is guarded separately for cloud providers.
+Keep `llm.allow_cloud_relationship_data = false` to block that context from
+non-local endpoints; set it to `true` only when you want relationship-aware
+summaries, briefings, or drafts to use a cloud LLM.
+
 Every generated draft also runs through a deterministic local humanizer
 detector. It flags common AI-writing patterns such as stock vocabulary,
 em-dash overuse, sycophantic openers, filler phrases, and rule-of-three
@@ -159,7 +170,7 @@ formatting. Detection does not require an LLM.
 
 You'll get the best results with models that follow instructions well
 and stay close to the source — Qwen 2.5 instruct, Llama 3 instruct,
-and the GPT-4o family all do this reliably.
+and the GPT-5 family all do this reliably.
 
 ## Limits and what's deferred
 
@@ -171,16 +182,16 @@ and the GPT-4o family all do this reliably.
   only when semantic search is ready and has indexed matching sent messages.
 - **Summary cache** — unchanged threads reuse the cached summary. The cache
   hash includes weak relationship context, so changed relationship summaries
-  or style data invalidate stale summaries.
+  or style data invalidate stale summaries. Opening a thread returns a valid
+  cached summary with the thread payload when one exists.
 - **Humanizer auto-rewrite is not the core contract** — deterministic scoring
   is available locally; automatic rewrite loops are a separate pipeline layer.
 
 ## Disabling
 
 Set `[llm] enabled = false` in your config (or remove the section
-entirely). All LLM-backed commands then return `LLM is disabled`
-errors and graceful degradation kicks in everywhere — no client code
-needs to know whether the feature is on.
+entirely). Pure LLM commands return `LLM is disabled`; mixed features use
+their deterministic fallback when one exists.
 
 ## Demo mode: canned offline responses
 
@@ -229,7 +240,7 @@ don't send."
 - [Pre-send safety](/guides/pre-send-safety/) — the safety pipeline's LLM-backed answer-coverage check
 - [Forgotten work](/guides/forgotten-work/) — LLM-confirmed commitment extraction from drafts
 - [Archive intelligence](/guides/archive-intelligence/) — `mxr ask` and the decision log, citations required
-- [Briefings and loop-in](/guides/briefings-and-loop-in/) — dormant-thread briefings, expert reasons, whois summaries
+- [Briefings and loop-in](/guides/briefings-and-loop-in/) — dormant-thread briefings, deterministic expert lookup, and whois
 - [Recipes — talking to your agent](/guides/recipes/#talking-to-your-agent)
 - [For agents](/guides/for-agents/)
 - [Config — `[llm]`](/reference/config/#llm)

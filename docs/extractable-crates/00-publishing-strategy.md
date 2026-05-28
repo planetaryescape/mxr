@@ -1,7 +1,7 @@
 ---
 type: cross-cutting-strategy
 applies_to: all candidates
-last_reviewed: 2026-05-15
+last_reviewed: 2026-05-28
 ---
 
 # Publishing strategy — ports, WASM, drift, and AI-era timings
@@ -9,6 +9,21 @@ last_reviewed: 2026-05-15
 > Cross-cutting decisions that apply to every candidate in this directory.
 > Read this *before* picking up any per-crate doc. The per-crate docs
 > assume the framework laid out here.
+
+## Current status
+
+This document was written before the first extraction wave. Its framework still
+holds, but the concrete Rust publishing order is now historical:
+
+- `list-unsubscribe` shipped to crates.io and is consumed by
+  `mxr-mail-parse`.
+- `mail-threading` shipped to crates.io and is consumed by `mxr-sync`.
+- `mail-query` shipped to crates.io and is consumed by `mxr-search`.
+- `mailbox-formats` shipped to crates.io and is consumed by `mxr-export`.
+
+The npm/TS work remains future work. The remaining active candidate in this
+directory is `sync-engine`, and that is still investigation-first because the
+public contract is much harder to make small.
 
 ## Why this doc exists
 
@@ -219,43 +234,40 @@ cheap either way) and more on the *shape* of the crate:
 
 Apply per candidate.
 
-## Per-Tier-1 recommendation
+## Historical Tier 1 recommendations
 
-| Crate | Update cadence | Recommendation |
+These rows explain the thinking that led to the first extraction wave. Treat
+them as historical context for future npm/TS decisions, not as a live Rust ship
+queue.
+
+| Crate | Rust status | npm/TS recommendation |
 |---|---|---|
-| **list-unsubscribe** | Low. RFC 8058 is settled. | **TS port + shared corpus.** Tiny surface, finite test cases. Use as the *first* ship to validate the dual-publish pipeline. |
-| **mail-threading** | Very low. Algorithm is from 1997 and stable. | **TS port + shared corpus.** Headline ship; demonstrates that mxr produces credible, well-tested email libraries in both ecosystems. |
-| **gmail-query** | Medium. Gmail adds operators; edge cases get found in escaping/dates. | **WASM** is probably correct. The operator surface will keep growing and chasing parity across two implementations is exactly the work WASM eliminates. If we really want native TS, do port + corpus and budget for ongoing parity work. |
+| **list-unsubscribe** | Shipped as `list-unsubscribe v0.1.0` | **TS port + shared corpus.** Tiny surface, finite test cases. |
+| **mail-threading** | Shipped as `mail-threading v0.1.0` | **TS port + shared corpus.** Stable algorithm; the corpus is the portable artifact. |
+| **gmail-query** | Shipped as `mail-query v0.1.0` | **WASM** is still plausible because the operator surface can grow. Native TS is fine only with the shared corpus as gate. |
 
 For Tier 2:
 
-| Crate | Recommendation |
+| Crate | Rust status | npm/TS recommendation |
 |---|---|
-| **format-flowed** | TS port + corpus. Stable RFC, finite cases. |
-| **mailbox-formats** | TS port + corpus *eventually*. Byte-streaming mbox might be a WASM candidate for perf, but the audience is small enough that either works. |
+| **format-flowed** | Won't do for Rust package extraction | Do not start unless a real user appears; the Rust package failed the publishing bar. |
+| **mailbox-formats** | Shipped as `mailbox-formats v0.1.0` | TS port + corpus eventually. Byte-streaming mbox might be a WASM candidate for perf, but the audience is small enough that either works. |
 
-## Recommended ship order
+## Historical ship order
 
-The order in which to actually do these.
+The order we originally expected was close, but reality changed after the
+publishing bar was tightened:
 
-1. **`list-unsubscribe`** — smallest, simplest. Ship it *first*, not
-   because it's the most important but because the unknowns are about
-   the *workflow*, not the *code*: dual-repo (rust + ts), shared
-   corpus repo, CI in both repos, dual publish, semver discipline
-   across registries. Get the workflow right on a tiny project before
-   stress-testing it on a bigger one.
+1. **`mail-threading`** — shipped first as the headline spec-backed crate.
+2. **`list-unsubscribe`** — shipped next as the smallest carve-out from
+   existing mxr code.
+3. **`mail-query`** — shipped after the parser boundary was made public and
+   mxr kept execution policy local.
+4. **`mailbox-formats`** — shipped after we learned to distinguish "lift
+   existing code" from "build a real package from a thin seed and a spec."
 
-2. **`mail-threading`** — the headline. Maximum credibility per line of
-   code. It now exists as an in-repo public Rust crate with a shared JSON
-   corpus; the future TS package should reuse that same corpus.
-
-3. **`gmail-query`** — the most ambitious of the Tier 1s. Larger
-   surface, more open API design questions, plausibly the one to ship
-   as WASM. Doing it third means the workflow is settled and you can
-   focus on the API design without juggling distribution unknowns.
-
-Tier 2 candidates come after, in whatever order interest aligns with
-need.
+The next package is not a queue item. `sync-engine` needs discovery before any
+commitment.
 
 ## AI-era effort estimates (replaces the per-doc numbers)
 
@@ -288,11 +300,12 @@ Caveats:
 Every per-candidate doc in this directory should be read with this
 framework in mind. Specifically:
 
-- The **Estimated effort** sections are updated in the Tier 1 docs to
-  reflect AI-era reality.
-- A **TS/npm port** section appears in Tier 1 docs pointing back to
-  this doc and stating the per-crate recommendation.
-- The **Skip** and **Defer** decisions are unchanged — AI tooling
+- Historical **Estimated effort** sections should be treated as rough order of
+  magnitude only. The shipped runbooks under `docs/extracted-crates/` are more
+  useful than the original estimates.
+- A future **TS/npm port** should start at the shared corpus, not by translating
+  Rust tests by hand.
+- The **Skip** and **Defer** decisions are still mostly unchanged — AI tooling
   doesn't make a crate audience materialise that doesn't exist. The
   audience question still gates everything.
 

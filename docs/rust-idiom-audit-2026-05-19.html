@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mxr Rust Idiom Audit - 2026-05-19</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f1f5f9;
+      --muted: #a8b3c4;
+      --line: #313a49;
+      --panel: #171b22;
+      --page: #0c0f14;
+      --soft: #242b36;
+      --good: #7ee2aa;
+      --good-bg: #123826;
+      --ok: #ece589;
+      --ok-bg: #3b3717;
+      --warn: #ffbf70;
+      --warn-bg: #43270e;
+      --bad: #ff8f8f;
+      --bad-bg: #451b1f;
+      --accent: #7dd3fc;
+      --accent-bg: #0f3446;
+      --panel-2: #1d232d;
+      --panel-3: #222936;
+      --heat-4: #273f1f;
+      --heat-4-text: #b9ec9d;
+      --na-bg: #202631;
+      --na-text: #798496;
+      --mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", Menlo, monospace;
+      --body: ui-serif, Georgia, "Times New Roman", serif;
+      --sans: "Avenir Next", "Segoe UI", Tahoma, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height: 1.45;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .wrap {
+      width: min(1440px, calc(100vw - 40px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+      gap: 28px;
+      padding: 36px 0 26px;
+      align-items: end;
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-family: var(--body);
+      font-size: clamp(36px, 5vw, 76px);
+      font-weight: 700;
+      max-width: 920px;
+    }
+
+    h2 {
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 17px;
+      margin-bottom: 8px;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.92em;
+      background: var(--soft);
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+
+    a {
+      color: #93ddff;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+
+    .kicker {
+      color: var(--accent);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+
+    .summary-box {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      padding: 18px;
+      border-radius: 8px;
+    }
+
+    .summary-box strong {
+      display: block;
+      font-size: 26px;
+      margin-bottom: 4px;
+    }
+
+    main {
+      padding: 24px 0 44px;
+    }
+
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin: 18px 0;
+      padding: 20px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .grid.cols-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .grid.cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: var(--panel-2);
+      min-height: 104px;
+    }
+
+    .metric .value {
+      font-size: 30px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 7px;
+    }
+
+    .callout {
+      border-left: 5px solid var(--accent);
+      background: var(--accent-bg);
+      padding: 14px 16px;
+      border-radius: 6px;
+      margin-top: 12px;
+    }
+
+    .finding {
+      display: grid;
+      grid-template-columns: 70px minmax(0, 1fr);
+      gap: 12px;
+      border-top: 1px solid var(--line);
+      padding: 14px 0;
+    }
+
+    .finding:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .sev {
+      width: 56px;
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      font-weight: 800;
+      font-size: 13px;
+      border: 1px solid transparent;
+    }
+
+    .sev.p1 { background: var(--bad-bg); color: var(--bad); border-color: #e7adad; }
+    .sev.p2 { background: var(--warn-bg); color: var(--warn); border-color: #eccb9f; }
+    .sev.p3 { background: var(--ok-bg); color: var(--ok); border-color: #dedb9f; }
+
+    .finding p {
+      margin-bottom: 6px;
+    }
+
+    .evidence {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 14px 0;
+    }
+
+    button {
+      font: inherit;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--ink);
+      border-radius: 7px;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+
+    button.active {
+      background: var(--ink);
+      color: var(--page);
+      border-color: var(--ink);
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      max-height: 720px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 13px;
+    }
+
+    th, td {
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      padding: 8px 9px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: var(--panel-3);
+      z-index: 2;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    th:first-child,
+    td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      background: #151920;
+      font-weight: 800;
+      min-width: 190px;
+    }
+
+    th:first-child {
+      z-index: 3;
+      background: var(--panel-3);
+    }
+
+    td.score {
+      text-align: center;
+      min-width: 74px;
+      font-weight: 900;
+    }
+
+    .s5 { background: var(--good-bg); color: var(--good); }
+    .s4 { background: var(--heat-4); color: var(--heat-4-text); }
+    .s3 { background: var(--ok-bg); color: var(--ok); }
+    .s2 { background: var(--warn-bg); color: var(--warn); }
+    .s1 { background: var(--bad-bg); color: var(--bad); }
+    .na { background: var(--na-bg); color: var(--na-text); font-weight: 600; }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      margin: 8px 0 14px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 9px;
+      background: var(--panel);
+    }
+
+    .dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 230px minmax(120px, 1fr) 54px;
+      gap: 10px;
+      align-items: center;
+      margin: 7px 0;
+      font-size: 13px;
+    }
+
+    .bar-track {
+      background: #242b36;
+      height: 12px;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 999px;
+    }
+
+    .note-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .note-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 13px;
+      background: var(--panel-2);
+    }
+
+    .note-card .avg {
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: 6px;
+      font-family: var(--mono);
+      font-weight: 600;
+    }
+
+    details {
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+      margin-top: 12px;
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .cmd {
+      font-family: var(--mono);
+      font-size: 12px;
+      background: #161a1f;
+      color: #eef3f7;
+      border-radius: 7px;
+      padding: 10px;
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+
+    .status-pass { color: var(--good); font-weight: 800; }
+    .status-fail { color: var(--bad); font-weight: 800; }
+    .status-warn { color: var(--warn); font-weight: 800; }
+
+    ul {
+      margin: 8px 0 0 20px;
+      padding: 0;
+    }
+
+    li {
+      margin: 5px 0;
+    }
+
+    @media (max-width: 900px) {
+      .wrap { width: min(100vw - 24px, 760px); }
+      .hero { grid-template-columns: 1fr; padding-top: 26px; }
+      .grid.cols-4, .grid.cols-3, .note-list { grid-template-columns: 1fr; }
+      .finding { grid-template-columns: 1fr; }
+      .bar-row { grid-template-columns: 1fr; gap: 5px; }
+      h1 { font-size: 40px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap hero">
+      <div>
+        <div class="kicker">Rust ecosystem idiom review</div>
+        <h1><code>mxr</code> is architecturally strong, but its hygiene gates are currently too permissive.</h1>
+      </div>
+      <div class="summary-box">
+        <strong>3.6 / 5</strong>
+        <p>Overall audit score across 27 packages and 14 rubric areas. The core shape is good Rust. The top debt is not product architecture; it is compile hygiene, feature-gated tests, giant integration modules, and a few panic/unwrap paths.</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="section">
+      <h2>Verdict</h2>
+      <div class="grid cols-4">
+        <div class="metric">
+          <div class="value">27</div>
+          <div class="label">Scored packages: root <code>mxr</code> plus private <code>mxr-*</code> crates</div>
+        </div>
+        <div class="metric">
+          <div class="value">14</div>
+          <div class="label">Rubric areas, from API idiom to security and maintainability</div>
+        </div>
+        <div class="metric">
+          <div class="value">1,300+</div>
+          <div class="label">Selected tests observed passing across core, store, search, sync, TUI, web, providers, and safety</div>
+        </div>
+        <div class="metric">
+          <div class="value">3</div>
+          <div class="label">Main blockers before I would call the workspace idiomatically clean</div>
+        </div>
+      </div>
+      <div class="callout">
+        <p><strong>Short version:</strong> The model boundaries, typed IDs, provider adapters, SQLite/search split, and test investment are above average. The non-idiomatic parts are visible in automation: <code>cargo fmt --all --check</code> fails, workspace Clippy is noisy, and <code>mxr-semantic</code> has a feature-gated test compile failure. That makes the repo feel less clean than the architecture deserves.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Top Findings</h2>
+      <div class="finding">
+        <div><span class="sev p1">P1</span></div>
+        <div>
+          <p><strong>The local semantic test target does not compile under the feature that is supposed to exercise it.</strong></p>
+          <p>Default <code>scripts/cargo-test -p mxr-semantic --tests</code> ran zero tests; <code>--features local</code> failed with a stale <code>Envelope</code> fixture missing <code>keywords</code>. The normal app build with <code>semantic-local</code> passes, so this is test drift rather than product compile failure, but it weakens confidence in the most optional and dependency-heavy layer.</p>
+          <div class="evidence">Evidence: <code>crates/semantic/src/lib.rs:1268</code>, compiler error <code>E0063 missing field keywords</code>.</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div><span class="sev p1">P1</span></div>
+        <div>
+          <p><strong>Formatting is not clean.</strong></p>
+          <p><code>cargo fmt --all --check</code> fails across daemon, store, provider, search, sync, TUI, and mail parsing files. In Rust projects this is normally a baseline invariant, not an aspirational cleanup task.</p>
+          <div class="evidence">Evidence: formatter drift in <code>crates/daemon/src/handler/mod.rs</code>, <code>crates/store/src/lib.rs</code>, <code>crates/tui/src/lib.rs</code>, <code>crates/provider-imap/src/lib.rs</code>, and others.</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div><span class="sev p2">P2</span></div>
+        <div>
+          <p><strong>Workspace Clippy is not close to clean.</strong></p>
+          <p>The strict run with <code>-D warnings</code> fails early. The non-strict run surfaced hundreds of warnings plus a feature-gated compile error. The notable production-facing lints are large enum variants, public panics, wrong-self convention, methods named <code>from_str</code> without implementing <code>FromStr</code>, too-many-arguments APIs, and detached futures.</p>
+          <div class="evidence">Evidence: <code>crates/protocol/src/types.rs:329</code>, <code>crates/core/src/i18n.rs:92</code>, <code>crates/daemon/src/loops.rs:37</code>, <code>crates/store/src/search.rs:81</code>.</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div><span class="sev p2">P2</span></div>
+        <div>
+          <p><strong>Some public/core functions encode impossible states with <code>panic!</code> instead of the type system.</strong></p>
+          <p>The iCalendar response helpers accept a broad participation enum and panic for non-sendable variants. Idiomatic Rust should narrow the input type, return <code>Option</code>/<code>Result</code>, or model sendable values separately.</p>
+          <div class="evidence">Evidence: <code>crates/core/src/i18n.rs:84-121</code>.</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div><span class="sev p2">P2</span></div>
+        <div>
+          <p><strong>The daemon, TUI, protocol, and web surfaces have several "god object" pressure points.</strong></p>
+          <p>The largest files are not just big; they sit on critical integration paths. The long files also correlate with Clippy warnings like <code>large_enum_variant</code> and <code>too_many_arguments</code>, which are usually signs that boundaries want another pass.</p>
+          <div class="evidence">Evidence: <code>crates/tui/src/lib.rs</code> 11,130 LOC, <code>crates/daemon/src/handler/mod.rs</code> 10,306 LOC, <code>crates/web/src/lib.rs</code> 6,096 LOC, <code>crates/protocol/src/types.rs</code> 3,374 LOC.</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div><span class="sev p2">P2</span></div>
+        <div>
+          <p><strong>One background task is explicitly detached without a retained handle.</strong></p>
+          <p><code>let _ = tokio::spawn(...)</code> for the idle watcher loses shutdown/error visibility. That is not automatically a bug, but it conflicts with Tokio's graceful shutdown guidance and the daemon's operational posture.</p>
+          <div class="evidence">Evidence: <code>crates/daemon/src/loops.rs:37</code>.</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div><span class="sev p2">P2</span></div>
+        <div>
+          <p><strong>Architecture docs have drifted behind newer crates.</strong></p>
+          <p>The documented dependency rules are mostly honored by the original core/provider/store/search/sync split, but newer crates like <code>relationship</code>, <code>safety</code>, <code>llm</code>, and <code>provider-outlook</code> are not fully captured. This makes future review harder than it needs to be.</p>
+          <div class="evidence">Evidence: <code>relationship -> store, llm</code>; <code>safety -> relationship</code>; newer crates absent from the project architecture section.</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div><span class="sev p3">P3</span></div>
+        <div>
+          <p><strong>Dependency hygiene is active, but not quiet.</strong></p>
+          <p><code>cargo deny check</code> passes, which is good. It also reports a yanked transitive crate, many duplicate versions, and stale advisory ignores. That is acceptable for now, but it should not be allowed to become background noise.</p>
+          <div class="evidence">Evidence: yanked <code>core2 0.4.0</code> via the image/semantic stack; stale ignores for RUSTSEC IDs no longer encountered.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Score Heatmaps</h2>
+      <p>Scale: 5 excellent, 4 strong, 3 acceptable, 2 concern, 1 serious concern. <code>NA</code> means the crate is not meaningfully responsible for that area.</p>
+      <div class="legend">
+        <span class="pill"><span class="dot s5"></span>5 excellent</span>
+        <span class="pill"><span class="dot s4"></span>4 strong</span>
+        <span class="pill"><span class="dot s3"></span>3 acceptable</span>
+        <span class="pill"><span class="dot s2"></span>2 concern</span>
+        <span class="pill"><span class="dot s1"></span>1 serious</span>
+      </div>
+      <div class="tabs">
+        <button class="active" data-tab="by-crate">By crate</button>
+        <button data-tab="by-area">By rubric area</button>
+        <button data-tab="averages">Averages</button>
+      </div>
+      <div id="by-crate" class="tab-panel"></div>
+      <div id="by-area" class="tab-panel" hidden></div>
+      <div id="averages" class="tab-panel" hidden>
+        <div class="grid cols-3">
+          <div>
+            <h3>Rubric averages</h3>
+            <div id="area-bars"></div>
+          </div>
+          <div>
+            <h3>Crate averages</h3>
+            <div id="crate-bars"></div>
+          </div>
+          <div>
+            <h3>Reading guide</h3>
+            <p>The highest scores cluster around <code>search</code>, <code>sync</code>, provider tests, and persistence. The lowest scores cluster around feature-gated semantic tests, maintainability of giant integration files, and hygiene gates.</p>
+            <p>These scores are intentionally conservative. A crate can pass tests and still score low if its current shape makes future changes risky.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Per-Crate Notes</h2>
+      <div id="crate-notes" class="note-list"></div>
+    </section>
+
+    <section class="section">
+      <h2>What To Fix First</h2>
+      <div class="grid cols-3">
+        <div class="note-card">
+          <h3>1. Restore hygiene gates</h3>
+          <p>Fix formatter drift, make semantic local tests compile, and decide which Clippy lint set is merge-blocking. This is the fastest way to make the repo feel like idiomatic Rust again.</p>
+        </div>
+        <div class="note-card">
+          <h3>2. Remove production panics</h3>
+          <p>Start with <code>core::i18n</code>, then production <code>unwrap</code>/<code>expect</code> in daemon commands and store helpers. Tests can keep explicit <code>expect</code> when it improves failure messages.</p>
+        </div>
+        <div class="note-card">
+          <h3>3. Split the integration bulk</h3>
+          <p>Break the biggest handler/TUI/web/protocol surfaces along request or domain boundaries. The goal is not aesthetic smallness; it is cheaper review, smaller blast radius, and fewer giant enum variants.</p>
+        </div>
+        <div class="note-card">
+          <h3>4. Box large variants</h3>
+          <p>Fix the <code>large_enum_variant</code> warnings in protocol, TUI async results, and CLI action enums where payload size is materially inflated by rare variants.</p>
+        </div>
+        <div class="note-card">
+          <h3>5. Track spawned work</h3>
+          <p>Give daemon background tasks explicit lifecycle ownership. Detached tasks are fine only when the lifecycle and error policy are deliberate and visible.</p>
+        </div>
+        <div class="note-card">
+          <h3>6. Refresh architecture docs</h3>
+          <p>Add the newer <code>relationship</code>, <code>safety</code>, <code>llm</code>, and <code>provider-outlook</code> crates to the dependency-boundary model, including what each is allowed to know.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Verification Log</h2>
+      <p>I used online Rust ecosystem sources, project skills, static scans, and targeted builds/tests. I did not run live provider E2E tests that would need real accounts.</p>
+      <table>
+        <thead>
+          <tr><th>Check</th><th>Status</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>cargo build -p mxr</code></td><td class="status-pass">pass</td><td>Default build passed.</td></tr>
+          <tr><td><code>cargo build -p mxr --features semantic-local</code></td><td class="status-pass">pass</td><td>Full local semantic app build passed.</td></tr>
+          <tr><td><code>cargo fmt --all --check</code></td><td class="status-fail">fail</td><td>Formatter drift across daemon, store, providers, search, sync, TUI, and mail parsing.</td></tr>
+          <tr><td><code>cargo clippy --workspace --all-targets --all-features --locked -- -D warnings</code></td><td class="status-fail">fail</td><td>Strict run fails early on Clippy warnings in core and test-support.</td></tr>
+          <tr><td><code>cargo clippy --workspace --all-targets --all-features --locked</code></td><td class="status-fail">fail</td><td>Non-strict run still hit semantic feature compile error and emitted hundreds of warnings.</td></tr>
+          <tr><td><code>scripts/cargo-test -p mxr-semantic --tests</code></td><td class="status-warn">pass, zero tests</td><td>Default semantic test target ran zero tests.</td></tr>
+          <tr><td><code>scripts/cargo-test -p mxr-semantic --tests --features local</code></td><td class="status-fail">fail</td><td><code>E0063</code> missing <code>keywords</code> in <code>Envelope</code> fixture.</td></tr>
+          <tr><td><code>cargo deny check</code></td><td class="status-pass">pass with warnings</td><td>Advisories/bans/licenses/sources passed; yanked transitive crate, duplicates, and stale ignores reported.</td></tr>
+          <tr><td>Selected crate tests</td><td class="status-pass">pass</td><td><code>core</code> 42, <code>store</code> 179, <code>search</code> 37, <code>sync</code> 35, <code>protocol</code> 30, <code>web</code> 56, <code>provider-imap</code> 91, <code>provider-gmail</code> 67, <code>safety</code> 52, TUI 500+ observed passing.</td></tr>
+        </tbody>
+      </table>
+      <details>
+        <summary>Online sources used</summary>
+        <ul>
+          <li><a href="https://rust-lang.github.io/api-guidelines/checklist.html">Rust API Guidelines checklist</a></li>
+          <li><a href="https://doc.rust-lang.org/cargo/reference/workspaces.html">Cargo Workspaces reference</a></li>
+          <li><a href="https://doc.rust-lang.org/stable/clippy/index.html">Clippy documentation</a></li>
+          <li><a href="https://doc.rust-lang.org/book/ch09-00-error-handling.html">Rust Book: error handling</a></li>
+          <li><a href="https://doc.rust-lang.org/book/ch09-03-to-panic-or-not-to-panic.html">Rust Book: panic or not to panic</a></li>
+          <li><a href="https://doc.rust-lang.org/book/ch11-03-test-organization.html">Rust Book: test organization</a></li>
+          <li><a href="https://doc.rust-lang.org/stable/reference/unsafe-keyword.html">Rust Reference: unsafe keyword</a></li>
+          <li><a href="https://tokio.rs/tokio/topics/shutdown">Tokio: graceful shutdown</a></li>
+        </ul>
+      </details>
+      <details>
+        <summary>Skills consulted</summary>
+        <ul>
+          <li><code>rust-best-practices</code>: idiomatic API, errors, modules, async, security, testing, dependencies.</li>
+          <li><code>rust-engineer</code>: production Rust and async review posture.</li>
+          <li><code>code-review</code>: findings-first review format.</li>
+          <li><code>mxr</code>: local project architecture and verification contract.</li>
+          <li><code>frontend-design</code>: artifact presentation.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+
+  <script>
+    const areas = [
+      ["api", "Rust API idiom"],
+      ["types", "Type safety"],
+      ["alloc", "Ownership / allocation"],
+      ["errors", "Error handling"],
+      ["async", "Async / Tokio"],
+      ["arch", "Architecture boundaries"],
+      ["db", "Persistence correctness"],
+      ["search", "Search / sync semantics"],
+      ["ipc", "CLI / IPC contract"],
+      ["tests", "Testing quality"],
+      ["ops", "Operational quality"],
+      ["deps", "Dependency hygiene"],
+      ["sec", "Security / privacy"],
+      ["maint", "Maintainability"]
+    ];
+
+    const crates = [
+      {
+        name: "mxr (daemon / CLI)",
+        loc: 60307,
+        scores: {api:3, types:3, alloc:2, errors:2, async:3, arch:3, db:4, search:4, ipc:4, tests:4, ops:4, deps:3, sec:4, maint:2},
+        note: "Broad CLI and daemon surface, strong product contract, but handler and command surfaces are too large and Clippy shows production unwrap/panic/task-lifecycle issues."
+      },
+      {
+        name: "mxr-compose",
+        loc: 1201,
+        scores: {api:4, types:4, alloc:4, errors:4, async:4, arch:4, db:null, search:null, ipc:4, tests:4, ops:3, deps:4, sec:3, maint:4},
+        note: "Focused crate, reasonable sync/async file APIs, and good fit with the editor-first product principle."
+      },
+      {
+        name: "mxr-config",
+        loc: 1675,
+        scores: {api:4, types:4, alloc:4, errors:4, async:3, arch:4, db:null, search:null, ipc:null, tests:4, ops:4, deps:4, sec:4, maint:4},
+        note: "Clean boundary and explicit config resolution. Uses blocking fs because it is mostly setup/CLI path, which is acceptable."
+      },
+      {
+        name: "mxr-core",
+        loc: 3280,
+        scores: {api:4, types:5, alloc:4, errors:2, async:null, arch:5, db:null, search:null, ipc:3, tests:4, ops:3, deps:5, sec:4, maint:4},
+        note: "Best part of the codebase: typed IDs and provider-agnostic model. The public i18n panics are the main idiom violation."
+      },
+      {
+        name: "mxr-export",
+        loc: 903,
+        scores: {api:4, types:4, alloc:4, errors:4, async:3, arch:4, db:null, search:null, ipc:3, tests:3, ops:3, deps:4, sec:4, maint:4},
+        note: "Small and understandable. No major smells found in targeted sampling."
+      },
+      {
+        name: "mxr-humanizer",
+        loc: 531,
+        scores: {api:4, types:3, alloc:4, errors:4, async:null, arch:4, db:null, search:null, ipc:null, tests:3, ops:3, deps:4, sec:3, maint:4},
+        note: "Tiny crate with low surface area. Main risk is product/domain correctness, not Rust idiom."
+      },
+      {
+        name: "mxr-keychain",
+        loc: 277,
+        scores: {api:4, types:4, alloc:4, errors:4, async:3, arch:4, db:null, search:null, ipc:null, tests:3, ops:4, deps:3, sec:5, maint:4},
+        note: "Small platform boundary; security intent is clear. Platform-specific behavior still deserves careful regression testing."
+      },
+      {
+        name: "mxr-llm",
+        loc: 890,
+        scores: {api:3, types:3, alloc:3, errors:3, async:3, arch:3, db:null, search:null, ipc:null, tests:3, ops:3, deps:3, sec:3, maint:3},
+        note: "Acceptable, but newer and less clearly anchored in the architecture contract than the original mail runtime crates."
+      },
+      {
+        name: "mxr-mail-parse",
+        loc: 934,
+        scores: {api:4, types:4, alloc:4, errors:4, async:null, arch:4, db:null, search:null, ipc:null, tests:4, ops:3, deps:4, sec:4, maint:3},
+        note: "Focused parsing crate with standards tests. Formatter drift is the notable hygiene mark against it."
+      },
+      {
+        name: "mxr-outbound",
+        loc: 507,
+        scores: {api:4, types:4, alloc:4, errors:4, async:3, arch:4, db:null, search:null, ipc:null, tests:4, ops:3, deps:4, sec:4, maint:4},
+        note: "Good extraction seam for sending/rendering. Low smell surface."
+      },
+      {
+        name: "mxr-protocol",
+        loc: 5153,
+        scores: {api:3, types:4, alloc:2, errors:4, async:null, arch:5, db:null, search:null, ipc:5, tests:4, ops:3, deps:4, sec:4, maint:3},
+        note: "Correct crate boundary and good IPC tests, but the Request enum is too large and should box rare heavy variants."
+      },
+      {
+        name: "mxr-provider-fake",
+        loc: 2405,
+        scores: {api:4, types:4, alloc:4, errors:4, async:4, arch:4, db:null, search:null, ipc:null, tests:4, ops:3, deps:4, sec:3, maint:4},
+        note: "Useful conformance/test adapter. A little test-support-style code lives in a normal crate, but the purpose is clear."
+      },
+      {
+        name: "mxr-provider-gmail",
+        loc: 5478,
+        scores: {api:4, types:4, alloc:3, errors:3, async:4, arch:4, db:null, search:4, ipc:null, tests:5, ops:3, deps:3, sec:4, maint:3},
+        note: "Well-tested adapter: 67 tests passed. Some API choices use anyhow in library-ish code, and Clippy/format debt remains."
+      },
+      {
+        name: "mxr-provider-imap",
+        loc: 5416,
+        scores: {api:4, types:4, alloc:3, errors:4, async:4, arch:4, db:null, search:4, ipc:null, tests:5, ops:4, deps:3, sec:4, maint:3},
+        note: "Large but well-characterized adapter: 91 tests passed across cursor, folder, delta sync, IDLE, and offline smoke."
+      },
+      {
+        name: "mxr-provider-outlook",
+        loc: 477,
+        scores: {api:3, types:3, alloc:3, errors:3, async:3, arch:3, db:null, search:null, ipc:null, tests:2, ops:3, deps:3, sec:3, maint:3},
+        note: "Small and likely early-stage. The token callback uses anyhow, and this crate needs clearer architecture/test posture."
+      },
+      {
+        name: "mxr-provider-smtp",
+        loc: 656,
+        scores: {api:4, types:4, alloc:4, errors:4, async:3, arch:4, db:null, search:null, ipc:null, tests:3, ops:3, deps:4, sec:4, maint:4},
+        note: "Focused send adapter. No major idiom smell found in sampling."
+      },
+      {
+        name: "mxr-reader",
+        loc: 778,
+        scores: {api:4, types:4, alloc:4, errors:4, async:null, arch:4, db:null, search:null, ipc:null, tests:4, ops:3, deps:4, sec:4, maint:4},
+        note: "Good local utility boundary for reader-mode transformations. Regex expects for literals are acceptable."
+      },
+      {
+        name: "mxr-relationship",
+        loc: 1677,
+        scores: {api:3, types:3, alloc:3, errors:3, async:3, arch:2, db:3, search:null, ipc:null, tests:3, ops:2, deps:3, sec:3, maint:3},
+        note: "Useful domain layer, but it depends on store and llm and is not yet described in the architecture rules. Boundary intent should be documented."
+      },
+      {
+        name: "mxr-rules",
+        loc: 1250,
+        scores: {api:4, types:4, alloc:4, errors:4, async:null, arch:4, db:null, search:null, ipc:null, tests:4, ops:3, deps:4, sec:4, maint:4},
+        note: "Small deterministic rules crate. Good match for project principles."
+      },
+      {
+        name: "mxr-safety",
+        loc: 1710,
+        scores: {api:3, types:4, alloc:3, errors:3, async:3, arch:3, db:3, search:null, ipc:null, tests:5, ops:3, deps:4, sec:5, maint:3},
+        note: "Strong security/privacy tests: 52 passed including raw-secret serialization checks. Production regex unwraps are low-risk but noisy under strict lint policy."
+      },
+      {
+        name: "mxr-search",
+        loc: 2870,
+        scores: {api:4, types:4, alloc:4, errors:4, async:3, arch:5, db:null, search:5, ipc:null, tests:5, ops:4, deps:4, sec:4, maint:4},
+        note: "One of the cleanest crates. Focused Tantivy boundary, strong tests, and clear product semantics."
+      },
+      {
+        name: "mxr-semantic",
+        loc: 2523,
+        scores: {api:3, types:3, alloc:3, errors:2, async:4, arch:4, db:3, search:3, ipc:null, tests:1, ops:3, deps:2, sec:4, maint:2},
+        note: "Architecturally optional as intended, but currently the weakest crate: default tests run zero, local tests fail to compile, and the dependency stack carries the yanked transitive warning."
+      },
+      {
+        name: "mxr-store",
+        loc: 19569,
+        scores: {api:3, types:4, alloc:3, errors:4, async:4, arch:5, db:5, search:null, ipc:null, tests:5, ops:4, deps:4, sec:4, maint:3},
+        note: "Persistence layer is strong and heavily tested. The API surface is broad, and Clippy flags too-many-arguments plus lots of test warnings."
+      },
+      {
+        name: "mxr-sync",
+        loc: 3173,
+        scores: {api:4, types:4, alloc:4, errors:4, async:4, arch:5, db:4, search:5, ipc:null, tests:5, ops:4, deps:4, sec:4, maint:4},
+        note: "Very good: provider-to-store-to-search path has focused integration-style tests and keeps adapter boundaries in view."
+      },
+      {
+        name: "mxr-test-support",
+        loc: 328,
+        scores: {api:3, types:3, alloc:3, errors:2, async:3, arch:3, db:null, search:null, ipc:null, tests:4, ops:3, deps:3, sec:3, maint:3},
+        note: "Useful crate, but panic lint fires because it is a normal library target. Either allow explicitly or return richer test helper errors."
+      },
+      {
+        name: "mxr-tui",
+        loc: 48620,
+        scores: {api:3, types:3, alloc:2, errors:3, async:4, arch:4, db:null, search:4, ipc:4, tests:5, ops:3, deps:4, sec:3, maint:2},
+        note: "Impressive test coverage and real client boundary. The main smell is size: giant lib file, large enum variants, and many UI concerns in one surface."
+      },
+      {
+        name: "mxr-web",
+        loc: 10688,
+        scores: {api:3, types:3, alloc:3, errors:4, async:4, arch:4, db:null, search:4, ipc:4, tests:5, ops:4, deps:4, sec:4, maint:3},
+        note: "56 tests passed, including auth, loopback host checks, OpenAPI, routing, and websocket relay. Still needs file/module splitting."
+      }
+    ];
+
+    function avg(values) {
+      const nums = values.filter(v => typeof v === "number");
+      if (!nums.length) return null;
+      return nums.reduce((a, b) => a + b, 0) / nums.length;
+    }
+
+    function crateAverage(crate) {
+      return avg(Object.values(crate.scores));
+    }
+
+    function fmtScore(n) {
+      return n == null ? "NA" : n.toFixed(1).replace(".0", "");
+    }
+
+    function cell(score) {
+      if (score == null) return `<td class="score na">NA</td>`;
+      return `<td class="score s${Math.round(score)}">${fmtScore(score)}</td>`;
+    }
+
+    function renderByCrate() {
+      const head = `<tr><th>Crate</th>${areas.map(a => `<th>${a[1]}</th>`).join("")}<th>Avg</th></tr>`;
+      const rows = crates.map(c => {
+        const scoreCells = areas.map(([id]) => cell(c.scores[id])).join("");
+        return `<tr><td>${c.name}</td>${scoreCells}${cell(crateAverage(c))}</tr>`;
+      }).join("");
+      return `<div class="table-wrap"><table><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+    }
+
+    function renderByArea() {
+      const head = `<tr><th>Rubric area</th>${crates.map(c => `<th>${c.name}</th>`).join("")}<th>Avg</th></tr>`;
+      const rows = areas.map(([id, label]) => {
+        const scoreCells = crates.map(c => cell(c.scores[id])).join("");
+        const areaAvg = avg(crates.map(c => c.scores[id]));
+        return `<tr><td>${label}</td>${scoreCells}${cell(areaAvg)}</tr>`;
+      }).join("");
+      return `<div class="table-wrap"><table><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+    }
+
+    function renderBars(target, rows) {
+      const html = rows.map(([label, value]) => {
+        const width = Math.round((value / 5) * 100);
+        return `<div class="bar-row"><div>${label}</div><div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div><div>${value.toFixed(2)}</div></div>`;
+      }).join("");
+      document.querySelector(target).innerHTML = html;
+    }
+
+    function renderNotes() {
+      const html = crates
+        .slice()
+        .sort((a, b) => crateAverage(a) - crateAverage(b))
+        .map(c => `<article class="note-card"><h3>${c.name}<span class="avg">${crateAverage(c).toFixed(2)}</span></h3><p>${c.note}</p></article>`)
+        .join("");
+      document.querySelector("#crate-notes").innerHTML = html;
+    }
+
+    document.querySelector("#by-crate").innerHTML = renderByCrate();
+    document.querySelector("#by-area").innerHTML = renderByArea();
+
+    const areaRows = areas
+      .map(([id, label]) => [label, avg(crates.map(c => c.scores[id]))])
+      .filter(([, value]) => value != null)
+      .sort((a, b) => a[1] - b[1]);
+
+    const crateRows = crates
+      .map(c => [c.name, crateAverage(c)])
+      .sort((a, b) => a[1] - b[1]);
+
+    renderBars("#area-bars", areaRows);
+    renderBars("#crate-bars", crateRows);
+    renderNotes();
+
+    document.querySelectorAll(".tabs button").forEach(button => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
+        button.classList.add("active");
+        document.querySelectorAll(".tab-panel").forEach(panel => panel.hidden = true);
+        document.querySelector(`#${button.dataset.tab}`).hidden = false;
+      });
+    });
+  </script>
+</body>
+</html>

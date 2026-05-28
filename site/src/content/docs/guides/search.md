@@ -15,6 +15,9 @@ mxr search "label:work has:attachment"
 mxr search "subject:\"quarterly review\" after:2026-01-01"
 mxr search "unsubscribe"
 mxr search "label:inbox" --format ids
+mxr search "adrian in:inbox" --limit 1000
+mxr search "{from:amy from:david} subject:(dinner movie)"
+mxr search "holiday AROUND 10 vacation"
 mxr search "body:house of cards" --mode hybrid --explain
 mxr search "is:owed-reply"
 mxr search "has:calendar newer_than:30d"
@@ -28,6 +31,15 @@ The `is:` filter has the usual suspects (`unread`, `read`, `starred`,
   message is inbound, no later outbound exists, the sender isn't a
   newsletter/list, and the screener hasn't denied them. Same result
   set as `mxr owed`, so the TUI sidebar can show it as a saved search.
+
+Gmail-style operators are parsed by the `mail-query` crate, then executed
+against mxr's local index. The important practical consequence: syntax
+parity is separate from storage parity. For example, Gmail's color-star
+operators parse, but mxr currently stores starred as a boolean, so
+`has:yellow-star` and `has:purple-question` both mean "starred" locally.
+Likewise `+word` is preserved in the AST as a no-stemming hint, but the
+current Tantivy schema executes it like a normal text term until mxr grows
+a non-stemmed mirror field.
 
 ## Search modes
 

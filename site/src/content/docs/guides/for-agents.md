@@ -148,7 +148,8 @@ If you need any of these as enforcement (rather than convention), file an issue 
 
 - [Automation contract](/guides/automation-contract/) — exhaustive table of `--format`, `--dry-run`, stdin support
 - [JSON output schemas](/reference/json-output/) — field names for `jq`
+- [Unsubscribe](/guides/unsubscribe/) — header methods, body-link fallback, and safe cleanup flow
 - [Recipes](/guides/recipes/) — pipelines for common tasks
 - [Agent skill](/guides/agent-skill/) — install the mxr skill into Claude Code, Cursor, Continue, Aider
 - [HTTP bridge](/reference/bridge/) — same surface over HTTP
-- [API explorer](/api/bridge/) — interactive Scalar reference
+- [API explorer](/reference/api-explorer/) — interactive Scalar reference

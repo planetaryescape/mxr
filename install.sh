@@ -41,8 +41,25 @@ fi
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
+verify_checksum() {
+  local archive="$1"
+  local checksum_file="${archive}.sha256"
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$tmp_dir" && sha256sum -c "$checksum_file")
+  elif command -v shasum >/dev/null 2>&1; then
+    (cd "$tmp_dir" && shasum -a 256 -c "$checksum_file")
+  else
+    echo "Cannot verify checksum: install sha256sum or shasum" >&2
+    exit 1
+  fi
+}
+
 echo "Downloading $url"
 curl -fsSL "$url" -o "$tmp_dir/$archive"
+curl -fsSL "${url}.sha256" -o "$tmp_dir/$archive.sha256"
+verify_checksum "$archive"
+
 tar -xzf "$tmp_dir/$archive" -C "$tmp_dir"
 
 mkdir -p "$INSTALL_DIR"

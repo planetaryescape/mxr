@@ -57,6 +57,7 @@ use mxr_protocol::*;
 use mxr_reader::ReaderConfig;
 use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, StringMatch};
 use mxr_search::parse_query;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use tracing::Instrument;
 
@@ -2405,6 +2406,7 @@ async fn materialize_attachment_file(
     tokio::fs::write(&path, bytes)
         .await
         .map_err(mxr_core::MxrError::Io)?;
+    set_private_file_permissions(&path).await?;
 
     for existing in &mut body.attachments {
         if existing.id == *attachment_id {
@@ -2465,6 +2467,7 @@ pub(super) async fn materialize_attachment_to_path(
         }
     };
 
+    let destination = safe_attachment_destination(state, destination).await?;
     if let Some(parent) = destination.parent() {
         if !parent.as_os_str().is_empty() {
             tokio::fs::create_dir_all(parent)
@@ -2472,15 +2475,134 @@ pub(super) async fn materialize_attachment_to_path(
                 .map_err(mxr_core::MxrError::Io)?;
         }
     }
-    tokio::fs::write(destination, bytes)
+    tokio::fs::write(&destination, bytes)
         .await
         .map_err(mxr_core::MxrError::Io)?;
+    set_private_file_permissions(&destination).await?;
 
     Ok(mxr_protocol::AttachmentFile {
         attachment_id: attachment.id,
         filename: attachment.filename,
         path: destination.display().to_string(),
     })
+}
+
+async fn safe_attachment_destination(
+    state: &AppState,
+    destination: &Path,
+) -> Result<PathBuf, mxr_core::MxrError> {
+    if destination.file_name().is_none() {
+        return Err(invalid_attachment_destination(
+            "attachment destination must include a filename",
+        ));
+    }
+    if tokio::fs::symlink_metadata(destination)
+        .await
+        .is_ok_and(|metadata| metadata.file_type().is_symlink())
+    {
+        return Err(invalid_attachment_destination(
+            "attachment destination must not be a symlink",
+        ));
+    }
+
+    let destination = absolutize_without_parent(destination)?;
+    let allowed_roots = allowed_attachment_destination_roots(state)?;
+    if !allowed_roots
+        .iter()
+        .any(|root| destination.starts_with(root))
+    {
+        return Err(invalid_attachment_destination(
+            "attachment destination must be under the configured download directory, current directory, or system temp directory",
+        ));
+    }
+
+    if let Some(parent) = destination.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(mxr_core::MxrError::Io)?;
+        let canonical_parent = tokio::fs::canonicalize(parent)
+            .await
+            .map_err(mxr_core::MxrError::Io)?;
+        let canonical_roots = canonical_allowed_roots(&allowed_roots).await?;
+        if !canonical_roots
+            .iter()
+            .any(|root| canonical_parent.starts_with(root))
+        {
+            return Err(invalid_attachment_destination(
+                "attachment destination resolves outside allowed directories",
+            ));
+        }
+    }
+
+    Ok(destination)
+}
+
+fn allowed_attachment_destination_roots(
+    state: &AppState,
+) -> Result<Vec<PathBuf>, mxr_core::MxrError> {
+    let config = state.config_snapshot();
+    Ok(vec![
+        absolutize_without_parent(&config.general.download_dir)?,
+        absolutize_without_parent(&std::env::temp_dir())?,
+        absolutize_without_parent(&std::env::current_dir().map_err(mxr_core::MxrError::Io)?)?,
+    ])
+}
+
+async fn canonical_allowed_roots(roots: &[PathBuf]) -> Result<Vec<PathBuf>, mxr_core::MxrError> {
+    let mut canonical = Vec::with_capacity(roots.len());
+    for root in roots {
+        match tokio::fs::canonicalize(root).await {
+            Ok(path) => canonical.push(path),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                canonical.push(root.clone());
+            }
+            Err(error) => return Err(mxr_core::MxrError::Io(error)),
+        }
+    }
+    Ok(canonical)
+}
+
+fn absolutize_without_parent(path: &Path) -> Result<PathBuf, mxr_core::MxrError> {
+    let mut output = if path.is_absolute() {
+        PathBuf::new()
+    } else {
+        std::env::current_dir().map_err(mxr_core::MxrError::Io)?
+    };
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => output.push(prefix.as_os_str()),
+            Component::RootDir => output.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::Normal(part) => output.push(part),
+            Component::ParentDir => {
+                return Err(invalid_attachment_destination(
+                    "attachment destination must not contain parent-directory components",
+                ));
+            }
+        }
+    }
+    Ok(output)
+}
+
+fn invalid_attachment_destination(message: &'static str) -> mxr_core::MxrError {
+    mxr_core::MxrError::Io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        message,
+    ))
+}
+
+#[cfg(unix)]
+async fn set_private_file_permissions(path: &Path) -> Result<(), mxr_core::MxrError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+        .await
+        .map_err(mxr_core::MxrError::Io)
+}
+
+#[cfg(not(unix))]
+async fn set_private_file_permissions(_path: &Path) -> Result<(), mxr_core::MxrError> {
+    Ok(())
 }
 
 fn sanitized_attachment_filename(filename: &str, attachment_id: &mxr_core::AttachmentId) -> String {
@@ -2500,11 +2622,12 @@ fn sanitized_attachment_filename(filename: &str, attachment_id: &mxr_core::Attac
         })
         .collect();
 
-    let sanitized = if sanitized.trim().is_empty() {
-        format!("attachment-{}", attachment_id.as_str())
-    } else {
-        sanitized
-    };
+    let sanitized =
+        if sanitized.trim().is_empty() || is_reserved_windows_attachment_name(&sanitized) {
+            format!("attachment-{}", attachment_id.as_str())
+        } else {
+            sanitized
+        };
 
     // APFS limits individual path components to 255 bytes. Some
     // real-world attachment filenames exceed that once MIME-decoded;
@@ -2533,6 +2656,40 @@ fn sanitized_attachment_filename(filename: &str, attachment_id: &mxr_core::Attac
         stem.pop();
     }
     format!("{stem}{suffix}")
+}
+
+fn is_reserved_windows_attachment_name(filename: &str) -> bool {
+    let stem = Path::new(filename)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or(filename)
+        .trim_end_matches([' ', '.'])
+        .to_ascii_uppercase();
+    matches!(
+        stem.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
 }
 
 fn open_local_file(path: &str) -> anyhow::Result<()> {

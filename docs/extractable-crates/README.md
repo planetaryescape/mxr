@@ -13,24 +13,23 @@ that apply to every candidate.
 
 ## Where to start
 
-The filename prefix tells you the order. The numbering is roughly
-*"start at the top, work down"*:
+The original filename prefixes preserve the order from the audit, but the
+first wave has now shipped. Read the directory by status, not by old tier:
 
-- **`00-…`** — Cross-cutting strategy. Read first.
-- **`01-…` to `03-…`** — Tier 1: ship these.
-- **`04-…` to `05-…`** — Tier 2: ship after Tier 1.
-- **`06-…` to `07-…`** — Tier 3: defer or investigate.
-- **`08-…` to `09-…`** — Defer indefinitely.
-- **`10-…` to `13-…`** — Skip.
+- **`00-publishing-strategy.md`** — Cross-cutting strategy. Still useful, but
+  now partly historical because the first Rust crates are published.
+- **`done/`** — Candidates that became standalone packages and are now consumed
+  by mxr from crates.io.
+- **`wont-do/`** — Candidates rejected against the publishing bar. Revisit only
+  if the ecosystem or mxr's implementation materially changes.
+- **Active root-level candidate docs** — Work still worth investigating. Today
+  that is only `07-sync-engine.md`.
 
-Within Tier 1, the order is "smallest first" — not because the smallest is
-the most important, but because the unknowns at the start are about the
-*publishing workflow* (dual-repo, shared corpus, dual-publish to crates.io
-+ npm, semver discipline across registries), not about the code. Get the
-workflow right on `01-list-unsubscribe` (tiny surface) before stress-testing
-it on `02-jwz-threading` / `mail-threading` (the headline) and
-`03-gmail-query` (the most
-ambitious surface).
+Before touching another package, read the extraction playbook:
+[`../extracted-crates/lessons/README.md`](../extracted-crates/lessons/README.md).
+The bar is no longer "can we publish this code?" It is "can we own a small
+public contract with a README, conformance corpus, coverage story, semver
+policy, and a clean path back into mxr?"
 
 ## Why bother
 
@@ -147,21 +146,22 @@ When you want to act on a candidate:
 1. Read **[00-publishing-strategy.md](./00-publishing-strategy.md)** if
    you haven't yet — it sets effort expectations and distribution
    recommendations.
-2. Read the lessons from the first extraction:
+2. Read the lessons from the extraction wave:
    **[../extracted-crates/lessons/README.md](../extracted-crates/lessons/README.md)**.
-   That file captures the higher bar created by `mail-threading`:
-   conformance corpus, coverage matrix, honest divergences, standalone
-   ownership, and registry cutover discipline.
+   That file captures the higher bar created by `mail-threading`,
+   `list-unsubscribe`, `mail-query`, and `mailbox-formats`: conformance corpus,
+   coverage matrix, honest divergences, standalone ownership, registry cutover
+   discipline, and the "do not publish just because the code is easy" rule.
 3. Open the per-candidate doc.
 4. Re-read the **Assumptions / When to re-evaluate** section. Are the
    ecosystem assumptions still true? (Libraries appear and die; a "Skip"
    can flip to "Ship" if the alternative becomes unmaintained.)
 5. Follow the **Extraction plan** section. It lists the files to lift,
    the API surface to expose, the gaps to fill before publishing.
-6. For Tier 1 candidates, follow the **TS/npm distribution** section to
-   decide port vs WASM and set up the shared corpus.
-7. If you decide to ship, update this README's table and the candidate's
-   frontmatter to reflect the new status.
+6. If a JS/TS package is still desirable, follow the **TS/npm distribution**
+   section to decide port vs WASM and set up the shared corpus.
+7. If you decide to ship, update this README's active/done/won't-do tables and
+   the candidate's frontmatter to reflect the new status.
 
 When new candidates emerge (a new mxr crate is added, a new ecosystem gap
 opens), add a new doc to this directory and a row to the table above.

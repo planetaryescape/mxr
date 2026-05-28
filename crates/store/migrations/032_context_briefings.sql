@@ -1,4 +1,4 @@
--- Slice 5.1 / 5.2 of docs/ai-email/05-context-briefings.md.
+-- Slice 5.1 / 5.2 of docs/reference/ai-email.md
 -- Cached briefings for threads and recipients. The content_hash is
 -- a hash of the input prompt context: identical inputs reuse the
 -- cached row, content drift invalidates it.

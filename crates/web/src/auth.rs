@@ -41,7 +41,7 @@ pub(super) struct AuthQuery {
 ///    (browsers cannot set `Authorization` on WS upgrades)
 /// 4. `x-mxr-bridge-token: <token>` — v0.4.x compat, kept for the v0.5
 ///    cycle while older local clients migrate
-pub(super) fn extract_token<'a>(
+pub(crate) fn extract_token<'a>(
     headers: &'a HeaderMap,
     query_token: Option<&'a str>,
 ) -> Option<&'a str> {

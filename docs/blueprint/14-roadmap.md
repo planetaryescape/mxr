@@ -149,4 +149,4 @@ These are explicitly NOT on the roadmap for v1. They may grow out of the core la
 - **Web dashboard**: Alternate frontend connecting to the same daemon
 - **IMAP adapter**: First community adapter candidate
 - **Encryption**: PGP integration with good UX (not homebrew crypto)
-- **Calendar integration**: Parse .ics attachments, show event context
+- **Calendar sync**: Full calendar state, CalDAV, external calendar APIs, reminders, and calendar-grid UI. Email-derived invite parsing/display/RSVP already shipped separately under `docs/calendar-email/`.

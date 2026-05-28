@@ -1,4 +1,4 @@
-//! Slice 5.1 / 5.2 of docs/ai-email/05-context-briefings.md.
+//! Slice 5.1 / 5.2 of docs/reference/ai-email.md
 //!
 //! Briefings cache for threads and recipients. The cache is keyed on
 //! (account_id, kind, subject_key); regeneration with an unchanged

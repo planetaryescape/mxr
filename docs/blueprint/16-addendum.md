@@ -380,6 +380,7 @@ Auto-format detection: TTY → table, piped → json. Override with explicit `--
 | `Z` | Snooze | `mxr snooze MESSAGE_ID --until ...` |
 | `O` | Open in browser | `mxr open MESSAGE_ID` |
 | `E` | Export | `mxr export THREAD_ID` |
+| `y` | Summarize thread | `mxr summarize THREAD_ID` |
 | `R` | Reader mode | `mxr cat --raw` vs `mxr cat` |
 | `/` | Search | `mxr search "query"` |
 | `Enter`/`o` | View | `mxr cat MESSAGE_ID` |
@@ -772,6 +773,41 @@ use_tls = true
 
 ---
 
+## A012: Runtime identity as a local state boundary
+
+**Affects**: 12-config.md, 18-addendum-oauth.md, web-app.md, docs/guides/http-bridge.md
+
+**What changed**: A developer can be both the author of mxr and a real
+user of an installed mxr daemon. A debug build must not share config,
+SQLite, Tantivy, sockets, bridge tokens, token files, or non-production
+keychain refs with the installed runtime just because the binary name is
+the same.
+
+**The rule**:
+
+1. Resolve a runtime identity before opening durable state. Release
+   builds default to `mxr`, debug builds default to `mxr-dev`, and demo
+   mode uses `mxr-demo`. `MXR_INSTANCE` is the explicit override.
+2. Derive config dir, data dir, token dir, socket path, bridge token,
+   bridge port, PID files, search indexes, and local model/cache dirs
+   from that identity unless an explicit path override is set.
+3. Production keeps legacy credential names so installed users retain
+   existing credentials. Non-production instances scope IMAP/SMTP
+   keychain refs and Gmail OAuth keychain service names to the active
+   identity.
+4. Every client that can autostart or discover the daemon must preserve
+   the same identity. CLI autostart, TUI autostart, `mxr web`, and the
+   Vite dev proxy are all part of the boundary.
+5. Status surfaces should print the active identity and resolved paths
+   so users can verify which runtime they are about to mutate.
+
+### Decision record
+
+- **D093**: Runtime identity is a data boundary. Dev/prod/demo isolation
+  includes credentials and bridge files, not just SQLite and socket paths.
+
+---
+
 ## End of addendum
 
-Any future refinements should be appended above this section as A012, A013, etc. following the same format.
+Any future refinements should be appended above this section as A013, A014, etc. following the same format.

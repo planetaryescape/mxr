@@ -1,10 +1,11 @@
+use super::label_resolve::{build_label_name_index, resolve_label_names};
 use super::search_filter::{
     ast_contains_owed_reply, has_negated_semantic_terms, matches_structured_filters,
     semantic_query_plan,
 };
 use super::{build_execution, ExecutionExplainInput, SearchExecution};
 use crate::state::AppState;
-use mxr_core::types::{SearchMode, SortOrder};
+use mxr_core::types::{Label, SearchMode, SortOrder};
 use mxr_search::{ast::QueryNode, parse_query, MxrSchema, QueryBuilder, SearchPage, SearchResult};
 use mxr_semantic::{should_use_semantic, SemanticHit};
 use std::collections::{HashMap, HashSet};
@@ -39,10 +40,22 @@ pub(super) async fn execute_search(
         sort,
         explain,
     };
-    let parsed_ast = parse_query(query).ok();
-    let needs_owed_filter = parsed_ast.as_ref().is_some_and(ast_contains_owed_reply);
-    let mut execution = match parse_query(query) {
-        Ok(ast) => execute_search_ast(state, query, &ast, &options).await?,
+    let (mut execution, needs_owed_filter) = match parse_query(query) {
+        Ok(ast) => {
+            // Resolve user-typed label display names (e.g.
+            // `label:Notto`) to provider IDs (e.g. `Label_101`)
+            // before query construction. Tantivy only sees provider
+            // IDs because that's what sync writes to the index; the
+            // parser doesn't know about a given user's labels.
+            let labels = collect_labels_for_resolution(state).await;
+            let label_index = build_label_name_index(&labels);
+            let ast = resolve_label_names(ast, &label_index);
+            let needs_owed_filter = ast_contains_owed_reply(&ast);
+            (
+                execute_search_ast(state, query, &ast, &options).await?,
+                needs_owed_filter,
+            )
+        }
         Err(error) => {
             if should_fallback_to_tantivy(query, &error) {
                 let page = state
@@ -65,14 +78,15 @@ pub(super) async fn execute_search(
                     )],
                     results: super::build_explain_results(&page.results, &page.results, &[]),
                 });
-                SearchExecution {
+                let execution = SearchExecution {
                     results: page.results,
                     total: page.total,
                     has_more: page.has_more,
                     next_offset: page.next_offset,
                     executed_mode: SearchMode::Lexical,
                     explain,
-                }
+                };
+                (execution, false)
             } else {
                 return Err(format!("Invalid search query: {error}"));
             }
@@ -83,6 +97,39 @@ pub(super) async fn execute_search(
         filter_to_owed_threads(state, &mut execution).await?;
     }
     Ok(execution)
+}
+
+/// Collect every label across enabled accounts so we can rewrite
+/// `label:<display name>` into the provider IDs that Tantivy actually
+/// indexes. Failures are non-fatal: if the store is unreachable we
+/// fall back to the unresolved AST, which still serves raw provider
+/// IDs correctly.
+async fn collect_labels_for_resolution(state: &AppState) -> Vec<Label> {
+    let accounts = match state.store.list_accounts().await {
+        Ok(accounts) => accounts,
+        Err(error) => {
+            tracing::warn!(
+                "label resolution: list_accounts failed ({error}); falling back to verbatim labels"
+            );
+            return Vec::new();
+        }
+    };
+    let mut labels = Vec::new();
+    for account in accounts {
+        if !account.enabled {
+            continue;
+        }
+        match state.store.list_labels_by_account(&account.id).await {
+            Ok(mut account_labels) => labels.append(&mut account_labels),
+            Err(error) => {
+                tracing::warn!(
+                    account_id = %account.id.as_str(),
+                    "label resolution: list_labels_by_account failed ({error})"
+                );
+            }
+        }
+    }
+    labels
 }
 
 /// Reduce `execution.results` to the set of messages whose thread is
@@ -593,7 +640,7 @@ mod owed_reply_filter_tests {
     }
 
     /// The acceptance criterion from
-    /// `docs/ai-email/02-follow-up-work.md`: "`is:owed-reply` matches
+    /// `docs/reference/ai-email.md`: "`is:owed-reply` matches
     /// daemon list." After seeding a thread where the user is the
     /// bottleneck, both `list_owed_replies` and `Search { query:
     /// "is:owed-reply" }` must return the same thread set.
@@ -704,6 +751,128 @@ mod owed_reply_filter_tests {
             !searched_threads.contains(&thread_id.as_str().clone()),
             "thread with later outbound reply must not match is:owed-reply, got {searched_threads:?}"
         );
+    }
+
+    /// Regression: searching `label:<display name>` must hit the
+    /// messages tagged with that label, not return zero results
+    /// because Tantivy only indexes Gmail provider IDs. Before the
+    /// label-name resolver was added, the daemon shipped a workaround
+    /// where users had to query by provider_id (e.g.
+    /// `label:Label_101`) instead of the human-readable name they
+    /// see in Gmail and the TUI.
+    #[tokio::test]
+    async fn label_search_by_display_name_resolves_to_provider_id() {
+        use mxr_core::types::{Label, LabelKind};
+        use mxr_core::LabelId;
+
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+
+        // Persist a user-defined label so `collect_labels_for_resolution`
+        // can find the name → provider_id mapping.
+        let label = Label {
+            id: LabelId::new(),
+            account_id: account_id.clone(),
+            name: "Notto".into(),
+            kind: LabelKind::User,
+            color: None,
+            provider_id: "Label_101".into(),
+            unread_count: 0,
+            total_count: 1,
+            role: None,
+        };
+        state.store.upsert_label(&label).await.unwrap();
+
+        // Index an envelope that carries the provider_id (the shape
+        // sync produces). The display name "Notto" is *not* indexed.
+        let thread_id = ThreadId::new();
+        let mut envelope = envelope_inbound(&account_id, &thread_id, "alice@example.com", 1);
+        envelope.label_provider_ids = vec!["Label_101".into()];
+        state.store.upsert_envelope(&envelope).await.unwrap();
+        index_envelope(&state, &envelope).await;
+
+        let execution = execute_search(
+            &state,
+            "label:Notto",
+            100,
+            0,
+            SearchMode::Lexical,
+            SortOrder::DateDesc,
+            false,
+        )
+        .await
+        .unwrap();
+        let hit_ids: Vec<_> = execution
+            .results
+            .iter()
+            .map(|r| r.message_id.clone())
+            .collect();
+        assert!(
+            hit_ids.contains(&envelope.id.as_str()),
+            "label:Notto should resolve to Label_101 and match the indexed envelope; got {hit_ids:?}"
+        );
+    }
+
+    /// Spaces in label names must survive the parser's quoted-value
+    /// path (`label:"Follow Up"`) and the case-insensitive lookup.
+    /// Equally, raw provider IDs (`label:Label_42`) must continue to
+    /// work — there's no display name "Label_42", so the resolver
+    /// leaves it alone and the verbatim path still hits the index.
+    #[tokio::test]
+    async fn label_search_handles_quoted_names_and_raw_provider_ids() {
+        use mxr_core::types::{Label, LabelKind};
+        use mxr_core::LabelId;
+
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+
+        let label = Label {
+            id: LabelId::new(),
+            account_id: account_id.clone(),
+            name: "Follow Up".into(),
+            kind: LabelKind::User,
+            color: None,
+            provider_id: "Label_42".into(),
+            unread_count: 0,
+            total_count: 1,
+            role: None,
+        };
+        state.store.upsert_label(&label).await.unwrap();
+
+        let thread_id = ThreadId::new();
+        let mut envelope = envelope_inbound(&account_id, &thread_id, "alice@example.com", 1);
+        envelope.label_provider_ids = vec!["Label_42".into()];
+        state.store.upsert_envelope(&envelope).await.unwrap();
+        index_envelope(&state, &envelope).await;
+
+        for query in [
+            "label:\"Follow Up\"",
+            "label:\"follow up\"",
+            "label:Label_42",
+        ] {
+            let execution = execute_search(
+                &state,
+                query,
+                100,
+                0,
+                SearchMode::Lexical,
+                SortOrder::DateDesc,
+                false,
+            )
+            .await
+            .unwrap();
+            let hit_ids: Vec<_> = execution
+                .results
+                .iter()
+                .map(|r| r.message_id.clone())
+                .collect();
+            assert!(
+                hit_ids.contains(&envelope.id.as_str()),
+                "query {query:?} should match Label_42 envelope; got {hit_ids:?}"
+            );
+        }
     }
 }
 

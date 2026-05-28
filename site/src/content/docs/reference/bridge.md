@@ -4,36 +4,42 @@ description: Every endpoint the daemon exposes over HTTP, with auth, request/res
 ---
 
 The HTTP bridge runs alongside the daemon when `[bridge] enabled = true`
-in `mxr.toml`. It exposes the same IPC contract the TUI uses, but over
+in the active `config.toml`. It exposes the same IPC contract the TUI uses, but over
 HTTP — so the web app, mobile clients, agent runners, and your own shell
 scripts all talk to the same daemon through one stable surface.
 
 The bridge serves an OpenAPI 3.1 spec at
 `http://mxr.localhost:42829/api/v1/openapi.json` (port and host configurable
-in `[bridge]`). The web app generates its TypeScript client from this
-spec — you can do the same for any language with `openapi-generator` or
-`openapi-typescript`.
+in `[bridge]`). The spec is authenticated like the rest of the bridge API.
+The web app generates its TypeScript client from this spec — you can do the
+same for any language with `openapi-generator` or `openapi-typescript`.
 
 :::tip[curl-friendly auth]
-Get the auth token from `~/.config/mxr/bridge-token` (or wherever
-`[bridge] token_path` points). All examples below assume:
+Get the auth token from the active profile config directory's
+`bridge-token` file, unless `[bridge].token_path` or
+`MXR_BRIDGE_TOKEN_PATH` points somewhere else. All examples below assume:
 
 ```bash
-export MXR_TOKEN=$(cat ~/.config/mxr/bridge-token)
+export MXR_CONFIG="$(mxr config path)"
+export MXR_TOKEN="$(cat "$(dirname "$MXR_CONFIG")/bridge-token")"
 # Discover the actual port (custom ports and --auto-port write the bound
 # port to <config_dir>/bridge-port).
-export MXR_PORT=$(cat ~/Library/Application\ Support/mxr/bridge-port 2>/dev/null \
-                   || cat ~/.config/mxr/bridge-port 2>/dev/null \
-                   || echo 42829)
-export MXR_BASE=http://mxr.localhost:$MXR_PORT
+export MXR_PORT="$(cat "$(dirname "$MXR_CONFIG")/bridge-port" 2>/dev/null \
+                   || echo 42829)"
+export MXR_BASE="http://mxr.localhost:$MXR_PORT"
 ```
 :::
 
 ## Auth
 
-Every request needs `Authorization: Bearer $MXR_TOKEN`. WebSocket
-clients can also pass the token via the `Sec-WebSocket-Protocol`
-subprotocol or as a `?token=` query string.
+Every request except `/api/v1/health`, `/api/v1/auth/local-token`, and
+`/api/v1/i18n` needs `Authorization: Bearer $MXR_TOKEN`. OpenAPI and
+Swagger UI are not special-cased. WebSocket clients can also pass the token via the
+`Sec-WebSocket-Protocol` subprotocol or as a `?token=` query string.
+
+A plain browser location bar cannot attach an `Authorization` header. For
+generated clients, dump `/api/v1/openapi.json` with `curl` first. For normal
+browser use, open the first-party web app with `mxr web`.
 
 ### Same-machine auto-handshake
 
@@ -63,6 +69,8 @@ Response:
 {
   "uptime_secs": 1822,
   "daemon_pid": 4242,
+  "instance": "mxr",
+  "is_demo": false,
   "accounts": ["me@example.com"],
   "total_messages": 12044,
   "sync_statuses": [...]
@@ -71,13 +79,15 @@ Response:
 
 ## Top-level endpoints
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/api/v1/health` | Unauthenticated liveness probe |
-| `GET` | `/api/v1/openapi.json` | OpenAPI 3.1 spec |
-| `GET` | `/api/v1/docs` | Swagger UI |
-| `GET` | `/api/v1/events` | WebSocket — daemon events stream |
-| `GET` | `/api/v1/client/shell` | Client shell data (sidebar + status) |
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| `GET` | `/api/v1/health` | No | Liveness probe |
+| `GET` | `/api/v1/auth/local-token` | Loopback peer only | Same-machine token bootstrap |
+| `GET` | `/api/v1/i18n` | No | Locale strings for the first-party web app |
+| `GET` | `/api/v1/openapi.json` | Yes | OpenAPI 3.1 spec |
+| `GET` | `/api/v1/docs` | Yes | Swagger UI |
+| `GET` | `/api/v1/events` | Yes | WebSocket — daemon events stream |
+| `GET` | `/api/v1/client/shell` | Yes | Client shell data (sidebar + status) |
 
 ## `/api/v1/admin/*` — Daemon health and operations
 
@@ -103,6 +113,7 @@ Response:
 | `GET` | `/mail/messages/{message_id}/body` | Fetch one message body |
 | `GET` | `/mail/messages/{message_id}/html-images` | HTML-linked image asset list |
 | `GET` | `/mail/messages/{message_id}/headers` | Raw RFC 5322 headers |
+| `GET` | `/mail/invites` | List detected calendar invites (`?limit=200`) |
 | `GET` | `/mail/snoozed` | List snoozed messages |
 | `GET` | `/mail/deliveries` | List tracked deliveries (`?filter=active\|delivered\|all\|dismissed`) |
 | `GET` | `/mail/deliveries/{id}` | One delivery + its source message ids |
@@ -151,6 +162,14 @@ curl -X POST -H "Authorization: Bearer $MXR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"message_ids":["..."], "starred":true}' \
   "$MXR_BASE/api/v1/mail/mutations/star"
+```
+
+List detected calendar invites:
+
+```bash
+curl -G -H "Authorization: Bearer $MXR_TOKEN" \
+  "$MXR_BASE/api/v1/mail/invites" \
+  --data-urlencode 'limit=50'
 ```
 
 Dry-run calendar replies before sending the iMIP `METHOD:REPLY` email:
@@ -288,6 +307,7 @@ lives server-side until you send/save/discard.
 | `POST` | `/mail/compose/session/update` | Save current edits |
 | `POST` | `/mail/compose/session/send` | Send (calls provider) |
 | `POST` | `/mail/compose/session/save` | Save to drafts table only |
+| `POST` | `/mail/compose/session/attachment` | Attach an uploaded file to the session |
 | `POST` | `/mail/compose/session/discard` | Throw away |
 
 ### Attachments and links
@@ -430,14 +450,17 @@ websocat -H "Authorization: Bearer $MXR_TOKEN" \
 ## Generating a typed client
 
 ```bash
+curl -H "Authorization: Bearer $MXR_TOKEN" \
+  "$MXR_BASE/api/v1/openapi.json" > spec.json
+
 # TypeScript
-npx openapi-typescript $MXR_BASE/api/v1/openapi.json -o src/api.generated.ts
+npx openapi-typescript spec.json -o src/api.generated.ts
 
 # Python
-openapi-generator generate -i $MXR_BASE/api/v1/openapi.json -g python -o ./mxr-py
+openapi-generator generate -i spec.json -g python -o ./mxr-py
 
 # Rust
-openapi-generator generate -i $MXR_BASE/api/v1/openapi.json -g rust -o ./mxr-rs
+openapi-generator generate -i spec.json -g rust -o ./mxr-rs
 ```
 
 ## See also

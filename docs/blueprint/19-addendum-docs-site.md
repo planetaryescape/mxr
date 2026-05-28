@@ -33,7 +33,7 @@
 
 ---
 
-## Site Structure
+## Current site structure
 
 The site lives in the `site/` directory at the repo root.
 
@@ -41,30 +41,41 @@ The site lives in the `site/` directory at the repo root.
 site/
   astro.config.mjs
   package.json
+  scripts/
+    generate-cli-reference.mjs
+    dump-openapi-spec.sh
+    validate-docs.mjs
+    generate-llms-txt.mjs
   src/
     content/
       docs/
         getting-started/
           install.md
+          quick-start.md
           gmail-setup.md
+          imap-smtp-setup.md
           first-sync.md
         guides/
-          search-syntax.md
-          keybindings.md
+          mailbox.md
+          triage-flow.md
           compose.md
+          search.md
           rules.md
-          scripting.md
-          byoc-oauth.md
+          web-app.md
+          security-and-privacy.md
+          for-agents.md
+          ...
         reference/
-          cli.md
+          cli/
+            *.md
+          bridge.md
           config.md
           keybindings.md
-          ipc-protocol.md
-        contributing/
-          index.md
-          architecture.md
-          development.md
+          json-output.md
+          tui.md
+          ...
     pages/
+      reference/api-explorer.astro
       privacy.md
       terms.md
 ```
@@ -73,10 +84,12 @@ site/
 
 | Section | Audience | Content |
 |---|---|---|
-| Getting Started | New users | Install, authenticate, first sync — zero to reading email in 5 minutes |
-| Guides | Active users | Task-oriented: how to search, how to script, how to write rules |
-| Reference | Power users | Exhaustive: every CLI flag, every config key, every keybinding |
-| Contributing | Developers | Architecture overview, dev setup, how to add a provider |
+| Getting Started | New users | Install, authenticate, first sync - zero to reading email in 5 minutes |
+| Daily Use | Active users | Mailbox, triage, compose, search, labels, web app, recipes |
+| Power Features | Power users | Follow-ups, rules, LLM, semantic search, analytics, activity log |
+| Concepts | Evaluators and contributors | Why mxr, architecture, security, glossary, agent contract |
+| Building on mxr | Integrators | Adapter development, agent skill, public Rust crates |
+| Reference | Power users and agents | Generated CLI pages, config, JSON output, TUI, keybindings, bridge, API explorer |
 
 ---
 
@@ -99,7 +112,16 @@ cd site && npm run build
 
 **Deploy trigger**: Push to `main` branch, changes in `site/` directory.
 
-**Custom domain**: `mxr.dev` or `docs.mxr.dev` (TBD based on domain availability).
+**Public URL**: `https://mxr-mail.vercel.app` (configured in
+`site/astro.config.mjs`).
+
+Local checks:
+
+```bash
+npm --prefix site run generate
+npm --prefix site run validate
+npm --prefix site run build
+```
 
 ---
 
@@ -117,16 +139,19 @@ The `site/src/pages/privacy.md` and `site/src/pages/terms.md` pages mirror the r
 
 Documentation is written as features are implemented, not after. Each implementation PR that adds user-facing functionality should include corresponding doc updates.
 
-### CLI reference auto-generation
+### Generated references
 
-The CLI reference page is auto-generated from clap's help output. A build script extracts help text for every subcommand and formats it as Markdown. This ensures the reference is always in sync with the actual CLI.
+The CLI reference is generated from clap help output. The API reference
+is generated from the bridge OpenAPI example. The docs build runs both
+before validation.
 
 ```bash
-# Generate CLI reference during site build
-cargo run -- --help-all > site/src/content/docs/reference/cli-raw.txt
-# Build script converts to structured Markdown
-node site/scripts/generate-cli-reference.mjs
+npm --prefix site run generate
 ```
+
+`generate-cli-reference.mjs` owns the human examples added to generated
+CLI pages. Do not hand-edit generated command pages for wording drift;
+change the generator input instead.
 
 ### Writing guidelines
 

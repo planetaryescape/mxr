@@ -3,6 +3,7 @@ use mxr_export::{ExportAttachment, ExportMessage, ExportThread};
 use mxr_protocol::*;
 use mxr_reader::ReaderConfig;
 use crate::state::AppState;
+use std::path::Path;
 
 /// Build an ExportThread from a thread_id by fetching envelopes and bodies from the store.
 async fn build_export_thread(
@@ -187,6 +188,7 @@ pub(super) async fn materialize_attachment_file(
     tokio::fs::write(&path, bytes)
         .await
         .map_err(mxr_core::MxrError::Io)?;
+    set_private_file_permissions(&path).await?;
 
     for existing in &mut body.attachments {
         if existing.id == *attachment_id {
@@ -223,11 +225,59 @@ pub(super) fn sanitized_attachment_filename(
         })
         .collect();
 
-    if sanitized.trim().is_empty() {
+    if sanitized.trim().is_empty() || is_reserved_windows_attachment_name(&sanitized) {
         format!("attachment-{}", attachment_id.as_str())
     } else {
         sanitized
     }
+}
+
+fn is_reserved_windows_attachment_name(filename: &str) -> bool {
+    let stem = Path::new(filename)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or(filename)
+        .trim_end_matches([' ', '.'])
+        .to_ascii_uppercase();
+    matches!(
+        stem.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
+}
+
+#[cfg(unix)]
+async fn set_private_file_permissions(path: &Path) -> Result<(), mxr_core::MxrError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+        .await
+        .map_err(mxr_core::MxrError::Io)
+}
+
+#[cfg(not(unix))]
+async fn set_private_file_permissions(_path: &Path) -> Result<(), mxr_core::MxrError> {
+    Ok(())
 }
 
 pub(super) fn open_local_file(path: &str) -> anyhow::Result<()> {

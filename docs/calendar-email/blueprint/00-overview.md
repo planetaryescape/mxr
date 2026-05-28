@@ -12,7 +12,7 @@ The first product surface is mail-derived scheduling:
 
 ## Product Discipline
 
-This solves a real email-client gap. Users already receive `.ics` or `text/calendar` invites. Other email clients make those actionable. `mxr` currently reduces them to generic body text or attachments.
+This solves a real email-client gap. Users already receive `.ics` or `text/calendar` invites. Other email clients make those actionable. The first `mxr` slice now makes them visible and replyable while keeping full calendar sync out of scope.
 
 Do not expand this into "everything calendars" without a separate validated problem. Full calendar sync has a much larger maintenance cost: CalDAV auth, calendars, server scheduling, conflict resolution, recurring instances, reminders, time-zone history, and user preference surfaces.
 
@@ -60,4 +60,3 @@ The smallest complete user journey:
 - No provider-specific Gmail Calendar or Outlook Calendar APIs.
 - No daemon import of provider-specific clients.
 - No custom iCalendar parser beyond glue around a library.
-

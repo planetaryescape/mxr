@@ -1,6 +1,6 @@
 # mxr web app
 
-The mxr web app is a Vite + React 19 SPA at `apps/web/` that talks to the mxr daemon's HTTP + WebSocket bridge. It's distributed as part of the daemon binary (embedded via `include_dir!`) and launched via the `mxr web` CLI subcommand. Feature parity with the TUI and CLI is non-negotiable.
+The mxr web app is a Vite + React 19 SPA at `apps/web/` that talks to the mxr daemon's HTTP + WebSocket bridge. It's distributed as part of the daemon binary (embedded via `include_dir!`) and launched via the `mxr web` CLI subcommand. Feature parity with the TUI and CLI is the product target, but parity must name the layer: daemon capability, CLI command, app-level action, page-local keyboard behavior, and terminal-only view state are different promises.
 
 This doc captures the institutional knowledge behind the implementation — the **why** behind decisions, gotchas the implementers ran into, and constraints future maintainers should know about. For "what" the code does, read the code.
 
@@ -19,7 +19,7 @@ Browser (apps/web SPA)  ──HTTP+WS──>  bridge (crates/web)  ──Unix so
 - The SPA never calls providers directly. It speaks only to the bridge.
 - The bridge is loopback-only by default with a host-header allowlist defending against DNS rebinding.
 - Mutations are optimistic with rollback on error and a 60-second undo affordance for destructive ones.
-- Every TUI action has a CLI equivalent and now a web equivalent. Web parity is enforced by the shared action registry (see below).
+- Durable web actions are registered once in the shared action registry, then exposed through the command palette, global keymap, help dialog, and keybindings settings page. Page-local motion stays in the owning page; terminal-only TUI state does not belong in the web registry.
 
 ## Locked decisions (do not relitigate)
 
@@ -44,7 +44,7 @@ These were debated once and locked. Stack:
 | Forms | react-hook-form + zod | Discriminated unions for rule schema |
 | HTML sanitizer | DOMPurify | + custom tracker-pixel stripping |
 | Lint/format | oxlint + oxfmt | Fast, project-wide standard |
-| Testing | Vitest + Testing Library + jsdom; MSW; Playwright (real daemon, FakeProvider) | Per CLAUDE.md mandate: don't trust unit tests alone |
+| Testing | Vitest + Testing Library + jsdom; MSW; Playwright (real daemon, FakeProvider) | Per `mxr-development` skill: don't trust unit tests alone |
 | Distribution | `dist/` embedded in daemon binary via `include_dir!()` | One artifact to ship |
 | Responsive | Desktop + tablet (≥768 px) | No phone build — explicit |
 | Browser support | Evergreens (Chrome/Edge/Firefox last 2, Safari 17+); Vite target `es2022` | |
@@ -63,7 +63,7 @@ Architectural rejections (do not propose these):
 The CLI command lives at `crates/daemon/src/commands/web.rs`. Behavior:
 
 - **Local launch**: opens browser to `http://mxr.localhost:42829`. Reuses a daemon-managed bridge when one is healthy; otherwise spawns a detached bridge. `mxr web stop` shuts a detached bridge down. `--foreground` keeps it attached for debugging.
-- **Remote launch**: `--remote-host mxr.example.com` opens the browser at `https://<host>/#token=<token>` reading the per-host token from `~/.config/mxr/bridge-tokens/<host>.token`. The local CLI **does not bind anything** in this mode — TLS is the remote operator's job.
+- **Remote launch**: `--remote-host mxr.example.com` opens the browser at `https://<host>/#token=<token>` reading the per-host token from `bridge-tokens/<host>.token` next to the active config file. The local CLI **does not bind anything** in this mode — TLS is the remote operator's job.
 - **Port handling**: conflicts fail by default. `--auto-port` retries up to 32 attempts; the bound port is published to `<config_dir>/bridge-port` so the Vite dev proxy and scripts can discover it.
 - Other flags: `--port`, `--no-open`, `--print-url`, `--strict-port`.
 
@@ -73,9 +73,13 @@ Default port `42829` was chosen after `7777` collided with other dev servers. Sn
 
 This is the most subtle part of the system. Implementation lives across `crates/web/src/middleware.rs`, `crates/config/src/resolve.rs`, and `apps/web/src/lib/tokenStorage.ts` / `useBridgeToken.ts`.
 
-1. **Token at rest**: `~/.config/mxr/bridge-token` (mode 0600). Per-host remote tokens at `~/.config/mxr/bridge-tokens/<host>.token`. Generated lazily via `mxr_config::read_or_create_bridge_token()`. UUID v7 (time-sortable; the workspace `uuid` crate doesn't enable the `v4` feature).
+1. **Token at rest**: `<config_dir>/bridge-token` (mode 0600) for the active runtime identity. Per-host remote tokens live at `<config_dir>/bridge-tokens/<host>.token`. Generated lazily via `mxr_config::read_or_create_bridge_token()`. UUID v7 (time-sortable; the workspace `uuid` crate doesn't enable the `v4` feature).
 2. **Local same-machine auto-handshake**: `GET /api/v1/auth/local-token` returns the bridge token only to loopback peers, gated by `[bridge].auto_local_token` (default `true`). The SPA calls this on every cold start and on 401. This eliminates the "paste a token" panel for normal local use.
 3. **Remote / fallback**: URL fragment `#token=...&remote=...` is read once at boot, persisted to localStorage, and the hash is scrubbed via `history.replaceState`. If both auto-handshake and localStorage fail, the SPA routes to `/settings/token` with a `role="alert"` banner where the user can paste a token.
+
+OpenAPI and Swagger UI are also bridge-auth routes. Tests assert that
+`/api/v1/openapi.json` and `/api/v1/docs` reject missing tokens, then
+serve authenticated local clients.
 
 WebSocket auth uses `Sec-WebSocket-Protocol: bearer, <token>` (already supported by the bridge) — chosen because browsers don't allow setting custom WS headers.
 
@@ -87,12 +91,12 @@ When the `web-ui` cargo feature is enabled (default in the root binary), the bri
 - Asset paths get long-lived caching; `index.html` falls back for unknown paths so client-side routing works.
 - A placeholder `apps/web/dist/index.html` exists in-repo so `cargo build --features web-ui` works without first running `npm run build`. The placeholder ships a `spa-not-built` marker that the CI smoke step in `.github/workflows/release.yml` greps for to fail loud if the SPA build was skipped.
 - We serve files manually from `include_dir!()` (returning `Bytes` with mime via `mime_guess`) — `tower-http`'s `ServeDir` doesn't work with embedded fs.
-- The bridge already serves Swagger UI at `/api/v1/docs` and OpenAPI JSON at `/api/v1/openapi.json`. SPA fallback routes must not shadow these.
+- The bridge already serves auth-gated Swagger UI at `/api/v1/docs` and OpenAPI JSON at `/api/v1/openapi.json`. SPA fallback routes must not shadow these.
 - Dev path: `cd apps/web && npm run dev` (Vite at 5173, proxies `/api` and `/api/v1/events` to the discovered local bridge port via `MXR_BRIDGE_URL` env). The originally planned daemon-side `MXR_WEB_DEV_PROXY` was dropped — Vite's proxy is sufficient and simpler.
 
 ## Information architecture
 
-URL is canonical state wherever possible — every TUI screen is deep-linkable.
+URL is canonical state wherever possible — major web screens and TUI-equivalent workflows are deep-linkable.
 
 | URL | Purpose |
 |---|---|
@@ -107,18 +111,24 @@ URL is canonical state wherever possible — every TUI screen is deep-linkable.
 | `/analytics`, `/analytics/{storage,stale,contacts,response-time,subscriptions,wrapped}` | Analytics dashboards |
 | `/rules`, `/rules/new`, `/rules/$id` | Rules editor with first-class dry-run |
 | `/accounts`, `/accounts/new`, `/accounts/$key` | Account management + OAuth flow |
+| `/sender/$address` | Standalone sender profile |
+| `/reply-queue` | Replies waiting for follow-up |
+| `/subscriptions` | Subscription triage |
+| `/deliveries` | Delivery/follow-up queue |
+| `/invites` | Calendar invite queue |
+| `/activity` | Local user-activity log |
 | `/onboarding` | First-run wizard |
-| `/settings/{theme,density,keybindings,notifications,snippets,token,about}` | Settings sub-pages |
+| `/settings/{theme,density,reader,keybindings,notifications,compose,voice,llm,snippets,token,about}` | Settings sub-pages |
 | `/diagnostics` | Daemon health, logs, sync status, doctor |
 | `/dev` | Component sandbox (dev build only) |
 
 ## Layout shell
 
 - **Left sidebar (264 px, collapses to 56 px on tablet)**: account switcher, primary nav (Mail / Search / Analytics / Rules / Accounts / Screener / Diagnostics), then **Lenses** section pinning system mailboxes + saved searches with live unread counts driven by WebSocket. Bottom slot: storage gauge + sync/connection pill + theme picker.
-- **Top action bar (44 px)**: breadcrumb, central search input that morphs into command palette on `Cmd-K` or `:`, density toggle, compose CTA.
+- **Top action bar (44 px)**: breadcrumb, search input, density toggle, compose CTA. `Cmd-K` or `:` opens the separate command palette.
 - **Main pane**: primary content. Density tokens drive row height (40 / 52 / 68 px — tighter than the original 48/56/72 plan to push more density on web).
 - **Right contextual rail (380 px, slide-in, ESC closes)**: Sender Profile, Thread Summary, Attachments, URL list, Snippets browser, Saved-Search form, analytics drill-downs.
-- **Status bar (28 px, bottom)**: sync %, semantic reindex %, daemon connection state, pending undo countdown, queued outbound mail.
+- **Status bar (28 px, bottom)**: daemon connection state, sync %, semantic reindex %, and contextual shortcut hints derived from the action registry.
 
 ## TUI → web reclassification
 
@@ -138,7 +148,7 @@ URL is canonical state wherever possible — every TUI screen is deep-linkable.
 - Server data → TanStack Query. UI state → Zustand. URL state → TanStack Router search params (zod-validated).
 - Imports: `@/...` alias maps to `apps/web/src/...`.
 - Components small and dumb; containers wire data.
-- Optimistic mutations all funnel through `useOptimisticMailMutation`.
+- Web mailbox mutations all funnel through `useOptimisticMailMutation`.
 - WS events all funnel through `<DaemonEventsProvider>` (single mount, dispatches to query cache).
 - HTML mail bodies always pass through `sanitizeHtml.ts` (DOMPurify wrapper) before render. Inline images are proxied via the daemon. No remote-content load until the user opts in **per-thread**.
 
@@ -162,6 +172,7 @@ type Action = {
   group: ActionGroup;
   icon?: LucideIcon;
   shortcut?: ShortcutChord;    // tinykeys grammar
+  aliases?: ShortcutChord[];   // extra chords bound to the same action
   paletteOnly?: boolean;
   when?: (ctx: ActionContext) => boolean;
   run: (ctx: ActionContext) => void | Promise<void>;
@@ -172,8 +183,11 @@ Consumed by:
 
 - `CommandPalette.tsx` via `useActionsByGroup(ctx)`
 - `useKeybindings.ts` via the registry-derived chord map (fed straight into `tinykeys`)
-- `HelpDialog.tsx` via `useActionShortcutHints(ctx)`
+- `HelpDialog.tsx` via `useActionShortcutSections(ctx)`
 - `/settings/keybindings` page (derived live from registry — no hardcoded list)
+- `StatusBar.tsx` via `useActionPrimaryHints(ctx)`
+
+Page-internal vim-style keys (`j/k`, `gg`, `G`, reader scroll, sidebar roving focus) live in `apps/web/src/lib/pageKeyHints.ts` and in the page component that owns the binding. They are merged into help so users can discover them, but they are not registry actions.
 
 **Predicate helpers** (`when.ts`) compose: `onRoute`, `onPane`, `withSelection`, `withFocusedThread`, `firstAccountOnly`, `and(...)`. `firstAccountOnly` mirrors the TUI screener constraint.
 
@@ -183,7 +197,7 @@ Consumed by:
 
 **Bundle impact**: catalog imports every feature's runners eagerly. ~80 actions × ~200 bytes ≈ 16 KB pre-gzip. If this grows past 5% of the main chunk, lazy-load runners with dynamic `import()` keyed by `action.id` while keeping `Action` metadata eager so palette filtering stays sync.
 
-**TUI parity is a moving target**: any new `crates/tui/src/action.rs` enum addition is a defect against the registry. Capture as an issue, not a refactor.
+**TUI parity is a moving target**: any new durable cross-surface TUI action should be checked against the registry. Terminal-only view state and page-local navigation are not defects by themselves; undocumented or unreachable product actions are.
 
 ## Optimistic mutations (`useOptimisticMailMutation`)
 
@@ -240,7 +254,7 @@ Send flow:
 1. `Cmd-Enter` opens the SendConfirm modal — does NOT send immediately.
 2. Modal: "Send 1 message to N recipients via $account?" with Cancel / Send.
 3. On Send: POST `/compose/session/send` → bridge schedules send → returns draft-id + outbound undo handle.
-4. Status bar `OutboundUndoPill` mounts with **5-second** unsend countdown (locked decision: undo in status bar as pill, not toast — toasts can stack and be dismissed; this needs to be unmissable). Original design said 30s; reduced to 5s after bridge unsend semantics were defined.
+4. A Sonner toast exposes **5-second** unsend. The actual `compose/session/send` call fires after the toast auto-closes; clicking Undo cancels the timer before any network send happens.
 
 Attachments: drag overlay covers the entire compose form (not just body). Browser file drops upload via `/api/v1/mail/compose/session/attachment`, then the returned local temp path is written into compose frontmatter — we don't pretend browser file names are usable local paths.
 
@@ -250,13 +264,13 @@ Reply / Reply-All / Forward: `/compose/new?reply=$messageId&mode=single|all|forw
 
 ## Search
 
-- Top-bar input morphs into command palette on `Cmd-K` / `:`.
-- `/` focuses the input.
+- Top-bar search is a button that opens the mail search palette.
+- `/` opens the mail search palette; `Cmd-K` / `:` open the command palette.
 - Live debounced dropdown (120ms): top 5 messages, top 3 threads, top 2 contacts.
 - Results page at `/search?q=&mode=lexical|semantic|hybrid&account=&sort=`.
 - Token chips parsed locally with a ~50-line regex parser. Operators: `from:`, `to:`, `cc:`, `subject:`, `label:`, `has:attachment`, `is:unread`, `is:starred`, `older_than:7d`, `newer_than:1d`, `before:`, `after:`. **The bridge is authoritative on the result set** — local parsing is for visual feedback only, edge-case divergence is acceptable.
 - Saved searches with `pin: true` show in sidebar Lenses with live counts (60s poll + WS invalidation on `LabelCountsUpdated` / `MailUpdated`).
-- Live dropdown shares state with command palette via Zustand `searchStore`. Both `/` and `Cmd-K` populate this store; the visible UI is whichever is mounted.
+- Search palette state is local to `SearchPalette.tsx`; command palette state lives separately in `modalStore`.
 
 ## Realtime (WebSocket)
 
@@ -290,7 +304,7 @@ VIP allowlist: email addresses or domain patterns (`alice@example.com`, `@acme.c
 
 ## Settings
 
-Sections: `theme`, `density`, `keybindings` (derived from action registry), `notifications`, `compose` (editor preference + signature), `snippets`, `token` (view + paste-token fallback + regenerate), `about`.
+Sections: `theme`, `density`, `reader`, `keybindings` (derived from action registry), `notifications`, `compose` (editor preference + signature), `voice`, `llm`, `snippets`, `token` (view + paste-token fallback + regenerate), `about`.
 
 Token regenerate is destructive (other clients de-auth) — confirm modal required.
 
@@ -310,7 +324,7 @@ Token regenerate is destructive (other clients de-auth) — confirm modal requir
 - Tab order: sidebar → topbar → main → right rail.
 - Popovers/modals trap focus and return on close.
 - Every theme passes WCAG AA on body + interactive elements (axe-core gate in CI).
-- Every action reachable via keybinding or visible button (no mouse-only).
+- Contract: every durable product action should be reachable by keyboard, either through a visible control, page-local binding, global shortcut, or command-palette action. Current known debt from code audit: the storage chart drilldown is pointer-only, right-rail/diagnostic overflow panes need explicit keyboard-scroll focus targets, mailbox hover quick actions have keyboard alternatives but are not themselves Tab-discoverable, and `helpOpen` currently mounts both `StatusBar`'s compact shortcut panel and `AppShell`'s full `HelpDialog`.
 - Every icon-only button has `aria-label`.
 - Sidebar in collapsed mode keeps full names in `aria-label`.
 - `prefers-reduced-motion` kills row-exit animations and Wrapped slide transitions.
@@ -339,11 +353,11 @@ After Phase 9 chunk work:
 
 ## Testing strategy
 
-Per CLAUDE.md mandate: "tests passing means nothing if the real system is broken." Three layers:
+Per the `mxr-development` skill: tests passing is not enough if the real system is broken. Three layers:
 
 1. **Vitest unit** (`*.test.{ts,tsx}` colocated): MSW for bridge mocking. Used for sanitizer, optimistic projection, error rollback, palette filtering by `when`, autocomplete debounce, draft-assist streaming chunks, saved-search pin reorder.
-2. **Playwright real-daemon** (`apps/web/e2e/`): isolated fake-provider daemon/bridge spawned in global setup. Specs cover mutations, compose, search, WS reconnect, route errors, offline banner, sync progress, label apply across reload, unsend within window, screener real-account flow, semantic enable round-trip.
-3. **Real-daemon manual smoke**: per CLAUDE.md, every implementer must drive new features in a browser against a real running daemon.
+2. **Playwright real-daemon** (`apps/web/e2e/`): isolated fake-provider daemon/bridge spawned in global setup. Current specs cover accessibility smoke routes, keyboard navigation, mutations, compose send/keyboard launch, HTML rendering, search live suggestions, WS reconnect, route errors, offline banner, sync progress, token expiry, onboarding redirect, and basic smoke.
+3. **Real-daemon manual smoke**: every implementer must drive new features in a browser against a real running daemon.
 
 **Disallowed test patterns** (enforced by `test-quality-rubric` skill review on test-LOC-heavy PRs):
 
@@ -384,7 +398,7 @@ npm run typecheck && npm run lint && npm run test
 cargo check -p mxr-web
 cargo build --features web-ui
 
-# end-to-end smoke (per CLAUDE.md)
+# end-to-end smoke (per mxr-development skill)
 ./target/release/mxr daemon --foreground   # one terminal
 mxr web                                    # another terminal
 # drive the feature in a browser against a real daemon
@@ -400,7 +414,7 @@ cd apps/web && npm run gen:types  # commit the diff in apps/web/src/api/generate
 ## Common pitfalls
 
 - **Never edit `apps/web/src/routeTree.gen.ts` by hand.** TSR's auto-codegen plugin watches `routes/` and regenerates on every save.
-- The bridge serves Swagger UI at `/api/v1/docs` and OpenAPI JSON at `/api/v1/openapi.json` — SPA fallback routes must not shadow these.
+- The bridge serves auth-gated Swagger UI at `/api/v1/docs` and OpenAPI JSON at `/api/v1/openapi.json` — SPA fallback routes must not shadow these.
 - The bridge auto-rejects non-loopback binds without TLS. For `--remote-host`, the local CLI does **not** bind anything; it just opens the browser to the remote URL. The remote operator handles TLS.
 - shadcn components depend on `lib/utils.ts:cn()`. Don't break it.
 - CLI snapshot tests will fail when help text changes — regenerate via `cargo test -p mxr cli_help`.
@@ -408,12 +422,13 @@ cd apps/web && npm run gen:types  # commit the diff in apps/web/src/api/generate
 
 ## Maintenance & enhancement guidance
 
-When adding a new TUI action:
+When adding a new cross-surface action:
 
 1. Add a new `Action` to the appropriate feature's `actions.ts` in `apps/web/src/features/<feature>/`.
 2. The palette, keymap, help dialog, and `/settings/keybindings` page pick it up automatically.
 3. If the action mutates mail, route through `useOptimisticMailMutation` — extend the `MailAction` union and `mapMailboxRows` projection rather than building a parallel hook.
 4. If the action needs a new bridge endpoint, **ship the bridge PR first** (separate Rust review pool), regenerate types, then ship the web PR. Bundling stalls merges.
+5. If the key is page-local motion rather than a product action, keep the handler in the page and add discoverability through `apps/web/src/lib/pageKeyHints.ts`.
 
 When adding a new bridge route:
 

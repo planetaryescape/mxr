@@ -1,5 +1,5 @@
 //! Daemon-backed CLI smoke tests for Tracks 3 & 6 (Archive Intelligence
-//! + Knowledge Graph). Pairs with `docs/ai-email/03-archive-intelligence.md`.
+//! + Knowledge Graph). Pairs with `docs/reference/ai-email.md`.
 //!
 //! These tests exercise the CLI/socket plumbing rather than the LLM —
 //! the fake-provider fixture ships with no LLM configured, so the

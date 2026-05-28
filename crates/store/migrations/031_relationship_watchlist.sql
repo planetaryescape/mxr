@@ -1,4 +1,4 @@
--- Slice 4.2 of docs/ai-email/04-timing-cadence.md.
+-- Slice 4.2 of docs/reference/ai-email.md
 -- Manually-curated watchlist of contacts whose cadence the user
 -- wants flagged when it drifts. (List senders are excluded by
 -- default; the user can override.)

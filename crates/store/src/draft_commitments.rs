@@ -1,4 +1,4 @@
-//! Slice 2.1 of docs/ai-email/02-follow-up-work.md.
+//! Slice 2.1 of docs/reference/ai-email.md
 //!
 //! Per-draft commitment candidates extracted before send.
 //! Promoted to `contact_commitments` after the draft sends successfully.

@@ -50,7 +50,7 @@ stale the SPA repeats the handshake automatically.
 
 The endpoint returns `404` (not 401) when:
 
-- `[bridge].auto_local_token = false` in `~/.config/mxr/config.toml`, or
+- `[bridge].auto_local_token = false` in the file printed by `mxr config path`, or
 - the caller is not on the same machine (the bridge is bound to a
   non-loopback address and the request originates from a different host).
 
@@ -73,8 +73,7 @@ The bridge uses port **42829** for the stable local URL. On `EADDRINUSE`
 it fails by default and prints best-effort process details for the
 listener using that port. Pass `--auto-port` to try the next free port
 (up to 32 attempts). The actual bound port is written
-to `<config_dir>/bridge-port` (`~/.config/mxr/bridge-port` on Linux,
-`~/Library/Application Support/mxr/bridge-port` on macOS) so:
+to `<config_dir>/bridge-port` for the active runtime identity so:
 
 - The Vite dev proxy (`apps/web/`) reads it to know where to send `/api`.
 - Scripts can read it instead of hardcoding `42829`.
@@ -110,8 +109,9 @@ mxr web --remote-host mxr.example.com
 ```
 
 This **does not bind a local bridge**. It reads the per-host token from
-`~/.config/mxr/bridge-tokens/<host>.token` (mode 0600 — place it there
-yourself) and opens the browser to `https://<host>/#token=<token>`.
+`bridge-tokens/<host>.token` next to the active config file (mode 0600
+— place it there yourself) and opens the browser to
+`https://<host>/#token=<token>`.
 
 This mode is for manually configured remote bridges only. Requirements on
 the remote side:
@@ -134,9 +134,10 @@ npm run dev
 ```
 
 Vite serves the SPA at `http://localhost:5173`, proxying `/api/*` and
-the WebSocket to the bridge. It discovers the bridge port via
-`<config_dir>/bridge-port`, so custom ports and `mxr web --auto-port`
-work without manual reconfig.
+the WebSocket to the bridge. It discovers the bridge port via the active
+runtime identity's `<config_dir>/bridge-port`. By default a dev Vite
+server looks at `mxr-dev`; set `MXR_INSTANCE=mxr` only when you
+intentionally want it to talk to the installed runtime.
 
 Set `MXR_BRIDGE_URL=http://127.0.0.1:9000` to override.
 
@@ -155,6 +156,11 @@ When a thread was opened from the mail list, `Esc` closes the reader and
 returns focus to the list unless a row selection is active. Links in
 HTML, reader, and plain views are clickable; remote image loading is
 still controlled separately by the remote-images toggle.
+
+Thread summaries use the same daemon request as `mxr summarize`. Opening an
+uncached thread schedules a silent debounced summary request; clicking
+**Summary** or pressing `y` forces one immediately. Cached and newly generated
+summaries render in the **AI overview** collapsible above the thread.
 
 ## Command palette and shared action registry
 
@@ -192,7 +198,7 @@ shown with a Copy button.
 
 ## Mailbox: label / move / unsubscribe / read-and-archive
 
-The optimistic-mutation hook handles every TUI mail action:
+The optimistic-mutation hook handles the shared mailbox actions:
 
 - Apply a label or remove one (right-rail picker, choose label from the
   shell sidebar).
@@ -201,9 +207,9 @@ The optimistic-mutation hook handles every TUI mail action:
 - Mark read and archive in one step.
 - Unsubscribe the focused message via `mail/actions/unsubscribe`.
 
-All five appear in the command palette as `mail.label`, `mail.move`,
-`mail.read-and-archive`, `mail.unsubscribe`, with a `when` predicate
-that requires either a focused thread or a non-empty selection.
+These appear in the command palette as `mail.label`, `mail.move`,
+`mail.read-and-archive`, and `mail.unsubscribe`, with a `when`
+predicate that requires either a focused thread or a non-empty selection.
 
 ## Saved-search management
 
@@ -286,7 +292,7 @@ action (`POST /mail/actions/invite/reply`) — see the
 |---|---|
 | **CLI** (`mxr ...`) | Scripts, automation, agents, one-off ops. |
 | **TUI** (`mxr` no args) | Daily keyboard-driven mail triage in the terminal. |
-| **Web app** (`mxr web`) | Multi-account mail in the browser, installable as a PWA — same daemon, vim-compatible compose editor, full keyboard model. |
+| **Web app** (`mxr web`) | Multi-account mail in the browser, installable as a PWA — same daemon, vim-compatible compose editor, registry-backed keyboard model. |
 
 The web app is the youngest surface; the CLI is the canonical one. If a
 feature only exists in the web app it's incomplete by mxr's product

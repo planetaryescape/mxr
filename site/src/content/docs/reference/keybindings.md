@@ -64,6 +64,7 @@ help modal (`?`).
 | `r` | Reply |
 | `a` | Reply all |
 | `f` | Forward |
+| `y` | Summarize thread in the background |
 | `e` | Archive |
 | `m` | Mark read + archive |
 | `#` | Trash |
@@ -134,6 +135,7 @@ help modal (`?`).
 | `r` | Reply |
 | `a` | Reply all |
 | `f` | Forward |
+| `y` | Summarize thread in the background |
 | `e` | Archive |
 | `m` | Mark read + archive |
 | `#` | Trash |
@@ -154,6 +156,7 @@ help modal (`?`).
 | `r` | Reply to focused message |
 | `a` | Reply all to focused message |
 | `f` | Forward focused message |
+| `y` | Summarize thread in the background |
 | `A` | Open attachment modal |
 | `L` | Open links modal |
 | `F` | Toggle fullscreen / full reader layout |
@@ -330,7 +333,6 @@ Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your ma
 | Snippets browser | `j` / `k`, `Esc` close |
 | Sender profile | `j` / `k` select other sender email, `Enter` / `o` open selected email, `Esc` close |
 | Screener queue | `j` / `k` navigate, `a` allow, `d` deny, `f` feed, `p` paper-trail, `Esc` close |
-| Thread summary | `Esc` close |
 | Welcome / setup | `d` demo, `g` Gmail, `i` IMAP, `Enter` open form, `Esc` dismiss |
 | Saved-search form | typing fields, `Tab` / `Shift-Tab` move, `Ctrl-s` save, `Esc` cancel |
 | Saved-search delete | `Enter` / `y` confirm delete, `Esc` / `n` cancel |

@@ -1,3 +1,4 @@
+mod label_resolve;
 mod search_execute;
 mod search_filter;
 

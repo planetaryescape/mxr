@@ -98,6 +98,15 @@ fn sanitized_attachment_filename_uses_stable_fallback_for_blank_names() {
     assert_eq!(sanitized, format!("attachment-{}", attachment_id.as_str()));
 }
 
+#[test]
+fn sanitized_attachment_filename_uses_stable_fallback_for_windows_reserved_names() {
+    let attachment_id = mxr_core::AttachmentId::from_provider_id("test", "reserved");
+
+    let sanitized = sanitized_attachment_filename("CON.txt", &attachment_id);
+
+    assert_eq!(sanitized, format!("attachment-{}", attachment_id.as_str()));
+}
+
 #[tokio::test]
 async fn dispatch_ping_returns_pong() {
     let state = Arc::new(AppState::in_memory().await.unwrap());

@@ -124,7 +124,7 @@ mxr saved add cadence-drift 'cadence:drift'
 
 ## Operational notes
 
-- All metrics are computed on demand from `reply_pairs` and `contacts`. Optional materialized tables (`recipient_reply_latency_buckets`) exist in the schema but are not populated by default; the on-demand path is fast enough on real corpora.
+- All metrics are computed on demand from `reply_pairs` and `contacts`. A future `recipient_reply_latency_buckets` cache is documented, but there is no current table to maintain; the on-demand path is the source of truth.
 - No data leaves the machine for either feature. `mxr send-time` and `mxr cadence drift` are pure-Rust queries.
 - Watchlist entries are account-scoped: switching accounts gives you a different watchlist.
 

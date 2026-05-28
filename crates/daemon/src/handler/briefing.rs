@@ -1,4 +1,4 @@
-//! Slice 5.1 / 5.2 of docs/ai-email/05-context-briefings.md.
+//! Slice 5.1 / 5.2 of docs/reference/ai-email.md
 //!
 //! Thread and recipient briefings with content-hash caching. The
 //! briefing daemon module owns prompt construction, cache lookup,

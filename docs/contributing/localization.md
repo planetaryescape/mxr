@@ -58,7 +58,7 @@ language tag; unknown codes fall back to `EN`. Selection is case-insensitive.
    MXR_LOCALE=de mxr
    ```
 
-   …or in `~/.config/mxr/config.toml`:
+   …or in the file printed by `mxr config path`:
 
    ```toml
    [general]

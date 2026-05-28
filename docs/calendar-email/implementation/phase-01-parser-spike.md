@@ -2,8 +2,9 @@
 
 Goal: choose the parsing/generation library path and replace nothing yet unless the spike is conclusive.
 
-Outcome: `icalendar` is the chosen production parser/generator for the first
-email-invite slice. The implementation validates inline invites, folded lines,
+Outcome: `icalendar` is the chosen production parser for the first
+email-invite slice. Reply generation shipped as a narrow daemon-owned
+`METHOD:REPLY` builder rather than broad library generation. The implementation validates inline invites, folded lines,
 recurrence identity, cancellation, replies, organizer/attendee parameters, and
 warnings through `mxr-mail-parse` tests.
 
@@ -36,7 +37,7 @@ warnings through `mxr-mail-parse` tests.
 
 ## Acceptance
 
-- A chosen parser/generator approach is documented.
+- A chosen parser approach and reply-generation boundary are documented.
 - At least five real-ish fixtures parse.
 - Known parser limitations are listed.
 - No production behavior changes unless explicitly justified.

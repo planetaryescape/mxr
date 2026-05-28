@@ -2,6 +2,11 @@
 
 Generated: 2026-03-26T23:30:05Z
 
+Status: historical snapshot. Some audited paths have since moved or been
+extracted. In particular, the old search parser rows refer to the
+pre-extraction `crates/search/src/parser.rs`; the parser contract now lives in
+the public `mail-query` crate and mxr executes it through `mxr-search`.
+
 ## Summary
 
 - Files audited: 99

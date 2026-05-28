@@ -174,7 +174,7 @@ This is maybe 50 lines of code but it needs to be right. The 500ms timeout is st
 Keybindings are configurable via TOML:
 
 ```toml
-# ~/.config/mxr/keys.toml
+# keys.toml next to the file printed by `mxr config path`
 [mail_list]
 j = "move_down"
 k = "move_up"
@@ -378,6 +378,7 @@ That client boundary is intentional:
 - every meaningful TUI action should map to a daemon request that also exists in the CLI
 - mutation safety should come from the shared daemon/CLI path, not bespoke TUI-only logic
 - the TUI should preserve shell-first product philosophy even when it adds interactive ergonomics
+- slow synthesis work (summaries, draft assist, briefings) should run as background IPC work and render visible progress/result state in the reader or modal, not block navigation
 
 ### Event model
 

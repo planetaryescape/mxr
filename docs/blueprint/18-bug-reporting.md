@@ -8,7 +8,7 @@
 
 Logs go to two places:
 
-1. **Text log file**: `$XDG_DATA_HOME/mxr/logs/mxr.log` (default: `~/.local/share/mxr/logs/mxr.log`). Rotated at 50 MB, 5 files kept. Structured tracing output. Configurable level (default: `info`).
+1. **Text log file**: `<data_dir>/logs/mxr.log` for the active runtime identity. Rotated at 50 MB, 5 files kept. Structured tracing output. Configurable level (default: `info`).
 
 2. **event_log SQLite table**: Structured, queryable events (sync completions, errors, rule executions, snooze events). Retained for 90 days by default.
 
@@ -279,7 +279,7 @@ DELETE FROM ai_usage WHERE timestamp < strftime('%s', 'now', '-90 days');
 ### User control
 
 ```toml
-# ~/.config/mxr/config.toml
+# file printed by `mxr config path`
 [logging]
 level = "info"
 max_size_mb = 50

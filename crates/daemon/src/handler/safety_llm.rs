@@ -1,5 +1,5 @@
 //! LLM-backed safety checks. Currently only `answer_coverage`
-//! (Slice 1.4 of docs/ai-email/01-pre-send-safety.md).
+//! (Slice 1.4 of docs/reference/ai-email.md).
 //!
 //! Lives in the daemon — not the `mxr-safety` crate — so that
 //! `mxr-safety` stays purely deterministic and depends only on

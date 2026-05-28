@@ -5,9 +5,9 @@
 
 **Local-first email infrastructure.** Write `mxr`, say "Mixer".
 
-mxr syncs Gmail and IMAP into SQLite on your machine. You read mail in the TUI, script it from the CLI, and hand it to an agent when that helps. Same local data. Same daemon. Same commands.
+mxr syncs Gmail and IMAP into SQLite on your machine. You read mail in the TUI or web app, script it from the CLI, and hand it to an agent when that helps. Same local data. Same daemon. Same commands.
 
-Today, the shipped surfaces are the CLI, TUI, daemon socket, and agent skill. A first-party MCP server is still on the roadmap.
+Today, the shipped surfaces are the CLI, TUI, web app, daemon socket, and agent skill. A first-party MCP server is still on the roadmap.
 
 ## Install
 
@@ -51,10 +51,33 @@ Current release shape:
 - IMAP sync (CONDSTORE / QRESYNC + UID fallback + IDLE for real-time delivery)
 - SMTP send
 - lexical + hybrid + semantic search with Gmail-style operators (`is:unread`, `from:`, `older_than:30d`, etc.)
-- CLI, TUI, daemon socket, agent skill
+- CLI, TUI, web app, daemon socket, agent skill
 - Inbox tooling: snooze with presets, undoable mutations (60s window), saved searches, deterministic rules with `--dry-run`
+- Calendar invites: parse email invites, search `has:calendar`, inspect, backfill, and RSVP with dry-run previews
 - LLM-assisted summarize and draft-assist surfaces with local relationship context and deterministic humanizer scoring
 - Analytics: stale-thread queue, response-time percentiles, contact decay, year-in-review (`mxr wrapped`), storage rollups
+
+## Public Rust crates
+
+The `mxr` binary is installed from Git or release artifacts, not from
+crates.io. A few bounded pieces of the email stack are public crates and
+are consumed back into mxr from the registry:
+
+| Crate | What it owns | mxr consumer |
+|---|---|---|
+| [`mail-query`](https://crates.io/crates/mail-query) | Gmail-style search parser and typed AST | `mxr-search` |
+| [`mail-threading`](https://crates.io/crates/mail-threading) | RFC 5256 / JWZ client-side threading | `mxr-sync` |
+| [`list-unsubscribe`](https://crates.io/crates/list-unsubscribe) | RFC 2369 / RFC 8058 unsubscribe header parsing | `mxr-mail-parse` |
+| [`mailbox-formats`](https://crates.io/crates/mailbox-formats) | mbox variants and Maildir reader/writer | `mxr-export` |
+
+Check the current dependency edge from this repo:
+
+```bash
+cargo tree -p mxr-search -i mail-query
+cargo tree -p mxr-sync -i mail-threading
+cargo tree -p mxr-mail-parse -i list-unsubscribe
+cargo tree -p mxr-export -i mailbox-formats
+```
 
 ## Search modes
 
@@ -72,7 +95,7 @@ High-level enablement:
 
 ```toml
 [search]
-default_mode = "hybrid"
+default_mode = "lexical"
 
 [search.semantic]
 enabled = true
@@ -121,6 +144,24 @@ mxr status
 mxr semantic status
 mxr doctor --semantic-status
 ```
+
+## Runtime identity
+
+mxr keeps installed, development, and demo runtimes separate. Release
+builds use the `mxr` instance; debug `cargo run` uses `mxr-dev`; demo
+mode uses `mxr-demo`. The instance scopes config, data, SQLite, Tantivy,
+semantic caches, sockets, bridge files, token roots, and non-production
+credential refs.
+
+Check what you are touching before running destructive commands:
+
+```bash
+mxr config path
+mxr status --format json
+```
+
+Use `MXR_INSTANCE=<name>` only when you intentionally want a custom
+runtime identity.
 
 ## Reset local runtime state
 
@@ -271,12 +312,12 @@ Useful flags:
 Troubleshooting:
 
 - Blank page: confirm the daemon is running with `mxr status`.
-- 401 / unauthorized: only happens for remote bridges or when `[bridge].auto_local_token = false`; the SPA redirects to `/settings/token`; paste `~/.config/mxr/bridge-token`.
+- 401 / unauthorized: only happens for remote bridges or when `[bridge].auto_local_token = false`; the SPA redirects to `/settings/token`; paste the `bridge-token` file from the active profile config dir.
 - Stale UI after upgrading: hard-refresh with Cmd-Shift-R or Ctrl-F5.
 
 For strict-bearer setups (multi-user machines, etc.), set
-`[bridge].auto_local_token = false` in `~/.config/mxr/config.toml` to
-disable the same-machine handshake.
+`[bridge].auto_local_token = false` in the file printed by
+`mxr config path` to disable the same-machine handshake.
 
 ## Docs
 

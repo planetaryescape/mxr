@@ -1,4 +1,4 @@
-//! Slice 2.2 of docs/ai-email/02-follow-up-work.md.
+//! Slice 2.2 of docs/reference/ai-email.md
 //!
 //! "Owed reply" is a thread whose latest inbound message has not been
 //! followed by an outbound message from the user. Ranked by

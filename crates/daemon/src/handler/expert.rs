@@ -1,4 +1,4 @@
-//! Slice 5.4 of docs/ai-email/05-context-briefings.md.
+//! Slice 5.4 of docs/reference/ai-email.md
 //!
 //! Find people who *answer* questions in the user's archive that
 //! resemble the current message/query. The ranker distinguishes

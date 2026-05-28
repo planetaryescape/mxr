@@ -1,6 +1,6 @@
 //! Deterministic pre-send safety checks for mxr drafts.
 //!
-//! Six checks per `docs/ai-email/01-pre-send-safety.md`:
+//! Six checks per `docs/reference/ai-email.md`:
 //! - missing attachment regex (`attachment`)
 //! - PII / secrets detector (`pii`)
 //! - reply-all heuristic (`reply_all`)

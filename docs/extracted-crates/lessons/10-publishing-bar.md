@@ -43,8 +43,8 @@ but no typed action.
 `mail-threading`: only port (JS, 2013) is abandoned; nothing on
 crates.io.
 
-`gmail-query` (planned next): no comparable AST library on either
-crates.io or npm.
+`mail-query` (shipped from the `gmail-query` candidate): no comparable AST
+library on either crates.io or npm.
 
 `format-flowed` (won't-do): the gap is real but cosmetic — anyone who
 wants this can write it.
@@ -104,18 +104,17 @@ The original audit (`docs/extractable-crates/`) was a generous casting
 call. It identified everything that could *plausibly* be extracted. The
 bar applied here is stricter: ship only what *should* be.
 
-Outcome of the 2026-05-16 audit:
+Outcome of the audit, updated after the first wave shipped:
 
-- **Ship next:** `gmail-query`.
-- **Ship after gmail-query:** `mailbox-formats`.
+- **Shipped:** `list-unsubscribe`, `mail-threading`, `mail-query`,
+  `mailbox-formats`.
 - **Investigate later, after sync stabilises:** `sync-engine`.
 - **Won't-do (moved to `wont-do/`):** `format-flowed`, `reader-quote-sig`,
   `outbound`, `rules`. Plus the original "skip" set (`compose`,
   `humanizer`, `llm`, `keychain`).
 
-Two shipped (`list-unsubscribe`, `mail-threading`), one next, one after,
-one to investigate, eight won't-do. That ratio is healthier than the
-original "everything is at least Tier 3" framing.
+Four shipped, one to investigate, eight won't-do. That ratio is healthier
+than the original "everything is at least Tier 3" framing.
 
 ## Bar test for revisiting won't-do
 

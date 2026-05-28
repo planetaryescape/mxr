@@ -35,6 +35,7 @@ export default defineConfig({
           items: [
             { label: 'Mailbox Workflow', slug: 'guides/mailbox' },
             { label: 'Triage Flow', slug: 'guides/triage-flow' },
+            { label: 'Unsubscribe', slug: 'guides/unsubscribe' },
             { label: 'Compose', slug: 'guides/compose' },
             { label: 'Pre-send Safety', slug: 'guides/pre-send-safety' },
             { label: 'Calendar Invites', slug: 'guides/calendar-invites' },
@@ -82,6 +83,7 @@ export default defineConfig({
           items: [
             { label: 'Adapter Development', slug: 'guides/adapter-development' },
             { label: 'AI Agent Skill', slug: 'guides/agent-skill' },
+            { label: 'Public Rust crates', slug: 'guides/public-rust-crates' },
           ],
         },
         {

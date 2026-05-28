@@ -1,4 +1,4 @@
-//! Slice 2.1 of docs/ai-email/02-follow-up-work.md.
+//! Slice 2.1 of docs/reference/ai-email.md
 //!
 //! Extracts commitment candidates from an outgoing draft. Combines a
 //! cheap regex prefilter (so we don't bother the LLM for drafts with

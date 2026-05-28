@@ -1,4 +1,4 @@
-//! Slice 3.2 of docs/ai-email/03-archive-intelligence.md.
+//! Slice 3.2 of docs/reference/ai-email.md
 //!
 //! Decision log: stable, citation-backed records of "we agreed on X"
 //! moments extracted from threads. The unique key is a stable decision

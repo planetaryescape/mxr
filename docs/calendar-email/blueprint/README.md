@@ -14,8 +14,8 @@
 | 07 | [Security](07-security.md) | Spoofing, stale sequence, identity, privacy |
 | 08 | [Surfaces](08-surfaces.md) | CLI, IPC, TUI, web, search, activity |
 | 09 | [Decisions](09-decisions.md) | Settled decisions and open questions |
+| — | [Synthesis notes](../synthesis/) | Durable concepts learned from implementing email calendar invites |
 
 ## Reading Order
 
-Read 00, 01, and 02 first. Then use the topical files as needed. Implementation phases live in [../implementation/](../implementation/).
-
+Read 00, 01, and 02 first. Then use the topical files as needed. The implementation phases in [../implementation/](../implementation/) are historical pickup files for the shipped first slice.

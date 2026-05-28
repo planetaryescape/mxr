@@ -18,7 +18,9 @@ last_reviewed: 2026-05-16
 > (`is:owed-reply`, `is:reply-later`) route through
 > `FilterKind::Custom(_)` at the boundary. The migration runbook is in
 > [`docs/extracted-crates/implementation/04-mail-query-external-repo.md`](../../extracted-crates/implementation/04-mail-query-external-repo.md).
-> The original proposal below is kept as historical context.
+> The original proposal below is kept as historical context; references to
+> `crates/search/src/parser.rs`, in-repo crate paths, or ship order describe the
+> pre-extraction state.
 
 > **Note on the crate name.** The candidate proposal considered both
 > `gmail-query` and `mail-query`; we shipped as `mail-query`

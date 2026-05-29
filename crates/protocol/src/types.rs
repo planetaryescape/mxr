@@ -154,6 +154,69 @@ pub struct LlmOverrideData {
     pub request_timeout_secs: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct NotificationChimesData {
+    pub enabled: bool,
+    pub volume: f32,
+    pub new_mail: NotificationChimeSoundData,
+    pub sent: NotificationChimeSoundData,
+    pub archived: NotificationChimeSoundData,
+    pub trashed: NotificationChimeSoundData,
+    pub spam: NotificationChimeSoundData,
+    pub snoozed: NotificationChimeSoundData,
+    pub unsnoozed: NotificationChimeSoundData,
+    pub reminder: NotificationChimeSoundData,
+    pub error: NotificationChimeSoundData,
+}
+
+impl Default for NotificationChimesData {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            volume: 0.35,
+            new_mail: NotificationChimeSoundData::Bell,
+            sent: NotificationChimeSoundData::Sent,
+            archived: NotificationChimeSoundData::Archive,
+            trashed: NotificationChimeSoundData::Thud,
+            spam: NotificationChimeSoundData::Alert,
+            snoozed: NotificationChimeSoundData::Pop,
+            unsnoozed: NotificationChimeSoundData::Glass,
+            reminder: NotificationChimeSoundData::Bell,
+            error: NotificationChimeSoundData::Alert,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationChimeEventData {
+    NewMail,
+    Sent,
+    Archived,
+    Trashed,
+    Spam,
+    Snoozed,
+    Unsnoozed,
+    Reminder,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationChimeSoundData {
+    None,
+    Bell,
+    Glass,
+    Pop,
+    Sent,
+    Archive,
+    Thud,
+    Alert,
+}
+
 // =========================================================================
 // Activity log types — shared with `crates/store` via the boundary
 // converters at the bottom of this section. The `store` crate has its own
@@ -587,6 +650,13 @@ pub enum Request {
     GetLlmConfig,
     UpdateLlmConfig {
         config: Box<LlmConfigData>,
+    },
+    GetNotificationChimes,
+    UpdateNotificationChimes {
+        config: Box<NotificationChimesData>,
+    },
+    PreviewNotificationChime {
+        event: NotificationChimeEventData,
     },
     GetSemanticStatus,
     EnableSemantic {
@@ -1369,6 +1439,9 @@ impl Request {
             | Self::GetLlmStatus
             | Self::GetLlmConfig
             | Self::UpdateLlmConfig { .. }
+            | Self::GetNotificationChimes
+            | Self::UpdateNotificationChimes { .. }
+            | Self::PreviewNotificationChime { .. }
             | Self::GetSemanticStatus
             | Self::EnableSemantic { .. }
             | Self::InstallSemanticProfile { .. }
@@ -1878,6 +1951,14 @@ pub enum ResponseData {
     LlmConfig {
         config: LlmConfigData,
     },
+    NotificationChimes {
+        config: NotificationChimesData,
+    },
+    NotificationChimePreview {
+        event: NotificationChimeEventData,
+        sound: NotificationChimeSoundData,
+        played: bool,
+    },
     SavedSearchData {
         search: mxr_core::types::SavedSearch,
     },
@@ -2134,6 +2215,8 @@ impl ResponseData {
             | Self::AccountAddresses { .. }
             | Self::LlmStatus { .. }
             | Self::LlmConfig { .. }
+            | Self::NotificationChimes { .. }
+            | Self::NotificationChimePreview { .. }
             | Self::SemanticStatus { .. }
             | Self::SavedSearchData { .. } => IpcCategory::MxrPlatform,
             Self::EventLogEntries { .. }

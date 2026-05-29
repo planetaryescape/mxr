@@ -68,6 +68,7 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.10
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
       - name: Run release-blocking CLI tests
         if: needs.plan.outputs.cli_changed == 'true'
         run: cargo nextest run -p mxr --test cli_journey --test daemon_lifecycle --test reset_cli --test cli_help
@@ -115,7 +116,7 @@ jobs:
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev libasound2-dev pkg-config
 
       - name: Install cross
         if: matrix.use_cross
@@ -191,7 +192,7 @@ jobs:
           rm "$RUNNER_TEMP/cert.p12"
           echo "APPLE_SIGN_AVAILABLE=true" >> "$GITHUB_ENV"
 
-      - name: Sign mxr binary (macOS)
+      - name: Sign CLI binaries (macOS)
         if: matrix.platform_family == 'macos' && env.APPLE_SIGN_AVAILABLE == 'true'
         env:
           APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
@@ -201,10 +202,14 @@ jobs:
             echo "::warning ::APPLE_DEVELOPER_ID secret not set; cannot sign without an identity name."
             exit 0
           fi
-          BINARY="target/${MATRIX_TARGET}/release/mxr"
-          codesign --force --options runtime --timestamp \
-            --sign "$APPLE_DEVELOPER_ID" "$BINARY"
-          codesign --verify --strict --verbose=2 "$BINARY"
+          for BINARY in \
+            "target/${MATRIX_TARGET}/release/mxr" \
+            "target/${MATRIX_TARGET}/release/mxr-chime-player"
+          do
+            codesign --force --options runtime --timestamp \
+              --sign "$APPLE_DEVELOPER_ID" "$BINARY"
+            codesign --verify --strict --verbose=2 "$BINARY"
+          done
 
       - name: Package CLI archive
         if: needs.plan.outputs.cli_changed == 'true'
@@ -216,6 +221,7 @@ jobs:
           ARCHIVE="mxr-v${VERSION}-${MATRIX_ARCHIVE}"
           mkdir -p release
           cp "target/${MATRIX_TARGET}/release/mxr" release/
+          cp "target/${MATRIX_TARGET}/release/mxr-chime-player" release/
           cp LICENSE-MIT LICENSE-APACHE README.md release/
           cd release && tar czf "../${ARCHIVE}" ./* && cd ..
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
@@ -236,14 +242,18 @@ jobs:
             echo "::warning ::Notarization secrets not set; binary is signed but not notarized. End users will see a Gatekeeper warning on first run."
             exit 0
           fi
+          NOTARIZE_DIR="$RUNNER_TEMP/mxr-notarize"
           NOTARIZE_ZIP="$RUNNER_TEMP/mxr-notarize.zip"
-          ditto -c -k --keepParent "target/${MATRIX_TARGET}/release/mxr" "$NOTARIZE_ZIP"
+          mkdir -p "$NOTARIZE_DIR"
+          cp "target/${MATRIX_TARGET}/release/mxr" "$NOTARIZE_DIR/"
+          cp "target/${MATRIX_TARGET}/release/mxr-chime-player" "$NOTARIZE_DIR/"
+          ditto -c -k "$NOTARIZE_DIR" "$NOTARIZE_ZIP"
           xcrun notarytool submit "$NOTARIZE_ZIP" \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --wait
-          rm "$NOTARIZE_ZIP"
+          rm -rf "$NOTARIZE_DIR" "$NOTARIZE_ZIP"
 
       - name: Generate CLI SHA256 checksum
         if: needs.plan.outputs.cli_changed == 'true'

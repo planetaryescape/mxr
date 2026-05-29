@@ -44,6 +44,7 @@ Commands:
   remind              Set or cancel a follow-up reminder on an outbound message. Reminders fire if no reply has arrived by the given time — surfacing the message back to the user as a follow-up
   semantic            Manage semantic search profiles and indexing
   llm                 Inspect local/cloud LLM provider status
+  chimes              Manage local notification chimes
   subscriptions       List senders with unsubscribe support
   senders             List top inbound senders by message volume
   storage             Roll up disk consumption by sender, mimetype, or label

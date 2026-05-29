@@ -27,6 +27,7 @@ pub struct MxrConfig {
     pub humanizer: HumanizerConfig,
     pub activity: ActivityConfig,
     pub deliveries: DeliveriesConfig,
+    pub notifications: NotificationConfig,
 }
 
 /// Package/delivery tracking. Detection is local-first; the optional LLM
@@ -43,6 +44,92 @@ impl Default for DeliveriesConfig {
     fn default() -> Self {
         Self { enabled: true }
     }
+}
+
+/// Local notification preferences. Audio is opt-in so daemon startup never
+/// surprises users in shared or quiet environments.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NotificationConfig {
+    pub chimes: ChimeConfig,
+}
+
+/// Audio feedback for daemon-observed events and successful user actions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ChimeConfig {
+    pub enabled: bool,
+    pub volume: f32,
+    pub new_mail: ChimeSound,
+    pub sent: ChimeSound,
+    pub archived: ChimeSound,
+    pub trashed: ChimeSound,
+    pub spam: ChimeSound,
+    pub snoozed: ChimeSound,
+    pub unsnoozed: ChimeSound,
+    pub reminder: ChimeSound,
+    pub error: ChimeSound,
+}
+
+impl Default for ChimeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            volume: 0.35,
+            new_mail: ChimeSound::Bell,
+            sent: ChimeSound::Sent,
+            archived: ChimeSound::Archive,
+            trashed: ChimeSound::Thud,
+            spam: ChimeSound::Alert,
+            snoozed: ChimeSound::Pop,
+            unsnoozed: ChimeSound::Glass,
+            reminder: ChimeSound::Bell,
+            error: ChimeSound::Alert,
+        }
+    }
+}
+
+impl ChimeConfig {
+    pub fn sound_for(&self, event: ChimeEvent) -> ChimeSound {
+        match event {
+            ChimeEvent::NewMail => self.new_mail,
+            ChimeEvent::Sent => self.sent,
+            ChimeEvent::Archived => self.archived,
+            ChimeEvent::Trashed => self.trashed,
+            ChimeEvent::Spam => self.spam,
+            ChimeEvent::Snoozed => self.snoozed,
+            ChimeEvent::Unsnoozed => self.unsnoozed,
+            ChimeEvent::Reminder => self.reminder,
+            ChimeEvent::Error => self.error,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChimeEvent {
+    NewMail,
+    Sent,
+    Archived,
+    Trashed,
+    Spam,
+    Snoozed,
+    Unsnoozed,
+    Reminder,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChimeSound {
+    None,
+    Bell,
+    Glass,
+    Pop,
+    Sent,
+    Archive,
+    Thud,
+    Alert,
 }
 
 /// Configuration for the user-activity log. Strictly local; see

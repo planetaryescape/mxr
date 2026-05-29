@@ -954,6 +954,79 @@ fn update_llm_config_persists_and_rebuilds_provider_status() {
     );
 }
 
+#[test]
+fn update_notification_chimes_persists_and_updates_daemon_snapshot() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let config_dir = temp_dir.path().join("config");
+    let data_dir = temp_dir.path().join("data");
+    let socket_path = temp_dir.path().join("mxr.sock");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+
+    temp_env::with_vars(
+        [
+            ("MXR_CONFIG_DIR", Some(config_dir)),
+            ("MXR_DATA_DIR", Some(data_dir)),
+            ("MXR_SOCKET_PATH", Some(socket_path)),
+        ],
+        || {
+            runtime.block_on(async {
+                mxr_config::save_config(&mxr_config::MxrConfig::default())
+                    .expect("save default config");
+                let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+                let desired = mxr_protocol::NotificationChimesData {
+                    enabled: true,
+                    volume: 0.5,
+                    new_mail: mxr_protocol::NotificationChimeSoundData::Glass,
+                    sent: mxr_protocol::NotificationChimeSoundData::Sent,
+                    archived: mxr_protocol::NotificationChimeSoundData::Archive,
+                    trashed: mxr_protocol::NotificationChimeSoundData::Thud,
+                    spam: mxr_protocol::NotificationChimeSoundData::Alert,
+                    snoozed: mxr_protocol::NotificationChimeSoundData::Pop,
+                    unsnoozed: mxr_protocol::NotificationChimeSoundData::Glass,
+                    reminder: mxr_protocol::NotificationChimeSoundData::Bell,
+                    error: mxr_protocol::NotificationChimeSoundData::Alert,
+                };
+                let msg = IpcMessage {
+                    id: 1,
+                    source: ::mxr_protocol::ClientKind::default(),
+                    payload: IpcPayload::Request(Request::UpdateNotificationChimes {
+                        config: Box::new(desired),
+                    }),
+                };
+
+                let resp = handle_request(&state, &msg).await;
+                match resp.payload {
+                    IpcPayload::Response(Response::Ok {
+                        data: ResponseData::NotificationChimes { config },
+                    }) => {
+                        assert!(config.enabled);
+                        assert_eq!(config.volume, 0.5);
+                        assert_eq!(
+                            config.new_mail,
+                            mxr_protocol::NotificationChimeSoundData::Glass
+                        );
+                    }
+                    other => panic!("Expected NotificationChimes response, got {other:?}"),
+                }
+
+                let saved = mxr_config::load_config().expect("load saved config");
+                assert!(saved.notifications.chimes.enabled);
+                assert_eq!(saved.notifications.chimes.volume, 0.5);
+                assert_eq!(
+                    saved.notifications.chimes.new_mail,
+                    mxr_config::ChimeSound::Glass
+                );
+                assert!(state.config_snapshot().notifications.chimes.enabled);
+            });
+        },
+    );
+}
+
 #[tokio::test]
 async fn update_llm_config_rejects_blank_model() {
     let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());

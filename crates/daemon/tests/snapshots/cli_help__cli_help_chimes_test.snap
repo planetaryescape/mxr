@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Play the configured sound for one event
+
+Usage: mxr chimes test [OPTIONS] <EVENT>
+
+Arguments:
+  <EVENT>  [possible values: new-mail, sent, archived, trashed, spam, snoozed, unsnoozed, reminder, error]
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

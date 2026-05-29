@@ -9,6 +9,7 @@
 #[doc(hidden)]
 pub mod activity;
 pub(crate) mod bridge;
+pub(crate) mod chimes;
 pub mod cli;
 pub mod commands;
 #[doc(hidden)]
@@ -562,6 +563,10 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         Some(Command::Llm { action, format }) => {
             crate::server::ensure_daemon_running().await?;
             commands::llm::run(action, format).await?;
+        }
+        Some(Command::Chimes { action, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::chimes::run(action, format).await?;
         }
         Some(Command::Subscriptions {
             limit,

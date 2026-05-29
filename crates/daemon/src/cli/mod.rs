@@ -551,6 +551,13 @@ pub enum Command {
         #[arg(long, global = true)]
         format: Option<OutputFormat>,
     },
+    /// Manage local notification chimes
+    Chimes {
+        #[command(subcommand)]
+        action: Option<ChimesAction>,
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
+    },
     /// List senders with unsubscribe support
     #[command(alias = "unsub")]
     Subscriptions {
@@ -1424,6 +1431,54 @@ pub enum Command {
 pub enum WebAction {
     /// Stop the detached local web bridge started by `mxr web`.
     Stop,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ChimesAction {
+    /// Show current chime settings
+    Status,
+    /// Turn notification chimes on
+    Enable,
+    /// Turn notification chimes off
+    Disable,
+    /// Set the sound for one event
+    Set {
+        #[arg(value_enum)]
+        event: ChimeEventArg,
+        #[arg(value_enum)]
+        sound: ChimeSoundArg,
+    },
+    /// Play the configured sound for one event
+    Test {
+        #[arg(value_enum)]
+        event: ChimeEventArg,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ChimeEventArg {
+    #[value(name = "new-mail", alias = "new_mail")]
+    NewMail,
+    Sent,
+    Archived,
+    Trashed,
+    Spam,
+    Snoozed,
+    Unsnoozed,
+    Reminder,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ChimeSoundArg {
+    None,
+    Bell,
+    Glass,
+    Pop,
+    Sent,
+    Archive,
+    Thud,
+    Alert,
 }
 
 #[derive(Subcommand)]

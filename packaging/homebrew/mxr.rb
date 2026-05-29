@@ -22,6 +22,7 @@ class Mxr < Formula
 
   def install
     bin.install "mxr"
+    bin.install "mxr-chime-player"
     prefix.install "LICENSE-MIT"
     prefix.install "LICENSE-APACHE"
     prefix.install "README.md"

@@ -29,6 +29,7 @@ mod helpers;
 mod humanizer;
 mod mailbox;
 mod mutations;
+mod notifications;
 mod platform;
 mod relationship_profile;
 pub(crate) mod reply_later;
@@ -438,6 +439,7 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
             ) {
                 state.activity.record(entry);
             }
+            crate::chimes::play_for_request_response(state, req, &response);
 
             response
         }
@@ -721,6 +723,13 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::GetLlmConfig => platform::llm_config(state).await,
         Request::UpdateLlmConfig { config } => {
             platform::update_llm_config(state, config.as_ref().clone()).await
+        }
+        Request::GetNotificationChimes => notifications::get_notification_chimes(state).await,
+        Request::UpdateNotificationChimes { config } => {
+            notifications::update_notification_chimes(state, config.as_ref().clone()).await
+        }
+        Request::PreviewNotificationChime { event } => {
+            notifications::preview_notification_chime(state, *event).await
         }
         Request::GetSemanticStatus => platform::semantic_status(state).await,
         Request::EnableSemantic { enabled } => platform::enable_semantic(state, *enabled).await,
@@ -1399,6 +1408,9 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetLlmStatus => "get_llm_status",
         Request::GetLlmConfig => "get_llm_config",
         Request::UpdateLlmConfig { .. } => "update_llm_config",
+        Request::GetNotificationChimes => "get_notification_chimes",
+        Request::UpdateNotificationChimes { .. } => "update_notification_chimes",
+        Request::PreviewNotificationChime { .. } => "preview_notification_chime",
         Request::GetSemanticStatus => "get_semantic_status",
         Request::EnableSemantic { .. } => "enable_semantic",
         Request::InstallSemanticProfile { .. } => "install_semantic_profile",

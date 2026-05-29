@@ -41,6 +41,7 @@ paths when needed.
 [logging]
 [appearance]
 [bridge]
+[notifications.chimes]
 [llm]
 [llm.overrides.answer_coverage]
 [safety.recipients]
@@ -97,6 +98,19 @@ cors_allowlist = []
 host_allowlist = []
 auto_local_token = true            # loopback callers can auto-fetch the token
 # token_path = "/absolute/path/to/custom-bridge-token"
+
+[notifications.chimes]
+enabled = false                    # opt-in audio feedback from the daemon
+volume = 0.35                      # 0.0 .. 1.0
+new_mail = "bell"
+sent = "sent"
+archived = "archive"
+trashed = "thud"
+spam = "alert"
+snoozed = "pop"
+unsnoozed = "glass"
+reminder = "bell"
+error = "alert"
 
 [llm]
 enabled = false
@@ -371,6 +385,25 @@ HTTP bridge configuration.
 - `host_allowlist` — additional hostnames for non-loopback binds.
 - `auto_local_token` — when `true` (default), `GET /api/v1/auth/local-token` returns the bridge token to callers whose TCP peer is a loopback IP. Lets the web SPA bootstrap on the same machine without a paste prompt. Set to `false` for paranoid setups that want strict bearer auth even on loopback. Non-loopback peers never receive the token regardless of this setting.
 - `token_path` — path to the auth token file. Omit it to use `<config_dir>/bridge-token` for the active runtime identity.
+
+## `notifications.chimes`
+
+Daemon-side audio feedback for local events and successful actions. Chimes
+are off by default. Manage them without restarting the daemon:
+
+```bash
+mxr chimes status --format json
+mxr chimes enable
+mxr chimes set archived glass
+mxr chimes test archived
+mxr chimes disable
+```
+
+Supported events: `new-mail`, `sent`, `archived`, `trashed`, `spam`,
+`snoozed`, `unsnoozed`, `reminder`, `error`.
+
+Supported sounds: `none`, `bell`, `glass`, `pop`, `sent`, `archive`,
+`thud`, `alert`.
 
 ## `llm`
 

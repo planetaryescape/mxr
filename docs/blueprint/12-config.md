@@ -66,6 +66,19 @@ auto_download_models = true
 active_profile = "bge-small-en-v1.5"
 max_pending_jobs = 256
 query_timeout_ms = 1500
+
+[notifications.chimes]
+enabled = false
+volume = 0.35
+new_mail = "bell"
+sent = "sent"
+archived = "archive"
+trashed = "thud"
+spam = "alert"
+snoozed = "pop"
+unsnoozed = "glass"
+reminder = "bell"
+error = "alert"
 ```
 
 ## `[search]`

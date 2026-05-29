@@ -316,8 +316,16 @@ fn run_status(instance: &str, data_dir: &Path, config_dir: &Path) -> (String, St
 
     (
         String::from_utf8(output.stdout).expect("utf8 stdout"),
-        String::from_utf8(output.stderr).expect("utf8 stderr"),
+        strip_dynamic_loader_warnings(String::from_utf8(output.stderr).expect("utf8 stderr")),
     )
+}
+
+fn strip_dynamic_loader_warnings(stderr: String) -> String {
+    stderr
+        .lines()
+        .filter(|line| !line.contains("libpcre2-8.so.0: no version information available"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn parse_status(stdout: &str) -> Value {

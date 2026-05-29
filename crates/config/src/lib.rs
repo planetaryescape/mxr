@@ -49,6 +49,21 @@ mod tests {
     }
 
     #[test]
+    fn default_notification_chimes_are_opt_in_and_distinct() {
+        let config = MxrConfig::default();
+
+        assert!(!config.notifications.chimes.enabled);
+        assert_ne!(
+            config.notifications.chimes.new_mail,
+            config.notifications.chimes.sent
+        );
+        assert_ne!(
+            config.notifications.chimes.sent,
+            config.notifications.chimes.archived
+        );
+    }
+
+    #[test]
     fn full_toml_round_trip() {
         let toml_str = r#"
 [general]

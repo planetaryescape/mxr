@@ -11,8 +11,7 @@ use mxr_core::types::{
 };
 use mxr_protocol::{
     AccountMutationResultData, DaemonEvent, DraftSafetyContextData, DraftSafetyModeData,
-    ForwardContext, IpcMessage, IpcPayload, MutationCommand, MutationResultData, ReplyContext,
-    ResponseData,
+    ForwardContext, MutationCommand, MutationResultData, ReplyContext, ResponseData,
 };
 use mxr_store::{EventLogRefs, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 use std::collections::{HashMap, HashSet};
@@ -466,15 +465,13 @@ fn emit_mutation_reconciliation_failed_if_needed(
     } else {
         format!("{header}: {}", errors.join("; "))
     };
-    let event = IpcMessage {
-        id: 0,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Event(DaemonEvent::MutationReconciliationFailed {
+    crate::chimes::emit_daemon_event(
+        state,
+        DaemonEvent::MutationReconciliationFailed {
             client_correlation_id: cid.to_string(),
             error_summary,
-        }),
-    };
-    let _ = state.event_tx.send(event);
+        },
+    );
 }
 
 pub(super) async fn mutation(

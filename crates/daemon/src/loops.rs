@@ -318,6 +318,19 @@ async fn sync_loop_for_account(
                         }
                     }
 
+                    match state.store.list_envelopes_by_ids(&upserted_ids).await {
+                        Ok(envelopes) if !envelopes.is_empty() => {
+                            crate::chimes::emit_daemon_event(
+                                &state,
+                                DaemonEvent::NewMessages { envelopes },
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            tracing::warn!(account = %account_id, %error, "new-message event lookup failed");
+                        }
+                    }
+
                     let fanout_state = state.clone();
                     let fanout_account = account_id.clone();
                     let fanout_provider = provider.clone();
@@ -367,15 +380,13 @@ async fn sync_loop_for_account(
                 }
 
                 tracing::info!(account = %account_id, "Sync completed: {count} messages");
-                let event = IpcMessage {
-                    id: 0,
-                    source: ::mxr_protocol::ClientKind::default(),
-                    payload: IpcPayload::Event(DaemonEvent::SyncCompleted {
+                crate::chimes::emit_daemon_event(
+                    &state,
+                    DaemonEvent::SyncCompleted {
                         account_id: account_id.clone(),
                         messages_synced: count,
-                    }),
-                };
-                let _ = state.event_tx.send(event);
+                    },
+                );
 
                 if let Ok(labels) = state.store.list_labels_by_account(&account_id).await {
                     let counts: Vec<_> = labels
@@ -386,12 +397,10 @@ async fn sync_loop_for_account(
                             total_count: l.total_count,
                         })
                         .collect();
-                    let counts_event = IpcMessage {
-                        id: 0,
-                        source: ::mxr_protocol::ClientKind::default(),
-                        payload: IpcPayload::Event(DaemonEvent::LabelCountsUpdated { counts }),
-                    };
-                    let _ = state.event_tx.send(counts_event);
+                    crate::chimes::emit_daemon_event(
+                        &state,
+                        DaemonEvent::LabelCountsUpdated { counts },
+                    );
                 }
 
                 if outcome.has_more {
@@ -473,15 +482,13 @@ async fn sync_loop_for_account(
                     )
                     .await;
                 tracing::error!(account = %account_id, "Sync error: {err_str}");
-                let event = IpcMessage {
-                    id: 0,
-                    source: ::mxr_protocol::ClientKind::default(),
-                    payload: IpcPayload::Event(DaemonEvent::SyncError {
+                crate::chimes::emit_daemon_event(
+                    &state,
+                    DaemonEvent::SyncError {
                         account_id: account_id.clone(),
                         error: err_str,
-                    }),
-                };
-                let _ = state.event_tx.send(event);
+                    },
+                );
             }
         }
     }
@@ -1181,14 +1188,12 @@ pub async fn process_due_reminders(
                 "auto-reminder reply-later marker failed: {e}"
             );
         }
-        let event = IpcMessage {
-            id: 0,
-            source: ::mxr_protocol::ClientKind::default(),
-            payload: IpcPayload::Event(DaemonEvent::ReminderTriggered {
+        crate::chimes::emit_daemon_event(
+            state,
+            DaemonEvent::ReminderTriggered {
                 sent_message_id: id,
-            }),
-        };
-        let _ = state.event_tx.send(event);
+            },
+        );
     }
     Ok(count)
 }
@@ -1410,12 +1415,10 @@ pub async fn snooze_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<
                         tracing::error!(message_id = %message_id, "Snooze wake error: {e}");
                         continue;
                     }
-                    let event = IpcMessage {
-                        id: 0,
-                        source: ::mxr_protocol::ClientKind::default(),
-                        payload: IpcPayload::Event(DaemonEvent::MessageUnsnoozed { message_id }),
-                    };
-                    let _ = state.event_tx.send(event);
+                    crate::chimes::emit_daemon_event(
+                        &state,
+                        DaemonEvent::MessageUnsnoozed { message_id },
+                    );
                 }
             }
             Err(e) => {

@@ -336,6 +336,19 @@ mod tests {
                 },
                 IpcCategory::MxrPlatform,
             ),
+            (Request::GetNotificationChimes, IpcCategory::MxrPlatform),
+            (
+                Request::UpdateNotificationChimes {
+                    config: Box::new(NotificationChimesData::default()),
+                },
+                IpcCategory::MxrPlatform,
+            ),
+            (
+                Request::PreviewNotificationChime {
+                    event: NotificationChimeEventData::Archived,
+                },
+                IpcCategory::MxrPlatform,
+            ),
             (Request::GetSemanticStatus, IpcCategory::MxrPlatform),
             (
                 Request::EnableSemantic { enabled: true },
@@ -686,6 +699,20 @@ mod tests {
                         allow_cloud_relationship_data: false,
                         overrides: Some(LlmOverridesData::default()),
                     },
+                },
+                IpcCategory::MxrPlatform,
+            ),
+            (
+                ResponseData::NotificationChimes {
+                    config: NotificationChimesData::default(),
+                },
+                IpcCategory::MxrPlatform,
+            ),
+            (
+                ResponseData::NotificationChimePreview {
+                    event: NotificationChimeEventData::Archived,
+                    sound: NotificationChimeSoundData::Archive,
+                    played: true,
                 },
                 IpcCategory::MxrPlatform,
             ),

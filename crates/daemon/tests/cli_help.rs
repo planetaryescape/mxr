@@ -85,6 +85,12 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_events", &["events", "--help"]),
         ("cli_help_history", &["history", "--help"]),
         ("cli_help_notify", &["notify", "--help"]),
+        ("cli_help_chimes", &["chimes", "--help"]),
+        ("cli_help_chimes_status", &["chimes", "status", "--help"]),
+        ("cli_help_chimes_enable", &["chimes", "enable", "--help"]),
+        ("cli_help_chimes_disable", &["chimes", "disable", "--help"]),
+        ("cli_help_chimes_set", &["chimes", "set", "--help"]),
+        ("cli_help_chimes_test", &["chimes", "test", "--help"]),
         ("cli_help_activity", &["activity", "--help"]),
         ("cli_help_activity_list", &["activity", "list", "--help"]),
         ("cli_help_activity_stats", &["activity", "stats", "--help"]),
@@ -329,7 +335,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ),
     ];
 
-    assert_eq!(cases.len(), 177);
+    assert_eq!(cases.len(), 183);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.5.46"
+    "version": "0.5.47"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -6650,6 +6650,85 @@
           }
         }
       },
+      "NotificationChimeEventData": {
+        "type": "string",
+        "enum": [
+          "new_mail",
+          "sent",
+          "archived",
+          "trashed",
+          "spam",
+          "snoozed",
+          "unsnoozed",
+          "reminder",
+          "error"
+        ]
+      },
+      "NotificationChimeSoundData": {
+        "type": "string",
+        "enum": [
+          "none",
+          "bell",
+          "glass",
+          "pop",
+          "sent",
+          "archive",
+          "thud",
+          "alert"
+        ]
+      },
+      "NotificationChimesData": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "volume",
+          "new_mail",
+          "sent",
+          "archived",
+          "trashed",
+          "spam",
+          "snoozed",
+          "unsnoozed",
+          "reminder",
+          "error"
+        ],
+        "properties": {
+          "archived": {
+            "$ref": "#/components/schemas/NotificationChimeSoundData"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "error": {
+            "$ref": "#/components/schemas/NotificationChimeSoundData"
+          },
+          "new_mail": {
+            "$ref": "#/components/schemas/NotificationChimeSoundData"
+          },
+          "reminder": {
+            "$ref": "#/components/schemas/NotificationChimeSoundData"
+          },
+          "sent": {
+            "$ref": "#/components/schemas/NotificationChimeSoundData"
+          },
+          "snoozed": {
+            "$ref": "#/components/schemas/NotificationChimeSoundData"
+          },
+          "spam": {
+            "$ref": "#/components/schemas/NotificationChimeSoundData"
+          },
+          "trashed": {
+            "$ref": "#/components/schemas/NotificationChimeSoundData"
+          },
+          "unsnoozed": {
+            "$ref": "#/components/schemas/NotificationChimeSoundData"
+          },
+          "volume": {
+            "type": "number",
+            "format": "float"
+          }
+        }
+      },
       "OwedReplyRowData": {
         "type": "object",
         "required": [
@@ -7041,6 +7120,16 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -7060,6 +7149,16 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -8356,6 +8455,56 @@
               "cmd": {
                 "type": "string",
                 "enum": [
+                  "GetNotificationChimes"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "config",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UpdateNotificationChimes"
+                ]
+              },
+              "config": {
+                "$ref": "#/components/schemas/NotificationChimesData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "event",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PreviewNotificationChime"
+                ]
+              },
+              "event": {
+                "$ref": "#/components/schemas/NotificationChimeEventData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
                   "GetSemanticStatus"
                 ]
               }
@@ -8452,6 +8601,16 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -8559,6 +8718,16 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -8795,6 +8964,16 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -8912,6 +9091,16 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -9296,6 +9485,16 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -9374,6 +9573,16 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -9609,6 +9818,16 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -10689,6 +10908,16 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -12622,6 +12851,50 @@
                 "enum": [
                   "LlmConfig"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "config",
+              "kind"
+            ],
+            "properties": {
+              "config": {
+                "$ref": "#/components/schemas/NotificationChimesData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "NotificationChimes"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "event",
+              "sound",
+              "played",
+              "kind"
+            ],
+            "properties": {
+              "event": {
+                "$ref": "#/components/schemas/NotificationChimeEventData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "NotificationChimePreview"
+                ]
+              },
+              "played": {
+                "type": "boolean"
+              },
+              "sound": {
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
               }
             }
           },

@@ -21,6 +21,7 @@ mxr search "holiday AROUND 10 vacation"
 mxr search "body:house of cards" --mode hybrid --explain
 mxr search "is:owed-reply"
 mxr search "has:calendar newer_than:30d"
+mxr search "is:unread" --account work
 ```
 
 The `is:` filter has the usual suspects (`unread`, `read`, `starred`,
@@ -51,6 +52,32 @@ Semantic search is optional. It is an `mxr-platform` feature layered on top of t
 
 Embeddings stay local. OCR is not used for semantic indexing.
 
+## Account-scoped search
+
+```bash
+mxr search "from:github.com is:unread" --account work --format json
+mxr search "subject:invoice newer_than:30d" --account billing@example.com --format ids
+mxr count "has:calendar" --account personal
+```
+
+What you get: search and count results limited to the selected account.
+
+By default, `mxr search` searches all enabled accounts. Add
+`--account <selector>` when you want one account only.
+
+Selectors accept account key, email address, account id, or an
+unambiguous display name. Unknown or ambiguous selectors fail before the
+search runs.
+
+Account filtering happens before pagination and applies to lexical,
+hybrid, and semantic modes. That means `--limit 50 --account work`
+returns up to 50 work-account hits, not "50 global hits, then filter to
+work".
+
+```bash
+mxr search "from:github.com is:unread" --account work --limit 50 --format json
+```
+
 ## Dedicated search page
 
 The TUI has two distinct search tools:
@@ -69,6 +96,7 @@ The Search page gives you:
 ## Useful combinations
 
 - Use `mxr search ... --format ids | xargs ...` for shell pipelines.
+- Add `--account <selector>` to keep a query, saved-search run, export, or mutation inside one account.
 - Save high-value searches in the TUI sidebar for recurring workflows.
 - Use `mxr count QUERY` for quick status-bar or script integration.
 - Use `mxr export --search QUERY --format mbox` to archive slices of mail.

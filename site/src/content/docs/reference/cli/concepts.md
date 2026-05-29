@@ -43,6 +43,50 @@ For real recipes — `fzf` interactive pickers, `jq` digests, parallel
 `xargs`, cron / systemd, `watch` dashboards, agent prompts — see the
 [Recipes guide](/guides/recipes/).
 
+## Account selection
+
+```bash
+mxr accounts --format table
+mxr search "is:unread" --account work --format ids
+mxr archive --search "from:noreply older_than:30d" --account work --dry-run
+```
+
+What you get: the available account selectors, IDs from one account, and
+a dry-run mutation preview for that same account.
+
+Mail-facing commands that can operate on stored mail accept
+`--account <selector>`.
+
+Selectors can be:
+
+- account key
+- email address
+- account id
+- display name, when it is unambiguous
+
+Examples:
+
+```bash
+mxr search "is:unread" --account work --format ids
+mxr cat --search "from:alice" --account personal --first
+mxr archive --search "from:noreply older_than:30d" --account work --dry-run
+mxr reply MESSAGE_ID --account work --body "Thanks." --dry-run
+```
+
+When omitted, the command keeps its normal multi-account behavior.
+Search, counts, lists, reads, saved-search runs, exports, and batch
+mutations default to all enabled accounts. Commands that are inherently
+single-account, such as `mxr sync --account`, `mxr accounts show`, or
+compose sender selection, keep their own selection rules.
+
+Unknown or ambiguous selectors fail before mxr sends the daemon request.
+For direct IDs, mxr also checks that the selected account owns the target
+message, draft, delivery, or invite before reading or mutating it.
+
+```bash
+mxr accounts --format json
+```
+
 ## Query operators
 
 The query parser accepts Gmail-style operators. The same grammar drives `mxr search`, `mxr count`, `mxr saved add`, the TUI `/`, and the `--search` flag on core batch mutations.

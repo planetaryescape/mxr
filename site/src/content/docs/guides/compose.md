@@ -93,7 +93,25 @@ mxr send DRAFT_ID --override-safety 01HXYZ-K4M2-...
 
 ## Account selection
 
-The sender address comes from the selected/default runtime account, not from a static status snapshot. This matters for multi-account setups.
+```bash
+mxr compose --from work --to alice@example.com --subject "Follow-up"
+mxr reply MESSAGE_ID --account work --body "Thanks." --dry-run
+mxr forward MESSAGE_ID --account personal --to bob@example.com --dry-run
+```
+
+What you get: a new draft from the selected sender, plus reply/forward
+previews that first confirm the original message belongs to that account.
+
+New compose uses `--from <account-or-address>` to choose the sender.
+Replies and forwards can also take `--account <selector>` to assert which
+account owns the original message before drafting.
+
+The sender address comes from the selected/default runtime account, not
+from a static status snapshot. This matters for multi-account setups.
+
+```bash
+mxr drafts --account work --format json
+```
 
 ## Attachments
 

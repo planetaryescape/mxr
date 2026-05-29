@@ -45,6 +45,7 @@ The skill is intentionally short — it documents the CLI surface in a form an a
 # Read / search
 mxr search "is:unread"                       # Lexical BM25
 mxr search "from:alice" --mode hybrid        # Lexical + dense when semantic is ready
+mxr search "is:unread" --account work        # Limit to one enabled account
 mxr cat <id>                                 # Reader mode
 mxr thread <id>                              # Whole thread
 mxr export <thread_id>                       # Markdown export
@@ -58,8 +59,11 @@ mxr undo <mutation_id>                       # ~60s window on destructive ops
 
 # Mutate (positional, stdin pipe, or --search batch — all with --dry-run / --yes)
 mxr archive <id>
+mxr read-archive --search "from:noreply older:7d" --dry-run
 mxr read-archive --search "from:noreply older:7d" --yes
+mxr star --search "subject:urgent" --dry-run
 mxr star --search "subject:urgent" --yes
+mxr label "todo" --search "from:boss" --dry-run
 mxr label "todo" --search "from:boss" --yes
 
 # Snooze / remind / reply-later
@@ -91,20 +95,22 @@ mxr web                                      # Open the web app via local bridge
 ### Important patterns the skill enforces
 
 1. **Message / thread / draft / mutation IDs are UUIDs** — get them from `mxr search --format ids` (one per line), `--format json`, or printed inline by mutations.
-2. **Batch via `--search`** — most mutations accept `<id>` positionals, piped stdin IDs, OR `--search <query>`. Always add `--yes` for non-interactive batches.
-3. **`--dry-run`** — available on every mutation, compose flow, `rules dry-run`, `reset --dry-run`, and `undo --dry-run`. Preview the count and sample before committing.
-4. **Output formats** — `--format table|json|jsonl|csv|ids`. `ids` is the cheapest form to pipe into other commands; `jsonl` is best for streams (`events`, `history`, search).
-5. **`mxr undo` window is ~60s** — destructive ops (`archive`, `trash`, `spam`, `read`, `read-archive`) print a mutation ID; capture it if you might need to reverse.
-6. **`draft-assist` never sends** — output goes to stdout. JSON output includes model, humanizer, and voice-match metadata when available. Pipe the body into `mxr reply --body "$(...)"`.
-7. **Daemon auto-starts** — no need to launch it manually.
+2. **Account scope with `--account`** — when the user names an account, keep the selector on search, read, dry-run, and mutate steps. Selectors accept account key, email, id, or unambiguous display name.
+3. **Batch via `--search`** — most mutations accept `<id>` positionals, piped stdin IDs, OR `--search <query>`. Always add `--yes` for non-interactive batches.
+4. **`--dry-run`** — available on every mutation, compose flow, `rules dry-run`, `reset --dry-run`, and `undo --dry-run`. Preview the count and sample before committing.
+5. **Output formats** — `--format table|json|jsonl|csv|ids`. `ids` is the cheapest form to pipe into other commands; `jsonl` is best for streams (`events`, `history`, search).
+6. **`mxr undo` window is ~60s** — destructive ops (`archive`, `trash`, `spam`, `read`, `read-archive`) print a mutation ID; capture it if you might need to reverse.
+7. **`draft-assist` never sends** — output goes to stdout. JSON output includes model, humanizer, and voice-match metadata when available. Pipe the body into `mxr reply --body "$(...)"`.
+8. **Daemon auto-starts** — no need to launch it manually.
 
 ### Typical workflows the skill seeds
 
 **Triage inbox:**
 ```bash
 mxr screener                                                # Decide on unknown senders
-mxr search "is:unread label:inbox" --format json --limit 20
-mxr read-archive --search "from:noreply older:7d" --yes     # Bulk newsletter sweep
+mxr search "is:unread label:inbox" --account work --format json --limit 20
+mxr read-archive --account work --search "from:noreply older:7d" --dry-run
+mxr read-archive --account work --search "from:noreply older:7d" --yes
 mxr replies add <id>                                        # Interesting → reply-later
 ```
 

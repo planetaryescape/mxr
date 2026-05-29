@@ -17,6 +17,17 @@ If you'd rather hand the situation to an LLM, every section ends with a `Tell an
 `--format ids` (one ID per line) and `--format json` (structured records) are the building blocks. Pipe `ids` into mxr mutations, `fzf`, or `while read`; pipe `json` into `jq`.
 :::
 
+:::tip[Add account scope when needed]
+Most mail-facing commands accept `--account <selector>`, where selector
+is an account key, email address, account id, or unambiguous display
+name. Keep the same selector on search, dry-run, and apply:
+
+```bash
+mxr archive --account work --search 'from:no-reply older_than:30d' --dry-run
+mxr archive --account work --search 'from:no-reply older_than:30d' --yes
+```
+:::
+
 :::note[Two equivalent forms]
 For mxr-on-mxr chaining, every read command that takes a single ID (`cat`, `thread`, `headers`, `summarize`, `draft-assist`, `open`, `attachments list`) **also** accepts `--search QUERY` directly, with `--first` (most recent only) or `--limit N` modifiers. That's daemon-native, snapshot-consistent, and one fewer process.
 
@@ -425,7 +436,8 @@ mxr doctor --format json               # daemon health
 
 ```bash
 mxr archive ID --dry-run               # preview
-mxr archive --search '<query>' --dry-run --yes
+mxr archive --search 'from:noreply older_than:30d' --dry-run
+mxr archive --search 'from:noreply older_than:30d' --yes
 mxr label <name> ID --dry-run
 mxr snooze ID --until '...' --dry-run
 mxr send DRAFT_ID --dry-run            # preview send

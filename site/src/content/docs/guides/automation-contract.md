@@ -14,6 +14,17 @@ When in doubt, the [auto-generated CLI reference](/reference/cli/) is the source
 3. **`--yes`** — skip confirmation prompts on commands that ask before mutating. Required when stdin is not a TTY.
 4. **stdin IDs** — pass message IDs on stdin, one per line. Equivalent to listing them as positional args. Available on most mutations; not all.
 
+Most mail-facing commands also accept **`--account <selector>`**. Use it
+to restrict a read, search, list, draft, delivery, invite, saved-search
+run, or mutation to one enabled account. Selectors accept account key,
+email address, account id, or an unambiguous display name.
+
+When omitted, commands keep their normal behavior. Search, list, read,
+and batch mutation surfaces operate across all enabled accounts by
+default. Unknown or ambiguous selectors fail before mxr sends the daemon
+request, and direct-ID commands validate that the selected account owns
+the target before acting.
+
 ## Reads (commands that return data)
 
 These are the common automation-oriented read surfaces. Exact formats live in the generated [CLI reference](/reference/cli/). JSON shapes per command live in [JSON output schemas](/reference/json-output/).
@@ -41,6 +52,14 @@ These are the common automation-oriented read surfaces. Exact formats live in th
 | `mxr attachments list` | attachments for a message | table/text |
 | `mxr export` | thread export | markdown, json, mbox, llm |
 
+Account-scoped reads:
+
+```bash
+mxr search "is:unread" --account work --format ids
+mxr cat --search "from:alice" --account personal --first
+mxr deliveries --account work --format json
+```
+
 ## Mutations (destructive or stateful)
 
 Core mail mutations accept either explicit message IDs as positional args, `--search QUERY` for batch ops, or piped IDs on stdin. Use the generated CLI reference for non-mail lifecycle commands.
@@ -63,6 +82,13 @@ Core mail mutations accept either explicit message IDs as positional args, `--se
 | `mxr unsend DRAFT_ID` | a scheduled send | — | — | — |
 | `mxr drafts discard` | draft(s) | — | — | — |
 | `mxr rules dry-run` | a rule | n/a (always dry-run) | — | — |
+
+Account-scoped mutations use the same target set for preview and apply:
+
+```bash
+mxr archive --account work --search "from:noreply older_than:30d" --dry-run
+mxr archive --account work --search "from:noreply older_than:30d" --yes
+```
 
 ## What's _not_ scriptable
 
@@ -87,6 +113,14 @@ For agents driving mutations, follow this pattern:
 ```
 
 The loop is the same whether the agent is `claude`, `cursor`, `aider`, or a hand-rolled curl-and-jq script. The contract above guarantees every step is composable.
+
+When the user names an account, keep that selector on every step:
+
+```bash
+mxr search 'from:noreply older_than:30d' --account work --format json
+mxr archive --search 'from:noreply older_than:30d' --account work --dry-run
+mxr archive --search 'from:noreply older_than:30d' --account work --yes
+```
 
 ## Idempotency
 

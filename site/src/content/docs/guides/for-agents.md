@@ -12,7 +12,8 @@ This page is the practical guide. For the comprehensive list of what's safe to s
 1. **Read first.** `mxr search`, `mxr cat`, `mxr stale`, `mxr sender`, `mxr summarize` never mutate. Use them to understand the situation before acting.
 2. **Dry-run everything.** `--dry-run` works on every mutation; show the user the affected count before you run the real thing.
 3. **`--yes` is opt-in.** Without `--yes`, mutations prompt. When stdin isn't a TTY (i.e. piped from an agent), pass `--yes` explicitly so the user has a clear "I authorise this batch" moment in the loop.
-4. **Use `mxr history`.** Every mutation gets a `mutation_id`. Capture it; offer `mxr undo <id>` within ~60 seconds.
+4. **Carry account scope through the whole loop.** If the user says "work account" or "personal account", resolve it with `mxr accounts`, then use `--account <selector>` on search, dry-run, mutation, and verification reads.
+5. **Use `mxr history`.** Every mutation gets a `mutation_id`. Capture it; offer `mxr undo <id>` within ~60 seconds.
 
 ## Worked example 1 — Newsletter prune
 
@@ -44,6 +45,7 @@ The agent picks candidates with `open_rate_30d == 0` and `messages_30d >= 4`, pr
 
 ```bash
 mxr unsubscribe --search 'list:<list.example.com> OR list:<...>' --dry-run
+mxr archive --search 'from:newsletter@example.com OR from:<...>' --dry-run
 ```
 
 User confirms. Agent runs:
@@ -59,12 +61,21 @@ Agent verifies and reports:
 mxr history --category mutation --limit 3 --format json
 ```
 
+For account-specific requests, keep the selector on every command in the
+sequence:
+
+```bash
+mxr subscriptions --account work --rank --format json
+mxr unsubscribe --account work --search 'list:<list.example.com>' --dry-run
+mxr unsubscribe --account work --search 'list:<list.example.com>' --yes
+```
+
 ## Worked example 2 — Meeting prep
 
 **Goal:** for tomorrow's 1:1 with Sarah, gather the relevant threads from the last two weeks and draft an agenda.
 
 ```bash
-mxr search 'from:sarah@example.com OR to:sarah@example.com after:2026-04-23' --format json
+mxr search 'from:sarah@example.com OR to:sarah@example.com after:2026-04-23' --account work --format json
 ```
 
 The agent gets compact search rows with `message_id`, `from`, `subject`, `date`, `read`, `starred`, and `score`. When it needs thread context, it exports the matching search directly as markdown:
@@ -78,7 +89,7 @@ done
 Or in one call with `--search`:
 
 ```bash
-mxr export --search 'from:sarah@example.com OR to:sarah@example.com after:2026-04-23' --format markdown > /tmp/sarah-context.md
+mxr export --account work --search 'from:sarah@example.com OR to:sarah@example.com after:2026-04-23' --format markdown > /tmp/sarah-context.md
 ```
 
 Agent feeds the markdown into its summariser, then uses `mxr draft-assist` to generate a suggested reply body on stdout. Draft assist can use local relationship context when available and JSON output includes humanizer/voice-match metadata. The agent can show the body to the user or pass it into `mxr compose --body-stdin` / `mxr reply --body-stdin` after approval:
@@ -140,7 +151,7 @@ Behind the CLI, every request lands in one of four [IPC buckets](/guides/glossar
 
 - No first-party MCP server yet. The agent surface is the CLI plus the HTTP bridge; both are real and stable.
 - No `--read-only` daemon mode yet. Use `safety_policy = "restricted"` or `"read-only"` in `[general]` to cap mutations daemon-wide if you need the guardrail.
-- No agent-specific account scoping yet. The agent sees every account the user sees.
+- Account scoping is a CLI convention, not a separate agent permission model. `--account` limits mxr's command target set, but the agent can still run other commands with whatever OS access the user gave it.
 
 If you need any of these as enforcement (rather than convention), file an issue — the design space is open.
 

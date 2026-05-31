@@ -769,15 +769,14 @@ impl ImapSession for RealImapSession {
     }
 
     async fn list_folders(&mut self) -> Result<Vec<FolderInfo>> {
-        let names = if self.capabilities().await?.list_status {
-            self.session
-                .list_status("", "*")
-                .await
-                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?
-                .into_iter()
-                .map(|status| (status.name, Some(status.mailbox)))
-                .collect::<Vec<_>>()
-        } else {
+        // Discover folders with a plain LIST so per-folder attributes (notably
+        // \Noselect) are populated and the skip below can exclude non-selectable
+        // container mailboxes. LIST-STATUS is intentionally avoided: on Gmail it
+        // issues STATUS against the non-selectable "[Gmail]" container, and the
+        // parsed result drops the \Noselect attribute, letting "[Gmail]" slip
+        // through and abort the whole sync on SELECT. Per-folder message counts
+        // are populated later during folder sync.
+        let names = {
             use futures::TryStreamExt;
             let stream = self
                 .session
@@ -789,13 +788,20 @@ impl ImapSession for RealImapSession {
                 .try_collect::<Vec<_>>()
                 .await
                 .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?
-                .into_iter()
-                .map(|name| (name, None))
-                .collect::<Vec<_>>()
         };
 
         let mut folders = Vec::with_capacity(names.len());
-        for (name, mailbox) in &names {
+        for name in &names {
+            // Skip non-selectable container folders (e.g. Gmail's "[Gmail]" parent,
+            // marked \Noselect). Issuing SELECT against them aborts the whole sync.
+            if name
+                .attributes()
+                .iter()
+                .any(|attr| format!("{attr:?}") == "NoSelect")
+            {
+                continue;
+            }
+
             let special_use = name.attributes().iter().find_map(|attr| {
                 let s = format!("{attr:?}");
                 match s.as_str() {
@@ -821,11 +827,13 @@ impl ImapSession for RealImapSession {
                 name: name.name().to_string(),
                 special_use,
                 delimiter: name.delimiter().map(ToString::to_string),
-                unread_count: mailbox.as_ref().and_then(|mailbox| mailbox.unseen),
-                total_count: mailbox.as_ref().map(|mailbox| mailbox.exists),
-                uid_validity: mailbox.as_ref().and_then(|mailbox| mailbox.uid_validity),
-                uid_next: mailbox.as_ref().and_then(|mailbox| mailbox.uid_next),
-                highest_modseq: mailbox.as_ref().and_then(|mailbox| mailbox.highest_modseq),
+                // Counts/cursors are filled in during per-folder sync; a plain
+                // LIST carries no STATUS data.
+                unread_count: None,
+                total_count: None,
+                uid_validity: None,
+                uid_next: None,
+                highest_modseq: None,
                 // Namespace discovery is optional, and some servers answer it in a
                 // format the upstream parser rejects. Avoid issuing NAMESPACE here
                 // so folder discovery remains usable for account setup and sync.

@@ -9,8 +9,8 @@ if ! grep -Fq 'go install github.com/zricethezav/gitleaks/v8@v8.30.1' "$workflow
 fi
 
 sqlx_block="$(sed -n '/name: SQLx Offline/,/  docs:/p' "$workflow")"
-if ! grep -Fq 'libasound2-dev pkg-config' <<<"$sqlx_block"; then
-    echo "SQLx Offline must install ALSA/pkg-config deps before workspace checks." >&2
+if ! grep -Fq 'libasound2-dev libdbus-1-dev pkg-config' <<<"$sqlx_block"; then
+    echo "SQLx Offline must install ALSA, DBus, and pkg-config deps before workspace checks." >&2
     exit 1
 fi
 

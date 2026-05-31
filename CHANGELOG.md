@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.51](https://github.com/planetaryescape/mxr/compare/v0.5.50...v0.5.51) (2026-05-31)
+
+
+### Bug Fixes
+
+* cover dbus in workflow checks ([a39b31b](https://github.com/planetaryescape/mxr/commit/a39b31bd4181744ee11fcaca090160c0b5ce24bc))
+* **keychain:** enable a Linux keyring backend so credentials persist ([7fbd5af](https://github.com/planetaryescape/mxr/commit/7fbd5afcd9d1947962c54899b6bdd1a422d5f196)), closes [#45](https://github.com/planetaryescape/mxr/issues/45)
+* **provider-imap:** skip non-selectable folders; don't abort sync on [Gmail] ([d03d3ab](https://github.com/planetaryescape/mxr/commit/d03d3ab7098e1fc2d52fba1ffea3d33e6b03d176)), closes [#45](https://github.com/planetaryescape/mxr/issues/45)
+* repair Linux keyring CI ([201a1cd](https://github.com/planetaryescape/mxr/commit/201a1cd28191a824d96e94b1c7c2bd77f94b1a50))
+
 ## [0.5.50](https://github.com/planetaryescape/mxr/compare/v0.5.49...v0.5.50) (2026-05-31)
 
 

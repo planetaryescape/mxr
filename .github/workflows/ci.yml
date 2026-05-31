@@ -311,7 +311,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - run: cargo install sqlx-cli --version 0.8.6 --locked --no-default-features --features sqlite,rustls
       - run: |
           db_path="${RUNNER_TEMP}/mxr-sqlx-check.db"

@@ -7,6 +7,10 @@ updates:
     groups:
       all-deps:
         patterns: ["*"]
+        # Automate approves non-major updates only; keep this group aligned.
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     ignore:
       - dependency-name: "axios"
         versions: ["1.14.1", "0.30.4"]

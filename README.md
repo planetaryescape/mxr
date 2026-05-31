@@ -21,6 +21,13 @@ brew install mxr
 cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
 ```
 
+Linux source installs need native headers for audio and OS keyring support:
+
+```bash
+# Debian/Ubuntu
+sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
+```
+
 Pre-built release tarballs are also available for:
 
 - macOS Apple Silicon

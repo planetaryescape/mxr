@@ -24,7 +24,6 @@ Equivalent to `brew tap planetaryescape/mxr && brew install mxr` if you prefer t
 Download from [GitHub Releases](https://github.com/planetaryescape/mxr/releases/latest):
 
 - macOS Apple Silicon (aarch64)
-- macOS Intel (x86_64)
 - Linux x86_64
 
 Extract and place `mxr` in your `$PATH`:

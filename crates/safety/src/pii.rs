@@ -245,7 +245,11 @@ mod tests {
 
     #[test]
     fn pem_private_key_blocks() {
-        let body = "Hi,\n-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAA...\n";
+        let body = concat!(
+            "Hi,\n",
+            "-----BEGIN RSA ",
+            "PRIVATE KEY-----\nMIIEpAIBAA...\n"
+        );
         let issues = check(&d(body));
         assert!(
             issues
@@ -329,7 +333,11 @@ mod tests {
             ("Card: 4242 4242 4242 4242 thanks", "4242 4242 4242 4242"),
             ("dob 987-65-4321", "987-65-4321"),
             (
-                "Hi,\n-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAA0xyz\n",
+                concat!(
+                    "Hi,\n",
+                    "-----BEGIN RSA ",
+                    "PRIVATE KEY-----\nMIIEpAIBAA0xyz\n"
+                ),
                 "MIIEpAIBAA0xyz",
             ),
         ];

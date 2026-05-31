@@ -88,7 +88,7 @@ mxr compose --to alice@example.com --body 'see attached' --check
 
 # If --check turned up a Blocker you accept (e.g. you really do mean
 # to email competitor.com), it minted a single-use override token.
-mxr send DRAFT_ID --override-safety 01HXYZ-K4M2-...
+mxr send DRAFT_ID --override-safety OVERRIDE_TOKEN_FROM_CHECK
 ```
 
 ## Account selection

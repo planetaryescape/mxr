@@ -30,6 +30,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Verify release tag matches Cargo version
+        run: bash ./scripts/release_version_gate.sh "${GITHUB_REF_NAME}"
       - id: previous-tag
         name: Find previous tag
         run: |
@@ -81,8 +83,8 @@ jobs:
           if [ -z "$MXR_GMAIL_TEST_CLIENT_ID" ] \
             || [ -z "$MXR_GMAIL_TEST_CLIENT_SECRET" ] \
             || [ -z "$MXR_GMAIL_TEST_REFRESH_TOKEN" ]; then
-            echo "::warning ::Missing MXR_GMAIL_TEST_{CLIENT_ID,CLIENT_SECRET,REFRESH_TOKEN}; skipping live provider smoke."
-            exit 0
+            echo "::error ::Missing MXR_GMAIL_TEST_{CLIENT_ID,CLIENT_SECRET,REFRESH_TOKEN}; live Gmail smoke is required for CLI releases."
+            exit 1
           fi
           cargo test -p mxr --test live_gmail_e2e -- --ignored --nocapture
       - name: Skip CLI smoke
@@ -122,6 +124,13 @@ jobs:
         if: matrix.use_cross
         run: cargo install cross --locked
 
+      - name: Gate bundled Gmail OAuth credentials
+        env:
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GMAIL_OAUTH_VERIFICATION_CONFIRMED: ${{ secrets.GMAIL_OAUTH_VERIFICATION_CONFIRMED }}
+        run: bash ./scripts/release_gmail_oauth_gate.sh
+
       - name: Build web SPA
         working-directory: apps/web
         run: npm ci && npm run build
@@ -130,16 +139,12 @@ jobs:
         if: matrix.use_cross
         run: cross build --release --locked --target ${{ matrix.target }} -p mxr ${{ matrix.cargo_args }}
         env:
-          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
-          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
 
       - name: Build (native)
         if: "!matrix.use_cross"
         run: cargo build --release --locked --target ${{ matrix.target }} -p mxr ${{ matrix.cargo_args }}
         env:
-          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
-          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
 
       - name: SPA embedded in release binary
@@ -166,9 +171,8 @@ jobs:
           echo "${HTML}" | grep -q '/assets/index-' || { echo "FAIL: no Vite-built bundle"; exit 1; }
 
       # macOS code signing happens BEFORE the archive so the signed binary
-      # is what gets distributed. Both signing and notarization gracefully
-      # no-op when their secrets are missing — the maintainer provisions
-      # Apple Developer credentials once and re-runs.
+      # is what gets distributed. Production releases fail closed when
+      # signing/notarization credentials are missing.
       - name: Import Apple Developer ID certificate
         if: matrix.platform_family == 'macos'
         env:
@@ -176,10 +180,11 @@ jobs:
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
           APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
         run: |
-          if [ -z "$APPLE_CERT_P12_BASE64" ]; then
-            echo "::warning ::APPLE_CERT_P12_BASE64 secret not set; macOS binary will be unsigned (Gatekeeper will warn end users)."
-            echo "APPLE_SIGN_AVAILABLE=false" >> "$GITHUB_ENV"
-            exit 0
+          if [ -z "$APPLE_CERT_P12_BASE64" ] \
+            || [ -z "$APPLE_CERT_PASSWORD" ] \
+            || [ -z "$APPLE_KEYCHAIN_PASSWORD" ]; then
+            echo "::error ::APPLE_CERT_P12_BASE64, APPLE_CERT_PASSWORD, and APPLE_KEYCHAIN_PASSWORD are required for macOS releases."
+            exit 1
           fi
           KEYCHAIN_PATH="$RUNNER_TEMP/codesign.keychain-db"
           echo "$APPLE_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
@@ -199,8 +204,8 @@ jobs:
           MATRIX_TARGET: ${{ matrix.target }}
         run: |
           if [ -z "$APPLE_DEVELOPER_ID" ]; then
-            echo "::warning ::APPLE_DEVELOPER_ID secret not set; cannot sign without an identity name."
-            exit 0
+            echo "::error ::APPLE_DEVELOPER_ID secret is required for macOS releases."
+            exit 1
           fi
           for BINARY in \
             "target/${MATRIX_TARGET}/release/mxr" \
@@ -239,8 +244,8 @@ jobs:
           MATRIX_TARGET: ${{ matrix.target }}
         run: |
           if [ -z "$APPLE_ID" ] || [ -z "$APPLE_TEAM_ID" ] || [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ]; then
-            echo "::warning ::Notarization secrets not set; binary is signed but not notarized. End users will see a Gatekeeper warning on first run."
-            exit 0
+            echo "::error ::APPLE_ID, APPLE_TEAM_ID, and APPLE_APP_SPECIFIC_PASSWORD are required for notarized macOS releases."
+            exit 1
           fi
           NOTARIZE_DIR="$RUNNER_TEMP/mxr-notarize"
           NOTARIZE_ZIP="$RUNNER_TEMP/mxr-notarize.zip"

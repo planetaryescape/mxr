@@ -3,6 +3,16 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use sqlx::Row;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SentDraftReceipt {
+    pub draft_id: DraftId,
+    pub account_id: AccountId,
+    pub local_message_id: MessageId,
+    pub provider_message_id: Option<String>,
+    pub rfc2822_message_id: String,
+    pub sent_at: chrono::DateTime<chrono::Utc>,
+}
+
 impl super::Store {
     pub async fn insert_draft(&self, draft: &Draft) -> Result<(), sqlx::Error> {
         let id = draft.id.as_str();
@@ -23,6 +33,46 @@ impl super::Store {
 
         sqlx::query(
             "INSERT INTO drafts (id, account_id, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, attachments, inline_calendar_reply_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(id)
+        .bind(account_id)
+        .bind(in_reply_to)
+        .bind(intent)
+        .bind(to_addrs)
+        .bind(cc_addrs)
+        .bind(bcc_addrs)
+        .bind(&draft.subject)
+        .bind(&draft.body_markdown)
+        .bind(attachments)
+        .bind(inline_calendar_reply_json)
+        .bind(created_at)
+        .bind(updated_at)
+        .execute(self.writer())
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn insert_draft_if_absent(&self, draft: &Draft) -> Result<(), sqlx::Error> {
+        let id = draft.id.as_str();
+        let account_id = draft.account_id.as_str();
+        let to_addrs = encode_json(&draft.to)?;
+        let cc_addrs = encode_json(&draft.cc)?;
+        let bcc_addrs = encode_json(&draft.bcc)?;
+        let attachments = encode_json(&draft.attachments)?;
+        let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
+        let intent = draft.intent.as_db_str();
+        let inline_calendar_reply_json = draft
+            .inline_calendar_reply
+            .as_ref()
+            .map(encode_json)
+            .transpose()?;
+        let created_at = draft.created_at.timestamp();
+        let updated_at = draft.updated_at.timestamp();
+
+        sqlx::query(
+            "INSERT OR IGNORE INTO drafts (id, account_id, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, attachments, inline_calendar_reply_json, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
@@ -219,6 +269,58 @@ impl super::Store {
         .execute(self.writer())
         .await?;
         Ok(())
+    }
+
+    pub async fn record_sent_draft_receipt(
+        &self,
+        draft_id: &DraftId,
+        account_id: &AccountId,
+        local_message_id: &MessageId,
+        provider_message_id: Option<&str>,
+        rfc2822_message_id: &str,
+        sent_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO sent_draft_receipts
+             (draft_id, account_id, local_message_id, provider_message_id, rfc2822_message_id, sent_at)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(draft_id.as_str())
+        .bind(account_id.as_str())
+        .bind(local_message_id.as_str())
+        .bind(provider_message_id)
+        .bind(rfc2822_message_id)
+        .bind(sent_at.timestamp())
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_sent_draft_receipt(
+        &self,
+        draft_id: &DraftId,
+    ) -> Result<Option<SentDraftReceipt>, sqlx::Error> {
+        let row = sqlx::query(
+            r#"SELECT draft_id, account_id, local_message_id,
+                      provider_message_id, rfc2822_message_id, sent_at
+               FROM sent_draft_receipts
+               WHERE draft_id = ?"#,
+        )
+        .bind(draft_id.as_str())
+        .fetch_optional(self.reader())
+        .await?;
+
+        row.map(|r| {
+            Ok(SentDraftReceipt {
+                draft_id: decode_id(&r.get::<String, _>("draft_id"))?,
+                account_id: decode_id(&r.get::<String, _>("account_id"))?,
+                local_message_id: decode_id(&r.get::<String, _>("local_message_id"))?,
+                provider_message_id: r.get::<Option<String>, _>("provider_message_id"),
+                rfc2822_message_id: r.get::<String, _>("rfc2822_message_id"),
+                sent_at: decode_timestamp(r.get::<i64, _>("sent_at"))?,
+            })
+        })
+        .transpose()
     }
 }
 

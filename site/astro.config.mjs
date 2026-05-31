@@ -97,7 +97,14 @@ export default defineConfig({
                 {
                   label: 'Commands',
                   collapsed: true,
-                  autogenerate: { directory: 'reference/cli' },
+                  items: [
+                    {
+                      autogenerate: {
+                        directory: 'reference/cli',
+                        collapsed: true,
+                      },
+                    },
+                  ],
                 },
               ],
             },

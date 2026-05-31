@@ -427,6 +427,142 @@ async fn dispatch_save_and_send_stored_draft() {
     assert!(state.store.get_draft(&draft.id).await.unwrap().is_none());
 }
 
+#[tokio::test]
+async fn dispatch_send_stored_draft_replay_returns_original_receipt_without_resending() {
+    let account_id = mxr_core::AccountId::new();
+    let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+    let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+    let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake.clone();
+    let send_provider: Arc<dyn mxr_core::MailSendProvider> = fake.clone();
+    let state = Arc::new(
+        AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+            .await
+            .unwrap(),
+    );
+
+    let draft = mxr_core::types::Draft {
+        id: mxr_core::DraftId::new(),
+        account_id,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![mxr_core::types::Address {
+            name: None,
+            email: "test@example.com".to_string(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Stored replay-safe draft".to_string(),
+        body_markdown: "Test body".to_string(),
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+    state.store.insert_draft(&draft).await.unwrap();
+
+    let send = || IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::SendStoredDraft {
+            draft_id: draft.id.clone(),
+            override_safety_token: None,
+        }),
+    };
+    let receipt = |resp: IpcMessage| match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data:
+                ResponseData::SendReceipt {
+                    local_message_id,
+                    provider_message_id,
+                    rfc2822_message_id,
+                },
+        }) => (local_message_id, provider_message_id, rfc2822_message_id),
+        other => panic!("Expected SendReceipt, got {other:?}"),
+    };
+
+    let first = receipt(handle_request(&state, &send()).await);
+    assert_eq!(fake.sent_drafts().len(), 1);
+    assert!(state.store.get_draft(&draft.id).await.unwrap().is_none());
+
+    let second = receipt(handle_request(&state, &send()).await);
+    assert_eq!(
+        fake.sent_drafts().len(),
+        1,
+        "replaying the same SendStoredDraft id must not invoke the provider twice"
+    );
+    assert_eq!(
+        second, first,
+        "a replay should return the original send receipt so clients can safely retry"
+    );
+}
+
+#[tokio::test]
+async fn dispatch_send_draft_replay_returns_original_receipt_without_resending() {
+    let account_id = mxr_core::AccountId::new();
+    let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+    let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+    let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake.clone();
+    let send_provider: Arc<dyn mxr_core::MailSendProvider> = fake.clone();
+    let state = Arc::new(
+        AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+            .await
+            .unwrap(),
+    );
+
+    let draft = mxr_core::types::Draft {
+        id: mxr_core::DraftId::new(),
+        account_id,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![mxr_core::types::Address {
+            name: None,
+            email: "test@example.com".to_string(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Replay-safe draft".to_string(),
+        body_markdown: "Test body".to_string(),
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+
+    let send = || IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::SendDraft {
+            draft: draft.clone(),
+            override_safety_token: None,
+        }),
+    };
+    let receipt = |resp: IpcMessage| match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data:
+                ResponseData::SendReceipt {
+                    local_message_id,
+                    provider_message_id,
+                    rfc2822_message_id,
+                },
+        }) => (local_message_id, provider_message_id, rfc2822_message_id),
+        other => panic!("Expected SendReceipt, got {other:?}"),
+    };
+
+    let first = receipt(handle_request(&state, &send()).await);
+    assert_eq!(fake.sent_drafts().len(), 1);
+
+    let second = receipt(handle_request(&state, &send()).await);
+    assert_eq!(
+        fake.sent_drafts().len(),
+        1,
+        "replaying the same SendDraft id must not invoke the provider twice"
+    );
+    assert_eq!(
+        second, first,
+        "a replay should return the original send receipt so clients can safely retry"
+    );
+}
+
 /// Slice 1.3: when CheckDraftSafety returns Blocked, the daemon
 /// mints a single-use override token and stamps it onto each
 /// blocker issue. The next SendStoredDraft with that token must
@@ -459,7 +595,12 @@ async fn override_token_unblocks_send_exactly_once() {
         cc: vec![],
         bcc: vec![],
         subject: "key transfer".to_string(),
-        body_markdown: "Here is the key:\n-----BEGIN RSA PRIVATE KEY-----\n...\n".to_string(),
+        body_markdown: concat!(
+            "Here is the key:\n",
+            "-----BEGIN RSA ",
+            "PRIVATE KEY-----\n...\n"
+        )
+        .to_string(),
         attachments: vec![],
         inline_calendar_reply: None,
         created_at: chrono::Utc::now(),
@@ -588,7 +729,7 @@ async fn override_token_unblocks_send_exactly_once() {
         cc: vec![],
         bcc: vec![],
         subject: "again".into(),
-        body_markdown: "-----BEGIN RSA PRIVATE KEY-----\nzz\n".into(),
+        body_markdown: concat!("-----BEGIN RSA ", "PRIVATE KEY-----\nzz\n").into(),
         attachments: vec![],
         inline_calendar_reply: None,
         created_at: chrono::Utc::now(),

@@ -39,6 +39,9 @@ jobs:
       - name: Run mxr-web integration suite
         run: cargo test -p mxr-web --test integration
 
+      - name: Verify documented HTTP routes are mounted
+        run: cargo test -p mxr-web --test integration openapi_documented_paths_are_reachable_by_documented_method -- --nocapture
+
       - name: Verify openapi.json snapshot
         # Insta snapshot of /api/v1/openapi.json metadata + schema names is
         # committed at crates/web/src/snapshots/. Drift fails this step.
@@ -75,11 +78,8 @@ jobs:
 
       - name: Schemathesis spec lint
         # st run with --dry-run loads + validates the spec without
-        # exercising endpoints. This catches schema-level breakage
-        # (missing $refs, malformed components) early.
-        # Endpoint-level conformance testing requires a real daemon
-        # backed by FakeProvider — tracked as a follow-up after v0.5
-        # ships.
+        # exercising endpoints. Route-level conformance is covered above by
+        # the fake-IPC bridge integration test.
         run: schemathesis run --dry-run --validate-schema=true --experimental=openapi-3.1 .openapi/spec.json
 
       - name: Upload spec artifact

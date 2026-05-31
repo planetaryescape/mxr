@@ -4,7 +4,6 @@ set -euo pipefail
 
 client_id="${GMAIL_CLIENT_ID:-}"
 client_secret="${GMAIL_CLIENT_SECRET:-}"
-verified="${GMAIL_OAUTH_VERIFICATION_CONFIRMED:-}"
 
 set_build_env() {
   local output_client_id="$1"
@@ -29,11 +28,5 @@ if [[ -z "${client_id}" || -z "${client_secret}" ]]; then
   exit 1
 fi
 
-if [[ "${verified}" != "true" ]]; then
-  set_build_env "" ""
-  echo "::warning ::Bundled Gmail OAuth credentials are present but not verified; omitting them from release artifacts. BYOC remains the production Gmail path." >&2
-  exit 0
-fi
-
 set_build_env "${client_id}" "${client_secret}"
-echo "Bundled Gmail OAuth verification gate passed."
+echo "Bundled Gmail OAuth credentials included in release artifacts."

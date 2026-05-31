@@ -660,7 +660,7 @@ The docs site deploys on every push to main (for content updates), but also on r
 
 ---
 
-## Required GitHub secrets
+## Release GitHub secrets
 
 | Secret | Purpose |
 |---|---|
@@ -668,24 +668,23 @@ The docs site deploys on every push to main (for content updates), but also on r
 | `HOMEBREW_TAP_TOKEN` | GitHub PAT with push access to the homebrew-tap repo |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare Pages deployment |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account identifier |
-| `APPLE_CERT_P12_BASE64` | Developer ID Application cert exported as `.p12`, then `base64 -i cert.p12 \| pbcopy`. Required for macOS release artifacts. |
-| `APPLE_CERT_PASSWORD` | Password used when exporting the `.p12`. |
-| `APPLE_KEYCHAIN_PASSWORD` | Throwaway password used to unlock the temporary keychain CI creates per run. Any string works; CI deletes the keychain after the job. |
-| `APPLE_DEVELOPER_ID` | Identity name passed to `codesign --sign` — typically `Developer ID Application: Your Name (TEAMID)`. Find via `security find-identity -p codesigning -v`. |
-| `APPLE_ID` | Apple Developer account email — needed by `notarytool submit`. |
-| `APPLE_TEAM_ID` | 10-char alphanumeric team identifier (visible in Apple Developer portal). |
-| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password generated at appleid.apple.com → Sign-In and Security → App-Specific Passwords. Notarytool authenticates with this, NOT your real Apple ID password. |
-| `GMAIL_CLIENT_ID` | Optional bundled Gmail OAuth client id. Omit for BYOC-only production releases. |
+| `APPLE_CERT_P12_BASE64` | Optional Developer ID Application cert exported as `.p12`, then `base64 -i cert.p12 \| pbcopy`. When absent, macOS release artifacts ship unsigned. |
+| `APPLE_CERT_PASSWORD` | Optional password used when exporting the `.p12`; required only when `APPLE_CERT_P12_BASE64` is set. |
+| `APPLE_KEYCHAIN_PASSWORD` | Optional throwaway password used to unlock the temporary CI keychain; required only when `APPLE_CERT_P12_BASE64` is set. |
+| `APPLE_DEVELOPER_ID` | Optional identity name passed to `codesign --sign` — typically `Developer ID Application: Your Name (TEAMID)`. When absent, signing is skipped. |
+| `APPLE_ID` | Optional Apple account email for `notarytool submit`; required only for notarization. |
+| `APPLE_TEAM_ID` | Optional 10-char alphanumeric team identifier; required only for notarization. |
+| `APPLE_APP_SPECIFIC_PASSWORD` | Optional app-specific password generated at appleid.apple.com. Required only for notarization. |
+| `GMAIL_CLIENT_ID` | Optional bundled Gmail OAuth client id. When set with `GMAIL_CLIENT_SECRET`, it is compiled into release artifacts by default. |
 | `GMAIL_CLIENT_SECRET` | Optional bundled Gmail OAuth client secret. Must be set with `GMAIL_CLIENT_ID`, or both omitted. |
-| `GMAIL_OAUTH_VERIFICATION_CONFIRMED` | Set to literal `true` only after the bundled Gmail OAuth app has completed Google verification/CASA as required. Release artifacts omit bundled Gmail credentials unless this confirmation is present. |
-| `MXR_GMAIL_TEST_CLIENT_ID` | Live Gmail E2E smoke test. Required for CLI-affecting release tags. OAuth client id of the throwaway Gmail test account. |
-| `MXR_GMAIL_TEST_CLIENT_SECRET` | OAuth client secret for the same. |
-| `MXR_GMAIL_TEST_REFRESH_TOKEN` | Long-lived refresh token. Generate once with the test account; rotate when it expires. |
+| `MXR_GMAIL_TEST_CLIENT_ID` | Optional live Gmail E2E smoke test client id for release runs. |
+| `MXR_GMAIL_TEST_CLIENT_SECRET` | Optional live Gmail E2E smoke test client secret. |
+| `MXR_GMAIL_TEST_REFRESH_TOKEN` | Optional live Gmail E2E smoke refresh token. When any live smoke secret is absent, release skips the live Gmail smoke. |
 
-For CLI-affecting release tags, live Gmail smoke, bundled Gmail OAuth
-verification confirmation (when bundled credentials are present), macOS
-signing, and notarization fail closed. Docs-only or version-only tags
-still skip binary artifacts via
+For CLI-affecting release tags, deterministic CLI/provider tests remain
+release-blocking. Live Gmail smoke, macOS signing, and notarization are
+opportunistic: they run when their secrets are configured and skip with a
+warning when secrets are absent. Docs-only or version-only tags still skip binary artifacts via
 `scripts/release_change_scope.sh`. Every release run first verifies that
 the tag (for example `v0.5.47`) matches `workspace.package.version` in
 `Cargo.toml` via `scripts/release_version_gate.sh`.

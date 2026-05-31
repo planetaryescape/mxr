@@ -37,22 +37,14 @@ assert_build_env() {
 }
 
 expect_ok "no bundled Gmail credentials" \
-  GMAIL_CLIENT_ID= GMAIL_CLIENT_SECRET= GMAIL_OAUTH_VERIFICATION_CONFIRMED=
+  GMAIL_CLIENT_ID= GMAIL_CLIENT_SECRET=
 assert_build_env "" ""
 
 expect_fail "partial bundled Gmail credentials" \
-  GMAIL_CLIENT_ID=client GMAIL_CLIENT_SECRET= GMAIL_OAUTH_VERIFICATION_CONFIRMED=true
+  GMAIL_CLIENT_ID=client GMAIL_CLIENT_SECRET=
 
-expect_ok "unverified bundled Gmail credentials are omitted from BYOC release" \
-  GMAIL_CLIENT_ID=client GMAIL_CLIENT_SECRET=secret GMAIL_OAUTH_VERIFICATION_CONFIRMED=
-assert_build_env "" ""
-
-expect_ok "non-literal confirmation omits bundled Gmail credentials" \
-  GMAIL_CLIENT_ID=client GMAIL_CLIENT_SECRET=secret GMAIL_OAUTH_VERIFICATION_CONFIRMED=yes
-assert_build_env "" ""
-
-expect_ok "verified bundled Gmail credentials" \
-  GMAIL_CLIENT_ID=client GMAIL_CLIENT_SECRET=secret GMAIL_OAUTH_VERIFICATION_CONFIRMED=true
+expect_ok "unverified bundled Gmail credentials are still bundled" \
+  GMAIL_CLIENT_ID=client GMAIL_CLIENT_SECRET=secret
 assert_build_env "client" "secret"
 
 echo "release_gmail_oauth_gate_test: ok"

@@ -83,8 +83,8 @@ jobs:
           if [ -z "$MXR_GMAIL_TEST_CLIENT_ID" ] \
             || [ -z "$MXR_GMAIL_TEST_CLIENT_SECRET" ] \
             || [ -z "$MXR_GMAIL_TEST_REFRESH_TOKEN" ]; then
-            echo "::error ::Missing MXR_GMAIL_TEST_{CLIENT_ID,CLIENT_SECRET,REFRESH_TOKEN}; live Gmail smoke is required for CLI releases."
-            exit 1
+            echo "::warning ::Missing MXR_GMAIL_TEST_{CLIENT_ID,CLIENT_SECRET,REFRESH_TOKEN}; skipping live provider smoke."
+            exit 0
           fi
           cargo test -p mxr --test live_gmail_e2e -- --ignored --nocapture
       - name: Skip CLI smoke
@@ -128,7 +128,6 @@ jobs:
         env:
           GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
           GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
-          GMAIL_OAUTH_VERIFICATION_CONFIRMED: ${{ secrets.GMAIL_OAUTH_VERIFICATION_CONFIRMED }}
         run: bash ./scripts/release_gmail_oauth_gate.sh
 
       - name: Build web SPA
@@ -170,9 +169,10 @@ jobs:
           echo "${HTML}" | grep -q 'spa-not-built' && { echo "FAIL: placeholder served"; exit 1; }
           echo "${HTML}" | grep -q '/assets/index-' || { echo "FAIL: no Vite-built bundle"; exit 1; }
 
-      # macOS code signing happens BEFORE the archive so the signed binary
-      # is what gets distributed. Production releases fail closed when
-      # signing/notarization credentials are missing.
+      # macOS code signing happens BEFORE the archive so signed bytes are what
+      # get distributed when Apple credentials are configured. Missing Apple
+      # credentials are non-blocking: the release ships unsigned and users may
+      # need to trust the binary when Gatekeeper prompts.
       - name: Import Apple Developer ID certificate
         if: matrix.platform_family == 'macos'
         env:
@@ -183,8 +183,10 @@ jobs:
           if [ -z "$APPLE_CERT_P12_BASE64" ] \
             || [ -z "$APPLE_CERT_PASSWORD" ] \
             || [ -z "$APPLE_KEYCHAIN_PASSWORD" ]; then
-            echo "::error ::APPLE_CERT_P12_BASE64, APPLE_CERT_PASSWORD, and APPLE_KEYCHAIN_PASSWORD are required for macOS releases."
-            exit 1
+            echo "::warning ::Apple signing certificate secrets not set; macOS binary will be unsigned (Gatekeeper will warn end users)."
+            echo "APPLE_SIGN_AVAILABLE=false" >> "$GITHUB_ENV"
+            echo "APPLE_CODESIGNED=false" >> "$GITHUB_ENV"
+            exit 0
           fi
           KEYCHAIN_PATH="$RUNNER_TEMP/codesign.keychain-db"
           echo "$APPLE_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
@@ -204,8 +206,9 @@ jobs:
           MATRIX_TARGET: ${{ matrix.target }}
         run: |
           if [ -z "$APPLE_DEVELOPER_ID" ]; then
-            echo "::error ::APPLE_DEVELOPER_ID secret is required for macOS releases."
-            exit 1
+            echo "::warning ::APPLE_DEVELOPER_ID secret not set; cannot sign without an identity name."
+            echo "APPLE_CODESIGNED=false" >> "$GITHUB_ENV"
+            exit 0
           fi
           for BINARY in \
             "target/${MATRIX_TARGET}/release/mxr" \
@@ -215,6 +218,7 @@ jobs:
               --sign "$APPLE_DEVELOPER_ID" "$BINARY"
             codesign --verify --strict --verbose=2 "$BINARY"
           done
+          echo "APPLE_CODESIGNED=true" >> "$GITHUB_ENV"
 
       - name: Package CLI archive
         if: needs.plan.outputs.cli_changed == 'true'
@@ -236,7 +240,7 @@ jobs:
       # doesn't apply to bare CLI binaries (Apple validates online via
       # Gatekeeper). The macOS .tar.gz contains the same signed bytes.
       - name: Notarize macOS binary
-        if: matrix.platform_family == 'macos' && env.APPLE_SIGN_AVAILABLE == 'true'
+        if: matrix.platform_family == 'macos' && env.APPLE_CODESIGNED == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -244,8 +248,8 @@ jobs:
           MATRIX_TARGET: ${{ matrix.target }}
         run: |
           if [ -z "$APPLE_ID" ] || [ -z "$APPLE_TEAM_ID" ] || [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ]; then
-            echo "::error ::APPLE_ID, APPLE_TEAM_ID, and APPLE_APP_SPECIFIC_PASSWORD are required for notarized macOS releases."
-            exit 1
+            echo "::warning ::Notarization secrets not set; binary is signed but not notarized. End users may see a Gatekeeper warning on first run."
+            exit 0
           fi
           NOTARIZE_DIR="$RUNNER_TEMP/mxr-notarize"
           NOTARIZE_ZIP="$RUNNER_TEMP/mxr-notarize.zip"

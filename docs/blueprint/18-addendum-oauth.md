@@ -59,7 +59,9 @@ When the app exceeds 100 users, Google requires:
 
 **Alpha / early adopter builds** may use an unverified bundled client while the audience is small and technically tolerant of Google's warning screen.
 
-**GA builds** should not depend on an unverified bundled Gmail client for broad distribution. Before marketing one-click Gmail as generally available, complete or explicitly gate on:
+**GA builds** bundle the configured mxr Gmail client by default so first-run
+Gmail setup works without BYOC. To remove Google's unverified-app warning for
+broad distribution, complete:
 
 - Privacy policy hosted at the docs site (mirrors `PRIVACY.md`).
 - Domain verified via Google Search Console.
@@ -67,7 +69,9 @@ When the app exceeds 100 users, Google requires:
 - CASA assessment if Google requires it for the final scope set.
 - Submit via Google Cloud Console > API & Services > OAuth consent screen > Publish.
 
-Release artifacts omit bundled Gmail credentials via `scripts/release_gmail_oauth_gate.sh` unless `GMAIL_OAUTH_VERIFICATION_CONFIRMED=true`. Until that external process is complete, BYOC remains the production-safe Gmail path and the bundled client remains an alpha/early-adopter convenience.
+Release artifacts include bundled Gmail credentials whenever both
+`GMAIL_CLIENT_ID` and `GMAIL_CLIENT_SECRET` are configured at build time. If
+either value is omitted, the release falls back to BYOC-only Gmail setup.
 
 ---
 

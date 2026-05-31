@@ -146,6 +146,7 @@ jobs:
       - uses: actions/checkout@v6
       - run: bash scripts/release_version_gate_test.sh
       - run: bash scripts/release_gmail_oauth_gate_test.sh
+      - run: bash scripts/release_workflow_test.sh
       - run: bash scripts/provider_smoke_workflow_test.sh
       - run: bash scripts/ci_workflow_test.sh
 

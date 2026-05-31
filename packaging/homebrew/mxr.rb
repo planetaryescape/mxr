@@ -14,6 +14,8 @@ class Mxr < Formula
   end
 
   on_linux do
+    depends_on "dbus"
+
     on_intel do
       url "https://github.com/planetaryescape/mxr/releases/download/v#{version}/mxr-v#{version}-linux-x86_64.tar.gz"
       sha256 "__SHA256_LINUX_X86_64__"

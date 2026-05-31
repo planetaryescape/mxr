@@ -298,7 +298,10 @@ async fn rehydrate_attachment_only_invites(
             // Already has calendar metadata, or has no calendar attachment to
             // recover from — nothing to re-hydrate.
             if body.metadata.calendar.is_some()
-                || !body.attachments.iter().any(|att| att.is_calendar())
+                || !body
+                    .attachments
+                    .iter()
+                    .any(mxr_core::AttachmentMeta::is_calendar)
             {
                 continue;
             }
@@ -1156,8 +1159,7 @@ async fn materialize_remote_asset(
         .is_some_and(|length| length > MAX_REMOTE_ASSET_BYTES)
     {
         return Err(format!(
-            "remote image exceeds {} byte limit",
-            MAX_REMOTE_ASSET_BYTES
+            "remote image exceeds {MAX_REMOTE_ASSET_BYTES} byte limit"
         ));
     }
     let mime_type = response
@@ -1181,8 +1183,7 @@ async fn read_capped_remote_asset(mut response: reqwest::Response) -> Result<Vec
         let next_len = bytes.len().saturating_add(chunk.len());
         if next_len as u64 > MAX_REMOTE_ASSET_BYTES {
             return Err(format!(
-                "remote image exceeds {} byte limit",
-                MAX_REMOTE_ASSET_BYTES
+                "remote image exceeds {MAX_REMOTE_ASSET_BYTES} byte limit"
             ));
         }
         bytes.extend_from_slice(&chunk);

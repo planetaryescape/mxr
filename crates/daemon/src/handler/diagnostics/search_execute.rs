@@ -26,6 +26,7 @@ struct SearchExecutionOptions {
     explain: bool,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn execute_search(
     state: &AppState,
     query: &str,

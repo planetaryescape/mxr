@@ -145,6 +145,7 @@ fn search_request(id: u64) -> IpcMessage {
             query: "deployment".into(),
             limit: 20,
             offset: 0,
+            account_id: None,
             mode: Some(SearchMode::Lexical),
             sort: Some(SortOrder::DateDesc),
             explain: false,

@@ -41,8 +41,8 @@ fn cases() -> Vec<SecretCase> {
         },
         SecretCase {
             kind: "GitHub PAT (ghp_)",
-            body: "token: ghp_realgithubpersonaccesstokenABCDEFGHIJ",
-            raw_marker: "ghp_realgithubpersonaccesstokenABCDEFGHIJ",
+            body: concat!("token: ", "ghp_", "realgithubpersonaccesstokenABCDEFGHIJ"),
+            raw_marker: concat!("ghp_", "realgithubpersonaccesstokenABCDEFGHIJ"),
             expected_preview_substring: "ghp_",
         },
         SecretCase {
@@ -86,7 +86,7 @@ fn cases() -> Vec<SecretCase> {
         },
         SecretCase {
             kind: "PEM private key",
-            body: "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQE...",
+            body: concat!("-----BEGIN RSA ", "PRIVATE KEY-----\nMIIEowIBAAKCAQE..."),
             raw_marker: "MIIEowIBAAKCAQE",
             expected_preview_substring: "BEGIN",
         },

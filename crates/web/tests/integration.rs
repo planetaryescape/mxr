@@ -124,6 +124,105 @@ async fn openapi_spec_is_3_1_and_lists_v1_paths() {
 }
 
 #[tokio::test]
+async fn openapi_documented_paths_are_reachable_by_documented_method() {
+    let temp = TempDir::new().unwrap();
+    let socket = temp.path().join("mxr.sock");
+    let _server = spawn_fake(
+        &socket,
+        |_| {
+            Some(Response::error_kinded(
+                "conformance fixture",
+                mxr_protocol::IpcErrorKind::Unsupported,
+            ))
+        },
+        vec![],
+    );
+    let addr = boot_bridge(socket).await;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    let spec: serde_json::Value = client
+        .get(format!("http://{addr}/api/v1/openapi.json"))
+        .bearer_auth(TEST_TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let paths = spec["paths"].as_object().expect("OpenAPI paths object");
+
+    let mut failures = Vec::new();
+    for (path, methods) in paths {
+        let Some(methods) = methods.as_object() else {
+            continue;
+        };
+        for method in methods.keys() {
+            if path == "/api/v1/events" {
+                continue;
+            }
+            let method = method.to_ascii_uppercase();
+            let Ok(method) = reqwest::Method::from_bytes(method.as_bytes()) else {
+                continue;
+            };
+            let url = format!("http://{addr}{}", sample_path(path));
+            let mut request = client.request(method.clone(), &url).bearer_auth(TEST_TOKEN);
+            if matches!(
+                method,
+                reqwest::Method::POST | reqwest::Method::PUT | reqwest::Method::PATCH
+            ) {
+                request = request.json(&serde_json::json!({}));
+            }
+            let result =
+                tokio::time::timeout(std::time::Duration::from_millis(250), request.send()).await;
+            let status = match result {
+                Ok(Ok(response)) => response.status(),
+                Ok(Err(error)) => {
+                    failures.push(format!("{method} {path} -> request error: {error}"));
+                    continue;
+                }
+                Err(_) => {
+                    failures.push(format!("{method} {path} -> timed out"));
+                    continue;
+                }
+            };
+            if matches!(
+                status,
+                reqwest::StatusCode::NOT_FOUND | reqwest::StatusCode::METHOD_NOT_ALLOWED
+            ) {
+                failures.push(format!("{method} {path} -> {status}"));
+            }
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "documented OpenAPI paths must be mounted by the bridge router:\n{}",
+        failures.join("\n")
+    );
+}
+
+fn sample_path(path: &str) -> String {
+    let id = "018f2f9d-1111-7111-8111-111111111111";
+    let mut out = String::with_capacity(path.len());
+    let mut rest = path;
+    while let Some(start) = rest.find('{') {
+        let (prefix, after_prefix) = rest.split_at(start);
+        out.push_str(prefix);
+        let Some(end) = after_prefix.find('}') else {
+            out.push_str(after_prefix);
+            return out;
+        };
+        out.push_str(id);
+        rest = &after_prefix[end + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+#[tokio::test]
 async fn health_is_unauthenticated_and_returns_protocol_version() {
     let temp = TempDir::new().unwrap();
     let socket = temp.path().join("mxr.sock");

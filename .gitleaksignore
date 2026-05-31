@@ -1,0 +1,16 @@
+# Historical test/doc fixtures using fake secret shapes. Keep these as the
+# audited baseline so CI can block any new leaked secret fingerprints.
+f40c8965d152089838de851a1ca0efa3eb7a21da:crates/daemon/src/handler/tests/platform_and_export.rs:private-key:463
+d60b8c95f5643314472447bc0ff6dd053f5934a1:crates/daemon/src/handler/tests.rs:private-key:5204
+7be263e42bf3de4c6fdfe5db352d92bd5a08d29b:site/src/content/docs/guides/pre-send-safety.md:private-key:178
+7be263e42bf3de4c6fdfe5db352d92bd5a08d29b:site/src/content/docs/guides/pre-send-safety.md:generic-api-key:268
+ae2ee1caf28aa6eb4dc3272dc3b5ef39cad4cbfd:crates/safety/tests/no_raw_secrets.rs:github-pat:41
+ae2ee1caf28aa6eb4dc3272dc3b5ef39cad4cbfd:crates/safety/tests/no_raw_secrets.rs:github-pat:42
+6cee8de49bf405318a88525cb309fa0ba32e8cbb:crates/daemon/src/handler/mod.rs:private-key:7536
+3892d8b8cfc348e97facd78b97e82b216d7a0e1f:crates/safety/src/pii.rs:private-key:218
+cc79dce5383543b19ebbacb9e0b61d2224539df9:site/src/content/docs/guides/pre-send-safety.md:generic-api-key:268
+cc79dce5383543b19ebbacb9e0b61d2224539df9:site/src/content/docs/guides/pre-send-safety.md:private-key:178
+cf38094f63ba4196a08ab048d2eb9936e18103b2:crates/safety/tests/no_raw_secrets.rs:github-pat:41
+cf38094f63ba4196a08ab048d2eb9936e18103b2:crates/safety/tests/no_raw_secrets.rs:github-pat:42
+7c9323056cc9c3459d85c80fee28d92c3756a77c:crates/daemon/src/handler/mod.rs:private-key:7536
+024f3022ea1c348854494ab951f2e8f9f2eab6e9:crates/safety/src/pii.rs:private-key:218

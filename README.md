@@ -31,7 +31,6 @@ sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
 Pre-built release tarballs are also available for:
 
 - macOS Apple Silicon
-- macOS Intel (without the optional local semantic backend)
 - Linux x86_64
 
 [Download the latest release](https://github.com/planetaryescape/mxr/releases/latest)

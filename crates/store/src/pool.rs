@@ -114,10 +114,9 @@ impl Store {
         // higher-ranked Send bound through the daemon's request-handler future
         // (server.rs:202 spawns into a tokio JoinSet and the bound poisoned
         // unrelated handlers). Use the writer pool directly:
-        // `add_column_if_missing` is idempotent, every embedded SQL file uses
-        // `CREATE TABLE/INDEX IF NOT EXISTS`, and the schema_migrations stamp
-        // is the last write — a crash mid-migration causes the next run to
-        // re-apply the (idempotent) body and then stamp.
+        // `add_column_if_missing` is idempotent, embedded SQL files are kept
+        // rerunnable, and the few table-rewrite migrations use custom
+        // recovery below. The schema_migrations stamp is the last write.
         match migration.kind {
             MigrationKind::Sql(sql) => {
                 sqlx::raw_sql(sql).execute(&self.writer).await?;
@@ -136,6 +135,9 @@ impl Store {
                         }
                     }
                 }
+            }
+            MigrationKind::DecisionLogStableId => {
+                self.apply_decision_log_stable_id_migration().await?;
             }
         }
 
@@ -178,6 +180,63 @@ impl Store {
         Ok(rows.iter().any(|(_, name, _, _, _, _)| name == column))
     }
 
+    async fn table_exists(&self, table: &str) -> Result<bool, sqlx::Error> {
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
+                .bind(table)
+                .fetch_optional(&self.writer)
+                .await?;
+        Ok(row.is_some())
+    }
+
+    async fn apply_decision_log_stable_id_migration(&self) -> Result<(), sqlx::Error> {
+        let has_decision_log = self.table_exists("decision_log").await?;
+        let has_temp = self.table_exists("decision_log_v2").await?;
+        let rewrite_sql = match (has_decision_log, has_temp) {
+            (true, true) => DECISION_LOG_DROP_TEMP_AND_REBUILD_SQL,
+            (true, false) => DECISION_LOG_REBUILD_SQL,
+            (false, true) => DECISION_LOG_PROMOTE_TEMP_SQL,
+            (false, false) => DECISION_LOG_CREATE_FINAL_SQL,
+        };
+
+        self.run_decision_log_rewrite(rewrite_sql).await?;
+        sqlx::raw_sql(DECISION_LOG_INDEX_SQL)
+            .execute(&self.writer)
+            .await?;
+        Ok(())
+    }
+
+    async fn run_decision_log_rewrite(&self, sql: &str) -> Result<(), sqlx::Error> {
+        sqlx::raw_sql("PRAGMA foreign_keys = OFF")
+            .execute(&self.writer)
+            .await?;
+
+        let result = async {
+            sqlx::raw_sql("BEGIN IMMEDIATE")
+                .execute(&self.writer)
+                .await?;
+            if let Err(error) = sqlx::raw_sql(sql).execute(&self.writer).await {
+                let _ = sqlx::raw_sql("ROLLBACK").execute(&self.writer).await;
+                return Err(error);
+            }
+            if let Err(error) = sqlx::raw_sql("COMMIT").execute(&self.writer).await {
+                let _ = sqlx::raw_sql("ROLLBACK").execute(&self.writer).await;
+                return Err(error);
+            }
+            Ok(())
+        }
+        .await;
+
+        let foreign_keys_result = sqlx::raw_sql("PRAGMA foreign_keys = ON")
+            .execute(&self.writer)
+            .await;
+        match (result, foreign_keys_result) {
+            (Err(error), _) => Err(error),
+            (Ok(()), Err(error)) => Err(error),
+            (Ok(()), Ok(_)) => Ok(()),
+        }
+    }
+
     async fn validate_schema(&self) -> Result<(), sqlx::Error> {
         for (table, columns) in REQUIRED_COLUMNS {
             for column in *columns {
@@ -214,6 +273,7 @@ enum MigrationKind {
         sql: &'static str,
     },
     Composite(&'static [MigrationStep]),
+    DecisionLogStableId,
 }
 
 enum MigrationStep {
@@ -365,6 +425,86 @@ const DRAFT_STATUS_STEPS: &[MigrationStep] = &[
         "CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(account_id, status)",
     ),
 ];
+
+const DECISION_LOG_CREATE_FINAL_SQL: &str = r#"
+CREATE TABLE decision_log (
+    id                  TEXT PRIMARY KEY,
+    account_id          TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    thread_id           TEXT NOT NULL,
+    topic               TEXT,
+    decision            TEXT NOT NULL,
+    rationale           TEXT,
+    evidence_msg_ids    TEXT NOT NULL,
+    decided_at          INTEGER,
+    extracted_at        INTEGER NOT NULL,
+    source_hash         TEXT NOT NULL
+);
+"#;
+
+const DECISION_LOG_REBUILD_SQL: &str = r#"
+CREATE TABLE decision_log_v2 (
+    id                  TEXT PRIMARY KEY,
+    account_id          TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    thread_id           TEXT NOT NULL,
+    topic               TEXT,
+    decision            TEXT NOT NULL,
+    rationale           TEXT,
+    evidence_msg_ids    TEXT NOT NULL,
+    decided_at          INTEGER,
+    extracted_at        INTEGER NOT NULL,
+    source_hash         TEXT NOT NULL
+);
+
+INSERT OR REPLACE INTO decision_log_v2
+    (id, account_id, thread_id, topic, decision, rationale,
+     evidence_msg_ids, decided_at, extracted_at, source_hash)
+SELECT
+    id, account_id, thread_id, topic, decision, rationale,
+    evidence_msg_ids, decided_at, extracted_at, source_hash
+FROM decision_log;
+
+DROP TABLE decision_log;
+ALTER TABLE decision_log_v2 RENAME TO decision_log;
+"#;
+
+const DECISION_LOG_DROP_TEMP_AND_REBUILD_SQL: &str = r#"
+DROP TABLE decision_log_v2;
+CREATE TABLE decision_log_v2 (
+    id                  TEXT PRIMARY KEY,
+    account_id          TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    thread_id           TEXT NOT NULL,
+    topic               TEXT,
+    decision            TEXT NOT NULL,
+    rationale           TEXT,
+    evidence_msg_ids    TEXT NOT NULL,
+    decided_at          INTEGER,
+    extracted_at        INTEGER NOT NULL,
+    source_hash         TEXT NOT NULL
+);
+
+INSERT OR REPLACE INTO decision_log_v2
+    (id, account_id, thread_id, topic, decision, rationale,
+     evidence_msg_ids, decided_at, extracted_at, source_hash)
+SELECT
+    id, account_id, thread_id, topic, decision, rationale,
+    evidence_msg_ids, decided_at, extracted_at, source_hash
+FROM decision_log;
+
+DROP TABLE decision_log;
+ALTER TABLE decision_log_v2 RENAME TO decision_log;
+"#;
+
+const DECISION_LOG_PROMOTE_TEMP_SQL: &str = r#"
+ALTER TABLE decision_log_v2 RENAME TO decision_log;
+"#;
+
+const DECISION_LOG_INDEX_SQL: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_decision_log_account_topic
+    ON decision_log(account_id, topic);
+
+CREATE INDEX IF NOT EXISTS idx_decision_log_account_decided
+    ON decision_log(account_id, decided_at DESC);
+"#;
 
 const MIGRATIONS: &[Migration] = &[
     Migration {
@@ -583,9 +723,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 34,
         name: "decision_log_stable_id",
-        kind: MigrationKind::Sql(include_str!(
-            "../migrations/034_decision_log_stable_id.sql"
-        )),
+        kind: MigrationKind::DecisionLogStableId,
     },
     Migration {
         version: 35,
@@ -632,6 +770,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 42,
         name: "deliveries",
         kind: MigrationKind::Sql(include_str!("../migrations/042_deliveries.sql")),
+    },
+    Migration {
+        version: 43,
+        name: "sent_draft_receipts",
+        kind: MigrationKind::Sql(include_str!("../migrations/043_sent_draft_receipts.sql")),
     },
 ];
 
@@ -798,8 +941,31 @@ mod tests {
 
     use super::Store;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use std::path::Path;
     use std::str::FromStr;
     use tempfile::tempdir;
+
+    async fn open_test_writer(db_path: &Path) -> sqlx::SqlitePool {
+        let url = format!("sqlite:{}", db_path.display());
+        let opts = SqliteConnectOptions::from_str(&url)
+            .unwrap()
+            .create_if_missing(false);
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(opts)
+            .await
+            .unwrap()
+    }
+
+    async fn test_table_exists(pool: &sqlx::SqlitePool, table: &str) -> bool {
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
+                .bind(table)
+                .fetch_optional(pool)
+                .await
+                .unwrap();
+        row.is_some()
+    }
 
     #[tokio::test]
     async fn opening_malformed_partial_db_errors_instead_of_silently_accepting_it() {
@@ -909,5 +1075,129 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(rows.len(), super::MIGRATIONS.len());
+    }
+
+    async fn seed_decision_log_migration_034_crash_state(
+        db_path: &Path,
+        drop_original: bool,
+    ) -> (String, String) {
+        {
+            let store = Store::new(db_path).await.unwrap();
+            let account = mxr_core::Account {
+                id: mxr_core::AccountId::new(),
+                name: "Test".into(),
+                email: "me@example.com".into(),
+                sync_backend: None,
+                send_backend: None,
+                enabled: true,
+            };
+            store.insert_account(&account).await.unwrap();
+            sqlx::query(
+                r#"INSERT INTO decision_log
+                   (id, account_id, thread_id, topic, decision, rationale,
+                    evidence_msg_ids, decided_at, extracted_at, source_hash)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+            )
+            .bind("decision-1")
+            .bind(account.id.as_str())
+            .bind(mxr_core::ThreadId::new().as_str())
+            .bind("launch")
+            .bind("Ship GA")
+            .bind("risk accepted")
+            .bind("[]")
+            .bind(chrono::Utc::now().timestamp())
+            .bind(chrono::Utc::now().timestamp())
+            .bind("source-v1")
+            .execute(store.writer())
+            .await
+            .unwrap();
+        }
+
+        let pool = open_test_writer(db_path).await;
+        sqlx::query("DELETE FROM schema_migrations WHERE version = 34")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(
+            r#"DROP TABLE IF EXISTS decision_log_v2;
+               CREATE TABLE decision_log_v2 (
+                   id                  TEXT PRIMARY KEY,
+                   account_id          TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                   thread_id           TEXT NOT NULL,
+                   topic               TEXT,
+                   decision            TEXT NOT NULL,
+                   rationale           TEXT,
+                   evidence_msg_ids    TEXT NOT NULL,
+                   decided_at          INTEGER,
+                   extracted_at        INTEGER NOT NULL,
+                   source_hash         TEXT NOT NULL
+               );
+               INSERT OR REPLACE INTO decision_log_v2
+                   (id, account_id, thread_id, topic, decision, rationale,
+                    evidence_msg_ids, decided_at, extracted_at, source_hash)
+               SELECT
+                   id, account_id, thread_id, topic, decision, rationale,
+                   evidence_msg_ids, decided_at, extracted_at, source_hash
+               FROM decision_log;"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        if drop_original {
+            sqlx::raw_sql("DROP TABLE decision_log")
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        pool.close().await;
+        ("decision-1".into(), "Ship GA".into())
+    }
+
+    #[tokio::test]
+    async fn migration_034_recovers_when_temp_table_exists_before_schema_stamp() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("decision-log-v2-crash.db");
+        let (decision_id, decision) =
+            seed_decision_log_migration_034_crash_state(&db_path, false).await;
+
+        let store = Store::new(&db_path)
+            .await
+            .expect("migration 034 should recover a leftover decision_log_v2 table");
+
+        let row: (String,) = sqlx::query_as("SELECT decision FROM decision_log WHERE id = ?")
+            .bind(&decision_id)
+            .fetch_one(store.reader())
+            .await
+            .unwrap();
+        assert_eq!(row.0, decision);
+        assert!(
+            !test_table_exists(store.reader(), "decision_log_v2").await,
+            "recovery must clean up the stale temp table"
+        );
+        assert!(store.is_migration_applied(34).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn migration_034_recovers_when_original_was_dropped_before_schema_stamp() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("decision-log-dropped-crash.db");
+        let (decision_id, decision) =
+            seed_decision_log_migration_034_crash_state(&db_path, true).await;
+
+        let store = Store::new(&db_path)
+            .await
+            .expect("migration 034 should recover by promoting decision_log_v2");
+
+        let row: (String,) = sqlx::query_as("SELECT decision FROM decision_log WHERE id = ?")
+            .bind(&decision_id)
+            .fetch_one(store.reader())
+            .await
+            .unwrap();
+        assert_eq!(row.0, decision);
+        assert!(
+            !test_table_exists(store.reader(), "decision_log_v2").await,
+            "recovery must not leave the temp table after promotion"
+        );
+        assert!(store.is_migration_applied(34).await.unwrap());
     }
 }

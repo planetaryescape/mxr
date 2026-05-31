@@ -92,6 +92,7 @@ pub(crate) async fn bug_report(
     Ok(ResponseData::BugReport { content })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn search(
     state: &AppState,
     query: &str,

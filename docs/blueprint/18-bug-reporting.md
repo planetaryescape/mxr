@@ -194,7 +194,7 @@ mxr bug-report --since "2h"       # Only include logs from the last 2 hours
 Opens the browser to a pre-filled GitHub issue URL:
 
 ```
-https://github.com/USER/mxr/issues/new?template=bug_report.md&body=URLENCODED_REPORT
+https://github.com/planetaryescape/mxr/issues/new?template=bug_report.yml&body=URLENCODED_REPORT
 ```
 
 There's a URL length limit (~8000 chars for most browsers). If the report exceeds this, fall back to:

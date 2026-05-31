@@ -3,6 +3,7 @@ use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{ExportFormat, SearchMode, SortOrder};
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn search(
     state: &AppState,
     query: &str,

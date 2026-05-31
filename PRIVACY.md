@@ -1,87 +1,104 @@
 # Privacy Policy
 
 **Effective date**: 2026-03-18
-**Last updated**: 2026-03-18
+**Last updated**: 2026-05-31
 
-mxr is a local-first, open-source email client. Your privacy is not a feature we had to add — it is a consequence of how mxr is built.
+mxr is a local-first, open-source email client. Your mail data is stored on your machine, and mxr does not run a hosted relay, analytics service, or remote database.
 
 ---
 
 ## Data Storage
 
-All email data is stored locally on your machine in a SQLite database. The search index (Tantivy) is also local and rebuildable from the SQLite database. There is no cloud component, no remote database, and no server-side storage.
+mxr stores mail metadata, local draft state, activity history, and searchable indexes under the active local profile.
 
-**Data locations** (default):
+Default release-build locations:
 
-- Database: `~/.local/share/mxr/`
-- Search index: `~/.local/share/mxr/`
-- OAuth tokens: `~/.config/mxr/tokens/`
-- Configuration: `~/.config/mxr/`
+| Data | Linux / XDG | macOS |
+|---|---|---|
+| Config | `$XDG_CONFIG_HOME/mxr/config.toml` | `~/Library/Application Support/mxr/config.toml` |
+| SQLite database and local data | `$XDG_DATA_HOME/mxr/` | `~/Library/Application Support/mxr/` |
+| Token fallback files | `$XDG_DATA_HOME/mxr/tokens/` | `~/Library/Application Support/mxr/tokens/` |
+
+`MXR_CONFIG_DIR`, `MXR_DATA_DIR`, and `MXR_TOKEN_DIR` can override these paths.
+
+The Tantivy search index and semantic model cache are local and rebuildable. Attachments opened or saved through mxr are written locally.
+
+---
+
+## Credentials
+
+Gmail OAuth refresh tokens, IMAP passwords, and SMTP passwords are stored in the OS-native secret store when available:
+
+- macOS: Keychain
+- Linux: Secret Service, such as GNOME Keyring or KWallet
+
+Gmail may keep a private disk fallback under the active token directory so a noninteractive keychain failure does not strand an otherwise valid account. Outlook OAuth tokens are stored as JSON files under the active token directory. `config.toml` references credentials by keychain/token reference and does not store IMAP or SMTP passwords.
 
 ---
 
 ## No Telemetry
 
-mxr does not collect telemetry, analytics, crash reports, or usage data of any kind. There are no tracking pixels, no phone-home requests, and no anonymous usage statistics. Zero.
+mxr does not collect telemetry, analytics, crash reports, tracking pixels, or anonymous usage statistics.
 
 ---
 
 ## Network Requests
 
-mxr makes network requests only when you explicitly trigger them:
+mxr makes network requests only for configured user workflows:
 
-- **Gmail API calls** — to sync messages, send email, and manage labels. These go directly to Google's servers (`gmail.googleapis.com`).
-- **IMAP connections** — to sync messages from IMAP servers. These go directly to your configured mail server.
-- **SMTP connections** — to send email. These go directly to your configured SMTP server.
-- **OAuth token refresh** — periodic token refresh requests to Google's OAuth endpoint (`oauth2.googleapis.com`).
+- Gmail API calls to sync messages, send mail, and manage labels.
+- Google OAuth calls to authorize and refresh Gmail access.
+- IMAP connections to configured mail servers.
+- SMTP connections to configured mail servers.
+- Microsoft identity/OAuth calls for Outlook-style OAuth accounts.
+- Optional model downloads or external LLM calls only when the user explicitly configures those features.
 
-No other network requests are made. mxr does not contact any mxr-operated server.
-
----
-
-## OAuth Tokens
-
-When you authenticate with Gmail, OAuth tokens are stored locally on disk by yup-oauth2 at `~/.config/mxr/tokens/<account>/oauth.json`. File permissions are set to `0600` (owner read/write only). Tokens are never transmitted anywhere other than directly to Google's API endpoints.
+mxr does not contact an mxr-operated server.
 
 ---
 
 ## Gmail API Scopes
 
-mxr requests the following Gmail API scopes:
+mxr may request these Gmail API scopes:
 
 | Scope | Purpose |
 |---|---|
 | `gmail.readonly` | Read messages and metadata |
-| `gmail.labels` | Manage labels |
-| `gmail.modify` | Mark read/unread, archive, trash |
+| `gmail.labels` | Read and manage labels |
+| `gmail.modify` | Mark read/unread, archive, trash, and apply labels |
 | `gmail.send` | Send email via Gmail API |
 
-These scopes are requested based on your usage. If you send email via SMTP instead of Gmail API, the `gmail.send` scope is not requested.
+mxr uses Google user data only to provide local mail sync, search, display, drafting, sending, and user-requested mailbox actions. mxr does not sell Google user data, use it for advertising, or transfer it to third parties except as necessary to provide user-directed email functionality. mxr's use and transfer of information received from Google APIs adheres to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements.
+
+---
+
+## Optional AI Features
+
+Local search, reading, and core mailbox operations do not require a hosted AI service. If you configure a nonlocal LLM provider, mxr sends only the prompts required for the enabled feature to that provider. Agent and LLM workflows should be treated as user-directed exports of local mail context.
 
 ---
 
 ## Third-Party Services
 
-mxr does not integrate with any third-party analytics, advertising, or data processing services. The only third-party services involved are the email providers you explicitly configure (Gmail, IMAP servers, SMTP servers).
-
----
-
-## Open Source
-
-mxr is open source under the MIT and Apache-2.0 licenses. You can audit every line of code to verify these claims. The source code is the privacy policy's proof.
+mxr does not integrate with third-party analytics, advertising, or tracking services. The third-party services involved are the mail providers and optional AI/model providers you explicitly configure.
 
 ---
 
 ## Data Deletion
 
-Since all data is local, deleting your data is as simple as removing the mxr data directories:
+Since data is local, you can delete mxr data by removing the active config and data directories. To inspect them:
 
 ```bash
-rm -rf ~/.local/share/mxr/
-rm -rf ~/.config/mxr/
+mxr status --format json
 ```
 
-To revoke Gmail access, visit [Google Account Permissions](https://myaccount.google.com/permissions) and remove mxr.
+To revoke Gmail access, visit [Google Account Permissions](https://myaccount.google.com/permissions) and remove mxr or your custom OAuth app.
+
+---
+
+## Open Source
+
+mxr is open source under the MIT and Apache-2.0 licenses. You can audit the code to verify these claims.
 
 ---
 

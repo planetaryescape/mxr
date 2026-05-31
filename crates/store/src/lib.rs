@@ -67,6 +67,7 @@ pub use context_briefings::{new_briefing_id, BriefingKind, ContextBriefing};
 pub use decision_log::{decision_id, source_hash as decision_source_hash, DecisionLogEntry};
 pub use deliveries::{Delivery, DeliveryItem, DeliveryListFilter};
 pub use diagnostics::StoreRecordCounts;
+pub use draft::SentDraftReceipt;
 pub use draft_commitments::{new_candidate_id, DraftCommitmentCandidate};
 pub use draft_safety::{DraftSafetyOverrideRecord, DraftSafetyRunRecord};
 pub use event_log::{EventLogEntry, EventLogFilter, EventLogRefs};

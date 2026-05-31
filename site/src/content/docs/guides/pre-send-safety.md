@@ -175,8 +175,8 @@ mxr send "$DRAFT_ID" --check --format json | jq -e '
 # One-shot: check a tooling email you're about to send.
 printf '%s\n' \
   "Here is the key to deploy:" \
-  "-----BEGIN RSA PRIVATE KEY-----" \
-  "MII..." | \
+  "<example PEM private key marker>" \
+  "<redacted key bytes>" | \
   mxr compose --to deploys@example.com --body-stdin --check
 # Exit 2.
 # [BLOCK] PiiSecret: PEM private key detected in draft
@@ -265,11 +265,11 @@ token and stamps it onto the issue. The token has these properties:
 # Step 1: check, see the blocker, copy the token.
 mxr send DRAFT_ID --check
 # [BLOCK] PiiSecret: PEM private key detected in draft
-#         Override token: 01HXYZ-K4M2-7N6P-...
+#         Override token: OVERRIDE_TOKEN_FROM_CHECK
 
 # Step 2: send with the token. mxr verifies it covers every active
 # blocker before any provider call.
-mxr send DRAFT_ID --override-safety 01HXYZ-K4M2-7N6P-...
+mxr send DRAFT_ID --override-safety OVERRIDE_TOKEN_FROM_CHECK
 ```
 
 ```bash

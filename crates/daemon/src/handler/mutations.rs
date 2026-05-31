@@ -1449,39 +1449,15 @@ pub(super) async fn send_draft(
     draft: &Draft,
     override_safety_token: Option<&str>,
 ) -> HandlerResult {
-    enforce_draft_safety_with_override(state, draft, override_safety_token).await?;
-    let sender = state.send_provider_for_account(&draft.account_id)?;
-    let from = resolve_from_address(state, draft).await;
-    let rfc2822_message_id = mxr_outbound::email::generate_message_id(&from);
-    let receipt = sender.send(draft, &from, &rfc2822_message_id).await?;
-    clear_reply_later_for_reply_parent(state, draft).await;
-    // Ingest synthetic Sent envelope so the message is searchable as `is:sent`
-    // immediately, without waiting for the next sync. Failures here are
-    // non-fatal: the send already succeeded on the wire and we surface the
-    // local-ingest error to the caller via tracing.
-    let local_message_id = match ingest_sent_message(state, draft, &from, &receipt).await {
-        Ok(id) => Some(id),
-        Err(e) => {
-            tracing::warn!(error = %e, "ingest_sent_message failed after send_draft");
-            None
-        }
-    };
-    let resolved_id = local_message_id.clone().unwrap_or_else(|| {
-        mxr_core::MessageId::from_scoped_provider_id(
-            &draft.account_id,
-            "send-receipt",
-            &receipt.rfc2822_message_id,
-        )
-    });
-    if let Err(e) = super::commitments_extract::promote_after_send(state, draft, &resolved_id).await
-    {
-        tracing::warn!(error = %e, "commitments promotion failed after send_draft");
+    if let Some(receipt) = state.store.get_sent_draft_receipt(&draft.id).await? {
+        return Ok(sent_draft_receipt_response(receipt));
     }
-    Ok(ResponseData::SendReceipt {
-        local_message_id: resolved_id,
-        provider_message_id: receipt.provider_message_id,
-        rfc2822_message_id: receipt.rfc2822_message_id,
-    })
+
+    if state.store.get_draft_status(&draft.id).await?.is_none() {
+        state.store.insert_draft_if_absent(draft).await?;
+    }
+
+    send_stored_draft(state, &draft.id, override_safety_token).await
 }
 
 pub(super) async fn schedule_send(
@@ -1506,6 +1482,10 @@ pub(crate) async fn send_stored_draft(
     draft_id: &mxr_core::DraftId,
     override_safety_token: Option<&str>,
 ) -> HandlerResult {
+    if let Some(receipt) = state.store.get_sent_draft_receipt(draft_id).await? {
+        return Ok(sent_draft_receipt_response(receipt));
+    }
+
     let draft = state
         .store
         .get_draft(draft_id)
@@ -1627,12 +1607,32 @@ pub(crate) async fn send_stored_draft(
     {
         tracing::warn!(error = %e, "commitments promotion failed after send_stored_draft");
     }
+    state
+        .store
+        .record_sent_draft_receipt(
+            draft_id,
+            &draft.account_id,
+            &local_message_id,
+            receipt.provider_message_id.as_deref(),
+            &receipt.rfc2822_message_id,
+            receipt.sent_at,
+        )
+        .await
+        .map_err(|e| format!("send succeeded but receipt persistence failed: {e}"))?;
     let _ = state.store.delete_draft(draft_id).await;
     Ok(ResponseData::SendReceipt {
         local_message_id,
         provider_message_id: receipt.provider_message_id,
         rfc2822_message_id: receipt.rfc2822_message_id,
     })
+}
+
+fn sent_draft_receipt_response(receipt: mxr_store::SentDraftReceipt) -> ResponseData {
+    ResponseData::SendReceipt {
+        local_message_id: receipt.local_message_id,
+        provider_message_id: receipt.provider_message_id,
+        rfc2822_message_id: receipt.rfc2822_message_id,
+    }
 }
 
 async fn clear_reply_later_for_reply_parent(state: &AppState, draft: &Draft) {

@@ -2,8 +2,8 @@
 
 > This document covers the full CI/CD pipeline: PR checks, release automation, cross-compiled binary builds, Homebrew, changelog generation, and docs deployment.
 
-> **Current state note (`v0.4.22`)**
-> The live release flow is: pushes to `main` run `release-please`, merged release PRs create `vX.Y.Z` tags, and tag pushes run [.github/workflows/release.yml](../../.github/workflows/release.yml). That workflow currently builds CLI archives for macOS Apple Silicon and Linux x86_64, creates the GitHub Release, and updates the `planetaryescape/homebrew-mxr` tap. Supported Cargo installs are `cargo install --git ...` and `cargo install --path .`; crates.io publication is no longer part of the current release model. The web app is embedded into the CLI release binary, and docs deploy independently on pushes to `main`. Read the checked-in workflows as the source of truth; the sections below include historical design context and earlier release-shape examples.
+> **Current state note (`v0.5.47`)**
+> The live release flow is: pushes to `main` run `release-please`, merged release PRs create `vX.Y.Z` tags, and tag pushes run [.github/workflows/release.yml](../../.github/workflows/release.yml). Artifact builds are scoped by [scripts/release_change_scope.sh](../../scripts/release_change_scope.sh): CLI-affecting tags build macOS Apple Silicon and Linux x86_64 archives, create the GitHub Release, and update the `planetaryescape/homebrew-mxr` tap; docs-only or version-only tags create the GitHub Release/changelog but skip binary artifacts and Homebrew. Supported Cargo installs are `cargo install --git ...` and `cargo install --path .`; crates.io publication is no longer part of the current release model. The web app is embedded into the CLI release binary, and docs deploy independently on pushes to `main`. Read the checked-in workflows as the source of truth; the sections below include historical design context and earlier release-shape examples.
 
 ---
 
@@ -126,7 +126,9 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The tag triggers the full release pipeline: build binaries, create GitHub Release, update Homebrew, deploy docs.
+The tag always creates or updates a GitHub Release. When the scoped diff affects CLI artifacts, the same workflow also builds binaries and updates Homebrew.
+
+For docs-only or version-only tags, `scripts/release_change_scope.sh` sets `cli_changed=false` and `has_artifacts=false`. Those tags still get a GitHub Release and changelog, but they do not build tarballs or update the Homebrew tap.
 
 ### Pre-release checklist (manual, before tagging)
 
@@ -259,16 +261,14 @@ Instead of the manual publish script, use `cargo-workspaces` which handles depen
 
 ## Cross-compiled binary builds
 
+The checked-in workflow currently builds release archives only for Linux x86_64 and macOS Apple Silicon. The older four-target launch plan is superseded; resurrect it only if Linux ARM64 or Intel macOS packaging comes back.
+
 ### Target matrix
 
 ```
-linux-x86_64        # x86_64-unknown-linux-musl (static binary, runs everywhere)
-linux-aarch64       # aarch64-unknown-linux-musl (ARM64, Raspberry Pi, cloud ARM instances)
-macos-x86_64        # x86_64-apple-darwin (Intel Macs)
+linux-x86_64        # x86_64-unknown-linux-gnu
 macos-aarch64       # aarch64-apple-darwin (Apple Silicon)
 ```
-
-We use `musl` for Linux targets to produce fully static binaries with no dynamic library dependencies. This means the binary runs on any Linux distribution regardless of glibc version.
 
 No Windows target for v1. mxr depends on Unix sockets, XDG paths, and Unix-native tooling. Windows support is a future consideration, not a launch requirement.
 
@@ -276,13 +276,12 @@ No Windows target for v1. mxr depends on Unix sockets, XDG paths, and Unix-nativ
 
 ```
 mxr-v0.1.0-linux-x86_64.tar.gz
-mxr-v0.1.0-linux-aarch64.tar.gz
-mxr-v0.1.0-macos-x86_64.tar.gz
 mxr-v0.1.0-macos-aarch64.tar.gz
 ```
 
 Each archive contains:
 - `mxr` binary
+- `mxr-chime-player` helper binary
 - `LICENSE-MIT`
 - `LICENSE-APACHE`
 - `README.md`
@@ -305,52 +304,33 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: x86_64-unknown-linux-musl
+          - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            archive: mxr-linux-x86_64.tar.gz
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-            archive: mxr-linux-aarch64.tar.gz
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            archive: mxr-macos-x86_64.tar.gz
+            archive: linux-x86_64.tar.gz
           - target: aarch64-apple-darwin
-            os: macos-latest
-            archive: mxr-macos-aarch64.tar.gz
+            os: macos-15
+            archive: macos-aarch64.tar.gz
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      # For Linux cross-compilation
-      - name: Install cross-compilation tools
+      # For Linux native build dependencies
+      - name: Install system dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools
-          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu
-          fi
+          sudo apt-get install -y libssl-dev libasound2-dev pkg-config
 
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
 
-      # Build with cross for Linux targets (handles cross-compilation toolchains)
-      - name: Install cross
-        if: matrix.os == 'ubuntu-latest'
-        run: cargo install cross --locked
-
-      - name: Build (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: cross build --release --locked --target ${{ matrix.target }} --all-features
-
-      - name: Build (macOS)
-        if: matrix.os == 'macos-latest'
-        run: cargo build --release --locked --target ${{ matrix.target }} --all-features
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} -p mxr --features semantic-local,web-ui
 
       - name: Package
         run: |
@@ -358,6 +338,7 @@ jobs:
           ARCHIVE="mxr-v${VERSION}-${{ matrix.archive }}"
           mkdir -p release
           cp target/${{ matrix.target }}/release/mxr release/
+          cp target/${{ matrix.target }}/release/mxr-chime-player release/
           cp LICENSE-MIT LICENSE-APACHE README.md release/
           cd release
           tar czf "../${ARCHIVE}" *
@@ -421,7 +402,7 @@ jobs:
 
             **Homebrew (macOS/Linux):**
             ```bash
-            brew install mxr
+            brew install planetaryescape/mxr/mxr
             ```
 
             ## Checksums
@@ -521,75 +502,87 @@ This should be documented in `CONTRIBUTING.md` and enforced with a commit messag
 
 ### Homebrew formula
 
-Create a formula that installs from the pre-built binary (faster) or builds from source (for users who prefer it).
+Create a formula that installs from the pre-built binary.
 
-The formula lives in a separate tap repository: `homebrew-tap` (e.g., `github.com/USER/homebrew-mxr`).
+The formula template lives at [packaging/homebrew/mxr.rb](../../packaging/homebrew/mxr.rb). The release workflow renders it with the current version and checksums, then pushes the result to `planetaryescape/homebrew-mxr`.
 
 ```ruby
 # Formula/mxr.rb
 class Mxr < Formula
-  desc "A local-first terminal email client for power users"
-  homepage "https://mxr.dev"
-  license any_of: ["MIT", "Apache-2.0"]
-  version "0.1.0"
+  desc "Local-first terminal email client"
+  homepage "https://github.com/planetaryescape/mxr"
+  version "__VERSION__"
+  license "MIT OR Apache-2.0"
 
   on_macos do
-    if Hardware::CPU.arm?
-      url "https://github.com/USER/mxr/releases/download/v0.1.0/mxr-v0.1.0-macos-aarch64.tar.gz"
-      sha256 "PLACEHOLDER_SHA256"
-    else
-      url "https://github.com/USER/mxr/releases/download/v0.1.0/mxr-v0.1.0-macos-x86_64.tar.gz"
-      sha256 "PLACEHOLDER_SHA256"
+    depends_on arch: :arm64
+
+    on_arm do
+      url "https://github.com/planetaryescape/mxr/releases/download/v#{version}/mxr-v#{version}-macos-aarch64.tar.gz"
+      sha256 "__SHA256_MACOS_AARCH64__"
     end
   end
 
   on_linux do
-    if Hardware::CPU.arm?
-      url "https://github.com/USER/mxr/releases/download/v0.1.0/mxr-v0.1.0-linux-aarch64.tar.gz"
-      sha256 "PLACEHOLDER_SHA256"
-    else
-      url "https://github.com/USER/mxr/releases/download/v0.1.0/mxr-v0.1.0-linux-x86_64.tar.gz"
-      sha256 "PLACEHOLDER_SHA256"
+    on_intel do
+      url "https://github.com/planetaryescape/mxr/releases/download/v#{version}/mxr-v#{version}-linux-x86_64.tar.gz"
+      sha256 "__SHA256_LINUX_X86_64__"
     end
   end
 
   def install
     bin.install "mxr"
+    bin.install "mxr-chime-player"
+    prefix.install "LICENSE-MIT"
+    prefix.install "LICENSE-APACHE"
+    prefix.install "README.md"
   end
 
   test do
-    assert_match "mxr", shell_output("#{bin}/mxr version")
+    assert_match version.to_s, shell_output("#{bin}/mxr version")
   end
 end
 ```
 
 ### Auto-update formula on release
 
-Add a step to the release workflow that updates the Homebrew tap:
+The checked-in release workflow updates the Homebrew tap only when CLI artifacts changed:
 
 ```yaml
   update-homebrew:
-    name: Update Homebrew formula
-    needs: release
-    runs-on: ubuntu-latest
+    name: Homebrew Formula
+    needs: [plan, github-release]
+    if: needs.plan.outputs.cli_changed == 'true' && needs.github-release.result == 'success'
+    runs-on: macos-15
     steps:
-      - name: Update Homebrew formula
-        uses: mislav/bump-homebrew-formula-action@v3
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
         with:
-          formula-name: mxr
-          homebrew-tap: USER/homebrew-mxr
-          download-url: https://github.com/USER/mxr/releases/download/${{ github.ref_name }}/mxr-${{ github.ref_name }}-macos-aarch64.tar.gz
+          path: artifacts
+          merge-multiple: true
+      - name: Render formula
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          bash ./scripts/render_homebrew_formula.sh "$VERSION" artifacts Formula/mxr.rb
+      - name: Update tap formula
         env:
           COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          git clone "https://x-access-token:${COMMITTER_TOKEN}@github.com/planetaryescape/homebrew-mxr.git" tap
+          cp Formula/mxr.rb tap/Formula/mxr.rb
+          git -C tap add Formula/mxr.rb
+          git -C tap commit -m "mxr ${VERSION}"
+          git -C tap push origin HEAD:main
 ```
 
-This automatically creates a PR on the tap repo with updated URLs and SHA256 checksums whenever a new release is published.
+This pushes updated URLs and SHA256 checksums to the tap repo whenever a CLI-affecting release is published.
 
 ### User installation
 
 ```bash
 # Add tap (one time)
-brew tap USER/mxr
+brew tap planetaryescape/mxr
 
 # Install
 brew install mxr
@@ -621,7 +614,7 @@ packaging/
 A `flake.nix` in the repo root enables Nix users to install directly:
 
 ```bash
-nix profile install github:USER/mxr
+nix profile install github:planetaryescape/mxr
 ```
 
 This is low effort (the Rust build is straightforward) and serves a vocal segment of the target audience.
@@ -667,7 +660,7 @@ The docs site deploys on every push to main (for content updates), but also on r
 
 ---
 
-## Required GitHub secrets
+## Release GitHub secrets
 
 | Secret | Purpose |
 |---|---|
@@ -675,23 +668,26 @@ The docs site deploys on every push to main (for content updates), but also on r
 | `HOMEBREW_TAP_TOKEN` | GitHub PAT with push access to the homebrew-tap repo |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare Pages deployment |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account identifier |
-| `APPLE_CERT_P12_BASE64` | Developer ID Application cert exported as `.p12`, then `base64 -i cert.p12 \| pbcopy`. Without it, macOS binaries are unsigned and Gatekeeper warns end users. |
-| `APPLE_CERT_PASSWORD` | Password used when exporting the `.p12`. |
-| `APPLE_KEYCHAIN_PASSWORD` | Throwaway password used to unlock the temporary keychain CI creates per run. Any string works; CI deletes the keychain after the job. |
-| `APPLE_DEVELOPER_ID` | Identity name passed to `codesign --sign` — typically `Developer ID Application: Your Name (TEAMID)`. Find via `security find-identity -p codesigning -v`. |
-| `APPLE_ID` | Apple Developer account email — needed by `notarytool submit`. |
-| `APPLE_TEAM_ID` | 10-char alphanumeric team identifier (visible in Apple Developer portal). |
-| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password generated at appleid.apple.com → Sign-In and Security → App-Specific Passwords. Notarytool authenticates with this, NOT your real Apple ID password. |
-| `MXR_GMAIL_TEST_CLIENT_ID` | Live Gmail E2E smoke test (workflow_dispatch only). OAuth client id of the throwaway Gmail test account. |
-| `MXR_GMAIL_TEST_CLIENT_SECRET` | OAuth client secret for the same. |
-| `MXR_GMAIL_TEST_REFRESH_TOKEN` | Long-lived refresh token. Generate once with the test account; rotate when it expires. |
+| `APPLE_CERT_P12_BASE64` | Optional Developer ID Application cert exported as `.p12`, then `base64 -i cert.p12 \| pbcopy`. When absent, macOS release artifacts ship unsigned. |
+| `APPLE_CERT_PASSWORD` | Optional password used when exporting the `.p12`; required only when `APPLE_CERT_P12_BASE64` is set. |
+| `APPLE_KEYCHAIN_PASSWORD` | Optional throwaway password used to unlock the temporary CI keychain; required only when `APPLE_CERT_P12_BASE64` is set. |
+| `APPLE_DEVELOPER_ID` | Optional identity name passed to `codesign --sign` — typically `Developer ID Application: Your Name (TEAMID)`. When absent, signing is skipped. |
+| `APPLE_ID` | Optional Apple account email for `notarytool submit`; required only for notarization. |
+| `APPLE_TEAM_ID` | Optional 10-char alphanumeric team identifier; required only for notarization. |
+| `APPLE_APP_SPECIFIC_PASSWORD` | Optional app-specific password generated at appleid.apple.com. Required only for notarization. |
+| `GMAIL_CLIENT_ID` | Optional bundled Gmail OAuth client id. When set with `GMAIL_CLIENT_SECRET`, it is compiled into release artifacts by default. |
+| `GMAIL_CLIENT_SECRET` | Optional bundled Gmail OAuth client secret. Must be set with `GMAIL_CLIENT_ID`, or both omitted. |
+| `MXR_GMAIL_TEST_CLIENT_ID` | Optional live Gmail E2E smoke test client id for release runs. |
+| `MXR_GMAIL_TEST_CLIENT_SECRET` | Optional live Gmail E2E smoke test client secret. |
+| `MXR_GMAIL_TEST_REFRESH_TOKEN` | Optional live Gmail E2E smoke refresh token. When any live smoke secret is absent, release skips the live Gmail smoke. |
 
-Signing and notarization gracefully no-op when their secrets are missing
-— the workflow logs a `::warning` and continues, so the maintainer can
-provision Apple Developer credentials incrementally without breaking
-existing release runs. Once all four signing secrets and all three
-notarytool secrets are set, every macOS tarball is shipped with a
-signed, notarized `mxr` binary.
+For CLI-affecting release tags, deterministic CLI/provider tests remain
+release-blocking. Live Gmail smoke, macOS signing, and notarization are
+opportunistic: they run when their secrets are configured and skip with a
+warning when secrets are absent. Docs-only or version-only tags still skip binary artifacts via
+`scripts/release_change_scope.sh`. Every release run first verifies that
+the tag (for example `v0.5.47`) matches `workspace.package.version` in
+`Cargo.toml` via `scripts/release_version_gate.sh`.
 
 ---
 
@@ -707,14 +703,14 @@ signed, notarized `mxr` binary.
 7. Developer pushes: git push origin main v0.1.0
 8. Tag triggers release pipeline:
    a. Verify tag version matches Cargo.toml version
-   b. Build cross-compiled binaries (4 targets)
+   b. If CLI artifacts changed, build Linux x86_64 and macOS Apple Silicon binaries
    c. Generate SHA256 checksums
    d. Create GitHub Release with binaries, checksums, and changelog
-   e. Update Homebrew formula (auto-PR to tap repo)
+   e. If CLI artifacts changed, update Homebrew formula
    f. Deploy docs site to Cloudflare Pages
 9. Done. Users can now:
    - cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
-   - brew install mxr
+   - brew install planetaryescape/mxr/mxr
    - Download binary from GitHub Releases
 ```
 
@@ -728,11 +724,11 @@ signed, notarized `mxr` binary.
 
 **Why**: Semver is the Rust ecosystem standard. Conventional commits enable automated changelog generation, which saves manual effort on every release. git-cliff is a Rust-native tool that parses conventional commits into grouped changelogs. The alternative (manually writing changelogs) doesn't scale and is error-prone.
 
-**D067: Cross-compilation via `cross` for Linux, native for macOS**
+**D067: Native release builds for current binary targets**
 
-**Chosen**: Use `cross` (containerized cross-compilation) for Linux musl targets. Native compilation for macOS targets on macOS runners.
+**Chosen**: Build Linux x86_64 natively on Linux runners and macOS Apple Silicon natively on macOS runners. Keep `cross` available only if future Linux ARM64 or musl targets return.
 
-**Why**: `cross` handles the complexity of musl toolchains and cross-architecture builds (x86_64 → aarch64) inside Docker containers. macOS targets build natively on GitHub's macOS runners because cross-compiling for macOS is significantly more complex (requires macOS SDK). musl is chosen over glibc for Linux because it produces fully static binaries that run on any Linux distribution.
+**Why**: This matches `.github/workflows/release.yml`: the current matrix is `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`, both with `semantic-local,web-ui` enabled. The older musl/cross plan was useful launch thinking, but it is not the present release contract.
 
 **D068: Workspace publish via cargo-workspaces**
 

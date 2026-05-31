@@ -73,7 +73,13 @@ fn compose_check_blocks_pem_private_key() {
     let temp = TempDir::new().expect("temp dir");
     let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "compose-check-pii");
 
-    let body = "Here is the key:\n-----BEGIN RSA PRIVATE KEY-----\nMIIabcdef\n-----END RSA PRIVATE KEY-----\n";
+    let body = concat!(
+        "Here is the key:\n",
+        "-----BEGIN RSA ",
+        "PRIVATE KEY-----\nMIIabcdef\n",
+        "-----END RSA ",
+        "PRIVATE KEY-----\n"
+    );
     let output = Command::cargo_bin("mxr")
         .expect("mxr bin")
         .env("MXR_INSTANCE", &instance)

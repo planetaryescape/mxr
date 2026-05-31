@@ -55,16 +55,23 @@ When the app exceeds 100 users, Google requires:
 3. **CASA security assessment** — required for sensitive scopes (gmail.modify, gmail.send). This is a third-party security audit.
 4. **App description and justification** — explanation of why each scope is needed.
 
-### Launch strategy
+### Release strategy
 
-**Phase 1 (launch)**: Ship unverified. The 100-user cap is sufficient for early adopters. The click-through warning is acceptable for a technical audience installing a terminal email client.
+**Alpha / early adopter builds** may use an unverified bundled client while the audience is small and technically tolerant of Google's warning screen.
 
-**Phase 2 (growth)**: Apply for Google verification when approaching the 100-user threshold. Requirements:
+**GA builds** bundle the configured mxr Gmail client by default so first-run
+Gmail setup works without BYOC. To remove Google's unverified-app warning for
+broad distribution, complete:
 
 - Privacy policy hosted at the docs site (mirrors `PRIVACY.md`).
 - Domain verified via Google Search Console.
-- CASA assessment completed (timeline: 2-4 weeks typically).
+- Google OAuth app verification for the requested Gmail scopes.
+- CASA assessment if Google requires it for the final scope set.
 - Submit via Google Cloud Console > API & Services > OAuth consent screen > Publish.
+
+Release artifacts include bundled Gmail credentials whenever both
+`GMAIL_CLIENT_ID` and `GMAIL_CLIENT_SECRET` are configured at build time. If
+either value is omitted, the release falls back to BYOC-only Gmail setup.
 
 ---
 
@@ -92,7 +99,7 @@ Legacy token files under the mxr data-dir token directory may still exist. On lo
 
 ## BYOC: Bring Your Own Credentials
 
-Users who prefer to use their own Google Cloud project (or who hit the 100-user cap before verification) can provide their own OAuth credentials.
+Users who prefer to use their own Google Cloud project, or who need Gmail before bundled-client verification is complete, can provide their own OAuth credentials.
 
 ### Configuration
 
@@ -123,7 +130,7 @@ The docs site will include a guide for creating your own Google Cloud project an
 - Configuring the consent screen
 - Adding the credentials to mxr config
 
-This is optional — the bundled client ID is the default and recommended path.
+For GA, BYOC is the fallback whenever the official bundled client is missing, unverified, quota-limited, or otherwise blocked by Google.
 
 ---
 

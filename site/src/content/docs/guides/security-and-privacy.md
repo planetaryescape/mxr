@@ -61,6 +61,40 @@ If you previously ran a version older than the Gmail keychain migration,
 legacy Gmail token files may be mirrored into the keychain on first
 startup. The private disk fallback can remain available by design.
 
+### Backup and restore
+
+mxr does not run a hosted backup service. Your local profile is the
+recovery boundary.
+
+To find the active paths:
+
+```bash
+mxr status --format json | jq -r '.config_path, .data_dir'
+```
+
+For a clean backup, stop mxr processes first, then copy:
+
+- the directory containing `config.toml`
+- the data directory containing `mxr.db`, `attachments/`, `logs/`,
+  `tokens/`, `search_index/`, and `models/`
+- any OS keychain entries for Gmail, IMAP, or SMTP credentials if you
+  are moving to a different machine
+
+`search_index/` and `models/` are rebuildable, so you can omit them from
+space-constrained backups. Keep `mxr.db`, `attachments/`, `tokens/`, and
+`config.toml` together. Do not copy `mxr.db` while the daemon is writing
+unless your filesystem backup tool provides a consistent snapshot.
+
+To restore, install the same or a newer mxr version, stop the daemon,
+put the config/data directories back at the resolved paths (or set
+`MXR_CONFIG_DIR` / `MXR_DATA_DIR`), restore keychain credentials or run
+`mxr accounts repair NAME`, then run:
+
+```bash
+mxr doctor
+mxr sync
+```
+
 ### Bridge and local IPC boundary
 
 The Unix socket is a local user boundary. Any process that can connect

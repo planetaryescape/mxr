@@ -5,11 +5,11 @@ description: Connect a Gmail account to mxr.
 
 mxr connects to Gmail through the Gmail API using OAuth. You have two options for credentials:
 
-1. **Bundled credentials** — mxr ships with a default OAuth client. You can use it to get started fast, but Google will show a scary "unverified app" warning during authorization because the OAuth client hasn't gone through Google's verification process.
+1. **Your own credentials** (recommended) — create your own Google Cloud project. Takes about 5 minutes. No warning screens, full control over your OAuth tokens, and no dependency on mxr's bundled client. Your credentials talk directly to Google with your own project — mxr never sees them.
 
-2. **Your own credentials** (recommended) — create your own Google Cloud project. Takes about 5 minutes. No warning screens, full control over your OAuth tokens, and no dependency on mxr's bundled client. Your credentials talk directly to Google with your own project — mxr never sees them.
+2. **Bundled credentials** — mxr may ship with a default OAuth client for early adopters. Until the bundled client completes Google verification, it can show an unverified-app warning and may be quota-limited. Do not rely on this path for production Gmail access.
 
-We strongly recommend option 2. The bundled credentials work, but the unverified warning is confusing, Google may throttle shared client IDs, and your own project gives you full control. The rest of this guide walks you through creating your own credentials and connecting your account.
+We strongly recommend your own credentials. The bundled path is a convenience for small alpha-style use, not the GA-safe Gmail path. The rest of this guide walks you through creating your own credentials and connecting your account.
 
 ## Create your Google Cloud project
 
@@ -78,7 +78,7 @@ mxr sync
 
 ## Using bundled credentials instead
 
-If you want to skip creating your own project and accept the unverified app warning:
+If you are in an early-adopter flow and explicitly accept the unverified app warning:
 
 ```bash
 mxr accounts add gmail
@@ -87,7 +87,7 @@ mxr accounts add gmail
 # Complete authorization
 ```
 
-This works but we recommend switching to your own credentials when you have 5 minutes. To switch later, just re-run `mxr accounts add gmail` with custom credentials — it will replace the existing account.
+This may work for small-scale testing. For production use, switch to your own credentials. To switch later, just re-run `mxr accounts add gmail` with custom credentials — it will replace the existing account.
 
 ## Working over SSH or in a container
 
@@ -131,7 +131,7 @@ Your Client ID or Client Secret is wrong. Double-check you copied them correctly
 
 ### "Access blocked: mxr has not completed the Google verification process"
 
-This is the unverified app warning when using bundled credentials. Click **Advanced** at the bottom left, then **Go to mxr (unsafe)**. If you're using your own credentials, you shouldn't see this.
+This is the unverified app warning when using bundled credentials. That path is for early adopters only until the bundled OAuth app completes Google verification. For production Gmail access, use your own credentials.
 
 ### "This app is blocked" (no Advanced option)
 

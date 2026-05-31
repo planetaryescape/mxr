@@ -30,6 +30,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Verify release tag matches Cargo version
+        run: bash ./scripts/release_version_gate.sh "${GITHUB_REF_NAME}"
       - id: previous-tag
         name: Find previous tag
         run: |
@@ -122,6 +124,12 @@ jobs:
         if: matrix.use_cross
         run: cargo install cross --locked
 
+      - name: Gate bundled Gmail OAuth credentials
+        env:
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+        run: bash ./scripts/release_gmail_oauth_gate.sh
+
       - name: Build web SPA
         working-directory: apps/web
         run: npm ci && npm run build
@@ -130,16 +138,12 @@ jobs:
         if: matrix.use_cross
         run: cross build --release --locked --target ${{ matrix.target }} -p mxr ${{ matrix.cargo_args }}
         env:
-          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
-          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
 
       - name: Build (native)
         if: "!matrix.use_cross"
         run: cargo build --release --locked --target ${{ matrix.target }} -p mxr ${{ matrix.cargo_args }}
         env:
-          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
-          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
 
       - name: SPA embedded in release binary
@@ -165,10 +169,10 @@ jobs:
           echo "${HTML}" | grep -q 'spa-not-built' && { echo "FAIL: placeholder served"; exit 1; }
           echo "${HTML}" | grep -q '/assets/index-' || { echo "FAIL: no Vite-built bundle"; exit 1; }
 
-      # macOS code signing happens BEFORE the archive so the signed binary
-      # is what gets distributed. Both signing and notarization gracefully
-      # no-op when their secrets are missing — the maintainer provisions
-      # Apple Developer credentials once and re-runs.
+      # macOS code signing happens BEFORE the archive so signed bytes are what
+      # get distributed when Apple credentials are configured. Missing Apple
+      # credentials are non-blocking: the release ships unsigned and users may
+      # need to trust the binary when Gatekeeper prompts.
       - name: Import Apple Developer ID certificate
         if: matrix.platform_family == 'macos'
         env:
@@ -176,9 +180,12 @@ jobs:
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
           APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
         run: |
-          if [ -z "$APPLE_CERT_P12_BASE64" ]; then
-            echo "::warning ::APPLE_CERT_P12_BASE64 secret not set; macOS binary will be unsigned (Gatekeeper will warn end users)."
+          if [ -z "$APPLE_CERT_P12_BASE64" ] \
+            || [ -z "$APPLE_CERT_PASSWORD" ] \
+            || [ -z "$APPLE_KEYCHAIN_PASSWORD" ]; then
+            echo "::warning ::Apple signing certificate secrets not set; macOS binary will be unsigned (Gatekeeper will warn end users)."
             echo "APPLE_SIGN_AVAILABLE=false" >> "$GITHUB_ENV"
+            echo "APPLE_CODESIGNED=false" >> "$GITHUB_ENV"
             exit 0
           fi
           KEYCHAIN_PATH="$RUNNER_TEMP/codesign.keychain-db"
@@ -200,6 +207,7 @@ jobs:
         run: |
           if [ -z "$APPLE_DEVELOPER_ID" ]; then
             echo "::warning ::APPLE_DEVELOPER_ID secret not set; cannot sign without an identity name."
+            echo "APPLE_CODESIGNED=false" >> "$GITHUB_ENV"
             exit 0
           fi
           for BINARY in \
@@ -210,6 +218,7 @@ jobs:
               --sign "$APPLE_DEVELOPER_ID" "$BINARY"
             codesign --verify --strict --verbose=2 "$BINARY"
           done
+          echo "APPLE_CODESIGNED=true" >> "$GITHUB_ENV"
 
       - name: Package CLI archive
         if: needs.plan.outputs.cli_changed == 'true'
@@ -231,7 +240,7 @@ jobs:
       # doesn't apply to bare CLI binaries (Apple validates online via
       # Gatekeeper). The macOS .tar.gz contains the same signed bytes.
       - name: Notarize macOS binary
-        if: matrix.platform_family == 'macos' && env.APPLE_SIGN_AVAILABLE == 'true'
+        if: matrix.platform_family == 'macos' && env.APPLE_CODESIGNED == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -239,7 +248,7 @@ jobs:
           MATRIX_TARGET: ${{ matrix.target }}
         run: |
           if [ -z "$APPLE_ID" ] || [ -z "$APPLE_TEAM_ID" ] || [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ]; then
-            echo "::warning ::Notarization secrets not set; binary is signed but not notarized. End users will see a Gatekeeper warning on first run."
+            echo "::warning ::Notarization secrets not set; binary is signed but not notarized. End users may see a Gatekeeper warning on first run."
             exit 0
           fi
           NOTARIZE_DIR="$RUNNER_TEMP/mxr-notarize"

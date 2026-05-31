@@ -101,7 +101,7 @@ const COMMAND_EXAMPLES = {
       "mxr send DRAFT_ID --dry-run",
       "mxr send DRAFT_ID --at 'tomorrow 9am'",
       "mxr send DRAFT_ID --check --format json   # safety report, no send",
-      "mxr send DRAFT_ID --override-safety 01HXYZ-K4M2-...   # bypass minted Blocker",
+      "mxr send DRAFT_ID --override-safety OVERRIDE_TOKEN_FROM_CHECK   # bypass minted Blocker",
     ],
   },
   unsend: { use: 'Cancel a scheduled send while keeping the draft.', examples: ["mxr unsend DRAFT_ID"] },

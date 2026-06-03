@@ -9,6 +9,7 @@ pub async fn run(
     account: Option<String>,
     mode: Option<SearchModeArg>,
     format: Option<OutputFormat>,
+    quiet: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
@@ -26,14 +27,37 @@ pub async fn run(
         } => Some(count),
         _ => None,
     })?;
-    match resolve_format(format) {
-        OutputFormat::Json | OutputFormat::Jsonl => {
-            println!(
-                "{}",
-                serde_json::to_string(&serde_json::json!({"query": query, "count": count}))?
-            );
-        }
-        _ => println!("{count}"),
-    }
+    print!("{}", render_count_output(&query, count, format, quiet)?);
     Ok(())
+}
+
+fn render_count_output(
+    query: &str,
+    count: u32,
+    format: Option<OutputFormat>,
+    quiet: bool,
+) -> anyhow::Result<String> {
+    if quiet {
+        return Ok(format!("{count}\n"));
+    }
+
+    match resolve_format(format) {
+        OutputFormat::Json | OutputFormat::Jsonl => Ok(format!(
+            "{}\n",
+            serde_json::to_string(&serde_json::json!({"query": query, "count": count}))?
+        )),
+        _ => Ok(format!("{count}\n")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quiet_output_is_bare_integer_even_when_json_requested() {
+        let rendered = render_count_output("is:unread", 42, Some(OutputFormat::Json), true)
+            .expect("render count");
+        assert_eq!(rendered, "42\n");
+    }
 }

@@ -3,10 +3,11 @@ use crate::commands::selection::{parse_message_id as selection_parse_id, Selecti
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use chrono::Utc;
-use mxr_core::id::MessageId;
-use mxr_core::types::Envelope;
+use mxr_core::id::{MessageId, ThreadId};
+use mxr_core::types::{Envelope, UnsubscribeMethod};
 use mxr_protocol::*;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
@@ -99,6 +100,7 @@ pub(super) fn render_selection_preview_lines(
 ) -> Vec<String> {
     let preview_limit = 8usize;
     let mut lines = vec![format!("Would {action} {} message(s)", selection.ids.len())];
+    lines.push(selection_counts(selection).selection_line());
 
     if !selection.envelopes.is_empty() {
         lines.push(String::new());
@@ -113,11 +115,20 @@ pub(super) fn render_selection_preview_lines(
             } else {
                 &envelope.subject
             };
+            let unsubscribe = if action == "unsubscribe" {
+                format!(
+                    " | Unsubscribe: {}",
+                    unsubscribe_method_label(&envelope.unsubscribe)
+                )
+            } else {
+                String::new()
+            };
             lines.push(format!(
-                "- {} | {} | {}",
+                "- {} | {} | {}{}",
                 envelope.id.as_str(),
                 from,
-                subject
+                subject,
+                unsubscribe
             ));
         }
         if selection.envelopes.len() > preview_limit {
@@ -137,11 +148,35 @@ pub(super) fn print_selection_preview(action: &str, selection: &MutationSelectio
     }
 }
 
+#[derive(Clone, Copy, Serialize)]
+pub(super) struct SelectionCounts {
+    selected_messages: usize,
+    selected_threads: usize,
+}
+
+impl SelectionCounts {
+    fn selection_line(self) -> String {
+        format!(
+            "Selection: {} thread(s) / {} message(s)",
+            self.selected_threads, self.selected_messages
+        )
+    }
+
+    fn changed_line(self, changed_messages: usize) -> String {
+        format!(
+            "Selection: {} thread(s) / {} message(s); changed {} message(s).",
+            self.selected_threads, self.selected_messages, changed_messages
+        )
+    }
+}
+
 #[derive(Serialize)]
 struct MutationPreviewOutput {
     action: String,
     dry_run: bool,
     requested: usize,
+    selected_messages: usize,
+    selected_threads: usize,
     message_ids: Vec<String>,
     messages: Vec<MutationPreviewRecord>,
 }
@@ -151,6 +186,8 @@ struct MutationPreviewRecord {
     message_id: String,
     from: String,
     subject: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unsubscribe_method: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -160,12 +197,16 @@ struct MutationPreviewLine {
     message_id: String,
     from: String,
     subject: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unsubscribe_method: Option<String>,
 }
 
 #[derive(Serialize)]
 struct MutationResultOutput {
     action: String,
     dry_run: bool,
+    selected_messages: usize,
+    selected_threads: usize,
     message_ids: Vec<String>,
     result: MutationResultData,
 }
@@ -174,6 +215,8 @@ struct MutationResultOutput {
 struct MutationAckOutput {
     action: String,
     dry_run: bool,
+    selected_messages: usize,
+    selected_threads: usize,
     message_ids: Vec<String>,
     ok: bool,
 }
@@ -191,6 +234,10 @@ struct BatchMutationOutput {
     requested: usize,
     succeeded: usize,
     failed: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selected_messages: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selected_threads: Option<usize>,
     message_ids: Vec<String>,
     errors: Vec<BatchMutationError>,
 }
@@ -201,7 +248,8 @@ pub(super) fn print_dry_run_output(
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let message_ids = selection_message_ids(selection);
-    let messages = preview_records(selection);
+    let counts = selection_counts(selection);
+    let messages = preview_records(selection, action == "unsubscribe");
 
     match resolve_format(format) {
         OutputFormat::Table => print_selection_preview(action, selection),
@@ -211,6 +259,8 @@ pub(super) fn print_dry_run_output(
                 action: action.to_owned(),
                 dry_run: true,
                 requested: selection.ids.len(),
+                selected_messages: counts.selected_messages,
+                selected_threads: counts.selected_threads,
                 message_ids,
                 messages,
             })?
@@ -224,6 +274,7 @@ pub(super) fn print_dry_run_output(
                     message_id: message.message_id,
                     from: message.from,
                     subject: message.subject,
+                    unsubscribe_method: message.unsubscribe_method,
                 })
                 .collect();
             println!("{}", jsonl(&lines)?);
@@ -255,7 +306,10 @@ fn selection_message_ids(selection: &MutationSelection) -> Vec<String> {
     selection.ids.iter().map(|id| id.as_str().clone()).collect()
 }
 
-fn preview_records(selection: &MutationSelection) -> Vec<MutationPreviewRecord> {
+fn preview_records(
+    selection: &MutationSelection,
+    include_unsubscribe_method: bool,
+) -> Vec<MutationPreviewRecord> {
     selection
         .ids
         .iter()
@@ -285,9 +339,37 @@ fn preview_records(selection: &MutationSelection) -> Vec<MutationPreviewRecord> 
                         }
                     })
                     .unwrap_or_default(),
+                unsubscribe_method: envelope
+                    .filter(|_| include_unsubscribe_method)
+                    .map(|envelope| unsubscribe_method_label(&envelope.unsubscribe).to_owned()),
             }
         })
         .collect()
+}
+
+pub(super) fn selection_counts(selection: &MutationSelection) -> SelectionCounts {
+    let mut threads = HashSet::<ThreadId>::new();
+    for envelope in &selection.envelopes {
+        threads.insert(envelope.thread_id.clone());
+    }
+    SelectionCounts {
+        selected_messages: selection.ids.len(),
+        selected_threads: if threads.is_empty() {
+            selection.ids.len()
+        } else {
+            threads.len()
+        },
+    }
+}
+
+fn unsubscribe_method_label(method: &UnsubscribeMethod) -> &'static str {
+    match method {
+        UnsubscribeMethod::OneClick { .. } => "OneClick",
+        UnsubscribeMethod::HttpLink { .. } => "HttpLink",
+        UnsubscribeMethod::Mailto { .. } => "Mailto",
+        UnsubscribeMethod::BodyLink { .. } => "BodyLink",
+        UnsubscribeMethod::None => "None",
+    }
 }
 
 pub(super) fn confirm_action(action: &str, selection: &MutationSelection) -> anyhow::Result<()> {
@@ -338,6 +420,7 @@ where
         confirm_action(options.action, &selection)?;
     }
 
+    let counts = selection_counts(&selection);
     let message_ids = selection.ids.clone();
     let resp = client.request(build_request(selection.ids)).await?;
     handle_mutation_response(
@@ -345,6 +428,7 @@ where
         options.success_message,
         options.action,
         &message_ids,
+        counts,
         options.format,
     )
 }
@@ -354,13 +438,14 @@ pub(super) fn handle_mutation_response(
     success_message: &str,
     action: &str,
     message_ids: &[MessageId],
+    counts: SelectionCounts,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let format = resolve_format(format);
     match resp {
         Response::Ok {
             data: ResponseData::Ack,
-        } => print_ack_output(action, success_message, message_ids, format)?,
+        } => print_ack_output(action, success_message, message_ids, counts, format)?,
         Response::Ok {
             data: ResponseData::MutationResult { result },
         } => {
@@ -368,7 +453,14 @@ pub(super) fn handle_mutation_response(
             let requested = result.requested;
             let skipped = result.skipped;
             let failed = result.failed;
-            print_mutation_result_output(action, success_message, message_ids, result, format)?;
+            print_mutation_result_output(
+                action,
+                success_message,
+                message_ids,
+                counts,
+                result,
+                format,
+            )?;
             if none_succeeded {
                 anyhow::bail!(
                     "No messages changed (requested {requested}, skipped {skipped}, failed {failed})"
@@ -385,15 +477,21 @@ fn print_ack_output(
     action: &str,
     success_message: &str,
     message_ids: &[MessageId],
+    counts: SelectionCounts,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
     match format {
-        OutputFormat::Table => println!("{success_message}"),
+        OutputFormat::Table => {
+            println!("{success_message}");
+            println!("{}", counts.changed_line(message_ids.len()));
+        }
         OutputFormat::Json => println!(
             "{}",
             serde_json::to_string_pretty(&MutationAckOutput {
                 action: action.to_owned(),
                 dry_run: false,
+                selected_messages: counts.selected_messages,
+                selected_threads: counts.selected_threads,
                 message_ids: message_ids_to_strings(message_ids),
                 ok: true,
             })?
@@ -403,6 +501,8 @@ fn print_ack_output(
             serde_json::to_string(&MutationAckOutput {
                 action: action.to_owned(),
                 dry_run: false,
+                selected_messages: counts.selected_messages,
+                selected_threads: counts.selected_threads,
                 message_ids: message_ids_to_strings(message_ids),
                 ok: true,
             })?
@@ -428,6 +528,7 @@ fn print_mutation_result_output(
     action: &str,
     success_message: &str,
     message_ids: &[MessageId],
+    counts: SelectionCounts,
     result: MutationResultData,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
@@ -457,6 +558,7 @@ fn print_mutation_result_output(
                     );
                 }
             }
+            println!("{}", counts.changed_line(result.succeeded as usize));
             if let Some(mutation_id) = result.mutation_id.as_deref() {
                 println!("Undo with: mxr undo {mutation_id}");
             }
@@ -466,6 +568,8 @@ fn print_mutation_result_output(
             serde_json::to_string_pretty(&MutationResultOutput {
                 action: action.to_owned(),
                 dry_run: false,
+                selected_messages: counts.selected_messages,
+                selected_threads: counts.selected_threads,
                 message_ids: message_ids_to_strings(message_ids),
                 result,
             })?
@@ -475,6 +579,8 @@ fn print_mutation_result_output(
             serde_json::to_string(&MutationResultOutput {
                 action: action.to_owned(),
                 dry_run: false,
+                selected_messages: counts.selected_messages,
+                selected_threads: counts.selected_threads,
                 message_ids: message_ids_to_strings(message_ids),
                 result,
             })?
@@ -546,10 +652,16 @@ pub(super) fn print_batch_mutation_output(
     message_ids: &[MessageId],
     succeeded: usize,
     errors: Vec<BatchMutationError>,
+    selection_counts: Option<SelectionCounts>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     match resolve_format(format) {
-        OutputFormat::Table => println!("{table_message}"),
+        OutputFormat::Table => {
+            println!("{table_message}");
+            if let Some(counts) = selection_counts {
+                println!("{}", counts.changed_line(succeeded));
+            }
+        }
         OutputFormat::Json => println!(
             "{}",
             serde_json::to_string_pretty(&BatchMutationOutput {
@@ -558,6 +670,8 @@ pub(super) fn print_batch_mutation_output(
                 requested: message_ids.len(),
                 succeeded,
                 failed: errors.len(),
+                selected_messages: selection_counts.map(|counts| counts.selected_messages),
+                selected_threads: selection_counts.map(|counts| counts.selected_threads),
                 message_ids: message_ids_to_strings(message_ids),
                 errors,
             })?
@@ -570,6 +684,8 @@ pub(super) fn print_batch_mutation_output(
                 requested: message_ids.len(),
                 succeeded,
                 failed: errors.len(),
+                selected_messages: selection_counts.map(|counts| counts.selected_messages),
+                selected_threads: selection_counts.map(|counts| counts.selected_threads),
                 message_ids: message_ids_to_strings(message_ids),
                 errors,
             })?
@@ -703,5 +819,73 @@ pub(super) async fn request_attachment_file(
         } => Ok(PathBuf::from(file.path)),
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_fixtures::TestEnvelopeBuilder;
+
+    #[test]
+    fn dry_run_preview_labels_threads_and_messages_separately() {
+        let thread_id = ThreadId::new();
+        let first = TestEnvelopeBuilder::new()
+            .thread_id(thread_id.clone())
+            .provider_id("one")
+            .build();
+        let second = TestEnvelopeBuilder::new()
+            .thread_id(thread_id)
+            .provider_id("two")
+            .build();
+        let selection = MutationSelection {
+            ids: vec![first.id.clone(), second.id.clone()],
+            envelopes: vec![first, second],
+            used_search: true,
+        };
+
+        let lines = render_selection_preview_lines("archive", &selection);
+        assert!(
+            lines
+                .iter()
+                .any(|line| line == "Selection: 1 thread(s) / 2 message(s)"),
+            "preview should distinguish collapsed thread count from selected messages: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn apply_summary_labels_threads_messages_and_changed_messages() {
+        let counts = SelectionCounts {
+            selected_threads: 5,
+            selected_messages: 7,
+        };
+
+        assert_eq!(
+            counts.changed_line(5),
+            "Selection: 5 thread(s) / 7 message(s); changed 5 message(s)."
+        );
+    }
+
+    #[test]
+    fn unsubscribe_dry_run_preview_reports_resolved_method_or_none() {
+        let with_method = TestEnvelopeBuilder::new()
+            .provider_id("with-method")
+            .unsubscribe(UnsubscribeMethod::HttpLink {
+                url: "https://example.com/unsubscribe".into(),
+            })
+            .build();
+        let without_method = TestEnvelopeBuilder::new()
+            .provider_id("without-method")
+            .unsubscribe(UnsubscribeMethod::None)
+            .build();
+        let selection = MutationSelection {
+            ids: vec![with_method.id.clone(), without_method.id.clone()],
+            envelopes: vec![with_method, without_method],
+            used_search: true,
+        };
+
+        let rendered = render_selection_preview_lines("unsubscribe", &selection).join("\n");
+        assert!(rendered.contains("Unsubscribe: HttpLink"), "{rendered}");
+        assert!(rendered.contains("Unsubscribe: None"), "{rendered}");
     }
 }

@@ -69,6 +69,9 @@ pub enum Command {
         account: Option<String>,
         #[arg(long, value_enum)]
         mode: Option<SearchModeArg>,
+        /// Print a bare integer, ignoring output format and tty detection.
+        #[arg(long)]
+        quiet: bool,
         #[arg(long, value_enum)]
         format: Option<OutputFormat>,
     },
@@ -2583,6 +2586,18 @@ mod tests {
     fn parses_restart_subcommand() {
         let cli = Cli::parse_from(["mxr", "restart"]);
         assert!(matches!(cli.command, Some(Command::Restart)));
+    }
+
+    #[test]
+    fn parses_count_quiet_flag() {
+        let cli = Cli::parse_from(["mxr", "count", "is:unread", "--quiet"]);
+        match cli.command {
+            Some(Command::Count { query, quiet, .. }) => {
+                assert_eq!(query, "is:unread");
+                assert!(quiet);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
     }
 
     #[test]

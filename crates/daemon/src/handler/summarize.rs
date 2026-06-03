@@ -12,7 +12,7 @@ use mxr_store::{thread_summary_content_hash, Store, ThreadSummaryRecord};
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-const SUMMARY_PROMPT_VERSION: &str = "v2";
+const SUMMARY_PROMPT_VERSION: &str = "v3";
 
 const SYSTEM_PROMPT: &str = r#"You write thread summaries for a terminal email client. The reader already sees subject, sender, recipient, date, and full thread structure on screen — never restate those.
 
@@ -41,7 +41,40 @@ Rules:
 - Preserve names, numbers, dates, deadlines, decisions verbatim from the source.
 - Use "you" only for the account owner addresses listed in the user message.
 - Do not invent context. If a message is purely informational, just state the information.
-- Do not repeat the subject line, sender name, recipient address, or message date in the summary body."#;
+- Do not repeat the subject line, sender name, recipient address, or message date in the summary body.
+
+OUTPUT FORMAT — STRICT:
+The FIRST line must be the triage verdict and nothing else. It must begin with
+exactly one of these three tokens, verbatim:
+
+  ACTION REQUIRED — <the specific reason, + any deadline as (by YYYY-MM-DD)>
+  FYI — <why it's legitimate but needs nothing from the reader>
+  ROUTINE — <marketing / notification / automated / low-signal>
+
+Then a blank line, then your normal summary.
+
+CLASSIFY BY WHAT THE EMAIL ASKS OF THE READER, not by topic, sender prestige,
+or length:
+
+- ACTION REQUIRED: the reader must reply, decide, pay, sign, submit, renew,
+  confirm, or show up — OR money/security/legal/health consequences follow from
+  inaction. Recurring failures (e.g. a payment that keeps bouncing) are ACTION.
+  Always name the reason; surface any date as "(by YYYY-MM-DD)".
+- FYI: legitimate and possibly worth knowing, but nothing is owed and no choice
+  is pending (a shipped order, a published statement, a routine receipt to file).
+- ROUTINE: marketing, promotions, digests, social/app notifications, and
+  automated noise the reader can safely skip.
+
+TIE-BREAKERS:
+- Unsure between ACTION and FYI → choose ACTION.
+- Unsure between FYI and ROUTINE → choose FYI.
+- A deadline, an unpaid balance, a security/login alert, or someone explicitly
+  waiting on the reader → ACTION, regardless of how routine the sender looks.
+- "Action" verbs in marketing copy ("Act now!", "Don't miss out") are ROUTINE,
+  not ACTION — judge real consequence, not tone.
+
+The verdict line must stand alone and be machine-parseable: one token, one em
+dash, one clause. No hedging ("possibly", "might be"), no second sentence."#;
 
 pub(super) async fn summarize_thread(state: &AppState, thread_id: &ThreadId) -> HandlerResult {
     let summary =
@@ -362,7 +395,7 @@ mod tests {
         async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
             self.requests.lock().expect("requests").push(req);
             Ok(CompletionResponse {
-                content: "Alice asks you to approve the launch plan.\nAction: reply with approval or pushback by Fri."
+                content: "ACTION REQUIRED — approve the launch plan by Friday\n\nAlice asks you to approve the launch plan.\nAction: reply with approval or pushback by Fri."
                     .to_string(),
                 model: "test-llm".to_string(),
                 finish_reason: Some("stop".to_string()),
@@ -389,6 +422,41 @@ mod tests {
             attachments: vec![],
             fetched_at: chrono::Utc::now(),
             metadata: MessageMetadata::default(),
+        }
+    }
+
+    fn assert_triage_verdict_first_line(text: &str) {
+        let first_line = text.lines().next().expect("summary has a first line");
+        assert!(
+            first_line.starts_with("ACTION REQUIRED — ")
+                || first_line.starts_with("FYI — ")
+                || first_line.starts_with("ROUTINE — "),
+            "first line must be a strict triage verdict; got: {first_line:?}",
+        );
+    }
+
+    #[test]
+    fn system_prompt_appends_strict_triage_verdict_rules() {
+        assert!(SYSTEM_PROMPT.contains("OUTPUT FORMAT — STRICT:"));
+        assert!(SYSTEM_PROMPT.contains("The FIRST line must be the triage verdict"));
+        assert!(SYSTEM_PROMPT.contains("ACTION REQUIRED — <the specific reason"));
+        assert!(SYSTEM_PROMPT.contains("FYI — <why it's legitimate"));
+        assert!(SYSTEM_PROMPT.contains("ROUTINE — <marketing / notification"));
+        assert!(SYSTEM_PROMPT.contains("Unsure between ACTION and FYI → choose ACTION"));
+        assert!(SYSTEM_PROMPT.contains("\"Action\" verbs in marketing copy"));
+    }
+
+    #[test]
+    fn field_report_calibration_verdicts_are_machine_parseable() {
+        for verdict in [
+            "ACTION REQUIRED — recurring scheduled-payment failure, 5× since Apr 1",
+            "ACTION REQUIRED — Azure payment overdue, card declined (by 2026-05-25)",
+            "FYI — new prescription issued; Numan auto-ships, no action",
+            "FYI — parcel delivered to your Safeplace",
+            "ROUTINE — AI-news digest, aggregator",
+            "ROUTINE — Business Manager partner-request notification",
+        ] {
+            assert_triage_verdict_first_line(verdict);
         }
     }
 
@@ -439,7 +507,11 @@ mod tests {
             .unwrap();
 
         let response = summarize_thread(&state, &thread_id).await.unwrap();
-        assert!(matches!(response, ResponseData::ThreadSummary { .. }));
+        let ResponseData::ThreadSummary { text, .. } = response else {
+            unreachable!("summarize_thread returns a thread summary")
+        };
+        assert_triage_verdict_first_line(&text);
+        assert!(text.contains("\n\nAlice asks you to approve"));
 
         let requests = llm.requests.lock().expect("requests");
         assert_eq!(requests.len(), 1);

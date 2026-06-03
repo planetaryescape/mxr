@@ -708,18 +708,18 @@ function ThreadSummaryAccordion({
         />
       </button>
       {expanded ? (
-        <div className="border-t border-border/70 px-4 py-3 text-sm leading-6 text-foreground">
+        <div className="break-words border-t border-border/70 px-4 py-3 text-sm leading-6 text-foreground">
           {summary.bullets.length > 0 ? (
             <ul className="space-y-1.5">
               {summary.bullets.map((item) => (
                 <li key={item} className="flex gap-2">
                   <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
-                  <span className="min-w-0">{item}</span>
+                  <span className="min-w-0 break-words">{item}</span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p>{summary.text}</p>
+            <p className="whitespace-pre-wrap break-words">{summary.text}</p>
           )}
         </div>
       ) : null}

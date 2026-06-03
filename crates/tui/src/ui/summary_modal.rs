@@ -95,15 +95,20 @@ mod tests {
         let mut state = ThreadSummaryModalState::default();
         state.open_loading(ThreadId::new());
         state.set_summary(
-            "Alice asked Bob to confirm the launch checklist. He hasn't replied.".into(),
+            "ACTION REQUIRED — confirm the launch checklist\n\nAlice asked Bob to confirm the launch checklist. He hasn't replied.".into(),
             "qwen2.5-3b-instruct".into(),
         );
         let snapshot = render_to_string(100, 18, |frame| {
             draw(frame, Rect::new(0, 0, 100, 18), &state, &Theme::default());
         });
         assert!(
+            snapshot.contains("ACTION REQUIRED")
+                && snapshot.contains("confirm the launch checklist"),
+            "triage verdict first line must render without clipping; got:\n{snapshot}",
+        );
+        assert!(
             snapshot.contains("Alice asked Bob"),
-            "summary text must render; got:\n{snapshot}",
+            "summary body text must render; got:\n{snapshot}",
         );
         assert!(
             snapshot.contains("qwen2.5-3b-instruct"),

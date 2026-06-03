@@ -1078,7 +1078,7 @@ pub async fn run() -> anyhow::Result<()> {
         if app.diagnostics.page.refresh_pending {
             app.diagnostics.page.refresh_pending = false;
             app.diagnostics.pending_status_refresh = false;
-            app.diagnostics.page.pending_requests = 4;
+            app.diagnostics.page.pending_requests = 6;
             app.diagnostics.request_id = app.diagnostics.request_id.wrapping_add(1);
             let request_id = app.diagnostics.request_id;
             for (kind, request) in [
@@ -1108,6 +1108,7 @@ pub async fn run() -> anyhow::Result<()> {
                         search: None,
                     },
                 ),
+                (ReplaceableRequestKey::DiagnosticsJobs, Request::ListJobs),
                 (
                     ReplaceableRequestKey::DiagnosticsActivity,
                     Request::ListActivity {
@@ -2234,6 +2235,11 @@ pub async fn run() -> anyhow::Result<()> {
                                     data: ResponseData::ActivityEntries { entries, .. },
                                 } => {
                                     app.diagnostics.page.activity = entries;
+                                }
+                                Response::Ok {
+                                    data: ResponseData::Jobs { jobs },
+                                } => {
+                                    app.diagnostics.page.jobs = jobs;
                                 }
                                 Response::Error { message, .. } => {
                                     app.diagnostics.page.status = Some(message);

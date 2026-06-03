@@ -931,6 +931,15 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             mutation: cmd,
             client_correlation_id,
         } => mutations::mutation(state, cmd, client_correlation_id.as_deref()).await,
+        Request::StartMutationJob {
+            mutation: cmd,
+            client_correlation_id,
+        } => {
+            mutations::start_mutation_job(state.clone(), cmd.clone(), client_correlation_id.clone())
+                .await
+        }
+        Request::ListJobs => mutations::list_jobs(),
+        Request::GetJob { job_id } => mutations::get_job(job_id),
         Request::UndoMutation { mutation_id } => mutations::undo_mutation(state, mutation_id).await,
         Request::Snooze {
             message_id,
@@ -1309,6 +1318,8 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::Count { .. }
             | Request::GetHeaders { .. }
             | Request::ListRuleHistory { .. }
+            | Request::ListJobs
+            | Request::GetJob { .. }
             | Request::ListSnoozed
             | Request::ListReplyQueue
             | Request::ListSnippets
@@ -1422,6 +1433,9 @@ fn request_kind(req: &Request) -> &'static str {
         Request::UpdateSavedSearch { .. } => "update_saved_search",
         Request::RunSavedSearch { .. } => "run_saved_search",
         Request::Mutation { mutation: cmd, .. } => mutation_kind(cmd),
+        Request::StartMutationJob { mutation: cmd, .. } => mutation_kind(cmd),
+        Request::ListJobs => "list_jobs",
+        Request::GetJob { .. } => "get_job",
         Request::UndoMutation { .. } => "undo_mutation",
         Request::Unsubscribe { .. } => "unsubscribe",
         Request::Snooze { .. } => "snooze",

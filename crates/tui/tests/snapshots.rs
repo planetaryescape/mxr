@@ -716,6 +716,7 @@ fn diagnostics_page_snapshot() {
             details: None,
         }],
         logs: vec!["daemon started".into(), "sync complete".into()],
+        jobs: vec![],
         activity: vec![],
         events_search: String::new(),
         logs_search: String::new(),
@@ -731,6 +732,7 @@ fn diagnostics_page_snapshot() {
         sync_scroll_offset: 0,
         events_scroll_offset: 0,
         logs_scroll_offset: 0,
+        jobs_scroll_offset: 0,
         activity_scroll_offset: 0,
     };
 

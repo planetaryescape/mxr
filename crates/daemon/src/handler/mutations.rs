@@ -1,6 +1,6 @@
 use super::{
     apply_snooze, build_reply_references, get_or_render_reply_context, reconcile_label_mutation,
-    restore_snoozed_message, HandlerResult,
+    restore_snoozed_message, HandlerError, HandlerResult,
 };
 use crate::state::AppState;
 use lettre::message::Mailbox;
@@ -11,16 +11,25 @@ use mxr_core::types::{
 };
 use mxr_protocol::{
     AccountMutationResultData, DaemonEvent, DraftSafetyContextData, DraftSafetyModeData,
-    ForwardContext, MutationCommand, MutationResultData, ReplyContext, ResponseData,
+    ForwardContext, JobData, JobProgressData, JobStatusData, MutationCommand, MutationResultData,
+    ReplyContext, ResponseData,
 };
 use mxr_store::{EventLogRefs, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// How long after the mutation the user can undo it. Matches the plan
 /// (~60s) and pairs with `tick_connection_state`-style UI affordances on
 /// the TUI side.
 const UNDO_WINDOW_SECS: i64 = 60;
+const MUTATION_JOB_CHUNK_SIZE: usize = 100;
+const MAX_RETAINED_JOBS: usize = 100;
+
+static JOBS: OnceLock<Mutex<Vec<JobData>>> = OnceLock::new();
+
+fn jobs_store() -> &'static Mutex<Vec<JobData>> {
+    JOBS.get_or_init(|| Mutex::new(Vec::new()))
+}
 
 pub(crate) fn check_draft_safety(draft: &Draft) -> DraftSafetyReport {
     let mut issues = Vec::new();
@@ -619,6 +628,294 @@ pub(super) async fn mutation(
     emit_mutation_reconciliation_failed_if_needed(state, client_correlation_id, &result);
 
     Ok(ResponseData::MutationResult { result })
+}
+
+pub(super) async fn start_mutation_job(
+    state: Arc<AppState>,
+    cmd: MutationCommand,
+    client_correlation_id: Option<String>,
+) -> HandlerResult {
+    let total = mutation_message_ids(&cmd).len() as u32;
+    if total == 0 {
+        return Err("No messages matched".into());
+    }
+
+    let job_id = uuid::Uuid::now_v7().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+    let job = JobData {
+        job_id: job_id.clone(),
+        kind: mutation_job_kind(&cmd).to_string(),
+        status: JobStatusData::Queued,
+        progress: JobProgressData {
+            total,
+            completed: 0,
+            succeeded: 0,
+            skipped: 0,
+            failed: 0,
+        },
+        undo_ids: Vec::new(),
+        error: None,
+        started_at: now,
+        finished_at: None,
+        result: None,
+    };
+    upsert_job(job.clone());
+
+    let background_job_id = job_id.clone();
+    tokio::spawn(async move {
+        run_mutation_job(state, background_job_id, cmd, client_correlation_id).await;
+    });
+
+    Ok(ResponseData::JobStarted { job })
+}
+
+pub(super) fn list_jobs() -> HandlerResult {
+    let mut jobs = jobs_store()
+        .lock()
+        .map_err(|_| HandlerError::from("jobs store poisoned"))?
+        .clone();
+    jobs.sort_by(|left, right| right.started_at.cmp(&left.started_at));
+    Ok(ResponseData::Jobs { jobs })
+}
+
+pub(super) fn get_job(job_id: &str) -> HandlerResult {
+    let jobs = jobs_store()
+        .lock()
+        .map_err(|_| HandlerError::from("jobs store poisoned"))?;
+    let job = jobs
+        .iter()
+        .find(|job| job.job_id == job_id)
+        .cloned()
+        .ok_or_else(|| HandlerError::from(format!("job not found: {job_id}")))?;
+    Ok(ResponseData::Job { job })
+}
+
+async fn run_mutation_job(
+    state: Arc<AppState>,
+    job_id: String,
+    cmd: MutationCommand,
+    client_correlation_id: Option<String>,
+) {
+    update_job(&job_id, |job| {
+        job.status = JobStatusData::Running;
+    });
+    crate::chimes::emit_daemon_event(
+        &state,
+        DaemonEvent::OperationStarted {
+            operation_id: job_id.clone(),
+            operation: mutation_job_kind(&cmd).to_string(),
+            account_id: None,
+            message: format!(
+                "Starting mutation job over {} message(s)",
+                mutation_message_ids(&cmd).len()
+            ),
+        },
+    );
+
+    let total = mutation_message_ids(&cmd).len() as u32;
+    let mut aggregate = empty_mutation_result(total);
+    let mut undo_ids = Vec::new();
+    let mut terminal_error: Option<String> = None;
+
+    for ids in mutation_message_ids(&cmd).chunks(MUTATION_JOB_CHUNK_SIZE) {
+        let chunk_cmd = mutation_command_with_ids(&cmd, ids.to_vec());
+        match mutation(&state, &chunk_cmd, client_correlation_id.as_deref()).await {
+            Ok(ResponseData::MutationResult { result }) => {
+                if let Some(mutation_id) = result.mutation_id.as_ref() {
+                    undo_ids.push(mutation_id.clone());
+                }
+                merge_mutation_result(&mut aggregate, &result);
+                update_job(&job_id, |job| {
+                    job.progress.completed =
+                        aggregate.succeeded + aggregate.skipped + aggregate.failed;
+                    job.progress.succeeded = aggregate.succeeded;
+                    job.progress.skipped = aggregate.skipped;
+                    job.progress.failed = aggregate.failed;
+                    job.undo_ids = undo_ids.clone();
+                    job.result = Some(aggregate.clone());
+                });
+                crate::chimes::emit_daemon_event(
+                    &state,
+                    DaemonEvent::OperationProgress {
+                        operation_id: job_id.clone(),
+                        operation: mutation_job_kind(&cmd).to_string(),
+                        account_id: None,
+                        current: aggregate.succeeded + aggregate.skipped + aggregate.failed,
+                        total: Some(total),
+                        message: format!(
+                            "{} of {} processed ({} succeeded, {} skipped)",
+                            aggregate.succeeded + aggregate.skipped + aggregate.failed,
+                            total,
+                            aggregate.succeeded,
+                            aggregate.skipped
+                        ),
+                    },
+                );
+                if result.skipped > 0 || result.failed > 0 {
+                    terminal_error = Some(format!(
+                        "mutation job stopped after partial progress: {} succeeded, {} skipped, {} failed",
+                        aggregate.succeeded, aggregate.skipped, aggregate.failed
+                    ));
+                    break;
+                }
+            }
+            Ok(_) => {
+                terminal_error =
+                    Some("daemon returned unexpected mutation job response".to_string());
+                break;
+            }
+            Err(error) => {
+                terminal_error = Some(error.to_string());
+                break;
+            }
+        }
+    }
+
+    let finished_at = chrono::Utc::now().timestamp_millis();
+    if aggregate.mutation_id.is_none() && undo_ids.len() == 1 {
+        aggregate.mutation_id = undo_ids.first().cloned();
+    }
+    let status = if terminal_error.is_some() {
+        JobStatusData::Failed
+    } else {
+        JobStatusData::Succeeded
+    };
+    update_job(&job_id, |job| {
+        job.status = status;
+        job.error = terminal_error.clone();
+        job.finished_at = Some(finished_at);
+        job.undo_ids = undo_ids.clone();
+        job.progress.completed = aggregate.succeeded + aggregate.skipped + aggregate.failed;
+        job.progress.succeeded = aggregate.succeeded;
+        job.progress.skipped = aggregate.skipped;
+        job.progress.failed = aggregate.failed;
+        job.result = Some(aggregate.clone());
+    });
+
+    match terminal_error {
+        Some(error) => crate::chimes::emit_daemon_event(
+            &state,
+            DaemonEvent::OperationFailed {
+                operation_id: job_id,
+                operation: mutation_job_kind(&cmd).to_string(),
+                account_id: None,
+                error,
+                retryable: false,
+            },
+        ),
+        None => crate::chimes::emit_daemon_event(
+            &state,
+            DaemonEvent::OperationCompleted {
+                operation_id: job_id,
+                operation: mutation_job_kind(&cmd).to_string(),
+                account_id: None,
+                message: format!(
+                    "Mutation job completed: {} succeeded, {} skipped",
+                    aggregate.succeeded, aggregate.skipped
+                ),
+            },
+        ),
+    }
+}
+
+fn upsert_job(job: JobData) {
+    if let Ok(mut jobs) = jobs_store().lock() {
+        jobs.retain(|existing| existing.job_id != job.job_id);
+        jobs.push(job);
+        if jobs.len() > MAX_RETAINED_JOBS {
+            let overflow = jobs.len() - MAX_RETAINED_JOBS;
+            jobs.drain(0..overflow);
+        }
+    }
+}
+
+fn update_job(job_id: &str, update: impl FnOnce(&mut JobData)) {
+    if let Ok(mut jobs) = jobs_store().lock() {
+        if let Some(job) = jobs.iter_mut().find(|job| job.job_id == job_id) {
+            update(job);
+        }
+    }
+}
+
+fn empty_mutation_result(requested: u32) -> MutationResultData {
+    MutationResultData {
+        requested,
+        succeeded: 0,
+        skipped: 0,
+        failed: 0,
+        accounts: Vec::new(),
+        mutation_id: None,
+    }
+}
+
+fn merge_mutation_result(aggregate: &mut MutationResultData, chunk: &MutationResultData) {
+    aggregate.succeeded += chunk.succeeded;
+    aggregate.skipped += chunk.skipped;
+    aggregate.failed += chunk.failed;
+    for account in &chunk.accounts {
+        if let Some(existing) = aggregate
+            .accounts
+            .iter_mut()
+            .find(|existing| existing.account_id == account.account_id)
+        {
+            existing.succeeded += account.succeeded;
+            existing.skipped += account.skipped;
+            existing.failed += account.failed;
+            if existing.error.is_none() {
+                existing.error = account.error.clone();
+            }
+        } else {
+            aggregate.accounts.push(account.clone());
+        }
+    }
+    aggregate.accounts.sort_by(|left, right| {
+        left.account_name
+            .to_lowercase()
+            .cmp(&right.account_name.to_lowercase())
+            .then_with(|| left.account_id.as_str().cmp(&right.account_id.as_str()))
+    });
+}
+
+fn mutation_command_with_ids(
+    cmd: &MutationCommand,
+    message_ids: Vec<mxr_core::MessageId>,
+) -> MutationCommand {
+    match cmd {
+        MutationCommand::Archive { .. } => MutationCommand::Archive { message_ids },
+        MutationCommand::ReadAndArchive { .. } => MutationCommand::ReadAndArchive { message_ids },
+        MutationCommand::Trash { .. } => MutationCommand::Trash { message_ids },
+        MutationCommand::Spam { .. } => MutationCommand::Spam { message_ids },
+        MutationCommand::Star { starred, .. } => MutationCommand::Star {
+            message_ids,
+            starred: *starred,
+        },
+        MutationCommand::SetRead { read, .. } => MutationCommand::SetRead {
+            message_ids,
+            read: *read,
+        },
+        MutationCommand::ModifyLabels { add, remove, .. } => MutationCommand::ModifyLabels {
+            message_ids,
+            add: add.clone(),
+            remove: remove.clone(),
+        },
+        MutationCommand::Move { target_label, .. } => MutationCommand::Move {
+            message_ids,
+            target_label: target_label.clone(),
+        },
+    }
+}
+
+fn mutation_job_kind(cmd: &MutationCommand) -> &'static str {
+    match cmd {
+        MutationCommand::Archive { .. } => "mutation.archive",
+        MutationCommand::ReadAndArchive { .. } => "mutation.read_and_archive",
+        MutationCommand::Trash { .. } => "mutation.trash",
+        MutationCommand::Spam { .. } => "mutation.spam",
+        MutationCommand::Star { .. } => "mutation.star",
+        MutationCommand::SetRead { .. } => "mutation.set_read",
+        MutationCommand::ModifyLabels { .. } => "mutation.modify_labels",
+        MutationCommand::Move { .. } => "mutation.move",
+    }
 }
 
 /// Map a `MutationCommand` to the `UndoableMutationKind` used to drive

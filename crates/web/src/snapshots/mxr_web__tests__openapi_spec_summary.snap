@@ -1,5 +1,6 @@
 ---
 source: crates/web/src/tests.rs
+assertion_line: 857
 expression: summary
 ---
 {
@@ -105,6 +106,9 @@ expression: summary
     "IndexFreshness",
     "InlineCalendarReply",
     "IpcErrorKind",
+    "JobData",
+    "JobProgressData",
+    "JobStatusData",
     "Label",
     "LabelCount",
     "LabelId",

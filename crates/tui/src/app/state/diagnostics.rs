@@ -6,6 +6,7 @@ pub enum DiagnosticsPaneKind {
     Sync,
     Events,
     Logs,
+    Jobs,
     /// Local user-activity log; lists recent rows from `user_activity`.
     Activity,
 }
@@ -17,7 +18,8 @@ impl DiagnosticsPaneKind {
             Self::Data => Self::Sync,
             Self::Sync => Self::Events,
             Self::Events => Self::Logs,
-            Self::Logs => Self::Activity,
+            Self::Logs => Self::Jobs,
+            Self::Jobs => Self::Activity,
             Self::Activity => Self::Status,
         }
     }
@@ -29,7 +31,8 @@ impl DiagnosticsPaneKind {
             Self::Sync => Self::Data,
             Self::Events => Self::Sync,
             Self::Logs => Self::Events,
-            Self::Activity => Self::Logs,
+            Self::Jobs => Self::Logs,
+            Self::Activity => Self::Jobs,
         }
     }
 }
@@ -44,6 +47,7 @@ pub struct DiagnosticsPageState {
     pub doctor: Option<mxr_protocol::DoctorReport>,
     pub events: Vec<mxr_protocol::EventLogEntry>,
     pub logs: Vec<String>,
+    pub jobs: Vec<mxr_protocol::JobData>,
     /// Recent activity rows fetched via `Request::ListActivity` when the
     /// diagnostics page is opened. Refresh is opt-in (`R`) so we don't
     /// hammer the daemon while the user is browsing.
@@ -68,6 +72,7 @@ pub struct DiagnosticsPageState {
     pub sync_scroll_offset: u16,
     pub events_scroll_offset: u16,
     pub logs_scroll_offset: u16,
+    pub jobs_scroll_offset: u16,
     pub activity_scroll_offset: u16,
 }
 
@@ -102,6 +107,7 @@ impl DiagnosticsPageState {
             DiagnosticsPaneKind::Sync => self.sync_scroll_offset,
             DiagnosticsPaneKind::Events => self.events_scroll_offset,
             DiagnosticsPaneKind::Logs => self.logs_scroll_offset,
+            DiagnosticsPaneKind::Jobs => self.jobs_scroll_offset,
             DiagnosticsPaneKind::Activity => self.activity_scroll_offset,
         }
     }
@@ -113,6 +119,7 @@ impl DiagnosticsPageState {
             DiagnosticsPaneKind::Sync => &mut self.sync_scroll_offset,
             DiagnosticsPaneKind::Events => &mut self.events_scroll_offset,
             DiagnosticsPaneKind::Logs => &mut self.logs_scroll_offset,
+            DiagnosticsPaneKind::Jobs => &mut self.jobs_scroll_offset,
             DiagnosticsPaneKind::Activity => &mut self.activity_scroll_offset,
         }
     }

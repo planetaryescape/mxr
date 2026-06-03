@@ -62,6 +62,11 @@ struct UndoOutput<'a> {
     undone: bool,
 }
 
+#[derive(Serialize)]
+struct JobsOutput {
+    jobs: Vec<JobData>,
+}
+
 fn print_undo_output(
     mutation_id: &str,
     dry_run: bool,
@@ -106,6 +111,92 @@ fn print_undo_output(
     Ok(())
 }
 
+pub async fn jobs(job_id: Option<String>, format: Option<OutputFormat>) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    let resp = match job_id {
+        Some(job_id) => client.request(Request::GetJob { job_id }).await?,
+        None => client.request(Request::ListJobs).await?,
+    };
+    match resp {
+        Response::Ok {
+            data: ResponseData::Job { job },
+        } => print_jobs_output(vec![job], format),
+        Response::Ok {
+            data: ResponseData::Jobs { jobs },
+        } => print_jobs_output(jobs, format),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+}
+
+fn print_jobs_output(jobs: Vec<JobData>, format: Option<OutputFormat>) -> anyhow::Result<()> {
+    match resolve_format(format) {
+        OutputFormat::Table => {
+            if jobs.is_empty() {
+                println!("No jobs");
+                return Ok(());
+            }
+            println!(
+                "{:<36}  {:<10}  {:<22}  {:>9}  undo",
+                "job_id", "status", "kind", "progress"
+            );
+            for job in jobs {
+                println!(
+                    "{:<36}  {:<10}  {:<22}  {:>4}/{:<4}  {}{}",
+                    job.job_id,
+                    format!("{:?}", job.status).to_ascii_lowercase(),
+                    job.kind,
+                    job.progress.completed,
+                    job.progress.total,
+                    job.undo_ids.join(","),
+                    job.error
+                        .as_ref()
+                        .map(|error| format!("  error={error}"))
+                        .unwrap_or_default()
+                );
+            }
+        }
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&JobsOutput { jobs })?),
+        OutputFormat::Jsonl => println!("{}", jsonl(&jobs)?),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record([
+                "job_id",
+                "kind",
+                "status",
+                "total",
+                "completed",
+                "succeeded",
+                "skipped",
+                "failed",
+                "undo_ids",
+                "error",
+            ])?;
+            for job in jobs {
+                writer.write_record([
+                    job.job_id,
+                    job.kind,
+                    format!("{:?}", job.status).to_ascii_lowercase(),
+                    job.progress.total.to_string(),
+                    job.progress.completed.to_string(),
+                    job.progress.succeeded.to_string(),
+                    job.progress.skipped.to_string(),
+                    job.progress.failed.to_string(),
+                    job.undo_ids.join(","),
+                    job.error.unwrap_or_default(),
+                ])?;
+            }
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => {
+            for job in jobs {
+                println!("{}", job.job_id);
+            }
+        }
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Simple mutations
 // ---------------------------------------------------------------------------
@@ -117,6 +208,7 @@ pub async fn archive(
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
+    async_job: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
@@ -143,6 +235,7 @@ pub async fn archive(
             dry_run,
             format,
             destructive: false,
+            async_job,
         },
         |ids| Request::mutation(MutationCommand::Archive { message_ids: ids }),
     )
@@ -156,6 +249,7 @@ pub async fn read_archive(
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
+    async_job: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
@@ -171,6 +265,7 @@ pub async fn read_archive(
             dry_run,
             format,
             destructive: false,
+            async_job,
         },
         |ids| Request::mutation(MutationCommand::ReadAndArchive { message_ids: ids }),
     )
@@ -184,6 +279,7 @@ pub async fn trash(
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
+    async_job: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
@@ -199,6 +295,7 @@ pub async fn trash(
             dry_run,
             format,
             destructive: true,
+            async_job,
         },
         |ids| Request::mutation(MutationCommand::Trash { message_ids: ids }),
     )
@@ -212,6 +309,7 @@ pub async fn spam(
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
+    async_job: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
@@ -227,6 +325,7 @@ pub async fn spam(
             dry_run,
             format,
             destructive: true,
+            async_job,
         },
         |ids| Request::mutation(MutationCommand::Spam { message_ids: ids }),
     )
@@ -240,6 +339,7 @@ pub async fn star(
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
+    async_job: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
@@ -255,6 +355,7 @@ pub async fn star(
             dry_run,
             format,
             destructive: false,
+            async_job,
         },
         |ids| {
             Request::mutation(MutationCommand::Star {
@@ -273,6 +374,7 @@ pub async fn unstar(
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
+    async_job: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
@@ -288,6 +390,7 @@ pub async fn unstar(
             dry_run,
             format,
             destructive: false,
+            async_job,
         },
         |ids| {
             Request::mutation(MutationCommand::Star {
@@ -306,6 +409,7 @@ pub async fn mark_read(
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
+    async_job: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
@@ -321,6 +425,7 @@ pub async fn mark_read(
             dry_run,
             format,
             destructive: false,
+            async_job,
         },
         |ids| {
             Request::mutation(MutationCommand::SetRead {
@@ -339,6 +444,7 @@ pub async fn unread(
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
+    async_job: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
@@ -354,6 +460,7 @@ pub async fn unread(
             dry_run,
             format,
             destructive: false,
+            async_job,
         },
         |ids| {
             Request::mutation(MutationCommand::SetRead {
@@ -377,6 +484,7 @@ pub async fn label(
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
+    async_job: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
@@ -392,6 +500,7 @@ pub async fn label(
             dry_run,
             format,
             destructive: false,
+            async_job,
         },
         |ids| {
             Request::mutation(MutationCommand::ModifyLabels {
@@ -412,6 +521,7 @@ pub async fn unlabel(
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
+    async_job: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
@@ -427,6 +537,7 @@ pub async fn unlabel(
             dry_run,
             format,
             destructive: false,
+            async_job,
         },
         |ids| {
             Request::mutation(MutationCommand::ModifyLabels {
@@ -447,6 +558,7 @@ pub async fn move_msg(
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
+    async_job: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
@@ -462,6 +574,7 @@ pub async fn move_msg(
             dry_run,
             format,
             destructive: false,
+            async_job,
         },
         |ids| {
             Request::mutation(MutationCommand::Move {

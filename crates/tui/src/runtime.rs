@@ -25,6 +25,7 @@ pub(crate) enum ReplaceableRequestKey {
     DiagnosticsDoctor,
     DiagnosticsEvents,
     DiagnosticsLogs,
+    DiagnosticsJobs,
     DiagnosticsActivity,
 }
 

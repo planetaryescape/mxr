@@ -1135,6 +1135,9 @@ pub enum Command {
         /// Show what would happen
         #[arg(long)]
         dry_run: bool,
+        /// Run as a daemon-side background job and poll with `mxr jobs`.
+        #[arg(long = "async")]
+        async_job: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1151,6 +1154,9 @@ pub enum Command {
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        /// Run as a daemon-side background job and poll with `mxr jobs`.
+        #[arg(long = "async")]
+        async_job: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1166,6 +1172,9 @@ pub enum Command {
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        /// Run as a daemon-side background job and poll with `mxr jobs`.
+        #[arg(long = "async")]
+        async_job: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1181,6 +1190,9 @@ pub enum Command {
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        /// Run as a daemon-side background job and poll with `mxr jobs`.
+        #[arg(long = "async")]
+        async_job: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1196,6 +1208,9 @@ pub enum Command {
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        /// Run as a daemon-side background job and poll with `mxr jobs`.
+        #[arg(long = "async")]
+        async_job: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1211,6 +1226,9 @@ pub enum Command {
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        /// Run as a daemon-side background job and poll with `mxr jobs`.
+        #[arg(long = "async")]
+        async_job: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1227,6 +1245,9 @@ pub enum Command {
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        /// Run as a daemon-side background job and poll with `mxr jobs`.
+        #[arg(long = "async")]
+        async_job: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1242,6 +1263,9 @@ pub enum Command {
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        /// Run as a daemon-side background job and poll with `mxr jobs`.
+        #[arg(long = "async")]
+        async_job: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1260,6 +1284,9 @@ pub enum Command {
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        /// Run as a daemon-side background job and poll with `mxr jobs`.
+        #[arg(long = "async")]
+        async_job: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1278,6 +1305,9 @@ pub enum Command {
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        /// Run as a daemon-side background job and poll with `mxr jobs`.
+        #[arg(long = "async")]
+        async_job: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1297,6 +1327,9 @@ pub enum Command {
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        /// Run as a daemon-side background job and poll with `mxr jobs`.
+        #[arg(long = "async")]
+        async_job: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1309,6 +1342,14 @@ pub enum Command {
         /// Show which undo would run without mutating state.
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+
+    /// List or inspect background jobs (large batch mutations, progress, undo ids).
+    Jobs {
+        /// Optional job id to inspect. Omit to list recent jobs.
+        job_id: Option<String>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },

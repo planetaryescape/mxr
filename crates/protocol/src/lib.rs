@@ -4,7 +4,7 @@ mod types;
 pub use codec::IpcCodec;
 pub use types::*;
 
-pub const IPC_PROTOCOL_VERSION: u32 = 3;
+pub const IPC_PROTOCOL_VERSION: u32 = 4;
 
 #[cfg(test)]
 mod tests {
@@ -475,6 +475,19 @@ mod tests {
                 IpcCategory::CoreMail,
             ),
             (
+                Request::start_mutation_job(MutationCommand::Archive {
+                    message_ids: vec![MessageId::new()],
+                }),
+                IpcCategory::CoreMail,
+            ),
+            (Request::ListJobs, IpcCategory::CoreMail),
+            (
+                Request::GetJob {
+                    job_id: "job-1".into(),
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
                 Request::Unsubscribe {
                     message_id: MessageId::new(),
                 },
@@ -742,6 +755,28 @@ mod tests {
                             error: None,
                         }],
                         mutation_id: None,
+                    },
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
+                ResponseData::JobStarted {
+                    job: JobData {
+                        job_id: "job-1".into(),
+                        kind: "mutation.archive".into(),
+                        status: JobStatusData::Running,
+                        progress: JobProgressData {
+                            total: 10,
+                            completed: 4,
+                            succeeded: 4,
+                            skipped: 0,
+                            failed: 0,
+                        },
+                        undo_ids: Vec::new(),
+                        error: None,
+                        started_at: 1,
+                        finished_at: None,
+                        result: None,
                     },
                 },
                 IpcCategory::CoreMail,

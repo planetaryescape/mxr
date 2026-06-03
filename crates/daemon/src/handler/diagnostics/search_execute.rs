@@ -1048,11 +1048,12 @@ mod owed_reply_filter_tests {
         let state = Arc::new(state);
         let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
 
+        let base_time = chrono::Utc::now();
         for i in 0..10 {
             let thread_id = ThreadId::new();
             let mut stale = envelope_inbound(&account_id, &thread_id, "stale@example.com", 0);
             stale.subject = format!("triage survey stale {i}");
-            stale.date = chrono::Utc::now() - chrono::Duration::seconds(i);
+            stale.date = base_time - chrono::Duration::seconds(i);
             index_envelope(&state, &stale).await;
         }
 
@@ -1061,8 +1062,7 @@ mod owed_reply_filter_tests {
             let thread_id = ThreadId::new();
             let mut envelope = envelope_inbound(&account_id, &thread_id, "live@example.com", 1);
             envelope.subject = format!("triage survey live {i}");
-            envelope.date =
-                chrono::Utc::now() - chrono::Duration::hours(1) - chrono::Duration::seconds(i);
+            envelope.date = base_time - chrono::Duration::hours(1) - chrono::Duration::seconds(i);
             state.store.upsert_envelope(&envelope).await.unwrap();
             index_envelope(&state, &envelope).await;
             live_ids.push(envelope.id.as_str());

@@ -135,7 +135,7 @@ pub(crate) async fn count(
     let results = execute_search(
         state,
         query,
-        0,
+        1,
         0,
         account_id,
         mode,
@@ -159,7 +159,7 @@ pub(crate) async fn search_aggregation(
     let first_page = execute_search(
         state,
         query,
-        0,
+        1,
         0,
         account_id,
         mode,

@@ -270,6 +270,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-broadcast"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "435a87a52755b8f27fcf321ac4f04b2802e337c8c4872923137471ec39c37532"
+dependencies = [
+ "event-listener 5.4.1",
+ "event-listener-strategy",
+ "futures-core",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "async-channel"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -390,6 +402,17 @@ dependencies = [
  "event-listener 5.4.1",
  "futures-lite",
  "rustix 1.1.4",
+]
+
+[[package]]
+name = "async-recursion"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b43422f69d8ff38f95f1b2bb76517c91589a924d1559a0e935d7c8ce0274c11"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -1562,6 +1585,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
+name = "dbus"
+version = "0.9.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b942602992bb7acfd1f51c49811c58a610ef9181b6e66f3e519d79b540a3bf73"
+dependencies = [
+ "libc",
+ "libdbus-sys",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "dbus-secret-service"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "708b509edf7889e53d7efb0ffadd994cc6c2345ccb62f55cfd6b0682165e4fa6"
+dependencies = [
+ "aes",
+ "block-padding",
+ "cbc",
+ "dbus",
+ "fastrand",
+ "hkdf",
+ "num",
+ "once_cell",
+ "sha2",
+ "zeroize",
+]
+
+[[package]]
 name = "deadpool"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1861,6 +1913,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "endi"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
+
+[[package]]
 name = "entities"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1873,6 +1931,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1e6a265c649f3f5979b601d26f1d05ada116434c87741c9493cb56218f76cbc"
 dependencies = [
  "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "enumflags2"
+version = "0.7.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1027f7680c853e056ebcec683615fb6fbbc07dbaa13b4d5d9442b146ded4ecef"
+dependencies = [
+ "enumflags2_derive",
+ "serde",
+]
+
+[[package]]
+name = "enumflags2_derive"
+version = "0.7.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67c78a4d8fdf9953a5c9d458f9efe940fd97a0cab0941c075a813ac594733827"
+dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -3340,7 +3419,9 @@ version = "3.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eebcc3aff044e5944a8fbaf69eb277d11986064cba30c468730e8b9909fb551c"
 dependencies = [
+ "dbus-secret-service",
  "log",
+ "secret-service",
  "security-framework 2.11.1",
  "security-framework 3.7.0",
  "zeroize",
@@ -3421,6 +3502,15 @@ name = "libc"
 version = "0.2.183"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5b646652bf6661599e1da8901b3b9522896f01e736bad5f723fe7a3a27f899d"
+
+[[package]]
+name = "libdbus-sys"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "328c4789d42200f1eeec05bd86c9c13c7f091d2ba9a6ea35acdf51f31bc0f043"
+dependencies = [
+ "pkg-config",
+]
 
 [[package]]
 name = "libfuzzer-sys"
@@ -3943,7 +4033,7 @@ checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
 
 [[package]]
 name = "mxr"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4069,7 +4159,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-compose"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "chrono",
  "comrak",
@@ -4096,7 +4186,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-config"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "chrono",
  "dirs",
@@ -4112,7 +4202,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-core"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "async-trait",
  "bitflags 2.11.0",
@@ -4128,7 +4218,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-deliveries"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4148,7 +4238,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-export"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "chrono",
  "insta",
@@ -4163,7 +4253,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-humanizer"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "mxr-core",
  "serde",
@@ -4171,7 +4261,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-keychain"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "keyring",
  "security-framework 3.7.0",
@@ -4182,7 +4272,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-llm"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "async-trait",
  "reqwest",
@@ -4195,7 +4285,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-mail-parse"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "chrono",
  "icalendar",
@@ -4211,7 +4301,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-outbound"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "chrono",
  "comrak",
@@ -4226,7 +4316,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-protocol"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "bytes",
  "chrono",
@@ -4241,7 +4331,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-fake"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4252,7 +4342,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-gmail"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4285,7 +4375,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-imap"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "anyhow",
  "async-native-tls",
@@ -4310,7 +4400,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-outlook"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4329,7 +4419,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-smtp"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4348,7 +4438,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-reader"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "data-url",
  "html2text",
@@ -4366,7 +4456,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-relationship"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4384,7 +4474,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-rules"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "chrono",
  "glob-match",
@@ -4401,7 +4491,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-safety"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "chrono",
  "mxr-core",
@@ -4418,7 +4508,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-search"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "chrono",
  "mail-query",
@@ -4434,7 +4524,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-semantic"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "anyhow",
  "calamine",
@@ -4457,7 +4547,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-store"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "chrono",
  "mxr-core",
@@ -4473,7 +4563,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-sync"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4491,7 +4581,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-test-support"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "assert_cmd",
  "dirs",
@@ -4503,7 +4593,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-tui"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4541,7 +4631,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-web"
-version = "0.5.49"
+version = "0.5.51"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -4751,6 +4841,20 @@ checksum = "bf33f538733d1a5a3494b836ba913207f14d9d4a1d3cd67030c5061bdd2cac85"
 dependencies = [
  "memchr",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "num"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35bd024e8b2ff75562e5f34e7f4905839deb4b22955ef5e73d2fea1b9813cb23"
+dependencies = [
+ "num-bigint",
+ "num-complex",
+ "num-integer",
+ "num-iter",
+ "num-rational",
+ "num-traits",
 ]
 
 [[package]]
@@ -5105,6 +5209,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7d950ca161dc355eaf28f82b11345ed76c6e1f6eb1f4f4479e0323b9e2fbd0e"
 dependencies = [
  "num-traits",
+]
+
+[[package]]
+name = "ordered-stream"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9aa2b01e1d916879f73a53d01d1d6cee68adbb31d6d9177a8cfce093cced1d50"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
 ]
 
 [[package]]
@@ -6427,6 +6541,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c107b6f4780854c8b126e228ea8869f4d7b71260f962fefb57b996b8959ba6b"
 
 [[package]]
+name = "secret-service"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4d35ad99a181be0a60ffcbe85d680d98f87bdc4d7644ade319b87076b9dbfd4"
+dependencies = [
+ "aes",
+ "cbc",
+ "futures-util",
+ "generic-array",
+ "hkdf",
+ "num",
+ "once_cell",
+ "rand 0.8.5",
+ "serde",
+ "sha2",
+ "zbus",
+]
+
+[[package]]
 name = "security-framework"
 version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6555,6 +6688,17 @@ dependencies = [
  "itoa",
  "serde",
  "serde_core",
+]
+
+[[package]]
+name = "serde_repr"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "175ee3e80ae9982737ca543e96133087cbd9a485eecc3bc4de9c1a37b47ea59c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -7971,6 +8115,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
 
 [[package]]
+name = "uds_windows"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
+dependencies = [
+ "memoffset",
+ "tempfile",
+ "windows-sys 0.60.2",
+]
+
+[[package]]
 name = "unarray"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9327,6 +9482,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "xdg-home"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec1cdab258fb55c0da61328dc52c8764709b249011b2cad0454c72f0bf10a1f6"
+dependencies = [
+ "libc",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "xz2"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9395,6 +9560,62 @@ dependencies = [
  "time",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "zbus"
+version = "4.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb97012beadd29e654708a0fdb4c84bc046f537aecfde2c3ee0a9e4b4d48c725"
+dependencies = [
+ "async-broadcast",
+ "async-process",
+ "async-recursion",
+ "async-trait",
+ "enumflags2",
+ "event-listener 5.4.1",
+ "futures-core",
+ "futures-sink",
+ "futures-util",
+ "hex",
+ "nix 0.29.0",
+ "ordered-stream",
+ "rand 0.8.5",
+ "serde",
+ "serde_repr",
+ "sha1",
+ "static_assertions",
+ "tracing",
+ "uds_windows",
+ "windows-sys 0.52.0",
+ "xdg-home",
+ "zbus_macros",
+ "zbus_names",
+ "zvariant",
+]
+
+[[package]]
+name = "zbus_macros"
+version = "4.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "267db9407081e90bbfa46d841d3cbc60f59c0351838c4bc65199ecd79ab1983e"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+ "zvariant_utils",
+]
+
+[[package]]
+name = "zbus_names"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b9b1fef7d021261cc16cba64c351d291b715febe0fa10dc3a443ac5a5022e6c"
+dependencies = [
+ "serde",
+ "static_assertions",
+ "zvariant",
 ]
 
 [[package]]
@@ -9623,4 +9844,41 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec5f41c76397b7da451efd19915684f727d7e1d516384ca6bd0ec43ec94de23c"
 dependencies = [
  "zune-core",
+]
+
+[[package]]
+name = "zvariant"
+version = "4.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2084290ab9a1c471c38fc524945837734fbf124487e105daec2bb57fd48c81fe"
+dependencies = [
+ "endi",
+ "enumflags2",
+ "serde",
+ "static_assertions",
+ "zvariant_derive",
+]
+
+[[package]]
+name = "zvariant_derive"
+version = "4.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73e2ba546bda683a90652bac4a279bc146adad1386f25379cf73200d2002c449"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+ "zvariant_utils",
+]
+
+[[package]]
+name = "zvariant_utils"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c51bcff7cc3dbb5055396bcf774748c3dab426b4b8659046963523cee4808340"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]

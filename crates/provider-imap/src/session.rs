@@ -494,6 +494,25 @@ struct RealImapSession {
     session: async_imap::Session<ImapTlsStream>,
 }
 
+fn is_noselect_attribute(attr: &async_imap::types::NameAttribute<'_>) -> bool {
+    matches!(attr, async_imap::types::NameAttribute::NoSelect)
+}
+
+fn special_use_from_attributes(
+    attributes: &[async_imap::types::NameAttribute<'_>],
+) -> Option<String> {
+    attributes.iter().find_map(|attr| match attr {
+        async_imap::types::NameAttribute::Sent => Some("\\Sent".to_string()),
+        async_imap::types::NameAttribute::Drafts => Some("\\Drafts".to_string()),
+        async_imap::types::NameAttribute::Trash => Some("\\Trash".to_string()),
+        async_imap::types::NameAttribute::Junk => Some("\\Junk".to_string()),
+        async_imap::types::NameAttribute::All => Some("\\All".to_string()),
+        async_imap::types::NameAttribute::Archive => Some("\\Archive".to_string()),
+        async_imap::types::NameAttribute::Flagged => Some("\\Flagged".to_string()),
+        _ => None,
+    })
+}
+
 #[async_trait]
 impl ImapSession for RealImapSession {
     async fn capabilities(&mut self) -> Result<ImapCapabilities> {
@@ -769,16 +788,13 @@ impl ImapSession for RealImapSession {
     }
 
     async fn list_folders(&mut self) -> Result<Vec<FolderInfo>> {
-        let names = if self.capabilities().await?.list_status {
-            self.session
-                .list_status("", "*")
-                .await
-                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?
-                .into_iter()
-                .map(|status| (status.name, Some(status.mailbox)))
-                .collect::<Vec<_>>()
-        } else {
-            use futures::TryStreamExt;
+        // Discover folders with a plain LIST so per-folder attributes (notably
+        // \Noselect) are populated and the skip below can exclude non-selectable
+        // container mailboxes. LIST-STATUS is intentionally avoided: on Gmail it
+        // issues STATUS against the non-selectable "[Gmail]" container, and the
+        // parsed result drops the \Noselect attribute, letting "[Gmail]" slip
+        // through and abort the whole sync on SELECT.
+        let names = {
             let stream = self
                 .session
                 .list(Some(""), Some("*"))
@@ -789,26 +805,28 @@ impl ImapSession for RealImapSession {
                 .try_collect::<Vec<_>>()
                 .await
                 .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?
-                .into_iter()
-                .map(|name| (name, None))
-                .collect::<Vec<_>>()
         };
 
         let mut folders = Vec::with_capacity(names.len());
-        for (name, mailbox) in &names {
-            let special_use = name.attributes().iter().find_map(|attr| {
-                let s = format!("{attr:?}");
-                match s.as_str() {
-                    "Sent" => Some("\\Sent".to_string()),
-                    "Drafts" => Some("\\Drafts".to_string()),
-                    "Trash" => Some("\\Trash".to_string()),
-                    "Junk" => Some("\\Junk".to_string()),
-                    "All" => Some("\\All".to_string()),
-                    "Archive" => Some("\\Archive".to_string()),
-                    "Flagged" => Some("\\Flagged".to_string()),
-                    _ => None,
-                }
-            });
+        for name in &names {
+            // Skip non-selectable container folders (e.g. Gmail's "[Gmail]" parent,
+            // marked \Noselect). Issuing SELECT against them aborts the whole sync.
+            if name.attributes().iter().any(is_noselect_attribute) {
+                continue;
+            }
+
+            let mailbox = self
+                .session
+                .status(name.name(), "(MESSAGES UNSEEN UIDNEXT UIDVALIDITY)")
+                .await
+                .map_err(|e| {
+                    ImapProviderError::protocol_detail(format!(
+                        "STATUS {} failed: {e}",
+                        name.name()
+                    ))
+                })?;
+
+            let special_use = special_use_from_attributes(name.attributes());
 
             let special_use = if name.name().eq_ignore_ascii_case("inbox") && special_use.is_none()
             {
@@ -821,11 +839,11 @@ impl ImapSession for RealImapSession {
                 name: name.name().to_string(),
                 special_use,
                 delimiter: name.delimiter().map(ToString::to_string),
-                unread_count: mailbox.as_ref().and_then(|mailbox| mailbox.unseen),
-                total_count: mailbox.as_ref().map(|mailbox| mailbox.exists),
-                uid_validity: mailbox.as_ref().and_then(|mailbox| mailbox.uid_validity),
-                uid_next: mailbox.as_ref().and_then(|mailbox| mailbox.uid_next),
-                highest_modseq: mailbox.as_ref().and_then(|mailbox| mailbox.highest_modseq),
+                unread_count: mailbox.unseen,
+                total_count: Some(mailbox.exists),
+                uid_validity: mailbox.uid_validity,
+                uid_next: mailbox.uid_next,
+                highest_modseq: mailbox.highest_modseq,
                 // Namespace discovery is optional, and some servers answer it in a
                 // format the upstream parser rejects. Avoid issuing NAMESPACE here
                 // so folder discovery remains usable for account setup and sync.
@@ -1276,6 +1294,7 @@ mod tests {
     use super::mock::*;
     use super::*;
     use crate::types::*;
+    use async_imap::types::NameAttribute;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
@@ -1287,6 +1306,24 @@ mod tests {
             fetch_queues_by_mailbox: build_fetch_queues(&fetch_responses, &folders),
             uid_search_results: HashMap::new(),
         }))
+    }
+
+    #[test]
+    fn noselect_attribute_is_detected_by_variant() {
+        assert!(is_noselect_attribute(&NameAttribute::NoSelect));
+        assert!(!is_noselect_attribute(&NameAttribute::Sent));
+    }
+
+    #[test]
+    fn special_use_attributes_are_mapped_by_variant() {
+        assert_eq!(
+            special_use_from_attributes(&[NameAttribute::Sent]),
+            Some("\\Sent".to_string())
+        );
+        assert_eq!(
+            special_use_from_attributes(&[NameAttribute::Extension("\\Foo".into())]),
+            None
+        );
     }
 
     #[tokio::test]

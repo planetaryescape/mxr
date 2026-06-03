@@ -124,7 +124,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.5.49"
+version = "0.5.51"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.88"
@@ -263,7 +263,7 @@ reqwest = { version = "0.12", features = ["json"] }
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["cors"] }
 tower = { version = "0.5", features = ["util"] }
-keyring = { version = "3", features = ["apple-native"] }
+keyring = { version = "3", features = ["apple-native", "sync-secret-service", "crypto-rust"] }
 security-framework = { version = "3", features = ["OSX_10_15"] }
 security-framework-sys = "2"
 base64 = "0.22"

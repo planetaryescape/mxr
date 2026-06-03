@@ -1675,8 +1675,8 @@ async fn search_endpoint_proxies_results() {
         move |request| match request {
             Request::Search {
                 query,
-                limit: 200,
-                offset: 0,
+                limit: 25,
+                offset: 50,
                 account_id: None,
                 mode: None,
                 sort: Some(SortOrder::DateDesc),
@@ -1712,7 +1712,9 @@ async fn search_endpoint_proxies_results() {
     .unwrap();
 
     let response = reqwest::Client::new()
-        .get(format!("http://{addr}/search?q=buildkite"))
+        .get(format!(
+            "http://{addr}/search?q=buildkite&limit=25&offset=50"
+        ))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
         .await

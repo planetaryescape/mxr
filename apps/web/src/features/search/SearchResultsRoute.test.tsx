@@ -112,7 +112,50 @@ describe("SearchResultsRoute", () => {
     expect(await screen.findByTestId("mailbox-list")).toBeVisible();
     expect(screen.getByText("Subject 1")).toBeVisible();
     expect(screen.getByText("Subject 2")).toBeVisible();
-    expect(screen.getByText(/2 results/i)).toBeVisible();
+    expect(screen.getByText(/2 of 2 results/i)).toBeVisible();
+  });
+
+  test("loads additional pages through offset pagination", async () => {
+    const baseRow = rows[0] as MessageRowView;
+    const nextRows: MessageRowView[] = [
+      {
+        ...baseRow,
+        id: "msg-3",
+        thread_id: "thread-3",
+        provider_id: "provider-3",
+        subject: "Subject 3",
+      },
+    ];
+    searchApi.fetchSearch
+      .mockResolvedValueOnce({
+        scope: "threads",
+        sort: "relevance",
+        mode: "lexical",
+        total: 3,
+        has_more: true,
+        next_offset: 100,
+        groups: [{ id: "today", label: "Today", rows }],
+      })
+      .mockResolvedValueOnce({
+        scope: "threads",
+        sort: "relevance",
+        mode: "lexical",
+        total: 3,
+        has_more: false,
+        next_offset: null,
+        groups: [{ id: "today", label: "Today", rows: nextRows }],
+      });
+
+    renderWithQueryClient(<SearchResultsRoute />);
+
+    expect(await screen.findByText("Subject 1")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /load more/i }));
+
+    expect(await screen.findByText("Subject 3")).toBeVisible();
+    expect(searchApi.fetchSearch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ offset: 100, limit: 100 }),
+      expect.anything(),
+    );
   });
 
   test("submitting the query blurs the input and navigates", async () => {

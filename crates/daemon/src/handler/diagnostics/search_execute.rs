@@ -5,7 +5,7 @@ use super::search_filter::{
 };
 use super::{build_execution, ExecutionExplainInput, SearchExecution};
 use crate::state::AppState;
-use mxr_core::id::AccountId;
+use mxr_core::id::{AccountId, MessageId};
 use mxr_core::types::{Label, SearchMode, SortOrder};
 use mxr_search::{ast::QueryNode, parse_query, MxrSchema, QueryBuilder, SearchPage, SearchResult};
 use mxr_semantic::{should_use_semantic, SemanticHit};
@@ -63,18 +63,15 @@ pub(super) async fn execute_search(
         }
         Err(error) => {
             if should_fallback_to_tantivy(query, &error) {
-                let account_id = options.account_id.as_ref().map(AccountId::as_str);
-                let page = state
-                    .search
-                    .search_in_account(
-                        query,
-                        account_id.as_deref(),
-                        options.limit,
-                        options.offset,
-                        options.sort,
-                    )
-                    .await
-                    .map_err(|e| e.to_string())?;
+                let page = lexical_text_search(
+                    state,
+                    query,
+                    options.account_id.as_ref(),
+                    options.limit,
+                    options.offset,
+                    options.sort,
+                )
+                .await?;
                 let explain = options.explain.then(|| SearchExplain {
                     requested_mode: options.mode,
                     executed_mode: SearchMode::Lexical,
@@ -536,19 +533,160 @@ pub(super) async fn lexical_search(
     offset: usize,
     sort: SortOrder,
 ) -> Result<SearchPage, String> {
-    let schema = MxrSchema::build();
-    let builder = QueryBuilder::new(&schema);
-    let tantivy_query = if let Some(account_id) = account_id {
-        let account_id = account_id.as_str();
-        builder.build_in_account(ast, &account_id)
+    live_lexical_page(state, limit, offset, sort, |raw_limit, raw_offset, sort| {
+        let schema = MxrSchema::build();
+        let builder = QueryBuilder::new(&schema);
+        let tantivy_query = if let Some(account_id) = account_id {
+            let account_id = account_id.as_str();
+            builder.build_in_account(ast, &account_id)
+        } else {
+            builder.build(ast)
+        };
+        async move {
+            state
+                .search
+                .search_ast(tantivy_query, raw_limit, raw_offset, sort)
+                .await
+                .map_err(|e| e.to_string())
+        }
+    })
+    .await
+}
+
+async fn lexical_text_search(
+    state: &AppState,
+    query: &str,
+    account_id: Option<&AccountId>,
+    limit: usize,
+    offset: usize,
+    sort: SortOrder,
+) -> Result<SearchPage, String> {
+    live_lexical_page(
+        state,
+        limit,
+        offset,
+        sort,
+        |raw_limit, raw_offset, sort| async move {
+            let account_id = account_id.map(AccountId::as_str);
+            state
+                .search
+                .search_in_account(query, account_id.as_deref(), raw_limit, raw_offset, sort)
+                .await
+                .map_err(|e| e.to_string())
+        },
+    )
+    .await
+}
+
+async fn live_lexical_page<F, Fut>(
+    state: &AppState,
+    limit: usize,
+    offset: usize,
+    sort: SortOrder,
+    mut fetch_raw_page: F,
+) -> Result<SearchPage, String>
+where
+    F: FnMut(usize, usize, SortOrder) -> Fut,
+    Fut: std::future::Future<Output = Result<SearchPage, String>>,
+{
+    if limit == 0 {
+        return Ok(SearchPage {
+            results: Vec::new(),
+            total: 0,
+            has_more: false,
+            next_offset: None,
+        });
+    }
+
+    let target_live = offset.saturating_add(limit).saturating_add(1);
+    let raw_chunk = limit.saturating_add(1).clamp(200, 2_000);
+    let mut raw_offset = 0usize;
+    let mut live_results = Vec::new();
+    let mut raw_total: usize;
+    let mut exhausted_raw = false;
+
+    loop {
+        let raw_page = fetch_raw_page(raw_chunk, raw_offset, sort.clone()).await?;
+        raw_total = raw_page.total;
+        let raw_len = raw_page.results.len();
+        let live_page = filter_live_search_results(state, raw_page.results).await?;
+        live_results.extend(live_page);
+
+        if live_results.len() >= target_live {
+            break;
+        }
+        if !raw_page.has_more || raw_len == 0 {
+            exhausted_raw = true;
+            break;
+        }
+        raw_offset = raw_offset.saturating_add(raw_len);
+    }
+
+    let has_more = live_results.len() > offset.saturating_add(limit);
+    let total = if exhausted_raw {
+        live_results.len()
     } else {
-        builder.build(ast)
+        raw_total
     };
-    state
-        .search
-        .search_ast(tantivy_query, limit, offset, sort)
+    let results = live_results
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect::<Vec<_>>();
+    Ok(SearchPage {
+        results,
+        total,
+        has_more,
+        next_offset: has_more.then_some(offset.saturating_add(limit)),
+    })
+}
+
+async fn filter_live_search_results(
+    state: &AppState,
+    results: Vec<SearchResult>,
+) -> Result<Vec<SearchResult>, String> {
+    if results.is_empty() {
+        return Ok(results);
+    }
+
+    let enabled_accounts = state
+        .store
+        .list_accounts()
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|account| account.enabled)
+        .map(|account| account.id.as_str())
+        .collect::<HashSet<_>>();
+    if enabled_accounts.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let message_ids = results
+        .iter()
+        .filter_map(|result| parse_search_result_message_id(result))
+        .collect::<Vec<_>>();
+    let envelopes = state
+        .store
+        .list_envelopes_by_ids(&message_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    let live_ids = envelopes
+        .into_iter()
+        .filter(|envelope| enabled_accounts.contains(&envelope.account_id.as_str()))
+        .map(|envelope| envelope.id.as_str())
+        .collect::<HashSet<_>>();
+
+    Ok(results
+        .into_iter()
+        .filter(|result| live_ids.contains(&result.message_id))
+        .collect())
+}
+
+fn parse_search_result_message_id(result: &SearchResult) -> Option<MessageId> {
+    Some(MessageId::from_uuid(
+        uuid::Uuid::parse_str(&result.message_id).ok()?,
+    ))
 }
 
 pub(super) async fn filter_dense_hits(
@@ -902,6 +1040,55 @@ mod owed_reply_filter_tests {
                 "query {query:?} should match Label_42 envelope; got {hit_ids:?}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn lexical_search_skips_stale_index_rows_before_pagination() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+
+        for i in 0..10 {
+            let thread_id = ThreadId::new();
+            let mut stale = envelope_inbound(&account_id, &thread_id, "stale@example.com", 0);
+            stale.subject = format!("triage survey stale {i}");
+            stale.date = chrono::Utc::now() - chrono::Duration::seconds(i);
+            index_envelope(&state, &stale).await;
+        }
+
+        let mut live_ids = Vec::new();
+        for i in 0..25 {
+            let thread_id = ThreadId::new();
+            let mut envelope = envelope_inbound(&account_id, &thread_id, "live@example.com", 1);
+            envelope.subject = format!("triage survey live {i}");
+            envelope.date =
+                chrono::Utc::now() - chrono::Duration::hours(1) - chrono::Duration::seconds(i);
+            state.store.upsert_envelope(&envelope).await.unwrap();
+            index_envelope(&state, &envelope).await;
+            live_ids.push(envelope.id.as_str());
+        }
+
+        let execution = execute_search(
+            &state,
+            "triage",
+            25,
+            0,
+            None,
+            SearchMode::Lexical,
+            SortOrder::DateDesc,
+            false,
+        )
+        .await
+        .unwrap();
+        let returned_ids = execution
+            .results
+            .iter()
+            .map(|result| result.message_id.clone())
+            .collect::<Vec<_>>();
+
+        assert_eq!(returned_ids.len(), 25);
+        assert_eq!(returned_ids, live_ids);
+        assert!(!execution.has_more);
     }
 
     #[tokio::test]

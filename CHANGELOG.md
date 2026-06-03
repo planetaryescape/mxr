@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.54](https://github.com/planetaryescape/mxr/compare/v0.5.53...v0.5.54) (2026-06-03)
+
+
+### Bug Fixes
+
+* satisfy release ci checks ([94f3fe6](https://github.com/planetaryescape/mxr/commit/94f3fe675420885fa40a062cbdab83700b60b172))
+
 ## [0.5.53](https://github.com/planetaryescape/mxr/compare/v0.5.52...v0.5.53) (2026-06-03)
 
 

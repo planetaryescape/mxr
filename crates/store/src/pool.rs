@@ -776,6 +776,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "sent_draft_receipts",
         kind: MigrationKind::Sql(include_str!("../migrations/043_sent_draft_receipts.sql")),
     },
+    Migration {
+        version: 44,
+        name: "triage_cache",
+        kind: MigrationKind::Sql(include_str!("../migrations/044_triage_cache.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
@@ -883,6 +888,19 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     (
         "thread_summaries",
         &["thread_id", "account_id", "content_hash", "text", "model"],
+    ),
+    (
+        "triage_cache",
+        &[
+            "message_id",
+            "account_id",
+            "thread_id",
+            "prompt_version",
+            "content_hash",
+            "verdict",
+            "verdict_line",
+            "model",
+        ],
     ),
     (
         "contacts",

@@ -59,6 +59,7 @@ fn streaming_row(env: Envelope) -> MailListRow {
         unread_count: 0,
         other_participant_count: 0,
         open_commitment_count: 0,
+        triage_verdict: None,
         reply_later: false,
         pending_mutation: false,
     }
@@ -74,6 +75,7 @@ fn result_list_renders_first_batch_before_query_completes() {
         editing: false,
         results: vec![envelope.clone()],
         scores: Default::default(),
+        triage_verdicts: Default::default(),
         mode: mxr_core::SearchMode::Lexical,
         sort: mxr_core::SortOrder::DateDesc,
         // has_more = true is the daemon's signal that more results

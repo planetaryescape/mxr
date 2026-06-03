@@ -44,6 +44,7 @@ mod snippets;
 mod status_helpers;
 mod suggest_recipients;
 pub(crate) mod summarize;
+mod triage;
 mod user_voice;
 mod whois;
 
@@ -372,7 +373,8 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::HumanizerRewrite { .. }
         | Request::HumanizerScore { .. }
         | Request::SuggestCollaborators { .. }
-        | Request::SummarizeThread { .. } => IpcLane::Bulk,
+        | Request::SummarizeThread { .. }
+        | Request::TriageSearch { .. } => IpcLane::Bulk,
 
         // Network-bound: hit Gmail / IMAP / SMTP, can stall on a slow link.
         Request::DownloadAttachment { .. }
@@ -1154,6 +1156,25 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::SummarizeThread { thread_id } => {
             summarize::summarize_thread(state, thread_id).await
         }
+        Request::TriageSearch {
+            query,
+            limit,
+            offset,
+            account_id,
+            mode,
+            sort,
+        } => {
+            triage::triage_search(
+                state,
+                query,
+                *limit,
+                *offset,
+                account_id.as_ref(),
+                mode.unwrap_or(state.config_snapshot().search.default_mode),
+                sort.clone().unwrap_or(mxr_core::types::SortOrder::DateDesc),
+            )
+            .await
+        }
         Request::DraftAssist {
             thread_id,
             instruction,
@@ -1322,6 +1343,7 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::ListScreenerQueue { .. }
             | Request::ListScreenerDecisions { .. }
             | Request::SummarizeThread { .. }
+            | Request::TriageSearch { .. }
             | Request::DraftNew { .. }
             | Request::DraftRefine { .. }
             | Request::ListDrafts
@@ -1463,6 +1485,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SetScreenerDecision { .. } => "set_screener_decision",
         Request::ClearScreenerDecision { .. } => "clear_screener_decision",
         Request::SummarizeThread { .. } => "summarize_thread",
+        Request::TriageSearch { .. } => "triage_search",
         Request::DraftAssist { .. } => "draft_assist",
         Request::DraftNew { .. } => "draft_new",
         Request::DraftRefine { .. } => "draft_refine",

@@ -90,6 +90,8 @@ pub(super) struct SearchQuery {
     #[serde(default)]
     pub(super) explain: bool,
     #[serde(default)]
+    pub(super) verdict: Option<String>,
+    #[serde(default)]
     pub(super) token: Option<String>,
 }
 

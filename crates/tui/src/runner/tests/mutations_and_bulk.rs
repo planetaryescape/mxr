@@ -821,6 +821,7 @@ fn search_results_refresh_preserves_open_row_when_it_still_exists() {
         SearchResultData {
             envelopes: vec![results[0].clone(), results[1].clone()],
             scores: std::collections::HashMap::new(),
+            triage_verdicts: std::collections::HashMap::new(),
             has_more: false,
         },
     );
@@ -853,6 +854,7 @@ fn search_results_refresh_clears_open_message_when_selected_row_disappears() {
         SearchResultData {
             envelopes: vec![results[0].clone()],
             scores: std::collections::HashMap::new(),
+            triage_verdicts: std::collections::HashMap::new(),
             has_more: false,
         },
     );

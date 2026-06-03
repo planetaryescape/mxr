@@ -89,6 +89,7 @@ fn sample_mail_row() -> MailListRow {
         unread_count: 1,
         other_participant_count: 1,
         open_commitment_count: 0,
+        triage_verdict: None,
         reply_later: false,
         pending_mutation: false,
     }
@@ -336,6 +337,7 @@ fn search_page_snapshot() {
         editing: false,
         results: vec![sample_envelope()],
         scores: std::collections::HashMap::new(),
+        triage_verdicts: std::collections::HashMap::new(),
         mode: mxr_core::SearchMode::Lexical,
         sort: mxr_core::SortOrder::DateDesc,
         has_more: false,

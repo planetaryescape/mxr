@@ -28,6 +28,9 @@ export interface MessageRowView {
   attachment_filename?: string | null;
   attachment_size_bytes?: number | null;
   open_commitment_count?: number | null;
+  triage_verdict?: "ACTION" | "FYI" | "ROUTINE" | string | null;
+  triage_reason?: string | null;
+  triage_line?: string | null;
 }
 
 export interface MessageLabelView {

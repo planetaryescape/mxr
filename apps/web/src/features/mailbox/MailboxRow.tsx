@@ -156,6 +156,9 @@ export function MailboxRow({
             </LinkIcon>
           ) : null}
           {openCommitmentCount ? <CommitmentBadge count={openCommitmentCount} /> : null}
+          {row.triage_verdict ? (
+            <TriageBadge verdict={row.triage_verdict} reason={row.triage_reason ?? row.triage_line} />
+          ) : null}
         </div>
         <div className="mailbox-row-snippet truncate text-[length:var(--mail-row-meta-size)] font-normal leading-5 text-muted-foreground">
           {row.snippet}
@@ -181,6 +184,26 @@ export function MailboxRow({
         ) : null}
       </div>
     </div>
+  );
+}
+
+function TriageBadge({ verdict, reason }: { verdict: string; reason?: string | null }) {
+  const normalized = verdict.toUpperCase();
+  return (
+    <Badge
+      variant="outline"
+      aria-label={`Triage verdict ${normalized}${reason ? `: ${reason}` : ""}`}
+      title={reason ?? `Triage verdict ${normalized}`}
+      className={cn(
+        "h-5 shrink-0 rounded px-1.5 font-mono text-[10px]",
+        normalized === "ACTION" && "border-red-500/45 bg-red-500/15 text-red-600 dark:text-red-300",
+        normalized === "FYI" && "border-blue-500/45 bg-blue-500/15 text-blue-600 dark:text-blue-300",
+        normalized === "ROUTINE" &&
+          "border-muted-foreground/35 bg-muted text-muted-foreground",
+      )}
+    >
+      {normalized}
+    </Badge>
   );
 }
 

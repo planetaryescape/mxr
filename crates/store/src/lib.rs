@@ -53,6 +53,7 @@ mod sync_runtime_status;
 mod test_fixtures;
 mod thread;
 mod thread_summary;
+mod triage;
 mod undo;
 mod user_activity;
 mod user_voice_profile;
@@ -86,6 +87,7 @@ pub use snippets::Snippet;
 pub use sync_log::{SyncLogEntry, SyncStatus};
 pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
+pub use triage::TriageCacheRecord;
 pub use undo::{UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 pub use user_activity::{
     ActivityCursor, ActivityFilter, ActivityInsert, ActivityPage, ActivityRow, SavedActivityFilter,

@@ -219,9 +219,23 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             mode,
             sort,
             explain,
+            triage,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::search::run(query, account, format, limit, mode, sort, explain).await?;
+            commands::search::run(query, account, format, limit, mode, sort, explain, triage)
+                .await?;
+        }
+        Some(Command::Triage {
+            query,
+            account,
+            format,
+            limit,
+            mode,
+            sort,
+            verdict,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::triage::run(query, account, format, limit, mode, sort, verdict).await?;
         }
         Some(Command::Count {
             query,

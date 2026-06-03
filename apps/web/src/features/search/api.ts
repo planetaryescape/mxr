@@ -2,7 +2,7 @@ import { apiFetch } from "@/api/client";
 import type { MailboxResponse } from "@/features/mailbox/types";
 
 export type SearchMode = "lexical" | "semantic" | "hybrid";
-export type SearchSort = "relevance" | "newest" | "oldest";
+export type SearchSort = "relevance" | "newest" | "oldest" | "verdict";
 
 export interface SearchParams {
   q: string;
@@ -11,7 +11,8 @@ export interface SearchParams {
   account?: string;
   limit?: number;
   offset?: number;
-  scope?: "threads" | "messages" | "attachments";
+  scope?: "threads" | "messages" | "attachments" | "triage";
+  verdict?: "ACTION" | "FYI" | "ROUTINE";
 }
 
 export interface SearchResponse {
@@ -23,6 +24,8 @@ export interface SearchResponse {
   next_offset?: number | null;
   groups: MailboxResponse["mailbox"]["groups"];
   explain?: unknown;
+  llm_calls?: number;
+  prompt_version?: string;
 }
 
 export interface SavedSearch {
@@ -51,8 +54,10 @@ export function fetchSearch(
   query.set("limit", String(params.limit ?? 50));
   query.set("offset", String(params.offset ?? 0));
   query.set("scope", params.scope ?? "threads");
+  if (params.verdict) query.set("verdict", params.verdict);
   if (params.account) query.set("account", params.account);
-  return apiFetch<SearchResponse>(`/api/v1/mail/search?${query.toString()}`, {
+  const path = params.scope === "triage" ? "/api/v1/mail/triage" : "/api/v1/mail/search";
+  return apiFetch<SearchResponse>(`${path}?${query.toString()}`, {
     signal: opts.signal,
   });
 }

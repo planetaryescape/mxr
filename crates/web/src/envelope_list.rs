@@ -292,6 +292,9 @@ pub(crate) fn message_row_view(envelope: &Envelope) -> MessageRowView {
         attachment_filename: None,
         attachment_size_bytes: None,
         open_commitment_count: None,
+        triage_verdict: None,
+        triage_reason: None,
+        triage_line: None,
     }
 }
 

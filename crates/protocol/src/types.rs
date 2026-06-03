@@ -106,6 +106,41 @@ pub struct ThreadSummaryData {
     pub generated_at: chrono::DateTime<chrono::Utc>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TriageVerdictData {
+    Action,
+    Fyi,
+    Routine,
+}
+
+impl TriageVerdictData {
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::Action => "ACTION",
+            Self::Fyi => "FYI",
+            Self::Routine => "ROUTINE",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct TriageMessageData {
+    pub message_id: MessageId,
+    pub account_id: AccountId,
+    pub thread_id: ThreadId,
+    pub score: f32,
+    pub verdict: TriageVerdictData,
+    pub verdict_token: String,
+    pub verdict_line: String,
+    pub reason: String,
+    pub model: String,
+    pub cached: bool,
+    pub generated_at: chrono::DateTime<chrono::Utc>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LlmConfigData {
@@ -1002,6 +1037,22 @@ pub enum Request {
     SummarizeThread {
         thread_id: ThreadId,
     },
+    /// Return per-message triage verdicts for a search query. Cached
+    /// messages are returned without an LLM call; uncached messages use
+    /// the same summarizer verdict format as `SummarizeThread`.
+    TriageSearch {
+        query: String,
+        #[serde(default = "default_search_limit")]
+        limit: u32,
+        #[serde(default)]
+        offset: u32,
+        #[serde(default)]
+        account_id: Option<AccountId>,
+        #[serde(default)]
+        mode: Option<SearchMode>,
+        #[serde(default)]
+        sort: Option<SortOrder>,
+    },
     /// Generate a draft reply grounded on the user's prior sent
     /// messages and the current thread context. Caller is responsible
     /// for opening the result in `$EDITOR` for review — the result is
@@ -1367,6 +1418,7 @@ impl Request {
             | Self::SetScreenerDecision { .. }
             | Self::ClearScreenerDecision { .. }
             | Self::SummarizeThread { .. }
+            | Self::TriageSearch { .. }
             | Self::DraftAssist { .. }
             | Self::DraftNew { .. }
             | Self::DraftRefine { .. }
@@ -1860,6 +1912,15 @@ pub enum ResponseData {
         text: String,
         model: String,
     },
+    TriageResults {
+        messages: Vec<TriageMessageData>,
+        total: u32,
+        has_more: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        next_offset: Option<u32>,
+        llm_calls: u32,
+        prompt_version: String,
+    },
     DraftSuggestion {
         body: String,
         model: String,
@@ -2174,6 +2235,7 @@ impl ResponseData {
             | Self::ScreenerQueue { .. }
             | Self::ScreenerDecisions { .. }
             | Self::ThreadSummary { .. }
+            | Self::TriageResults { .. }
             | Self::DraftSuggestion { .. }
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }
@@ -2432,6 +2494,11 @@ pub struct AccountSyncStatus {
     pub current_cursor_summary: Option<String>,
     pub last_synced_count: u32,
     pub healthy: bool,
+}
+
+/// Default limit for `TriageSearch`.
+const fn default_search_limit() -> u32 {
+    50
 }
 
 /// Default limit for `ListScreenerQueue`.

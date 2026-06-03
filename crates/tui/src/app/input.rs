@@ -1013,6 +1013,7 @@ impl App {
                         return match mode {
                             LabelPickerMode::Apply => Some(Action::ApplyLabel),
                             LabelPickerMode::Move => Some(Action::MoveToLabel),
+                            LabelPickerMode::Route => Some(Action::RouteToLabel),
                         };
                     }
                     return None;

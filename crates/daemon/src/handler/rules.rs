@@ -1,5 +1,8 @@
 use super::helpers::{dry_run_rules, persist_rule};
-use super::{build_rule_from_form, parse_rule_value, rule_to_form_data, HandlerResult};
+use super::{
+    build_rule_from_form, conditions_to_query, parse_rule_value, rule_actions_to_string,
+    rule_to_form_data, HandlerResult,
+};
 use crate::state::AppState;
 use mxr_protocol::ResponseData;
 use mxr_rules::{Rule, RuleAction};
@@ -10,8 +13,23 @@ static SHELL_HOOK_WARNING_EMITTED: AtomicBool = AtomicBool::new(false);
 pub(super) async fn list_rules(state: &AppState) -> HandlerResult {
     let rows = state.store.list_rules().await?;
     Ok(ResponseData::Rules {
-        rules: rows.iter().map(mxr_store::row_to_rule_json).collect(),
+        rules: rows
+            .iter()
+            .map(|row| rule_json_with_form_fields(mxr_store::row_to_rule_json(row)))
+            .collect(),
     })
+}
+
+fn rule_json_with_form_fields(mut value: serde_json::Value) -> serde_json::Value {
+    if let Ok(rule) = serde_json::from_value::<Rule>(value.clone()) {
+        if let Ok(condition) = conditions_to_query(&rule.conditions) {
+            value["condition"] = serde_json::Value::String(condition);
+        }
+        if let Ok(action) = rule_actions_to_string(&rule.actions) {
+            value["action"] = serde_json::Value::String(action);
+        }
+    }
+    value
 }
 
 pub(super) async fn get_rule(state: &AppState, rule: &str) -> HandlerResult {

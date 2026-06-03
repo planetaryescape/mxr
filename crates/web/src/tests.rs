@@ -2608,6 +2608,84 @@ async fn archive_mutation_endpoint_proxies_message_ids() {
 }
 
 #[tokio::test]
+async fn route_mutation_endpoint_proxies_atomic_route_request() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let expected = sample_envelope();
+    let expected_id = expected.id.to_string();
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(
+        None::<(Vec<String>, String, String, bool, bool)>,
+    ));
+    let captured_route = captured.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::Mutation {
+                mutation:
+                    mxr_protocol::MutationCommand::Route {
+                        message_ids,
+                        to_label,
+                        from_queue_label,
+                        archive,
+                        dry_run,
+                    },
+                ..
+            } => {
+                *captured_route.lock().unwrap() = Some((
+                    message_ids.iter().map(ToString::to_string).collect(),
+                    to_label,
+                    from_queue_label,
+                    archive,
+                    dry_run,
+                ));
+                Some(Response::Ok {
+                    data: ResponseData::Ack,
+                })
+            }
+            _ => None,
+        },
+        None,
+    )
+    .await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/api/v1/mail/mutations/route"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({
+            "message_ids": [expected_id],
+            "to_label": "Follow Up",
+            "from_queue_label": "Notto",
+            "archive": true,
+            "dry_run": false,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(
+        *captured.lock().unwrap(),
+        Some((
+            vec![expected.id.to_string()],
+            "Follow Up".to_string(),
+            "Notto".to_string(),
+            true,
+            false,
+        ))
+    );
+}
+
+#[tokio::test]
 async fn read_mutation_endpoint_reports_skipped_result_as_not_ok() {
     let temp = TempDir::new().unwrap();
     let socket_path = temp.path().join("mxr.sock");

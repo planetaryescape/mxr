@@ -507,6 +507,43 @@ pub(super) async fn mutation(
             .push(envelope);
     }
 
+    if matches!(cmd, MutationCommand::Route { dry_run: true, .. }) {
+        let mut accounts = Vec::new();
+        for (account_id, envelopes) in grouped {
+            let account_name = state
+                .store
+                .get_account(&account_id)
+                .await
+                .ok()
+                .flatten()
+                .map_or_else(|| account_id.to_string(), |account| account.name);
+            accounts.push(AccountMutationResultData {
+                account_id,
+                account_name,
+                succeeded: 0,
+                skipped: envelopes.len() as u32,
+                failed: 0,
+                error: None,
+            });
+        }
+        accounts.sort_by(|left, right| {
+            left.account_name
+                .to_lowercase()
+                .cmp(&right.account_name.to_lowercase())
+                .then_with(|| left.account_id.as_str().cmp(&right.account_id.as_str()))
+        });
+        return Ok(ResponseData::MutationResult {
+            result: MutationResultData {
+                requested: message_ids.len() as u32,
+                succeeded: 0,
+                skipped: message_ids.len() as u32,
+                failed: 0,
+                accounts,
+                mutation_id: None,
+            },
+        });
+    }
+
     // Snapshot the prior state of every envelope so that undoable
     // mutations can be reversed. Captured before `apply_mutation_to_envelope`
     // touches the store.
@@ -928,6 +965,11 @@ fn undoable_kind(cmd: &MutationCommand) -> Option<UndoableMutationKind> {
         MutationCommand::Spam { .. } => Some(UndoableMutationKind::Spam),
         MutationCommand::SetRead { .. } => Some(UndoableMutationKind::SetRead),
         MutationCommand::ReadAndArchive { .. } => Some(UndoableMutationKind::ReadAndArchive),
+        MutationCommand::Route { archive, .. } => Some(if *archive {
+            UndoableMutationKind::ReadAndArchive
+        } else {
+            UndoableMutationKind::Archive
+        }),
         MutationCommand::Star { .. }
         | MutationCommand::ModifyLabels { .. }
         | MutationCommand::Move { .. } => None,
@@ -1167,7 +1209,8 @@ fn mutation_message_ids(cmd: &MutationCommand) -> &[mxr_core::MessageId] {
         | MutationCommand::Star { message_ids, .. }
         | MutationCommand::SetRead { message_ids, .. }
         | MutationCommand::ModifyLabels { message_ids, .. }
-        | MutationCommand::Move { message_ids, .. } => message_ids,
+        | MutationCommand::Move { message_ids, .. }
+        | MutationCommand::Route { message_ids, .. } => message_ids,
     }
 }
 
@@ -1373,6 +1416,62 @@ async fn apply_mutation_to_envelope(
             )
             .await?;
         }
+        MutationCommand::Route {
+            to_label,
+            from_queue_label,
+            archive,
+            dry_run,
+            ..
+        } => {
+            if *dry_run {
+                return Ok(());
+            }
+            let labels = state
+                .store
+                .list_labels_by_account(&envelope.account_id)
+                .await
+                .map_err(|e| e.to_string())?;
+            let resolved_add = resolve_to_provider_ids(&labels, std::slice::from_ref(to_label));
+            let mut remove_refs = vec![from_queue_label.clone()];
+            if *archive && !from_queue_label.eq_ignore_ascii_case("INBOX") {
+                remove_refs.push("INBOX".to_string());
+            }
+            let resolved_remove = resolve_to_provider_ids(&labels, &remove_refs);
+            apply_one_mutation(
+                state,
+                provider,
+                mutation_id,
+                &format!("{provider_id}#route-labels"),
+                mxr_core::Mutation::ModifyLabels {
+                    provider_message_id: provider_id.clone(),
+                    add: resolved_add.clone(),
+                    remove: resolved_remove.clone(),
+                },
+                &envelope.account_id,
+            )
+            .await?;
+            reconcile_label_mutation(state, provider, message_id, &resolved_add, &resolved_remove)
+                .await?;
+            if *archive {
+                apply_one_mutation(
+                    state,
+                    provider,
+                    mutation_id,
+                    &format!("{provider_id}#route-read"),
+                    mxr_core::Mutation::SetRead {
+                        provider_message_id: provider_id.clone(),
+                        read: true,
+                    },
+                    &envelope.account_id,
+                )
+                .await?;
+                state
+                    .store
+                    .set_read(message_id, true, mxr_core::EventSource::User)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+        }
     }
     // Single point of search-index reconciliation: refresh the indexed envelope so
     // queries (`mxr search ...`) see the new flags/labels immediately.
@@ -1522,6 +1621,22 @@ fn mutation_log_entry(cmd: &MutationCommand, envelope: &Envelope) -> (String, Op
                 target_label
             ),
             Some(format!("from={}", envelope.from.email)),
+        ),
+        MutationCommand::Route {
+            to_label,
+            from_queue_label,
+            archive,
+            ..
+        } => (
+            format!(
+                "Routed {} to {}",
+                quoted_subject(&envelope.subject),
+                to_label
+            ),
+            Some(format!(
+                "from={} queue={} archive={}",
+                envelope.from.email, from_queue_label, archive
+            )),
         ),
     }
 }

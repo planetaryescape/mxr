@@ -321,6 +321,45 @@ impl App {
                         .open(self.mailbox.labels.clone(), LabelPickerMode::Move);
                 }
             }
+            Action::RouteToLabel => {
+                if let Some((_, ref label_name)) = self.modals.pending_label_action.take() {
+                    let from_queue_label = self
+                        .active_label_record()
+                        .map(|label| label.name.clone())
+                        .unwrap_or_else(|| "INBOX".to_string());
+                    let ids = self.mutation_target_ids();
+                    if !ids.is_empty() {
+                        let optimistic_effect = remove_from_list_effect(&ids);
+                        self.queue_or_confirm_bulk_action(BulkActionRequest {
+                            title: "Route messages".into(),
+                            detail: format!(
+                                "You are about to route {} {} from '{}' to '{}' and archive.",
+                                ids.len(),
+                                pluralize_messages(ids.len()),
+                                from_queue_label,
+                                label_name
+                            ),
+                            request: Request::mutation(MutationCommand::Route {
+                                message_ids: ids.clone(),
+                                to_label: label_name.clone(),
+                                from_queue_label: from_queue_label.clone(),
+                                archive: true,
+                                dry_run: false,
+                            }),
+                            effect: remove_from_list_effect(&ids),
+                            optimistic_effect: Some(optimistic_effect),
+                            status_message: format!("Routing to '{label_name}'..."),
+                            count: ids.len(),
+                        });
+                    }
+                } else if self.active_label_record().is_some() {
+                    self.modals
+                        .label_picker
+                        .open(self.mailbox.labels.clone(), LabelPickerMode::Route);
+                } else {
+                    self.status_message = Some("Open a queue label before routing".into());
+                }
+            }
             Action::Unsubscribe => {
                 if let Some(env) = self.context_envelope() {
                     if matches!(env.unsubscribe, UnsubscribeMethod::None) {

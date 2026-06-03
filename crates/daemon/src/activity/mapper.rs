@@ -149,6 +149,25 @@ pub fn map_request(
                     "target_ids": message_ids.iter().map(mxr_core::MessageId::as_str).collect::<Vec<_>>(),
                 })),
             ),
+            MutationCommand::Route {
+                message_ids,
+                to_label,
+                from_queue_label,
+                archive,
+                dry_run,
+            } => (
+                "mail.route",
+                Some("message"),
+                message_ids.first().map(|m| m.as_str().clone()),
+                Some(serde_json::json!({
+                    "count": message_ids.len(),
+                    "to": to_label,
+                    "from_queue": from_queue_label,
+                    "archive": archive,
+                    "dry_run": dry_run,
+                    "target_ids": message_ids.iter().map(mxr_core::MessageId::as_str).collect::<Vec<_>>(),
+                })),
+            ),
         },
 
         // ----- low-level SetFlags (TUI/web sometimes calls directly) -----

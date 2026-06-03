@@ -114,15 +114,16 @@ pub(crate) fn event_for_request_response(req: &Request, response: &Response) -> 
 
 fn event_for_mutation(command: &MutationCommand) -> Option<ChimeEvent> {
     match command {
-        MutationCommand::Archive { .. } | MutationCommand::ReadAndArchive { .. } => {
-            Some(ChimeEvent::Archived)
-        }
+        MutationCommand::Archive { .. }
+        | MutationCommand::ReadAndArchive { .. }
+        | MutationCommand::Route { archive: true, .. } => Some(ChimeEvent::Archived),
         MutationCommand::Trash { .. } => Some(ChimeEvent::Trashed),
         MutationCommand::Spam { .. } => Some(ChimeEvent::Spam),
         MutationCommand::Star { .. }
         | MutationCommand::SetRead { .. }
         | MutationCommand::ModifyLabels { .. }
-        | MutationCommand::Move { .. } => None,
+        | MutationCommand::Move { .. }
+        | MutationCommand::Route { .. } => None,
     }
 }
 

@@ -142,6 +142,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "mark_unread" => Some(Action::MarkUnread),
         "apply_label" => Some(Action::ApplyLabel),
         "move_to_label" => Some(Action::MoveToLabel),
+        "route_to_label" => Some(Action::RouteToLabel),
         "toggle_select" => Some(Action::ToggleSelect),
         // mxr-specific
         "unsubscribe" => Some(Action::Unsubscribe),

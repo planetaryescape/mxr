@@ -243,6 +243,7 @@ impl App {
             | Action::UndoLastMutation
             | Action::ApplyLabel
             | Action::MoveToLabel
+            | Action::RouteToLabel
             | Action::Unsubscribe
             | Action::ConfirmUnsubscribeOnly
             | Action::ConfirmUnsubscribeAndArchiveSender

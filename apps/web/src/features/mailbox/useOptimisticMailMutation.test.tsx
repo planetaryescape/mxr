@@ -22,6 +22,7 @@ const api = vi.hoisted(() => ({
   modifyLabels: vi.fn<(ids: string[], add: string[], remove: string[]) => Promise<unknown>>(),
   moveMessagesToLabel: vi.fn<(ids: string[], label: string) => Promise<unknown>>(),
   readAndArchiveMessages: vi.fn<(ids: string[]) => Promise<unknown>>(),
+  routeMessages: vi.fn<(input: unknown) => Promise<unknown>>(),
   undoMutation: vi.fn<(id: string) => Promise<unknown>>(),
 }));
 
@@ -34,6 +35,7 @@ vi.mock("./api", () => ({
   modifyLabels: api.modifyLabels,
   moveMessagesToLabel: api.moveMessagesToLabel,
   readAndArchiveMessages: api.readAndArchiveMessages,
+  routeMessages: api.routeMessages,
   undoMutation: api.undoMutation,
   shellKey: ["shell"],
 }));
@@ -129,6 +131,32 @@ describe("useOptimisticMailMutation — label/move/read-and-archive", () => {
     });
 
     expect(api.moveMessagesToLabel).toHaveBeenCalledWith(["m1", "m2"], "Receipts");
+    const after = client.getQueryData(mailboxKey) as typeof baseMailbox;
+    const remaining = after.mailbox.groups[0]?.rows.map((r) => r.id) ?? [];
+    expect(remaining).toEqual(["m3"]);
+  });
+
+  test("route(ids, to=Home, from=Notto) optimistically removes rows and calls routeMessages", async () => {
+    api.routeMessages.mockResolvedValue(mutationSuccess(2));
+
+    const { result } = renderHook(
+      () =>
+        useOptimisticMailMutation("route", {
+          payload: { label: "Home", fromQueueLabel: "Notto", archive: true },
+        }),
+      { wrapper: wrapper(client) },
+    );
+
+    await act(async () => {
+      await result.current.mutateAsync(["m1", "m2"]);
+    });
+
+    expect(api.routeMessages).toHaveBeenCalledWith({
+      messageIds: ["m1", "m2"],
+      toLabel: "Home",
+      fromQueueLabel: "Notto",
+      archive: true,
+    });
     const after = client.getQueryData(mailboxKey) as typeof baseMailbox;
     const remaining = after.mailbox.groups[0]?.rows.map((r) => r.id) ?? [];
     expect(remaining).toEqual(["m3"]);

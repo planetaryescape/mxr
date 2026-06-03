@@ -323,6 +323,12 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Mail".into(),
         },
         PaletteCommand {
+            label: "Route To Label".into(),
+            shortcut: "palette".into(),
+            action: Action::RouteToLabel,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
             label: "Snooze".into(),
             shortcut: "Z".into(),
             action: Action::Snooze,

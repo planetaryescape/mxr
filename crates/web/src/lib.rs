@@ -1560,6 +1560,26 @@ async fn move_messages(
     .await
 }
 
+async fn route_messages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<RouteRequest>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    ack_mutation(
+        &state.config.socket_path,
+        mxr_protocol::MutationCommand::Route {
+            message_ids: parse_message_ids(&request.message_ids)?,
+            to_label: request.to_label,
+            from_queue_label: request.from_queue_label,
+            archive: request.archive,
+            dry_run: request.dry_run,
+        },
+    )
+    .await
+}
+
 async fn events(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,

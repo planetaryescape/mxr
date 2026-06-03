@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { resolveCommitment as resolveCommitmentApi } from "@/features/mailbox/api";
 import { LabelPicker } from "@/features/mailbox/LabelPicker";
 import { MovePicker } from "@/features/mailbox/MovePicker";
+import { RoutePicker } from "@/features/mailbox/RoutePicker";
 import { AttachmentActions } from "@/features/thread/AttachmentActions";
 import { DraftAssistPanel } from "@/features/thread/DraftAssistPanel";
 import type { AttachmentView } from "@/features/mailbox/types";
@@ -60,6 +61,16 @@ function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
     return (
       <MovePicker
         messageIds={payload.messageIds}
+        onClose={() => useModals.getState().closeRightRail()}
+      />
+    );
+  }
+  if (kind === "route-picker" && isRoutePickerPayload(payload)) {
+    return (
+      <RoutePicker
+        messageIds={payload.messageIds}
+        fromQueueLabel={payload.fromQueueLabel}
+        archive={payload.archive}
         onClose={() => useModals.getState().closeRightRail()}
       />
     );
@@ -122,6 +133,20 @@ interface MovePickerPayload {
 
 function isMovePickerPayload(value: unknown): value is MovePickerPayload {
   return isRecord(value) && Array.isArray(value.messageIds);
+}
+
+interface RoutePickerPayload {
+  messageIds: string[];
+  fromQueueLabel: string;
+  archive?: boolean;
+}
+
+function isRoutePickerPayload(value: unknown): value is RoutePickerPayload {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.messageIds) &&
+    typeof value.fromQueueLabel === "string"
+  );
 }
 
 interface DraftAssistPayload {

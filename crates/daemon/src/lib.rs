@@ -980,6 +980,31 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             )
             .await?;
         }
+        Some(Command::Route {
+            message_ids,
+            search,
+            account,
+            to_label,
+            from_queue_label,
+            archive,
+            yes,
+            dry_run,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::mutations::route(
+                message_ids,
+                search,
+                account,
+                to_label,
+                from_queue_label,
+                archive,
+                yes,
+                dry_run,
+                format,
+            )
+            .await?;
+        }
         Some(Command::Trash {
             message_ids,
             search,

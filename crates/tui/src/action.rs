@@ -232,6 +232,7 @@ pub enum Action {
     UndoLastMutation,
     ApplyLabel,
     MoveToLabel,
+    RouteToLabel,
     Unsubscribe,
     ConfirmUnsubscribeOnly,
     ConfirmUnsubscribeAndArchiveSender,

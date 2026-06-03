@@ -30,7 +30,7 @@ use utoipa::{
         mail_drafts, mail_snoozed, mail_count, mail_jobs, mail_job_detail, mail_sync_status, mail_sync,
         mutation_archive, mutation_trash, mutation_spam, mutation_star,
         mutation_read, mutation_read_archive, mutation_labels, mutation_move,
-        mutation_undo, action_snooze_presets, action_snooze,
+        mutation_route, mutation_undo, action_snooze_presets, action_snooze,
         action_unsubscribe, action_unsubscribe_purge, action_invite_reply, attachment_open, attachment_download,
         label_create, label_rename, label_delete, mail_unsnooze_one,
         reply_later_list, reply_later_set, reminders_set, reminders_cancel,
@@ -128,6 +128,7 @@ endpoint!(post mutation_read "/api/v1/mail/mutations/read", "Mark messages read 
 endpoint!(post mutation_read_archive "/api/v1/mail/mutations/read-and-archive", "Read and archive messages");
 endpoint!(post mutation_labels "/api/v1/mail/mutations/labels", "Add or remove labels");
 endpoint!(post mutation_move "/api/v1/mail/mutations/move", "Move messages to a label or folder");
+endpoint!(post mutation_route "/api/v1/mail/mutations/route", "Route messages from a queue to a label");
 endpoint!(post mutation_undo "/api/v1/mail/mutations/undo", "Undo a recent mutation");
 
 endpoint!(get action_snooze_presets "/api/v1/mail/actions/snooze/presets", "List snooze presets");

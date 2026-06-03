@@ -14,7 +14,18 @@ type SupportedRuleAction =
   | { kind: "unread" }
   | { kind: "read-and-archive" }
   | { kind: "label-add"; label: string }
+  | { kind: "label-remove"; label: string }
   | { kind: "move"; label: string };
+
+function mailActions(value: string): SupportedRuleAction[] | null {
+  const actions = value
+    .split(/[;,]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map(mailAction);
+  if (actions.length === 0 || actions.some((action) => action === null)) return null;
+  return actions as SupportedRuleAction[];
+}
 
 function mailAction(value: string): SupportedRuleAction | null {
   const normalized = value.trim();
@@ -29,9 +40,13 @@ function mailAction(value: string): SupportedRuleAction | null {
     return { kind: "unread" };
   if (lower === "read-and-archive" || lower === "read_and_archive")
     return { kind: "read-and-archive" };
-  const labelMatch = normalized.match(/^label:(.+)$/i);
+  const labelMatch = normalized.match(/^(?:add-label|label):(.+)$/i);
   if (labelMatch && labelMatch[1]?.trim()) {
     return { kind: "label-add", label: labelMatch[1].trim() };
+  }
+  const removeLabelMatch = normalized.match(/^(?:remove-label|unlabel):(.+)$/i);
+  if (removeLabelMatch && removeLabelMatch[1]?.trim()) {
+    return { kind: "label-remove", label: removeLabelMatch[1].trim() };
   }
   const moveMatch = normalized.match(/^move:(.+)$/i);
   if (moveMatch && moveMatch[1]?.trim()) {
@@ -42,35 +57,49 @@ function mailAction(value: string): SupportedRuleAction | null {
 
 describe("rules mailAction parser", () => {
   test("parses bare verbs", () => {
-    expect(mailAction("archive")).toEqual({ kind: "archive" });
-    expect(mailAction("trash")).toEqual({ kind: "trash" });
-    expect(mailAction("star")).toEqual({ kind: "star" });
+    expect(mailActions("archive")).toEqual([{ kind: "archive" }]);
+    expect(mailActions("trash")).toEqual([{ kind: "trash" }]);
+    expect(mailActions("star")).toEqual([{ kind: "star" }]);
   });
 
   test("normalises read/unread aliases", () => {
-    expect(mailAction("mark-read")).toEqual({ kind: "read" });
-    expect(mailAction("mark_unread")).toEqual({ kind: "unread" });
+    expect(mailActions("mark-read")).toEqual([{ kind: "read" }]);
+    expect(mailActions("mark_unread")).toEqual([{ kind: "unread" }]);
   });
 
-  test("parses label:Name with arbitrary case + whitespace", () => {
-    expect(mailAction("label:Receipts")).toEqual({ kind: "label-add", label: "Receipts" });
-    expect(mailAction("LABEL: Follow Up ")).toEqual({
-      kind: "label-add",
-      label: "Follow Up",
-    });
+  test("parses label aliases with arbitrary case + whitespace", () => {
+    expect(mailActions("label:Receipts")).toEqual([{ kind: "label-add", label: "Receipts" }]);
+    expect(mailActions("ADD-LABEL: Follow Up ")).toEqual([
+      {
+        kind: "label-add",
+        label: "Follow Up",
+      },
+    ]);
+    expect(mailActions("unlabel:Inbox")).toEqual([{ kind: "label-remove", label: "Inbox" }]);
+    expect(mailActions("remove-label: Queue ")).toEqual([
+      { kind: "label-remove", label: "Queue" },
+    ]);
   });
 
   test("parses move:Target", () => {
-    expect(mailAction("move:Archive")).toEqual({ kind: "move", label: "Archive" });
+    expect(mailActions("move:Archive")).toEqual([{ kind: "move", label: "Archive" }]);
   });
 
   test("rejects unsupported strings", () => {
-    expect(mailAction("forward")).toBeNull();
-    expect(mailAction("label:")).toBeNull();
-    expect(mailAction("")).toBeNull();
+    expect(mailActions("forward")).toBeNull();
+    expect(mailActions("label:")).toBeNull();
+    expect(mailActions("")).toBeNull();
   });
 
   test("rejects trailing-whitespace-only label payload", () => {
-    expect(mailAction("label:   ")).toBeNull();
+    expect(mailActions("label:   ")).toBeNull();
+  });
+
+  test("parses ordered action chains", () => {
+    expect(mailActions("mark-read,archive")).toEqual([{ kind: "read" }, { kind: "archive" }]);
+    expect(mailActions("label:Follow Up; archive")).toEqual([
+      { kind: "label-add", label: "Follow Up" },
+      { kind: "archive" },
+    ]);
   });
 });

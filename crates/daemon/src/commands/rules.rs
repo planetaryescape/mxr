@@ -15,8 +15,22 @@ use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, RuleId, StringMatc
 use mxr_search::ast::{FilterKind, QueryField, QueryNode, SizeOp};
 use mxr_search::parse_query;
 
+fn parse_actions(value: &str) -> anyhow::Result<Vec<RuleAction>> {
+    let actions = value
+        .split([',', ';'])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(parse_action)
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    if actions.is_empty() {
+        anyhow::bail!("rule action list is empty");
+    }
+    Ok(actions)
+}
+
 fn parse_action(value: &str) -> anyhow::Result<RuleAction> {
-    let lower = value.to_ascii_lowercase();
+    let trimmed = value.trim();
+    let lower = trimmed.to_ascii_lowercase();
     if lower == "archive" {
         return Ok(RuleAction::Archive);
     }
@@ -26,28 +40,51 @@ fn parse_action(value: &str) -> anyhow::Result<RuleAction> {
     if lower == "star" {
         return Ok(RuleAction::Star);
     }
-    if lower == "mark-read" {
+    if matches!(lower.as_str(), "mark-read" | "read") {
         return Ok(RuleAction::MarkRead);
     }
-    if lower == "mark-unread" {
+    if matches!(lower.as_str(), "mark-unread" | "unread") {
         return Ok(RuleAction::MarkUnread);
     }
-    if let Some(label) = value.strip_prefix("add-label:") {
+    if let Some(label) = strip_action_prefix(trimmed, "add-label:")
+        .or_else(|| strip_action_prefix(trimmed, "label:"))
+    {
+        let label = label.trim();
+        if label.is_empty() {
+            anyhow::bail!("label action requires a label");
+        }
         return Ok(RuleAction::AddLabel {
             label: label.to_string(),
         });
     }
-    if let Some(label) = value.strip_prefix("remove-label:") {
+    if let Some(label) = strip_action_prefix(trimmed, "remove-label:")
+        .or_else(|| strip_action_prefix(trimmed, "unlabel:"))
+    {
+        let label = label.trim();
+        if label.is_empty() {
+            anyhow::bail!("remove-label action requires a label");
+        }
         return Ok(RuleAction::RemoveLabel {
             label: label.to_string(),
         });
     }
-    if let Some(command) = value.strip_prefix("shell:") {
+    if let Some(command) = strip_action_prefix(trimmed, "shell:") {
+        let command = command.trim();
+        if command.is_empty() {
+            anyhow::bail!("shell action requires a command");
+        }
         return Ok(RuleAction::ShellHook {
             command: command.to_string(),
         });
     }
     anyhow::bail!("Unsupported action: {value}")
+}
+
+fn strip_action_prefix<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
+    value
+        .get(..prefix.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+        .then(|| &value[prefix.len()..])
 }
 
 fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
@@ -272,7 +309,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
                 enabled: true,
                 priority,
                 conditions: query_to_conditions(ast)?,
-                actions: vec![parse_action(&action)?],
+                actions: parse_actions(&action)?,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             };
@@ -303,7 +340,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
                 current.conditions = query_to_conditions(ast)?;
             }
             if let Some(action) = action {
-                current.actions = vec![parse_action(&action)?];
+                current.actions = parse_actions(&action)?;
             }
             if let Some(priority) = priority {
                 current.priority = priority;
@@ -327,13 +364,13 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
         RulesAction::Validate { condition, action } => {
             let ast = parse_query(&condition).map_err(|e| anyhow::anyhow!(e.to_string()))?;
             let conditions = query_to_conditions(ast)?;
-            let action = parse_action(&action)?;
+            let actions = parse_actions(&action)?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
                     "valid": true,
                     "conditions": conditions,
-                    "action": action,
+                    "actions": actions,
                 }))?
             );
         }
@@ -404,6 +441,17 @@ mod tests {
         assert!(matches!(
             parse_action("archive").unwrap(),
             RuleAction::Archive
+        ));
+    }
+
+    #[test]
+    fn parse_actions_preserves_user_order() {
+        let actions = parse_actions("mark-read,archive,label:Follow Up").unwrap();
+        assert!(matches!(actions[0], RuleAction::MarkRead));
+        assert!(matches!(actions[1], RuleAction::Archive));
+        assert!(matches!(
+            actions[2],
+            RuleAction::AddLabel { ref label } if label == "Follow Up"
         ));
     }
 

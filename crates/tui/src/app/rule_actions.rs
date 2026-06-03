@@ -89,10 +89,7 @@ pub(crate) fn rule_form_validation_error(form: &RuleFormState) -> Option<String>
     }
     let action = form.action.trim();
     if action.is_empty() {
-        return Some(
-            "Action is required (e.g. archive, add-label:GitHub, shell:notify-send 'New mail')"
-                .into(),
-        );
+        return Some("Action is required (e.g. mark-read,archive or add-label:GitHub)".into());
     }
     if let Some(command) = action.strip_prefix("shell:") {
         if command.trim().is_empty() {

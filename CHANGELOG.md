@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.53](https://github.com/planetaryescape/mxr/compare/v0.5.52...v0.5.53) (2026-06-03)
+
+
+### Bug Fixes
+
+* update release smoke coverage for paginated search output ([dd916f8](https://github.com/planetaryescape/mxr/commit/dd916f83a3a01055bcb7340d542d56c748f26426))
+
 ## [0.5.52](https://github.com/planetaryescape/mxr/compare/v0.5.51...v0.5.52) (2026-06-03)
 
 

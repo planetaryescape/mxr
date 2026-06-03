@@ -89,6 +89,7 @@ fn mail_router() -> Router<AppState> {
     Router::new()
         .route("/mailbox", get(mailbox))
         .route("/search", get(search))
+        .route("/triage", get(triage))
         .route("/threads/{thread_id}", get(thread))
         .route("/threads/{thread_id}/export", get(export_thread))
         .route("/drafts", get(list_drafts))

@@ -179,6 +179,8 @@ expression: summary
     "ThreadBriefingData",
     "ThreadId",
     "ThreadSummaryData",
+    "TriageMessageData",
+    "TriageVerdictData",
     "UnsubscribeMethod",
     "UserVoiceProfileData",
     "UserVoiceRegisterModeData",

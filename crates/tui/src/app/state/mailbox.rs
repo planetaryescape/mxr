@@ -137,6 +137,10 @@ pub struct MailListRow {
     /// thread list rows. Zero in message-discrete mode or before aggregation fills it.
     pub other_participant_count: usize,
     pub open_commitment_count: u32,
+    /// Cached triage verdict token (ACTION/FYI/ROUTINE) when loaded by a
+    /// triage-capable search/view. Kept on the row so the TUI can sort/filter
+    /// or render a verdict column without depending on daemon/store internals.
+    pub triage_verdict: Option<String>,
     pub reply_later: bool,
     pub pending_mutation: bool,
 }

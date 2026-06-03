@@ -15,6 +15,7 @@ impl App {
         let SearchResultData {
             envelopes,
             scores,
+            triage_verdicts,
             has_more,
         } = results;
         let selected_row_message_id = (!append && self.search.page.result_selected)
@@ -24,9 +25,11 @@ impl App {
         // undo an optimistic remove or flag change before the mutation acks.
         let mut envelopes = envelopes;
         let mut scores = scores;
+        let mut triage_verdicts = triage_verdicts;
         envelopes.retain(|env| {
             if self.pending_optimistic.is_removed(&env.id) {
                 scores.remove(&env.id);
+                triage_verdicts.remove(&env.id);
                 false
             } else {
                 true
@@ -41,9 +44,11 @@ impl App {
         if append {
             self.search.page.results.extend(envelopes);
             self.search.page.scores.extend(scores);
+            self.search.page.triage_verdicts.extend(triage_verdicts);
         } else {
             self.search.page.results = envelopes;
             self.search.page.scores = scores;
+            self.search.page.triage_verdicts = triage_verdicts;
             self.search.page.selected_index = 0;
             self.search.page.scroll_offset = 0;
 

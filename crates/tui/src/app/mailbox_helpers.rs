@@ -43,6 +43,7 @@ impl App {
                     unread_count: usize::from(!envelope.flags.contains(MessageFlags::READ)),
                     other_participant_count: 0,
                     open_commitment_count: 0,
+                    triage_verdict: None,
                     reply_later: false,
                     pending_mutation: false,
                 })
@@ -68,6 +69,7 @@ impl App {
                             unread_count: 0,
                             other_participant_count: 0,
                             open_commitment_count: 0,
+                            triage_verdict: None,
                             reply_later: false,
                             pending_mutation: false,
                         }

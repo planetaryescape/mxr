@@ -56,6 +56,7 @@ pub mod summarize;
 pub mod sync_cmd;
 pub mod thread;
 pub mod threads;
+pub mod triage;
 pub mod version;
 pub mod voice;
 pub mod web;

@@ -30,10 +30,19 @@ impl App {
     }
 
     pub fn search_mail_list_rows(&self) -> Vec<MailListRow> {
-        self.with_pending_mutation_markers(Self::build_mail_list_rows(
+        let mut rows = self.with_pending_mutation_markers(Self::build_mail_list_rows(
             &self.search.page.results,
             self.search_list_mode(),
-        ))
+        ));
+        for row in &mut rows {
+            row.triage_verdict = self
+                .search
+                .page
+                .triage_verdicts
+                .get(&row.representative.id)
+                .cloned();
+        }
+        rows
     }
 
     fn with_pending_mutation_markers(&self, mut rows: Vec<MailListRow>) -> Vec<MailListRow> {

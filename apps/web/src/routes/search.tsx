@@ -7,8 +7,9 @@ const searchSchema = z.object({
   q: z.string().optional(),
   mode: z.enum(["lexical", "semantic", "hybrid"]).optional(),
   account: z.string().optional(),
-  sort: z.enum(["relevance", "newest", "oldest"]).optional(),
-  scope: z.enum(["threads", "messages", "attachments"]).optional(),
+  sort: z.enum(["relevance", "newest", "oldest", "verdict"]).optional(),
+  scope: z.enum(["threads", "messages", "attachments", "triage"]).optional(),
+  verdict: z.enum(["ACTION", "FYI", "ROUTINE"]).optional(),
 });
 
 export const Route = createFileRoute("/search")({

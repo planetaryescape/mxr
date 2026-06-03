@@ -376,6 +376,9 @@ async fn search(
     };
 
     let scope = query.scope.as_deref().unwrap_or("threads");
+    if scope == "triage" {
+        return triage_response(state, query).await;
+    }
     let thread_scope = scope == "threads";
     let attachment_scope = scope == "attachments";
 
@@ -456,6 +459,114 @@ async fn search(
         }
         _ => Err(BridgeError::UnexpectedResponse),
     }
+}
+
+async fn triage(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<SearchQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, query.token.as_deref(), &state.config.auth_token)?;
+    triage_response(state, query).await
+}
+
+async fn triage_response(
+    state: AppState,
+    query: SearchQuery,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    if query.q.trim().is_empty() {
+        return Ok(Json(json!({
+            "scope": "triage",
+            "sort": query.sort.unwrap_or_else(|| "recent".to_string()),
+            "mode": query.mode.unwrap_or_default(),
+            "total": 0,
+            "has_more": false,
+            "next_offset": serde_json::Value::Null,
+            "groups": [],
+            "llm_calls": 0,
+        })));
+    }
+
+    let mode = query.mode;
+    let response = ipc_request(
+        &state.config.socket_path,
+        Request::TriageSearch {
+            query: query.q,
+            limit: query.limit,
+            offset: query.offset,
+            account_id: None,
+            mode,
+            sort: Some(SortOrder::DateDesc),
+        },
+    )
+    .await?;
+    let ResponseData::TriageResults {
+        mut messages,
+        total,
+        has_more,
+        next_offset,
+        llm_calls,
+        prompt_version,
+    } = response
+    else {
+        return Err(BridgeError::UnexpectedResponse);
+    };
+
+    if let Some(verdict) = query.verdict.as_deref() {
+        let verdict = verdict.to_ascii_uppercase();
+        messages.retain(|message| message.verdict_token == verdict);
+    }
+    if query.sort.as_deref() == Some("verdict") {
+        messages.sort_by_key(|message| message.verdict);
+    }
+
+    let message_ids = messages
+        .iter()
+        .map(|message| message.message_id.clone())
+        .collect::<Vec<_>>();
+    let envelopes = if message_ids.is_empty() {
+        Vec::new()
+    } else {
+        match ipc_request(
+            &state.config.socket_path,
+            Request::ListEnvelopesByIds {
+                message_ids: message_ids.clone(),
+            },
+        )
+        .await?
+        {
+            ResponseData::Envelopes { envelopes } => reorder_envelopes(envelopes, &message_ids),
+            _ => return Err(BridgeError::UnexpectedResponse),
+        }
+    };
+    let triage_by_message = messages
+        .iter()
+        .map(|message| (message.message_id.to_string(), message))
+        .collect::<HashMap<_, _>>();
+    let rows = envelopes
+        .into_iter()
+        .map(|envelope| {
+            let mut row = message_row_view_with_labels(&envelope, &[]);
+            if let Some(message) = triage_by_message.get(&envelope.id.to_string()) {
+                row.triage_verdict = Some(message.verdict_token.clone());
+                row.triage_reason = Some(message.reason.clone());
+                row.triage_line = Some(message.verdict_line.clone());
+            }
+            (envelope.date, row)
+        })
+        .collect::<Vec<_>>();
+
+    Ok(Json(json!({
+        "scope": "triage",
+        "sort": query.sort.unwrap_or_else(|| "recent".to_string()),
+        "mode": mode.unwrap_or_default(),
+        "total": total,
+        "has_more": has_more,
+        "next_offset": next_offset,
+        "groups": group_row_views(rows),
+        "llm_calls": llm_calls,
+        "prompt_version": prompt_version,
+    })))
 }
 
 async fn start_compose_session(

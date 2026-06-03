@@ -49,7 +49,10 @@ export function SearchResultsRoute() {
   const q = search.q ?? "";
   const mode = search.mode ?? "lexical";
   const sort = search.sort ?? "relevance";
-  const scope = (search.scope as "threads" | "messages" | "attachments" | undefined) ?? "threads";
+  const scope =
+    (search.scope as "threads" | "messages" | "attachments" | "triage" | undefined) ??
+    "threads";
+  const verdict = search.verdict as "ACTION" | "FYI" | "ROUTINE" | undefined;
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [draftQ, setDraftQ] = useState(q);
@@ -57,11 +60,11 @@ export function SearchResultsRoute() {
   const setActivePane = useMailboxPane((state) => state.setActivePane);
 
   const results = useQuery({
-    queryKey: searchKey({ q, mode, sort, scope, account: search.account, limit: 100 }),
+    queryKey: searchKey({ q, mode, sort, scope, account: search.account, limit: 100, verdict }),
     queryFn: ({ signal }) =>
       runReplaceableQuery("search-results", signal, (combinedSignal) =>
         fetchSearch(
-          { q, mode, sort, scope, account: search.account, limit: 100 },
+          { q, mode, sort, scope, account: search.account, limit: 100, verdict },
           { signal: combinedSignal },
         ),
       ),
@@ -88,7 +91,8 @@ export function SearchResultsRoute() {
     q?: string;
     mode?: SearchMode;
     sort?: SearchSort;
-    scope?: "threads" | "messages" | "attachments";
+    scope?: "threads" | "messages" | "attachments" | "triage";
+    verdict?: "ACTION" | "FYI" | "ROUTINE" | null;
   }) {
     void navigate({
       to: "/search",
@@ -97,6 +101,7 @@ export function SearchResultsRoute() {
         mode: next.mode ?? mode,
         sort: next.sort ?? sort,
         scope: next.scope ?? scope,
+        verdict: next.verdict === null ? undefined : (next.verdict ?? verdict),
         account: search.account,
       },
     });
@@ -200,6 +205,7 @@ export function SearchResultsRoute() {
                 <SelectItem value="relevance">Relevance</SelectItem>
                 <SelectItem value="newest">Newest</SelectItem>
                 <SelectItem value="oldest">Oldest</SelectItem>
+                {scope === "triage" ? <SelectItem value="verdict">Verdict</SelectItem> : null}
               </SelectContent>
             </Select>
           </div>
@@ -208,7 +214,10 @@ export function SearchResultsRoute() {
             <Select
               value={scope}
               onValueChange={(value) =>
-                updateSearch({ scope: value as "threads" | "messages" | "attachments" })
+                updateSearch({
+                  scope: value as "threads" | "messages" | "attachments" | "triage",
+                  sort: value === "triage" ? "verdict" : sort === "verdict" ? "relevance" : sort,
+                })
               }
             >
               <SelectTrigger className="mt-1 h-9" aria-label="Search scope">
@@ -218,9 +227,34 @@ export function SearchResultsRoute() {
                 <SelectItem value="threads">Threads</SelectItem>
                 <SelectItem value="messages">Messages</SelectItem>
                 <SelectItem value="attachments">Attachments</SelectItem>
+                <SelectItem value="triage">Triage</SelectItem>
               </SelectContent>
             </Select>
           </div>
+          {scope === "triage" ? (
+            <div className="w-36">
+              <Label>Verdict</Label>
+              <Select
+                value={verdict ?? "ALL"}
+                onValueChange={(value) =>
+                  updateSearch({
+                    verdict:
+                      value === "ALL" ? null : (value as "ACTION" | "FYI" | "ROUTINE"),
+                  })
+                }
+              >
+                <SelectTrigger className="mt-1 h-9" aria-label="Triage verdict filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All</SelectItem>
+                  <SelectItem value="ACTION">ACTION</SelectItem>
+                  <SelectItem value="FYI">FYI</SelectItem>
+                  <SelectItem value="ROUTINE">ROUTINE</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
           <Button variant="outline" onClick={() => setSaveOpen(true)} disabled={!q.trim()}>
             <BookmarkPlus className="size-3" />
             Save
@@ -279,6 +313,9 @@ export function SearchResultsRoute() {
           <div className="flex items-center justify-between px-4 py-2 text-2xs text-muted-foreground">
             <span>
               {resultCount} results · {mode} · {sort}
+              {scope === "triage" && typeof results.data?.llm_calls === "number"
+                ? ` · ${results.data.llm_calls} LLM calls`
+                : ""}
             </span>
             <span>{savedSearches.data?.searches.length ?? 0} saved searches</span>
           </div>

@@ -26,6 +26,10 @@ pub(crate) async fn ipc_search_segment(
     limit: u32,
     offset: u32,
 ) -> Result<SearchResultData, MxrError> {
+    if let Some(triage_query) = parse_triage_query(query) {
+        return ipc_triage_segment(bg, triage_query, mode, limit, offset).await;
+    }
+
     match ipc_call(
         bg,
         Request::Search {
@@ -57,6 +61,7 @@ pub(crate) async fn ipc_search_segment(
                 Ok(SearchResultData {
                     envelopes: Vec::new(),
                     scores,
+                    triage_verdicts: HashMap::new(),
                     has_more,
                 })
             } else {
@@ -66,12 +71,116 @@ pub(crate) async fn ipc_search_segment(
                     }) => Ok(SearchResultData {
                         envelopes,
                         scores,
+                        triage_verdicts: HashMap::new(),
                         has_more,
                     }),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(error) => Err(error),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 }
+            }
+        }
+        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+        Err(error) => Err(error),
+        _ => Err(MxrError::Ipc("unexpected response".into())),
+    }
+}
+
+struct TriageQuery<'a> {
+    query: &'a str,
+    verdict: Option<&'a str>,
+}
+
+fn parse_triage_query(query: &str) -> Option<TriageQuery<'_>> {
+    let trimmed = query.trim();
+    let rest = trimmed.strip_prefix("triage ")?;
+    if let Some(after_prefix) = rest.strip_prefix("ACTION ") {
+        return Some(TriageQuery {
+            query: after_prefix.trim(),
+            verdict: Some("ACTION"),
+        });
+    }
+    if let Some(after_prefix) = rest.strip_prefix("FYI ") {
+        return Some(TriageQuery {
+            query: after_prefix.trim(),
+            verdict: Some("FYI"),
+        });
+    }
+    if let Some(after_prefix) = rest.strip_prefix("ROUTINE ") {
+        return Some(TriageQuery {
+            query: after_prefix.trim(),
+            verdict: Some("ROUTINE"),
+        });
+    }
+    Some(TriageQuery {
+        query: rest.trim(),
+        verdict: None,
+    })
+}
+
+async fn ipc_triage_segment(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    triage_query: TriageQuery<'_>,
+    mode: SearchMode,
+    limit: u32,
+    offset: u32,
+) -> Result<SearchResultData, MxrError> {
+    match ipc_call(
+        bg,
+        Request::TriageSearch {
+            query: triage_query.query.to_owned(),
+            limit,
+            offset,
+            account_id: None,
+            mode: Some(mode),
+            sort: Some(SortOrder::DateDesc),
+        },
+    )
+    .await
+    {
+        Ok(Response::Ok {
+            data:
+                ResponseData::TriageResults {
+                    mut messages,
+                    has_more,
+                    ..
+                },
+        }) => {
+            if let Some(verdict) = triage_query.verdict {
+                messages.retain(|message| message.verdict_token == verdict);
+            } else {
+                messages.sort_by_key(|message| message.verdict);
+            }
+            let mut scores = HashMap::<MessageId, f32>::new();
+            let mut triage_verdicts = HashMap::<MessageId, String>::new();
+            let message_ids = messages
+                .into_iter()
+                .map(|message| {
+                    scores.insert(message.message_id.clone(), message.score);
+                    triage_verdicts.insert(message.message_id.clone(), message.verdict_token);
+                    message.message_id
+                })
+                .collect::<Vec<_>>();
+            if message_ids.is_empty() {
+                return Ok(SearchResultData {
+                    envelopes: Vec::new(),
+                    scores,
+                    triage_verdicts,
+                    has_more,
+                });
+            }
+            match ipc_call(bg, Request::ListEnvelopesByIds { message_ids }).await {
+                Ok(Response::Ok {
+                    data: ResponseData::Envelopes { envelopes },
+                }) => Ok(SearchResultData {
+                    envelopes,
+                    scores,
+                    triage_verdicts,
+                    has_more,
+                }),
+                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                Err(error) => Err(error),
+                _ => Err(MxrError::Ipc("unexpected response".into())),
             }
         }
         Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
@@ -136,6 +245,7 @@ pub(crate) async fn run_streamed_search_page_initial(
                     result: Ok(SearchResultData {
                         envelopes: data.envelopes,
                         scores: data.scores,
+                        triage_verdicts: data.triage_verdicts,
                         has_more: ui_has_more,
                     }),
                 });

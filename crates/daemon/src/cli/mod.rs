@@ -61,6 +61,25 @@ pub enum Command {
         sort: Option<SearchSortArg>,
         #[arg(long)]
         explain: bool,
+        /// Classify matching messages with cached ACTION/FYI/ROUTINE verdicts.
+        #[arg(long)]
+        triage: bool,
+    },
+    /// Classify search results as ACTION/FYI/ROUTINE using the cached summarizer verdict
+    Triage {
+        query: String,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+        #[arg(long, default_value = "50")]
+        limit: Option<u32>,
+        #[arg(long, value_enum)]
+        mode: Option<SearchModeArg>,
+        #[arg(long, value_enum)]
+        sort: Option<TriageSortArg>,
+        #[arg(long, value_enum)]
+        verdict: Option<TriageVerdictArg>,
     },
     /// Count matching messages
     Count {
@@ -1778,6 +1797,19 @@ pub enum OutputFormat {
     Jsonl,
     Csv,
     Ids,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum TriageSortArg {
+    Date,
+    Verdict,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum TriageVerdictArg {
+    Action,
+    Fyi,
+    Routine,
 }
 
 #[derive(Subcommand)]

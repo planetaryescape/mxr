@@ -12,9 +12,9 @@ use mxr_store::{thread_summary_content_hash, Store, ThreadSummaryRecord};
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-const SUMMARY_PROMPT_VERSION: &str = "v3";
+pub(crate) const SUMMARY_PROMPT_VERSION: &str = "v3";
 
-const SYSTEM_PROMPT: &str = r#"You write thread summaries for a terminal email client. The reader already sees subject, sender, recipient, date, and full thread structure on screen — never restate those.
+pub(crate) const SYSTEM_PROMPT: &str = r#"You write thread summaries for a terminal email client. The reader already sees subject, sender, recipient, date, and full thread structure on screen — never restate those.
 
 Output must be PLAIN TEXT. No markdown. No asterisks. No bold. No headers. No emoji. No bullet symbols unless the rules below require them.
 

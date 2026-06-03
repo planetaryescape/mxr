@@ -228,6 +228,7 @@ pub(crate) struct ComposeReadyData {
 pub(crate) struct SearchResultData {
     pub(crate) envelopes: Vec<Envelope>,
     pub(crate) scores: std::collections::HashMap<MessageId, f32>,
+    pub(crate) triage_verdicts: std::collections::HashMap<MessageId, String>,
     pub(crate) has_more: bool,
 }
 

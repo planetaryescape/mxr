@@ -62,6 +62,12 @@ pub(crate) struct MessageRowView {
     pub(crate) attachment_size_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) open_commitment_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) triage_verdict: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) triage_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) triage_line: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

@@ -1,5 +1,6 @@
 use crate::cli::{OutputFormat, SearchModeArg, SearchSortArg};
 use crate::commands::resolve_optional_account;
+use crate::commands::triage::{render_triage, request_triage};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::types::{Envelope, MessageFlags, SortOrder};
@@ -13,6 +14,7 @@ pub async fn run(
     mode: Option<SearchModeArg>,
     sort: Option<SearchSortArg>,
     explain: bool,
+    triage: bool,
 ) -> anyhow::Result<()> {
     let query = query.unwrap_or_default();
     if query.is_empty() {
@@ -21,6 +23,10 @@ pub async fn run(
     let limit = limit.unwrap_or(50);
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    if triage {
+        let payload = request_triage(&mut client, query, account_id, limit, mode).await?;
+        return render_triage(payload, &mut client, format, None, None).await;
+    }
     let resp = client
         .request(Request::Search {
             query,

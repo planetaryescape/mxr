@@ -67,13 +67,16 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
 
     // Compute the subject column's effective character width so
     // `format_subject_line` can decide whether there's room for the
-    // snippet preview. Sum of fixed column widths + 8 inter-column
-    // spaces (Table::column_spacing(1) between 9 cells) + 2 border
+    // snippet preview. Sum of fixed column widths + 9 inter-column
+    // spaces (Table::column_spacing(1) between 10 cells) + 2 border
     // chars. The attachment chip widened to 8 to fit "📎 99K". The
     // link chip is 2 chars (a single `🔗` glyph; the heavy tier uses a
     // brighter color rather than a double glyph to keep the column narrow).
-    let fixed_columns_width = 4 + 1 + 2 + 2 + 22 + 8 + 8 + 2;
-    let column_spacing_total: u16 = 8; // 9 cells, 8 gaps × 1 char
+    let show_triage = view.rows.iter().any(|row| row.triage_verdict.is_some());
+    let triage_width = if show_triage { 8 } else { 0 };
+    let fixed_columns_width = 4 + 1 + 2 + 2 + triage_width + 22 + 8 + 8 + 2;
+    let column_count = if show_triage { 10 } else { 9 };
+    let column_spacing_total: u16 = column_count - 1;
     let border_total: u16 = 2;
     let subject_max_width = area
         .width
@@ -87,20 +90,25 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
         .enumerate()
         .skip(view.scroll_offset)
         .take(visible_height)
-        .map(|(i, row)| build_row(view, row, i, theme, subject_max_width))
+        .map(|(i, row)| build_row(view, row, i, theme, subject_max_width, show_triage))
         .collect();
 
-    let widths = [
-        Constraint::Length(4),  // line number
-        Constraint::Length(1),  // unread indicator
-        Constraint::Length(2),  // star
-        Constraint::Length(2),  // list markers (unsubscribe/reply-later)
+    let mut widths = vec![
+        Constraint::Length(4), // line number
+        Constraint::Length(1), // unread indicator
+        Constraint::Length(2), // star
+        Constraint::Length(2), // list markers (unsubscribe/reply-later)
+    ];
+    if show_triage {
+        widths.push(Constraint::Length(8)); // triage verdict token
+    }
+    widths.extend([
         Constraint::Length(22), // sender
         Constraint::Fill(1),    // subject (+ snippet preview)
         Constraint::Length(8),  // date
         Constraint::Length(8),  // attachment chip ("📎 99K")
         Constraint::Length(2),  // link chip (`🔗` for Some / Heavy, blank for None)
-    ];
+    ]);
 
     let table = Table::new(table_rows, widths)
         .block(
@@ -153,6 +161,7 @@ fn build_row<'a>(
     index: usize,
     theme: &Theme,
     subject_max_width: usize,
+    show_triage: bool,
 ) -> Row<'a> {
     let env = &row.representative;
     let is_selected = index == view.selected_index;
@@ -212,6 +221,11 @@ fn build_row<'a>(
     let list_markers_cell = Cell::from(Span::styled(
         list_markers(row),
         Style::default().fg(row_muted_fg),
+    ));
+
+    let triage_cell = Cell::from(Span::styled(
+        row.triage_verdict.clone().unwrap_or_default(),
+        triage_style(row.triage_verdict.as_deref(), row_fg, theme),
     ));
 
     // Sender (with thread count badge)
@@ -297,18 +311,13 @@ fn build_row<'a>(
         )),
     };
 
-    Row::new(vec![
-        line_num_cell,
-        unread_cell,
-        star_cell,
-        list_markers_cell,
-        sender_cell,
-        subject_cell,
-        date_cell,
-        attach_cell,
-        link_cell,
-    ])
-    .style(base_style)
+    let mut cells = vec![line_num_cell, unread_cell, star_cell, list_markers_cell];
+    if show_triage {
+        cells.push(triage_cell);
+    }
+    cells.extend([sender_cell, subject_cell, date_cell, attach_cell, link_cell]);
+
+    Row::new(cells).style(base_style)
 }
 
 fn row_base_style(theme: &Theme, is_selected: bool, is_in_set: bool, is_unread: bool) -> Style {
@@ -425,6 +434,16 @@ fn indexed_color_rgb(idx: u8) -> (u8, u8, u8) {
         }
     }
 }
+fn triage_style(verdict: Option<&str>, selected_fg: Color, theme: &Theme) -> Style {
+    match verdict {
+        Some("ACTION") => Style::default().fg(Color::Red).bold(),
+        Some("FYI") => Style::default().fg(Color::Blue),
+        Some("ROUTINE") => Style::default().fg(theme.text_muted),
+        Some(_) => Style::default().fg(selected_fg),
+        None => Style::default().fg(theme.text_muted),
+    }
+}
+
 fn sender_parts(row: &MailListRow, mode: MailListMode) -> (String, Option<usize>) {
     // Reserve trailing chars in the 22-char sender column for the thread
     // count badge (" ↔99" worst case = 4 chars + leading space). Without
@@ -691,6 +710,7 @@ mod tests {
             unread_count: message_count,
             other_participant_count,
             open_commitment_count: 0,
+            triage_verdict: None,
             reply_later: false,
             pending_mutation: false,
         }

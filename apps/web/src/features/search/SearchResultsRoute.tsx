@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { BookmarkPlus, HelpCircle, RefreshCw, Search, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -19,6 +19,7 @@ import {
   type SearchSort,
 } from "./api";
 import { MailboxList } from "@/features/mailbox/MailboxList";
+import type { MessageGroupView } from "@/features/mailbox/types";
 import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,8 @@ import { runReplaceableQuery } from "@/lib/requestCoordinator";
 import { parseSearchTokens, removeSearchToken, searchSyntaxRows } from "@/lib/searchSyntax";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 
+const SEARCH_PAGE_LIMIT = 100;
+
 export function SearchResultsRoute() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -61,17 +64,37 @@ export function SearchResultsRoute() {
   const [saveName, setSaveName] = useState("");
   const [draftQ, setDraftQ] = useState(q);
   const inputRef = useRef<HTMLInputElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const setActivePane = useMailboxPane((state) => state.setActivePane);
 
-  const results = useQuery({
-    queryKey: searchKey({ q, mode, sort, scope, account: search.account, limit: 100, verdict }),
-    queryFn: ({ signal }) =>
+  const results = useInfiniteQuery({
+    queryKey: searchKey({
+      q,
+      mode,
+      sort,
+      scope,
+      account: search.account,
+      limit: SEARCH_PAGE_LIMIT,
+      verdict,
+    }),
+    queryFn: ({ signal, pageParam }) =>
       runReplaceableQuery("search-results", signal, (combinedSignal) =>
         fetchSearch(
-          { q, mode, sort, scope, account: search.account, limit: 100, verdict },
+          {
+            q,
+            mode,
+            sort,
+            scope,
+            account: search.account,
+            limit: SEARCH_PAGE_LIMIT,
+            offset: pageParam,
+            verdict,
+          },
           { signal: combinedSignal },
         ),
       ),
+    initialPageParam: 0,
+    getNextPageParam: (page) => (page.has_more ? (page.next_offset ?? undefined) : undefined),
     enabled: q.trim().length > 0,
   });
   const groupedResults = useQuery({
@@ -133,9 +156,24 @@ export function SearchResultsRoute() {
   }
 
   const tokens = parseSearchTokens(q);
-  const groups = results.data?.groups ?? [];
-  const resultCount =
-    results.data?.total ?? groups.reduce((sum, group) => sum + group.rows.length, 0);
+  const pages = results.data?.pages ?? [];
+  const groups = useMemo(() => mergeSearchGroups(pages.flatMap((page) => page.groups)), [pages]);
+  const loadedCount = groups.reduce((sum, group) => sum + group.rows.length, 0);
+  const resultCount = pages[0]?.total ?? loadedCount;
+  const hasMore = results.hasNextPage;
+
+  useEffect(() => {
+    if (!hasMore || results.isFetchingNextPage) return;
+    const node = loadMoreRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        void results.fetchNextPage();
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, results]);
 
   useEffect(() => {
     setDraftQ(q);
@@ -353,9 +391,9 @@ export function SearchResultsRoute() {
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex items-center justify-between px-4 py-2 text-2xs text-muted-foreground">
             <span>
-              {resultCount} results · {mode} · {sort}
-              {scope === "triage" && typeof results.data?.llm_calls === "number"
-                ? ` · ${results.data.llm_calls} LLM calls`
+              {loadedCount} of {resultCount} results · {mode} · {sort}
+              {scope === "triage" && typeof pages[0]?.llm_calls === "number"
+                ? ` · ${pages[0].llm_calls} LLM calls`
                 : ""}
             </span>
             <span>{savedSearches.data?.searches.length ?? 0} saved searches</span>
@@ -404,6 +442,20 @@ export function SearchResultsRoute() {
               inbox exactly — same rows, selection, bulk actions, quick
               actions, and keyboard navigation. */}
           <MailboxList groups={groups} mailboxPath="/search" />
+          <div ref={loadMoreRef} className="flex justify-center border-t border-border p-3">
+            {hasMore ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={results.isFetchingNextPage}
+                onClick={() => results.fetchNextPage()}
+              >
+                {results.isFetchingNextPage ? "Loading…" : "Load more"}
+              </Button>
+            ) : (
+              <span className="text-2xs text-muted-foreground">End of results</span>
+            )}
+          </div>
         </div>
       )}
 
@@ -454,6 +506,20 @@ function formatGroupDate(timestamp?: number | null) {
   if (!timestamp) return "—";
   return new Date(timestamp * 1000).toLocaleDateString();
 }
+
+function mergeSearchGroups(groups: MessageGroupView[]): MessageGroupView[] {
+  const merged = new Map<string, MessageGroupView>();
+  for (const group of groups) {
+    const existing = merged.get(group.id);
+    if (existing) {
+      existing.rows.push(...group.rows);
+    } else {
+      merged.set(group.id, { ...group, rows: [...group.rows] });
+    }
+  }
+  return Array.from(merged.values());
+}
+
 
 function SavedSearchManager({
   searches,

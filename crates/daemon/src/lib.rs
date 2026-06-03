@@ -216,6 +216,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             account,
             format,
             limit,
+            offset,
             mode,
             sort,
             group_by,
@@ -223,8 +224,10 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             triage,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::search::run(query, account, format, limit, mode, sort, group_by, explain, triage)
-                .await?;
+            commands::search::run(
+                query, account, format, limit, offset, mode, sort, group_by, explain, triage,
+            )
+            .await?;
         }
         Some(Command::Triage {
             query,

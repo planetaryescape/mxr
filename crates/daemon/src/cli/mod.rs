@@ -55,6 +55,9 @@ pub enum Command {
         format: Option<OutputFormat>,
         #[arg(long, default_value = "50")]
         limit: Option<u32>,
+        /// Skip this many matching results before returning a page.
+        #[arg(long, default_value_t = 0)]
+        offset: u32,
         #[arg(long, value_enum)]
         mode: Option<SearchModeArg>,
         #[arg(long, value_enum)]

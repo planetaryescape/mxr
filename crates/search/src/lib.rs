@@ -293,12 +293,36 @@ mod tests {
 
         assert_eq!(first_page.results.len(), 2);
         assert!(first_page.has_more);
+        assert_eq!(first_page.next_offset, Some(2));
         assert_eq!(second_page.results.len(), 2);
         assert!(second_page.has_more);
+        assert_eq!(second_page.next_offset, Some(4));
         assert_ne!(
             first_page.results[0].message_id,
             second_page.results[0].message_id
         );
+    }
+
+    #[test]
+    fn large_limit_returns_all_matches_without_tantivy_ceiling() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        for i in 0..1_080 {
+            let mut env = make_envelope(
+                &format!("triage survey {i}"),
+                "full inbox discovery",
+                "Alice",
+            );
+            env.date = chrono::Utc::now() - chrono::Duration::seconds(i);
+            idx.index_envelope(&env).unwrap();
+        }
+        idx.commit().unwrap();
+
+        let results = idx.search("triage", 1_080, 0, SortOrder::DateDesc).unwrap();
+
+        assert_eq!(results.total, 1_080);
+        assert_eq!(results.results.len(), 1_080);
+        assert!(!results.has_more);
+        assert_eq!(results.next_offset, None);
     }
 
     // -- E2E: parse → build → search integration tests --

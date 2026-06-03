@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.55](https://github.com/planetaryescape/mxr/compare/v0.5.54...v0.5.55) (2026-06-03)
+
+
+### Bug Fixes
+
+* clean up release clippy lints ([ed75ea4](https://github.com/planetaryescape/mxr/commit/ed75ea48a526e0ea781709410cf21670c4db0a72))
+
 ## [0.5.54](https://github.com/planetaryescape/mxr/compare/v0.5.53...v0.5.54) (2026-06-03)
 
 

@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+List or inspect background jobs (large batch mutations, progress, undo ids)
+
+Usage: mxr jobs [OPTIONS] [JOB_ID]
+
+Arguments:
+  [JOB_ID]  Optional job id to inspect. Omit to list recent jobs
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

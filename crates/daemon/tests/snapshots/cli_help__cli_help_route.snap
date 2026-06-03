@@ -1,0 +1,21 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Route queued messages to a target label, optionally marking read and archiving
+
+Usage: mxr route [OPTIONS] --to <TO_LABEL> --from-queue <FROM_QUEUE_LABEL> [MESSAGE_ID]...
+
+Arguments:
+  [MESSAGE_ID]...
+
+Options:
+      --search <SEARCH>
+      --account <ACCOUNT>
+      --to <TO_LABEL>
+      --from-queue <FROM_QUEUE_LABEL>
+      --archive
+      --yes
+      --dry-run
+      --format <FORMAT>                 [possible values: table, json, jsonl, csv, ids]
+  -h, --help                            Print help

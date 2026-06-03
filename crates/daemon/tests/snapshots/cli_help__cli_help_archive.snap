@@ -14,5 +14,6 @@ Options:
       --account <ACCOUNT>
       --yes                Skip confirmation
       --dry-run            Show what would happen
+      --async              Run as a daemon-side background job and poll with `mxr jobs`
       --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
   -h, --help               Print help

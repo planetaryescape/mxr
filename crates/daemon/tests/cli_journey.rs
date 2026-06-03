@@ -33,6 +33,14 @@ fn unique_instance_name() -> String {
     ts_unique_instance_name("mxr-cli-journey")
 }
 
+fn search_results<'a>(value: &'a Value, context: &str) -> &'a [Value] {
+    value
+        .as_array()
+        .or_else(|| value.get("results").and_then(Value::as_array))
+        .map(Vec::as_slice)
+        .unwrap_or_else(|| panic!("{context}; got: {value:#}"))
+}
+
 #[test]
 fn cli_journey_send_then_mutate_then_search_reflects_state() {
     let _guard = cli_journey_guard();
@@ -112,7 +120,8 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         "sync --status JSON should report a completed run; got: {status_after:#}"
     );
 
-    // search --format json returns a JSON array of result objects.
+    // search --format json returns result objects; modern output wraps them
+    // with paging metadata.
     // Use a token from the fake fixtures (`buildkite`) rather than an empty
     // query: Tantivy's parser rejects bare `*` and we want the test to assert
     // a real query path, not match-all.
@@ -122,9 +131,7 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         &config_dir,
         &["search", "deployment", "--format", "json", "--limit", "50"],
     );
-    let results = search
-        .as_array()
-        .unwrap_or_else(|| panic!("expected JSON array from search; got: {search:#}"));
+    let results = search_results(&search, "expected search results");
     assert!(
         !results.is_empty(),
         "expected fake provider fixtures to populate search; got: {search:#}"
@@ -203,14 +210,10 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         &config_dir,
         &["search", "is:sent", "--format", "json", "--limit", "100"],
     );
-    let sent_subjects: Vec<String> = sent
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|item| item["subject"].as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default();
+    let sent_subjects: Vec<String> = search_results(&sent, "expected sent search results")
+        .iter()
+        .filter_map(|item| item["subject"].as_str().map(String::from))
+        .collect();
     assert!(
         sent_subjects
             .iter()
@@ -240,14 +243,10 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
             "100",
         ],
     );
-    let inbox_ids: Vec<&str> = inbox
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|item| item["message_id"].as_str())
-                .collect()
-        })
-        .unwrap_or_default();
+    let inbox_ids: Vec<&str> = search_results(&inbox, "expected inbox search results")
+        .iter()
+        .filter_map(|item| item["message_id"].as_str())
+        .collect();
     assert!(
         !inbox_ids.contains(&message_id),
         "archived message {message_id} should not appear in `label:inbox` after archive; got {} ids",
@@ -349,9 +348,7 @@ fn cli_journey_compose_send_inserts_synthetic_envelope_searchable_by_subject() {
             "10",
         ],
     );
-    let arr = results
-        .as_array()
-        .unwrap_or_else(|| panic!("expected JSON array from search; got: {results:#}"));
+    let arr = search_results(&results, "expected search results");
     let matching: Vec<&Value> = arr
         .iter()
         .filter(|item| item["subject"].as_str() == Some(unique_subject.as_str()))
@@ -370,10 +367,10 @@ fn cli_journey_compose_send_inserts_synthetic_envelope_searchable_by_subject() {
         &config_dir,
         &["search", "is:sent", "--format", "json", "--limit", "100"],
     );
-    let sent_subjects: Vec<&str> = sent
-        .as_array()
-        .map(|a| a.iter().filter_map(|i| i["subject"].as_str()).collect())
-        .unwrap_or_default();
+    let sent_subjects: Vec<&str> = search_results(&sent, "expected sent search results")
+        .iter()
+        .filter_map(|i| i["subject"].as_str())
+        .collect();
     assert!(
         sent_subjects.iter().any(|s| *s == unique_subject),
         "is:sent must contain freshly composed subject {unique_subject:?}; got {sent_subjects:?}"
@@ -476,9 +473,8 @@ fn cli_journey_compose_send_response_carries_message_id_matching_search() {
             "10",
         ],
     );
-    let searched_id = results
-        .as_array()
-        .and_then(|arr| arr.first())
+    let searched_id = search_results(&results, "search must return one result")
+        .first()
         .and_then(|item| item["message_id"].as_str())
         .unwrap_or_else(|| panic!("search must return one result; got: {results:#}"));
     assert_eq!(
@@ -533,9 +529,8 @@ fn cli_journey_archive_then_undo_restores_inbox() {
         &config_dir,
         &["search", "label:inbox", "--format", "json", "--limit", "10"],
     );
-    let target_id = inbox
-        .as_array()
-        .and_then(|arr| arr.first())
+    let target_id = search_results(&inbox, "fixture must yield at least one inbox message")
+        .first()
         .and_then(|item| item["message_id"].as_str())
         .map_or_else(
             || panic!("fixture must yield at least one inbox message; got: {inbox:#}"),
@@ -583,10 +578,9 @@ fn cli_journey_archive_then_undo_restores_inbox() {
             "100",
         ],
     );
-    let in_inbox_after = inbox_after.as_array().is_some_and(|arr| {
-        arr.iter()
-            .any(|item| item["message_id"].as_str() == Some(target_id.as_str()))
-    });
+    let in_inbox_after = search_results(&inbox_after, "expected post-archive inbox results")
+        .iter()
+        .any(|item| item["message_id"].as_str() == Some(target_id.as_str()));
     assert!(
         !in_inbox_after,
         "post-archive: {target_id} must not be in `label:inbox`"
@@ -621,10 +615,9 @@ fn cli_journey_archive_then_undo_restores_inbox() {
             "100",
         ],
     );
-    let restored = inbox_post.as_array().is_some_and(|arr| {
-        arr.iter()
-            .any(|item| item["message_id"].as_str() == Some(target_id.as_str()))
-    });
+    let restored = search_results(&inbox_post, "expected post-undo inbox results")
+        .iter()
+        .any(|item| item["message_id"].as_str() == Some(target_id.as_str()));
     assert!(
         restored,
         "post-undo: {target_id} must reappear in `label:inbox`; got {inbox_post:?}"
@@ -1264,9 +1257,8 @@ fn cli_journey_reply_later_flag_persists_across_daemon_restart() {
         &config_dir,
         &["search", "deployment", "--format", "json", "--limit", "5"],
     );
-    let message_id = search
-        .as_array()
-        .and_then(|arr| arr.first())
+    let message_id = search_results(&search, "at least one fixture matches `deployment`")
+        .first()
         .and_then(|hit| hit["message_id"].as_str())
         .expect("at least one fixture matches `deployment`")
         .to_string();

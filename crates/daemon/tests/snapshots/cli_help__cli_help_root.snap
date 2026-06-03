@@ -10,6 +10,7 @@ Commands:
   daemon              Start the daemon explicitly
   restart             Restart the daemon with the current binary
   search              Search messages
+  triage              Classify search results as ACTION/FYI/ROUTINE using the cached summarizer verdict
   count               Count matching messages
   cat                 Display a message. Pass a positional ID, pipe IDs on stdin, or resolve a list with `--search QUERY` (then `--first` for the most recent match or `--limit N` for the top N)
   thread              Display a thread. Pass a positional ID, pipe IDs on stdin, or resolve a list with `--search QUERY` (deduplicated by thread)
@@ -76,6 +77,7 @@ Commands:
   unsend              Cancel a previously-scheduled send. The draft itself is preserved
   archive             Archive a message (remove from inbox)
   read-archive        Mark message as read and archive it
+  route               Route queued messages to a target label, optionally marking read and archiving
   trash               Move message to trash
   spam                Report message as spam
   star                Star a message
@@ -86,6 +88,7 @@ Commands:
   unlabel             Remove a label from a message
   move                Move message to a label/folder
   undo                Undo a recent destructive mutation by its id (~60s window). The mutation id is printed by `archive`, `trash`, `spam`, `mark-read`, and `read-archive`; copy it from there
+  jobs                List or inspect background jobs (large batch mutations, progress, undo ids)
   snooze              Snooze a message until a specified time
   unsnooze            Unsnooze a message
   snoozed             List snoozed messages

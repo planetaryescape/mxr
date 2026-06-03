@@ -1,0 +1,19 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Classify search results as ACTION/FYI/ROUTINE using the cached summarizer verdict
+
+Usage: mxr triage [OPTIONS] <QUERY>
+
+Arguments:
+  <QUERY>
+
+Options:
+      --account <ACCOUNT>
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+      --limit <LIMIT>      [default: 50]
+      --mode <MODE>        [possible values: lexical, hybrid, semantic]
+      --sort <SORT>        [possible values: date, verdict]
+      --verdict <VERDICT>  [possible values: action, fyi, routine]
+  -h, --help               Print help

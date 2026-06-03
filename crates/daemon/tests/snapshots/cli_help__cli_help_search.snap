@@ -11,9 +11,12 @@ Arguments:
 
 Options:
       --account <ACCOUNT>
-      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
-      --limit <LIMIT>      [default: 50]
-      --mode <MODE>        [possible values: lexical, hybrid, semantic]
-      --sort <SORT>        [possible values: date, relevance]
+      --format <FORMAT>      [possible values: table, json, jsonl, csv, ids]
+      --limit <LIMIT>        [default: 50]
+      --offset <OFFSET>      Skip this many matching results before returning a page [default: 0]
+      --mode <MODE>          [possible values: lexical, hybrid, semantic]
+      --sort <SORT>          [possible values: date, relevance]
+      --group-by <GROUP_BY>  Aggregate the query result set by a field instead of listing messages [possible values: from, list, category]
       --explain
-  -h, --help               Print help
+      --triage               Classify matching messages with cached ACTION/FYI/ROUTINE verdicts
+  -h, --help                 Print help

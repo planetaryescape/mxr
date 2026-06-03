@@ -25,6 +25,12 @@ Options:
       --dry-run
 
 
+      --purge
+          Unsubscribe, then mark read and archive the sender's whole footprint
+
+      --archive-on-no-method
+          With --purge, archive the footprint even if no List-Unsubscribe method exists
+
       --format <FORMAT>
           [possible values: table, json, jsonl, csv, ids]
 

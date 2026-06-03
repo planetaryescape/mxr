@@ -33,6 +33,7 @@ fn cli_help_snapshots_cover_all_commands() {
     let cases: &[(&str, &[&str])] = &[
         ("cli_help_root", &["--help"]),
         ("cli_help_search", &["search", "--help"]),
+        ("cli_help_triage", &["triage", "--help"]),
         ("cli_help_daemon", &["daemon", "--help"]),
         ("cli_help_restart", &["restart", "--help"]),
         ("cli_help_count", &["count", "--help"]),
@@ -213,7 +214,9 @@ fn cli_help_snapshots_cover_all_commands() {
         ),
         ("cli_help_archive", &["archive", "--help"]),
         ("cli_help_read_archive", &["read-archive", "--help"]),
+        ("cli_help_route", &["route", "--help"]),
         ("cli_help_undo", &["undo", "--help"]),
+        ("cli_help_jobs", &["jobs", "--help"]),
         ("cli_help_subscriptions", &["subscriptions", "--help"]),
         ("cli_help_trash", &["trash", "--help"]),
         ("cli_help_spam", &["spam", "--help"]),
@@ -335,7 +338,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ),
     ];
 
-    assert_eq!(cases.len(), 183);
+    assert_eq!(cases.len(), 186);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

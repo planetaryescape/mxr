@@ -11,6 +11,8 @@ Arguments:
 
 Options:
       --account <ACCOUNT>
-      --mode <MODE>        [possible values: lexical, hybrid, semantic]
-      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
-  -h, --help               Print help
+      --mode <MODE>          [possible values: lexical, hybrid, semantic]
+      --quiet                Print a bare integer, ignoring output format and tty detection
+      --group-by <GROUP_BY>  Aggregate the query result set by a field instead of printing one count [possible values: from, list, category]
+      --format <FORMAT>      [possible values: table, json, jsonl, csv, ids]
+  -h, --help                 Print help

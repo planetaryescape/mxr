@@ -48,7 +48,7 @@ use crate::output::{jsonl, resolve_format};
 use helpers::{
     confirm_action, parse_snooze_until, print_batch_mutation_output, print_dry_run_output,
     requires_confirmation, resolve_mutation_selection, resolve_mutation_selection_with_limit,
-    run_simple_mutation, BatchMutationError, MutationRunOptions,
+    run_simple_mutation, selection_counts, BatchMutationError, MutationRunOptions,
 };
 use mxr_protocol::*;
 use serde::Serialize;
@@ -542,6 +542,7 @@ pub async fn snooze(
         &selection.ids,
         succeeded,
         errors.clone(),
+        Some(selection_counts(&selection)),
         format,
     )?;
     if succeeded == 0 {
@@ -600,6 +601,7 @@ pub async fn unsnooze(
                         &ids,
                         0,
                         Vec::new(),
+                        None,
                         format,
                     )?;
                     return Ok(());
@@ -618,6 +620,7 @@ pub async fn unsnooze(
                             &ids,
                             0,
                             Vec::new(),
+                            None,
                             format,
                         )?;
                     }
@@ -658,6 +661,7 @@ pub async fn unsnooze(
                     &ids,
                     succeeded,
                     errors.clone(),
+                    None,
                     format,
                 )?;
                 if succeeded == 0 && !errors.is_empty() {
@@ -708,6 +712,7 @@ pub async fn unsnooze(
             &selection.ids,
             succeeded,
             errors.clone(),
+            Some(selection_counts(&selection)),
             format,
         )?;
         if succeeded == 0 {
@@ -844,6 +849,7 @@ pub async fn unsubscribe(
         &selection.ids,
         succeeded,
         errors.clone(),
+        Some(selection_counts(&selection)),
         format,
     )?;
     if succeeded == 0 {

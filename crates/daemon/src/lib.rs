@@ -227,10 +227,11 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             query,
             account,
             mode,
+            quiet,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::count::run(query, account, mode, format).await?;
+            commands::count::run(query, account, mode, format, quiet).await?;
         }
         Some(Command::Cat {
             message_id,

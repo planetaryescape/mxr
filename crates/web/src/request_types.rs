@@ -247,6 +247,17 @@ pub(super) struct UnsubscribeRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub(super) struct UnsubscribePurgeRequest {
+    pub(super) address: String,
+    #[serde(default)]
+    pub(super) account_id: Option<String>,
+    #[serde(default)]
+    pub(super) dry_run: bool,
+    #[serde(default)]
+    pub(super) archive_on_no_method: bool,
+}
+
+#[derive(Debug, Deserialize)]
 pub(super) struct SnoozeRequest {
     pub(super) message_id: String,
     pub(super) until: String,

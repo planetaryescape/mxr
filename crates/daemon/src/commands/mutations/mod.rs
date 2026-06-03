@@ -48,8 +48,9 @@ use crate::output::{jsonl, resolve_format};
 use helpers::{
     confirm_action, parse_snooze_until, print_batch_mutation_output, print_dry_run_output,
     requires_confirmation, resolve_mutation_selection, resolve_mutation_selection_with_limit,
-    run_simple_mutation, BatchMutationError, MutationRunOptions,
+    run_simple_mutation, BatchMutationError, MutationRunOptions, MutationSelection,
 };
+use mxr_core::types::UnsubscribeMethod;
 use mxr_protocol::*;
 use serde::Serialize;
 
@@ -792,11 +793,26 @@ pub async fn unsubscribe(
     search: Option<String>,
     account: Option<String>,
     dry_run: bool,
+    purge: bool,
+    archive_on_no_method: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    let (message_ids, search) = rewrite_unsubscribe_positional(message_ids, search);
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    if purge {
+        return unsubscribe_purge(
+            &mut client,
+            message_ids,
+            account_id,
+            yes,
+            dry_run,
+            archive_on_no_method,
+            format,
+        )
+        .await;
+    }
+
+    let (message_ids, search) = rewrite_unsubscribe_positional(message_ids, search);
     let selection =
         resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     if selection.ids.is_empty() {
@@ -850,6 +866,225 @@ pub async fn unsubscribe(
         anyhow::bail!("No messages unsubscribed ({} failed)", errors.len());
     }
     Ok(())
+}
+
+#[derive(Serialize)]
+struct UnsubscribePurgeOutput<'a> {
+    address: &'a str,
+    query: &'a str,
+    dry_run: bool,
+    method: String,
+    status: UnsubscribePurgeStatusData,
+    message_count: u32,
+    archived_count: u32,
+    mutation_id: Option<&'a str>,
+    error: Option<&'a str>,
+}
+
+async fn unsubscribe_purge(
+    client: &mut IpcClient,
+    message_ids: Vec<String>,
+    account_id: Option<mxr_core::AccountId>,
+    yes: bool,
+    dry_run: bool,
+    archive_on_no_method: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    if message_ids.len() != 1 || !looks_like_email(&message_ids[0]) {
+        anyhow::bail!("--purge requires exactly one sender email address, e.g. mxr unsubscribe sender@example.com --purge");
+    }
+    let address = message_ids[0].clone();
+    let preview = request_unsubscribe_purge(
+        client,
+        &address,
+        account_id.clone(),
+        true,
+        archive_on_no_method,
+    )
+    .await?;
+    print_unsubscribe_purge_output(&preview, format.clone())?;
+    if dry_run {
+        return Ok(());
+    }
+    if preview.message_count == 0 {
+        anyhow::bail!("No messages matched sender {}", address);
+    }
+    if matches!(preview.method, UnsubscribeMethod::None) && !archive_on_no_method {
+        anyhow::bail!("No unsubscribe method available for {}; rerun with --archive-on-no-method to read-archive {} message(s)", address, preview.message_count);
+    }
+    if requires_confirmation(false, true, preview.message_count as usize, yes) {
+        confirm_action(
+            &format!(
+                "unsubscribe and read-archive sender {} (method: {})",
+                address,
+                unsubscribe_method_text(&preview.method)
+            ),
+            &MutationSelection {
+                ids: preview.message_ids.clone(),
+                envelopes: Vec::new(),
+                used_search: true,
+            },
+        )?;
+    }
+    let result =
+        request_unsubscribe_purge(client, &address, account_id, false, archive_on_no_method)
+            .await?;
+    print_unsubscribe_purge_output(&result, format)?;
+    if matches!(
+        result.status,
+        UnsubscribePurgeStatusData::Failed | UnsubscribePurgeStatusData::NoMethod
+    ) {
+        anyhow::bail!(
+            "{}",
+            result
+                .error
+                .unwrap_or_else(|| "unsubscribe purge failed".into())
+        );
+    }
+    Ok(())
+}
+
+async fn request_unsubscribe_purge(
+    client: &mut IpcClient,
+    address: &str,
+    account_id: Option<mxr_core::AccountId>,
+    dry_run: bool,
+    archive_on_no_method: bool,
+) -> anyhow::Result<UnsubscribePurgeResultData> {
+    let request = Request::UnsubscribePurge {
+        address: address.to_string(),
+        account_id,
+        dry_run,
+        archive_on_no_method,
+    };
+    let response = if dry_run {
+        client.request(request).await?
+    } else {
+        // Large sender footprints can exceed the default 120s IPC timeout;
+        // use the long-running request path so the daemon can complete and
+        // return the single undo id for the read+archive batch.
+        client.request_with_events(request, |_| {}).await?
+    };
+    match response {
+        Response::Ok {
+            data: ResponseData::UnsubscribePurgeResult { result },
+        } => Ok(result),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+}
+
+fn print_unsubscribe_purge_output(
+    result: &UnsubscribePurgeResultData,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    match resolve_format(format) {
+        OutputFormat::Table => {
+            let method = unsubscribe_method_text(&result.method);
+            if result.dry_run {
+                println!(
+                    "DRY-RUN — would unsubscribe and read-archive {} message(s) from {}",
+                    result.message_count, result.address
+                );
+                println!("Method: {method}");
+                if matches!(result.method, UnsubscribeMethod::None) {
+                    println!("No usable List-Unsubscribe method; use --archive-on-no-method to clear only.");
+                }
+            } else {
+                println!(
+                    "{}: archived {}/{} message(s) from {} (method: {method})",
+                    unsubscribe_purge_status_text(result.status),
+                    result.archived_count,
+                    result.message_count,
+                    result.address
+                );
+                if let Some(mutation_id) = &result.mutation_id {
+                    println!("Undo: mxr undo {mutation_id}");
+                }
+                if let Some(error) = &result.error {
+                    println!("Note: {error}");
+                }
+            }
+        }
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&UnsubscribePurgeOutput {
+                address: &result.address,
+                query: &result.query,
+                dry_run: result.dry_run,
+                method: unsubscribe_method_text(&result.method),
+                status: result.status,
+                message_count: result.message_count,
+                archived_count: result.archived_count,
+                mutation_id: result.mutation_id.as_deref(),
+                error: result.error.as_deref(),
+            })?
+        ),
+        OutputFormat::Jsonl => println!(
+            "{}",
+            serde_json::to_string(&UnsubscribePurgeOutput {
+                address: &result.address,
+                query: &result.query,
+                dry_run: result.dry_run,
+                method: unsubscribe_method_text(&result.method),
+                status: result.status,
+                message_count: result.message_count,
+                archived_count: result.archived_count,
+                mutation_id: result.mutation_id.as_deref(),
+                error: result.error.as_deref(),
+            })?
+        ),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record([
+                "address",
+                "dry_run",
+                "method",
+                "status",
+                "message_count",
+                "archived_count",
+                "mutation_id",
+                "error",
+            ])?;
+            writer.write_record([
+                result.address.as_str(),
+                if result.dry_run { "true" } else { "false" },
+                &unsubscribe_method_text(&result.method),
+                unsubscribe_purge_status_text(result.status),
+                &result.message_count.to_string(),
+                &result.archived_count.to_string(),
+                result.mutation_id.as_deref().unwrap_or(""),
+                result.error.as_deref().unwrap_or(""),
+            ])?;
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => {
+            for id in &result.message_ids {
+                println!("{id}");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn unsubscribe_method_text(method: &UnsubscribeMethod) -> String {
+    match method {
+        UnsubscribeMethod::OneClick { .. } => "one-click".into(),
+        UnsubscribeMethod::HttpLink { .. } => "http-link".into(),
+        UnsubscribeMethod::Mailto { address, .. } => format!("mailto:{address}"),
+        UnsubscribeMethod::BodyLink { .. } => "body-link".into(),
+        UnsubscribeMethod::None => "none".into(),
+    }
+}
+
+fn unsubscribe_purge_status_text(status: UnsubscribePurgeStatusData) -> &'static str {
+    match status {
+        UnsubscribePurgeStatusData::Preview => "preview",
+        UnsubscribePurgeStatusData::Unsubscribed => "unsubscribed",
+        UnsubscribePurgeStatusData::NoMethod => "no-method",
+        UnsubscribePurgeStatusData::ArchiveOnly => "archive-only",
+        UnsubscribePurgeStatusData::Failed => "failed",
+    }
 }
 
 /// Translate positional `EMAIL_ADDRESS` arguments to `mxr unsubscribe`

@@ -1085,11 +1085,22 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             search,
             account,
             dry_run,
+            purge,
+            archive_on_no_method,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::unsubscribe(message_ids, yes, search, account, dry_run, format)
-                .await?;
+            commands::mutations::unsubscribe(
+                message_ids,
+                yes,
+                search,
+                account,
+                dry_run,
+                purge,
+                archive_on_no_method,
+                format,
+            )
+            .await?;
         }
         Some(Command::Open {
             message_id,

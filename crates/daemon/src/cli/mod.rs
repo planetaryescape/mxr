@@ -1378,6 +1378,12 @@ pub enum Command {
         account: Option<String>,
         #[arg(long)]
         dry_run: bool,
+        /// Unsubscribe, then mark read and archive the sender's whole footprint.
+        #[arg(long, alias = "archive-all")]
+        purge: bool,
+        /// With --purge, archive the footprint even if no List-Unsubscribe method exists.
+        #[arg(long, requires = "purge")]
+        archive_on_no_method: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },

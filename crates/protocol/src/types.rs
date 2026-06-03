@@ -806,6 +806,18 @@ pub enum Request {
     Unsubscribe {
         message_id: MessageId,
     },
+    UnsubscribePurge {
+        address: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default)]
+        dry_run: bool,
+        /// If false, a sender with no usable List-Unsubscribe method previews
+        /// the footprint but does not archive it. If true, the daemon still
+        /// read-archives the sender footprint and reports that unsubscribe was skipped.
+        #[serde(default)]
+        archive_on_no_method: bool,
+    },
     Snooze {
         message_id: MessageId,
         wake_at: chrono::DateTime<chrono::Utc>,
@@ -1328,6 +1340,7 @@ impl Request {
             | Self::Mutation { .. }
             | Self::UndoMutation { .. }
             | Self::Unsubscribe { .. }
+            | Self::UnsubscribePurge { .. }
             | Self::Snooze { .. }
             | Self::Unsnooze { .. }
             | Self::ListSnoozed
@@ -1566,6 +1579,37 @@ pub struct MutationResultData {
     /// `None` for non-undoable mutations (Star, ModifyLabels, Move).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mutation_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum UnsubscribePurgeStatusData {
+    Preview,
+    Unsubscribed,
+    NoMethod,
+    ArchiveOnly,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UnsubscribePurgeResultData {
+    pub address: String,
+    pub query: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<AccountId>,
+    pub dry_run: bool,
+    pub method: UnsubscribeMethod,
+    pub status: UnsubscribePurgeStatusData,
+    pub message_count: u32,
+    pub archived_count: u32,
+    #[serde(default)]
+    pub message_ids: Vec<MessageId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1876,6 +1920,9 @@ pub enum ResponseData {
     MutationResult {
         result: MutationResultData,
     },
+    UnsubscribePurgeResult {
+        result: UnsubscribePurgeResultData,
+    },
 
     // mxr app/platform responses.
     Rules {
@@ -2177,6 +2224,7 @@ impl ResponseData {
             | Self::DraftSuggestion { .. }
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }
+            | Self::UnsubscribePurgeResult { .. }
             | Self::SendReceipt { .. }
             | Self::DraftSafetyReportResponse { .. }
             | Self::DraftCommitments { .. }

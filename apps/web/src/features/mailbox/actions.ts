@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 import {
   readAndArchiveMessages,
+  unsubscribeAndClearSender,
   unsubscribeFromSender,
 } from "@/features/mailbox/api";
 import type { ThreadResponse } from "@/features/mailbox/types";
@@ -27,9 +28,21 @@ function focusedThreadId(): string | null {
   return match?.[1] ?? null;
 }
 
+function cachedThread(threadId: string): ThreadResponse | undefined {
+  return getActiveQueryClient()?.getQueryData<ThreadResponse>(["thread", threadId]);
+}
+
 function cachedThreadMessageIds(threadId: string): string[] {
-  const cached = getActiveQueryClient()?.getQueryData<ThreadResponse>(["thread", threadId]);
-  return cached?.messages.map((message) => message.id) ?? [];
+  return cachedThread(threadId)?.messages.map((message) => message.id) ?? [];
+}
+
+function focusedSender(): { address: string; accountId?: string } | null {
+  const threadId = focusedThreadId();
+  if (!threadId) return null;
+  const message = cachedThread(threadId)?.messages[0];
+  const address = message?.sender_detail ?? message?.sender;
+  if (!address || !address.includes("@")) return null;
+  return { address, accountId: message?.account_id };
 }
 
 function targetMessageIds(): string[] {
@@ -141,6 +154,37 @@ export const mailboxActions: Action[] = [
         .then(() => toast.success("Unsubscribe requested"))
         .catch((error: Error) =>
           toast.error("Unsubscribe failed", { description: error.message }),
+        );
+    },
+  },
+  {
+    id: "mail.unsubscribe-clear-sender",
+    label: "Unsubscribe & clear sender",
+    description: "Unsubscribe, then mark read and archive the sender's full footprint",
+    group: "Mail",
+    icon: MailX,
+    paletteOnly: true,
+    when: withFocusedThread(),
+    run: () => {
+      const sender = focusedSender();
+      if (!sender) {
+        toast.error("Open a loaded thread with a sender email first");
+        return;
+      }
+      useModals.getState().setCommandPaletteOpen(false);
+      unsubscribeAndClearSender({ address: sender.address, accountId: sender.accountId })
+        .then((response) => {
+          const result = response.result;
+          if (!response.ok || !result) {
+            toast.error("Unsubscribe & clear failed", { description: result?.error ?? "No result" });
+            return;
+          }
+          toast.success(`Cleared ${result.archived_count} message(s) from ${result.address}`, {
+            description: result.mutation_id ? `Undo id: ${result.mutation_id}` : undefined,
+          });
+        })
+        .catch((error: Error) =>
+          toast.error("Unsubscribe & clear failed", { description: error.message }),
         );
     },
   },

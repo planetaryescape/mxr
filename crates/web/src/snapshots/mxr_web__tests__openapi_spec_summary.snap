@@ -1,5 +1,6 @@
 ---
 source: crates/web/src/tests.rs
+assertion_line: 857
 expression: summary
 ---
 {
@@ -180,6 +181,8 @@ expression: summary
     "ThreadId",
     "ThreadSummaryData",
     "UnsubscribeMethod",
+    "UnsubscribePurgeResultData",
+    "UnsubscribePurgeStatusData",
     "UserVoiceProfileData",
     "UserVoiceRegisterModeData",
     "VoiceMatchConfidenceData",

@@ -41,6 +41,7 @@ fn translate(path: &str) -> Option<&'static str> {
         "/actions/snooze" => "/api/v1/mail/actions/snooze",
         "/actions/snooze/presets" => "/api/v1/mail/actions/snooze/presets",
         "/actions/unsubscribe" => "/api/v1/mail/actions/unsubscribe",
+        "/actions/unsubscribe-purge" => "/api/v1/mail/actions/unsubscribe-purge",
         "/actions/invite/reply" => "/api/v1/mail/actions/invite/reply",
 
         // mail — attachments

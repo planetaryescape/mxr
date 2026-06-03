@@ -912,6 +912,7 @@ pub struct PendingUnsubscribeConfirm {
 #[derive(Debug, Clone)]
 pub struct PendingUnsubscribeAction {
     pub message_id: MessageId,
+    pub account_id: AccountId,
     pub archive_message_ids: Vec<MessageId>,
     pub sender_email: String,
 }

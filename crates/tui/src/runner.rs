@@ -461,67 +461,61 @@ pub async fn run() -> anyhow::Result<()> {
         if let Some(pending) = app.modals.pending_unsubscribe_action.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
-                let unsubscribe_resp = ipc_call(
-                    &bg,
-                    Request::Unsubscribe {
-                        message_id: pending.message_id.clone(),
-                    },
-                )
-                .await;
-                let unsubscribe_result = match unsubscribe_resp {
-                    Ok(Response::Ok {
-                        data: ResponseData::Ack,
-                    }) => Ok(()),
-                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
-                    Err(error) => Err(error),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
-                };
-
-                let result = match unsubscribe_result {
-                    Ok(()) if pending.archive_message_ids.is_empty() => Ok(UnsubscribeResultData {
-                        archived_ids: Vec::new(),
-                        message: format!("Unsubscribed from {}", pending.sender_email),
-                    }),
-                    Ok(()) => {
-                        let archived_count = pending.archive_message_ids.len();
-                        let archive_resp = ipc_call(
-                            &bg,
-                            Request::mutation(mxr_protocol::MutationCommand::Archive {
-                                message_ids: pending.archive_message_ids.clone(),
-                            }),
-                        )
-                        .await;
-                        match archive_resp {
-                            Ok(Response::Ok {
-                                data: ResponseData::Ack,
-                            }) => Ok(UnsubscribeResultData {
-                                archived_ids: pending.archive_message_ids,
-                                message: format!(
-                                    "Unsubscribed and archived {} messages from {}",
-                                    archived_count, pending.sender_email
-                                ),
-                            }),
-                            Ok(Response::Ok {
-                                data: ResponseData::MutationResult { result },
-                            }) if result.succeeded > 0 => Ok(UnsubscribeResultData {
-                                archived_ids: pending.archive_message_ids,
-                                message: format!(
-                                    "Unsubscribed and archived {} messages from {}",
-                                    result.succeeded, pending.sender_email
-                                ),
-                            }),
-                            Ok(Response::Ok {
-                                data: ResponseData::MutationResult { result },
-                            }) => Err(MxrError::Ipc(format!(
-                                "archive skipped {} message(s)",
-                                result.skipped
-                            ))),
-                            Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
-                            Err(error) => Err(error),
-                            _ => Err(MxrError::Ipc("unexpected response".into())),
-                        }
+                let result = if pending.archive_message_ids.is_empty() {
+                    let unsubscribe_resp = ipc_call(
+                        &bg,
+                        Request::Unsubscribe {
+                            message_id: pending.message_id.clone(),
+                        },
+                    )
+                    .await;
+                    match unsubscribe_resp {
+                        Ok(Response::Ok {
+                            data: ResponseData::Ack,
+                        }) => Ok(UnsubscribeResultData {
+                            archived_ids: Vec::new(),
+                            message: format!("Unsubscribed from {}", pending.sender_email),
+                        }),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(error) => Err(error),
+                        _ => Err(MxrError::Ipc("unexpected response".into())),
                     }
-                    Err(error) => Err(error),
+                } else {
+                    let purge_resp = ipc_call(
+                        &bg,
+                        Request::UnsubscribePurge {
+                            address: pending.sender_email.clone(),
+                            account_id: Some(pending.account_id.clone()),
+                            dry_run: false,
+                            archive_on_no_method: false,
+                        },
+                    )
+                    .await;
+                    match purge_resp {
+                        Ok(Response::Ok {
+                            data: ResponseData::UnsubscribePurgeResult { result },
+                        }) if result.archived_count > 0 => Ok(UnsubscribeResultData {
+                            archived_ids: result.message_ids,
+                            message: format!(
+                                "Unsubscribed and cleared {} messages from {}{}",
+                                result.archived_count,
+                                pending.sender_email,
+                                result
+                                    .mutation_id
+                                    .as_ref()
+                                    .map(|id| format!(" (undo: {id})"))
+                                    .unwrap_or_default()
+                            ),
+                        }),
+                        Ok(Response::Ok {
+                            data: ResponseData::UnsubscribePurgeResult { result },
+                        }) => Err(MxrError::Ipc(result.error.unwrap_or_else(|| {
+                            "unsubscribe-and-clear did not archive messages".into()
+                        }))),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(error) => Err(error),
+                        _ => Err(MxrError::Ipc("unexpected response".into())),
+                    }
                 };
                 AsyncResult::Unsubscribe(result)
             });

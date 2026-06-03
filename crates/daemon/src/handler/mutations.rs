@@ -12,6 +12,7 @@ use mxr_core::types::{
 use mxr_protocol::{
     AccountMutationResultData, DaemonEvent, DraftSafetyContextData, DraftSafetyModeData,
     ForwardContext, MutationCommand, MutationResultData, ReplyContext, ResponseData,
+    UnsubscribePurgeResultData, UnsubscribePurgeStatusData,
 };
 use mxr_store::{EventLogRefs, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 use std::collections::{HashMap, HashSet};
@@ -1851,6 +1852,194 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
         }
         Err(error) => Err(format!("Failed to save draft: {error}").into()),
     }
+}
+
+pub(super) async fn unsubscribe_purge(
+    state: &AppState,
+    address: &str,
+    account_id: Option<&mxr_core::AccountId>,
+    dry_run: bool,
+    archive_on_no_method: bool,
+) -> HandlerResult {
+    let selection = select_sender_footprint(state, address, account_id).await?;
+    let method_envelope = selection
+        .envelopes
+        .iter()
+        .find(|envelope| !matches!(envelope.unsubscribe, UnsubscribeMethod::None))
+        .or_else(|| selection.envelopes.first());
+    let method = method_envelope
+        .map(|envelope| envelope.unsubscribe.clone())
+        .unwrap_or(UnsubscribeMethod::None);
+    let message_ids: Vec<_> = selection
+        .envelopes
+        .iter()
+        .map(|envelope| envelope.id.clone())
+        .collect();
+
+    if dry_run {
+        return Ok(ResponseData::UnsubscribePurgeResult {
+            result: UnsubscribePurgeResultData {
+                address: selection.address,
+                query: selection.query,
+                account_id: account_id.cloned(),
+                dry_run: true,
+                method,
+                status: UnsubscribePurgeStatusData::Preview,
+                message_count: message_ids.len() as u32,
+                archived_count: 0,
+                message_ids,
+                mutation_id: None,
+                error: None,
+            },
+        });
+    }
+
+    if message_ids.is_empty() {
+        return Ok(ResponseData::UnsubscribePurgeResult {
+            result: UnsubscribePurgeResultData {
+                address: selection.address,
+                query: selection.query,
+                account_id: account_id.cloned(),
+                dry_run: false,
+                method,
+                status: UnsubscribePurgeStatusData::NoMethod,
+                message_count: 0,
+                archived_count: 0,
+                message_ids,
+                mutation_id: None,
+                error: Some("No messages matched this sender".to_string()),
+            },
+        });
+    }
+
+    let mut status = UnsubscribePurgeStatusData::Unsubscribed;
+    let mut error = None;
+    if matches!(method, UnsubscribeMethod::None) {
+        if archive_on_no_method {
+            status = UnsubscribePurgeStatusData::ArchiveOnly;
+            error = Some("No unsubscribe method available; archived sender footprint only".into());
+        } else {
+            return Ok(ResponseData::UnsubscribePurgeResult {
+                result: UnsubscribePurgeResultData {
+                    address: selection.address,
+                    query: selection.query,
+                    account_id: account_id.cloned(),
+                    dry_run: false,
+                    method,
+                    status: UnsubscribePurgeStatusData::NoMethod,
+                    message_count: message_ids.len() as u32,
+                    archived_count: 0,
+                    message_ids,
+                    mutation_id: None,
+                    error: Some("No unsubscribe method available; rerun with archive-on-no-method to clear the footprint".into()),
+                },
+            });
+        }
+    } else if let Some(envelope) = method_envelope {
+        if let Err(err) = unsubscribe(state, &envelope.id).await {
+            return Ok(ResponseData::UnsubscribePurgeResult {
+                result: UnsubscribePurgeResultData {
+                    address: selection.address,
+                    query: selection.query,
+                    account_id: account_id.cloned(),
+                    dry_run: false,
+                    method,
+                    status: UnsubscribePurgeStatusData::Failed,
+                    message_count: message_ids.len() as u32,
+                    archived_count: 0,
+                    message_ids,
+                    mutation_id: None,
+                    error: Some(err.to_string()),
+                },
+            });
+        }
+    }
+
+    let mutation_response = mutation(
+        state,
+        &MutationCommand::ReadAndArchive {
+            message_ids: message_ids.clone(),
+        },
+        None,
+    )
+    .await?;
+    let (archived_count, mutation_id) = match mutation_response {
+        ResponseData::MutationResult { result } => (result.succeeded, result.mutation_id),
+        _ => (0, None),
+    };
+
+    Ok(ResponseData::UnsubscribePurgeResult {
+        result: UnsubscribePurgeResultData {
+            address: selection.address,
+            query: selection.query,
+            account_id: account_id.cloned(),
+            dry_run: false,
+            method,
+            status,
+            message_count: message_ids.len() as u32,
+            archived_count,
+            message_ids,
+            mutation_id,
+            error,
+        },
+    })
+}
+
+struct SenderFootprintSelection {
+    address: String,
+    query: String,
+    envelopes: Vec<Envelope>,
+}
+
+async fn select_sender_footprint(
+    state: &AppState,
+    address: &str,
+    account_id: Option<&mxr_core::AccountId>,
+) -> Result<SenderFootprintSelection, crate::handler::HandlerError> {
+    let address = address.trim().to_ascii_lowercase();
+    if address.is_empty() || !address.contains('@') {
+        return Err("unsubscribe purge requires a sender email address".into());
+    }
+    let query = format!("from:{address}");
+    let mut envelopes = Vec::new();
+    let mut offset = 0usize;
+    const PAGE_SIZE: usize = 500;
+    let ast = mxr_search::parse_query(&query).map_err(|e| e.to_string())?;
+    let schema = mxr_search::MxrSchema::build();
+    loop {
+        let query_ast = mxr_search::QueryBuilder::new(&schema).build(&ast);
+        let page = state
+            .search
+            .search_ast(
+                query_ast,
+                PAGE_SIZE,
+                offset,
+                mxr_core::types::SortOrder::DateDesc,
+            )
+            .await?;
+        for hit in page.results {
+            let message_id: mxr_core::MessageId = hit
+                .message_id
+                .parse()
+                .map_err(|e| format!("invalid search result message id: {e}"))?;
+            if let Some(envelope) = state.store.get_envelope(&message_id).await? {
+                if account_id.is_none_or(|account_id| envelope.account_id == *account_id)
+                    && envelope.from.email.eq_ignore_ascii_case(&address)
+                {
+                    envelopes.push(envelope);
+                }
+            }
+        }
+        match page.next_offset {
+            Some(next) if next > offset => offset = next,
+            _ => break,
+        }
+    }
+    Ok(SenderFootprintSelection {
+        address,
+        query,
+        envelopes,
+    })
 }
 
 pub(super) async fn unsubscribe(

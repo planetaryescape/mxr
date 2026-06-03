@@ -17,11 +17,11 @@ method on the envelope. Check what mxr found before doing anything:
 
 ```bash
 mxr subscriptions --rank --format json \
-  | jq '.subscriptions[0] | {sender, list_id, unsubscribe}'
+  | jq '.[0] | {sender_email, message_count, opened_count, archived_unread_count, unsubscribe}'
 ```
 
-What you get: the sender, list id, and method mxr can use (`OneClick`,
-`Mailto`, `HttpLink`, `BodyLink`, or `None`).
+What you get: the sender, local engagement counts, and method mxr can use
+(`OneClick`, `Mailto`, `HttpLink`, `BodyLink`, or `None`).
 
 ## What mxr will do
 
@@ -73,10 +73,16 @@ Rank noisy senders, preview the unsubscribe, then archive the residue.
 
 ```bash
 mxr subscriptions --rank --format json \
-  | jq -r '.subscriptions[]
-      | select(.messages_30d >= 4 and .open_rate_30d == 0)
-      | .sender'
+  | jq -r '.[]
+      | select(.message_count >= 4 and .opened_count == 0)
+      | .sender_email'
 ```
+
+What you get: subscription senders with at least four messages and zero local
+`READ` flags. `opened_count` is a read-state count, not a tracking-pixel or
+distinct-open metric; `opened_count == message_count` means every message in
+that sender bucket is already read locally, whether from the `mxr read` command,
+another client, provider-side state sync, or a bulk mark-read action.
 
 For each sender you approve:
 

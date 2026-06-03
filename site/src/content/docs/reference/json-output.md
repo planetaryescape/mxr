@@ -64,6 +64,35 @@ mxr search 'label:newsletters older_than:30d' --format ids \
 
 This is safer and more portable than `xargs -r` on macOS.
 
+## Subscription ranking
+
+`mxr subscriptions --rank --format json` returns an array of subscription
+sender records. `--rank` sorts by `opened_count / message_count` ascending,
+then by `archived_unread_count` descending.
+
+```bash
+mxr subscriptions --rank --format json \
+  | jq '.[0] | {
+      sender_email,
+      message_count,
+      opened_count,
+      replied_count,
+      archived_unread_count
+    }'
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `sender_email` | string | Sender address for the bucket; grouping is case-insensitive. |
+| `message_count` | number | Non-trash, non-spam messages from that sender with an unsubscribe method. |
+| `opened_count` | number | Messages in the bucket whose local `READ` flag is set. This is not tracking-pixel telemetry or distinct open events. |
+| `archived_unread_count` | number | Messages that are archived while still unread; tie-breaker for `--rank`. |
+| `replied_count` | number | Stable JSON field, currently `0` for `subscriptions`; reply-pair counts power sender/contact analytics, not this ranker yet. |
+
+If `opened_count == message_count`, every message in that sender bucket is read
+locally. That can come from the `mxr read` command, another mail client,
+provider-side read state, filters, or bulk mark-read actions.
+
 ## Mutation dry-run
 
 Bulk mutation dry-runs return a preview object:

@@ -20,39 +20,49 @@ This page is the practical guide. For the comprehensive list of what's safe to s
 **Goal:** unsubscribe from low-engagement subscriptions, archive the residue.
 
 ```bash
-mxr subscriptions --rank --format json
+mxr subscriptions --rank --format json \
+  | jq '.[] | {
+      sender_email,
+      message_count,
+      opened_count,
+      replied_count,
+      archived_unread_count,
+      unsubscribe
+    }'
 ```
 
 The agent gets:
 
 ```jsonc
-{
-  "subscriptions": [
-    {
-      "sender": "newsletter@example.com",
-      "list_id": "<list.example.com>",
-      "messages_30d": 12,
-      "open_rate_30d": 0.0,
-      "last_opened": null,
-      "unsubscribe": { "OneClick": { "url": "https://..." } }
-    }
-    /* ... */
-  ]
-}
+[
+  {
+    "sender_email": "newsletter@example.com",
+    "message_count": 12,
+    "opened_count": 0,
+    "replied_count": 0,
+    "archived_unread_count": 9,
+    "unsubscribe": { "OneClick": { "url": "https://..." } }
+  }
+  /* ... */
+]
 ```
 
-The agent picks candidates with `open_rate_30d == 0` and `messages_30d >= 4`, presents them to the user, then dry-runs:
+The agent picks candidates with `opened_count == 0` and `message_count >= 4`,
+presents them to the user, then dry-runs. `opened_count` is the number of
+messages from that sender with the local `READ` flag set, not a tracking-pixel
+or distinct-open count; `opened_count == message_count` means every message in
+that sender bucket is already read locally.
 
 ```bash
-mxr unsubscribe --search 'list:<list.example.com> OR list:<...>' --dry-run
-mxr archive --search 'from:newsletter@example.com OR from:<...>' --dry-run
+mxr unsubscribe newsletter@example.com --dry-run
+mxr archive --search 'from:newsletter@example.com' --dry-run
 ```
 
 User confirms. Agent runs:
 
 ```bash
-mxr unsubscribe --search 'list:<list.example.com> OR list:<...>' --yes
-mxr archive --search 'from:newsletter@example.com OR from:<...>' --yes
+mxr unsubscribe newsletter@example.com --yes
+mxr archive --search 'from:newsletter@example.com' --yes
 ```
 
 Agent verifies and reports:
@@ -66,8 +76,8 @@ sequence:
 
 ```bash
 mxr subscriptions --account work --rank --format json
-mxr unsubscribe --account work --search 'list:<list.example.com>' --dry-run
-mxr unsubscribe --account work --search 'list:<list.example.com>' --yes
+mxr unsubscribe --account work newsletter@example.com --dry-run
+mxr unsubscribe --account work newsletter@example.com --yes
 ```
 
 ## Worked example 2 — Meeting prep

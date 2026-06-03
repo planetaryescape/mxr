@@ -8,6 +8,7 @@ import {
   modifyLabels,
   moveMessagesToLabel,
   readAndArchiveMessages,
+  routeMessages,
   shellKey,
   spamMessages,
   starMessages,
@@ -34,12 +35,16 @@ export type MailAction =
   | "unread"
   | "read-and-archive"
   | "move"
+  | "route"
   | "label-add"
   | "label-remove";
 
 export interface MailActionPayload {
   /** Required for label/move actions — the label name being added, removed, or moved into. */
   label?: string;
+  /** Route source queue label and optional archive flag. */
+  fromQueueLabel?: string;
+  archive?: boolean;
 }
 
 interface MutationContext {
@@ -55,6 +60,7 @@ const destructiveActions = new Set<MailAction>([
   "spam",
   "read-and-archive",
   "move",
+  "route",
   "label-remove",
 ]);
 
@@ -130,6 +136,16 @@ function runAction(
     case "move": {
       if (!payload?.label) throw new Error("move requires a target label");
       return moveMessagesToLabel(ids, payload.label);
+    }
+    case "route": {
+      if (!payload?.label) throw new Error("route requires a target label");
+      if (!payload.fromQueueLabel) throw new Error("route requires a source queue label");
+      return routeMessages({
+        messageIds: ids,
+        toLabel: payload.label,
+        fromQueueLabel: payload.fromQueueLabel,
+        archive: payload.archive ?? true,
+      });
     }
     case "label-add": {
       if (!payload?.label) throw new Error("label-add requires a label");
@@ -211,6 +227,8 @@ function actionLabel(action: MailAction, payload?: MailActionPayload): string {
       return "Marked read and archived";
     case "move":
       return payload?.label ? `Moved to ${payload.label}` : "Moved";
+    case "route":
+      return payload?.label ? `Routed to ${payload.label}` : "Routed";
     case "label-add":
       return payload?.label ? `Labelled ${payload.label}` : "Labelled";
     case "label-remove":

@@ -89,7 +89,7 @@ export function RuleEditorRoute() {
   });
   const applyNow = useMutation({
     mutationFn: async () => {
-      const action = mailAction(form.action);
+      const action = mailActions(form.action);
       const ids: string[] = [];
       for (const row of previewRows) {
         const previewId = messageId(row);
@@ -97,7 +97,7 @@ export function RuleEditorRoute() {
       }
       if (!action) throw new Error("This action is not supported by apply-now yet");
       if (ids.length === 0) throw new Error("No preview messages to apply this rule to");
-      return runMailAction(action, ids);
+      return runMailActions(action, ids);
     },
     onSuccess: (response) => {
       setApplyConfirmOpen(false);
@@ -169,10 +169,11 @@ export function RuleEditorRoute() {
             <Input
               value={form.action}
               onChange={(event) => setForm({ ...form, action: event.target.value })}
-              placeholder="archive, trash, label:News, move:Folder"
+              placeholder="mark-read,archive or label:News,archive"
             />
             <div className="mt-2 flex flex-wrap gap-1.5">
               {[
+                "mark-read,archive",
                 "archive",
                 "trash",
                 "spam",
@@ -226,7 +227,7 @@ export function RuleEditorRoute() {
           <Button
             variant="outline"
             onClick={() => setApplyConfirmOpen(true)}
-            disabled={!mailAction(form.action) || previewRows.length === 0 || applyNow.isPending}
+            disabled={!mailActions(form.action) || previewRows.length === 0 || applyNow.isPending}
           >
             <Play className="size-3" />
             Apply preview now
@@ -254,10 +255,10 @@ export function RuleEditorRoute() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-          {!mailAction(form.action) ? (
+          {!mailActions(form.action) ? (
             <div className="text-2xs text-muted-foreground">
-              Apply-now supports archive, trash, spam, star, read, and unread. Save other actions
-              for daemon sync.
+              Apply-now supports ordered chains of archive, trash, spam, star, read, unread,
+              label:Name, and move:Name.
             </div>
           ) : null}
         </div>
@@ -301,7 +302,18 @@ type SupportedRuleAction =
   | { kind: "unread" }
   | { kind: "read-and-archive" }
   | { kind: "label-add"; label: string }
+  | { kind: "label-remove"; label: string }
   | { kind: "move"; label: string };
+
+function mailActions(value: string): SupportedRuleAction[] | null {
+  const actions = value
+    .split(/[;,]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map(mailAction);
+  if (actions.length === 0 || actions.some((action) => action === null)) return null;
+  return actions as SupportedRuleAction[];
+}
 
 function mailAction(value: string): SupportedRuleAction | null {
   const normalized = value.trim();
@@ -316,15 +328,31 @@ function mailAction(value: string): SupportedRuleAction | null {
     return { kind: "unread" };
   if (lower === "read-and-archive" || lower === "read_and_archive")
     return { kind: "read-and-archive" };
-  const labelMatch = normalized.match(/^label:(.+)$/i);
+  const labelMatch = normalized.match(/^(?:add-label|label):(.+)$/i);
   if (labelMatch && labelMatch[1]?.trim()) {
     return { kind: "label-add", label: labelMatch[1].trim() };
+  }
+  const removeLabelMatch = normalized.match(/^(?:remove-label|unlabel):(.+)$/i);
+  if (removeLabelMatch && removeLabelMatch[1]?.trim()) {
+    return { kind: "label-remove", label: removeLabelMatch[1].trim() };
   }
   const moveMatch = normalized.match(/^move:(.+)$/i);
   if (moveMatch && moveMatch[1]?.trim()) {
     return { kind: "move", label: moveMatch[1].trim() };
   }
   return null;
+}
+
+async function runMailActions(actions: SupportedRuleAction[], ids: string[]): Promise<MutationResponse> {
+  if (actions.length === 2 && actions[0]?.kind === "read" && actions[1]?.kind === "archive") {
+    return readAndArchiveMessages(ids);
+  }
+  let last: MutationResponse | null = null;
+  for (const action of actions) {
+    last = await runMailAction(action, ids);
+  }
+  if (!last) throw new Error("No actions to apply");
+  return last;
 }
 
 function runMailAction(action: SupportedRuleAction, ids: string[]): Promise<MutationResponse> {
@@ -345,6 +373,8 @@ function runMailAction(action: SupportedRuleAction, ids: string[]): Promise<Muta
       return readAndArchiveMessages(ids);
     case "label-add":
       return modifyLabels(ids, [action.label], []);
+    case "label-remove":
+      return modifyLabels(ids, [], [action.label]);
     case "move":
       return moveMessagesToLabel(ids, action.label);
   }

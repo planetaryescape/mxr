@@ -7,7 +7,7 @@
  * the picker components — these registry runners just open the right panel.
  */
 
-import { Archive, ArrowRightCircle, Tag, MailX } from "lucide-react";
+import { Archive, ArrowRightCircle, Route as RouteIcon, Tag, MailX } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -30,6 +30,12 @@ function focusedThreadId(): string | null {
 function cachedThreadMessageIds(threadId: string): string[] {
   const cached = getActiveQueryClient()?.getQueryData<ThreadResponse>(["thread", threadId]);
   return cached?.messages.map((message) => message.id) ?? [];
+}
+
+function activeRouteQueueLabel(): string | null {
+  if (typeof window === "undefined") return null;
+  const match = window.location.pathname.match(/^\/m\/label\/([^/]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
 function targetMessageIds(): string[] {
@@ -76,6 +82,31 @@ export const mailboxActions: Action[] = [
       }
       useModals.getState().setCommandPaletteOpen(false);
       useModals.getState().openRightRail("move-picker", { messageIds });
+    },
+  },
+  {
+    id: "mail.route",
+    label: "Route from queue",
+    description: "Apply a target label, remove the current queue label, mark read, and archive",
+    group: "Mail",
+    icon: RouteIcon,
+    paletteOnly: true,
+    when: visible,
+    run: () => {
+      const messageIds = targetMessageIds();
+      const fromQueueLabel = activeRouteQueueLabel();
+      if (messageIds.length === 0) {
+        toast.error("Select messages or open a thread first");
+        return;
+      }
+      if (!fromQueueLabel) {
+        toast.error("Open a label queue before routing");
+        return;
+      }
+      useModals.getState().setCommandPaletteOpen(false);
+      useModals
+        .getState()
+        .openRightRail("route-picker", { messageIds, fromQueueLabel, archive: true });
     },
   },
   {

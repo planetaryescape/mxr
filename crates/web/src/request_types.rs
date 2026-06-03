@@ -189,6 +189,17 @@ pub(super) struct MoveRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub(super) struct RouteRequest {
+    pub(super) message_ids: Vec<String>,
+    pub(super) to_label: String,
+    pub(super) from_queue_label: String,
+    #[serde(default)]
+    pub(super) archive: bool,
+    #[serde(default)]
+    pub(super) dry_run: bool,
+}
+
+#[derive(Debug, Deserialize)]
 pub(super) struct RuleQuery {
     pub(super) rule: String,
     #[serde(default)]

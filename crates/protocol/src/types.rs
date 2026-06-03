@@ -1511,6 +1511,15 @@ pub enum MutationCommand {
         message_ids: Vec<MessageId>,
         target_label: String,
     },
+    Route {
+        message_ids: Vec<MessageId>,
+        to_label: String,
+        from_queue_label: String,
+        #[serde(default)]
+        archive: bool,
+        #[serde(default)]
+        dry_run: bool,
+    },
 }
 
 /// Reply context returned by PrepareReply.

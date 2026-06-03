@@ -4,7 +4,7 @@ mod types;
 pub use codec::IpcCodec;
 pub use types::*;
 
-pub const IPC_PROTOCOL_VERSION: u32 = 3;
+pub const IPC_PROTOCOL_VERSION: u32 = 4;
 
 #[cfg(test)]
 mod tests {

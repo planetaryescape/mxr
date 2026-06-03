@@ -1,7 +1,7 @@
+use crate::state::AppState;
 use mxr_core::types::system_labels;
 use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, StringMatch};
 use mxr_search::parse_query;
-use crate::state::AppState;
 
 pub(super) fn parse_rule_value(value: serde_json::Value) -> Result<Rule, String> {
     serde_json::from_value(value).map_err(|e| e.to_string())
@@ -41,7 +41,7 @@ pub(super) async fn build_rule_from_form(
         enabled,
         priority,
         conditions: parse_rule_condition_string(condition)?,
-        actions: vec![parse_rule_action_string(action)?],
+        actions: parse_rule_actions_string(action)?,
         created_at: existing.as_ref().map_or(now, |rule| rule.created_at),
         updated_at: now,
     })
@@ -204,8 +204,22 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
     })
 }
 
+pub(super) fn parse_rule_actions_string(value: &str) -> Result<Vec<RuleAction>, String> {
+    let actions = value
+        .split([',', ';'])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(parse_rule_action_string)
+        .collect::<Result<Vec<_>, _>>()?;
+    if actions.is_empty() {
+        return Err("rule action list is empty".to_string());
+    }
+    Ok(actions)
+}
+
 pub(super) fn parse_rule_action_string(value: &str) -> Result<RuleAction, String> {
-    let lower = value.to_ascii_lowercase();
+    let trimmed = value.trim();
+    let lower = trimmed.to_ascii_lowercase();
     if lower == "archive" {
         return Ok(RuleAction::Archive);
     }
@@ -215,23 +229,39 @@ pub(super) fn parse_rule_action_string(value: &str) -> Result<RuleAction, String
     if lower == "star" {
         return Ok(RuleAction::Star);
     }
-    if lower == "mark-read" {
+    if matches!(lower.as_str(), "mark-read" | "read") {
         return Ok(RuleAction::MarkRead);
     }
-    if lower == "mark-unread" {
+    if matches!(lower.as_str(), "mark-unread" | "unread") {
         return Ok(RuleAction::MarkUnread);
     }
-    if let Some(label) = value.strip_prefix("add-label:") {
+    if let Some(label) = strip_action_prefix(trimmed, "add-label:")
+        .or_else(|| strip_action_prefix(trimmed, "label:"))
+    {
+        let label = label.trim();
+        if label.is_empty() {
+            return Err("label action requires a label".to_string());
+        }
         return Ok(RuleAction::AddLabel {
             label: label.to_string(),
         });
     }
-    if let Some(label) = value.strip_prefix("remove-label:") {
+    if let Some(label) = strip_action_prefix(trimmed, "remove-label:")
+        .or_else(|| strip_action_prefix(trimmed, "unlabel:"))
+    {
+        let label = label.trim();
+        if label.is_empty() {
+            return Err("remove-label action requires a label".to_string());
+        }
         return Ok(RuleAction::RemoveLabel {
             label: label.to_string(),
         });
     }
-    if let Some(command) = value.strip_prefix("shell:") {
+    if let Some(command) = strip_action_prefix(trimmed, "shell:") {
+        let command = command.trim();
+        if command.is_empty() {
+            return Err("shell action requires a command".to_string());
+        }
         return Ok(RuleAction::ShellHook {
             command: command.to_string(),
         });
@@ -239,14 +269,15 @@ pub(super) fn parse_rule_action_string(value: &str) -> Result<RuleAction, String
     Err(format!("Unsupported action: {value}"))
 }
 
-pub(super) fn rule_to_form_data(
-    rule: &Rule,
-) -> Result<mxr_protocol::RuleFormData, String> {
-    let action = rule
-        .actions
-        .first()
-        .ok_or_else(|| "rule has no actions".to_string())
-        .and_then(rule_action_to_string)?;
+fn strip_action_prefix<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
+    value
+        .get(..prefix.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+        .then(|| &value[prefix.len()..])
+}
+
+pub(super) fn rule_to_form_data(rule: &Rule) -> Result<mxr_protocol::RuleFormData, String> {
+    let action = rule_actions_to_string(&rule.actions)?;
     Ok(mxr_protocol::RuleFormData {
         id: Some(rule.id.to_string()),
         name: rule.name.clone(),
@@ -255,6 +286,17 @@ pub(super) fn rule_to_form_data(
         priority: rule.priority,
         enabled: rule.enabled,
     })
+}
+
+pub(super) fn rule_actions_to_string(actions: &[RuleAction]) -> Result<String, String> {
+    if actions.is_empty() {
+        return Err("rule has no actions".to_string());
+    }
+    actions
+        .iter()
+        .map(rule_action_to_string)
+        .collect::<Result<Vec<_>, _>>()
+        .map(|parts| parts.join(","))
 }
 
 pub(super) fn rule_action_to_string(action: &RuleAction) -> Result<String, String> {

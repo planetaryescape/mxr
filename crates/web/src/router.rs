@@ -108,6 +108,7 @@ fn mail_router() -> Router<AppState> {
         .route("/mutations/read-and-archive", post(mark_read_and_archive))
         .route("/mutations/labels", post(modify_labels))
         .route("/mutations/move", post(move_messages))
+        .route("/mutations/route", post(route_messages))
         .route("/actions/snooze/presets", get(snooze_presets))
         .route("/actions/snooze", post(snooze))
         .route("/actions/unsubscribe", post(unsubscribe))

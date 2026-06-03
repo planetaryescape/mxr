@@ -180,6 +180,25 @@ export function moveMessagesToLabel(
   });
 }
 
+export function routeMessages(input: {
+  messageIds: string[];
+  toLabel: string;
+  fromQueueLabel: string;
+  archive?: boolean;
+  dryRun?: boolean;
+}): Promise<MutationResponse> {
+  return apiFetch<MutationResponse>("/api/v1/mail/mutations/route", {
+    method: "POST",
+    body: {
+      message_ids: input.messageIds,
+      to_label: input.toLabel,
+      from_queue_label: input.fromQueueLabel,
+      archive: input.archive ?? false,
+      dry_run: input.dryRun ?? false,
+    },
+  });
+}
+
 export function readAndArchiveMessages(messageIds: string[]): Promise<MutationResponse> {
   return apiFetch<MutationResponse>("/api/v1/mail/mutations/read-and-archive", {
     method: "POST",

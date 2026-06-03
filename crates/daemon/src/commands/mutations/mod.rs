@@ -177,6 +177,54 @@ pub async fn read_archive(
     .await
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "CLI route command mirrors user-facing flags"
+)]
+pub async fn route(
+    message_ids: Vec<String>,
+    search: Option<String>,
+    account: Option<String>,
+    to_label: String,
+    from_queue_label: String,
+    archive: bool,
+    yes: bool,
+    dry_run: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
+    let action = if archive {
+        format!("route to {to_label}, remove {from_queue_label}, mark read and archive")
+    } else {
+        format!("route to {to_label}, remove {from_queue_label}")
+    };
+    run_simple_mutation(
+        &mut client,
+        selection,
+        MutationRunOptions {
+            action: &action,
+            success_message: "Routed",
+            yes,
+            dry_run,
+            format,
+            destructive: false,
+        },
+        |ids| {
+            Request::mutation(MutationCommand::Route {
+                message_ids: ids,
+                to_label: to_label.clone(),
+                from_queue_label: from_queue_label.clone(),
+                archive,
+                dry_run: false,
+            })
+        },
+    )
+    .await
+}
+
 pub async fn trash(
     message_ids: Vec<String>,
     search: Option<String>,

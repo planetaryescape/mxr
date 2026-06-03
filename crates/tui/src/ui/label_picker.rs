@@ -8,6 +8,7 @@ use ratatui::widgets::*;
 pub enum LabelPickerMode {
     Apply,
     Move,
+    Route,
 }
 
 pub struct LabelPicker {
@@ -159,6 +160,7 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &LabelPicker, theme: &crate::
     let title = match picker.mode {
         LabelPickerMode::Apply => " Apply Label ",
         LabelPickerMode::Move => " Move to Label ",
+        LabelPickerMode::Route => " Route to Label ",
     };
 
     let width = (area.width as u32 * 50 / 100).min(60) as u16;

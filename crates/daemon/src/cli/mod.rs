@@ -1154,6 +1154,27 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Route queued messages to a target label, optionally marking read and archiving.
+    Route {
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
+        #[arg(long)]
+        search: Option<String>,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long = "to")]
+        to_label: String,
+        #[arg(long = "from-queue")]
+        from_queue_label: String,
+        #[arg(long)]
+        archive: bool,
+        #[arg(long)]
+        yes: bool,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Move message to trash
     Trash {
         #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
@@ -2608,6 +2629,18 @@ mod tests {
             &["mxr", "move", "Done", "--dry-run", "--format", "json"],
             &[
                 "mxr",
+                "route",
+                "--to",
+                "Follow Up",
+                "--from-queue",
+                "Notto",
+                "--archive",
+                "--dry-run",
+                "--format",
+                "json",
+            ],
+            &[
+                "mxr",
                 "snooze",
                 "--until",
                 "tomorrow",
@@ -2685,6 +2718,12 @@ mod tests {
                         ..
                     }
                     | Command::MoveMsg {
+                        message_ids,
+                        dry_run,
+                        format,
+                        ..
+                    }
+                    | Command::Route {
                         message_ids,
                         dry_run,
                         format,

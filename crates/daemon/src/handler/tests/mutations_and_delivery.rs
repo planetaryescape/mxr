@@ -185,6 +185,152 @@ async fn dispatch_mutation_archive() {
 /// verify the message is back under the INBOX label both locally and
 /// on the (fake) provider. Proves the snapshot capture, write,
 /// reverse-op dispatch, and local restoration all line up.
+async fn add_test_label_to_message(state: &AppState, id: &mxr_core::MessageId, label: &str) {
+    let account_id = state.default_account_id();
+    let label_record = upsert_test_label(state, label).await;
+    let mut label_ids = state
+        .store
+        .find_labels_by_provider_ids(&account_id, &["INBOX".to_string()])
+        .await
+        .unwrap();
+    label_ids.push(label_record.id);
+    state
+        .store
+        .set_message_labels(id, &label_ids, mxr_core::EventSource::User)
+        .await
+        .unwrap();
+}
+
+async fn upsert_test_label(state: &AppState, label: &str) -> mxr_core::Label {
+    let account_id = state.default_account_id();
+    let label_record = mxr_core::Label {
+        id: mxr_core::LabelId::from_provider_id("test", label),
+        account_id: account_id.clone(),
+        name: label.to_string(),
+        kind: mxr_core::LabelKind::User,
+        color: None,
+        provider_id: label.to_string(),
+        unread_count: 0,
+        total_count: 0,
+        role: None,
+    };
+    state.store.upsert_label(&label_record).await.unwrap();
+    label_record
+}
+
+#[tokio::test]
+async fn route_adds_target_removes_queue_archives_read_and_uses_single_undo_id() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let id = sync_and_get_first_id(&state).await;
+    add_test_label_to_message(&state, &id, "Notto").await;
+    upsert_test_label(&state, "Follow Up").await;
+
+    let route = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::mutation(MutationCommand::Route {
+            message_ids: vec![id.clone()],
+            to_label: "Follow Up".to_string(),
+            from_queue_label: "Notto".to_string(),
+            archive: true,
+            dry_run: false,
+        })),
+    };
+    let result = assert_mutation_succeeded(handle_request(&state, &route).await.payload);
+    let mutation_id = result
+        .mutation_id
+        .clone()
+        .expect("route with archive must return one undo id");
+
+    let routed = state.store.get_envelope(&id).await.unwrap().unwrap();
+    assert!(
+        routed
+            .label_provider_ids
+            .iter()
+            .any(|label| label == "Follow Up"),
+        "target label must be applied: {:?}",
+        routed.label_provider_ids
+    );
+    assert!(
+        !routed
+            .label_provider_ids
+            .iter()
+            .any(|label| label == "Notto"),
+        "queue label must be removed: {:?}",
+        routed.label_provider_ids
+    );
+    assert!(
+        !routed
+            .label_provider_ids
+            .iter()
+            .any(|label| label == "INBOX"),
+        "archive must remove INBOX: {:?}",
+        routed.label_provider_ids
+    );
+    assert!(routed.flags.contains(mxr_core::MessageFlags::READ));
+
+    let undo = IpcMessage {
+        id: 2,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::UndoMutation { mutation_id }),
+    };
+    match handle_request(&state, &undo).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack,
+        }) => {}
+        other => panic!("expected route undo Ack; got {other:?}"),
+    }
+
+    let restored = state.store.get_envelope(&id).await.unwrap().unwrap();
+    assert!(restored
+        .label_provider_ids
+        .iter()
+        .any(|label| label == "Notto"));
+    assert!(restored
+        .label_provider_ids
+        .iter()
+        .any(|label| label == "INBOX"));
+    assert!(!restored
+        .label_provider_ids
+        .iter()
+        .any(|label| label == "Follow Up"));
+}
+
+#[tokio::test]
+async fn route_dry_run_uses_same_selection_but_does_not_mutate() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let id = sync_and_get_first_id(&state).await;
+    add_test_label_to_message(&state, &id, "Notto").await;
+    upsert_test_label(&state, "Follow Up").await;
+    let before = state.store.get_envelope(&id).await.unwrap().unwrap();
+
+    let route = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::mutation(MutationCommand::Route {
+            message_ids: vec![id.clone()],
+            to_label: "Follow Up".to_string(),
+            from_queue_label: "Notto".to_string(),
+            archive: true,
+            dry_run: true,
+        })),
+    };
+    let result = match handle_request(&state, &route).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::MutationResult { result },
+        }) => result,
+        other => panic!("expected dry-run MutationResult; got {other:?}"),
+    };
+    assert_eq!(result.requested, 1);
+    assert_eq!(result.succeeded, 0);
+    assert_eq!(result.skipped, 1);
+    assert!(result.mutation_id.is_none());
+
+    let after = state.store.get_envelope(&id).await.unwrap().unwrap();
+    assert_eq!(after.label_provider_ids, before.label_provider_ids);
+    assert_eq!(after.flags, before.flags);
+}
+
 #[tokio::test]
 async fn undo_archive_restores_inbox_label() {
     let state = Arc::new(AppState::in_memory().await.unwrap());

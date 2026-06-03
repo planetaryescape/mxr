@@ -11,6 +11,7 @@ pub(super) fn mutation_verb_past(req: &Request) -> &'static str {
         match cmd {
             MutationCommand::Archive { .. } => "Archived",
             MutationCommand::ReadAndArchive { .. } => "Marked read & archived",
+            MutationCommand::Route { .. } => "Routed",
             MutationCommand::Trash { .. } => "Trashed",
             MutationCommand::Spam { .. } => "Marked as spam",
             MutationCommand::SetRead { read: true, .. } => "Marked read",

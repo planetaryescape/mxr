@@ -109,7 +109,7 @@ fn draw_rule_list(
                 Line::from(""),
                 Line::from("Starter recipes"),
                 Line::from("from:github.com -> label:GitHub"),
-                Line::from("label:newsletters -> read + archive"),
+                Line::from("label:newsletters -> mark-read,archive"),
                 Line::from("from:billing@example.com -> label:Finance"),
             ])
             .block(
@@ -255,7 +255,7 @@ fn draw_form(
     let mut example_lines = vec![
         Line::from("Starter recipes"),
         Line::from("from:github.com → add-label:GitHub"),
-        Line::from("label:newsletters → mark-read"),
+        Line::from("label:newsletters → mark-read,archive"),
         Line::from("from:billing@ → shell:notify-send 'Bill'"),
         Line::from(""),
         Line::from("Need nested AND/OR? mxr rules add --json"),
@@ -320,7 +320,7 @@ fn overview_lines(state: &RulesPageState) -> Vec<Line<'static>> {
                 .to_string(),
         ),
         Line::from(""),
-        Line::from("Action"),
+        Line::from("Actions (ordered)"),
         Line::from(
             rule["action"]
                 .as_str()
@@ -391,7 +391,7 @@ fn dry_run_lines(entries: &[serde_json::Value]) -> Vec<Line<'static>> {
                 Line::from(format!(
                     "{} / {}",
                     field_or_dash(entry, &["subject", "summary", "message"]),
-                    field_or_dash(entry, &["action", "planned_action"])
+                    dry_run_action_text(entry)
                 )),
                 Line::from(format!(
                     "from={} labels={}",
@@ -445,6 +445,25 @@ fn truncate_line(text: &str, max_len: usize) -> String {
         truncated.push_str("...");
         truncated
     }
+}
+
+fn dry_run_action_text(value: &serde_json::Value) -> String {
+    if let Some(actions) = value.get("actions").and_then(serde_json::Value::as_array) {
+        let parts = actions
+            .iter()
+            .map(|action| {
+                action
+                    .get("type")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("action")
+                    .replace('_', "-")
+            })
+            .collect::<Vec<_>>();
+        if !parts.is_empty() {
+            return parts.join(",");
+        }
+    }
+    field_or_dash(value, &["action", "planned_action"])
 }
 
 fn field_or_dash(value: &serde_json::Value, keys: &[&str]) -> String {

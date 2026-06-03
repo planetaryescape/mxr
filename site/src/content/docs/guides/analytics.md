@@ -121,9 +121,33 @@ mxr subscriptions --rank            # ranked: lowest open-rate first,
 mxr unsub --rank --format json      # same; pipeable
 ```
 
+Use JSON output when you are judging engagement:
+
+```bash
+mxr subscriptions --rank --format json \
+  | jq '.[] | {
+      sender_email,
+      message_count,
+      opened_count,
+      replied_count,
+      archived_unread_count,
+      open_rate: (if .message_count == 0 then 0 else (.opened_count / .message_count) end)
+    }'
+```
+
+What you get: one row per subscription sender, with the same sender order as
+`--rank` and an explicit `open_rate` you can sort, filter, or review.
+
 Each row carries `opened_count`, `replied_count`, `archived_unread_count`,
 and `message_count`. The rank is **open-rate ASC, archived-unread DESC** —
-the noisiest lists float to the top. Action: pick a row, hit
+the noisiest lists float to the top. `opened_count` is not a tracking-pixel
+open or a distinct-open counter; it is the number of messages in that sender
+bucket whose local `READ` flag is set. It can equal `message_count` when every
+message from that sender is already read locally, including reads synced from
+your provider or messages marked read by another client, filter, or bulk
+action. `replied_count` is present in the JSON contract but the subscriptions
+query currently returns `0`; reply-pair counts are wired into sender/contact
+analytics, not the subscription ranker yet. Action: pick a row, hit
 `mxr unsubscribe` (the actual unsubscribe command).
 
 ### Stale

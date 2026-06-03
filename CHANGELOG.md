@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.5.52](https://github.com/planetaryescape/mxr/compare/v0.5.51...v0.5.52) (2026-06-03)
+
+
+### Features
+
+* **cli:** count --format plain, thread/message count parity, unsubscribe --dry-run preflight ([109745d](https://github.com/planetaryescape/mxr/commit/109745d0b1b9a330f6e5c5f3e54a29cb41e70f88))
+* **mutations:** chunked/async large-batch jobs surface across clients ([a1d2734](https://github.com/planetaryescape/mxr/commit/a1d2734e42eec473e4edae8956d94f97255697ea))
+* **rules:** chained rule actions + atomic route verb across clients ([b31b7d1](https://github.com/planetaryescape/mxr/commit/b31b7d167f2cf694c79c4f6e5e98ba39903a2a49))
+* **search:** --group-by sender aggregation across CLI/TUI/web ([632af4b](https://github.com/planetaryescape/mxr/commit/632af4b1f3847899a466d622859e152786db054e))
+* **summarize:** lead thread summaries with a strict triage verdict line ([072414c](https://github.com/planetaryescape/mxr/commit/072414cd15760511cfdf8f7ea9d428bafc20355d))
+* **triage:** cached triage-signal surface across CLI/TUI/web with store cache ([ebdd93b](https://github.com/planetaryescape/mxr/commit/ebdd93b257c8674caee5522da32f5b361867b060))
+* **unsubscribe:** --purge unsubscribe + footprint clear with dry-run preview ([861d5e5](https://github.com/planetaryescape/mxr/commit/861d5e52f235504473fd0cb933d6ce87af451dac))
+
+
+### Bug Fixes
+
+* route mutation integration ([9a67487](https://github.com/planetaryescape/mxr/commit/9a67487b6261dcb1e3e00d42a38ab5632f72b5f9))
+* search count pagination integration ([fced6eb](https://github.com/planetaryescape/mxr/commit/fced6ebb6bd0460ca8aad2952b59e59cbe5b0c95))
+* **reader:** readable HTML-to-text fallback in reader view ([935a64f](https://github.com/planetaryescape/mxr/commit/935a64f2807505361f0c1f8606053aa3784b55ff))
+* **search:** lift tantivy result ceiling + offset pagination ([873a851](https://github.com/planetaryescape/mxr/commit/873a851a0aeb8f8e058375c00eb326c5156f21f9))
+
+
+### Documentation
+
+* clarify subscriptions --rank opened_count semantics ([dd60f95](https://github.com/planetaryescape/mxr/commit/dd60f95174ececf704b2caf1e5d2f14eb55162f6))
+* record triage cli gaps plan ([00f4a18](https://github.com/planetaryescape/mxr/commit/00f4a18d857e4d5a33161d5a5d91d264f1dfab90))
+
 ## [0.5.51](https://github.com/planetaryescape/mxr/compare/v0.5.50...v0.5.51) (2026-05-31)
 
 

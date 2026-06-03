@@ -213,7 +213,7 @@ fn render_table(messages: &[TriageMessageData], envelopes: &HashMap<String, Enve
     for message in messages {
         let env = envelopes.get(&message.message_id.to_string());
         let from = env.map(format_from).unwrap_or_default();
-        let subject = env.map(|e| e.subject.as_str()).unwrap_or("");
+        let subject = env.map_or("", |e| e.subject.as_str());
         let date = env
             .map(|e| e.date.format("%Y-%m-%d").to_string())
             .unwrap_or_default();

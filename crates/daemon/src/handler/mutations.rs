@@ -711,7 +711,7 @@ pub(super) fn list_jobs() -> HandlerResult {
         .lock()
         .map_err(|_| HandlerError::from("jobs store poisoned"))?
         .clone();
-    jobs.sort_by(|left, right| right.started_at.cmp(&left.started_at));
+    jobs.sort_by_key(|job| std::cmp::Reverse(job.started_at));
     Ok(ResponseData::Jobs { jobs })
 }
 
@@ -2292,9 +2292,9 @@ pub(super) async fn unsubscribe_purge(
         .iter()
         .find(|envelope| !matches!(envelope.unsubscribe, UnsubscribeMethod::None))
         .or_else(|| selection.envelopes.first());
-    let method = method_envelope
-        .map(|envelope| envelope.unsubscribe.clone())
-        .unwrap_or(UnsubscribeMethod::None);
+    let method = method_envelope.map_or(UnsubscribeMethod::None, |envelope| {
+        envelope.unsubscribe.clone()
+    });
     let message_ids: Vec<_> = selection
         .envelopes
         .iter()

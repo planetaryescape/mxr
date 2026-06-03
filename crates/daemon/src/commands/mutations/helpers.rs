@@ -724,6 +724,7 @@ fn print_mutation_result_output(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn print_batch_mutation_output(
     action: &str,
     dry_run: bool,

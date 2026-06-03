@@ -664,7 +664,7 @@ async fn filter_live_search_results(
 
     let message_ids = results
         .iter()
-        .filter_map(|result| parse_search_result_message_id(result))
+        .filter_map(parse_search_result_message_id)
         .collect::<Vec<_>>();
     let envelopes = state
         .store

@@ -289,8 +289,7 @@ async fn group_keys_for_envelope(
                     .name
                     .as_deref()
                     .filter(|name| !name.trim().is_empty())
-                    .map(|name| format!("{} <{}>", name.trim(), key))
-                    .unwrap_or_else(|| key.clone());
+                    .map_or_else(|| key.clone(), |name| format!("{} <{}>", name.trim(), key));
                 vec![(key, label)]
             }
         }

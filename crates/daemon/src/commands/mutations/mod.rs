@@ -527,6 +527,7 @@ pub async fn unread(
 // Label mutations
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 pub async fn label(
     name: String,
     message_ids: Vec<String>,
@@ -564,6 +565,7 @@ pub async fn label(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn unlabel(
     name: String,
     message_ids: Vec<String>,
@@ -601,6 +603,7 @@ pub async fn unlabel(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn move_msg(
     target_label: String,
     message_ids: Vec<String>,
@@ -955,6 +958,7 @@ pub async fn snoozed(account: Option<String>, format: Option<OutputFormat>) -> a
 // Unsubscribe / Open
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 pub async fn unsubscribe(
     message_ids: Vec<String>,
     yes: bool,
@@ -1076,7 +1080,7 @@ async fn unsubscribe_purge(
         return Ok(());
     }
     if preview.message_count == 0 {
-        anyhow::bail!("No messages matched sender {}", address);
+        anyhow::bail!("No messages matched sender {address}");
     }
     if matches!(preview.method, UnsubscribeMethod::None) && !archive_on_no_method {
         anyhow::bail!("No unsubscribe method available for {}; rerun with --archive-on-no-method to read-archive {} message(s)", address, preview.message_count);

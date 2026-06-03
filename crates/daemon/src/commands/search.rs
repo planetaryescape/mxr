@@ -11,6 +11,7 @@ use mxr_protocol::{
 };
 use std::collections::HashMap;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     query: Option<String>,
     account: Option<String>,
@@ -317,8 +318,7 @@ pub(crate) fn render_aggregation(
 
 fn format_day(ts: Option<i64>) -> String {
     ts.and_then(|value| chrono::DateTime::from_timestamp(value, 0))
-        .map(|dt| dt.format("%Y-%m-%d").to_string())
-        .unwrap_or_else(|| "-".into())
+        .map_or_else(|| "-".into(), |dt| dt.format("%Y-%m-%d").to_string())
 }
 
 async fn fetch_search_envelopes(

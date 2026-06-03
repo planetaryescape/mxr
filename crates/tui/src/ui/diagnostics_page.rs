@@ -50,6 +50,7 @@ fn render_selector(
                 DiagnosticsPaneKind::Sync => format!("{} accounts", state.sync_statuses.len()),
                 DiagnosticsPaneKind::Events => format!("{} recent", state.events.len()),
                 DiagnosticsPaneKind::Logs => format!("{} lines", state.logs.len()),
+                DiagnosticsPaneKind::Jobs => format!("{} jobs", state.jobs.len()),
                 DiagnosticsPaneKind::Activity => format!("{} rows", state.activity.len()),
             };
             ListItem::new(Line::from(vec![
@@ -140,6 +141,7 @@ fn pane_label(pane: DiagnosticsPaneKind) -> &'static str {
         DiagnosticsPaneKind::Sync => "Sync Health",
         DiagnosticsPaneKind::Events => "Recent Events",
         DiagnosticsPaneKind::Logs => "Recent Logs",
+        DiagnosticsPaneKind::Jobs => "Background Jobs",
         DiagnosticsPaneKind::Activity => "Activity Log",
     }
 }
@@ -264,13 +266,14 @@ fn render_footer(frame: &mut Frame, area: Rect, text: &str, theme: &crate::theme
     );
 }
 
-fn all_panes() -> [DiagnosticsPaneKind; 6] {
+fn all_panes() -> [DiagnosticsPaneKind; 7] {
     [
         DiagnosticsPaneKind::Status,
         DiagnosticsPaneKind::Data,
         DiagnosticsPaneKind::Sync,
         DiagnosticsPaneKind::Events,
         DiagnosticsPaneKind::Logs,
+        DiagnosticsPaneKind::Jobs,
         DiagnosticsPaneKind::Activity,
     ]
 }
@@ -314,6 +317,10 @@ fn summary_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec
         DiagnosticsPaneKind::Logs => vec![
             Line::from(format!("{} recent log lines loaded.", state.logs.len())),
             Line::from("`/` to filter; `L` opens the full file in your editor."),
+        ],
+        DiagnosticsPaneKind::Jobs => vec![
+            Line::from(format!("{} background jobs loaded.", state.jobs.len())),
+            Line::from("Large mutation progress, failures, and undo ids."),
         ],
         DiagnosticsPaneKind::Activity => vec![
             Line::from(format!("{} activity rows loaded.", state.activity.len())),
@@ -662,6 +669,38 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                 }]
             } else {
                 lines
+            }
+        }
+        DiagnosticsPaneKind::Jobs => {
+            if state.jobs.is_empty() {
+                vec![if loading {
+                    "Loading jobs...".into()
+                } else {
+                    "No jobs".into()
+                }]
+            } else {
+                state
+                    .jobs
+                    .iter()
+                    .map(|job| {
+                        format!(
+                            "{} {} {} {}/{} ok={} skipped={} failed={} undo={}{}",
+                            job.job_id,
+                            format!("{:?}", job.status).to_ascii_lowercase(),
+                            job.kind,
+                            job.progress.completed,
+                            job.progress.total,
+                            job.progress.succeeded,
+                            job.progress.skipped,
+                            job.progress.failed,
+                            job.undo_ids.join(","),
+                            job.error
+                                .as_ref()
+                                .map(|error| format!(" error={error}"))
+                                .unwrap_or_default()
+                        )
+                    })
+                    .collect()
             }
         }
         DiagnosticsPaneKind::Activity => {

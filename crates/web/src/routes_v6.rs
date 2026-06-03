@@ -861,6 +861,31 @@ async fn undo_mutation(
     passthrough(response)
 }
 
+async fn list_jobs(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(&state, &headers, auth.token.as_deref(), Request::ListJobs).await?;
+    passthrough(response)
+}
+
+async fn get_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Path(job_id): Path<String>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::GetJob { job_id },
+    )
+    .await?;
+    passthrough(response)
+}
+
 #[derive(Debug, Deserialize)]
 struct CountQuery {
     #[serde(default)]
@@ -2510,6 +2535,8 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/signatures/default", post(set_signature_default))
         .route("/signatures/{name}", delete(delete_signature))
         .route("/mutations/undo", post(undo_mutation))
+        .route("/jobs", get(list_jobs))
+        .route("/jobs/{job_id}", get(get_job))
         .route("/count", get(count_messages))
         .route("/sync/status", get(sync_status))
         .route("/snoozed/{message_id}/wake", post(unsnooze))

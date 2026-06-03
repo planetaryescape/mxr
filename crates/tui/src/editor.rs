@@ -102,6 +102,7 @@ pub(crate) fn open_diagnostics_pane_details(
         app::DiagnosticsPaneKind::Sync => "sync-health",
         app::DiagnosticsPaneKind::Events => "events",
         app::DiagnosticsPaneKind::Logs => "logs",
+        app::DiagnosticsPaneKind::Jobs => "jobs",
         app::DiagnosticsPaneKind::Activity => "activity",
     };
     let content = crate::ui::diagnostics_page::pane_details_text(state, pane);

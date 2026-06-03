@@ -212,6 +212,14 @@ struct MutationResultOutput {
 }
 
 #[derive(Serialize)]
+struct MutationJobOutput {
+    action: String,
+    dry_run: bool,
+    message_ids: Vec<String>,
+    job: JobData,
+}
+
+#[derive(Serialize)]
 struct MutationAckOutput {
     action: String,
     dry_run: bool,
@@ -422,7 +430,13 @@ where
 
     let counts = selection_counts(&selection);
     let message_ids = selection.ids.clone();
-    let resp = client.request(build_request(selection.ids)).await?;
+    let request = build_request(selection.ids);
+    let use_async_job = options.async_job || (selection.used_search && message_ids.len() >= 200);
+    let resp = if use_async_job {
+        client.request(start_job_request(request)?).await?
+    } else {
+        client.request(request).await?
+    };
     handle_mutation_response(
         resp,
         options.success_message,
@@ -431,6 +445,19 @@ where
         counts,
         options.format,
     )
+}
+
+fn start_job_request(request: Request) -> anyhow::Result<Request> {
+    match request {
+        Request::Mutation {
+            mutation,
+            client_correlation_id,
+        } => Ok(Request::StartMutationJob {
+            mutation,
+            client_correlation_id,
+        }),
+        _ => anyhow::bail!("async jobs are only supported for mutation requests"),
+    }
 }
 
 pub(super) fn handle_mutation_response(
@@ -467,8 +494,60 @@ pub(super) fn handle_mutation_response(
                 );
             }
         }
+        Response::Ok {
+            data: ResponseData::JobStarted { job },
+        } => print_job_started_output(action, message_ids, job, format)?,
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
+    }
+    Ok(())
+}
+
+fn print_job_started_output(
+    action: &str,
+    message_ids: &[MessageId],
+    job: JobData,
+    format: OutputFormat,
+) -> anyhow::Result<()> {
+    match format {
+        OutputFormat::Table => {
+            println!(
+                "Started {action} job {} for {} message(s).",
+                job.job_id, job.progress.total
+            );
+            println!("Inspect with: mxr jobs {}", job.job_id);
+        }
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&MutationJobOutput {
+                action: action.to_owned(),
+                dry_run: false,
+                message_ids: message_ids_to_strings(message_ids),
+                job,
+            })?
+        ),
+        OutputFormat::Jsonl => println!(
+            "{}",
+            serde_json::to_string(&MutationJobOutput {
+                action: action.to_owned(),
+                dry_run: false,
+                message_ids: message_ids_to_strings(message_ids),
+                job,
+            })?
+        ),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record(["action", "job_id", "status", "total", "completed"])?;
+            writer.write_record([
+                action.to_owned(),
+                job.job_id,
+                format!("{:?}", job.status).to_ascii_lowercase(),
+                job.progress.total.to_string(),
+                job.progress.completed.to_string(),
+            ])?;
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => println!("{}", job.job_id),
     }
     Ok(())
 }
@@ -748,6 +827,7 @@ pub(super) struct MutationRunOptions<'a> {
     pub(super) dry_run: bool,
     pub(super) format: Option<OutputFormat>,
     pub(super) destructive: bool,
+    pub(super) async_job: bool,
 }
 
 pub(super) fn parse_snooze_until(until: &str) -> anyhow::Result<chrono::DateTime<Utc>> {

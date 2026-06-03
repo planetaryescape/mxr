@@ -27,7 +27,7 @@ use utoipa::{
         admin_status, admin_diagnostics, admin_bug_report, admin_events,
         admin_logs, admin_ping, admin_shutdown,
         mail_mailbox, mail_search, mail_search_groups, mail_thread, mail_thread_export,
-        mail_drafts, mail_snoozed, mail_count, mail_sync_status, mail_sync,
+        mail_drafts, mail_snoozed, mail_count, mail_jobs, mail_job_detail, mail_sync_status, mail_sync,
         mutation_archive, mutation_trash, mutation_spam, mutation_star,
         mutation_read, mutation_read_archive, mutation_labels, mutation_move,
         mutation_undo, action_snooze_presets, action_snooze,
@@ -115,6 +115,8 @@ endpoint!(get mail_thread_export "/api/v1/mail/threads/{thread_id}/export", "Exp
 endpoint!(get mail_drafts "/api/v1/mail/drafts", "List drafts");
 endpoint!(get mail_snoozed "/api/v1/mail/snoozed", "List snoozed messages");
 endpoint!(get mail_count "/api/v1/mail/count", "Count matching messages");
+endpoint!(get mail_jobs "/api/v1/mail/jobs", "List background jobs");
+endpoint!(get mail_job_detail "/api/v1/mail/jobs/{job_id}", "Inspect a background job");
 endpoint!(get mail_sync_status "/api/v1/mail/sync/status", "Sync status");
 endpoint!(post mail_sync "/api/v1/mail/sync", "Trigger sync");
 

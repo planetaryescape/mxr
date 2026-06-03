@@ -933,10 +933,19 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
+            async_job,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::archive(message_ids, search, account, yes, dry_run, format)
-                .await?;
+            commands::mutations::archive(
+                message_ids,
+                search,
+                account,
+                yes,
+                dry_run,
+                format,
+                async_job,
+            )
+            .await?;
         }
         Some(Command::Undo {
             mutation_id,
@@ -946,6 +955,10 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::undo(mutation_id, dry_run, format).await?;
         }
+        Some(Command::Jobs { job_id, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::mutations::jobs(job_id, format).await?;
+        }
         Some(Command::ReadArchive {
             message_ids,
             search,
@@ -953,10 +966,19 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
+            async_job,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::read_archive(message_ids, search, account, yes, dry_run, format)
-                .await?;
+            commands::mutations::read_archive(
+                message_ids,
+                search,
+                account,
+                yes,
+                dry_run,
+                format,
+                async_job,
+            )
+            .await?;
         }
         Some(Command::Trash {
             message_ids,
@@ -965,9 +987,19 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
+            async_job,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::trash(message_ids, search, account, yes, dry_run, format).await?;
+            commands::mutations::trash(
+                message_ids,
+                search,
+                account,
+                yes,
+                dry_run,
+                format,
+                async_job,
+            )
+            .await?;
         }
         Some(Command::Spam {
             message_ids,
@@ -976,9 +1008,19 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
+            async_job,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::spam(message_ids, search, account, yes, dry_run, format).await?;
+            commands::mutations::spam(
+                message_ids,
+                search,
+                account,
+                yes,
+                dry_run,
+                format,
+                async_job,
+            )
+            .await?;
         }
         Some(Command::Star {
             message_ids,
@@ -987,9 +1029,19 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
+            async_job,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::star(message_ids, search, account, yes, dry_run, format).await?;
+            commands::mutations::star(
+                message_ids,
+                search,
+                account,
+                yes,
+                dry_run,
+                format,
+                async_job,
+            )
+            .await?;
         }
         Some(Command::Unstar {
             message_ids,
@@ -998,9 +1050,19 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
+            async_job,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::unstar(message_ids, search, account, yes, dry_run, format).await?;
+            commands::mutations::unstar(
+                message_ids,
+                search,
+                account,
+                yes,
+                dry_run,
+                format,
+                async_job,
+            )
+            .await?;
         }
         Some(Command::MarkRead {
             message_ids,
@@ -1009,10 +1071,19 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
+            async_job,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::mark_read(message_ids, search, account, yes, dry_run, format)
-                .await?;
+            commands::mutations::mark_read(
+                message_ids,
+                search,
+                account,
+                yes,
+                dry_run,
+                format,
+                async_job,
+            )
+            .await?;
         }
         Some(Command::Unread {
             message_ids,
@@ -1021,9 +1092,19 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
+            async_job,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::unread(message_ids, search, account, yes, dry_run, format).await?;
+            commands::mutations::unread(
+                message_ids,
+                search,
+                account,
+                yes,
+                dry_run,
+                format,
+                async_job,
+            )
+            .await?;
         }
         Some(Command::Label {
             name,
@@ -1033,10 +1114,20 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
+            async_job,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::label(name, message_ids, search, account, yes, dry_run, format)
-                .await?;
+            commands::mutations::label(
+                name,
+                message_ids,
+                search,
+                account,
+                yes,
+                dry_run,
+                format,
+                async_job,
+            )
+            .await?;
         }
         Some(Command::Unlabel {
             name,
@@ -1046,10 +1137,20 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
+            async_job,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::unlabel(name, message_ids, search, account, yes, dry_run, format)
-                .await?;
+            commands::mutations::unlabel(
+                name,
+                message_ids,
+                search,
+                account,
+                yes,
+                dry_run,
+                format,
+                async_job,
+            )
+            .await?;
         }
         Some(Command::MoveMsg {
             label,
@@ -1059,6 +1160,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
+            async_job,
         }) => {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::move_msg(
@@ -1069,6 +1171,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 yes,
                 dry_run,
                 format,
+                async_job,
             )
             .await?;
         }

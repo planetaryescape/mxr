@@ -841,6 +841,22 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         client_correlation_id: Option<String>,
     },
+    /// Start a mutation as a daemon-side background job. Clients poll
+    /// `ListJobs` / `GetJob` for progress and undo ids instead of holding
+    /// a long-lived IPC request open.
+    StartMutationJob {
+        #[serde(flatten)]
+        mutation: MutationCommand,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        client_correlation_id: Option<String>,
+    },
+    /// List recent daemon-side jobs (mutation batches, future long-running
+    /// mail operations) with progress and failure/undo state.
+    ListJobs,
+    /// Inspect one daemon-side job by id.
+    GetJob {
+        job_id: String,
+    },
     /// Reverse a recent undoable mutation by id. Available within ~60s of
     /// the mutation landing; daemon refuses with an `Error` response
     /// past that window.
@@ -1356,6 +1372,13 @@ impl Request {
         }
     }
 
+    pub fn start_mutation_job(command: MutationCommand) -> Self {
+        Self::StartMutationJob {
+            mutation: command,
+            client_correlation_id: None,
+        }
+    }
+
     pub const fn category(&self) -> IpcCategory {
         match self {
             Self::ListEnvelopes { .. }
@@ -1387,6 +1410,9 @@ impl Request {
             | Self::GetHeaders { .. }
             | Self::ListRuleHistory { .. }
             | Self::Mutation { .. }
+            | Self::StartMutationJob { .. }
+            | Self::ListJobs
+            | Self::GetJob { .. }
             | Self::UndoMutation { .. }
             | Self::Unsubscribe { .. }
             | Self::Snooze { .. }
@@ -1628,6 +1654,44 @@ pub struct MutationResultData {
     /// `None` for non-undoable mutations (Star, ModifyLabels, Move).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mutation_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum JobStatusData {
+    Queued,
+    Running,
+    Succeeded,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct JobProgressData {
+    pub total: u32,
+    pub completed: u32,
+    pub succeeded: u32,
+    pub skipped: u32,
+    pub failed: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct JobData {
+    pub job_id: String,
+    pub kind: String,
+    pub status: JobStatusData,
+    pub progress: JobProgressData,
+    #[serde(default)]
+    pub undo_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    pub started_at: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finished_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<MutationResultData>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1953,6 +2017,15 @@ pub enum ResponseData {
     MutationResult {
         result: MutationResultData,
     },
+    JobStarted {
+        job: JobData,
+    },
+    Jobs {
+        jobs: Vec<JobData>,
+    },
+    Job {
+        job: JobData,
+    },
 
     // mxr app/platform responses.
     Rules {
@@ -2256,6 +2329,9 @@ impl ResponseData {
             | Self::DraftSuggestion { .. }
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }
+            | Self::JobStarted { .. }
+            | Self::Jobs { .. }
+            | Self::Job { .. }
             | Self::SendReceipt { .. }
             | Self::DraftSafetyReportResponse { .. }
             | Self::DraftCommitments { .. }

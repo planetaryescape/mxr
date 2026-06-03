@@ -350,6 +350,95 @@ async fn undo_bulk_archive_restores_all_messages() {
 
 /// Phase 1.4: Star is not undoable — the response carries no
 /// mutation_id so clients know not to render the undo affordance.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn async_mutation_job_reports_progress_and_undo_ids_for_large_batch() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let first_id = sync_and_get_first_id(&state).await;
+    let account_id = state
+        .store
+        .get_envelope(&first_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .account_id;
+
+    let mut ids = Vec::new();
+    for i in 0..405 {
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .provider_id(format!("large-job-{i}"))
+            .subject(format!("large batch {i}"))
+            .label_provider_ids(vec!["INBOX".to_string()])
+            .build();
+        ids.push(envelope.id.clone());
+        state.store.upsert_envelope(&envelope).await.unwrap();
+    }
+
+    let start = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::StartMutationJob {
+            mutation: MutationCommand::Archive {
+                message_ids: ids.clone(),
+            },
+            client_correlation_id: None,
+        }),
+    };
+    let job_id = match handle_request(&state, &start).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::JobStarted { job },
+        }) => {
+            assert_eq!(job.progress.total, 405);
+            job.job_id
+        }
+        other => panic!("expected JobStarted; got {other:?}"),
+    };
+
+    let mut completed_job = None;
+    for attempt in 0..800 {
+        let inspect = IpcMessage {
+            id: 2 + attempt,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::GetJob {
+                job_id: job_id.clone(),
+            }),
+        };
+        let job = match handle_request(&state, &inspect).await.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Job { job },
+            }) => job,
+            other => panic!("expected Job; got {other:?}"),
+        };
+        if matches!(job.status, JobStatusData::Succeeded | JobStatusData::Failed) {
+            completed_job = Some(job);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+
+    let job = completed_job.expect("job should finish within test timeout");
+    assert_eq!(job.status, JobStatusData::Succeeded);
+    assert_eq!(job.progress.completed, 405);
+    assert_eq!(job.progress.succeeded, 405);
+    assert_eq!(job.progress.skipped, 0);
+    assert!(
+        job.undo_ids.len() >= 2,
+        "large jobs should surface all chunk undo ids; got {:?}",
+        job.undo_ids
+    );
+
+    for id in ids.iter().take(5) {
+        let envelope = state.store.get_envelope(id).await.unwrap().unwrap();
+        assert!(
+            !envelope
+                .label_provider_ids
+                .iter()
+                .any(|label| label == "INBOX"),
+            "archived job message should leave inbox"
+        );
+    }
+}
+
 #[tokio::test]
 async fn star_mutation_omits_mutation_id() {
     let state = Arc::new(AppState::in_memory().await.unwrap());

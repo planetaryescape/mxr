@@ -8,6 +8,7 @@ import {
   Filter,
   History,
   Inbox,
+  ListChecks,
   Mail,
   MessageSquareReply,
   Package,
@@ -67,6 +68,7 @@ const fallbackLenses: NavItem[] = [
 
 const systemItems: NavItem[] = [
   { to: "/activity", label: "Activity log", Icon: History },
+  { to: "/jobs", label: "Jobs", Icon: ListChecks },
   { to: "/diagnostics", label: "Diagnostics", Icon: Activity, shortcut: "9" },
   { to: "/settings/theme", label: "Settings", Icon: Settings, shortcut: "0" },
 ];

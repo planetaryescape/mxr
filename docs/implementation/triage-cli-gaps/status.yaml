@@ -1,0 +1,93 @@
+feature: triage-cli-gaps
+current_phase: phase-004
+tasks:
+  task-001:
+    status: accepted
+    attempts: 1
+    assigned_executor: frontier_model
+    assigned_model: pe-default-frontier
+    lane: frontier
+    worktree: /Users/bhekanik/code/planetaryescape/.pe-tasker-worktrees/mxr/triage-cli-gaps/task-001
+    last_result: merged to main (fced6ebb)
+    review_result: merged
+  task-002:
+    status: accepted
+    attempts: 1
+    assigned_executor: frontier_model
+    assigned_model: pe-default-frontier
+    lane: frontier
+    worktree: /Users/bhekanik/code/planetaryescape/.pe-tasker-worktrees/mxr/triage-cli-gaps/task-002
+    last_result: merged to main (fced6ebb)
+    review_result: merged
+  task-003:
+    status: accepted
+    attempts: 1
+    assigned_executor: frontier_model
+    assigned_model: pe-default-frontier
+    lane: frontier
+    worktree: /Users/bhekanik/code/planetaryescape/.pe-tasker-worktrees/mxr/triage-cli-gaps/task-003
+    last_result: merged to main (fced6ebb)
+    review_result: merged
+  task-004:
+    status: accepted
+    attempts: 1
+    assigned_executor: frontier_model
+    assigned_model: pe-default-frontier
+    lane: frontier
+    worktree: /Users/bhekanik/code/planetaryescape/.pe-tasker-worktrees/mxr/triage-cli-gaps/task-004
+    last_result: merged to main (fced6ebb)
+    review_result: merged
+  task-005:
+    status: accepted
+    attempts: 1
+    assigned_executor: frontier_model
+    assigned_model: pe-default-frontier
+    lane: frontier
+    worktree: /Users/bhekanik/code/planetaryescape/.pe-tasker-worktrees/mxr/triage-cli-gaps/task-005
+    last_result: merged to main (fced6ebb)
+    review_result: merged
+  task-006:
+    status: accepted
+    attempts: 1
+    assigned_executor: frontier_model
+    assigned_model: pe-default-frontier
+    lane: frontier
+    worktree: /Users/bhekanik/code/planetaryescape/.pe-tasker-worktrees/mxr/triage-cli-gaps/task-006
+    last_result: merged to main (fced6ebb)
+    review_result: merged
+  task-007:
+    status: accepted
+    attempts: 1
+    assigned_executor: frontier_model
+    assigned_model: pe-default-frontier
+    lane: frontier
+    worktree: /Users/bhekanik/code/planetaryescape/.pe-tasker-worktrees/mxr/triage-cli-gaps/task-007
+    last_result: merged to main (fced6ebb)
+    review_result: merged
+  task-008:
+    status: accepted
+    attempts: 1
+    assigned_executor: frontier_model
+    assigned_model: pe-default-frontier
+    lane: frontier
+    worktree: /Users/bhekanik/code/planetaryescape/.pe-tasker-worktrees/mxr/triage-cli-gaps/task-008
+    last_result: merged to main (fced6ebb)
+    review_result: merged
+  task-009:
+    status: accepted
+    attempts: 1
+    assigned_executor: frontier_model
+    assigned_model: pe-default-frontier
+    lane: frontier
+    worktree: /Users/bhekanik/code/planetaryescape/.pe-tasker-worktrees/mxr/triage-cli-gaps/task-009
+    last_result: merged to main (fced6ebb)
+    review_result: merged
+  task-010:
+    status: accepted
+    attempts: 1
+    assigned_executor: frontier_model
+    assigned_model: pe-default-frontier
+    lane: frontier
+    worktree: /Users/bhekanik/code/planetaryescape/.pe-tasker-worktrees/mxr/triage-cli-gaps/task-010
+    last_result: merged to main (fced6ebb)
+    review_result: merged

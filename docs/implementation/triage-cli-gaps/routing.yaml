@@ -1,0 +1,74 @@
+feature: triage-cli-gaps
+
+defaults:
+  max_attempts_before_escalation: 2
+  escalation_model: pe-default-frontier
+
+default_models:
+  frontier:
+    alias: pe-default-frontier
+    provider: openai-codex
+    model: gpt-5.5
+    use_for:
+      - daemon_ipc_and_cli_surface_changes
+      - rules_engine_and_batch_mutations
+      - destructive_or_high_blast_radius
+      - prompt_design_and_review
+  local_coder:
+    alias: pe-default-local-coder
+    provider: ollama
+    model: qwen3-coder-next:latest
+    use_for:
+      - none_this_plan_repo_is_rust_local_coder_is_typescript_tuned
+  api_coder:
+    alias: pe-default-api-coder
+    provider: openai-codex
+    model: gpt-5.5-mini
+    use_for:
+      - unused_this_plan_prefer_subscription_backed_frontier_gpt55_over_metered_api
+
+lanes:
+  frontier:
+    concurrency: 1
+  local_heavy:
+    concurrency: 1
+  api_model:
+    concurrency: 2
+  shell:
+    concurrency: 4
+
+policy:
+  prompt_design:
+    executor_type: frontier_model
+    lane: frontier
+    preferred_model: pe-default-frontier
+  daemon_cli_feature:
+    executor_type: frontier_model
+    lane: frontier
+    preferred_model: pe-default-frontier
+  destructive_batch_mutation:
+    executor_type: frontier_model
+    lane: frontier
+    preferred_model: pe-default-frontier
+  scoped_rust_polish:
+    executor_type: frontier_model
+    lane: frontier
+    preferred_model: pe-default-frontier
+    reasoning_effort: low # intent: light work; no per-task effort flag in PE Tasker yet
+  docs_clarification:
+    executor_type: frontier_model
+    lane: frontier
+    preferred_model: pe-default-frontier
+    reasoning_effort: low # intent: light work; no per-task effort flag in PE Tasker yet
+
+# Routing rationale (see build-log): mxr is Rust. pe-default-local-coder
+# (qwen3-coder-next) is TypeScript-tuned, so local lane is intentionally unused.
+# Prefer the SUBSCRIPTION-backed frontier model (pe-default-frontier = gpt-5.5) over
+# the metered api model for everything — no reason to spend on API when the
+# subscription covers it. For light tasks (polish, docs) dial reasoning effort DOWN
+# rather than downgrading the model; PE Tasker has no per-task effort flag today, so
+# reasoning_effort is recorded as intent only. Run llmfit before any local reassignment.
+
+skills:
+  root: /Users/bhekanik/.dotfiles/.skills
+  policy: explicit_only

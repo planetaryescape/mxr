@@ -1,0 +1,176 @@
+version: 1
+outcomes:
+  - model: openai-codex/gpt-5.5
+    provider: openai-codex
+    taskType: prompt_design
+    outcome: passed
+    recordedAt: 2026-06-03T11:28:52.454Z
+    notes: task-001 clean on-spec; append-only prompt, version bump, parity, all
+      tests green
+  - model: openai-codex/gpt-5.5
+    provider: openai-codex
+    taskType: cli_daemon_multisurface
+    outcome: passed
+    recordedAt: 2026-06-03T11:52:08.607Z
+    notes: task-003 group-by full parity, all surfaces green
+  - model: openai-codex/gpt-5.5
+    provider: openai-codex
+    taskType: reader_rendering
+    outcome: passed
+    recordedAt: 2026-06-03T12:00:51.282Z
+    notes: task-004 readability fallback, tested
+  - model: openai-codex/gpt-5.5
+    provider: openai-codex
+    taskType: batch_infra_multisurface
+    outcome: passed
+    recordedAt: 2026-06-03T12:27:40.658Z
+    notes: task-007 async jobs, large-batch test green
+  - model: openai-codex/gpt-5.5
+    provider: openai-codex
+    taskType: destructive_mutation_multisurface
+    outcome: passed
+    recordedAt: 2026-06-03T12:48:25.739Z
+    notes: task-005 purge w/ dry-run, green
+  - model: openai-codex/gpt-5.5
+    provider: openai-codex
+    taskType: cached_surface_multisurface
+    outcome: passed
+    recordedAt: 2026-06-03T13:12:38.039Z
+    notes: task-002 triage cache + parity, green
+  - model: openai-codex/gpt-5.5
+    provider: openai-codex
+    taskType: rules_engine_multisurface
+    outcome: passed
+    recordedAt: 2026-06-03T13:43:08.864Z
+    notes: task-006 chained actions + route, green
+  - model: openai-codex/gpt-5.5
+    provider: openai-codex
+    taskType: search_pagination
+    outcome: passed
+    recordedAt: 2026-06-03T14:00:20.104Z
+    notes: task-008 ceiling fix + offset cursor; surgical (TUI already paged)
+  - model: openai-codex/gpt-5.5
+    provider: openai-codex
+    taskType: cli_polish
+    outcome: passed
+    recordedAt: 2026-06-03T14:11:18.866Z
+    notes: task-009 3 papercuts, green
+  - model: openai-codex/gpt-5.5
+    provider: openai-codex
+    taskType: docs_clarification
+    outcome: passed
+    recordedAt: 2026-06-03T14:18:44.796Z
+    notes: task-010 opened_count semantics, code-verified
+modelStats:
+  openai-codex/gpt-5.5:
+    prompt_design:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+    cli_daemon_multisurface:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+    reader_rendering:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+    batch_infra_multisurface:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+    destructive_mutation_multisurface:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+    cached_surface_multisurface:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+    rules_engine_multisurface:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+    search_pagination:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+    cli_polish:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+    docs_clarification:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+reviewQueue:
+  - id: 2026-06-03T11:28:52.454Z-openai-codex-gpt-5-5-prompt-design
+    reason: routing outcome recorded for review
+    proposedChange: Review whether openai-codex/gpt-5.5 should be preferred for
+      prompt_design after outcome passed.
+  - id: 2026-06-03T11:52:08.607Z-openai-codex-gpt-5-5-cli-daemon-multisurface
+    reason: routing outcome recorded for review
+    proposedChange: Review whether openai-codex/gpt-5.5 should be preferred for
+      cli_daemon_multisurface after outcome passed.
+  - id: 2026-06-03T12:00:51.282Z-openai-codex-gpt-5-5-reader-rendering
+    reason: routing outcome recorded for review
+    proposedChange: Review whether openai-codex/gpt-5.5 should be preferred for
+      reader_rendering after outcome passed.
+  - id: 2026-06-03T12:27:40.658Z-openai-codex-gpt-5-5-batch-infra-multisurface
+    reason: routing outcome recorded for review
+    proposedChange: Review whether openai-codex/gpt-5.5 should be preferred for
+      batch_infra_multisurface after outcome passed.
+  - id: 2026-06-03T12:48:25.739Z-openai-codex-gpt-5-5-destructive-mutation-multisurface
+    reason: routing outcome recorded for review
+    proposedChange: Review whether openai-codex/gpt-5.5 should be preferred for
+      destructive_mutation_multisurface after outcome passed.
+  - id: 2026-06-03T13:12:38.039Z-openai-codex-gpt-5-5-cached-surface-multisurface
+    reason: routing outcome recorded for review
+    proposedChange: Review whether openai-codex/gpt-5.5 should be preferred for
+      cached_surface_multisurface after outcome passed.
+  - id: 2026-06-03T13:43:08.864Z-openai-codex-gpt-5-5-rules-engine-multisurface
+    reason: routing outcome recorded for review
+    proposedChange: Review whether openai-codex/gpt-5.5 should be preferred for
+      rules_engine_multisurface after outcome passed.
+  - id: 2026-06-03T14:00:20.104Z-openai-codex-gpt-5-5-search-pagination
+    reason: routing outcome recorded for review
+    proposedChange: Review whether openai-codex/gpt-5.5 should be preferred for
+      search_pagination after outcome passed.
+  - id: 2026-06-03T14:11:18.866Z-openai-codex-gpt-5-5-cli-polish
+    reason: routing outcome recorded for review
+    proposedChange: Review whether openai-codex/gpt-5.5 should be preferred for
+      cli_polish after outcome passed.
+  - id: 2026-06-03T14:18:44.796Z-openai-codex-gpt-5-5-docs-clarification
+    reason: routing outcome recorded for review
+    proposedChange: Review whether openai-codex/gpt-5.5 should be preferred for
+      docs_clarification after outcome passed.

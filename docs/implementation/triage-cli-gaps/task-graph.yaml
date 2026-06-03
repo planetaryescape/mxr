@@ -1,0 +1,125 @@
+feature: triage-cli-gaps
+
+# Scoped from docs/triage-session-feedback-2026-06-03.md (a real inbox-triage field report).
+# Priority maps to phases: Part 2 prompt first (foundational), then P0, P1, P2.
+
+phases:
+  phase-001:
+    title: Summariser triage signal (foundational, no/low code)
+    tasks:
+      - task-001
+  phase-002:
+    title: P0 high-leverage CLI
+    tasks:
+      - task-002
+      - task-003
+      - task-004
+      - task-005
+  phase-003:
+    title: P1 friction
+    tasks:
+      - task-006
+      - task-007
+      - task-008
+  phase-004:
+    title: P2 polish + docs
+    tasks:
+      - task-009
+      - task-010
+
+tasks:
+  task-001:
+    title: Summariser emits strict triage-verdict first line (Part 2)
+    phase: phase-001
+    depends_on: []
+    status: ready
+    executor_type: frontier_model
+    lane: frontier
+    risk: medium
+  task-002:
+    title: Surface a cached triage signal in list/search output (P0-1)
+    phase: phase-002
+    depends_on:
+      - task-001
+    status: pending
+    executor_type: frontier_model
+    lane: frontier
+    risk: high
+  task-003:
+    title: Query-scoped sender aggregation via --group-by (P0-2)
+    phase: phase-002
+    depends_on: []
+    status: ready
+    executor_type: frontier_model
+    lane: frontier
+    risk: medium
+  task-004:
+    title: Readability HTML-to-text in reader view (P0-3)
+    phase: phase-002
+    depends_on: []
+    status: ready
+    executor_type: frontier_model
+    lane: frontier
+    risk: medium
+  task-005:
+    title: One-shot unsubscribe + footprint clear --purge (P0-4)
+    phase: phase-002
+    depends_on: []
+    status: ready
+    executor_type: frontier_model
+    lane: frontier
+    risk: high
+  task-006:
+    title: Multi-action rules + atomic queue route verb (P1-5)
+    phase: phase-003
+    depends_on: []
+    status: pending
+    executor_type: frontier_model
+    lane: frontier
+    risk: high
+  task-007:
+    title: Large-batch mutation chunking / async job surface (P1-6)
+    phase: phase-003
+    depends_on: []
+    status: pending
+    executor_type: frontier_model
+    lane: frontier
+    risk: high
+  task-008:
+    title: Search result pagination / lift discovery ceiling (P1-7)
+    phase: phase-003
+    depends_on: []
+    status: pending
+    executor_type: frontier_model
+    lane: frontier
+    risk: medium
+  task-009:
+    title: CLI output polish bundle - count plain, dry-run parity, unsub preflight (P2-8,9,10)
+    phase: phase-004
+    depends_on: []
+    status: pending
+    executor_type: frontier_model
+    lane: frontier
+    risk: low
+  task-010:
+    title: Document subscriptions --rank opened_count semantics (P2-11)
+    phase: phase-004
+    depends_on: []
+    status: pending
+    executor_type: frontier_model
+    lane: frontier
+    risk: low
+
+# Scope-overlap note (host must not parallelise these — shared batch-mutation path):
+#   task-005 (unsubscribe --purge) and task-007 (large-batch chunking).
+# Run task-007 first if both are scheduled, so --purge inherits chunked/async batching.
+
+lanes:
+  frontier:
+    concurrency: 1
+  local_heavy:
+    concurrency: 1
+  api_model:
+    concurrency: 2
+  shell:
+    concurrency: 4

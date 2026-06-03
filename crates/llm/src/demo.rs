@@ -80,7 +80,11 @@ fn classify(req: &CompletionRequest) -> FeatureKind {
     // doesn't get caught by the draft branch.
     if system.contains("briefing") {
         FeatureKind::Briefing
-    } else if system.contains("summarize email") || system.contains("summarize") {
+    } else if system.contains("summarize email")
+        || system.contains("summarize")
+        || system.contains("thread summaries")
+        || system.contains("triage verdict")
+    {
         FeatureKind::Summarize
     } else if system.contains("draft email replies") {
         FeatureKind::DraftAssist
@@ -117,7 +121,9 @@ fn render(kind: FeatureKind, req: &CompletionRequest) -> String {
 
     match kind {
         FeatureKind::Summarize => format!(
-            "Summary of {subject_hint}:\n\
+            "ACTION REQUIRED — confirm the Friday v0.6 cut\n\
+             \n\
+             Summary of {subject_hint}:\n\
              - Alex and the build team agreed to ship the v0.6 cut by Friday.\n\
              - Open question: should the migration run before or after the freeze window?\n\
              - Diana flagged a perf regression in the search path that needs a follow-up.\n\
@@ -248,8 +254,12 @@ mod tests {
             ))
             .await
             .expect("complete ok");
-        assert!(resp.content.starts_with("Summary of"), "{}", resp.content);
-        assert!(resp.content.contains("Friday cut"));
+        assert!(
+            resp.content.starts_with("ACTION REQUIRED — "),
+            "{}",
+            resp.content,
+        );
+        assert!(resp.content.contains("\n\nSummary of friday cut"));
     }
 
     #[tokio::test]

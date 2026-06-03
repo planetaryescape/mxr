@@ -379,7 +379,7 @@ describe("ThreadRoute", () => {
       summary: {
         generated_at: "2026-05-11T10:02:00Z",
         model: "cached-model",
-        text: "- Cached useful point",
+        text: "ACTION REQUIRED — approve launch checklist\n\n- Cached useful point",
       },
     });
     renderWithQueryClient(
@@ -397,6 +397,7 @@ describe("ThreadRoute", () => {
     if (cachedSummaryToggle.getAttribute("aria-expanded") === "false") {
       fireEvent.click(cachedSummaryToggle);
     }
+    expect(screen.getByText("ACTION REQUIRED — approve launch checklist")).toBeVisible();
     expect(api.summarizeThread).not.toHaveBeenCalled();
   });
 

@@ -1123,8 +1123,7 @@ fn draw_search_aggregation(
 fn format_ts_day(timestamp: Option<i64>) -> String {
     timestamp
         .and_then(|value| chrono::DateTime::from_timestamp(value, 0))
-        .map(|dt| dt.format("%Y-%m-%d").to_string())
-        .unwrap_or_else(|| "-".into())
+        .map_or_else(|| "-".into(), |dt| dt.format("%Y-%m-%d").to_string())
 }
 
 /// Slice 6: Subscriptions table. Default sort matches the daemon's

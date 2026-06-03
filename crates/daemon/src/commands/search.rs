@@ -376,7 +376,6 @@ fn render_paging_hint(
     }
 }
 
-
 fn render_explain(explain: Option<&SearchExplain>) {
     let Some(explain) = explain else {
         return;

@@ -325,8 +325,7 @@ impl App {
                 if let Some((_, ref label_name)) = self.modals.pending_label_action.take() {
                     let from_queue_label = self
                         .active_label_record()
-                        .map(|label| label.name.clone())
-                        .unwrap_or_else(|| "INBOX".to_string());
+                        .map_or_else(|| "INBOX".to_string(), |label| label.name.clone());
                     let ids = self.mutation_target_ids();
                     if !ids.is_empty() {
                         let optimistic_effect = remove_from_list_effect(&ids);

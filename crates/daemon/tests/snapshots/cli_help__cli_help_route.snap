@@ -17,5 +17,5 @@ Options:
       --archive
       --yes
       --dry-run
-      --format <FORMAT>                 [possible values: table, json, jsonl, csv, ids]
-  -h, --help                            Print help
+      --format <FORMAT>                [possible values: table, json, jsonl, csv, ids]
+  -h, --help                           Print help

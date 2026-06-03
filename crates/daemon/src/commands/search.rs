@@ -1,10 +1,12 @@
-use crate::cli::{OutputFormat, SearchModeArg, SearchSortArg};
+use crate::cli::{OutputFormat, SearchGroupByArg, SearchModeArg, SearchSortArg};
 use crate::commands::resolve_optional_account;
 use crate::commands::triage::{render_triage, request_triage};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::types::{Envelope, MessageFlags, SortOrder};
-use mxr_protocol::{Request, Response, ResponseData, SearchExplain};
+use mxr_protocol::{
+    Request, Response, ResponseData, SearchAggregationGroupBy, SearchAggregationRow, SearchExplain,
+};
 
 pub async fn run(
     query: Option<String>,
@@ -13,6 +15,7 @@ pub async fn run(
     limit: Option<u32>,
     mode: Option<SearchModeArg>,
     sort: Option<SearchSortArg>,
+    group_by: Option<SearchGroupByArg>,
     explain: bool,
     triage: bool,
 ) -> anyhow::Result<()> {
@@ -26,6 +29,31 @@ pub async fn run(
     if triage {
         let payload = request_triage(&mut client, query, account_id, limit, mode).await?;
         return render_triage(payload, &mut client, format, None, None).await;
+    }
+    if let Some(group_by) = group_by {
+        let resp = client
+            .request(Request::SearchAggregation {
+                query: query.clone(),
+                account_id,
+                mode: mode.map(Into::into),
+                group_by: group_by.into(),
+                limit: Some(limit),
+            })
+            .await?;
+        let (group_by, total, groups) = crate::commands::expect_response(resp, |r| match r {
+            Response::Ok {
+                data:
+                    ResponseData::SearchAggregation {
+                        group_by,
+                        total,
+                        groups,
+                        ..
+                    },
+            } => Some((group_by, total, groups)),
+            _ => None,
+        })?;
+        render_aggregation(resolve_format(format), &query, group_by, total, &groups)?;
+        return Ok(());
     }
     let resp = client
         .request(Request::Search {
@@ -169,6 +197,107 @@ pub async fn run(
         }
     }
     Ok(())
+}
+
+pub(crate) fn render_aggregation(
+    fmt: OutputFormat,
+    query: &str,
+    group_by: SearchAggregationGroupBy,
+    total: u32,
+    groups: &[SearchAggregationRow],
+) -> anyhow::Result<()> {
+    match fmt {
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "query": query,
+                    "group_by": group_by.as_str(),
+                    "total": total,
+                    "groups": groups,
+                }))?
+            );
+        }
+        OutputFormat::Jsonl => {
+            for group in groups {
+                println!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({
+                        "query": query,
+                        "group_by": group_by.as_str(),
+                        "key": group.key,
+                        "label": group.label,
+                        "count": group.count,
+                        "unread": group.unread,
+                        "oldest": group.oldest,
+                        "newest": group.newest,
+                    }))?
+                );
+            }
+        }
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record([
+                "group_by", "key", "label", "count", "unread", "oldest", "newest",
+            ])?;
+            for group in groups {
+                writer.write_record(vec![
+                    group_by.as_str().to_string(),
+                    group.key.clone(),
+                    group.label.clone(),
+                    group.count.to_string(),
+                    group.unread.to_string(),
+                    group
+                        .oldest
+                        .map(|value| value.to_string())
+                        .unwrap_or_default(),
+                    group
+                        .newest
+                        .map(|value| value.to_string())
+                        .unwrap_or_default(),
+                ])?;
+            }
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => {
+            for group in groups {
+                println!("{}", group.key);
+            }
+        }
+        OutputFormat::Table => {
+            if groups.is_empty() {
+                println!("No groups found for {query:?}.");
+            } else {
+                println!(
+                    "{:<32} {:>8} {:>8} {:<10} {:<10}",
+                    group_by.as_str().to_ascii_uppercase(),
+                    "COUNT",
+                    "UNREAD",
+                    "OLDEST",
+                    "NEWEST"
+                );
+                println!("{}", "-".repeat(76));
+                for group in groups {
+                    let label: String = group.label.chars().take(32).collect();
+                    println!(
+                        "{label:<32} {count:>8} {unread:>8} {oldest:<10} {newest:<10}",
+                        count = group.count,
+                        unread = group.unread,
+                        oldest = format_day(group.oldest),
+                        newest = format_day(group.newest),
+                    );
+                }
+                println!("\n{} messages across {} groups", total, groups.len());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn format_day(ts: Option<i64>) -> String {
+    ts.and_then(|value| chrono::DateTime::from_timestamp(value, 0))
+        .map(|dt| dt.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| "-".into())
 }
 
 fn render_explain(explain: Option<&SearchExplain>) {

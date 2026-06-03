@@ -2138,6 +2138,7 @@ fn analytics_row_count(app: &App) -> usize {
         AnalyticsView::CadenceDrift => app.analytics.cadence_drift_rows.len(),
         AnalyticsView::ResponseTime => 1, // single summary row
         AnalyticsView::Subscriptions => app.analytics.subscriptions.len(),
+        AnalyticsView::SearchAggregation => app.analytics.search_aggregation_rows.len(),
         AnalyticsView::Wrapped => 1, // tile grid uses tile selection, not row index
     }
 }

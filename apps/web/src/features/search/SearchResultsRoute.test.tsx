@@ -15,6 +15,7 @@ const router = vi.hoisted(() => ({
     q?: string;
     mode?: "lexical" | "semantic" | "hybrid";
     sort?: "relevance" | "newest" | "oldest";
+    groupBy?: "from" | "list" | "category";
     account?: string;
   },
 }));
@@ -23,6 +24,7 @@ const searchApi = vi.hoisted(() => ({
   createSavedSearch: vi.fn<(input: unknown) => Promise<unknown>>(),
   fetchSavedSearches: vi.fn<() => Promise<unknown>>(),
   fetchSearch: vi.fn<(params: unknown, opts?: unknown) => Promise<unknown>>(),
+  fetchSearchGroups: vi.fn<(params: unknown, opts?: unknown) => Promise<unknown>>(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -34,7 +36,9 @@ vi.mock("./api", () => ({
   createSavedSearch: searchApi.createSavedSearch,
   fetchSavedSearches: searchApi.fetchSavedSearches,
   fetchSearch: searchApi.fetchSearch,
+  fetchSearchGroups: searchApi.fetchSearchGroups,
   searchKey: (params: unknown) => ["search", params],
+  searchGroupsKey: (params: unknown) => ["search-groups", params],
 }));
 
 // MailboxList is the canonical list and has its own tests; here we only
@@ -100,6 +104,21 @@ describe("SearchResultsRoute", () => {
       has_more: false,
       groups: [{ id: "today", label: "Today", rows }],
     });
+    searchApi.fetchSearchGroups.mockResolvedValue({
+      query: "invoice",
+      group_by: "from",
+      total: rows.length,
+      groups: [
+        {
+          key: "sender@example.com",
+          label: "Sender <sender@example.com>",
+          count: 2,
+          unread: 1,
+          oldest: 1_779_000_000,
+          newest: 1_779_086_400,
+        },
+      ],
+    });
   });
 
   afterEach(() => {
@@ -133,6 +152,7 @@ describe("SearchResultsRoute", () => {
         mode: "lexical",
         sort: "relevance",
         scope: "threads",
+        groupBy: "from",
         account: undefined,
       },
     });

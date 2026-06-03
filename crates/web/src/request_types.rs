@@ -92,6 +92,8 @@ pub(super) struct SearchQuery {
     #[serde(default)]
     pub(super) verdict: Option<String>,
     #[serde(default)]
+    pub(super) group_by: Option<mxr_protocol::SearchAggregationGroupBy>,
+    #[serde(default)]
     pub(super) token: Option<String>,
 }
 

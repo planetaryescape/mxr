@@ -1519,6 +1519,11 @@ pub async fn run() -> anyhow::Result<()> {
                             subscriptions,
                         )),
                         Ok(Response::Ok {
+                            data: ResponseData::SearchAggregation { groups, .. },
+                        }) => Ok(
+                            crate::async_result::AnalyticsResultPayload::SearchAggregation(groups),
+                        ),
+                        Ok(Response::Ok {
                             data: ResponseData::Wrapped { summary },
                         }) => Ok(crate::async_result::AnalyticsResultPayload::Wrapped(
                             Box::new(summary),
@@ -2807,6 +2812,13 @@ pub async fn run() -> anyhow::Result<()> {
                                     ),
                                 ) => {
                                     app.analytics.subscriptions = rows;
+                                }
+                                Ok(
+                                    crate::async_result::AnalyticsResultPayload::SearchAggregation(
+                                        rows,
+                                    ),
+                                ) => {
+                                    app.analytics.search_aggregation_rows = rows;
                                 }
                                 Ok(crate::async_result::AnalyticsResultPayload::Wrapped(
                                     summary,

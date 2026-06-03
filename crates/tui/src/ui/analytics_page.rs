@@ -30,6 +30,7 @@ fn draw_header(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cr
         AnalyticsView::CadenceDrift,
         AnalyticsView::ResponseTime,
         AnalyticsView::Subscriptions,
+        AnalyticsView::SearchAggregation,
         AnalyticsView::Wrapped,
     ] {
         let label = view.label();
@@ -87,6 +88,12 @@ fn draw_header(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cr
             } else {
                 ""
             }
+        ),
+        AnalyticsView::SearchAggregation => format!(
+            "Search Groups  [query={}  group_by={}  limit={}]",
+            state.search_aggregation_query,
+            state.search_aggregation_group_by.as_str(),
+            state.search_aggregation_limit,
         ),
         AnalyticsView::Wrapped => {
             format!("Wrapped  [{}]", wrapped_window_label(state.wrapped_window))
@@ -184,6 +191,7 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
         AnalyticsView::CadenceDrift => draw_cadence_drift(frame, body_area, state, theme),
         AnalyticsView::ResponseTime => draw_response_time(frame, body_area, state, theme),
         AnalyticsView::Subscriptions => draw_subscriptions(frame, body_area, state, theme),
+        AnalyticsView::SearchAggregation => draw_search_aggregation(frame, body_area, state, theme),
         AnalyticsView::Wrapped => draw_wrapped(frame, body_area, state, theme),
     }
 }
@@ -240,6 +248,11 @@ fn view_explainer_lines<'a>(
             "Senders with an unsubscribe header.",
             "Each row is one sender; 'opened' / 'archived unread' show whether you actually read what they send.",
             "'u' opens the unsubscribe-confirm modal for the selected row. Enter searches that sender's mail.",
+        ),
+        AnalyticsView::SearchAggregation => (
+            "Grouped search rollup over any query.",
+            "Each row counts matching messages in one sender/list/category with unread, oldest, and newest.",
+            "Press 'f' to change the query or grouping. Enter jumps to that group inside the query.",
         ),
         AnalyticsView::Wrapped => return None,
     };
@@ -1057,6 +1070,61 @@ fn draw_cadence_drift(
             selected_index: state.selected_index,
         },
     );
+}
+
+fn draw_search_aggregation(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AnalyticsState,
+    theme: &crate::theme::Theme,
+) {
+    let block = Block::default()
+        .title(" Search Groups ")
+        .borders(Borders::ALL)
+        .border_style(theme.muted_style());
+    let table = block.inner(area);
+    frame.render_widget(block, area);
+    let header = Row::new(vec!["Group", "Count", "Unread", "Oldest", "Newest"])
+        .style(Style::default().fg(theme.text_muted));
+    let rows: Vec<Row> = state
+        .search_aggregation_rows
+        .iter()
+        .map(|row| {
+            Row::new(vec![
+                row.label.clone(),
+                row.count.to_string(),
+                row.unread.to_string(),
+                format_ts_day(row.oldest),
+                format_ts_day(row.newest),
+            ])
+        })
+        .collect();
+    let widths = [
+        Constraint::Percentage(46),
+        Constraint::Percentage(13),
+        Constraint::Percentage(13),
+        Constraint::Percentage(14),
+        Constraint::Percentage(14),
+    ];
+    render_table(
+        frame,
+        table,
+        theme,
+        TableRender {
+            title: " Search Groups ",
+            header,
+            rows,
+            widths: &widths,
+            selected_index: state.selected_index,
+        },
+    );
+}
+
+fn format_ts_day(timestamp: Option<i64>) -> String {
+    timestamp
+        .and_then(|value| chrono::DateTime::from_timestamp(value, 0))
+        .map(|dt| dt.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| "-".into())
 }
 
 /// Slice 6: Subscriptions table. Default sort matches the daemon's
@@ -2162,6 +2230,9 @@ fn draw_footer(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cr
         }
         AnalyticsView::Subscriptions => {
             "Tab/Shift-Tab:view  j/k:select  o:rank  u:unsubscribe  Enter:sender  Esc:mailbox"
+        }
+        AnalyticsView::SearchAggregation => {
+            "Tab/Shift-Tab:view  j/k:select  f:query/group  r:refresh  Enter:open group  Esc:mailbox"
         }
         AnalyticsView::Wrapped => {
             "Tab/Shift-Tab:view  h/j/k/l:tile  t:window  y/Y:year  f:filters  Enter:open  Esc:mailbox"

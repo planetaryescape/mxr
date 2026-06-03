@@ -9,9 +9,12 @@ import {
   deleteSavedSearch,
   fetchSavedSearches,
   fetchSearch,
+  fetchSearchGroups,
+  searchGroupsKey,
   searchKey,
   updateSavedSearch,
   type SavedSearch,
+  type SearchGroupBy,
   type SearchMode,
   type SearchSort,
 } from "./api";
@@ -53,6 +56,7 @@ export function SearchResultsRoute() {
     (search.scope as "threads" | "messages" | "attachments" | "triage" | undefined) ??
     "threads";
   const verdict = search.verdict as "ACTION" | "FYI" | "ROUTINE" | undefined;
+  const groupBy = (search.groupBy as SearchGroupBy | undefined) ?? "from";
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [draftQ, setDraftQ] = useState(q);
@@ -65,6 +69,25 @@ export function SearchResultsRoute() {
       runReplaceableQuery("search-results", signal, (combinedSignal) =>
         fetchSearch(
           { q, mode, sort, scope, account: search.account, limit: 100, verdict },
+          { signal: combinedSignal },
+        ),
+      ),
+    enabled: q.trim().length > 0,
+  });
+  const groupedResults = useQuery({
+    queryKey: searchGroupsKey({
+      q,
+      mode,
+      sort,
+      scope,
+      account: search.account,
+      limit: 50,
+      groupBy,
+    }),
+    queryFn: ({ signal }) =>
+      runReplaceableQuery("search-groups", signal, (combinedSignal) =>
+        fetchSearchGroups(
+          { q, mode, sort, scope, account: search.account, limit: 50, groupBy },
           { signal: combinedSignal },
         ),
       ),
@@ -93,6 +116,7 @@ export function SearchResultsRoute() {
     sort?: SearchSort;
     scope?: "threads" | "messages" | "attachments" | "triage";
     verdict?: "ACTION" | "FYI" | "ROUTINE" | null;
+    groupBy?: SearchGroupBy;
   }) {
     void navigate({
       to: "/search",
@@ -102,6 +126,7 @@ export function SearchResultsRoute() {
         sort: next.sort ?? sort,
         scope: next.scope ?? scope,
         verdict: next.verdict === null ? undefined : (next.verdict ?? verdict),
+        groupBy: next.groupBy ?? groupBy,
         account: search.account,
       },
     });
@@ -255,6 +280,22 @@ export function SearchResultsRoute() {
               </Select>
             </div>
           ) : null}
+          <div className="w-36">
+            <Label>Group by</Label>
+            <Select
+              value={groupBy}
+              onValueChange={(value) => updateSearch({ groupBy: value as SearchGroupBy })}
+            >
+              <SelectTrigger className="mt-1 h-9" aria-label="Search group by">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="from">Sender</SelectItem>
+                <SelectItem value="list">List</SelectItem>
+                <SelectItem value="category">Category</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Button variant="outline" onClick={() => setSaveOpen(true)} disabled={!q.trim()}>
             <BookmarkPlus className="size-3" />
             Save
@@ -319,6 +360,46 @@ export function SearchResultsRoute() {
             </span>
             <span>{savedSearches.data?.searches.length ?? 0} saved searches</span>
           </div>
+          <div className="border-y border-border bg-surface px-4 py-3">
+            <div className="mb-2 flex items-center justify-between text-2xs uppercase tracking-wide text-muted-foreground">
+              <span>Grouped by {groupBy}</span>
+              <span>{groupedResults.data?.total ?? resultCount} messages</span>
+            </div>
+            {groupedResults.isError ? (
+              <p className="text-sm text-destructive">
+                Grouped view failed: {groupedResults.error.message}
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-2xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="py-1 pr-3 font-medium">Group</th>
+                      <th className="py-1 pr-3 text-right font-medium">Count</th>
+                      <th className="py-1 pr-3 text-right font-medium">Unread</th>
+                      <th className="py-1 pr-3 font-medium">Oldest</th>
+                      <th className="py-1 pr-3 font-medium">Newest</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(groupedResults.data?.groups ?? []).slice(0, 12).map((row) => (
+                      <tr key={row.key} className="border-t border-border/60">
+                        <td className="max-w-[24rem] truncate py-1.5 pr-3">{row.label}</td>
+                        <td className="py-1.5 pr-3 text-right tabular-nums">{row.count}</td>
+                        <td className="py-1.5 pr-3 text-right tabular-nums">{row.unread}</td>
+                        <td className="py-1.5 pr-3 text-muted-foreground">
+                          {formatGroupDate(row.oldest)}
+                        </td>
+                        <td className="py-1.5 pr-3 text-muted-foreground">
+                          {formatGroupDate(row.newest)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
           {/* Reuse the canonical mailbox list so search results match the
               inbox exactly — same rows, selection, bulk actions, quick
               actions, and keyboard navigation. */}
@@ -367,6 +448,11 @@ export function SearchResultsRoute() {
       </Dialog>
     </div>
   );
+}
+
+function formatGroupDate(timestamp?: number | null) {
+  if (!timestamp) return "—";
+  return new Date(timestamp * 1000).toLocaleDateString();
 }
 
 function SavedSearchManager({

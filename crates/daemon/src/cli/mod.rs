@@ -59,6 +59,9 @@ pub enum Command {
         mode: Option<SearchModeArg>,
         #[arg(long, value_enum)]
         sort: Option<SearchSortArg>,
+        /// Aggregate the query result set by a field instead of listing messages.
+        #[arg(long, value_enum)]
+        group_by: Option<SearchGroupByArg>,
         #[arg(long)]
         explain: bool,
         /// Classify matching messages with cached ACTION/FYI/ROUTINE verdicts.
@@ -91,6 +94,9 @@ pub enum Command {
         /// Print a bare integer, ignoring output format and tty detection.
         #[arg(long)]
         quiet: bool,
+        /// Aggregate the query result set by a field instead of printing one count.
+        #[arg(long, value_enum)]
+        group_by: Option<SearchGroupByArg>,
         #[arg(long, value_enum)]
         format: Option<OutputFormat>,
     },

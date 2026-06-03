@@ -257,6 +257,26 @@ impl App {
                 // the mailbox list out of sync with the preview pane.
                 self.jump_to_search(format!("from:{}", row.sender_email));
             }
+            AnalyticsView::SearchAggregation => {
+                let Some(row) = self
+                    .analytics
+                    .search_aggregation_rows
+                    .get(self.analytics.selected_index)
+                else {
+                    return;
+                };
+                let query = match self.analytics.search_aggregation_group_by {
+                    mxr_protocol::SearchAggregationGroupBy::From => format!("from:{}", row.key),
+                    mxr_protocol::SearchAggregationGroupBy::List => format!("list:{}", row.key),
+                    mxr_protocol::SearchAggregationGroupBy::Category => {
+                        format!("category:{}", row.key)
+                    }
+                };
+                self.jump_to_search(format!(
+                    "{} {}",
+                    self.analytics.search_aggregation_query, query
+                ));
+            }
             AnalyticsView::ResponseTime => {
                 // ResponseTime is a summary view; no per-row drill.
             }
@@ -422,6 +442,13 @@ impl App {
                 account_id: None,
                 limit: self.analytics.subscriptions_limit,
             }),
+            AnalyticsView::SearchAggregation => Some(mxr_protocol::Request::SearchAggregation {
+                query: self.analytics.search_aggregation_query.clone(),
+                account_id: None,
+                mode: Some(mxr_core::types::SearchMode::Lexical),
+                group_by: self.analytics.search_aggregation_group_by,
+                limit: Some(self.analytics.search_aggregation_limit),
+            }),
             AnalyticsView::Wrapped => {
                 let (since_unix, until_unix, label) =
                     wrapped_window_to_request(self.analytics.wrapped_window);
@@ -514,6 +541,15 @@ fn filter_modal_for_view(state: &AnalyticsState) -> AnalyticsFilterModalState {
                 state.subscriptions_rank.to_string(),
                 &["true", "false"],
             ),
+        ],
+        AnalyticsView::SearchAggregation => vec![
+            text_filter_field("query", state.search_aggregation_query.clone()),
+            select_filter_field(
+                "group_by",
+                state.search_aggregation_group_by.as_str().to_string(),
+                &["from", "list", "category"],
+            ),
+            text_filter_field("limit", state.search_aggregation_limit.to_string()),
         ],
         AnalyticsView::Wrapped => vec![
             select_filter_field(
@@ -627,6 +663,20 @@ fn apply_filter_modal_fields(
                 other => return Err(format!("invalid rank: {other}")),
             };
         }
+        AnalyticsView::SearchAggregation => {
+            let query = get(0).trim();
+            if query.is_empty() {
+                return Err("query cannot be empty".into());
+            }
+            state.search_aggregation_query = query.into();
+            state.search_aggregation_group_by = match get(1).trim().to_ascii_lowercase().as_str() {
+                "from" => mxr_protocol::SearchAggregationGroupBy::From,
+                "list" => mxr_protocol::SearchAggregationGroupBy::List,
+                "category" => mxr_protocol::SearchAggregationGroupBy::Category,
+                other => return Err(format!("invalid group_by: {other}")),
+            };
+            state.search_aggregation_limit = parse_u32(get(2), "limit")?;
+        }
         AnalyticsView::Wrapped => {
             let kind = get(0).trim().to_ascii_lowercase();
             let year = parse_i32(get(1), "year")?;
@@ -672,7 +722,8 @@ fn next_analytics_view(view: AnalyticsView) -> AnalyticsView {
         AnalyticsView::Contacts => AnalyticsView::CadenceDrift,
         AnalyticsView::CadenceDrift => AnalyticsView::ResponseTime,
         AnalyticsView::ResponseTime => AnalyticsView::Subscriptions,
-        AnalyticsView::Subscriptions => AnalyticsView::Wrapped,
+        AnalyticsView::Subscriptions => AnalyticsView::SearchAggregation,
+        AnalyticsView::SearchAggregation => AnalyticsView::Wrapped,
         AnalyticsView::Wrapped => AnalyticsView::Storage,
     }
 }
@@ -685,7 +736,8 @@ fn prev_analytics_view(view: AnalyticsView) -> AnalyticsView {
         AnalyticsView::CadenceDrift => AnalyticsView::Contacts,
         AnalyticsView::ResponseTime => AnalyticsView::CadenceDrift,
         AnalyticsView::Subscriptions => AnalyticsView::ResponseTime,
-        AnalyticsView::Wrapped => AnalyticsView::Subscriptions,
+        AnalyticsView::SearchAggregation => AnalyticsView::Subscriptions,
+        AnalyticsView::Wrapped => AnalyticsView::SearchAggregation,
     }
 }
 

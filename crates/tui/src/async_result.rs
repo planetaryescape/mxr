@@ -209,6 +209,7 @@ pub(crate) enum AnalyticsResultPayload {
     CadenceDrift(Vec<mxr_protocol::CadenceDriftRowData>),
     ResponseTime(mxr_core::types::ResponseTimeSummary),
     Subscriptions(Vec<mxr_core::types::SubscriptionSummary>),
+    SearchAggregation(Vec<mxr_protocol::SearchAggregationRow>),
     Wrapped(Box<mxr_core::types::WrappedSummary>),
     ContactsRefreshed { rows: u32 },
 }

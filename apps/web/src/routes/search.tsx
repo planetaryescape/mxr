@@ -10,6 +10,7 @@ const searchSchema = z.object({
   sort: z.enum(["relevance", "newest", "oldest", "verdict"]).optional(),
   scope: z.enum(["threads", "messages", "attachments", "triage"]).optional(),
   verdict: z.enum(["ACTION", "FYI", "ROUTINE"]).optional(),
+  groupBy: z.enum(["from", "list", "category"]).optional(),
 });
 
 export const Route = createFileRoute("/search")({

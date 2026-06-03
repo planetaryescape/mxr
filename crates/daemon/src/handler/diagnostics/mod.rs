@@ -13,11 +13,14 @@ use super::{
 };
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::types::{ExportFormat, SearchMode, SemanticProfile, SortOrder};
+use mxr_core::types::{
+    Envelope, ExportFormat, MessageFlags, SearchMode, SemanticProfile, SortOrder,
+};
 use mxr_protocol::IPC_PROTOCOL_VERSION;
 use mxr_protocol::{
     DaemonEvent, IpcMessage, IpcPayload, LlmConfigData, LlmOverrideData, LlmOverridesData,
-    ResponseData, SearchExplain, SearchExplainResult, SearchResultItem,
+    ResponseData, SearchAggregationGroupBy, SearchAggregationRow, SearchExplain,
+    SearchExplainResult, SearchResultItem,
 };
 use mxr_search::{SearchPage, SearchResult};
 use std::collections::HashMap;
@@ -132,7 +135,7 @@ pub(crate) async fn count(
     let results = execute_search(
         state,
         query,
-        10_000,
+        0,
         0,
         account_id,
         mode,
@@ -141,8 +144,193 @@ pub(crate) async fn count(
     )
     .await;
     Ok(ResponseData::Count {
-        count: results.map_err(|e| e.clone())?.results.len() as u32,
+        count: results.map_err(|e| e.clone())?.total as u32,
     })
+}
+
+pub(crate) async fn search_aggregation(
+    state: &AppState,
+    query: &str,
+    account_id: Option<&AccountId>,
+    mode: SearchMode,
+    group_by: SearchAggregationGroupBy,
+    limit: Option<u32>,
+) -> HandlerResult {
+    let first_page = execute_search(
+        state,
+        query,
+        0,
+        0,
+        account_id,
+        mode,
+        SortOrder::DateDesc,
+        false,
+    )
+    .await
+    .map_err(|e| e.clone())?;
+    if first_page.total == 0 {
+        return Ok(ResponseData::SearchAggregation {
+            query: query.to_string(),
+            group_by,
+            total: 0,
+            groups: Vec::new(),
+        });
+    }
+
+    let execution = execute_search(
+        state,
+        query,
+        first_page.total,
+        0,
+        account_id,
+        mode,
+        SortOrder::DateDesc,
+        false,
+    )
+    .await
+    .map_err(|e| e.clone())?;
+    let message_ids = execution
+        .results
+        .iter()
+        .filter_map(|result| result.message_id.parse().ok())
+        .collect::<Vec<MessageId>>();
+    let envelopes = state
+        .store
+        .list_envelopes_by_ids(&message_ids)
+        .await?
+        .into_iter()
+        .map(|envelope| (envelope.id.clone(), envelope))
+        .collect::<HashMap<_, _>>();
+
+    let mut buckets: HashMap<String, AggregationBucket> = HashMap::new();
+    for message_id in message_ids {
+        let Some(envelope) = envelopes.get(&message_id) else {
+            continue;
+        };
+        for (key, label) in group_keys_for_envelope(state, group_by, envelope).await? {
+            let bucket = buckets
+                .entry(key.clone())
+                .or_insert_with(|| AggregationBucket {
+                    key,
+                    label,
+                    count: 0,
+                    unread: 0,
+                    oldest: None,
+                    newest: None,
+                });
+            bucket.count += 1;
+            if !envelope.flags.contains(MessageFlags::READ) {
+                bucket.unread += 1;
+            }
+            let ts = envelope.date.timestamp();
+            bucket.oldest = Some(bucket.oldest.map_or(ts, |oldest| oldest.min(ts)));
+            bucket.newest = Some(bucket.newest.map_or(ts, |newest| newest.max(ts)));
+        }
+    }
+
+    let mut groups = buckets
+        .into_values()
+        .map(AggregationBucket::into_row)
+        .collect::<Vec<_>>();
+    groups.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| b.unread.cmp(&a.unread))
+            .then_with(|| b.newest.cmp(&a.newest))
+            .then_with(|| a.label.cmp(&b.label))
+    });
+    if let Some(limit) = limit {
+        groups.truncate(limit as usize);
+    }
+
+    Ok(ResponseData::SearchAggregation {
+        query: query.to_string(),
+        group_by,
+        total: execution.total as u32,
+        groups,
+    })
+}
+
+struct AggregationBucket {
+    key: String,
+    label: String,
+    count: u32,
+    unread: u32,
+    oldest: Option<i64>,
+    newest: Option<i64>,
+}
+
+impl AggregationBucket {
+    fn into_row(self) -> SearchAggregationRow {
+        SearchAggregationRow {
+            key: self.key,
+            label: self.label,
+            count: self.count,
+            unread: self.unread,
+            oldest: self.oldest,
+            newest: self.newest,
+        }
+    }
+}
+
+async fn group_keys_for_envelope(
+    state: &AppState,
+    group_by: SearchAggregationGroupBy,
+    envelope: &Envelope,
+) -> Result<Vec<(String, String)>, sqlx::Error> {
+    let groups = match group_by {
+        SearchAggregationGroupBy::From => {
+            let key = envelope.from.email.trim().to_ascii_lowercase();
+            if key.is_empty() {
+                vec![("(unknown)".into(), "(unknown)".into())]
+            } else {
+                let label = envelope
+                    .from
+                    .name
+                    .as_deref()
+                    .filter(|name| !name.trim().is_empty())
+                    .map(|name| format!("{} <{}>", name.trim(), key))
+                    .unwrap_or_else(|| key.clone());
+                vec![(key, label)]
+            }
+        }
+        SearchAggregationGroupBy::Category => {
+            let mut categories = envelope
+                .label_provider_ids
+                .iter()
+                .filter_map(|label| category_from_label(label))
+                .map(|category| (category.clone(), category))
+                .collect::<Vec<_>>();
+            if categories.is_empty() {
+                categories.push(("(none)".into(), "(none)".into()));
+            }
+            categories
+        }
+        SearchAggregationGroupBy::List => match state.store.get_body(&envelope.id).await? {
+            Some(body) => match body.metadata.list_id {
+                Some(list) => {
+                    let normalized = list.trim().to_ascii_lowercase();
+                    if normalized.is_empty() {
+                        vec![("(none)".into(), "(none)".into())]
+                    } else {
+                        vec![(normalized.clone(), normalized)]
+                    }
+                }
+                None => vec![("(none)".into(), "(none)".into())],
+            },
+            None => vec![("(none)".into(), "(none)".into())],
+        },
+    };
+    Ok(groups)
+}
+
+fn category_from_label(label: &str) -> Option<String> {
+    let label = label.trim();
+    let category = label
+        .strip_prefix("CATEGORY_")
+        .or_else(|| label.strip_prefix("category:"))?;
+    let category = category.trim().to_ascii_lowercase();
+    (!category.is_empty()).then_some(category)
 }
 
 /// Return just the count of matches for a query — used by surfaces
@@ -165,7 +353,7 @@ pub(crate) async fn count_search_matches(
         false,
     )
     .await?;
-    Ok(execution.results.len() as u32)
+    Ok(execution.total as u32)
 }
 
 pub(crate) async fn get_headers(state: &AppState, message_id: &MessageId) -> HandlerResult {

@@ -1,5 +1,6 @@
 ---
 source: crates/web/src/tests.rs
+assertion_line: 857
 expression: summary
 ---
 {
@@ -143,6 +144,8 @@ expression: summary
     "ScreenerDecisionData",
     "ScreenerDispositionData",
     "ScreenerQueueEntryData",
+    "SearchAggregationGroupBy",
+    "SearchAggregationRow",
     "SearchExplain",
     "SearchExplainResult",
     "SearchMode",

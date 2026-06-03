@@ -939,6 +939,19 @@ fn mutation_command_with_ids(
             message_ids,
             target_label: target_label.clone(),
         },
+        MutationCommand::Route {
+            to_label,
+            from_queue_label,
+            archive,
+            dry_run,
+            ..
+        } => MutationCommand::Route {
+            message_ids,
+            to_label: to_label.clone(),
+            from_queue_label: from_queue_label.clone(),
+            archive: *archive,
+            dry_run: *dry_run,
+        },
     }
 }
 
@@ -952,6 +965,7 @@ fn mutation_job_kind(cmd: &MutationCommand) -> &'static str {
         MutationCommand::SetRead { .. } => "mutation.set_read",
         MutationCommand::ModifyLabels { .. } => "mutation.modify_labels",
         MutationCommand::Move { .. } => "mutation.move",
+        MutationCommand::Route { .. } => "mutation.route",
     }
 }
 

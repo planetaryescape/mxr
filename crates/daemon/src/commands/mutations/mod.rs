@@ -307,6 +307,7 @@ pub async fn route(
             dry_run,
             format,
             destructive: false,
+            async_job: false,
         },
         |ids| {
             Request::mutation(MutationCommand::Route {

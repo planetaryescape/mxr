@@ -368,4 +368,19 @@ mod tests {
             "<p>Hello html</p>"
         );
     }
+
+    #[test]
+    fn reader_view_renders_html_only_body_as_text() {
+        let body = body(
+            None,
+            Some("<html><body><h1>Order confirmed</h1><p>Thanks for shopping.</p></body></html>"),
+        );
+
+        let rendered = render_body_view(&body, &BodyViewArg::Reader, Some("cat".into()));
+
+        assert!(rendered.contains("Order confirmed"));
+        assert!(rendered.contains("Thanks for shopping."));
+        assert!(!rendered.contains("<h1>"));
+        assert!(!rendered.contains("</"));
+    }
 }

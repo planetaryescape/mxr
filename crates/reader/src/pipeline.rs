@@ -48,6 +48,7 @@ pub struct ReaderOutput {
 pub fn clean(text: Option<&str>, html: Option<&str>, config: &ReaderConfig) -> ReaderOutput {
     // 1. Resolve to plain text
     let raw = match (text, html) {
+        (Some(t), _) if html::looks_like_html_document(t) => html::to_plain_text(t, config),
         (Some(t), _) => t.to_string(),
         (None, Some(h)) => html::to_plain_text(h, config),
         (None, None) => String::new(),

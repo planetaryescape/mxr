@@ -45,6 +45,51 @@ fn cached_attachment_only_body_resolves_fallback_ready_state() {
 }
 
 #[test]
+fn html_only_body_uses_reader_text_in_text_view() {
+    let mut app = App::new();
+    app.mailbox.html_view = false;
+    app.mailbox.envelopes = make_test_envelopes(1);
+    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+    let env = app.mailbox.envelopes[0].clone();
+
+    app.mailbox.body_cache.insert(
+        env.id.clone(),
+        MessageBody {
+            message_id: env.id.clone(),
+            text_plain: None,
+            text_html: Some(
+                "<html><body><h1>Order confirmed</h1><p>Delivery arrives tomorrow.</p></body></html>"
+                    .into(),
+            ),
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata {
+                text_html_source: Some(BodyPartSource::Exact),
+                ..Default::default()
+            },
+        },
+    );
+
+    app.apply(Action::OpenSelected);
+
+    assert!(matches!(
+        app.mailbox.body_view_state,
+        BodyViewState::Ready {
+            ref raw,
+            ref rendered,
+            source: BodySource::Html,
+            ref metadata,
+        } if raw.contains("<h1>Order confirmed</h1>")
+            && rendered.contains("Order confirmed")
+            && rendered.contains("Delivery arrives tomorrow.")
+            && !rendered.contains("<h1>")
+            && !rendered.contains("</")
+            && metadata.mode == crate::app::BodyViewMode::Text
+            && metadata.reader_applied
+    ));
+}
+
+#[test]
 fn body_fetch_error_resolves_error_not_loading() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(1);

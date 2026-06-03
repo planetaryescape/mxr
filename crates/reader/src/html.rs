@@ -1,5 +1,14 @@
 use crate::pipeline::ReaderConfig;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::process::Command;
+
+static COMMON_HTML_TAG_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)</?(?:html|head|body|title|meta|style|script|main|article|section|div|span|p|br|table|thead|tbody|tfoot|tr|td|th|a|img|h[1-6]|ul|ol|li|strong|b|em|i|center|font)\b[^>]*>",
+    )
+    .expect("common HTML tag regex should compile")
+});
 
 /// Convert HTML to plain text.
 /// Uses external command if configured, otherwise built-in html2text.
@@ -7,13 +16,60 @@ use std::process::Command;
 pub fn to_plain_text(html: &str, config: &ReaderConfig) -> String {
     if let Some(cmd) = &config.html_command {
         match run_external_command(cmd, html) {
+            Ok(text) if looks_like_unrendered_html(&text) => {
+                tracing::warn!(
+                    "External html_command returned raw HTML, falling back to built-in renderer"
+                );
+            }
             Ok(text) => return text,
             Err(e) => {
                 tracing::warn!("External html_command failed, falling back to built-in: {e}");
             }
         }
     }
+    builtin_to_plain_text(html)
+}
+
+fn builtin_to_plain_text(html: &str) -> String {
     html2text::from_read(html.as_bytes(), 80).unwrap_or_default()
+}
+
+pub(crate) fn looks_like_html_document(input: &str) -> bool {
+    let trimmed = input.trim_start_matches('\u{feff}').trim_start();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    let lower = trimmed
+        .chars()
+        .take(8192)
+        .collect::<String>()
+        .to_lowercase();
+    [
+        "<!doctype",
+        "<html",
+        "<head",
+        "<body",
+        "<table",
+        "<div",
+        "<article",
+        "<section",
+        "<main",
+        "<center",
+        "<p",
+        "<span",
+    ]
+    .iter()
+    .any(|prefix| lower.starts_with(prefix))
+        || ((lower.starts_with("<!--") || lower.contains("<html"))
+            && COMMON_HTML_TAG_RE.find_iter(&lower).take(2).count() >= 2)
+}
+
+fn looks_like_unrendered_html(input: &str) -> bool {
+    if looks_like_html_document(input) {
+        return true;
+    }
+    COMMON_HTML_TAG_RE.find_iter(input).take(3).count() >= 2
 }
 
 fn run_external_command(cmd: &str, input: &str) -> Result<String, HtmlRenderError> {
@@ -130,26 +186,28 @@ mod tests {
     }
 
     #[test]
-    fn external_command_cat_passes_through() {
-        // `cat` is universally available and passes stdin to stdout
+    fn external_command_cat_falls_back_when_raw_html_passes_through() {
+        // `cat` is universally available and passes stdin to stdout; reader mode
+        // must still avoid returning raw markup when a renderer is misconfigured.
         let config = ReaderConfig {
             html_command: Some("cat".into()),
             ..Default::default()
         };
         let result = to_plain_text("<p>Raw HTML</p>", &config);
-        // cat returns the raw HTML unchanged
-        assert!(result.contains("<p>Raw HTML</p>"));
+        assert!(result.contains("Raw HTML"));
+        assert!(!result.contains("<p>"));
     }
 
     #[test]
     fn external_command_with_args() {
-        // `head -c 5` takes first 5 bytes
+        // `wc -c` verifies arguments are passed through without returning HTML.
         let config = ReaderConfig {
-            html_command: Some("head -c 5".into()),
+            html_command: Some("wc -c".into()),
             ..Default::default()
         };
-        let result = to_plain_text("<p>Hello World</p>", &config);
-        assert_eq!(result, "<p>He");
+        let input = "<p>Hello World</p>";
+        let result = to_plain_text(input, &config);
+        assert_eq!(result.trim(), input.len().to_string());
     }
 
     #[test]

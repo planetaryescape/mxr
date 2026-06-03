@@ -218,19 +218,22 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             limit,
             mode,
             sort,
+            group_by,
             explain,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::search::run(query, account, format, limit, mode, sort, explain).await?;
+            commands::search::run(query, account, format, limit, mode, sort, group_by, explain)
+                .await?;
         }
         Some(Command::Count {
             query,
             account,
             mode,
+            group_by,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::count::run(query, account, mode, format).await?;
+            commands::count::run(query, account, mode, group_by, format).await?;
         }
         Some(Command::Cat {
             message_id,

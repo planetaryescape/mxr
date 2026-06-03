@@ -2,6 +2,7 @@ use super::{diagnostics_impl, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{ExportFormat, SearchMode, SortOrder};
+use mxr_protocol::SearchAggregationGroupBy;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn search(
@@ -24,6 +25,17 @@ pub(super) async fn count(
     mode: SearchMode,
 ) -> HandlerResult {
     diagnostics_impl::count(state, query, account_id, mode).await
+}
+
+pub(super) async fn search_aggregation(
+    state: &AppState,
+    query: &str,
+    account_id: Option<&AccountId>,
+    mode: SearchMode,
+    group_by: SearchAggregationGroupBy,
+    limit: Option<u32>,
+) -> HandlerResult {
+    diagnostics_impl::search_aggregation(state, query, account_id, mode, group_by, limit).await
 }
 
 pub(super) async fn get_headers(state: &AppState, message_id: &MessageId) -> HandlerResult {

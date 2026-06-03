@@ -845,6 +845,47 @@ async fn dispatch_run_saved_search_returns_results() {
 }
 
 #[tokio::test]
+async fn dispatch_search_aggregation_groups_query_by_sender() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    state
+        .sync_engine
+        .sync_account(state.default_provider().as_ref())
+        .await
+        .unwrap();
+
+    let msg = IpcMessage {
+        id: 202,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::SearchAggregation {
+            query: "in:inbox".into(),
+            account_id: None,
+            mode: Some(mxr_core::SearchMode::Lexical),
+            group_by: mxr_protocol::SearchAggregationGroupBy::From,
+            limit: Some(20),
+        }),
+    };
+    let resp = handle_request(&state, &msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data:
+                ResponseData::SearchAggregation {
+                    total,
+                    groups,
+                    group_by,
+                    ..
+                },
+        }) => {
+            assert_eq!(group_by, mxr_protocol::SearchAggregationGroupBy::From);
+            assert!(total > 0);
+            assert!(!groups.is_empty());
+            assert!(groups.iter().all(|row| row.count > 0));
+            assert!(groups.iter().all(|row| row.oldest <= row.newest));
+        }
+        other => panic!("Expected SearchAggregation, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn dispatch_status() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 

@@ -456,6 +456,16 @@ mod tests {
                 IpcCategory::CoreMail,
             ),
             (
+                Request::SearchAggregation {
+                    query: "inbox".into(),
+                    account_id: None,
+                    mode: Some(SearchMode::Lexical),
+                    group_by: SearchAggregationGroupBy::From,
+                    limit: Some(25),
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
                 Request::GetHeaders {
                     message_id: MessageId::new(),
                 },
@@ -640,6 +650,15 @@ mod tests {
                     has_more: false,
                     next_offset: None,
                     explain: None,
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
+                ResponseData::SearchAggregation {
+                    query: "inbox".into(),
+                    group_by: SearchAggregationGroupBy::From,
+                    total: 0,
+                    groups: Vec::new(),
                 },
                 IpcCategory::CoreMail,
             ),

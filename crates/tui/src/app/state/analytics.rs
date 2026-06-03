@@ -52,6 +52,11 @@ pub enum AnalyticsCacheKey {
     Subscriptions {
         limit: u32,
     },
+    SearchAggregation {
+        query: String,
+        group_by: mxr_protocol::SearchAggregationGroupBy,
+        limit: u32,
+    },
     Wrapped {
         window: WrappedWindow,
     },
@@ -65,6 +70,7 @@ pub enum AnalyticsView {
     CadenceDrift,
     ResponseTime,
     Subscriptions,
+    SearchAggregation,
     Wrapped,
 }
 
@@ -77,6 +83,7 @@ impl AnalyticsView {
             Self::CadenceDrift => "Cadence Drift",
             Self::ResponseTime => "Response Time",
             Self::Subscriptions => "Subscriptions",
+            Self::SearchAggregation => "Search Groups",
             Self::Wrapped => "Wrapped",
         }
     }
@@ -161,6 +168,11 @@ pub struct AnalyticsState {
     pub subscriptions_limit: u32,
     pub subscriptions_rank: bool,
 
+    pub search_aggregation_rows: Vec<mxr_protocol::SearchAggregationRow>,
+    pub search_aggregation_query: String,
+    pub search_aggregation_group_by: mxr_protocol::SearchAggregationGroupBy,
+    pub search_aggregation_limit: u32,
+
     pub wrapped: Option<WrappedSummary>,
     pub wrapped_window: WrappedWindow,
 
@@ -221,6 +233,11 @@ impl Default for AnalyticsState {
             subscriptions_limit: 200,
             subscriptions_rank: false,
 
+            search_aggregation_rows: Vec::new(),
+            search_aggregation_query: "is:unread label:inbox".into(),
+            search_aggregation_group_by: mxr_protocol::SearchAggregationGroupBy::From,
+            search_aggregation_limit: 100,
+
             wrapped: None,
             wrapped_window: WrappedWindow::Ytd,
 
@@ -275,6 +292,11 @@ impl AnalyticsState {
             AnalyticsView::Subscriptions => AnalyticsCacheKey::Subscriptions {
                 limit: self.subscriptions_limit,
             },
+            AnalyticsView::SearchAggregation => AnalyticsCacheKey::SearchAggregation {
+                query: self.search_aggregation_query.clone(),
+                group_by: self.search_aggregation_group_by,
+                limit: self.search_aggregation_limit,
+            },
             AnalyticsView::Wrapped => AnalyticsCacheKey::Wrapped {
                 window: self.wrapped_window,
             },
@@ -298,6 +320,7 @@ impl AnalyticsState {
             AnalyticsView::CadenceDrift => !self.cadence_drift_rows.is_empty(),
             AnalyticsView::ResponseTime => self.response_time.is_some(),
             AnalyticsView::Subscriptions => !self.subscriptions.is_empty(),
+            AnalyticsView::SearchAggregation => !self.search_aggregation_rows.is_empty(),
             AnalyticsView::Wrapped => self.wrapped.is_some(),
         }
     }

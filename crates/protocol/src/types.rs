@@ -784,6 +784,15 @@ pub enum Request {
         account_id: Option<AccountId>,
         mode: Option<SearchMode>,
     },
+    SearchAggregation {
+        query: String,
+        #[serde(default)]
+        account_id: Option<AccountId>,
+        mode: Option<SearchMode>,
+        group_by: SearchAggregationGroupBy,
+        #[serde(default)]
+        limit: Option<u32>,
+    },
     GetHeaders {
         message_id: MessageId,
     },
@@ -1323,6 +1332,7 @@ impl Request {
             | Self::GetSyncStatus { .. }
             | Self::SetFlags { .. }
             | Self::Count { .. }
+            | Self::SearchAggregation { .. }
             | Self::GetHeaders { .. }
             | Self::ListRuleHistory { .. }
             | Self::Mutation { .. }
@@ -1775,6 +1785,12 @@ pub enum ResponseData {
     Count {
         count: u32,
     },
+    SearchAggregation {
+        query: String,
+        group_by: SearchAggregationGroupBy,
+        total: u32,
+        groups: Vec<SearchAggregationRow>,
+    },
     Headers {
         headers: Vec<(String, String)>,
     },
@@ -2148,6 +2164,7 @@ impl ResponseData {
             | Self::SearchResults { .. }
             | Self::SyncStatus { .. }
             | Self::Count { .. }
+            | Self::SearchAggregation { .. }
             | Self::Headers { .. }
             | Self::ReplyContext { .. }
             | Self::ForwardContext { .. }
@@ -2249,6 +2266,38 @@ pub struct SearchResultItem {
     pub thread_id: ThreadId,
     pub score: f32,
     pub mode: SearchMode,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SearchAggregationGroupBy {
+    From,
+    List,
+    Category,
+}
+
+impl SearchAggregationGroupBy {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::From => "from",
+            Self::List => "list",
+            Self::Category => "category",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SearchAggregationRow {
+    pub key: String,
+    pub label: String,
+    pub count: u32,
+    pub unread: u32,
+    /// Oldest message timestamp in this group (Unix seconds).
+    pub oldest: Option<i64>,
+    /// Newest message timestamp in this group (Unix seconds).
+    pub newest: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

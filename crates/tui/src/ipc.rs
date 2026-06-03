@@ -212,6 +212,7 @@ pub(crate) fn request_supports_retry(request: &Request) -> bool {
             | Request::Search { .. }
             | Request::GetSyncStatus { .. }
             | Request::Count { .. }
+            | Request::SearchAggregation { .. }
             | Request::GetHeaders { .. }
             | Request::ListSavedSearches
             | Request::ListSavedSearchUnreadCounts

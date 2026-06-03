@@ -9,6 +9,7 @@ const searchSchema = z.object({
   account: z.string().optional(),
   sort: z.enum(["relevance", "newest", "oldest"]).optional(),
   scope: z.enum(["threads", "messages", "attachments"]).optional(),
+  groupBy: z.enum(["from", "list", "category"]).optional(),
 });
 
 export const Route = createFileRoute("/search")({

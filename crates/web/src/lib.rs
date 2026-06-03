@@ -458,6 +458,50 @@ async fn search(
     }
 }
 
+async fn search_groups(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<SearchQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, query.token.as_deref(), &state.config.auth_token)?;
+    let group_by = query
+        .group_by
+        .unwrap_or(mxr_protocol::SearchAggregationGroupBy::From);
+    if query.q.trim().is_empty() {
+        return Ok(Json(json!({
+            "query": query.q,
+            "group_by": group_by.as_str(),
+            "total": 0,
+            "groups": [],
+        })));
+    }
+    match ipc_request(
+        &state.config.socket_path,
+        Request::SearchAggregation {
+            query: query.q,
+            account_id: None,
+            mode: query.mode,
+            group_by,
+            limit: Some(query.limit),
+        },
+    )
+    .await?
+    {
+        ResponseData::SearchAggregation {
+            query,
+            group_by,
+            total,
+            groups,
+        } => Ok(Json(json!({
+            "query": query,
+            "group_by": group_by.as_str(),
+            "total": total,
+            "groups": groups,
+        }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
 async fn start_compose_session(
     State(state): State<AppState>,
     headers: HeaderMap,

@@ -14,6 +14,8 @@ export interface SearchParams {
   scope?: "threads" | "messages" | "attachments";
 }
 
+export type SearchGroupBy = "from" | "list" | "category";
+
 export interface SearchResponse {
   scope: string;
   sort: string;
@@ -23,6 +25,22 @@ export interface SearchResponse {
   next_offset?: number | null;
   groups: MailboxResponse["mailbox"]["groups"];
   explain?: unknown;
+}
+
+export interface SearchAggregationRow {
+  key: string;
+  label: string;
+  count: number;
+  unread: number;
+  oldest?: number | null;
+  newest?: number | null;
+}
+
+export interface SearchAggregationResponse {
+  query: string;
+  group_by: SearchGroupBy | string;
+  total: number;
+  groups: SearchAggregationRow[];
 }
 
 export interface SavedSearch {
@@ -40,6 +58,10 @@ export function searchKey(params: SearchParams) {
   return ["search", params] as const;
 }
 
+export function searchGroupsKey(params: SearchParams & { groupBy: SearchGroupBy }) {
+  return ["search-groups", params] as const;
+}
+
 export function fetchSearch(
   params: SearchParams,
   opts: { signal?: AbortSignal } = {},
@@ -53,6 +75,21 @@ export function fetchSearch(
   query.set("scope", params.scope ?? "threads");
   if (params.account) query.set("account", params.account);
   return apiFetch<SearchResponse>(`/api/v1/mail/search?${query.toString()}`, {
+    signal: opts.signal,
+  });
+}
+
+export function fetchSearchGroups(
+  params: SearchParams & { groupBy: SearchGroupBy },
+  opts: { signal?: AbortSignal } = {},
+): Promise<SearchAggregationResponse> {
+  const query = new URLSearchParams();
+  query.set("q", params.q);
+  query.set("mode", params.mode ?? "lexical");
+  query.set("group_by", params.groupBy);
+  query.set("limit", String(params.limit ?? 50));
+  if (params.account) query.set("account", params.account);
+  return apiFetch<SearchAggregationResponse>(`/api/v1/mail/search/groups?${query.toString()}`, {
     signal: opts.signal,
   });
 }

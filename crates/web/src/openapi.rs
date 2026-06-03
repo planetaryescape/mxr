@@ -26,7 +26,7 @@ use utoipa::{
         health, openapi_json, swagger_ui, events_ws, client_shell,
         admin_status, admin_diagnostics, admin_bug_report, admin_events,
         admin_logs, admin_ping, admin_shutdown,
-        mail_mailbox, mail_search, mail_thread, mail_thread_export,
+        mail_mailbox, mail_search, mail_search_groups, mail_thread, mail_thread_export,
         mail_drafts, mail_snoozed, mail_count, mail_sync_status, mail_sync,
         mutation_archive, mutation_trash, mutation_spam, mutation_star,
         mutation_read, mutation_read_archive, mutation_labels, mutation_move,
@@ -109,6 +109,7 @@ endpoint!(post admin_shutdown "/api/v1/admin/shutdown", "Request daemon shutdown
 
 endpoint!(get mail_mailbox "/api/v1/mail/mailbox", "Mailbox view");
 endpoint!(get mail_search "/api/v1/mail/search", "Run a mail search");
+endpoint!(get mail_search_groups "/api/v1/mail/search/groups", "Group a mail search result set");
 endpoint!(get mail_thread "/api/v1/mail/threads/{thread_id}", "Read a thread");
 endpoint!(get mail_thread_export "/api/v1/mail/threads/{thread_id}/export", "Export a thread");
 endpoint!(get mail_drafts "/api/v1/mail/drafts", "List drafts");

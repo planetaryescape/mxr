@@ -626,11 +626,11 @@ fn drill_down_contacts_asymmetry_jumps_to_search_with_from_query() {
 
 /// Slice 2 / B2.1: forward cycling visits all analytics views
 /// in the documented order (Storage → StaleThreads → Contacts →
-/// ResponseTime → Subscriptions → Wrapped → Storage). Pins the
-/// next() arm so reordering or dropping a variant breaks here
+/// ResponseTime → Subscriptions → SearchGroups → Wrapped → Storage).
+/// Pins the next() arm so reordering or dropping a variant breaks here
 /// instead of as a "Tab silently skips a tab" bug at runtime.
 #[test]
-fn next_analytics_view_cycles_all_six_variants_forward() {
+fn next_analytics_view_cycles_all_variants_forward() {
     use crate::action::Action;
     use crate::app::AnalyticsView;
     let mut app = App::new();
@@ -641,6 +641,7 @@ fn next_analytics_view_cycles_all_six_variants_forward() {
         AnalyticsView::CadenceDrift,
         AnalyticsView::ResponseTime,
         AnalyticsView::Subscriptions,
+        AnalyticsView::SearchAggregation,
         AnalyticsView::Wrapped,
         AnalyticsView::Storage,
     ];
@@ -653,13 +654,14 @@ fn next_analytics_view_cycles_all_six_variants_forward() {
 /// Slice 2 / B2.1 (reverse): backward cycling is the exact inverse
 /// of forward. Symmetric to the forward test.
 #[test]
-fn prev_analytics_view_cycles_all_six_variants_backward() {
+fn prev_analytics_view_cycles_all_variants_backward() {
     use crate::action::Action;
     use crate::app::AnalyticsView;
     let mut app = App::new();
     app.analytics.view = AnalyticsView::Storage;
     let order = [
         AnalyticsView::Wrapped,
+        AnalyticsView::SearchAggregation,
         AnalyticsView::Subscriptions,
         AnalyticsView::ResponseTime,
         AnalyticsView::CadenceDrift,
@@ -688,6 +690,12 @@ fn default_analytics_state_uses_documented_defaults() {
     assert!(!s.subscriptions_rank);
     assert_eq!(s.wrapped_window, WrappedWindow::Ytd);
     assert_eq!(s.subscriptions_limit, 200);
+    assert_eq!(s.search_aggregation_query, "is:unread label:inbox");
+    assert_eq!(
+        s.search_aggregation_group_by,
+        mxr_protocol::SearchAggregationGroupBy::From
+    );
+    assert_eq!(s.search_aggregation_limit, 100);
     assert_eq!(s.largest_limit, 50);
     assert_eq!(s.decay_threshold_days, 30);
     assert_eq!(s.decay_max_lookback_days, 1095);

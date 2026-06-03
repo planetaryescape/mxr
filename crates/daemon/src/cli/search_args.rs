@@ -13,6 +13,23 @@ pub enum SearchSortArg {
     Relevance,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum SearchGroupByArg {
+    From,
+    List,
+    Category,
+}
+
+impl From<SearchGroupByArg> for mxr_protocol::SearchAggregationGroupBy {
+    fn from(value: SearchGroupByArg) -> Self {
+        match value {
+            SearchGroupByArg::From => Self::From,
+            SearchGroupByArg::List => Self::List,
+            SearchGroupByArg::Category => Self::Category,
+        }
+    }
+}
+
 impl From<SearchModeArg> for mxr_core::SearchMode {
     fn from(value: SearchModeArg) -> Self {
         match value {

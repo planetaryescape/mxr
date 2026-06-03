@@ -917,6 +917,23 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             )
             .await
         }
+        Request::SearchAggregation {
+            query,
+            account_id,
+            mode,
+            group_by,
+            limit,
+        } => {
+            runtime::search_aggregation(
+                state,
+                query,
+                account_id.as_ref(),
+                mode.unwrap_or(state.config_snapshot().search.default_mode),
+                *group_by,
+                *limit,
+            )
+            .await
+        }
         Request::GetHeaders { message_id } => runtime::get_headers(state, message_id).await,
         Request::SyncNow { account_id } => runtime::sync_now(state, account_id.as_ref()).await,
         Request::ExportThread { thread_id, format } => {
@@ -1307,6 +1324,7 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::Search { .. }
             | Request::GetSyncStatus { .. }
             | Request::Count { .. }
+            | Request::SearchAggregation { .. }
             | Request::GetHeaders { .. }
             | Request::ListRuleHistory { .. }
             | Request::ListSnoozed
@@ -1387,6 +1405,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetSyncStatus { .. } => "get_sync_status",
         Request::SetFlags { .. } => "set_flags",
         Request::Count { .. } => "count",
+        Request::SearchAggregation { .. } => "search_aggregation",
         Request::GetHeaders { .. } => "get_headers",
         Request::ListSavedSearches => "list_saved_searches",
         Request::ListSavedSearchUnreadCounts => "list_saved_search_unread_counts",
@@ -1536,6 +1555,9 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::DeleteLabel { account_id, .. }
         | Request::CreateLabel { account_id, .. }
         | Request::RenameLabel { account_id, .. }
+        | Request::Search { account_id, .. }
+        | Request::Count { account_id, .. }
+        | Request::SearchAggregation { account_id, .. }
         | Request::ListSubscriptions { account_id, .. }
         | Request::ListInvites { account_id, .. }
         | Request::BackfillCalendarInvites { account_id }

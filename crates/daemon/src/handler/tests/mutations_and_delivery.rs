@@ -1509,6 +1509,83 @@ async fn dispatch_set_flags() {
 }
 
 #[tokio::test]
+async fn unsubscribe_purge_dry_run_reports_method_and_sender_count() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    state
+        .sync_engine
+        .sync_account(state.default_provider().as_ref())
+        .await
+        .unwrap();
+
+    let msg = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::UnsubscribePurge {
+            address: "noreply@rust-lang.org".into(),
+            account_id: None,
+            dry_run: true,
+            archive_on_no_method: false,
+        }),
+    };
+    let resp = handle_request(&state, &msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::UnsubscribePurgeResult { result },
+        }) => {
+            assert!(result.dry_run);
+            assert_eq!(result.message_count, 1);
+            assert!(matches!(
+                result.method,
+                mxr_core::types::UnsubscribeMethod::OneClick { .. }
+            ));
+            assert_eq!(result.archived_count, 0);
+            assert!(result.mutation_id.is_none());
+        }
+        other => panic!("Expected unsubscribe purge preview, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn unsubscribe_purge_without_method_does_not_archive_unless_allowed() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    state
+        .sync_engine
+        .sync_account(state.default_provider().as_ref())
+        .await
+        .unwrap();
+
+    let msg = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::UnsubscribePurge {
+            address: "alice@work.com".into(),
+            account_id: None,
+            dry_run: false,
+            archive_on_no_method: false,
+        }),
+    };
+    let resp = handle_request(&state, &msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::UnsubscribePurgeResult { result },
+        }) => {
+            assert_eq!(
+                result.status,
+                mxr_protocol::UnsubscribePurgeStatusData::NoMethod
+            );
+            assert_eq!(result.archived_count, 0);
+            assert!(result.mutation_id.is_none());
+            assert!(result
+                .error
+                .as_deref()
+                .unwrap_or_default()
+                .contains("No unsubscribe"));
+        }
+        other => panic!("Expected unsubscribe purge no-method result, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn dispatch_unsubscribe_no_method() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let id = sync_and_get_first_id(&state).await;

@@ -385,7 +385,8 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::AuthorizeAccountConfig { .. }
         | Request::StartAuthSession { .. }
         | Request::CompleteAuthSession { .. }
-        | Request::TestAccountConfig { .. } => IpcLane::Bulk,
+        | Request::TestAccountConfig { .. }
+        | Request::UnsubscribePurge { .. } => IpcLane::Bulk,
 
         // Full-store rebuilds and bulk indexing.
         Request::RebuildAnalytics
@@ -1255,6 +1256,21 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::DeleteDraft { draft_id } => mutations::delete_draft(state, draft_id).await,
         Request::SaveDraftToServer { draft } => mutations::save_draft_to_server(state, draft).await,
         Request::Unsubscribe { message_id } => mutations::unsubscribe(state, message_id).await,
+        Request::UnsubscribePurge {
+            address,
+            account_id,
+            dry_run,
+            archive_on_no_method,
+        } => {
+            mutations::unsubscribe_purge(
+                state,
+                address,
+                account_id.as_ref(),
+                *dry_run,
+                *archive_on_no_method,
+            )
+            .await
+        }
         Request::SetFlags { message_id, flags } => {
             mutations::set_flags(state, message_id, *flags).await
         }
@@ -1479,6 +1495,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetJob { .. } => "get_job",
         Request::UndoMutation { .. } => "undo_mutation",
         Request::Unsubscribe { .. } => "unsubscribe",
+        Request::UnsubscribePurge { .. } => "unsubscribe_purge",
         Request::Snooze { .. } => "snooze",
         Request::Unsnooze { .. } => "unsnooze",
         Request::ListSnoozed => "list_snoozed",

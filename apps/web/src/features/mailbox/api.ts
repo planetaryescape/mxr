@@ -197,6 +197,36 @@ export function unsubscribeFromSender(input: {
   });
 }
 
+export interface UnsubscribePurgeResponse {
+  ok: boolean;
+  result?: {
+    address: string;
+    status: string;
+    method?: unknown;
+    message_count: number;
+    archived_count: number;
+    mutation_id?: string | null;
+    error?: string | null;
+  };
+}
+
+export function unsubscribeAndClearSender(input: {
+  address: string;
+  accountId?: string;
+  dryRun?: boolean;
+  archiveOnNoMethod?: boolean;
+}): Promise<UnsubscribePurgeResponse> {
+  return apiFetch<UnsubscribePurgeResponse>("/api/v1/mail/actions/unsubscribe-purge", {
+    method: "POST",
+    body: {
+      address: input.address,
+      account_id: input.accountId,
+      dry_run: input.dryRun ?? false,
+      archive_on_no_method: input.archiveOnNoMethod ?? false,
+    },
+  });
+}
+
 export interface DraftAssistResponse {
   body?: string;
   draft?: string;

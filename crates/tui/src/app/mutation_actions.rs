@@ -352,6 +352,7 @@ impl App {
                 if let Some(pending) = self.modals.pending_unsubscribe_confirm.take() {
                     self.modals.pending_unsubscribe_action = Some(PendingUnsubscribeAction {
                         message_id: pending.message_id,
+                        account_id: pending.account_id,
                         archive_message_ids: Vec::new(),
                         sender_email: pending.sender_email,
                     });
@@ -362,6 +363,7 @@ impl App {
                 if let Some(pending) = self.modals.pending_unsubscribe_confirm.take() {
                     self.modals.pending_unsubscribe_action = Some(PendingUnsubscribeAction {
                         message_id: pending.message_id,
+                        account_id: pending.account_id,
                         archive_message_ids: pending.archive_message_ids,
                         sender_email: pending.sender_email,
                     });

@@ -188,6 +188,20 @@ pub fn map_request(
             Some(message_id.as_str().clone()),
             None,
         ),
+        Request::UnsubscribePurge {
+            address,
+            dry_run,
+            archive_on_no_method,
+            ..
+        } => (
+            "mail.unsubscribe_purge",
+            Some("sender"),
+            Some(address.clone()),
+            Some(serde_json::json!({
+                "dry_run": dry_run,
+                "archive_on_no_method": archive_on_no_method,
+            })),
+        ),
 
         // ----- reply-later flag -----
         Request::SetReplyLater { message_id, flag } => (

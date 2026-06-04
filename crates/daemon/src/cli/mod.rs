@@ -1959,10 +1959,14 @@ pub enum ActivityTierArg {
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
 pub enum ActivitySourceArg {
+    Human,
     Tui,
     Cli,
+    Script,
     Web,
     Daemon,
+    Agent,
+    Mcp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]

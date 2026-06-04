@@ -1433,6 +1433,136 @@ async fn read_only_safety_policy_blocks_mutations_but_allows_search() {
 }
 
 #[tokio::test]
+async fn agent_source_requires_configured_profile() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let msg = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::Agent,
+        payload: IpcPayload::Request(Request::Ping),
+    };
+
+    match handle_request(&state, &msg).await.payload {
+        IpcPayload::Response(Response::Error { message, .. }) => {
+            assert!(message.contains("configured profile"));
+        }
+        other => panic!("Expected configured-profile error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn agent_profile_enforces_account_allowlist_in_dispatch() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let account_id = state.default_account_id();
+    let _ = sync_and_get_first_id(&state).await;
+
+    let mut config = state.config_snapshot();
+    config.agent_surfaces.profiles.insert(
+        "agent".into(),
+        mxr_config::AgentProfileConfig {
+            safety_policy: mxr_config::SafetyPolicy::ReadOnly,
+            allowed_accounts: vec![account_id.as_str()],
+            allow_send: false,
+            allow_destructive: false,
+        },
+    );
+    state.set_config_for_test(config).await;
+
+    let scoped_search = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::Agent,
+        payload: IpcPayload::Request(Request::Search {
+            query: "hello".into(),
+            limit: 10,
+            offset: 0,
+            account_id: Some(account_id),
+            mode: None,
+            sort: None,
+            explain: false,
+        }),
+    };
+    match handle_request(&state, &scoped_search).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::SearchResults { .. },
+        }) => {}
+        other => panic!("Expected scoped agent search to succeed, got {other:?}"),
+    }
+
+    let unscoped_search = IpcMessage {
+        id: 2,
+        source: ::mxr_protocol::ClientKind::Agent,
+        payload: IpcPayload::Request(Request::Search {
+            query: "hello".into(),
+            limit: 10,
+            offset: 0,
+            account_id: None,
+            mode: None,
+            sort: None,
+            explain: false,
+        }),
+    };
+    match handle_request(&state, &unscoped_search).await.payload {
+        IpcPayload::Response(Response::Error { message, .. }) => {
+            assert!(message.contains("account allowlist"));
+        }
+        other => panic!("Expected account allowlist error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn mcp_profile_send_gate_blocks_provider_send() {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    let state = Arc::new(state);
+    let account_id = state.default_account_id();
+
+    let mut config = state.config_snapshot();
+    config.agent_surfaces.profiles.insert(
+        "mcp".into(),
+        mxr_config::AgentProfileConfig {
+            safety_policy: mxr_config::SafetyPolicy::Full,
+            allowed_accounts: vec![account_id.as_str()],
+            allow_send: false,
+            allow_destructive: true,
+        },
+    );
+    state.set_config_for_test(config).await;
+
+    let draft = mxr_core::types::Draft {
+        id: mxr_core::DraftId::new(),
+        account_id,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![mxr_core::types::Address {
+            name: None,
+            email: "test@example.com".to_string(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "MCP send gate".to_string(),
+        body_markdown: "Test body".to_string(),
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+
+    let msg = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::Mcp,
+        payload: IpcPayload::Request(Request::SendDraft {
+            draft,
+            override_safety_token: None,
+        }),
+    };
+    match handle_request(&state, &msg).await.payload {
+        IpcPayload::Response(Response::Error { message, .. }) => {
+            assert!(message.contains("send gate"));
+        }
+        other => panic!("Expected send gate error, got {other:?}"),
+    }
+    assert_eq!(fake.sent_drafts().len(), 0);
+}
+
+#[tokio::test]
 async fn dispatch_send_draft_preserves_keychain_repair_error() {
     let account_id = mxr_core::AccountId::new();
     let account = crate::test_fixtures::test_account_with_id(account_id.clone());

@@ -199,6 +199,34 @@ editor = "emacs"
     }
 
     #[test]
+    fn agent_surface_profiles_parse_with_safe_defaults() {
+        let toml_str = r#"
+[agents.profiles.agent]
+safety_policy = "draft-only"
+allowed_accounts = ["work"]
+allow_send = false
+allow_destructive = false
+
+[agents.profiles.mcp]
+safety_policy = "read-only"
+allowed_accounts = ["personal"]
+"#;
+
+        let config = load_config_from_str(toml_str).expect("parse agent profiles");
+        let agent = &config.agent_surfaces.profiles["agent"];
+        assert_eq!(agent.safety_policy, SafetyPolicy::DraftOnly);
+        assert_eq!(agent.allowed_accounts, vec!["work"]);
+        assert!(!agent.allow_send);
+        assert!(!agent.allow_destructive);
+
+        let mcp = &config.agent_surfaces.profiles["mcp"];
+        assert_eq!(mcp.safety_policy, SafetyPolicy::ReadOnly);
+        assert_eq!(mcp.allowed_accounts, vec!["personal"]);
+        assert!(!mcp.allow_send);
+        assert!(!mcp.allow_destructive);
+    }
+
+    #[test]
     fn env_override_safety_policy() {
         let tmp = TempDir::new().expect("create temp dir");
         let config_path = tmp.path().join("config.toml");

@@ -125,6 +125,29 @@ fn no_forbidden_keys_appear_in_recorder_outputs() {
 }
 
 #[test]
+fn activity_mapper_preserves_agent_and_mcp_sources() {
+    use mxr_protocol::{ClientKind, Request};
+
+    let req = Request::Search {
+        query: "from:alice".into(),
+        limit: 10,
+        offset: 0,
+        account_id: None,
+        mode: None,
+        sort: None,
+        explain: false,
+    };
+
+    for source in [ClientKind::Agent, ClientKind::Mcp] {
+        let entry = mxr::activity::mapper::map_request(&req, source, None, true).unwrap();
+        assert_eq!(entry.source, source);
+        let context = entry.context.unwrap_or_default();
+        let serialized = serde_json::to_string(&context).unwrap();
+        assert!(!serialized.to_ascii_lowercase().contains("token"));
+    }
+}
+
+#[test]
 fn only_activity_module_writes_to_user_activity_table() {
     let root = workspace_root();
     let allowed_path_substrings = [

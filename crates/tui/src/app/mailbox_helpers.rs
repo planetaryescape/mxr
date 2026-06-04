@@ -378,7 +378,6 @@ impl App {
         self.mailbox.viewed_thread = None;
         self.mailbox.viewed_thread_messages = self.optimistic_thread_messages(&env);
         self.mailbox.thread_summary = None;
-        self.mailbox.thread_summary_loading = None;
         self.mailbox.thread_summary_error = None;
         self.mailbox.thread_selected_index = self.default_thread_selected_index();
         self.mailbox.viewing_envelope = self.focused_thread_envelope().cloned();
@@ -597,13 +596,24 @@ impl App {
         self.mailbox.pending_thread_fetch = Some(thread_id);
     }
 
+    pub(crate) fn queue_thread_summary(&mut self, thread_id: mxr_core::ThreadId) -> bool {
+        if !self
+            .mailbox
+            .thread_summary_in_flight
+            .insert(thread_id.clone())
+        {
+            return false;
+        }
+        self.pending_summary_requests.push_back(thread_id);
+        true
+    }
+
     pub(crate) fn clear_message_view_state(&mut self) {
         self.mailbox.pending_preview_read = None;
         self.mailbox.viewing_envelope = None;
         self.mailbox.viewed_thread = None;
         self.mailbox.viewed_thread_messages.clear();
         self.mailbox.thread_summary = None;
-        self.mailbox.thread_summary_loading = None;
         self.mailbox.thread_summary_error = None;
         self.mailbox.thread_selected_index = 0;
         self.mailbox.pending_thread_fetch = None;
@@ -652,8 +662,11 @@ impl App {
             // The request goes on a dedicated IPC connection so it
             // doesn't block body fetches or other navigation.
             if !summary_was_cached
-                && self.mailbox.thread_summary_loading.as_ref() != Some(&thread_id)
-                && self.pending_summary_request.as_ref() != Some(&thread_id)
+                && !self.mailbox.thread_summary_in_flight.contains(&thread_id)
+                && !self
+                    .pending_summary_requests
+                    .iter()
+                    .any(|pending| pending == &thread_id)
             {
                 let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(250);
                 self.pending_summary_debounce = Some((thread_id.clone(), deadline));

@@ -137,9 +137,9 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
 }
 
 /// Apply a `ThreadSummaryLoaded` async result to the app. Always
-/// clears `thread_summary_loading` when it matches this thread — even
-/// when the user has navigated away — so a subsequent `y` press on
-/// the same thread isn't blocked by a stale "already running" guard.
+/// clears this thread's in-flight marker — even when the user has
+/// navigated away — so a subsequent `y` press on the same thread isn't
+/// blocked by a stale "already running" guard.
 /// Visible UI updates (summary preview, status, modal) only fire when
 /// the thread is still focused so a stale response can't overwrite
 /// the user's current view.
@@ -148,9 +148,7 @@ pub(super) fn apply_thread_summary_loaded(
     thread_id: mxr_core::ThreadId,
     result: Result<(String, String), MxrError>,
 ) {
-    if app.mailbox.thread_summary_loading.as_ref() == Some(&thread_id) {
-        app.mailbox.thread_summary_loading = None;
-    }
+    app.mailbox.thread_summary_in_flight.remove(&thread_id);
     let still_relevant = app
         .context_envelope()
         .is_some_and(|env| env.thread_id == thread_id);

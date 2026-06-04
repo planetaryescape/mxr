@@ -19,6 +19,7 @@ pub struct ImapCapabilities {
     pub list_status: bool,
     pub utf8_accept: bool,
     pub imap4rev2: bool,
+    pub x_gm_ext_1: bool,
 }
 
 /// A single fetched message from IMAP FETCH.
@@ -30,6 +31,9 @@ pub struct FetchedMessage {
     pub body: Option<Vec<u8>>,
     pub header: Option<Vec<u8>>,
     pub size: Option<u32>,
+    pub gmail_labels: Vec<String>,
+    pub gmail_msg_id: Option<u64>,
+    pub gmail_thread_id: Option<u64>,
 }
 
 /// Parsed IMAP ENVELOPE structure.
@@ -121,6 +125,9 @@ mod tests {
             body: None,
             header: None,
             size: Some(1024),
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
         };
         assert_eq!(msg.uid, 42);
         assert_eq!(msg.flags.len(), 2);

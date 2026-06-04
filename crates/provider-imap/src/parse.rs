@@ -144,6 +144,42 @@ pub fn imap_fetch_to_synced_message(
         );
 
     let (mut flags, keywords) = flags_and_keywords_from_imap(&msg.flags);
+    let mut label_provider_ids = if msg.gmail_labels.is_empty() {
+        vec![mailbox.to_string()]
+    } else {
+        let mut labels = Vec::new();
+        for label in &msg.gmail_labels {
+            if let Some(provider_id) = crate::folders::normalize_gmail_label_provider_id(label) {
+                if !labels.iter().any(|existing| existing == &provider_id) {
+                    labels.push(provider_id);
+                }
+            }
+        }
+        labels
+    };
+    if label_provider_ids.is_empty() {
+        label_provider_ids.push(mailbox.to_string());
+    }
+
+    if label_provider_ids
+        .iter()
+        .any(|label| label.eq_ignore_ascii_case("SENT"))
+    {
+        flags |= MessageFlags::SENT;
+    }
+    if label_provider_ids
+        .iter()
+        .any(|label| label.eq_ignore_ascii_case("TRASH"))
+    {
+        flags |= MessageFlags::TRASH;
+    }
+    if label_provider_ids
+        .iter()
+        .any(|label| label.eq_ignore_ascii_case("SPAM"))
+    {
+        flags |= MessageFlags::SPAM;
+    }
+
     let mailbox_lower = mailbox.to_lowercase();
     if mailbox_lower.contains("sent") {
         flags |= MessageFlags::SENT;
@@ -179,7 +215,7 @@ pub fn imap_fetch_to_synced_message(
         unsubscribe,
         link_count: 0,
         body_word_count: 0,
-        label_provider_ids: vec![mailbox.to_string()],
+        label_provider_ids,
         keywords,
     };
 
@@ -395,6 +431,9 @@ mod tests {
             body: Some(raw.clone()),
             header: None,
             size: Some(raw.len() as u32),
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
         };
 
         let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
@@ -427,6 +466,9 @@ mod tests {
                 body: Some(raw.clone()),
                 header: None,
                 size: Some(raw.len() as u32),
+                gmail_labels: vec![],
+                gmail_msg_id: None,
+                gmail_thread_id: None,
             };
 
             let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
@@ -462,6 +504,9 @@ mod tests {
             body: Some(raw.clone()),
             header: None,
             size: Some(raw.len() as u32),
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
         };
 
         let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
@@ -499,6 +544,9 @@ mod tests {
             body: Some(raw.clone()),
             header: None,
             size: Some(raw.len() as u32),
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
         };
 
         let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
@@ -528,6 +576,9 @@ mod tests {
             body: Some(raw.clone()),
             header: None,
             size: Some(raw.len() as u32),
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
         };
 
         let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
@@ -616,6 +667,9 @@ mod tests {
             body: Some(raw.to_vec()),
             header: None,
             size: Some(2048),
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
         };
 
         let sm = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
@@ -641,6 +695,9 @@ mod tests {
             body: Some(raw.to_vec()),
             header: None,
             size: None,
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
         };
 
         let first = imap_fetch_to_synced_message(&msg, "INBOX", &first_account).unwrap();
@@ -662,6 +719,9 @@ mod tests {
             body: Some(raw.to_vec()),
             header: None,
             size: None,
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
         };
 
         let sm = imap_fetch_to_synced_message(&msg, "Sent", &account_id).unwrap();
@@ -678,6 +738,9 @@ mod tests {
             body: None,
             header: None,
             size: None,
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
         };
 
         assert!(imap_fetch_to_synced_message(&msg, "INBOX", &account_id).is_err());

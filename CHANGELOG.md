@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.57](https://github.com/planetaryescape/mxr/compare/v0.5.56...v0.5.57) (2026-06-04)
+
+
+### Bug Fixes
+
+* track TUI summary requests per thread ([#55](https://github.com/planetaryescape/mxr/issues/55)) ([676fd40](https://github.com/planetaryescape/mxr/commit/676fd40598bf65928fae54e064fc922f9ac5b301))
+
 ## [0.5.56](https://github.com/planetaryescape/mxr/compare/v0.5.55...v0.5.56) (2026-06-03)
 
 

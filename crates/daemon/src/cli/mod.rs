@@ -28,6 +28,12 @@ pub struct Cli {
 }
 
 #[derive(Subcommand)]
+pub enum McpCommand {
+    /// Serve MCP over stdio
+    Serve,
+}
+
+#[derive(Subcommand)]
 pub enum Command {
     /// Start the daemon explicitly
     Daemon {
@@ -46,6 +52,11 @@ pub enum Command {
     },
     /// Restart the daemon with the current binary
     Restart,
+    /// Model Context Protocol server commands
+    Mcp {
+        #[command(subcommand)]
+        action: McpCommand,
+    },
     /// Search messages
     Search {
         query: Option<String>,

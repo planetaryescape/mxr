@@ -37,8 +37,7 @@ fn search_results<'a>(value: &'a Value, context: &str) -> &'a [Value] {
     value
         .as_array()
         .or_else(|| value.get("results").and_then(Value::as_array))
-        .map(Vec::as_slice)
-        .unwrap_or_else(|| panic!("{context}; got: {value:#}"))
+        .map_or_else(|| panic!("{context}; got: {value:#}"), Vec::as_slice)
 }
 
 #[test]

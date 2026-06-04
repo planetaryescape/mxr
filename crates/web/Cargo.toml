@@ -48,4 +48,4 @@ insta = { workspace = true, features = ["json"] }
 reqwest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
-tokio-tungstenite = "0.28"
+tokio-tungstenite = "0.29"

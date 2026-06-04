@@ -16,7 +16,7 @@ pub mod types;
 
 use async_trait::async_trait;
 use config::ImapConfig;
-use cursor::ImapCursor;
+use cursor::{ImapBackfillCursor, ImapCursor};
 use futures::stream::{self, StreamExt, TryStreamExt};
 use mxr_core::id::AccountId;
 use mxr_core::provider::MailSyncProvider;
@@ -29,6 +29,7 @@ use tracing::{debug, warn};
 use crate::types::{FolderInfo, ImapCapabilities};
 
 const IMAP_FOLDER_SYNC_CONCURRENCY_LIMIT: usize = 4;
+const GMAIL_ALL_MAIL_SYNC_PAGE_UID_SPAN: u32 = 500;
 
 struct InitialFolderSyncResult {
     folder_index: usize,
@@ -96,21 +97,7 @@ impl ImapProvider {
         // envelope owned by this crate. The legacy scalar fallback
         // (uid_validity/uid_next reflecting INBOX) is now only relevant
         // when decoding pre-Phase-B persisted cursors — see cursor.rs.
-        ImapCursor::new(
-            mailboxes,
-            Some(ImapCapabilityState {
-                move_ext: capabilities.move_ext,
-                uidplus: capabilities.uidplus,
-                idle: capabilities.idle,
-                condstore: capabilities.condstore,
-                qresync: capabilities.qresync,
-                namespace: capabilities.namespace,
-                list_status: capabilities.list_status,
-                utf8_accept: capabilities.utf8_accept,
-                imap4rev2: capabilities.imap4rev2,
-            }),
-        )
-        .encode()
+        ImapCursor::new(mailboxes, Some(Self::capability_state(capabilities))).encode()
     }
 
     fn syncable_folders(folders: &[FolderInfo]) -> Vec<FolderInfo> {
@@ -128,6 +115,46 @@ impl ImapProvider {
             }]
         } else {
             folders
+        }
+    }
+
+    fn gmail_all_mail_folder(folders: &[FolderInfo]) -> Option<FolderInfo> {
+        folders
+            .iter()
+            .find(|folder| folder.special_use.as_deref() == Some("\\All"))
+            .or_else(|| {
+                folders.iter().find(|folder| {
+                    let name = folder.name.to_ascii_lowercase();
+                    name.ends_with("/all mail")
+                        || name.ends_with("/all mails")
+                        || name == "all mail"
+                        || name == "[gmail]/all mail"
+                        || name == "[google mail]/all mail"
+                })
+            })
+            .cloned()
+    }
+
+    fn gmail_fetch_query() -> &'static str {
+        "(FLAGS X-GM-LABELS X-GM-MSGID X-GM-THRID BODY.PEEK[] RFC822.SIZE)"
+    }
+
+    fn imap_fetch_query() -> &'static str {
+        "(FLAGS BODY.PEEK[] RFC822.SIZE)"
+    }
+
+    fn capability_state(capabilities: &ImapCapabilities) -> ImapCapabilityState {
+        ImapCapabilityState {
+            move_ext: capabilities.move_ext,
+            uidplus: capabilities.uidplus,
+            idle: capabilities.idle,
+            condstore: capabilities.condstore,
+            qresync: capabilities.qresync,
+            namespace: capabilities.namespace,
+            list_status: capabilities.list_status,
+            utf8_accept: capabilities.utf8_accept,
+            imap4rev2: capabilities.imap4rev2,
+            x_gm_ext_1: capabilities.x_gm_ext_1,
         }
     }
 
@@ -342,6 +369,15 @@ impl ImapProvider {
             .list_folders()
             .await
             .map_err(mxr_core::error::MxrError::from)?;
+        if capabilities.x_gm_ext_1 {
+            if let Some(all_mail) = Self::gmail_all_mail_folder(&folders) {
+                let _ = session.logout().await;
+                return self
+                    .initial_gmail_all_mail_sync(all_mail, capabilities)
+                    .await;
+            }
+            warn!("Gmail IMAP extension advertised but no All Mail folder was discovered; falling back to folder sync");
+        }
         let sync_folders = Self::syncable_folders(&folders);
         let _ = session.logout().await;
 
@@ -407,7 +443,7 @@ impl ImapProvider {
         let mut synced = Vec::new();
         if mailbox_info.exists > 0 {
             let fetched = session
-                .uid_fetch("1:*", "(FLAGS BODY.PEEK[] RFC822.SIZE)")
+                .uid_fetch("1:*", Self::imap_fetch_query())
                 .await
                 .map_err(mxr_core::error::MxrError::from)?;
 
@@ -429,6 +465,151 @@ impl ImapProvider {
             folder_index,
             mailbox,
             synced,
+        })
+    }
+
+    async fn initial_gmail_all_mail_sync(
+        &self,
+        all_mail: FolderInfo,
+        capabilities: ImapCapabilities,
+    ) -> mxr_core::provider::Result<SyncBatch> {
+        debug!(
+            mailbox = %all_mail.name,
+            "Starting Gmail-over-IMAP initial sync from All Mail"
+        );
+        self.gmail_all_mail_page(all_mail, capabilities, 1, None)
+            .await
+    }
+
+    async fn continue_gmail_backfill(
+        &self,
+        backfill: &ImapBackfillCursor,
+    ) -> mxr_core::provider::Result<SyncBatch> {
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let capabilities = session
+            .capabilities()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        Self::enable_session(&mut *session, &capabilities).await?;
+        let mailbox_info = session
+            .select(&backfill.mailbox.mailbox)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let _ = session.logout().await;
+
+        let end_uid = mailbox_info
+            .uid_next
+            .saturating_sub(1)
+            .min(backfill.end_uid);
+        let start_uid = if mailbox_info.uid_validity == backfill.mailbox.uid_validity {
+            backfill.next_uid
+        } else {
+            warn!(
+                mailbox = %backfill.mailbox.mailbox,
+                old = backfill.mailbox.uid_validity,
+                new = mailbox_info.uid_validity,
+                "UIDVALIDITY changed during Gmail All Mail backfill; restarting backfill"
+            );
+            1
+        };
+
+        self.gmail_all_mail_page(
+            FolderInfo {
+                name: backfill.mailbox.mailbox.clone(),
+                special_use: Some("\\All".to_string()),
+                ..Default::default()
+            },
+            capabilities,
+            start_uid,
+            Some(end_uid),
+        )
+        .await
+    }
+
+    async fn gmail_all_mail_page(
+        &self,
+        all_mail: FolderInfo,
+        capabilities: ImapCapabilities,
+        start_uid: u32,
+        fixed_end_uid: Option<u32>,
+    ) -> mxr_core::provider::Result<SyncBatch> {
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        Self::enable_session(&mut *session, &capabilities).await?;
+
+        let mailbox_info = session
+            .select(&all_mail.name)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let mailbox = ImapMailboxCursor {
+            mailbox: all_mail.name.clone(),
+            uid_validity: mailbox_info.uid_validity,
+            uid_next: mailbox_info.uid_next,
+            highest_modseq: mailbox_info.highest_modseq,
+        };
+
+        let end_uid = fixed_end_uid.unwrap_or_else(|| mailbox_info.uid_next.saturating_sub(1));
+        let mut synced = Vec::new();
+        let page_end = start_uid
+            .saturating_add(GMAIL_ALL_MAIL_SYNC_PAGE_UID_SPAN - 1)
+            .min(end_uid);
+
+        if start_uid <= page_end && mailbox_info.exists > 0 {
+            let uid_set = format!("{start_uid}:{page_end}");
+            let fetched = session
+                .uid_fetch(&uid_set, Self::gmail_fetch_query())
+                .await
+                .map_err(mxr_core::error::MxrError::from)?;
+
+            for msg in &fetched {
+                match parse::imap_fetch_to_synced_message(msg, &all_mail.name, &self.account_id) {
+                    Ok(sm) => synced.push(sm),
+                    Err(e) => warn!(
+                        mailbox = %all_mail.name,
+                        uid = msg.uid,
+                        error = %e,
+                        "Failed to parse Gmail IMAP message"
+                    ),
+                }
+            }
+        }
+
+        let _ = session.logout().await;
+        let has_more = page_end < end_uid;
+        let next_cursor = if has_more {
+            ImapCursor::new_backfill(
+                mailbox,
+                page_end.saturating_add(1),
+                end_uid,
+                true,
+                Some(Self::capability_state(&capabilities)),
+            )
+            .encode()
+        } else {
+            let mut completed_mailbox = mailbox;
+            if fixed_end_uid.is_some() {
+                // Do not advance beyond the frozen backfill horizon. Messages
+                // that arrive while an initial All Mail backfill is paginating
+                // must be picked up by the next delta run instead of skipped.
+                completed_mailbox.uid_next = end_uid.saturating_add(1);
+            }
+            Self::build_imap_cursor(vec![completed_mailbox], &capabilities)
+        };
+
+        Ok(SyncBatch {
+            upserted: synced,
+            deleted_provider_ids: vec![],
+            label_changes: vec![],
+            next_cursor,
+            has_more,
+            threads_changed: vec![],
         })
     }
 
@@ -459,6 +640,15 @@ impl ImapProvider {
             .list_folders()
             .await
             .map_err(mxr_core::error::MxrError::from)?;
+        if capabilities.x_gm_ext_1 {
+            if let Some(all_mail) = Self::gmail_all_mail_folder(&folders) {
+                let _ = session.logout().await;
+                return self
+                    .delta_gmail_all_mail_sync(old_mailboxes, all_mail, capabilities)
+                    .await;
+            }
+            warn!("Gmail IMAP extension advertised but no All Mail folder was discovered; falling back to folder sync");
+        }
         let sync_folders = Self::syncable_folders(&folders);
         let _ = session.logout().await;
         let old_by_mailbox: HashMap<&str, &ImapMailboxCursor> = old_mailboxes
@@ -499,6 +689,92 @@ impl ImapProvider {
             deleted_provider_ids,
             label_changes: vec![],
             next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
+            has_more: false,
+            threads_changed: vec![],
+        })
+    }
+
+    async fn delta_gmail_all_mail_sync(
+        &self,
+        old_mailboxes: &[ImapMailboxCursor],
+        all_mail: FolderInfo,
+        capabilities: ImapCapabilities,
+    ) -> mxr_core::provider::Result<SyncBatch> {
+        let Some(old_mailbox) = old_mailboxes
+            .iter()
+            .find(|mailbox| mailbox.mailbox == all_mail.name)
+        else {
+            warn!(
+                mailbox = %all_mail.name,
+                old_mailbox_count = old_mailboxes.len(),
+                "No existing Gmail All Mail cursor found; starting canonical All Mail backfill"
+            );
+            return self
+                .initial_gmail_all_mail_sync(all_mail, capabilities)
+                .await;
+        };
+
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        Self::enable_session(&mut *session, &capabilities).await?;
+
+        let mailbox_info = session
+            .select(&all_mail.name)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let mailbox = ImapMailboxCursor {
+            mailbox: all_mail.name.clone(),
+            uid_validity: mailbox_info.uid_validity,
+            uid_next: mailbox_info.uid_next,
+            highest_modseq: mailbox_info.highest_modseq,
+        };
+
+        let query = if mailbox_info.uid_validity != old_mailbox.uid_validity {
+            warn!(
+                mailbox = %all_mail.name,
+                old = old_mailbox.uid_validity,
+                new = mailbox_info.uid_validity,
+                "UIDVALIDITY changed, resyncing Gmail All Mail from scratch"
+            );
+            (mailbox_info.exists > 0).then(|| "1:*".to_string())
+        } else if mailbox_info.uid_next > old_mailbox.uid_next {
+            Some(format!("{}:*", old_mailbox.uid_next))
+        } else {
+            None
+        };
+
+        let mut synced = Vec::new();
+        if let Some(uid_set) = query {
+            let min_uid = if mailbox_info.uid_validity == old_mailbox.uid_validity {
+                old_mailbox.uid_next
+            } else {
+                1
+            };
+            let mut seen_uids = HashSet::new();
+            Self::collect_synced_messages(
+                &mut *session,
+                CollectSyncedMessages {
+                    mailbox: &all_mail.name,
+                    uid_set: &uid_set,
+                    query: Self::gmail_fetch_query(),
+                    min_uid,
+                    seen_uids: &mut seen_uids,
+                    account_id: &self.account_id,
+                    synced: &mut synced,
+                },
+            )
+            .await?;
+        }
+
+        let _ = session.logout().await;
+        Ok(SyncBatch {
+            upserted: synced,
+            deleted_provider_ids: vec![],
+            label_changes: vec![],
+            next_cursor: Self::build_imap_cursor(vec![mailbox], &capabilities),
             has_more: false,
             threads_changed: vec![],
         })
@@ -560,7 +836,7 @@ impl ImapProvider {
                                     CollectSyncedMessages {
                                         mailbox: &folder.name,
                                         uid_set: &uid_set,
-                                        query: "(FLAGS BODY.PEEK[] RFC822.SIZE)",
+                                        query: Self::imap_fetch_query(),
                                         min_uid: 1,
                                         seen_uids: &mut seen_uids,
                                         account_id: &self.account_id,
@@ -697,7 +973,7 @@ impl ImapProvider {
                 CollectSyncedMessages {
                     mailbox: &folder.name,
                     uid_set: &query,
-                    query: "(FLAGS BODY.PEEK[] RFC822.SIZE)",
+                    query: Self::imap_fetch_query(),
                     min_uid,
                     seen_uids: &mut seen_uids,
                     account_id: &self.account_id,
@@ -792,6 +1068,10 @@ impl MailSyncProvider for ImapProvider {
             .await
             .map_err(mxr_core::error::MxrError::from)?;
 
+        let capabilities = session
+            .capabilities()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
         let folder_list = session
             .list_folders()
             .await
@@ -802,11 +1082,19 @@ impl MailSyncProvider for ImapProvider {
         Ok(folder_list
             .iter()
             .map(|f| {
-                let mut label = folders::map_folder_to_label(
-                    &f.name,
-                    f.special_use.as_deref(),
-                    &self.account_id,
-                );
+                let mut label = if capabilities.x_gm_ext_1 {
+                    folders::map_gmail_folder_to_label(
+                        &f.name,
+                        f.special_use.as_deref(),
+                        &self.account_id,
+                    )
+                } else {
+                    folders::map_folder_to_label(
+                        &f.name,
+                        f.special_use.as_deref(),
+                        &self.account_id,
+                    )
+                };
                 label.unread_count = f.unread_count.unwrap_or(0);
                 label.total_count = f.total_count.unwrap_or(0);
                 label
@@ -818,6 +1106,13 @@ impl MailSyncProvider for ImapProvider {
         match ImapCursor::decode(cursor)? {
             None => self.initial_sync().await,
             Some(decoded) => {
+                if let Some(backfill) = decoded
+                    .backfill()
+                    .filter(|backfill| backfill.gmail_all_mail)
+                    .cloned()
+                {
+                    return self.continue_gmail_backfill(&backfill).await;
+                }
                 let mailboxes = decoded.into_mailboxes();
                 self.delta_sync(&mailboxes).await
             }
@@ -843,7 +1138,7 @@ impl MailSyncProvider for ImapProvider {
             .map_err(mxr_core::error::MxrError::from)?;
 
         let fetched = session
-            .uid_fetch(&uid.to_string(), "(FLAGS BODY.PEEK[] RFC822.SIZE)")
+            .uid_fetch(&uid.to_string(), Self::imap_fetch_query())
             .await
             .map_err(mxr_core::error::MxrError::from)?;
 
@@ -1314,6 +1609,9 @@ mod tests {
             body: Some(raw.into_bytes()),
             header: None,
             size: Some(1024),
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
         }
     }
 
@@ -1583,6 +1881,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gmail_sync_labels_use_x_gm_label_provider_ids() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 1, 0),
+            vec![],
+            vec![
+                folder_info("INBOX", Some("\\Inbox")),
+                folder_info("Sent Mail", Some("\\Sent")),
+                folder_info("Starred", Some("\\Flagged")),
+                folder_info("Work", None),
+            ],
+        )
+        .with_capabilities(ImapCapabilities {
+            x_gm_ext_1: true,
+            ..Default::default()
+        });
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let labels = provider.sync_labels().await.unwrap();
+        assert_eq!(labels[0].provider_id, "INBOX");
+        assert_eq!(labels[1].provider_id, "SENT");
+        assert_eq!(labels[2].provider_id, "STARRED");
+        assert_eq!(labels[3].provider_id, "Work");
+    }
+
+    #[tokio::test]
     async fn sync_labels_surfaces_folder_counts() {
         let mut inbox = folder_info("INBOX", Some("\\Inbox"));
         inbox.unread_count = Some(7);
@@ -1674,6 +1999,92 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gmail_initial_sync_uses_all_mail_and_x_gm_labels() {
+        let mut inbox_copy = make_fetched_message(1, "Inbox copy", "alice@example.com");
+        inbox_copy.gmail_labels = vec!["\\Inbox".into(), "Work".into(), "\\Starred".into()];
+        let mut archived_only = make_fetched_message(2, "Archived only", "bob@example.com");
+        archived_only.gmail_labels = vec!["Work".into()];
+
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 3, 2),
+            vec![],
+            vec![
+                folder_info("INBOX", Some("\\Inbox")),
+                folder_info("Sent Mail", Some("\\Sent")),
+                folder_info("All Mail", Some("\\All")),
+            ],
+        )
+        .with_capabilities(ImapCapabilities {
+            x_gm_ext_1: true,
+            ..Default::default()
+        })
+        .with_mailbox_fetches("All Mail", vec![vec![inbox_copy, archived_only]]);
+        let log = factory.log.clone();
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+
+        assert_eq!(batch.upserted.len(), 2);
+        assert_eq!(batch.upserted[0].envelope.provider_id, "All Mail:1");
+        assert_eq!(
+            batch.upserted[0].envelope.label_provider_ids,
+            vec!["INBOX", "Work", "STARRED"]
+        );
+        assert_eq!(batch.upserted[1].envelope.provider_id, "All Mail:2");
+        assert_eq!(batch.upserted[1].envelope.label_provider_ids, vec!["Work"]);
+        assert!(!batch.has_more);
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands.contains(&"SELECT All Mail".to_string()));
+        assert!(commands
+            .iter()
+            .any(|command| command.contains("X-GM-LABELS")));
+        assert!(!commands.contains(&"SELECT INBOX".to_string()));
+        assert!(!commands.contains(&"SELECT Sent Mail".to_string()));
+    }
+
+    #[tokio::test]
+    async fn gmail_initial_sync_is_paginated_and_resumable() {
+        let first_page = make_fetched_message(1, "First page", "alice@example.com");
+        let second_page = make_fetched_message(501, "Second page", "bob@example.com");
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 502, 501),
+            vec![],
+            vec![folder_info("All Mail", Some("\\All"))],
+        )
+        .with_capabilities(ImapCapabilities {
+            x_gm_ext_1: true,
+            ..Default::default()
+        })
+        .with_mailbox_fetches("All Mail", vec![vec![first_page], vec![second_page]]);
+        let log = factory.log.clone();
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let first = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+        assert_eq!(first.upserted.len(), 1);
+        assert!(first.has_more);
+
+        let second = provider.sync_messages(&first.next_cursor).await.unwrap();
+        assert_eq!(second.upserted.len(), 1);
+        assert_eq!(second.upserted[0].envelope.provider_id, "All Mail:501");
+        assert!(!second.has_more);
+        let mailboxes = decoded_imap_mailboxes(&second.next_cursor);
+        assert_eq!(mailboxes[0].uid_next, 502);
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands.iter().any(|command| {
+            command.contains("UID FETCH 1:500") && command.contains("X-GM-LABELS")
+        }));
+        assert!(commands.iter().any(|command| {
+            command.contains("UID FETCH 501:501") && command.contains("X-GM-LABELS")
+        }));
+    }
+
+    #[tokio::test]
     async fn initial_sync_overlaps_multi_folder_fetches() {
         let overlap = Arc::new(FetchOverlapState::default());
         let factory = ConcurrentInitialSyncFactory {
@@ -1719,6 +2130,52 @@ mod tests {
     }
 
     // -- sync_messages: delta -------------------------------------------------
+
+    #[tokio::test]
+    async fn gmail_delta_without_all_mail_cursor_starts_canonical_backfill() {
+        let mut archived_only = make_fetched_message(50, "Archived upgrade", "alice@example.com");
+        archived_only.gmail_labels = vec!["Projects".into()];
+
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 101, 100),
+            vec![],
+            vec![
+                folder_info("INBOX", Some("\\Inbox")),
+                folder_info("All Mail", Some("\\All")),
+            ],
+        )
+        .with_capabilities(ImapCapabilities {
+            x_gm_ext_1: true,
+            ..Default::default()
+        })
+        .with_mailbox_fetches("All Mail", vec![vec![archived_only]]);
+        let log = factory.log.clone();
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let batch = provider
+            .sync_messages(&imap_cursor_mailboxes(vec![ImapMailboxCursor {
+                mailbox: "INBOX".to_string(),
+                uid_validity: 1,
+                uid_next: 100,
+                highest_modseq: None,
+            }]))
+            .await
+            .unwrap();
+
+        assert_eq!(batch.upserted.len(), 1);
+        assert_eq!(batch.upserted[0].envelope.provider_id, "All Mail:50");
+        assert_eq!(batch.upserted[0].envelope.label_provider_ids, vec!["Projects"]);
+        assert!(!batch.has_more);
+        assert_eq!(decoded_imap_mailboxes(&batch.next_cursor)[0].mailbox, "All Mail");
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands.iter().any(|command| {
+            command.contains("UID FETCH 1:100") && command.contains("X-GM-LABELS")
+        }));
+        assert!(!commands.iter().any(|command| command.contains("UID FETCH 100:*")));
+    }
 
     #[tokio::test]
     async fn delta_sync_fetches_new_messages() {
@@ -1850,6 +2307,9 @@ mod tests {
             body: Some(b"From: alice@example.com\r\nSubject: Old message\r\nDate: Mon, 1 Jan 2024 12:00:00 +0000\r\nContent-Type: text/plain\r\n\r\nOld body".to_vec()),
             header: None,
             size: None,
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
         };
 
         // uid_next > old_uid_next so delta path is taken, but the fetch returns only old UIDs
@@ -2307,6 +2767,9 @@ mod tests {
                 body: Some(raw.as_bytes().to_vec()),
                 header: None,
                 size: None,
+                gmail_labels: vec![],
+                gmail_msg_id: None,
+                gmail_thread_id: None,
             }]],
             vec![],
         );

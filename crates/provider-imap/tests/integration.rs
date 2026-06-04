@@ -165,6 +165,9 @@ fn imap_fetch_to_synced_message_end_to_end() {
         body: Some(raw.as_bytes().to_vec()),
         header: None,
         size: Some(4096),
+        gmail_labels: vec![],
+        gmail_msg_id: None,
+        gmail_thread_id: None,
     };
 
     let sm = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();

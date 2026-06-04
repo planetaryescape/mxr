@@ -1799,6 +1799,8 @@ pub struct ImapCapabilityState {
     pub list_status: bool,
     pub utf8_accept: bool,
     pub imap4rev2: bool,
+    #[serde(default)]
+    pub x_gm_ext_1: bool,
 }
 
 /// Opaque resume token for `MailSyncProvider::sync_messages`. MSP §2.2:

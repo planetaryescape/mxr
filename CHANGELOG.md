@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.56](https://github.com/planetaryescape/mxr/compare/v0.5.55...v0.5.56) (2026-06-03)
+
+
+### Bug Fixes
+
+* satisfy cli journey clippy ([d22ab10](https://github.com/planetaryescape/mxr/commit/d22ab109662903977b92d7923e2cabf326d48f28))
+
 ## [0.5.55](https://github.com/planetaryescape/mxr/compare/v0.5.54...v0.5.55) (2026-06-03)
 
 

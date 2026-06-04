@@ -9,6 +9,7 @@ Usage: mxr [COMMAND]
 Commands:
   daemon              Start the daemon explicitly
   restart             Restart the daemon with the current binary
+  mcp                 Model Context Protocol server commands
   search              Search messages
   triage              Classify search results as ACTION/FYI/ROUTINE using the cached summarizer verdict
   count               Count matching messages

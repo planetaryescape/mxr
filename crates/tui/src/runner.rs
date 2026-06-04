@@ -31,6 +31,8 @@ use crate::runtime::{
     ReplaceableRequestKey,
 };
 
+const SUMMARY_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(150);
+
 fn run_with_terminal_suspended_with<
     Terminal,
     Events,
@@ -821,34 +823,43 @@ pub async fn run() -> anyhow::Result<()> {
                         &app.mailbox.body_cache,
                     );
                 if eligible
-                    && app.mailbox.thread_summary_loading.as_ref() != Some(&thread_id)
-                    && app.pending_summary_request.as_ref() != Some(&thread_id)
+                    && !app.mailbox.thread_summary_in_flight.contains(&thread_id)
+                    && !app
+                        .pending_summary_requests
+                        .iter()
+                        .any(|pending| pending == &thread_id)
                 {
-                    app.mailbox.thread_summary_loading = Some(thread_id.clone());
-                    app.pending_summary_request = Some(thread_id);
+                    let _ = app.queue_thread_summary(thread_id);
                 }
             }
         }
 
-        if let Some(thread_id) = app.pending_summary_request.take() {
+        if let Some(thread_id) = app.pending_summary_requests.pop_front() {
             let socket_path = socket_path.clone();
             let captured_id = thread_id.clone();
             let result_tx = result_tx.clone();
             tokio::spawn(async move {
-                let resp = ipc_call_dedicated(
-                    &socket_path,
-                    Request::SummarizeThread {
-                        thread_id: thread_id.clone(),
-                    },
+                let resp = tokio::time::timeout(
+                    SUMMARY_REQUEST_TIMEOUT,
+                    ipc_call_dedicated(
+                        &socket_path,
+                        Request::SummarizeThread {
+                            thread_id: thread_id.clone(),
+                        },
+                    ),
                 )
                 .await;
                 let result = match resp {
-                    Ok(Response::Ok {
+                    Ok(Ok(Response::Ok {
                         data: ResponseData::ThreadSummary { text, model },
-                    }) => Ok((text, model)),
-                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    })) => Ok((text, model)),
+                    Ok(Ok(Response::Error { message, .. })) => Err(MxrError::Ipc(message)),
+                    Ok(Ok(_)) => Err(MxrError::Ipc("unexpected response".into())),
+                    Ok(Err(e)) => Err(e),
+                    Err(_) => Err(MxrError::Ipc(format!(
+                        "summary request timed out after {}s",
+                        SUMMARY_REQUEST_TIMEOUT.as_secs()
+                    ))),
                 };
                 let _ = result_tx.send(AsyncResult::ThreadSummaryLoaded {
                     thread_id: captured_id,

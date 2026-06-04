@@ -1066,10 +1066,9 @@ fn thread_summary_response_clears_loading_after_user_navigates_away() {
     use crate::daemon_events::apply_thread_summary_loaded;
     // Reproduces the "y doesn't work" bug: user opens thread A,
     // auto-summary fires, user navigates to thread B, response
-    // lands for A. Before the fix the response handler bailed on
-    // `still_relevant` *without* clearing `thread_summary_loading`,
-    // leaving thread A's loading flag stuck. Then `y` on thread A
-    // short-circuited with "Summary already running".
+    // lands for A. The response handler must clear A's in-flight
+    // marker before bailing on relevance, otherwise the next `y`
+    // press on thread A short-circuits with "Summary already running".
     let mut app = App::new();
     let envelope_a = TestEnvelopeBuilder::new()
         .with_from_address("Alice", "alice@example.com")
@@ -1082,7 +1081,9 @@ fn thread_summary_response_clears_loading_after_user_navigates_away() {
     let thread_a = envelope_a.thread_id.clone();
     // User is now focused on thread B; response will arrive for A.
     app.mailbox.envelopes = vec![envelope_b];
-    app.mailbox.thread_summary_loading = Some(thread_a.clone());
+    app.mailbox
+        .thread_summary_in_flight
+        .insert(thread_a.clone());
 
     apply_thread_summary_loaded(
         &mut app,
@@ -1091,7 +1092,7 @@ fn thread_summary_response_clears_loading_after_user_navigates_away() {
     );
 
     assert!(
-        app.mailbox.thread_summary_loading.is_none(),
+        !app.mailbox.thread_summary_in_flight.contains(&thread_a),
         "loading flag must clear so the next `y` press can fire"
     );
 }
@@ -1109,12 +1110,39 @@ fn summarize_action_starts_background_request_without_modal() {
 
     app.apply(Action::SummarizeCurrentThread);
 
-    assert_eq!(app.pending_summary_request, Some(thread_id.clone()));
-    assert_eq!(app.mailbox.thread_summary_loading, Some(thread_id));
+    assert_eq!(app.pending_summary_requests.len(), 1);
+    assert_eq!(app.pending_summary_requests.front(), Some(&thread_id));
+    assert!(app.mailbox.thread_summary_in_flight.contains(&thread_id));
     assert!(!app.modals.summary.visible);
     assert_eq!(
         app.status_message.as_deref(),
         Some("Summarizing in background...")
+    );
+}
+
+#[test]
+fn summarize_action_deduplicates_in_flight_thread_after_view_clears() {
+    use crate::action::Action;
+    let mut app = App::new();
+    let envelope = TestEnvelopeBuilder::new()
+        .with_from_address("Sender", "sender@example.com")
+        .subject("Quarterly plan")
+        .build();
+    let thread_id = envelope.thread_id.clone();
+    app.mailbox.envelopes = vec![envelope];
+
+    app.apply(Action::SummarizeCurrentThread);
+    assert_eq!(app.pending_summary_requests.len(), 1);
+
+    app.pending_summary_requests.clear();
+    app.clear_message_view_state();
+    app.apply(Action::SummarizeCurrentThread);
+
+    assert!(app.pending_summary_requests.is_empty());
+    assert!(app.mailbox.thread_summary_in_flight.contains(&thread_id));
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Summary already running")
     );
 }
 

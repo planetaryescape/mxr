@@ -597,13 +597,11 @@ impl App {
                     return;
                 };
                 let thread_id = env.thread_id.clone();
-                if self.mailbox.thread_summary_loading.as_ref() == Some(&thread_id) {
+                if !self.queue_thread_summary(thread_id) {
                     self.status_message = Some("Summary already running".into());
                     return;
                 }
-                self.mailbox.thread_summary_loading = Some(thread_id.clone());
                 self.mailbox.thread_summary_error = None;
-                self.pending_summary_request = Some(thread_id);
                 self.status_message = Some("Summarizing in background...".into());
             }
             Action::CloseSummaryModal => {

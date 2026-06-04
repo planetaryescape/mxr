@@ -29,9 +29,8 @@ impl App {
         let current_thread_id = self.context_envelope().map(|env| env.thread_id.clone())?;
         let loading = self
             .mailbox
-            .thread_summary_loading
-            .as_ref()
-            .is_some_and(|thread_id| thread_id == &current_thread_id);
+            .thread_summary_in_flight
+            .contains(&current_thread_id);
         let text = self
             .mailbox
             .thread_summary

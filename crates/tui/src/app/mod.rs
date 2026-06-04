@@ -45,7 +45,7 @@ use mxr_protocol::{MutationCommand, Request, Response, ResponseData};
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::prelude::*;
 use recorder::ActionRecorder;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{Duration, Instant};
 use throbber_widgets_tui::ThrobberState;
 use tui_textarea::TextArea;
@@ -253,14 +253,14 @@ pub struct App {
     /// triggers a `Request::GetSenderProfile`. Drained by the runtime
     /// after dispatch.
     pub pending_sender_profile_request: Option<(mxr_core::AccountId, String)>,
-    /// Pending thread-summary request — `Some(thread_id)` triggers a
-    /// `Request::SummarizeThread`. Drained by the runtime.
-    pub pending_summary_request: Option<mxr_core::ThreadId>,
+    /// Pending thread-summary requests. Drained by the runtime into
+    /// `Request::SummarizeThread` calls.
+    pub pending_summary_requests: VecDeque<mxr_core::ThreadId>,
     /// Trailing-edge debounce for the lazy on-thread-open summary fire.
     /// Scrolling through the mail list opens a thread per row, which
     /// would otherwise fire an LLM request for every keypress. We park
     /// the request here with a deadline; only when the deadline elapses
-    /// without being replaced does it move to `pending_summary_request`
+    /// without being replaced does it move to `pending_summary_requests`
     /// and actually go to the daemon. In-flight requests already fired
     /// are not cancelled — they complete and the daemon caches them.
     pub pending_summary_debounce: Option<(mxr_core::ThreadId, tokio::time::Instant)>,
@@ -380,7 +380,7 @@ impl App {
             pending_activity_refresh: false,
             pending_activity_pause_toggle: false,
             pending_sender_profile_request: None,
-            pending_summary_request: None,
+            pending_summary_requests: VecDeque::new(),
             pending_summary_debounce: None,
             pending_briefing_request: None,
             pending_whois_query: None,

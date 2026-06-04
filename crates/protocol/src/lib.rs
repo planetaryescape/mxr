@@ -1129,6 +1129,26 @@ mod tests {
     }
 
     #[test]
+    fn client_kind_serializes_first_class_origins() {
+        for (source, expected) in [
+            (ClientKind::Human, "human"),
+            (ClientKind::Script, "script"),
+            (ClientKind::Agent, "agent"),
+            (ClientKind::Mcp, "mcp"),
+        ] {
+            let msg = IpcMessage {
+                id: 7,
+                source,
+                payload: IpcPayload::Request(Request::Ping),
+            };
+            let json = serde_json::to_value(&msg).unwrap();
+            assert_eq!(json["source"], expected);
+            let parsed: IpcMessage = serde_json::from_value(json).unwrap();
+            assert_eq!(parsed.source, source);
+        }
+    }
+
+    #[test]
     fn request_categories_cover_core_mail_variants() {
         for (request, expected) in request_category_cases()
             .into_iter()

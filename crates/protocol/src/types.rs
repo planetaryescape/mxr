@@ -376,20 +376,32 @@ pub struct SavedActivityFilterEntry {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum ClientKind {
+    /// Generic local human client when a more specific surface is not known.
+    Human,
     Tui,
     Cli,
+    /// Local scripts or shell automation. Legacy clients still default to `Cli`.
+    Script,
     Web,
     /// Synthesized internally by the daemon (scheduled prunes, pause markers, etc.).
     Daemon,
+    /// Local automation agent using a configured daemon permission profile.
+    Agent,
+    /// Local Model Context Protocol server/client using a configured daemon permission profile.
+    Mcp,
 }
 
 impl ClientKind {
     pub fn as_str(&self) -> &'static str {
         match self {
+            Self::Human => "human",
             Self::Tui => "tui",
             Self::Cli => "cli",
+            Self::Script => "script",
             Self::Web => "web",
             Self::Daemon => "daemon",
+            Self::Agent => "agent",
+            Self::Mcp => "mcp",
         }
     }
 

@@ -1,0 +1,65 @@
+feature: v1-agent-mcp-gmail-launch
+
+defaults:
+  max_attempts_before_escalation: 2
+  escalation_model: pe-default-frontier
+
+default_models:
+  frontier:
+    alias: pe-default-frontier
+    provider: openai-codex
+    model: gpt-5.5
+    use_for:
+      - daemon_ipc_and_protocol_changes
+      - agent_permission_and_safety_model
+      - provider_imap_correctness
+      - mcp_server_implementation
+      - release_launch_proof
+      - docs_with_product_judgement
+  local_coder:
+    alias: pe-default-local-coder
+    provider: ollama
+    model: qwen3-coder-next:latest
+    use_for:
+      - unused_this_plan_is_rust_architecture_and_provider_work
+
+lanes:
+  frontier:
+    concurrency: 2
+  shell:
+    concurrency: 4
+
+policy:
+  agent_safety:
+    executor_type: frontier_model
+    lane: frontier
+    preferred_model: pe-default-frontier
+  provider_correctness:
+    executor_type: frontier_model
+    lane: frontier
+    preferred_model: pe-default-frontier
+  mcp_server:
+    executor_type: frontier_model
+    lane: frontier
+    preferred_model: pe-default-frontier
+  launch_proof:
+    executor_type: frontier_model
+    lane: frontier
+    preferred_model: pe-default-frontier
+  docs_release:
+    executor_type: frontier_model
+    lane: frontier
+    preferred_model: pe-default-frontier
+
+skills:
+  root: /Users/bhekanik/.dotfiles/.skills
+  policy: explicit_only
+
+external_research:
+  mcp_sdk:
+    selected: rmcp
+    reason: official Rust SDK for Model Context Protocol, with server and stdio support.
+    sources:
+      - https://rust.sdk.modelcontextprotocol.io/
+      - https://github.com/modelcontextprotocol/rust-sdk
+      - https://modelcontextprotocol.io/docs/sdk

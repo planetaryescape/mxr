@@ -1,0 +1,82 @@
+feature: v1-agent-mcp-gmail-launch
+
+phases:
+  phase-001:
+    title: First-class agent safety and Gmail-over-IMAP correctness
+    tasks:
+      - task-001
+      - task-002
+  phase-002:
+    title: First-party MCP server
+    tasks:
+      - task-003
+  phase-003:
+    title: Launch proof
+    tasks:
+      - task-004
+  phase-004:
+    title: V1 docs and worktree hygiene
+    tasks:
+      - task-005
+
+tasks:
+  task-001:
+    title: First-class agent surface and enforced permission model
+    phase: phase-001
+    depends_on: []
+    status: accepted
+    executor_type: frontier_model
+    lane: frontier
+    risk: high
+  task-002:
+    title: Gmail-over-IMAP All Mail sync without archived-mail gaps or duplicates
+    phase: phase-001
+    depends_on: []
+    status: accepted
+    executor_type: frontier_model
+    lane: frontier
+    risk: high
+  task-003:
+    title: First-party MCP server on the daemon contract
+    phase: phase-002
+    depends_on:
+      - task-001
+    status: accepted
+    executor_type: frontier_model
+    lane: frontier
+    risk: high
+  task-004:
+    title: End-to-end v1 launch proof across CLI, daemon, agent, MCP, and providers
+    phase: phase-003
+    depends_on:
+      - task-001
+      - task-002
+      - task-003
+    status: accepted
+    executor_type: frontier_model
+    lane: frontier
+    risk: high
+  task-005:
+    title: V1 documentation, OAuth guidance, unsigned macOS policy, and worktree cleanup
+    phase: phase-004
+    depends_on:
+      - task-001
+      - task-002
+      - task-003
+      - task-004
+    status: accepted
+    executor_type: frontier_model
+    lane: frontier
+    risk: medium
+
+lanes:
+  frontier:
+    concurrency: 2
+  shell:
+    concurrency: 4
+
+# Parallelism guardrail:
+# - task-001 and task-002 may run together: no intended code-path overlap.
+# - task-003 waits for task-001 so MCP inherits the agent permission model.
+# - task-004 waits for all code work so launch proof exercises the shipped path.
+# - task-005 runs last because it updates docs/status against implemented truth.

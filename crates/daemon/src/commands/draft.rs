@@ -80,10 +80,10 @@ fn print_draft_response(resp: Response, fmt: OutputFormat) -> anyhow::Result<()>
             println!(
                 "{}",
                 serde_json::to_string_pretty(&draft_suggestion_json(&view))?
-            )
+            );
         }
         OutputFormat::Jsonl => {
-            println!("{}", serde_json::to_string(&draft_suggestion_json(&view))?)
+            println!("{}", serde_json::to_string(&draft_suggestion_json(&view))?);
         }
         OutputFormat::Ids => {}
         OutputFormat::Csv => {

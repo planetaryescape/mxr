@@ -286,8 +286,7 @@ impl DraftOptionsModalState {
             DraftOptionsField::Register => &mut self.register_idx,
             DraftOptionsField::Length => &mut self.length_idx,
         };
-        let len = 4isize;
-        *slot = (((*slot as isize + delta) % len + len) % len) as usize;
+        *slot = (*slot as isize + delta).rem_euclid(4) as usize;
     }
 
     /// The chosen register override, or `None` for "Auto".

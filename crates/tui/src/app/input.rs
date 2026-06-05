@@ -1282,9 +1282,9 @@ impl App {
         match (key.code, key.modifiers) {
             (KeyCode::Esc, _) => self.modals.draft_options.close(),
             (KeyCode::Enter, _) => self.submit_draft_options_modal(),
-            (KeyCode::Tab, _)
-            | (KeyCode::Char('j') | KeyCode::Down, _)
-            | (KeyCode::Char('k') | KeyCode::Up, _) => self.modals.draft_options.next_field(),
+            (KeyCode::Tab | KeyCode::Up | KeyCode::Down | KeyCode::Char('j' | 'k'), _) => {
+                self.modals.draft_options.next_field();
+            }
             (KeyCode::Left | KeyCode::Char('h'), _) => self.modals.draft_options.cycle(-1),
             (KeyCode::Right | KeyCode::Char('l'), _) => self.modals.draft_options.cycle(1),
             _ => {}

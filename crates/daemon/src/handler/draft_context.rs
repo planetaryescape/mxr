@@ -105,7 +105,7 @@ pub(crate) async fn build_relationship_block(
             }
             if primary_style.is_none() {
                 primary_style = Some(style.clone());
-                matched_email = Some(email.to_string());
+                matched_email = Some(email.clone());
                 baseline = Some((
                     StylometryMetrics {
                         formality_score: style.formality_score,

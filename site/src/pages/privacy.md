@@ -58,14 +58,15 @@ mxr may request these Gmail API scopes:
 |---|---|
 | `gmail.readonly` | Read messages and metadata |
 | `gmail.labels` | Read and manage labels |
-| `gmail.modify` | Mark read/unread, archive, trash, and apply labels |
-| `gmail.send` | Send email via Gmail API |
+| `gmail.modify` | Mark read/unread, archive, trash, apply labels, and perform Gmail API sends under the authorized Gmail client |
+
+mxr does not request `gmail.send` as a separate scope today.
 
 mxr uses Google user data only to provide local mail sync, search, display, drafting, sending, and user-requested mailbox actions. mxr does not sell Google user data, use it for advertising, or transfer it to third parties except as necessary to provide user-directed email functionality. mxr's use and transfer of information received from Google APIs adheres to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements.
 
 ## Optional AI Features
 
-Local search, reading, and core mailbox operations do not require a hosted AI service. If you configure a nonlocal LLM provider, mxr sends only the prompts required for the enabled feature to that provider. Agent and LLM workflows should be treated as user-directed exports of local mail context.
+Local search, reading, and core mailbox operations do not require a hosted AI service. If you configure a nonlocal LLM provider, mxr sends only the prompts required for the enabled feature to that provider. Agent, MCP, and LLM workflows should be treated as user-directed exports of local mail context.
 
 ## Third-Party Services
 

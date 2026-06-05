@@ -6,7 +6,7 @@ This doc captures the institutional knowledge behind the implementation — the 
 
 ## Why this exists
 
-The bridge has been stable since v0.5; the daemon is the system, clients are additive. The web app is the installable GUI surface for users who want a graphical front-end without leaving the mxr ecosystem. We explicitly do **not** ship a native desktop wrapper (see `docs/marketing/no-native-desktop-app.md`) — the embedded SPA served by the daemon is the GUI story.
+The bridge has been stable since v0.5; the daemon is the system, clients are additive. The web app is the installable GUI surface for users who want a graphical front-end without leaving the mxr ecosystem. We explicitly do **not** ship a native desktop wrapper (see `site/src/content/docs/guides/no-native-desktop-app.md`) — the embedded SPA served by the daemon is the GUI story.
 
 ## Architecture
 

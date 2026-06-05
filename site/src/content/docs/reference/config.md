@@ -191,6 +191,39 @@ mxr inside a CI sandbox or behind an agent you don't fully trust:
 
 The TUI greys out mutation actions when the policy disallows them.
 
+## `agents.profiles`
+
+Profiles constrain non-human daemon clients by IPC origin. The daemon selects
+`[agents.profiles.agent]` for IPC messages with source `agent` and
+`[agents.profiles.mcp]` for messages from `mxr mcp serve`. If the matching
+profile is missing, the daemon rejects the request before any provider call.
+
+```toml
+[agents.profiles.agent]
+safety_policy = "draft-only"
+allowed_accounts = ["work"]
+allow_send = false
+allow_destructive = false
+
+[agents.profiles.mcp]
+safety_policy = "read-only"
+allowed_accounts = ["personal@example.com"]
+allow_send = false
+allow_destructive = false
+```
+
+Fields:
+
+| Key | Meaning |
+|-----|---------|
+| `safety_policy` | Same enum as `[general].safety_policy`; default profile value is `read-only` |
+| `allowed_accounts` | Account keys, account ids, or emails this origin may touch |
+| `allow_send` | Required for `SendStoredDraft`, scheduled sends, and non-dry-run RSVP sends |
+| `allow_destructive` | Required for mutations outside read/draft/send buckets |
+
+MCP tools also require explicit `confirm=true` before send or mutation tools
+apply changes.
+
 ## `accounts`
 
 Each `[accounts.<key>]` is a TOML subtable. Required:
@@ -220,9 +253,10 @@ client_secret = "..."             # only when credential_source = "custom"
 token_ref = "gmail:personal"      # keychain entry name; auto-set
 ```
 
-`credential_source = "bundled"` uses the OAuth client mxr ships. `custom`
-accepts a Google Cloud project's client ID/secret
-when you'd rather not depend on the bundled credentials.
+`credential_source = "custom"` is the official Gmail v1 recommendation: use
+your own Google Cloud project's client ID/secret. `bundled` uses the OAuth
+client mxr ships when present; treat it as an unverified fallback that may show
+Google's warning screen.
 
 ### IMAP sync provider
 

@@ -69,6 +69,7 @@ site/
           cli/
             *.md
           bridge.md
+          mcp.md
           config.md
           keybindings.md
           json-output.md
@@ -89,7 +90,7 @@ site/
 | Power Features | Power users | Follow-ups, rules, LLM, semantic search, analytics, activity log |
 | Concepts | Evaluators and contributors | Why mxr, architecture, security, glossary, agent contract |
 | Building on mxr | Integrators | Adapter development, agent skill, public Rust crates |
-| Reference | Power users and agents | Generated CLI pages, config, JSON output, TUI, keybindings, bridge, API explorer |
+| Reference | Power users and agents | Generated CLI pages, config, JSON output, TUI, keybindings, bridge, MCP, API explorer |
 
 ---
 
@@ -125,11 +126,11 @@ npm --prefix site run build
 
 ---
 
-## Privacy & Terms Pages
+## Privacy & Terms pages
 
-The `site/src/pages/privacy.md` and `site/src/pages/terms.md` pages mirror the root `PRIVACY.md` and `TERMS.md` files. These serve as the publicly accessible URLs required for Google OAuth verification.
+The `site/src/pages/privacy.md` and `site/src/pages/terms.md` pages are the public legal pages for Google OAuth verification and users evaluating mxr.
 
-**Sync strategy**: The site build copies content from root `PRIVACY.md` and `TERMS.md` into the site pages with appropriate frontmatter. Single source of truth is the root files.
+The root `PRIVACY.md` and `TERMS.md` files remain the repository-facing copies. The site pages carry Astro frontmatter and use `site/src/layouts/legal.astro`, so they are maintained as parallel Markdown pages rather than copied by a build script. When policy text changes, update both the root file and the matching `site/src/pages/` page in the same PR.
 
 ---
 

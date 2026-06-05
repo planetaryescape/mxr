@@ -179,12 +179,17 @@ fn format_platform_response(data: &ResponseData) -> String {
             voice_match,
             humanizer,
             rewrite_iterations,
+            context_note,
+            ..
         } => {
             let mut lines = vec![
                 body.trim().to_string(),
                 String::new(),
                 format!("Model: {model}"),
             ];
+            if let Some(note) = context_note {
+                lines.push(note.clone());
+            }
             if let Some(voice_match) = voice_match {
                 lines.push(format!(
                     "Voice match: {:.0}% ({:?})",

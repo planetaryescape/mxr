@@ -47,13 +47,12 @@ if so how**". The audience on npm is substantially larger than on
 crates.io for most email-shaped problems (webmail, Electron clients,
 admin tooling, automation scripts).
 
-The npm side of the gap is real. Empirically verified for JWZ
-threading: the only JS port (`conversationThreading-js`, max-mapper)
-last committed in **March 2013**, never published to npm. The 2017
-`mail-threading` package has had no updates in 9 years and no users.
-The other gaps mxr could fill (Gmail-style query parsing, RFC 8058
-one-click unsubscribe, format=flowed decoding) have similar or worse
-coverage on npm.
+At the first extraction review, the npm side of the gap looked real.
+JWZ threading was the clearest example: the review found only an old JS
+port (`conversationThreading-js`, max-mapper) that was not published to
+npm, plus an unrelated-looking `mail-threading` package. Treat that as a
+review finding, not a timeless claim. Re-run the ecosystem search before
+starting any TS package.
 
 So the default posture is **dual publish: crates.io + npm**, with the
 shape of the npm distribution decided per-candidate.

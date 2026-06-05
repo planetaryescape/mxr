@@ -104,17 +104,18 @@ read, easy to extend, no generated code.
 The tantivy translation lives in `query_builder.rs`, which would stay
 inside mxr (or move to a separate adapter crate).
 
-## Ecosystem state
+## Ecosystem state at extraction time
 
 | Candidate | Status |
 |---|---|
 | [`query-parser`](https://crates.io/crates/query-parser) | Generic `key:value` parser, no email operators, minimal AST |
 | [`search-query-parser`](https://crates.io/crates/search-query-parser) | Elasticsearch-leaning, generic |
 | `tantivy::QueryParser` | Internal to tantivy, not portable, produces `Box<dyn Query>` |
-| Hand-rolled implementations | Every Rust email project rolls its own |
+| App-specific parsers | Common in projects that need Gmail-style email search |
 
-There is no published Rust crate that parses Gmail-style email queries to
-a portable AST.
+The extraction review did not find a published Rust crate with the same
+contract: Gmail-style email query parsing to a portable AST, separate
+from a search backend.
 
 ## Why our code is publication-ready
 

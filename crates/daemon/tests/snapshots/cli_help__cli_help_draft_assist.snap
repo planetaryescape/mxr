@@ -33,6 +33,16 @@ Options:
       --instruct <TEXT>
           Long form of the positional instruction. Required when `--search` is used (no positional fallback)
 
+      --register <REGISTER>
+          Override the inferred tone (otherwise matched to how you write to this person)
+
+          [possible values: casual, neutral, formal]
+
+      --length <LENGTH>
+          Override the inferred length
+
+          [possible values: short, medium, long]
+
       --format <FORMAT>
           [possible values: table, json, jsonl, csv, ids]
 

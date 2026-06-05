@@ -26,7 +26,7 @@ export function TiptapComposeEditor({
     editorProps: {
       attributes: {
         class:
-          "min-h-[520px] rounded-lg border border-border bg-surface px-4 py-3 text-sm leading-6 outline-none",
+          "mx-auto h-full min-h-full w-full max-w-[720px] px-6 py-6 pb-14 text-[15px] leading-[1.65] outline-none",
         role: "textbox",
         "aria-label": "Message body",
       },
@@ -66,7 +66,7 @@ export function TiptapComposeEditor({
     window.setTimeout(() => editor.commands.focus("end"), 0);
   }, [autoFocus, editor]);
 
-  return <EditorContent editor={editor} />;
+  return <EditorContent editor={editor} className="h-full min-h-0 overflow-auto" />;
 }
 
 function textToDoc(value: string) {

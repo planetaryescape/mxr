@@ -5,9 +5,11 @@
 
 **Local-first email infrastructure.** Write `mxr`, say "Mixer".
 
-mxr syncs Gmail and IMAP into SQLite on your machine. You read mail in the TUI or web app, script it from the CLI, and hand it to an agent when that helps. Same local data. Same daemon. Same commands.
+Use mxr to sync Gmail and IMAP into SQLite on your machine, then read,
+search, script, and mutate mail from the CLI, TUI, web app, or agent
+skill. Same local data. Same daemon. Same commands.
 
-Today, the shipped surfaces are the CLI, TUI, web app, daemon socket, and agent skill. A first-party MCP server is still on the roadmap.
+This README covers the CLI, TUI, web app, daemon socket, and agent skill.
 
 ## Install
 
@@ -16,8 +18,8 @@ Today, the shipped surfaces are the CLI, TUI, web app, daemon socket, and agent 
 brew tap planetaryescape/mxr
 brew install mxr
 
-# Cargo from source at a specific tag
-# (replace vX.Y.Z with the latest tag from the releases page)
+# Cargo from source at a release tag
+# (replace vX.Y.Z with a tag from the releases page)
 cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
 ```
 
@@ -33,9 +35,9 @@ Pre-built release tarballs are also available for:
 - macOS Apple Silicon
 - Linux x86_64
 
-[Download the latest release](https://github.com/planetaryescape/mxr/releases/latest)
+[Download a release asset](https://github.com/planetaryescape/mxr/releases/latest)
 
-If you want current `main` instead of the latest release:
+To build from the repository instead:
 
 ```bash
 cargo install --git https://github.com/planetaryescape/mxr --locked mxr
@@ -46,11 +48,43 @@ cd mxr
 cargo install --path . --locked
 ```
 
-## Demo
+## Start With Demo
 
-A renderable terminal demo tape lives at [`docs/demo.tape`](docs/demo.tape). It runs `mxr` inside isolated temp config/data dirs so the walkthrough doesn't touch your real local state.
+Run an isolated inbox before connecting a real account:
 
-Current release shape:
+```bash
+mxr demo
+mxr search "is:unread" --format json
+mxr archive --search "older:30d label:notifications" --dry-run
+mxr reset --hard --dry-run
+```
+
+The demo uses separate temp config/data dirs, so it does not touch your
+real mxr state. A renderable terminal demo tape lives at
+[`docs/demo.tape`](docs/demo.tape).
+
+## Set Up a Real Account
+
+Use the setup wizard, start the daemon, sync, then query the local index:
+
+```bash
+mxr setup
+mxr daemon --foreground
+mxr sync
+mxr search "is:unread" --format json
+```
+
+If setup or sync fails, run:
+
+```bash
+mxr doctor
+mxr status --format json
+mxr logs --search error
+```
+
+## Supported Surfaces
+
+The documented surfaces are:
 
 - macOS and Linux
 - Gmail sync/send (OAuth tokens stored in OS keychain)
@@ -76,7 +110,7 @@ are consumed back into mxr from the registry:
 | [`list-unsubscribe`](https://crates.io/crates/list-unsubscribe) | RFC 2369 / RFC 8058 unsubscribe header parsing | `mxr-mail-parse` |
 | [`mailbox-formats`](https://crates.io/crates/mailbox-formats) | mbox variants and Maildir reader/writer | `mxr-export` |
 
-Check the current dependency edge from this repo:
+Check the dependency edge from this repo:
 
 ```bash
 cargo tree -p mxr-search -i mail-query
@@ -121,9 +155,9 @@ OCR is not used for semantic indexing. Image attachments and scanned/image-only 
 
 If semantic retrieval is disabled, unavailable in the current binary, or errors at query time, mxr falls back to lexical ranking and explains the fallback when `--explain` is requested.
 
-## What happens after new mail syncs in?
+## Sync Freshness
 
-Current lifecycle:
+After new mail syncs:
 
 1. envelope + body are written to SQLite during sync
 2. Tantivy is updated during that same batch
@@ -192,11 +226,15 @@ Real execution is intentionally hard to trigger:
 - interactive `--including-config` runs require typing `DELETE MY MXR DATA AND CONFIG`
 - non-interactive destructive runs require `--yes-i-understand-this-destroys-local-state`
 
-## Why this feels different
+## Fit and Non-Goals
 
-mxr connects to your provider directly, syncs mail into a local SQLite database, and indexes it with Tantivy. No hosted relay. No extra control plane in the middle. Your scripts, your terminal, and your agent all talk to the same local runtime.
+Use mxr when you want local mail state, a broad CLI, a daemon-backed app
+surface, and structured output for scripts or agents.
 
-That makes it a different tool from a classic terminal client and a different tool from a hosted connector layer. mutt, aerc, himalaya, notmuch, gog, and gws each got an important part of this right. Hosted tools like Nylas CLI, Composio, Zapier MCP, and EmailEngine solve a different problem. mxr sits in the middle: local mail runtime, broad CLI surface, daemon-backed state, and structured output.
+Do not use mxr as a hosted connector layer, managed auth service,
+remote automation platform, or SDK-only email API. It is a local runtime:
+your scripts, terminal UI, web UI, and agent workflows talk to the same
+daemon and local database.
 
 Operating rules:
 
@@ -208,7 +246,8 @@ Operating rules:
 
 ## Use it from a shell or an agent
 
-No SDK. No custom DSL. If a tool can run a command and parse JSON, it can work with mxr.
+The CLI is the integration surface. Tools that can run a command and
+parse JSON can work with mxr.
 
 **Search is the universal selector.** Every list/search command writes one ID per line under `--format ids`; every read or mutate command takes an ID. Compose with anything:
 
@@ -245,47 +284,6 @@ That works because the CLI is the canonical surface: machine-readable when you n
 - Provider adapters go through a conformance suite instead of one-off glue.
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) for the design principles behind the daemon, store, provider model, and trust boundary.
-
-## Where mxr fits
-
-The short version:
-
-- Use mxr if you want local mail state, a broad CLI, a daemon, and one surface that works for both people and agents.
-- Use a classic terminal client if you mostly want an interactive mail UI and don't need a local mail runtime behind it.
-- Use a hosted connector layer if you want managed auth, remote workflows, or lots of SaaS tools behind one endpoint.
-
-### Direct mail tools
-
-| Tool | Good fit when you want... | Less central there |
-|---|---|---|
-| mutt / neomutt | a long-established terminal workflow | local daemon + structured CLI |
-| aerc | a modern terminal UI | local database + agent-oriented CLI surface |
-| himalaya | a clean CLI-first mail client | daemon-backed local runtime |
-| notmuch | local indexing and search over maildirs | provider sync + broad mutation CLI |
-| gog / gws | Gmail scripting | non-Google provider support |
-| **mxr** | one local runtime for CLI, TUI, scripts, and agents | hosted connector workflows |
-
-### Connector layers and nearby tools
-
-| Tool | Good fit when you want... | mxr difference |
-|---|---|---|
-| Nylas CLI | managed provider access + CLI/MCP workflow | mxr keeps the runtime local |
-| Composio / Zapier MCP | hosted auth + cross-app automation | mxr is mail-first, local, and daemon-backed |
-| EmailEngine | self-hosted email API for backend systems | mxr is for local human + agent workflows |
-| Post | a local mail daemon + CLI on macOS | mxr aims for cross-provider Rust tooling |
-| email-mcp | local MCP access to IMAP/SMTP | mxr is a broader mail platform than the bridge alone |
-
-## Quick start
-
-```bash
-mxr daemon --foreground
-mxr sync
-mxr
-mxr search "is:unread" --format json
-mxr archive --search "older:30d label:notifications" --dry-run
-mxr reset --hard --dry-run
-mxr history --category mutation
-```
 
 ## Web interface
 
@@ -325,6 +323,24 @@ For strict-bearer setups (multi-user machines, etc.), set
 `[bridge].auto_local_token = false` in the file printed by
 `mxr config path` to disable the same-machine handshake.
 
+## Verification
+
+Run the focused CLI journey and daemon tests before trusting a local
+build or release candidate:
+
+```bash
+scripts/cargo-test -p mxr --test cli_help
+scripts/cargo-test -p mxr --test cli_journey
+scripts/cargo-test -p mxr --test daemon_lifecycle
+cargo build -p mxr
+```
+
+For provider adapter changes, run the deterministic provider smoke suite:
+
+```bash
+cargo test --workspace provider_offline_smoke_
+```
+
 ## Docs
 
 - Site: [mxr-mail.vercel.app](https://mxr-mail.vercel.app)
@@ -337,7 +353,9 @@ For strict-bearer setups (multi-user machines, etc.), set
 
 mxr is MIT / Apache-2.0 dual-licensed. The codebase is open. There is no telemetry or phone-home service in the core architecture.
 
-Contributions are welcome, especially around adapters, CLI ergonomics, docs, and tests. The adapter surface is meant to be readable and replaceable, not magical.
+Contributions are welcome, especially around adapters, CLI ergonomics,
+docs, and tests. The adapter surface is meant to be readable and
+replaceable, not opaque.
 
 ## Built with
 

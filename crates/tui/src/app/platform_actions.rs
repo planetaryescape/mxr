@@ -9,13 +9,25 @@ impl App {
                     return;
                 };
                 self.queue_platform_request(
-                    Request::DraftAssist {
-                        thread_id: env.thread_id.clone(),
+                    Request::DraftCompose {
+                        account_id: None,
+                        to: None,
                         instruction: "Draft a concise reply.".into(),
+                        source_message_id: None,
+                        thread_id: Some(env.thread_id.clone()),
+                        register: None,
+                        length_hint: None,
                     },
                     "Draft assist",
                     "Generating relationship-aware reply draft...",
                 );
+            }
+            Action::DraftWithOptions => {
+                let Some(env) = self.context_envelope() else {
+                    self.status_message = Some("No message selected".into());
+                    return;
+                };
+                self.modals.draft_options.open(env.thread_id.clone());
             }
             Action::DraftNewForSender => {
                 let Some(env) = self.context_envelope() else {
@@ -23,16 +35,18 @@ impl App {
                     return;
                 };
                 self.queue_platform_request(
-                    Request::DraftNew {
-                        account_id: env.account_id.clone(),
-                        to: Address {
+                    Request::DraftCompose {
+                        account_id: Some(env.account_id.clone()),
+                        to: Some(Address {
                             name: env.from.name.clone(),
                             email: env.from.email.clone(),
-                        },
-                        purpose: format!(
+                        }),
+                        instruction: format!(
                             "Follow up on the selected thread: {}",
                             env.subject.trim()
                         ),
+                        source_message_id: Some(env.id.clone()),
+                        thread_id: None,
                         register: None,
                         length_hint: None,
                     },
@@ -129,6 +143,31 @@ impl App {
             }
             _ => unreachable!("action routed to wrong handler"),
         }
+    }
+
+    /// Confirm the Draft Options modal: draft a reply to the stored thread
+    /// using the chosen tone/length overrides (or auto when left unset).
+    pub(crate) fn submit_draft_options_modal(&mut self) {
+        let Some(thread_id) = self.modals.draft_options.thread_id.clone() else {
+            self.modals.draft_options.close();
+            return;
+        };
+        let register = self.modals.draft_options.register();
+        let length = self.modals.draft_options.length();
+        self.modals.draft_options.close();
+        self.queue_platform_request(
+            Request::DraftCompose {
+                account_id: None,
+                to: None,
+                instruction: "Draft a concise reply.".into(),
+                source_message_id: None,
+                thread_id: Some(thread_id),
+                register,
+                length_hint: length,
+            },
+            "Draft assist",
+            "Generating reply draft with your tone...",
+        );
     }
 
     pub(crate) fn queue_platform_request(

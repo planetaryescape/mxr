@@ -271,6 +271,13 @@ pub enum Command {
         /// `--search` is used (no positional fallback).
         #[arg(long = "instruct", value_name = "TEXT")]
         instruct: Option<String>,
+        /// Override the inferred tone (otherwise matched to how you write to
+        /// this person).
+        #[arg(long, value_enum)]
+        register: Option<VoiceRegisterArg>,
+        /// Override the inferred length.
+        #[arg(long, value_enum)]
+        length: Option<DraftLengthArg>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },

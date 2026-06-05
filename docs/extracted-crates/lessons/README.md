@@ -20,6 +20,8 @@ This README is the conceptual playbook (15 lessons + checklists). The numbered f
 - [`10-publishing-bar.md`](./10-publishing-bar.md) — The three-test bar a candidate must clear before it's nominated for extraction. Re-read before adding a new file to `docs/extractable-crates/`. Captured 2026-05-16 after almost extracting `format-flowed` (a 4-page RFC, an afternoon's work) as the third crate.
 - [`11-build-from-spec-carve-outs.md`](./11-build-from-spec-carve-outs.md) — The case where the mxr seed is thin and Phase 0 is mostly new code anchored to specs. Distinguishes from lesson 09's "carve out of existing crate" pattern (which assumed production-credible code being lifted). Captured 2026-05-17 from `mailbox-formats`.
 - [`12-protocol-first-design.md`](./12-protocol-first-design.md) — When the obvious framing is "extract this as a library," ask if it should be a wire protocol instead. The spec-drafting exercise pays off for the seed system's architecture whether or not the protocol ships. Captured 2026-05-17 from the Mail Sync Protocol (MSP) spike.
+- Durable README and version-surface rules live in Lesson 2 and
+  [`05-documentation-and-status-surfaces.md`](./05-documentation-and-status-surfaces.md).
 
 ## The short version
 
@@ -106,6 +108,19 @@ Every extracted package README needs:
 - maintenance expectations
 - links to the source spec and coverage matrix
 
+It should not rely on opponent-shaped claims that go stale when another
+maintainer publishes a nearby crate. Prefer durable fit:
+
+- what contract the crate owns
+- what stable behavior or spec anchors it
+- what it deliberately leaves to callers
+- what users can verify with tests, examples, and coverage
+- how mxr consumes it today, if mxr is still a consumer
+
+If a README includes ecosystem context, timestamp it or phrase it as a
+review result. "The extraction review did not find X" ages better than
+"there is no X."
+
 For a standards-adjacent crate, "clear API docs" are not enough. Users want to
 know whether the implementation is trustworthy.
 
@@ -120,6 +135,19 @@ Check this before publish:
 cargo test -p <crate-name> --all-features --doc
 cargo publish --dry-run -p <crate-name>
 ```
+
+Check this when updating docs after publish:
+
+```bash
+cargo tree -p <mxr-consumer> -i <crate-name>
+cargo info <crate-name>
+rg -n "<crate-name>" Cargo.toml Cargo.lock README.md docs site/src/content/docs
+```
+
+The first command proves what mxr consumes. The second proves the public
+registry surface from Cargo's local index/cache. Use the crates.io page
+or API when the exact newest public release matters. They can differ
+after docs-only or metadata patch releases.
 
 ## Lesson 3: A spec anchor makes claims safer
 

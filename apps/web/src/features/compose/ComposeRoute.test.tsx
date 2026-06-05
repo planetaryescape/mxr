@@ -16,6 +16,7 @@ const router = vi.hoisted(() => ({
 const api = vi.hoisted(() => ({
   discardComposeSession: vi.fn<(draftPath: string) => Promise<unknown>>(),
   fetchAccounts: vi.fn<() => Promise<unknown>>(),
+  fetchContactsAutocomplete: vi.fn<(query: string) => Promise<unknown[]>>(),
   refreshComposeSession: vi.fn<(draftPath: string) => Promise<unknown>>(),
   restoreComposeSession: vi.fn<(draftId: string) => Promise<unknown>>(),
   saveComposeSession: vi.fn<(draftPath: string, accountId: string) => Promise<unknown>>(),
@@ -50,6 +51,7 @@ vi.mock("@/api/client", () => ({
 vi.mock("./api", () => ({
   discardComposeSession: api.discardComposeSession,
   fetchAccounts: api.fetchAccounts,
+  fetchContactsAutocomplete: api.fetchContactsAutocomplete,
   refreshComposeSession: api.refreshComposeSession,
   restoreComposeSession: api.restoreComposeSession,
   saveComposeSession: api.saveComposeSession,
@@ -105,6 +107,7 @@ describe("ComposeRoute keyboard flow", () => {
       // jsdom may disable localStorage for opaque test origins.
     }
     rawApi.fetch.mockResolvedValue({ snippets: [] });
+    api.fetchContactsAutocomplete.mockResolvedValue([]);
     api.fetchAccounts.mockResolvedValue({
       accounts: [
         {
@@ -159,23 +162,34 @@ describe("ComposeRoute keyboard flow", () => {
     expect(screen.getByText("alpha@example.com")).toBeVisible();
   });
 
-  test("does not re-save an unchanged draft", async () => {
+  test("does not mark an unchanged loaded draft dirty", async () => {
+    api.startComposeSession.mockResolvedValue({
+      session: {
+        ...composeSession.session,
+        frontmatter: {
+          ...composeSession.session.frontmatter,
+          to: "alpha@example.com",
+          cc: "gamma@example.com",
+        },
+      },
+    });
     renderWithQueryClient(<ComposeRoute />);
 
-    const save = await screen.findByRole("button", { name: /save/i });
-    fireEvent.click(save);
-
+    // Rendering recipient chips for a loaded draft must not flip the autosave
+    // fingerprint: the status stays "Saved", not "Unsaved changes".
+    await screen.findByLabelText("To");
+    expect(await screen.findByText(/saved/i)).toBeVisible();
+    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
     expect(api.updateComposeSession).not.toHaveBeenCalled();
   });
 
-  test("shows keyboard shortcuts for compose actions", async () => {
+  test("surfaces the send shortcut and writing controls", async () => {
     renderWithQueryClient(<ComposeRoute />);
 
-    expect(await screen.findByRole("button", { name: /refresh/i })).toBeVisible();
-    expect(screen.getByText("⇧⌘R")).toBeVisible();
-    expect(screen.getByText("⌘S")).toBeVisible();
-    expect(screen.getByText("⌘⌫")).toBeVisible();
-    expect(screen.getByText("⌘Enter")).toBeVisible();
-    expect(screen.getByText("⇧⌘A")).toBeVisible();
+    const send = await screen.findByRole("button", { name: /send/i });
+    expect(send).toBeVisible();
+    expect(screen.getByText("⌘↵")).toBeVisible();
+    expect(screen.getByRole("button", { name: /attach/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /more compose actions/i })).toBeVisible();
   });
 });

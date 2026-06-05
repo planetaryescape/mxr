@@ -233,6 +233,15 @@ allowed to point at a how-to. Neither is allowed to *be* the other.
 - **Mutations are dry-run first.** Every example that calls a mutating
   command shows `--dry-run` before `--yes`. Same discipline we expect
   from agents.
+- **Write durable fit, not opponent-shaped claims.** Avoid claims that
+  depend on the rest of the ecosystem staying still, such as "there is
+  no maintained crate for X" or long competitor tables. Prefer what mxr
+  or a package does, what contract it follows, what it refuses to own,
+  and how the reader can verify it.
+- **Name the version surface.** Source version, registry version, lockfile
+  version, generated-doc version, and app-consumed dependency version
+  can all differ. Say which one a doc is describing, then give a command
+  that verifies it.
 
 ### Frontmatter
 
@@ -329,6 +338,23 @@ When a command's output format changes, every doc showing that output
 becomes a lie. Regenerate outputs as part of the change that triggered
 them. If a screenshot can't be regenerated automatically, prefer ASCII
 tables.
+
+### Time-sensitive package claims
+
+"Latest release" and "mxr consumes version X" are different claims.
+When writing about public crates, lead with the command that proves the
+local app dependency, then check registry metadata separately:
+
+```bash
+cargo tree -p mxr-search -i mail-query
+cargo info mail-query
+```
+
+Use the crates.io page or API when the exact newest public release matters;
+`cargo info` can reflect the local Cargo index/cache.
+
+Do not update mxr docs to say it consumes a newer crate until
+`Cargo.toml` or `Cargo.lock` actually changes.
 
 ### Mode-mixing
 

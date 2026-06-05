@@ -16,20 +16,27 @@ interface CodeMirrorComposeEditorProps {
 
 const tokenTheme = EditorView.theme({
   "&": {
-    minHeight: "520px",
-    backgroundColor: "hsl(var(--surface))",
+    height: "100%",
+    backgroundColor: "var(--background)",
     color: "var(--foreground)",
-    fontSize: "13px",
+    fontSize: "15px",
+  },
+  ".cm-editor": { height: "100%" },
+  ".cm-scroller": {
+    overflow: "auto",
+    lineHeight: "1.65",
+    fontFamily: "var(--font-mono)",
   },
   ".cm-content": {
-    minHeight: "520px",
+    maxWidth: "720px",
+    padding: "24px 24px 56px 16px",
     fontFamily: "var(--font-mono)",
-    padding: "14px",
+    caretColor: "var(--primary)",
   },
   ".cm-gutters": {
-    backgroundColor: "hsl(var(--surface))",
+    backgroundColor: "var(--background)",
     color: "var(--muted-foreground)",
-    borderRightColor: "var(--border)",
+    borderRightColor: "transparent",
   },
   ".cm-cursor": { borderLeftColor: "var(--primary)" },
   "&.cm-focused": { outline: "none" },
@@ -110,7 +117,5 @@ export function CodeMirrorComposeEditor({
     }
   }, [value]);
 
-  return (
-    <div ref={hostRef} className="overflow-hidden rounded-lg border border-border bg-surface" />
-  );
+  return <div ref={hostRef} className="h-full min-h-0" />;
 }

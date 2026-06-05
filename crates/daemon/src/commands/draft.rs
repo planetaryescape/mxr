@@ -1,4 +1,7 @@
 use crate::cli::{DraftAction, DraftLengthArg, OutputFormat, VoiceRegisterArg};
+use crate::commands::draft_output::{
+    draft_suggestion_json, eprint_draft_notes, length_data, register_data, DraftSuggestionView,
+};
 use crate::commands::resolve_account;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -48,13 +51,15 @@ pub async fn run(
                 purpose.ok_or_else(|| anyhow::anyhow!("Pass --purpose for a new draft"))?;
             let account_id = resolve_account(&mut client, account.as_deref()).await?;
             let resp = client
-                .request(Request::DraftNew {
-                    account_id,
-                    to: Address {
+                .request(Request::DraftCompose {
+                    account_id: Some(account_id),
+                    to: Some(Address {
                         name: None,
                         email: to,
-                    },
-                    purpose,
+                    }),
+                    instruction: purpose,
+                    source_message_id: None,
+                    thread_id: None,
                     register: register.map(register_data),
                     length_hint: length.map(length_data),
                 })
@@ -65,75 +70,36 @@ pub async fn run(
 }
 
 fn print_draft_response(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
-    match resp {
-        Response::Ok {
-            data:
-                ResponseData::DraftSuggestion {
-                    body,
-                    model,
-                    voice_match,
-                    humanizer,
-                    rewrite_iterations,
-                },
-        } => match fmt {
-            OutputFormat::Json | OutputFormat::Jsonl => {
-                let payload = serde_json::json!({
-                    "body": body,
-                    "model": model,
-                    "voice_match": voice_match,
-                    "humanizer": humanizer,
-                    "rewrite_iterations": rewrite_iterations,
-                });
-                if matches!(fmt, OutputFormat::Json) {
-                    println!("{}", serde_json::to_string_pretty(&payload)?);
-                } else {
-                    println!("{}", serde_json::to_string(&payload)?);
-                }
-                Ok(())
-            }
-            OutputFormat::Ids => Ok(()),
-            OutputFormat::Csv => {
-                let mut writer = csv::Writer::from_writer(Vec::new());
-                writer.write_record(["model", "rewrite_iterations", "body"])?;
-                writer.write_record([model, rewrite_iterations.to_string(), body])?;
-                print!("{}", String::from_utf8(writer.into_inner()?)?);
-                Ok(())
-            }
-            OutputFormat::Table => {
-                println!("{body}");
-                eprintln!("\n[via {model} — review before sending]");
-                if let Some(voice_match) = voice_match {
-                    eprintln!(
-                        "voice_match={:.2} {:?}",
-                        voice_match.score, voice_match.confidence
-                    );
-                }
-                if let Some(humanizer) = humanizer {
-                    eprintln!("humanizer={}/100", humanizer.score);
-                }
-                if rewrite_iterations > 0 {
-                    eprintln!("rewritten {rewrite_iterations}x");
-                }
-                Ok(())
-            }
-        },
+    let view = match resp {
+        Response::Ok { data } => DraftSuggestionView::from_response(data)
+            .ok_or_else(|| anyhow::anyhow!("Unexpected response"))?,
         Response::Error { message, .. } => anyhow::bail!(message),
-        _ => anyhow::bail!("Unexpected response"),
+    };
+    match fmt {
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&draft_suggestion_json(&view))?
+            );
+        }
+        OutputFormat::Jsonl => {
+            println!("{}", serde_json::to_string(&draft_suggestion_json(&view))?);
+        }
+        OutputFormat::Ids => {}
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record(["model", "rewrite_iterations", "body"])?;
+            writer.write_record([
+                view.model.clone(),
+                view.rewrite_iterations.to_string(),
+                view.body.clone(),
+            ])?;
+            print!("{}", String::from_utf8(writer.into_inner()?)?);
+        }
+        OutputFormat::Table => {
+            println!("{}", view.body);
+            eprint_draft_notes(&view);
+        }
     }
-}
-
-fn register_data(value: VoiceRegisterArg) -> VoiceRegisterData {
-    match value {
-        VoiceRegisterArg::Casual => VoiceRegisterData::Casual,
-        VoiceRegisterArg::Neutral => VoiceRegisterData::Neutral,
-        VoiceRegisterArg::Formal => VoiceRegisterData::Formal,
-    }
-}
-
-fn length_data(value: DraftLengthArg) -> DraftLengthHintData {
-    match value {
-        DraftLengthArg::Short => DraftLengthHintData::Short,
-        DraftLengthArg::Medium => DraftLengthHintData::Medium,
-        DraftLengthArg::Long => DraftLengthHintData::Long,
-    }
+    Ok(())
 }

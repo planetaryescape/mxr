@@ -1050,14 +1050,53 @@ fn draft_assist_action_queues_selected_thread_request() {
     assert_eq!(queue.len(), 1);
     assert_eq!(queue[0].title, "Draft assist");
     match &queue[0].request {
-        Request::DraftAssist {
-            thread_id: queued,
+        Request::DraftCompose {
+            thread_id: Some(queued),
             instruction,
+            register,
+            length_hint,
+            ..
         } => {
             assert_eq!(queued, &thread_id);
             assert_eq!(instruction, "Draft a concise reply.");
+            // The plain assist action drafts on auto tone (no override).
+            assert!(register.is_none());
+            assert!(length_hint.is_none());
         }
-        other => panic!("expected DraftAssist, got {other:?}"),
+        other => panic!("expected DraftCompose reply, got {other:?}"),
+    }
+}
+
+#[test]
+fn draft_with_options_modal_applies_chosen_tone() {
+    use crate::action::Action;
+    let mut app = App::new();
+    let envelope = TestEnvelopeBuilder::new()
+        .with_from_address("Sender", "sender@example.com")
+        .subject("Quarterly plan")
+        .build();
+    let thread_id = envelope.thread_id.clone();
+    app.mailbox.envelopes = vec![envelope];
+
+    // Open the modal, choose register = Formal (index 3), then confirm.
+    app.apply(Action::DraftWithOptions);
+    assert!(app.modals.draft_options.visible);
+    app.modals.draft_options.register_idx = 3;
+    app.submit_draft_options_modal();
+    assert!(!app.modals.draft_options.visible);
+
+    let queue = app.take_pending_platform_dispatch();
+    assert_eq!(queue.len(), 1);
+    match &queue[0].request {
+        Request::DraftCompose {
+            thread_id: Some(queued),
+            register,
+            ..
+        } => {
+            assert_eq!(queued, &thread_id);
+            assert_eq!(register, &Some(mxr_protocol::VoiceRegisterData::Formal));
+        }
+        other => panic!("expected DraftCompose reply with override, got {other:?}"),
     }
 }
 
@@ -1163,20 +1202,29 @@ fn draft_new_for_sender_action_queues_selected_sender_request() {
     let queue = app.take_pending_platform_dispatch();
     assert_eq!(queue.len(), 1);
     match &queue[0].request {
-        Request::DraftNew {
+        Request::DraftCompose {
             account_id: queued_account,
             to,
-            purpose,
+            instruction,
+            source_message_id,
             register,
             length_hint,
+            ..
         } => {
-            assert_eq!(queued_account, &account_id);
-            assert_eq!(to.email, "sender@example.com");
-            assert_eq!(purpose, "Follow up on the selected thread: Quarterly plan");
+            assert_eq!(queued_account.as_ref(), Some(&account_id));
+            assert_eq!(
+                to.as_ref().map(|address| address.email.as_str()),
+                Some("sender@example.com")
+            );
+            assert_eq!(
+                instruction,
+                "Follow up on the selected thread: Quarterly plan"
+            );
+            assert!(source_message_id.is_some());
             assert!(register.is_none());
             assert!(length_hint.is_none());
         }
-        other => panic!("expected DraftNew, got {other:?}"),
+        other => panic!("expected DraftCompose, got {other:?}"),
     }
 }
 

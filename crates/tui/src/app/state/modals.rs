@@ -1,8 +1,11 @@
 use super::super::MutationEffect;
 use crate::ui::label_picker::{LabelPicker, LabelPickerMode};
-use mxr_core::id::{AccountId, MessageId};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::Envelope;
-use mxr_protocol::{Request, ScreenerQueueEntryData, SenderProfileData, SnippetData};
+use mxr_protocol::{
+    DraftLengthHintData, Request, ScreenerQueueEntryData, SenderProfileData, SnippetData,
+    VoiceRegisterData,
+};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
@@ -92,6 +95,11 @@ pub struct ModalsState {
     /// shown in a read-only modal (draft suggestions, commitments, voice).
     pub pending_platform_dispatch: Vec<PendingPlatformDispatch>,
     pub platform: PlatformModalState,
+    /// Modal for choosing tone/length before an AI reply draft (the TUI
+    /// equivalent of the web "Adjust" disclosure). Opened from the reader /
+    /// command palette; on Enter it dispatches a `DraftCompose` for the
+    /// stored thread with the chosen overrides.
+    pub draft_options: DraftOptionsModalState,
     /// Modal for editing the active analytics view's filter
     /// parameters in one form. Populated when the user presses `f`
     /// inside the Analytics screen; cleared on Esc/Enter.
@@ -223,6 +231,82 @@ impl PlatformModalState {
         self.loading = false;
         self.body = None;
         self.error = Some(message);
+    }
+}
+
+/// Which field the Draft Options modal cursor is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DraftOptionsField {
+    #[default]
+    Register,
+    Length,
+}
+
+/// State for the Draft Options modal: pick the tone (register) and length for
+/// an AI reply draft, or leave them on "Auto" to let the daemon infer them.
+/// Index 0 of each axis is "Auto" (no override).
+#[derive(Debug, Clone, Default)]
+pub struct DraftOptionsModalState {
+    pub visible: bool,
+    pub thread_id: Option<ThreadId>,
+    pub active: DraftOptionsField,
+    /// 0=Auto, 1=Casual, 2=Neutral, 3=Formal
+    pub register_idx: usize,
+    /// 0=Auto, 1=Short, 2=Medium, 3=Long
+    pub length_idx: usize,
+}
+
+impl DraftOptionsModalState {
+    pub const REGISTER_OPTIONS: [&'static str; 4] = ["Auto", "Casual", "Neutral", "Formal"];
+    pub const LENGTH_OPTIONS: [&'static str; 4] = ["Auto", "Short", "Medium", "Long"];
+
+    pub fn open(&mut self, thread_id: ThreadId) {
+        self.visible = true;
+        self.thread_id = Some(thread_id);
+        self.active = DraftOptionsField::Register;
+        self.register_idx = 0;
+        self.length_idx = 0;
+    }
+
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.thread_id = None;
+    }
+
+    pub fn next_field(&mut self) {
+        self.active = match self.active {
+            DraftOptionsField::Register => DraftOptionsField::Length,
+            DraftOptionsField::Length => DraftOptionsField::Register,
+        };
+    }
+
+    /// Cycle the active field's selection by `delta` (wraps).
+    pub fn cycle(&mut self, delta: isize) {
+        let slot = match self.active {
+            DraftOptionsField::Register => &mut self.register_idx,
+            DraftOptionsField::Length => &mut self.length_idx,
+        };
+        *slot = (*slot as isize + delta).rem_euclid(4) as usize;
+    }
+
+    /// The chosen register override, or `None` for "Auto".
+    pub fn register(&self) -> Option<VoiceRegisterData> {
+        match self.register_idx {
+            1 => Some(VoiceRegisterData::Casual),
+            2 => Some(VoiceRegisterData::Neutral),
+            3 => Some(VoiceRegisterData::Formal),
+            _ => None,
+        }
+    }
+
+    /// The chosen length override, or `None` for "Auto".
+    pub fn length(&self) -> Option<DraftLengthHintData> {
+        match self.length_idx {
+            1 => Some(DraftLengthHintData::Short),
+            2 => Some(DraftLengthHintData::Medium),
+            3 => Some(DraftLengthHintData::Long),
+            _ => None,
+        }
     }
 }
 

@@ -37,7 +37,7 @@ use utoipa::{
         scheduled_sends_create, scheduled_sends_cancel, snippets_list,
         snippets_set, snippets_delete, sender_profile, contacts_autocomplete, screener_queue,
         screener_decisions_list, screener_decisions_set,
-        screener_decisions_clear, thread_summarize, draft_assist, mail_draft_new,
+        screener_decisions_clear, thread_summarize, mail_draft_compose,
         mail_draft_refine, mail_humanizer_score, mail_humanizer_rewrite,
         mail_relationship_profile, mail_relationship_rebuild, mail_commitments_list,
         mail_commitments_resolve, compose_session_start, compose_session_refresh, compose_session_restore,
@@ -159,8 +159,7 @@ endpoint!(get screener_decisions_list "/api/v1/mail/screener/decisions", "List s
 endpoint!(post screener_decisions_set "/api/v1/mail/screener/decisions", "Set screener decision");
 endpoint!(delete screener_decisions_clear "/api/v1/mail/screener/decisions", "Clear screener decision");
 endpoint!(post thread_summarize "/api/v1/mail/threads/{thread_id}/summarize", "Summarize a thread");
-endpoint!(post draft_assist "/api/v1/mail/threads/draft-assist", "Generate a draft body");
-endpoint!(post mail_draft_new "/api/v1/mail/drafts/new", "Start a new LLM-backed draft");
+endpoint!(post mail_draft_compose "/api/v1/mail/drafts/compose", "Generate an LLM draft (new message or reply)");
 endpoint!(post mail_draft_refine "/api/v1/mail/drafts/refine", "Refine draft text with LLM");
 endpoint!(post mail_humanizer_score "/api/v1/mail/humanizer/score", "Score draft for human-like voice");
 endpoint!(post mail_humanizer_rewrite "/api/v1/mail/humanizer/rewrite", "Rewrite draft toward target voice");

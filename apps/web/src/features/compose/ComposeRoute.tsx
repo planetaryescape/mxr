@@ -2,13 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   AlertTriangle,
-  Check,
   FilePlus2,
   Loader2,
   Paperclip,
   RefreshCw,
   Send,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -20,10 +18,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type ComponentProps,
   type DragEvent,
   type KeyboardEvent,
-  type Ref,
 } from "react";
 import { toast } from "sonner";
 
@@ -61,17 +57,20 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { cn, formatRelativeAge } from "@/lib/utils";
+import { formatRelativeAge } from "@/lib/utils";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { ComposeActionBar } from "./ComposeActionBar";
+import { ComposeTopBar } from "./ComposeTopBar";
+import { DraftAssist } from "./DraftAssist";
+import { DraftQualityBadges } from "./DraftQualityBadges";
+import { RecipientField } from "./RecipientField";
+import type {
+  DraftLengthHint,
+  DraftRefineKnobs,
+  DraftSuggestionResponse,
+  VoiceRegister,
+} from "./types";
 
 const CodeMirrorComposeEditor = lazy(() =>
   import("./codemirror/CodeMirrorComposeEditor").then((module) => ({
@@ -127,37 +126,6 @@ interface Snippet {
   body: string;
 }
 
-type VoiceRegister = "casual" | "neutral" | "formal";
-type DraftLengthHint = "short" | "medium" | "long";
-
-interface VoiceMatchReport {
-  score: number;
-  confidence: string;
-  notable_deltas: string[];
-}
-
-interface HumanizerReport {
-  score: number;
-  hits: { category: string; matched: string; suggestion?: string | null }[];
-}
-
-interface DraftSuggestionResponse {
-  kind: "DraftSuggestion";
-  body: string;
-  model: string;
-  voice_match?: VoiceMatchReport | null;
-  humanizer?: HumanizerReport | null;
-  rewrite_iterations: number;
-}
-
-interface DraftRefineKnobs {
-  shorter?: boolean;
-  warmer?: boolean;
-  more_formal?: boolean;
-  less_emoji?: boolean;
-  add_context?: string;
-}
-
 type ComposeSearch = Record<string, unknown>;
 
 export function ComposeRoute() {
@@ -200,8 +168,12 @@ export function ComposeRoute() {
   const [aiPurpose, setAiPurpose] = useState("");
   const [aiRegister, setAiRegister] = useState<VoiceRegister>("neutral");
   const [aiLength, setAiLength] = useState<DraftLengthHint>("medium");
+  // Tone/length are inferred from the relationship by default; only send the
+  // dials as an override once the user has adjusted them.
+  const [aiOverridden, setAiOverridden] = useState(false);
   const [refineContext, setRefineContext] = useState("");
   const [draftSuggestion, setDraftSuggestion] = useState<DraftSuggestionResponse | null>(null);
+  const [assistOpen, setAssistOpen] = useState(false);
   const dragDepth = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toInputRef = useRef<HTMLInputElement>(null);
@@ -226,14 +198,17 @@ export function ComposeRoute() {
       if (!email) throw new Error("Add a recipient before drafting");
       const purpose = aiPurpose.trim() || current.frontmatter.subject.trim();
       if (!purpose) throw new Error("Describe what this email should do");
-      return apiFetch<DraftSuggestionResponse>("/api/v1/mail/drafts/new", {
+      return apiFetch<DraftSuggestionResponse>("/api/v1/mail/drafts/compose", {
         method: "POST",
         body: {
           account_id: current.accountId,
           to: { name: null, email },
-          purpose,
-          register: aiRegister,
-          length_hint: aiLength,
+          instruction: purpose,
+          // Reply/forward: hand the daemon the source message so it drafts
+          // against the whole conversation.
+          ...(intent.messageId ? { source_message_id: intent.messageId } : {}),
+          // Only override the inferred tone/length once the user adjusts it.
+          ...(aiOverridden ? { register: aiRegister, length_hint: aiLength } : {}),
         },
       });
     },
@@ -620,6 +595,12 @@ export function ComposeRoute() {
   function applyDraftSuggestion(suggestion: DraftSuggestionResponse, title: string) {
     setDraft((current) => (current ? { ...current, bodyMarkdown: suggestion.body } : current));
     setDraftSuggestion(suggestion);
+    // Reflect the inferred tone in the dials (unless the user overrode it),
+    // so opening "Adjust" shows what was actually used.
+    if (!aiOverridden) {
+      if (suggestion.inferred_register) setAiRegister(suggestion.inferred_register);
+      if (suggestion.inferred_length) setAiLength(suggestion.inferred_length);
+    }
     setDirty(true);
     toast.success(title, { description: `Generated by ${suggestion.model}` });
   }
@@ -660,367 +641,193 @@ export function ComposeRoute() {
 
   return (
     <div
-      className="flex min-w-0 flex-1 overflow-auto bg-background"
+      className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background"
       onKeyDown={handleComposeKeyDown}
     >
-      <div className="mx-auto flex w-full max-w-[1080px] flex-col px-3 py-4 lg:px-4">
-        <header className="mb-3 flex items-start justify-between gap-4 border-b border-border pb-3">
-          <div className="min-w-0">
-            <div className="font-mono text-2xs uppercase tracking-wide text-muted-foreground">
-              Compose
-            </div>
-            <h1 className="truncate text-xl font-semibold tracking-tight">{intent.title}</h1>
-            <div className="mt-1 text-xs text-muted-foreground">{saveStatus} · local draft</div>
-          </div>
-          <div className="flex shrink-0 flex-wrap justify-end gap-2">
-            <ComposeActionButton
-              variant="ghost"
-              onClick={handleRefreshClick}
-              disabled={busy}
-              shortcut="⇧⌘R"
-            >
-              <RefreshCw className="size-3" />
-              Refresh
-            </ComposeActionButton>
-            <ComposeActionButton
-              variant="secondary"
-              onClick={handleSaveClick}
-              disabled={busy}
-              shortcut="⌘S"
-            >
-              {updateSession.isPending ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : (
-                <Check className="size-3" />
-              )}
-              Save
-            </ComposeActionButton>
-            {canServerSave ? (
-              <ComposeActionButton
-                variant="outline"
-                onClick={handleServerSaveClick}
-                disabled={busy || serverSave.isPending}
-                shortcut="⇧⌘S"
-              >
-                Server draft
-              </ComposeActionButton>
-            ) : null}
-            <ComposeActionButton
-              variant="destructive"
-              onClick={requestDiscard}
-              disabled={busy}
-              shortcut="⌘⌫"
-            >
-              <Trash2 className="size-3" />
-              Discard
-            </ComposeActionButton>
-            <ComposeActionButton onClick={requestSend} disabled={busy} shortcut="⌘Enter">
-              <Send className="size-3" />
-              Send
-            </ComposeActionButton>
-          </div>
-        </header>
+      <ComposeTopBar
+        title={intent.title}
+        busy={busy}
+        canServerSave={canServerSave}
+        onRefresh={handleRefreshClick}
+        onServerSave={handleServerSaveClick}
+        onDiscard={requestDiscard}
+        accounts={runtimeAccounts}
+        accountId={draft.accountId}
+        onAccountChange={updateAccount}
+      />
 
-        <div className="mb-3 rounded-lg border border-border bg-card px-3 py-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-[260px] flex-1">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <Sparkles className="size-4 text-primary" />
-                Draft for me
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Uses the local relationship profile when available. The draft stays editable.
-              </p>
-            </div>
-            <DraftQualityBadges suggestion={draftSuggestion} />
-          </div>
-          <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_140px_140px_auto] lg:items-end">
-            <div>
-              <Label htmlFor="compose-ai-purpose">Purpose</Label>
-              <Textarea
-                id="compose-ai-purpose"
-                value={aiPurpose}
-                onChange={(event) => setAiPurpose(event.target.value)}
-                placeholder="Follow up on the deck and ask for feedback by Friday"
-                className="mt-1 min-h-20 bg-background"
+      <div className="shrink-0 border-b border-border">
+        <div className="mx-auto w-full max-w-[860px] px-4 py-1.5">
+          <RecipientField
+            label="To"
+            value={draft.frontmatter.to}
+            inputRef={toInputRef}
+            onChange={(value) => updateFrontmatter("to", value)}
+            trailing={
+              <>
+                {!showCc ? (
+                  <Button variant="ghost" size="xs" onClick={revealCc} title="Add Cc (⇧⌘C)">
+                    Cc
+                  </Button>
+                ) : null}
+                {!showBcc ? (
+                  <Button variant="ghost" size="xs" onClick={revealBcc} title="Add Bcc (⇧⌘B)">
+                    Bcc
+                  </Button>
+                ) : null}
+              </>
+            }
+          />
+          <Collapsible open={showCc} onOpenChange={setShowCc}>
+            <CollapsibleContent>
+              <RecipientField
+                label="Cc"
+                value={draft.frontmatter.cc}
+                inputRef={ccInputRef}
+                onChange={(value) => updateFrontmatter("cc", value)}
               />
-            </div>
-            <div>
-              <Label>Register</Label>
-              <Select
-                value={aiRegister}
-                onValueChange={(value) => setAiRegister(value as VoiceRegister)}
-              >
-                <SelectTrigger className="mt-1 h-9 bg-background">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="casual">Casual</SelectItem>
-                  <SelectItem value="neutral">Neutral</SelectItem>
-                  <SelectItem value="formal">Formal</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Length</Label>
-              <Select
-                value={aiLength}
-                onValueChange={(value) => setAiLength(value as DraftLengthHint)}
-              >
-                <SelectTrigger className="mt-1 h-9 bg-background">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="short">Short</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="long">Long</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              type="button"
-              onClick={() => draftForMe.mutate()}
-              disabled={busy || draftForMe.isPending}
-              className="gap-1.5"
-            >
-              {draftForMe.isPending ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : (
-                <Sparkles className="size-3" />
-              )}
-              Generate
-            </Button>
-          </div>
-          <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-border pt-3">
-            <div className="min-w-[220px] flex-1">
-              <Label htmlFor="compose-refine-context">Refine context</Label>
-              <Input
-                id="compose-refine-context"
-                value={refineContext}
-                onChange={(event) => setRefineContext(event.target.value)}
-                placeholder="Optional extra context for refinement"
-                className="mt-1 h-9 bg-background text-sm"
+            </CollapsibleContent>
+          </Collapsible>
+          <Collapsible open={showBcc} onOpenChange={setShowBcc}>
+            <CollapsibleContent>
+              <RecipientField
+                label="Bcc"
+                value={draft.frontmatter.bcc}
+                inputRef={bccInputRef}
+                onChange={(value) => updateFrontmatter("bcc", value)}
               />
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={busy || refineDraft.isPending || !intent.draftId}
-              onClick={() => runRefine({ shorter: true })}
+            </CollapsibleContent>
+          </Collapsible>
+          <div className="mt-1 grid grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-3 border-t border-border/60 px-1 pt-1.5">
+            <Label
+              htmlFor="compose-subject"
+              className="text-right text-xs font-medium text-muted-foreground"
             >
-              Shorter
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={busy || refineDraft.isPending || !intent.draftId}
-              onClick={() => runRefine({ warmer: true })}
-            >
-              Warmer
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={busy || refineDraft.isPending || !intent.draftId}
-              onClick={() => runRefine({ more_formal: true })}
-            >
-              More formal
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={busy || refineDraft.isPending || !intent.draftId}
-              onClick={() => runRefine({ less_emoji: true })}
-            >
-              Less emoji
-            </Button>
-          </div>
-          {!intent.draftId ? (
-            <p className="mt-2 text-2xs text-muted-foreground">
-              Refine buttons work on saved mxr drafts opened from the drafts list.
-            </p>
-          ) : null}
-        </div>
-
-        <div
-          role="form"
-          aria-label="Compose message"
-          className="relative min-h-0 overflow-hidden rounded-lg border border-border bg-card"
-          onDragEnter={onDragEnter}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-        >
-          {dragActive ? (
-            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl border border-primary bg-background/80 backdrop-blur-sm">
-              <div className="rounded-xl border border-border bg-popover px-5 py-4 text-center shadow-xl">
-                <FilePlus2 className="mx-auto mb-2 size-6 text-primary" />
-                <div className="text-sm font-medium">Drop files to attach</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  mxr stores a local copy for this draft.
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="space-y-2 border-b border-border px-3 py-3">
-            <AddressField
-              label="To"
-              value={draft.frontmatter.to}
-              inputRef={toInputRef}
-              onChange={(value) => updateFrontmatter("to", value)}
+              Subject
+            </Label>
+            <Input
+              id="compose-subject"
+              value={draft.frontmatter.subject}
+              onChange={(event) => updateFrontmatter("subject", event.target.value)}
+              placeholder="Subject"
+              className="h-9 bg-input text-md font-medium"
             />
-            <div className="flex gap-2 pl-12">
-              {!showCc ? (
-                <ComposeActionButton variant="ghost" size="sm" onClick={revealCc} shortcut="⇧⌘C">
-                  Add Cc
-                </ComposeActionButton>
-              ) : null}
-              {!showBcc ? (
-                <ComposeActionButton variant="ghost" size="sm" onClick={revealBcc} shortcut="⇧⌘B">
-                  Add Bcc
-                </ComposeActionButton>
-              ) : null}
-            </div>
-            <Collapsible open={showCc} onOpenChange={setShowCc}>
-              <CollapsibleContent>
-                <AddressField
-                  label="Cc"
-                  value={draft.frontmatter.cc}
-                  inputRef={ccInputRef}
-                  onChange={(value) => updateFrontmatter("cc", value)}
-                />
-              </CollapsibleContent>
-            </Collapsible>
-            <Collapsible open={showBcc} onOpenChange={setShowBcc}>
-              <CollapsibleContent>
-                <AddressField
-                  label="Bcc"
-                  value={draft.frontmatter.bcc}
-                  inputRef={bccInputRef}
-                  onChange={(value) => updateFrontmatter("bcc", value)}
-                />
-              </CollapsibleContent>
-            </Collapsible>
-
-            <div className="grid grid-cols-[42px_1fr] items-center gap-2">
-              <Label htmlFor="compose-subject" className="text-muted-foreground">
-                Subject
-              </Label>
-              <Input
-                id="compose-subject"
-                value={draft.frontmatter.subject}
-                onChange={(event) => updateFrontmatter("subject", event.target.value)}
-                placeholder="Subject"
-                className="h-9 bg-background text-sm"
-              />
-            </div>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="sr-only"
-              onChange={(event) => {
-                if (event.currentTarget.files) void addFiles(event.currentTarget.files);
-                event.currentTarget.value = "";
-              }}
-            />
-            <div className="mt-3 flex flex-wrap items-end justify-between gap-3 border-t border-border pt-3">
-              <div className="flex min-w-0 flex-1 flex-wrap gap-3">
-                <div className="min-w-[260px] flex-1">
-                  <Label>Send from</Label>
-                  <AccountSelect
-                    accounts={runtimeAccounts}
-                    value={draft.accountId}
-                    onChange={updateAccount}
-                  />
-                </div>
-                <div className="w-[220px]">
-                  <Label>Editor</Label>
-                  <Select
-                    value={editorPreference}
-                    onValueChange={(value) =>
-                      setComposeEditor(value as "codemirror-vim" | "tiptap")
-                    }
-                  >
-                    <SelectTrigger className="mt-1 h-9 bg-background" aria-label="Compose editor">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="tiptap">Rich text</SelectItem>
-                      <SelectItem value="codemirror-vim">Markdown + vim</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="flex min-w-[260px] flex-1 items-center justify-end gap-3">
-                <AttachmentList
-                  attachments={draft.frontmatter.attach}
-                  onRemove={removeAttachment}
-                />
-                <ComposeActionButton
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAttachShortcut}
-                  disabled={uploading > 0}
-                  shortcut="⇧⌘A"
-                >
-                  {uploading > 0 ? (
-                    <Loader2 className="size-3 animate-spin" />
-                  ) : (
-                    <Paperclip className="size-3" />
-                  )}
-                  Attach
-                </ComposeActionButton>
-              </div>
-            </div>
           </div>
-
-          <div className="px-3 py-3">
-            <Suspense
-              fallback={
-                <div className="h-[520px] rounded-lg border border-border bg-surface p-4 text-xs text-muted-foreground">
-                  Loading editor...
-                </div>
-              }
-            >
-              {editorPreference === "tiptap" ? (
-                <TiptapComposeEditor
-                  value={draft.bodyMarkdown}
-                  onChange={updateBody}
-                  onSave={handleSaveClick}
-                  onSend={requestSend}
-                  onDiscard={requestDiscard}
-                />
-              ) : (
-                <CodeMirrorComposeEditor
-                  value={draft.bodyMarkdown}
-                  onChange={updateBody}
-                  onSave={handleSaveClick}
-                  onSend={requestSend}
-                  onDiscard={requestDiscard}
-                />
-              )}
-            </Suspense>
-          </div>
-
-          <footer className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2 text-xs text-muted-foreground">
-            <span className={dirty ? "text-warning" : "text-success"}>{saveStatus}</span>
-            <DraftQualityBadges suggestion={draftSuggestion} compact />
-            {saveError ? <span className="text-destructive">{saveError}</span> : null}
-            <span className="ml-auto font-mono text-2xs">
-              Cmd-S save · Cmd-Enter send · Cmd-Backspace discard
-            </span>
-          </footer>
         </div>
-
-        <IssueList issues={visibleIssues} />
       </div>
+
+      <DraftAssist
+        open={assistOpen}
+        onOpenChange={setAssistOpen}
+        purpose={aiPurpose}
+        onPurposeChange={setAiPurpose}
+        register={aiRegister}
+        onRegisterChange={(value) => {
+          setAiRegister(value);
+          setAiOverridden(true);
+        }}
+        length={aiLength}
+        onLengthChange={(value) => {
+          setAiLength(value);
+          setAiOverridden(true);
+        }}
+        overridden={aiOverridden}
+        onResetTone={() => setAiOverridden(false)}
+        contextNote={draftSuggestion?.context_note ?? null}
+        onGenerate={() => draftForMe.mutate()}
+        generating={draftForMe.isPending}
+        refineContext={refineContext}
+        onRefineContextChange={setRefineContext}
+        onRefine={runRefine}
+        refining={refineDraft.isPending}
+        canRefine={Boolean(intent.draftId)}
+        suggestion={draftSuggestion}
+        busy={busy}
+      />
+
+      <div
+        role="group"
+        aria-label="Message body"
+        className="relative min-h-0 flex-1 overflow-hidden"
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        <div className="mx-auto h-full w-full max-w-[860px]">
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                Loading editor…
+              </div>
+            }
+          >
+            {editorPreference === "tiptap" ? (
+              <TiptapComposeEditor
+                value={draft.bodyMarkdown}
+                onChange={updateBody}
+                onSave={handleSaveClick}
+                onSend={requestSend}
+                onDiscard={requestDiscard}
+              />
+            ) : (
+              <CodeMirrorComposeEditor
+                value={draft.bodyMarkdown}
+                onChange={updateBody}
+                onSave={handleSaveClick}
+                onSend={requestSend}
+                onDiscard={requestDiscard}
+              />
+            )}
+          </Suspense>
+        </div>
+        {dragActive ? (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+            <div className="border border-primary bg-popover px-5 py-4 text-center shadow-xl">
+              <FilePlus2 className="mx-auto mb-2 size-6 text-primary" />
+              <div className="text-sm font-medium">Drop files to attach</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                mxr stores a local copy for this draft.
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {draft.frontmatter.attach.length > 0 || visibleIssues.length > 0 ? (
+        <div className="shrink-0 border-t border-border">
+          <div className="mx-auto w-full max-w-[860px] space-y-2 px-5 py-2">
+            {draft.frontmatter.attach.length > 0 ? (
+              <AttachmentList attachments={draft.frontmatter.attach} onRemove={removeAttachment} />
+            ) : null}
+            <IssueList issues={visibleIssues} />
+          </div>
+        </div>
+      ) : null}
+
+      <ComposeActionBar
+        onSend={requestSend}
+        onAttach={handleAttachShortcut}
+        uploading={uploading}
+        busy={busy}
+        saveStatus={saveStatus}
+        dirty={dirty}
+        saveError={saveError}
+        editorPreference={editorPreference}
+        onEditorChange={setComposeEditor}
+        suggestion={draftSuggestion}
+      />
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="sr-only"
+        onChange={(event) => {
+          if (event.currentTarget.files) void addFiles(event.currentTarget.files);
+          event.currentTarget.value = "";
+        }}
+      />
 
       <SendConfirmDialog
         open={sendConfirmOpen}
@@ -1044,121 +851,19 @@ export function ComposeRoute() {
 
 function ComposeLoading({ title }: { title: string }) {
   return (
-    <div className="flex flex-1 items-start justify-center bg-background px-4 py-5">
-      <div className="w-full max-w-[980px]">
-        <div className="mb-4 h-12 animate-pulse rounded-xl bg-muted" />
-        <div className="h-[640px] animate-pulse rounded-2xl border border-border bg-muted/70" />
-        <div className="mt-3 font-mono text-2xs text-muted-foreground">
-          Opening {title.toLowerCase()}...
+    <div className="flex min-w-0 flex-1 flex-col bg-background">
+      <div className="h-14 shrink-0 border-b border-border" />
+      <div className="shrink-0 border-b border-border px-5 py-3">
+        <div className="mx-auto w-full max-w-[860px] space-y-2">
+          <div className="h-8 animate-pulse rounded-md bg-muted" />
+          <div className="h-8 w-2/3 animate-pulse rounded-md bg-muted/70" />
         </div>
       </div>
-    </div>
-  );
-}
-
-function ComposeActionButton({
-  className,
-  children,
-  shortcut,
-  ...props
-}: ComponentProps<typeof Button> & { shortcut: string }) {
-  return (
-    <Button className={cn("gap-1.5", className)} title={shortcut} {...props}>
-      {children}
-      <ShortcutKbd>{shortcut}</ShortcutKbd>
-    </Button>
-  );
-}
-
-function ShortcutKbd({ children }: { children: string }) {
-  return (
-    <kbd className="ml-1 rounded border border-border/80 bg-background/70 px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
-      {children}
-    </kbd>
-  );
-}
-
-function AccountSelect({
-  accounts,
-  value,
-  onChange,
-}: {
-  accounts: RuntimeAccount[];
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  if (accounts.length === 0) {
-    return (
-      <div className="mt-1 rounded-md border border-border bg-background px-2 py-2 text-xs text-muted-foreground">
-        {value || "Default account"}
+      <div className="min-h-0 flex-1 p-5">
+        <div className="mx-auto h-full w-full max-w-[860px] animate-pulse rounded-md bg-muted/40" />
       </div>
-    );
-  }
-  return (
-    <Select value={value || accounts[0]?.account_id} onValueChange={onChange}>
-      <SelectTrigger className="mt-1 h-9 bg-background" aria-label="Compose account">
-        <SelectValue placeholder="Select account" />
-      </SelectTrigger>
-      <SelectContent>
-        {accounts.map((account) => (
-          <SelectItem key={account.account_id} value={account.account_id}>
-            {account.name || account.email} · {account.email}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
-function AddressField({
-  label,
-  value,
-  inputRef,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  inputRef?: Ref<HTMLInputElement>;
-  onChange: (value: string) => void;
-}) {
-  const chips = splitAddresses(value);
-  const id = `compose-${label.toLowerCase()}`;
-  return (
-    <div className="grid grid-cols-[42px_1fr] items-start gap-2">
-      <Label htmlFor={id} className="pt-2 text-muted-foreground">
-        {label}
-      </Label>
-      <div>
-        <Input
-          id={id}
-          ref={inputRef}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={`${label}: name@example.com, teammate@example.com`}
-          className="h-9 bg-background text-sm"
-        />
-        {chips.length > 0 ? (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {chips.map((chip) => (
-              <Badge key={chip} variant="secondary" className="py-1 text-foreground">
-                {chip}
-                <button
-                  type="button"
-                  className="rounded-full text-muted-foreground hover:text-foreground"
-                  onClick={() => onChange(chips.filter((item) => item !== chip).join(", "))}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Backspace" && event.key !== "Delete") return;
-                    event.preventDefault();
-                    onChange(chips.filter((item) => item !== chip).join(", "));
-                  }}
-                  aria-label={`Remove ${chip}`}
-                >
-                  <X className="size-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        ) : null}
+      <div className="shrink-0 border-t border-border px-5 py-3 font-mono text-2xs text-muted-foreground">
+        Opening {title.toLowerCase()}…
       </div>
     </div>
   );
@@ -1196,34 +901,6 @@ function AttachmentList({
           </button>
         </Badge>
       ))}
-    </div>
-  );
-}
-
-function DraftQualityBadges({
-  suggestion,
-  compact = false,
-}: {
-  suggestion: DraftSuggestionResponse | null;
-  compact?: boolean;
-}) {
-  if (!suggestion) return null;
-  return (
-    <div className={cn("flex flex-wrap items-center gap-1.5", compact && "text-2xs")}>
-      {suggestion.voice_match ? (
-        <Badge variant="outline" className="bg-background">
-          Voice {Math.round(suggestion.voice_match.score * 100)}% ·{" "}
-          {suggestion.voice_match.confidence}
-        </Badge>
-      ) : null}
-      {suggestion.humanizer ? (
-        <Badge variant="outline" className="bg-background">
-          Humanizer {suggestion.humanizer.score}/100
-        </Badge>
-      ) : null}
-      {suggestion.rewrite_iterations > 0 ? (
-        <Badge variant="secondary">Rewritten {suggestion.rewrite_iterations}x</Badge>
-      ) : null}
     </div>
   );
 }

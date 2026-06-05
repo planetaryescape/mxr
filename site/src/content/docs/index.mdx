@@ -65,7 +65,7 @@ cargo install --git \
 
 <p>macOS Apple Silicon · Linux x86_64</p>
 
-[Download latest release →](https://github.com/planetaryescape/mxr/releases/latest)
+[Download a release asset →](https://github.com/planetaryescape/mxr/releases/latest)
 
   </div>
 </div>
@@ -160,7 +160,7 @@ mxr search "subject:invoice" --format json | jq -r '.[].from' | sort -u
 
 ## email your agent can <em>operate</em>
 
-<p>Anything you can do with email, your agent can do. Not "compose a draft and stop." Actually run the workflow.</p>
+<p>Search, draft, summarize, export, and preview mailbox mutations from an agent without giving the agent a separate provider SDK.</p>
 
 <div class="agent-conversation">
   <div class="agent-turn">
@@ -246,7 +246,7 @@ mxr search "from:sarah after:2026-04-23" --format json | jq '.[0]'
 
 ## not a lock-in
 
-<p>mxr is a client, not a replacement. It keeps a live two-way sync with your provider so changes flow both directions within seconds.</p>
+<p>mxr is a client, not a replacement. It keeps a two-way sync with your provider so changes flow both directions as sync runs.</p>
 
 <div class="duplex-grid">
   <div class="duplex-side">
@@ -263,11 +263,11 @@ mxr search "from:sarah after:2026-04-23" --format json | jq '.[0]'
     <div class="duplex-mech">IMAP CONDSTORE<br/>+ IDLE</div>
   </div>
   <div class="duplex-side">
-    <div class="duplex-side-label">◈ in mxr (within seconds)</div>
+    <div class="duplex-side-label">◈ in mxr after sync</div>
     <ul class="duplex-actions">
-      <li><span class="duplex-arrow">←</span> mxr marks the thread read</li>
+      <li><span class="duplex-arrow">←</span> mxr sees the read state</li>
       <li><span class="duplex-arrow">←</span> the label appears in mxr's sidebar</li>
-      <li><span class="duplex-arrow">←</span> the newsletter disappears from inbox</li>
+      <li><span class="duplex-arrow">←</span> the newsletter leaves the inbox</li>
     </ul>
   </div>
 </div>
@@ -368,7 +368,7 @@ mxr stale --mine --format json \\
 
 ## surfaces
 
-<p>mxr is a daemon plus clients. Three ship today; the daemon speaks JSON over a Unix socket and HTTP, so anything that can open a socket can drive your inbox.</p>
+<p>mxr is a daemon plus clients. The supported first-party surfaces are the TUI, CLI, web app, daemon socket, HTTP bridge, and agent skill.</p>
 
 <div class="surface-stack">
   <div class="surface-block">
@@ -388,7 +388,7 @@ mxr stale --mine --format json \\
       <div class="surface-tag">◈ scriptable</div>
     </div>
     <div class="surface-body">
-      <p>Every TUI action has a CLI equivalent. Pipe through jq, xargs, anything Unix. Use it from a shell, a Makefile, your prompt, your editor, your agent.</p>
+      <p>Durable product actions go through the CLI and daemon contract. Pipe through jq, xargs, anything Unix. Use it from a shell, a Makefile, your prompt, your editor, your agent.</p>
       <pre class="surface-snippet"><code>{`mxr archive --search "from:noreply older:30d" --dry-run
 would archive 142 messages.`}</code></pre>
     </div>
@@ -559,7 +559,7 @@ would archive 142 messages.`}</code></pre>
 
 <div class="endplate-meta">end plate ◈ open source ◈ MIT / Apache-2.0</div>
 
-<p>Built in Rust: one binary, no runtime, runs everywhere. No analytics, no phone-home, no third-party services in the hot path. The architecture is designed for contribution: clean crate boundaries, compile-time-checked SQL via sqlx, a conformance test suite for provider adapters. Whether it's a bug fix, a new provider adapter, a CLI improvement, or an idea, we want to hear from you.</p>
+<p>Built in Rust: one binary for the supported macOS and Linux release targets. No analytics, no phone-home, no third-party service in the core sync/search path. The architecture is designed for contribution: clean crate boundaries, compile-time-checked SQL via sqlx, a conformance test suite for provider adapters. Whether it's a bug fix, a new provider adapter, a CLI improvement, or an idea, we want to hear from you.</p>
 
 <div class="cta-buttons">
   <a href="/getting-started/install/" class="cta-primary">Get started →</a>

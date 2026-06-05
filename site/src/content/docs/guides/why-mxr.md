@@ -1,80 +1,117 @@
 ---
 title: Why mxr
-description: Where mxr fits, what it is good at, and when something else may be a better fit.
+description: Decide whether mxr fits your email workflow.
 ---
 
-mxr is for people who want their email runtime on their own machine.
+Use mxr when you want email state on your own machine, with one local
+runtime behind the TUI, CLI, web app, scripts, and agent workflows.
 
-That puts it in a different spot from a classic terminal client and a different spot from a hosted connector layer.
+```bash
+mxr demo
+mxr search "is:unread" --format json
+mxr web
+```
 
-## The rough map
+What you get: an isolated demo inbox, a machine-readable search result,
+and the browser UI served by the local bridge.
 
-There are a few overlapping categories here:
+## The fit
 
-- Classic terminal mail clients: mutt, neomutt, aerc
-- CLI-first mail tools: himalaya, gog, gws
-- Local indexing tools: notmuch
-- Hosted connector layers: Nylas CLI, Composio, Zapier MCP, EmailEngine
-- Local runtime and bridge experiments: Post, `email-mcp`
+mxr is a local mail runtime. It syncs provider mail into SQLite,
+indexes it locally, and exposes the same daemon-backed state through
+human and machine interfaces.
 
-mxr borrows ideas from all of them, but the center of gravity is simple: local store, local search, daemon-backed workflow, broad CLI surface.
+Choose mxr when you want:
 
-## What earlier tools are good at
+- synced mail in SQLite on your machine
+- Gmail and IMAP receive paths, plus Gmail or SMTP send paths
+- Gmail-style local search over stored mail
+- dry-runnable batch mutations
+- structured CLI output for shell scripts and agents
+- a TUI, browser UI, and HTTP bridge on the same daemon contract
 
-| Tool | Good fit when you want... | Less central there |
-|---|---|---|
-| mutt / neomutt | a long-established keyboard mail workflow | local daemon + broad JSON CLI |
-| aerc | a modern terminal UI | daemon-backed local runtime |
-| himalaya | a clean CLI-first mail client | shared daemon/state layer |
-| notmuch | local indexing over existing local maildirs | provider sync + mutations under one tool |
-| gog / gws | Gmail scripting | provider-agnostic mail workflow |
-| mxr | one local runtime for TUI, CLI, scripts, and agents | hosted connector orchestration |
+Check the surfaces in your checkout:
 
-That is not a knock on the older tools. It is the point. mxr exists because those tools proved the value of keyboard mail, local indexing, and scriptable mail.
+```bash
+mxr --help
+mxr status --format json
+mxr web --print-url
+```
 
-## Hosted connectors and nearby projects
+What you get: the command surface, daemon health, and active local web
+URL.
 
-| Tool | Better fit when you need... | mxr difference |
-|---|---|---|
-| Nylas CLI | managed provider access with a hosted layer | mxr keeps runtime and state local |
-| Composio | cross-app automation with managed auth | mxr stays mail-first and local |
-| Zapier MCP | a hosted action layer across many apps | mxr is a local mail runtime, not a SaaS router |
-| Gmail MCP servers | Gmail-specific agent access | mxr aims for a broader local mail workflow across providers |
-| EmailEngine | a self-hosted email API for backend systems | mxr is aimed at local human + agent workflows |
-| Post | a local mail daemon + CLI on macOS | mxr is a Rust codebase with Gmail/IMAP/SMTP focus |
-| `email-mcp` | local MCP access to IMAP/SMTP | mxr is broader than the MCP bridge alone |
+## Non-goals
 
-Hosted connector layers are good fits when you want remote workflows, managed auth, or one endpoint across many SaaS products. mxr is a better fit when you want the mail system itself on your machine.
+mxr is not a hosted connector layer, managed auth service, remote
+workflow platform, or backend email API for a server product. It is also
+not a native desktop app; the GUI surface is the web app opened with
+`mxr web`.
 
-## Choose mxr if...
+Use something else when you need:
 
-- You want synced mail in SQLite on your machine.
-- You want one tool that works as TUI, CLI, script target, and agent surface.
-- You care about search, batch operations, exports, and local workflows.
-- You want provider adapters behind one internal model.
+- a hosted service that manages provider auth for users
+- one remote automation endpoint across many SaaS products
+- a production backend email API for many users
+- a terminal UI only, with no daemon or broad CLI contract
+- a first-party MCP server as the integration surface
 
-## Choose something else if...
+The documented agent surface is the CLI plus the HTTP bridge:
 
-- You want a hosted connector layer more than a local mail runtime.
-- You mainly want a terminal UI and do not care about a broad CLI or daemon.
-- You need a production backend email API, not a local user-facing workflow tool.
-- You need a first-party MCP server right now. mxr has not shipped that yet.
+```bash
+mxr search "from:alice newer_than:14d" --format ids
+mxr archive --search "from:no-reply older_than:30d" --dry-run
+```
+
+What you get: pipeable selectors first, then a preview of any batch
+mutation.
 
 ## Provider capability matrix
 
 | Adapter | Sync | Send | Labels / folders | Mutations | Notes |
 |---|---|---|---|---|---|
-| Gmail | yes | yes | labels | yes | direct Gmail adapter |
-| IMAP | yes | no | folders | yes | usually paired with SMTP |
-| SMTP | no | yes | no | no | send-only adapter |
-| Fake | yes | yes | fixture labels | yes | tests and local development |
+| Gmail | yes | yes | labels | yes | Direct Gmail API adapter. |
+| IMAP | yes | no | folders | yes | Usually paired with SMTP. |
+| SMTP | no | yes | no | no | Send-only adapter. |
+| Outlook Personal | yes | yes | folders/categories | yes | Microsoft consumer accounts. |
+| Outlook Work | yes | yes | folders/categories | yes | Microsoft 365 work/school accounts. |
+| Fake | yes | yes | fixture labels | yes | Tests and `mxr demo`. |
+
+Verify provider setup:
+
+```bash
+mxr accounts --format json
+mxr sync --status --format json
+```
+
+What you get: configured accounts and the latest sync state per account.
 
 ## Interface capability matrix
 
-| Interface | Status | Best for | Notes |
-|---|---|---|---|
-| CLI | available | scripting, batch work, agents | broadest current surface |
-| TUI | available | daily reading and triage | mailbox-focused interface |
-| Daemon socket | available | custom clients | JSON over Unix socket |
-| Agent skill | available | coding-agent workflows | documents CLI patterns |
-| MCP server | not shipped | tool-native agent integration | planned, not current |
+| Interface | Use it for | Entry point |
+|---|---|---|
+| CLI | scripting, batch work, agents | `mxr <command>` |
+| TUI | daily reading and triage | `mxr` |
+| Web app | browser reading, sender views, dashboards | `mxr web` |
+| Daemon socket | custom local clients | `mxr daemon` |
+| HTTP bridge | browser and HTTP clients | `mxr web --print-url` |
+| Agent skill | coding-agent workflows over the CLI | [Agent skill](/guides/agent-skill/) |
+
+Start with the demo when you are evaluating fit:
+
+```bash
+mxr demo
+mxr search "has:attachment" --format json
+mxr reset --hard --dry-run
+```
+
+What you get: realistic local mail state and safe reset preview without
+touching your real profile.
+
+## See also
+
+- [Quick start](/getting-started/quick-start/)
+- [Automation contract](/guides/automation-contract/)
+- [For agents](/guides/for-agents/)
+- [No native desktop app](/guides/no-native-desktop-app/)
+- [Architecture](/guides/architecture/)

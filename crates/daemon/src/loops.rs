@@ -541,6 +541,24 @@ async fn post_sync_fanout(
         }
     }
 
+    // Keep the user's voice profile current so AI drafts can write in their
+    // voice. `rebuild_user_voice_profile` self-skips when there are <20 sent
+    // messages or the source hash is unchanged, so this is naturally debounced.
+    if !initial_backfill_in_progress {
+        let voice_state = Arc::clone(&state);
+        let voice_account = account_id.clone();
+        tokio::spawn(async move {
+            if let Err(error) = mxr_relationship::service::rebuild_user_voice_profile(
+                &voice_state.store,
+                &voice_account,
+            )
+            .await
+            {
+                tracing::warn!(account = %voice_account, %error, "user voice profile rebuild failed");
+            }
+        });
+    }
+
     if let Err(error) = apply_rules_to_messages(
         &state,
         &account_id,

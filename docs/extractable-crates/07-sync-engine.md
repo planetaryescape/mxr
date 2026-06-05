@@ -44,9 +44,9 @@ audit_notes: |
 
 ## Decision: **Tier 3 — investigate, do not commit**
 
-By **impact**, this is the largest unfilled gap in the Rust email
-ecosystem. No published crate solves it. Every Rust mail client that
-wants offline-capable sync (mxr included) rolls its own.
+By **impact**, this is a large local-mail runtime problem: offline-capable
+sync, provider reconciliation, store updates, and recovery behavior need
+to line up. mxr currently owns that as app code.
 
 By **extraction risk**, this is also the highest. mxr's sync code is
 deeply intertwined with its store schema, provider trait, and protocol

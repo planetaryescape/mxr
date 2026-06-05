@@ -17,6 +17,7 @@ pub mod demo;
 pub mod doctor;
 pub mod draft;
 pub mod draft_assist;
+pub mod draft_output;
 pub mod events;
 pub mod expert;
 pub mod export;

@@ -219,6 +219,7 @@ impl App {
             | Action::InstallSemanticProfile(_)
             | Action::UseSemanticProfile(_) => self.apply_semantic_action(action),
             Action::DraftAssistCurrentThread
+            | Action::DraftWithOptions
             | Action::DraftNewForSender
             | Action::RefinePendingDraft
             | Action::OpenVoiceProfile

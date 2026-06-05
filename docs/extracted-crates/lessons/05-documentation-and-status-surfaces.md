@@ -1,6 +1,7 @@
 # Documentation and status surfaces
 
-Where to update what when shipping a crate. The two-doc structure, the three status surfaces, and the planning-doc preservation rule.
+Where to update what when shipping a crate. The two-doc structure, status
+surfaces, and the planning-doc preservation rule.
 
 ## The two-doc structure
 
@@ -57,6 +58,23 @@ When a crate goes from "in-repo" to "published":
 3. **Index README table row** in `docs/extractable-crates/README.md` — flip the Decision cell from "Tier 1 — ship" to "Shipped", append links.
 
 Reader-priority order: 3 → 2 → 1. The table is what skimmers see first. Update it last (so it's right) but verify it first when reviewing the diff.
+
+## Version surfaces to keep separate
+
+After a crate is published, there is no single "current version" claim.
+Name the surface before writing the number:
+
+| Surface | Source of truth | Verify with |
+|---|---|---|
+| Standalone crate source | external repo `Cargo.toml` | `git -C ../<crate> show HEAD:Cargo.toml` |
+| Registry latest | crates.io metadata | crates.io page/API; `cargo info <crate>` for local Cargo metadata |
+| mxr-consumed version | mxr `Cargo.toml` / `Cargo.lock` | `cargo tree -p <consumer> -i <crate>` |
+| Historical planning docs | the archived runbook | `rg -n "<crate> v" docs/extracted-crates docs/extractable-crates` |
+
+Do not update mxr docs to claim a dependency bump unless the mxr manifest
+or lockfile changed. Patch releases can improve package README text,
+crate descriptions, docs.rs output, or metadata without changing what mxr
+builds against.
 
 ## Status banner at top of planning docs
 

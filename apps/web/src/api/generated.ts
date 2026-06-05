@@ -191,6 +191,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/actions/invite/reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reply to a calendar invite */
+        post: operations["action_invite_reply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/actions/snooze": {
         parameters: {
             query?: never;
@@ -236,6 +253,23 @@ export interface paths {
         put?: never;
         /** Unsubscribe from list mail */
         post: operations["action_unsubscribe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/actions/unsubscribe-purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unsubscribe and clear sender footprint */
+        post: operations["action_unsubscribe_purge"];
         delete?: never;
         options?: never;
         head?: never;
@@ -497,7 +531,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/mail/drafts/new": {
+    "/api/v1/mail/drafts/compose": {
         parameters: {
             query?: never;
             header?: never;
@@ -506,8 +540,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start a new LLM-backed draft */
-        post: operations["mail_draft_new"];
+        /** Generate an LLM draft (new message or reply) */
+        post: operations["mail_draft_compose"];
         delete?: never;
         options?: never;
         head?: never;
@@ -661,6 +695,40 @@ export interface paths {
         put?: never;
         /** Score draft for human-like voice */
         post: operations["mail_humanizer_score"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List background jobs */
+        get: operations["mail_jobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect a background job */
+        get: operations["mail_job_detail"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -882,6 +950,23 @@ export interface paths {
         put?: never;
         /** Read and archive messages */
         post: operations["mutation_read_archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/mutations/route": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route messages from a queue to a label */
+        post: operations["mutation_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1145,6 +1230,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/search/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Group a mail search result set */
+        get: operations["mail_search_groups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/sender": {
         parameters: {
             query?: never;
@@ -1362,23 +1464,6 @@ export interface paths {
         get: operations["mail_sync_status"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/threads/draft-assist": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Generate a draft body */
-        post: operations["draft_assist"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2444,6 +2529,69 @@ export interface components {
             last_synced_count: number;
             sync_in_progress: boolean;
         };
+        ActivityCursor: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            ts: number;
+        };
+        ActivityEntry: {
+            account_id?: string | null;
+            action: string;
+            /** @description Parsed context; clients see structured JSON, not the raw string. */
+            context?: unknown;
+            /** Format: int64 */
+            id: number;
+            redacted: boolean;
+            source: components["schemas"]["ClientKind"];
+            target_id?: string | null;
+            target_kind?: string | null;
+            tier: components["schemas"]["ActivityTier"];
+            /** Format: int64 */
+            ts: number;
+        };
+        /** @enum {string} */
+        ActivityExportFormat: "csv" | "json" | "ndjson";
+        ActivityFilter: {
+            account_id?: string | null;
+            action_prefix?: string | null;
+            actions?: string[];
+            include_redacted?: boolean;
+            /** @description FTS5 expression against `context_json`. */
+            query?: string | null;
+            /**
+             * Format: int64
+             * @description Unix ms inclusive lower bound.
+             */
+            since?: number | null;
+            /** @description Empty = any. */
+            sources?: components["schemas"]["ClientKind"][];
+            target_id?: string | null;
+            target_kind?: string | null;
+            tiers?: components["schemas"]["ActivityTier"][];
+            /**
+             * Format: int64
+             * @description Unix ms exclusive upper bound.
+             */
+            until?: number | null;
+        };
+        ActivityStatBucket: {
+            /** Format: int64 */
+            count: number;
+            /**
+             * @description Group key — depends on `group_by`: action token, ISO date, source,
+             *     target kind, or hour-of-day string `00`..`23`.
+             */
+            key: string;
+        };
+        /** @enum {string} */
+        ActivityStatGroupBy: "action" | "day" | "source" | "target_kind" | "hour";
+        /**
+         * @description Mirror of `mxr_store::Tier`. Three retention buckets used by the
+         *     activity log: 30 / 90 / 365 days for ephemeral / standard / important.
+         * @enum {string}
+         */
+        ActivityTier: "ephemeral" | "standard" | "important";
         Address: {
             email: string;
             name?: string | null;
@@ -2539,9 +2687,88 @@ export interface components {
             /** Format: int32 */
             total_volume: number;
         };
+        CalendarAttendee: {
+            email: string;
+            name?: string | null;
+            partstat?: string | null;
+            role?: string | null;
+            rsvp?: boolean | null;
+            uri?: string | null;
+        };
+        /** @enum {string} */
+        CalendarInviteActionData: "accept" | "tentative" | "decline";
+        CalendarInviteData: {
+            account_id: components["schemas"]["AccountId"];
+            /** Format: int64 */
+            created_at: number;
+            id: components["schemas"]["CalendarInviteId"];
+            message_id: components["schemas"]["MessageId"];
+            metadata: components["schemas"]["CalendarMetadata"];
+            /** Format: int64 */
+            updated_at: number;
+        };
+        /** Format: uuid */
+        CalendarInviteId: string;
+        CalendarInviteResponsePreview: {
+            action: components["schemas"]["CalendarInviteActionData"];
+            attendee_email: string;
+            body_text: string;
+            ics: string;
+            message_id: components["schemas"]["MessageId"];
+            organizer_email: string;
+            subject: string;
+            warnings: string[];
+        };
+        CalendarInviteResponseResult: {
+            action: components["schemas"]["CalendarInviteActionData"];
+            message_id: components["schemas"]["MessageId"];
+            provider_message_id?: string | null;
+            rfc2822_message_id: string;
+        };
         CalendarMetadata: {
+            attendees?: components["schemas"]["CalendarAttendee"][];
+            component_kind?: string | null;
+            description?: string | null;
+            dtstamp?: string | null;
+            ends_at?: string | null;
+            /**
+             * @description Derived: true when the daemon has seen a prior REQUEST with the same
+             *     UID and a lower SEQUENCE — i.e. this is a rescheduled / amended
+             *     invite.
+             */
+            is_update?: boolean;
+            location?: string | null;
             method?: string | null;
+            organizer?: null | components["schemas"]["CalendarPerson"];
+            raw_ics?: string | null;
+            recurrence_id?: string | null;
+            rrule?: string | null;
+            rsvp_requested?: boolean;
+            /** Format: int64 */
+            sequence?: number | null;
+            starts_at?: string | null;
+            status?: string | null;
             summary?: string | null;
+            uid?: string | null;
+            /**
+             * @description Derived: the email of the matched viewer attendee, as it appears in
+             *     the iCal `ATTENDEE` property. Used by the comment-compose path so the
+             *     REPLY's `ATTENDEE` matches exactly.
+             */
+            viewer_attendee_email?: string | null;
+            viewer_partstat?: null | components["schemas"]["CalendarPartstat"];
+            warnings?: string[];
+        };
+        /**
+         * @description Typed view of an iCalendar `PARTSTAT` value, derived for the viewing
+         *     account's own attendee row. Maps 1:1 to the strings defined in RFC 5545.
+         * @enum {string}
+         */
+        CalendarPartstat: "needs_action" | "accepted" | "tentative" | "declined" | "delegated";
+        CalendarPerson: {
+            email: string;
+            name?: string | null;
+            uri?: string | null;
         };
         CitationRef: {
             field?: string;
@@ -2555,6 +2782,14 @@ export interface components {
             quote: string;
             thread_id?: string | null;
         };
+        /**
+         * @description Originating client for an IPC request. Carried on the envelope so the
+         *     daemon's activity recorder can tag rows with the surface that produced
+         *     them. Legacy clients (pre-source-field) decode as `Cli` — the most
+         *     realistic guess for scripts hand-rolled against the socket.
+         * @enum {string}
+         */
+        ClientKind: "tui" | "cli" | "web" | "daemon";
         CommitmentData: {
             account_id: components["schemas"]["AccountId"];
             /** Format: date-time */
@@ -2715,6 +2950,75 @@ export interface components {
             thread_id: components["schemas"]["ThreadId"];
             topic?: string | null;
         };
+        /** @description A tracked delivery for the Deliveries surface (CLI/web/TUI). */
+        DeliveryData: {
+            account_id: components["schemas"]["AccountId"];
+            carrier?: string | null;
+            /** Format: double */
+            confidence: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            delivered_at?: string | null;
+            /** Format: date-time */
+            dismissed_at?: string | null;
+            /** Format: date-time */
+            eta_from?: string | null;
+            /** Format: date-time */
+            eta_until?: string | null;
+            id: components["schemas"]["DeliveryId"];
+            items?: components["schemas"]["DeliveryItemData"][];
+            /** Format: date-time */
+            last_event_at: string;
+            merchant?: string | null;
+            /** @description Source message ids (provenance). Populated by GetDelivery. */
+            message_ids?: components["schemas"]["MessageId"][];
+            order_number?: string | null;
+            /** Format: date-time */
+            resolved_at?: string | null;
+            /** @description Detection source: "schema" | "llm" | "heuristic". */
+            source: string;
+            /** @description Normalized lifecycle status, e.g. "in_transit", "delivered". */
+            status: string;
+            thread_id?: null | components["schemas"]["ThreadId"];
+            tracking_number?: string | null;
+            tracking_url?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** Format: uuid */
+        DeliveryId: string;
+        /** @description One ordered/shipped item within a delivery. */
+        DeliveryItemData: {
+            name: string;
+            /** Format: int64 */
+            quantity?: number | null;
+        };
+        /** @description Result of a `ScanDeliveries` run. */
+        DeliveryScanSummary: {
+            /**
+             * Format: int32
+             * @description Candidates the heuristic created (or would create on a dry run).
+             */
+            created: number;
+            /** @description Whether this was a preview (no writes). */
+            dry_run: boolean;
+            /**
+             * Format: int32
+             * @description Messages examined in the window.
+             */
+            scanned: number;
+            /**
+             * Format: int32
+             * @description Candidates handed to the LLM for confirmation.
+             */
+            shortlisted: number;
+            /**
+             * Format: int32
+             * @description Candidates merged into an existing delivery.
+             */
+            updated: number;
+        };
         DoctorDataStats: {
             /** Format: int32 */
             accounts: number;
@@ -2850,6 +3154,7 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             id: components["schemas"]["DraftId"];
+            inline_calendar_reply?: null | components["schemas"]["InlineCalendarReply"];
             intent?: components["schemas"]["DraftIntent"];
             reply_headers?: null | components["schemas"]["ReplyHeaders"];
             subject: string;
@@ -2961,6 +3266,13 @@ export interface components {
             id: components["schemas"]["MessageId"];
             in_reply_to?: string | null;
             /**
+             * @description Custom IMAP-style keywords (`$Forwarded`, `$NotJunk`, user-defined
+             *     `$Work`, etc.). System flags continue to live in `flags`. Stored
+             *     case-preserved as received; equality is case-sensitive to match
+             *     IMAP atom semantics.
+             */
+            keywords?: string[];
+            /**
              * @description Provider-specific label IDs (e.g. "INBOX", "SENT", "Label_123").
              *     Transient: used during sync to populate the message_labels junction table.
              */
@@ -3064,8 +3376,41 @@ export interface components {
         };
         /** @enum {string} */
         IndexFreshness: "unknown" | "current" | "stale" | "disabled" | "indexing" | "error" | "repair_required";
+        InlineCalendarReply: {
+            attendee_email: string;
+            ics_body: string;
+            partstat: components["schemas"]["CalendarPartstat"];
+            source_message_id: components["schemas"]["MessageId"];
+        };
         /** @enum {string} */
         IpcErrorKind: "invalid_request" | "not_found" | "auth" | "policy" | "provider" | "rate_limited" | "store" | "unsupported" | "internal";
+        JobData: {
+            error?: string | null;
+            /** Format: int64 */
+            finished_at?: number | null;
+            job_id: string;
+            kind: string;
+            progress: components["schemas"]["JobProgressData"];
+            result?: null | components["schemas"]["MutationResultData"];
+            /** Format: int64 */
+            started_at: number;
+            status: components["schemas"]["JobStatusData"];
+            undo_ids?: string[];
+        };
+        JobProgressData: {
+            /** Format: int32 */
+            completed: number;
+            /** Format: int32 */
+            failed: number;
+            /** Format: int32 */
+            skipped: number;
+            /** Format: int32 */
+            succeeded: number;
+            /** Format: int32 */
+            total: number;
+        };
+        /** @enum {string} */
+        JobStatusData: "queued" | "running" | "succeeded" | "failed";
         Label: {
             account_id: components["schemas"]["AccountId"];
             color?: string | null;
@@ -3073,6 +3418,7 @@ export interface components {
             kind: components["schemas"]["LabelKind"];
             name: string;
             provider_id: string;
+            role?: null | components["schemas"]["Role"];
             /** Format: int32 */
             total_count: number;
             /** Format: int32 */
@@ -3147,6 +3493,8 @@ export interface components {
             commitments: null | components["schemas"]["LlmOverrideData"];
             /** @default null */
             decision_log: null | components["schemas"]["LlmOverrideData"];
+            /** @default null */
+            delivery_extraction: null | components["schemas"]["LlmOverrideData"];
             /** @default null */
             draft_assist: null | components["schemas"]["LlmOverrideData"];
             /** @default null */
@@ -3237,6 +3585,14 @@ export interface components {
             /** @enum {string} */
             mutation: "Move";
             target_label: string;
+        } | {
+            archive?: boolean;
+            dry_run?: boolean;
+            from_queue_label: string;
+            message_ids: components["schemas"]["MessageId"][];
+            /** @enum {string} */
+            mutation: "Route";
+            to_label: string;
         };
         MutationResultData: {
             accounts: components["schemas"]["AccountMutationResultData"][];
@@ -3256,6 +3612,24 @@ export interface components {
             skipped: number;
             /** Format: int32 */
             succeeded: number;
+        };
+        /** @enum {string} */
+        NotificationChimeEventData: "new_mail" | "sent" | "archived" | "trashed" | "spam" | "snoozed" | "unsnoozed" | "reminder" | "error";
+        /** @enum {string} */
+        NotificationChimeSoundData: "none" | "bell" | "glass" | "pop" | "sent" | "archive" | "thud" | "alert";
+        NotificationChimesData: {
+            archived: components["schemas"]["NotificationChimeSoundData"];
+            enabled: boolean;
+            error: components["schemas"]["NotificationChimeSoundData"];
+            new_mail: components["schemas"]["NotificationChimeSoundData"];
+            reminder: components["schemas"]["NotificationChimeSoundData"];
+            sent: components["schemas"]["NotificationChimeSoundData"];
+            snoozed: components["schemas"]["NotificationChimeSoundData"];
+            spam: components["schemas"]["NotificationChimeSoundData"];
+            trashed: components["schemas"]["NotificationChimeSoundData"];
+            unsnoozed: components["schemas"]["NotificationChimeSoundData"];
+            /** Format: float */
+            volume: number;
         };
         OwedReplyRowData: {
             /** Format: double */
@@ -3348,6 +3722,37 @@ export interface components {
             cmd: "GetBody";
             message_id: components["schemas"]["MessageId"];
         } | {
+            /** @enum {string} */
+            cmd: "GetInvite";
+            message_id: components["schemas"]["MessageId"];
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ListInvites";
+            /** Format: int32 */
+            limit: number;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "BackfillCalendarInvites";
+        } | {
+            action: components["schemas"]["CalendarInviteActionData"];
+            /** @enum {string} */
+            cmd: "RespondInvite";
+            dry_run: boolean;
+            message_id: components["schemas"]["MessageId"];
+        } | {
+            action: components["schemas"]["CalendarInviteActionData"];
+            /** @enum {string} */
+            cmd: "PrepareInviteResponse";
+            message_id: components["schemas"]["MessageId"];
+        } | {
+            attendee_email: string;
+            /** @enum {string} */
+            cmd: "MarkInviteAnswered";
+            message_id: components["schemas"]["MessageId"];
+            partstat: components["schemas"]["CalendarPartstat"];
+        } | {
             allow_remote: boolean;
             /** @enum {string} */
             cmd: "GetHtmlImageAssets";
@@ -3378,6 +3783,16 @@ export interface components {
             /** @enum {string} */
             cmd: "GetThread";
             thread_id: components["schemas"]["ThreadId"];
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ListThreads";
+            label_id?: null | components["schemas"]["LabelId"];
+            /** Format: int32 */
+            limit: number;
+            /** Format: int32 */
+            offset: number;
+            sort?: null | components["schemas"]["SortOrder"];
         } | {
             account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
@@ -3494,6 +3909,9 @@ export interface components {
             /** @enum {string} */
             cmd: "ListSavedSearches";
         } | {
+            /** @enum {string} */
+            cmd: "ListSavedSearchUnreadCounts";
+        } | {
             account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
             cmd: "ListSubscriptions";
@@ -3601,6 +4019,17 @@ export interface components {
             config: components["schemas"]["LlmConfigData"];
         } | {
             /** @enum {string} */
+            cmd: "GetNotificationChimes";
+        } | {
+            /** @enum {string} */
+            cmd: "UpdateNotificationChimes";
+            config: components["schemas"]["NotificationChimesData"];
+        } | {
+            /** @enum {string} */
+            cmd: "PreviewNotificationChime";
+            event: components["schemas"]["NotificationChimeEventData"];
+        } | {
+            /** @enum {string} */
             cmd: "GetSemanticStatus";
         } | {
             /** @enum {string} */
@@ -3621,6 +4050,7 @@ export interface components {
             /** @enum {string} */
             cmd: "BackfillSemantic";
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
             cmd: "CreateSavedSearch";
             name: string;
@@ -3642,6 +4072,7 @@ export interface components {
             search_mode?: null | components["schemas"]["SearchMode"];
             sort?: null | components["schemas"]["SortOrder"];
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
             cmd: "RunSavedSearch";
             /** Format: int32 */
@@ -3649,17 +4080,55 @@ export interface components {
             name: string;
         } | {
             category?: string | null;
+            /**
+             * @description Category prefix (e.g. `mutation`, `sync.`). Applied as
+             *     `category LIKE <prefix>%`. Optional.
+             */
+            category_prefix?: string | null;
             /** @enum {string} */
             cmd: "ListEvents";
             level?: string | null;
             /** Format: int32 */
             limit: number;
+            /**
+             * Format: int32
+             * @description Result offset for paging. Defaults to 0.
+             */
+            offset?: number;
+            /** @description Free-text `LIKE %term%` over the `summary` column. Optional. */
+            search?: string | null;
+            /**
+             * Format: int64
+             * @description Unix-seconds inclusive lower bound on `timestamp`. Optional.
+             */
+            since?: number | null;
+            /**
+             * Format: int64
+             * @description Unix-seconds exclusive upper bound on `timestamp`. Optional.
+             */
+            until?: number | null;
         } | {
             /** @enum {string} */
             cmd: "GetLogs";
             level?: string | null;
             /** Format: int32 */
             limit: number;
+            /** @description Free-text substring filter against each log line. Case-insensitive. */
+            search?: string | null;
+        } | {
+            /** @enum {string} */
+            cmd: "ListEventCategories";
+        } | {
+            category?: string | null;
+            category_prefix?: string | null;
+            /** @enum {string} */
+            cmd: "CountEvents";
+            level?: string | null;
+            search?: string | null;
+            /** Format: int64 */
+            since?: number | null;
+            /** Format: int64 */
+            until?: number | null;
         } | {
             /** @enum {string} */
             cmd: "GetDoctorReport";
@@ -3670,6 +4139,7 @@ export interface components {
             since?: string | null;
             verbose: boolean;
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
             cmd: "Search";
             explain: boolean;
@@ -3695,8 +4165,18 @@ export interface components {
             flags: number;
             message_id: components["schemas"]["MessageId"];
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
             cmd: "Count";
+            mode?: null | components["schemas"]["SearchMode"];
+            query: string;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "SearchAggregation";
+            group_by: components["schemas"]["SearchAggregationGroupBy"];
+            /** Format: int32 */
+            limit?: number | null;
             mode?: null | components["schemas"]["SearchMode"];
             query: string;
         } | {
@@ -3714,7 +4194,19 @@ export interface components {
         } & {
             /** @enum {string} */
             cmd: "Mutation";
+        }) | (components["schemas"]["MutationCommand"] & {
+            client_correlation_id?: string | null;
+        } & {
+            /** @enum {string} */
+            cmd: "StartMutationJob";
         }) | {
+            /** @enum {string} */
+            cmd: "ListJobs";
+        } | {
+            /** @enum {string} */
+            cmd: "GetJob";
+            job_id: string;
+        } | {
             /** @enum {string} */
             cmd: "UndoMutation";
             mutation_id: string;
@@ -3722,6 +4214,18 @@ export interface components {
             /** @enum {string} */
             cmd: "Unsubscribe";
             message_id: components["schemas"]["MessageId"];
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            address: string;
+            /**
+             * @description If false, a sender with no usable List-Unsubscribe method previews
+             *     the footprint but does not archive it. If true, the daemon still
+             *     read-archives the sender footprint and reports that unsubscribe was skipped.
+             */
+            archive_on_no_method?: boolean;
+            /** @enum {string} */
+            cmd: "UnsubscribePurge";
+            dry_run?: boolean;
         } | {
             /** @enum {string} */
             cmd: "Snooze";
@@ -3777,6 +4281,30 @@ export interface components {
             cmd: "DeleteSnippet";
             name: string;
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ListDeliveries";
+            filter?: string | null;
+        } | {
+            /** @enum {string} */
+            cmd: "GetDelivery";
+            delivery_id: components["schemas"]["DeliveryId"];
+        } | {
+            /** @enum {string} */
+            cmd: "ResolveDelivery";
+            delivery_id: components["schemas"]["DeliveryId"];
+        } | {
+            /** @enum {string} */
+            cmd: "DismissDelivery";
+            delivery_id: components["schemas"]["DeliveryId"];
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ScanDeliveries";
+            dry_run?: boolean;
+            /** Format: int32 */
+            since_days?: number | null;
+        } | {
             /** @enum {string} */
             cmd: "ListSignatures";
         } | {
@@ -3817,10 +4345,17 @@ export interface components {
             cmd: "GetSenderProfile";
             email: string;
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
             cmd: "ListSenders";
             /** Format: int32 */
             limit?: number;
+            /**
+             * Format: int64
+             * @description Restrict counts to messages whose `date >= since_unix`.
+             *     `None` means "no time bound" (legacy behavior).
+             */
+            since_unix?: number | null;
         } | {
             account_id: components["schemas"]["AccountId"];
             /** @enum {string} */
@@ -3886,18 +4421,30 @@ export interface components {
             cmd: "SummarizeThread";
             thread_id: components["schemas"]["ThreadId"];
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
-            cmd: "DraftAssist";
-            instruction: string;
-            thread_id: components["schemas"]["ThreadId"];
+            cmd: "TriageSearch";
+            /** Format: int32 */
+            limit?: number;
+            mode?: null | components["schemas"]["SearchMode"];
+            /** Format: int32 */
+            offset?: number;
+            query: string;
+            sort?: null | components["schemas"]["SortOrder"];
         } | {
-            account_id: components["schemas"]["AccountId"];
+            account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
-            cmd: "DraftNew";
+            cmd: "DraftCompose";
+            /**
+             * @description The user's purpose/instruction (e.g. "follow up on pricing",
+             *     "decline politely").
+             */
+            instruction: string;
             length_hint?: null | components["schemas"]["DraftLengthHintData"];
-            purpose: string;
             register?: null | components["schemas"]["VoiceRegisterData"];
-            to: components["schemas"]["Address"];
+            source_message_id?: null | components["schemas"]["MessageId"];
+            thread_id?: null | components["schemas"]["ThreadId"];
+            to?: null | components["schemas"]["Address"];
         } | {
             /** @enum {string} */
             cmd: "DraftRefine";
@@ -4056,6 +4603,7 @@ export interface components {
             format: components["schemas"]["ExportFormat"];
             thread_id: components["schemas"]["ThreadId"];
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
             cmd: "ExportSearch";
             format: components["schemas"]["ExportFormat"];
@@ -4069,6 +4617,69 @@ export interface components {
         } | {
             /** @enum {string} */
             cmd: "Shutdown";
+        } | {
+            /** @enum {string} */
+            cmd: "ListActivity";
+            cursor?: null | components["schemas"]["ActivityCursor"];
+            filter: components["schemas"]["ActivityFilter"];
+            /** Format: int32 */
+            limit: number;
+        } | {
+            /** @enum {string} */
+            cmd: "CountActivity";
+            filter: components["schemas"]["ActivityFilter"];
+        } | {
+            /** @enum {string} */
+            cmd: "ActivityStats";
+            group_by: components["schemas"]["ActivityStatGroupBy"];
+            /** Format: int64 */
+            since: number;
+            /** Format: int64 */
+            until: number;
+        } | {
+            /** @enum {string} */
+            cmd: "ExportActivity";
+            filter: components["schemas"]["ActivityFilter"];
+            format: components["schemas"]["ActivityExportFormat"];
+            path?: string | null;
+        } | {
+            /** @enum {string} */
+            cmd: "RedactActivity";
+            dry_run: boolean;
+            filter?: null | components["schemas"]["ActivityFilter"];
+            ids: number[];
+        } | {
+            /** Format: int64 */
+            before_ts: number;
+            /** @enum {string} */
+            cmd: "PruneActivity";
+            dry_run: boolean;
+            tier?: null | components["schemas"]["ActivityTier"];
+        } | {
+            /** @enum {string} */
+            cmd: "PauseActivity";
+            /** Format: int64 */
+            until_ts?: number | null;
+        } | {
+            /** @enum {string} */
+            cmd: "ResumeActivity";
+        } | {
+            /** @enum {string} */
+            cmd: "ListSavedActivityFilters";
+        } | {
+            /** @enum {string} */
+            cmd: "GetSavedActivityFilter";
+            slug: string;
+        } | {
+            /** @enum {string} */
+            cmd: "UpsertSavedActivityFilter";
+            filter: components["schemas"]["ActivityFilter"];
+            name: string;
+            slug: string;
+        } | {
+            /** @enum {string} */
+            cmd: "DeleteSavedActivityFilter";
+            slug: string;
         };
         Response: {
             data: components["schemas"]["ResponseData"];
@@ -4096,6 +4707,39 @@ export interface components {
             /** @enum {string} */
             kind: "Body";
         } | {
+            invite: components["schemas"]["CalendarInviteData"];
+            /** @enum {string} */
+            kind: "Invite";
+        } | {
+            invites: components["schemas"]["CalendarInviteData"][];
+            /** @enum {string} */
+            kind: "Invites";
+        } | {
+            /**
+             * Format: int64
+             * @description Calendar-invite rows rebuilt from body metadata that was already
+             *     parsed but missing a `calendar_invites` row.
+             */
+            backfilled: number;
+            /** @enum {string} */
+            kind: "CalendarInviteBackfill";
+            /**
+             * Format: int64
+             * @description Messages re-hydrated from the provider because they carried a
+             *     calendar attachment but no parsed calendar metadata (e.g. Gmail
+             *     invites whose `.ics` arrived only as an attachment). Defaults to 0
+             *     for older daemons.
+             */
+            rehydrated?: number;
+        } | {
+            /** @enum {string} */
+            kind: "InviteResponsePreview";
+            preview: components["schemas"]["CalendarInviteResponsePreview"];
+        } | {
+            /** @enum {string} */
+            kind: "InviteResponseSent";
+            result: components["schemas"]["CalendarInviteResponseResult"];
+        } | {
             assets: components["schemas"]["HtmlImageAsset"][];
             /** @enum {string} */
             kind: "HtmlImageAssets";
@@ -4115,6 +4759,10 @@ export interface components {
             messages: components["schemas"]["Envelope"][];
             summary?: null | components["schemas"]["ThreadSummaryData"];
             thread: components["schemas"]["Thread"];
+        } | {
+            /** @enum {string} */
+            kind: "Threads";
+            threads: components["schemas"]["Thread"][];
         } | {
             /** @enum {string} */
             kind: "Labels";
@@ -4142,6 +4790,14 @@ export interface components {
             count: number;
             /** @enum {string} */
             kind: "Count";
+        } | {
+            group_by: components["schemas"]["SearchAggregationGroupBy"];
+            groups: components["schemas"]["SearchAggregationRow"][];
+            /** @enum {string} */
+            kind: "SearchAggregation";
+            query: string;
+            /** Format: int32 */
+            total: number;
         } | {
             headers: [
                 string,
@@ -4178,6 +4834,18 @@ export interface components {
             kind: "SnippetData";
             snippet: components["schemas"]["SnippetData"];
         } | {
+            deliveries: components["schemas"]["DeliveryData"][];
+            /** @enum {string} */
+            kind: "Deliveries";
+        } | {
+            delivery: components["schemas"]["DeliveryData"];
+            /** @enum {string} */
+            kind: "Delivery";
+        } | {
+            /** @enum {string} */
+            kind: "DeliveryScan";
+            summary: components["schemas"]["DeliveryScanSummary"];
+        } | {
             /** @enum {string} */
             kind: "Signatures";
             signatures: components["schemas"]["SignatureData"][];
@@ -4201,6 +4869,12 @@ export interface components {
             /** @enum {string} */
             kind: "Senders";
             senders: components["schemas"]["SenderSummaryData"][];
+        } | {
+            counts: {
+                [key: string]: number;
+            };
+            /** @enum {string} */
+            kind: "SavedSearchUnreadCounts";
         } | {
             /** @enum {string} */
             kind: "RelationshipProfile";
@@ -4238,8 +4912,23 @@ export interface components {
             model: string;
             text: string;
         } | {
+            has_more: boolean;
+            /** @enum {string} */
+            kind: "TriageResults";
+            /** Format: int32 */
+            llm_calls: number;
+            messages: components["schemas"]["TriageMessageData"][];
+            /** Format: int32 */
+            next_offset?: number | null;
+            prompt_version: string;
+            /** Format: int32 */
+            total: number;
+        } | {
             body: string;
+            context_note?: string | null;
             humanizer?: null | components["schemas"]["HumanizerReportSummaryData"];
+            inferred_length?: null | components["schemas"]["DraftLengthHintData"];
+            inferred_register?: null | components["schemas"]["VoiceRegisterData"];
             /** @enum {string} */
             kind: "DraftSuggestion";
             model: string;
@@ -4254,6 +4943,22 @@ export interface components {
             /** @enum {string} */
             kind: "MutationResult";
             result: components["schemas"]["MutationResultData"];
+        } | {
+            job: components["schemas"]["JobData"];
+            /** @enum {string} */
+            kind: "JobStarted";
+        } | {
+            jobs: components["schemas"]["JobData"][];
+            /** @enum {string} */
+            kind: "Jobs";
+        } | {
+            job: components["schemas"]["JobData"];
+            /** @enum {string} */
+            kind: "Job";
+        } | {
+            /** @enum {string} */
+            kind: "UnsubscribePurgeResult";
+            result: components["schemas"]["UnsubscribePurgeResultData"];
         } | {
             /** @enum {string} */
             kind: "Rules";
@@ -4356,6 +5061,16 @@ export interface components {
             config: components["schemas"]["LlmConfigData"];
             /** @enum {string} */
             kind: "LlmConfig";
+        } | {
+            config: components["schemas"]["NotificationChimesData"];
+            /** @enum {string} */
+            kind: "NotificationChimes";
+        } | {
+            event: components["schemas"]["NotificationChimeEventData"];
+            /** @enum {string} */
+            kind: "NotificationChimePreview";
+            played: boolean;
+            sound: components["schemas"]["NotificationChimeSoundData"];
         } | {
             /** @enum {string} */
             kind: "SavedSearchData";
@@ -4475,6 +5190,56 @@ export interface components {
             /** @enum {string} */
             kind: "DraftSafetyReportResponse";
             report: components["schemas"]["DraftSafetyReport"];
+        } | {
+            entries: components["schemas"]["ActivityEntry"][];
+            /** @enum {string} */
+            kind: "ActivityEntries";
+            next_cursor?: null | components["schemas"]["ActivityCursor"];
+        } | {
+            /** Format: int64 */
+            count: number;
+            /** @enum {string} */
+            kind: "ActivityCount";
+        } | {
+            buckets: components["schemas"]["ActivityStatBucket"][];
+            /** @enum {string} */
+            kind: "ActivityStatBuckets";
+        } | {
+            body?: string | null;
+            /** Format: int64 */
+            count: number;
+            format: components["schemas"]["ActivityExportFormat"];
+            /** @enum {string} */
+            kind: "ActivityExportResult";
+            path?: string | null;
+            /** Format: int64 */
+            size_bytes: number;
+        } | {
+            /** Format: int64 */
+            count: number;
+            dry_run: boolean;
+            /** @enum {string} */
+            kind: "ActivityAffected";
+        } | {
+            /** @enum {string} */
+            kind: "Acknowledged";
+        } | {
+            entries: components["schemas"]["SavedActivityFilterEntry"][];
+            /** @enum {string} */
+            kind: "SavedActivityFilters";
+        } | {
+            entry?: null | components["schemas"]["SavedActivityFilterEntry"];
+            /** @enum {string} */
+            kind: "SavedActivityFilterDetail";
+        } | {
+            categories: string[];
+            /** @enum {string} */
+            kind: "EventCategories";
+        } | {
+            /** Format: int64 */
+            count: number;
+            /** @enum {string} */
+            kind: "EventLogCount";
         };
         /**
          * @description A single bucket of the response-time histogram. `count` rows had a
@@ -4516,6 +5281,15 @@ export interface components {
             /** Format: int32 */
             sample_count: number;
         };
+        /**
+         * @description Well-known role for a `Label`/folder, mirroring MSP §2.3. The set
+         *     covers the roles every consumer-mail provider exposes; provider-specific
+         *     roles outside this set are represented as `None` so clients fall back
+         *     to generic styling. New variants land additively under
+         *     `#[non_exhaustive]` to keep wire compatibility cheap.
+         * @enum {string}
+         */
+        Role: "inbox" | "sent" | "drafts" | "trash" | "spam" | "archive" | "all_mail" | "important" | "starred";
         RuleFormData: {
             action: string;
             condition: string;
@@ -4524,6 +5298,18 @@ export interface components {
             name: string;
             /** Format: int32 */
             priority: number;
+        };
+        /** @description Wire shape of a saved activity filter preset (Phase 8). */
+        SavedActivityFilterEntry: {
+            /** Format: int64 */
+            created_at: number;
+            filter: components["schemas"]["ActivityFilter"];
+            /** Format: int64 */
+            last_used_at?: number | null;
+            name: string;
+            slug: string;
+            /** Format: int64 */
+            updated_at: number;
         };
         SavedSearch: {
             account_id?: null | components["schemas"]["AccountId"];
@@ -4558,6 +5344,26 @@ export interface components {
             /** Format: int32 */
             message_count: number;
             sender_email: string;
+        };
+        /** @enum {string} */
+        SearchAggregationGroupBy: "from" | "list" | "category";
+        SearchAggregationRow: {
+            /** Format: int32 */
+            count: number;
+            key: string;
+            label: string;
+            /**
+             * Format: int64
+             * @description Newest message timestamp in this group (Unix seconds).
+             */
+            newest?: number | null;
+            /**
+             * Format: int64
+             * @description Oldest message timestamp in this group (Unix seconds).
+             */
+            oldest?: number | null;
+            /** Format: int32 */
+            unread: number;
         };
         SearchExplain: {
             /** Format: int32 */
@@ -4891,6 +5697,15 @@ export interface components {
             latest_date: string;
             /** Format: int32 */
             message_count: number;
+            /**
+             * @description Constituent message IDs ordered by `date` ascending, ties
+             *     broken by `MessageId` ascending. Empty `message_ids` denotes
+             *     a tombstoned thread (typically the loser side of a
+             *     mail-threading merge); clients receiving such a Thread in
+             *     `SyncBatch.threads_changed` SHOULD drop any cached metadata
+             *     for that id.
+             */
+            message_ids?: components["schemas"]["MessageId"][];
             participants: components["schemas"]["Address"][];
             snippet: string;
             subject: string;
@@ -4914,6 +5729,23 @@ export interface components {
             model: string;
             text: string;
         };
+        TriageMessageData: {
+            account_id: components["schemas"]["AccountId"];
+            cached: boolean;
+            /** Format: date-time */
+            generated_at: string;
+            message_id: components["schemas"]["MessageId"];
+            model: string;
+            reason: string;
+            /** Format: float */
+            score: number;
+            thread_id: components["schemas"]["ThreadId"];
+            verdict: components["schemas"]["TriageVerdictData"];
+            verdict_line: string;
+            verdict_token: string;
+        };
+        /** @enum {string} */
+        TriageVerdictData: "ACTION" | "FYI" | "ROUTINE";
         UnsubscribeMethod: {
             OneClick: {
                 url: string;
@@ -4932,6 +5764,23 @@ export interface components {
                 url: string;
             };
         } | "None";
+        UnsubscribePurgeResultData: {
+            account_id?: null | components["schemas"]["AccountId"];
+            address: string;
+            /** Format: int32 */
+            archived_count: number;
+            dry_run: boolean;
+            error?: string | null;
+            /** Format: int32 */
+            message_count: number;
+            message_ids?: components["schemas"]["MessageId"][];
+            method: components["schemas"]["UnsubscribeMethod"];
+            mutation_id?: string | null;
+            query: string;
+            status: components["schemas"]["UnsubscribePurgeStatusData"];
+        };
+        /** @enum {string} */
+        UnsubscribePurgeStatusData: "preview" | "unsubscribed" | "no_method" | "archive_only" | "failed";
         UserVoiceProfileData: {
             account_id: components["schemas"]["AccountId"];
             /** Format: double */
@@ -5391,6 +6240,31 @@ export interface operations {
             };
         };
     };
+    action_invite_reply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     action_snooze: {
         parameters: {
             query?: never;
@@ -5442,6 +6316,31 @@ export interface operations {
         };
     };
     action_unsubscribe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    action_unsubscribe_purge: {
         parameters: {
             query?: never;
             header?: never;
@@ -5841,7 +6740,7 @@ export interface operations {
             };
         };
     };
-    mail_draft_new: {
+    mail_draft_compose: {
         parameters: {
             query?: never;
             header?: never;
@@ -6067,6 +6966,56 @@ export interface operations {
         };
     };
     mail_humanizer_score: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_jobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_job_detail: {
         parameters: {
             query?: never;
             header?: never;
@@ -6392,6 +7341,31 @@ export interface operations {
         };
     };
     mutation_read_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mutation_route: {
         parameters: {
             query?: never;
             header?: never;
@@ -6841,6 +7815,31 @@ export interface operations {
             };
         };
     };
+    mail_search_groups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     sender_profile: {
         parameters: {
             query?: never;
@@ -7192,31 +8191,6 @@ export interface operations {
         };
     };
     mail_sync_status: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    draft_assist: {
         parameters: {
             query?: never;
             header?: never;

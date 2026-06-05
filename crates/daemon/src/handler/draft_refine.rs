@@ -1,5 +1,4 @@
-use super::draft_new::{finish_draft_suggestion, voice_context_for_recipient};
-use super::HandlerResult;
+use super::{draft_context, HandlerResult};
 use crate::state::AppState;
 use mxr_humanizer::writing_constraints;
 use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
@@ -22,14 +21,16 @@ pub(super) async fn draft_refine(
         .to
         .first()
         .ok_or_else(|| "Draft has no recipient to refine against".to_string())?;
-    let context = voice_context_for_recipient(
+    let context = draft_context::build_relationship_block(
         state,
         &draft.account_id,
-        &recipient.email,
+        std::slice::from_ref(&recipient.email),
         knobs.add_context.as_deref().unwrap_or("refine draft"),
         None,
+        None,
+        draft_context::RELATIONSHIP_BUDGET_CHARS,
     )
-    .await?;
+    .await;
     let mut prompt = String::new();
     if !context.prompt.is_empty() {
         prompt.push_str("[VOICE CONTEXT]\n");
@@ -94,12 +95,15 @@ pub(super) async fn draft_refine(
         }
         Err(error) => return Err(format!("LLM error: {error}").into()),
     };
-    finish_draft_suggestion(
+    draft_context::finish_draft_suggestion(
         state,
         response.content.trim().to_string(),
         response.model,
         context.baseline,
         Some(context.prompt.as_str()),
+        context.inferred_register,
+        context.inferred_length,
+        context.context_note,
     )
     .await
 }

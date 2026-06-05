@@ -387,7 +387,7 @@ Auto-format detection: TTY → table, piped → json. Override with explicit `--
 
 ### Decision records
 
-**D026**: Every TUI action has a CLI equivalent. **D027**: `mxr cat` for reading messages. **D028**: `reply` and `reply-all` are separate commands. **D029**: `mxr attachments` subcommand tree. **D030**: `mxr notify` for status bars. **D031**: `mxr count` for quick counts. **D032**: Auto-format detection (TTY vs pipe). **D033**: `mxr spam` command. **D034**: `mxr open` for browser viewing.
+**D026**: Durable mail actions should go through daemon-backed CLI surfaces. **D027**: `mxr cat` for reading messages. **D028**: `reply` and `reply-all` are separate commands. **D029**: `mxr attachments` subcommand tree. **D030**: `mxr notify` for status bars. **D031**: `mxr count` for quick counts. **D032**: Auto-format detection (TTY vs pipe). **D033**: `mxr spam` command. **D034**: `mxr open` for browser viewing.
 
 ---
 

@@ -18,6 +18,22 @@ cargo tree -p mxr-export -i mailbox-formats
 
 What you get: the exact registry crate version currently wired into this mxr checkout.
 
+Do not assume the newest crates.io release is the version mxr consumes.
+Docs-only and metadata patch releases can ship without requiring mxr to
+move immediately. Check the two surfaces separately:
+
+```bash
+# Version pinned by this mxr checkout:
+cargo tree -p mxr-search -i mail-query
+
+# Registry metadata from Cargo's local index/cache:
+cargo info mail-query
+```
+
+What you get: the app-consumed version first, then Cargo's registry
+metadata for the package. If you need the release-sensitive newest
+version, confirm on crates.io as well.
+
 | Crate | Contract | mxr consumer |
 |---|---|---|
 | [`mail-query`](https://crates.io/crates/mail-query) | Gmail-style search parser and typed AST | `mxr-search` |
@@ -52,6 +68,21 @@ rg -n "mail_query|register_filter|QueryNode" crates/search
 ```
 
 What you get: package metadata from crates.io, then the mxr-specific execution layer that consumes it.
+
+## Maintain the docs
+
+When one of these crates publishes a new patch, update package docs in
+the standalone crate repo first. Then decide whether mxr needs a
+dependency bump.
+
+```bash
+rg -n "mail-query|mail-threading|list-unsubscribe|mailbox-formats" \
+  Cargo.toml Cargo.lock README.md docs site/src/content/docs
+```
+
+What you get: every mxr doc or manifest that names the public crates.
+Patch claims about mxr's consumed version only when `Cargo.toml` or
+`Cargo.lock` changes.
 
 ## See also
 

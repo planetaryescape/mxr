@@ -53,7 +53,9 @@ to HTML+plain alt, not format=flowed plain. So this would need new code.
 | `lettre` | Does not encode format=flowed on send |
 | Hand-rolled | Various projects implement it inline, mostly incompletely |
 
-**No focused crate exists.** This is a small, real gap.
+The extraction review did not find a focused crate with this exact
+contract. That still was not enough: the gap is small, and mxr does not
+need a public package here yet.
 
 ## Why this matters (slightly)
 

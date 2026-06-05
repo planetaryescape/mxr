@@ -66,7 +66,10 @@ mxr may request these Gmail API scopes:
 | `gmail.readonly` | Read messages and metadata |
 | `gmail.labels` | Read and manage labels |
 | `gmail.modify` | Mark read/unread, archive, trash, and apply labels |
-| `gmail.send` | Send email via Gmail API |
+
+Gmail API sending currently uses the authorized Gmail client under the
+`gmail.modify` grant. mxr does not request `gmail.send` as a separate scope
+today.
 
 mxr uses Google user data only to provide local mail sync, search, display, drafting, sending, and user-requested mailbox actions. mxr does not sell Google user data, use it for advertising, or transfer it to third parties except as necessary to provide user-directed email functionality. mxr's use and transfer of information received from Google APIs adheres to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements.
 

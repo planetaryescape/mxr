@@ -46,8 +46,8 @@ mxr records a successful unsubscribe event. Re-running the same unsubscribe is
 idempotent, so scripts do not accidentally fire the side effect twice.
 
 ```bash
-mxr activity --category mutation --format json \
-  | jq '.[] | select(.action == "mail.unsubscribe")'
+mxr activity list --action mail.unsubscribe --format json \
+  | jq '.entries'
 ```
 
 ## Header method vs body link

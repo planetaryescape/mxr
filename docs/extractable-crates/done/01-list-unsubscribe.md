@@ -75,9 +75,10 @@ This handles:
 - `mailto:` URL parsing including `?subject=` extraction
 - Preference order: one-click > mailto > http link
 
-## Ecosystem state
+## Ecosystem state at extraction time
 
-**No focused crate exists.** The closest things:
+The extraction review did not find a focused crate with this exact
+contract. The closest things:
 
 | Crate | Coverage |
 |---|---|
@@ -85,9 +86,9 @@ This handles:
 | `mailparse` | Same — surface raw headers only |
 | `email-address-parser` | Address parsing, irrelevant |
 
-Every Rust project that wants to honour `List-Unsubscribe` (mail readers,
-mailing list sanitisers, bulk-mail compliance tooling) re-implements the
-parsing logic.
+Projects that want to honour `List-Unsubscribe` still need a typed policy
+layer on top of raw header access. This crate is meant to make that
+policy layer small, testable, and reusable.
 
 ## Why this matters more than it looks
 

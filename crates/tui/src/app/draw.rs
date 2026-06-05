@@ -438,6 +438,9 @@ impl App {
         // Analytics filter modal overlay
         ui::analytics_filter_modal::draw(frame, area, self.modals.analytics_filter.as_ref(), theme);
 
+        // Draft options (tone/length) modal overlay
+        ui::draft_options_modal::draw(frame, area, &self.modals.draft_options, theme);
+
         // Error overlay
         ui::error_modal::draw(frame, area, self.modals.error.as_ref(), theme);
 

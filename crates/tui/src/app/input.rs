@@ -205,6 +205,10 @@ impl App {
             };
         }
 
+        if self.modals.draft_options.visible {
+            return self.handle_draft_options_key(key);
+        }
+
         if self.modals.platform.visible {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q' | 'x'), _) => {
@@ -1272,6 +1276,20 @@ impl App {
             // Deliveries screen would trap the user with no way out.
             _ => self.contextual_input_action(key),
         }
+    }
+
+    fn handle_draft_options_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        match (key.code, key.modifiers) {
+            (KeyCode::Esc, _) => self.modals.draft_options.close(),
+            (KeyCode::Enter, _) => self.submit_draft_options_modal(),
+            (KeyCode::Tab, _)
+            | (KeyCode::Char('j') | KeyCode::Down, _)
+            | (KeyCode::Char('k') | KeyCode::Up, _) => self.modals.draft_options.next_field(),
+            (KeyCode::Left | KeyCode::Char('h'), _) => self.modals.draft_options.cycle(-1),
+            (KeyCode::Right | KeyCode::Char('l'), _) => self.modals.draft_options.cycle(1),
+            _ => {}
+        }
+        None
     }
 
     fn handle_analytics_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {

@@ -249,7 +249,7 @@ pub fn map_request(
         ),
 
         // ----- drafts -----
-        Request::DraftNew { .. } => ("draft.create", Some("draft"), None, None),
+        Request::DraftCompose { .. } => ("draft.create", Some("draft"), None, None),
         Request::DraftRefine { .. } => ("draft.update", Some("draft"), None, None),
         Request::SaveDraft { draft } => (
             "draft.save",

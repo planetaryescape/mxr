@@ -360,3 +360,25 @@
     @apply font-sans;
   }
 }
+
+/*
+ ---break---
+ */
+
+/*
+ * Compose body editor (Tiptap / ProseMirror).
+ * The editor element fills its flex parent and scrolls internally. The
+ * Placeholder extension only toggles the `is-editor-empty` class and a
+ * `data-placeholder` attribute, so the visible hint is rendered here.
+ */
+.tiptap.ProseMirror {
+  min-height: 100%;
+}
+
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

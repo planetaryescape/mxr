@@ -533,6 +533,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             first,
             limit,
             instruct,
+            register,
+            length,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
@@ -551,6 +553,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 first,
                 limit,
                 instruction: instruction_text,
+                register,
+                length,
                 format,
             })
             .await?;

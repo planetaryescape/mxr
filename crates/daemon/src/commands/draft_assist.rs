@@ -1,23 +1,19 @@
 //! `mxr draft-assist <thread-id> <instruction>` — LLM-grounded draft
 //! reply generation. Writes the body to stdout for the caller to edit
 //! or pipe into compose. Accepts `--search QUERY` plus `--first` /
-//! `--limit N` to draft for multiple threads in one go.
+//! `--limit N` to draft for multiple threads in one go, and
+//! `--register` / `--length` to override the inferred tone.
 
-use crate::cli::OutputFormat;
+use crate::cli::{DraftLengthArg, OutputFormat, VoiceRegisterArg};
+use crate::commands::draft_output::{
+    draft_suggestion_json, eprint_draft_notes, length_data, register_data, DraftSuggestionView,
+};
 use crate::commands::resolve_optional_account;
 use crate::commands::selection::{resolve_thread_ids, SelectionLimit};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_core::id::ThreadId;
 use mxr_protocol::*;
-
-struct DraftAssistSuggestion {
-    body: String,
-    model: String,
-    voice_match: Option<VoiceMatchData>,
-    humanizer: Option<HumanizerReportSummaryData>,
-    rewrite_iterations: u8,
-}
 
 pub struct DraftAssistRunOptions {
     pub thread_id: Option<String>,
@@ -26,6 +22,8 @@ pub struct DraftAssistRunOptions {
     pub first: bool,
     pub limit: Option<u32>,
     pub instruction: String,
+    pub register: Option<VoiceRegisterArg>,
+    pub length: Option<DraftLengthArg>,
     pub format: Option<OutputFormat>,
 }
 
@@ -37,6 +35,8 @@ pub async fn run(options: DraftAssistRunOptions) -> anyhow::Result<()> {
         first,
         limit,
         instruction,
+        register,
+        length,
         format,
     } = options;
     let mut client = IpcClient::connect().await?;
@@ -53,12 +53,14 @@ pub async fn run(options: DraftAssistRunOptions) -> anyhow::Result<()> {
         anyhow::bail!("No threads matched");
     }
 
+    let register = register.map(register_data);
+    let length = length.map(length_data);
     let fmt = resolve_format(format);
     let mut payloads: Vec<serde_json::Value> = Vec::with_capacity(ids.len());
 
     for (index, id) in ids.iter().enumerate() {
-        let suggestion = match draft_one(&mut client, id, instruction.clone()).await {
-            Ok(suggestion) => suggestion,
+        let view = match draft_one(&mut client, id, instruction.clone(), register, length).await {
+            Ok(view) => view,
             Err(error) => {
                 if matches!(fmt, OutputFormat::Json | OutputFormat::Jsonl) {
                     payloads.push(serde_json::json!({
@@ -74,25 +76,16 @@ pub async fn run(options: DraftAssistRunOptions) -> anyhow::Result<()> {
 
         match fmt {
             OutputFormat::Json | OutputFormat::Jsonl => {
-                payloads.push(serde_json::json!({
-                    "thread_id": id.to_string(),
-                    "model": suggestion.model,
-                    "body": suggestion.body,
-                    "voice_match": suggestion.voice_match,
-                    "humanizer": suggestion.humanizer,
-                    "rewrite_iterations": suggestion.rewrite_iterations,
-                }));
+                let mut payload = draft_suggestion_json(&view);
+                payload["thread_id"] = serde_json::json!(id.to_string());
+                payloads.push(payload);
             }
             OutputFormat::Csv => {
                 let mut writer = csv::Writer::from_writer(Vec::new());
                 if index == 0 {
                     writer.write_record(["thread_id", "model", "body"])?;
                 }
-                writer.write_record(&[
-                    id.to_string(),
-                    suggestion.model.clone(),
-                    suggestion.body.clone(),
-                ])?;
+                writer.write_record(&[id.to_string(), view.model.clone(), view.body.clone()])?;
                 let bytes = writer.into_inner()?;
                 let line = String::from_utf8(bytes)?;
                 print!("{line}");
@@ -107,8 +100,8 @@ pub async fn run(options: DraftAssistRunOptions) -> anyhow::Result<()> {
                     }
                     println!("--- {id} ---");
                 }
-                println!("{}", suggestion.body);
-                eprintln!("\n[via {} — review before sending]", suggestion.model);
+                println!("{}", view.body);
+                eprint_draft_notes(&view);
             }
         }
     }
@@ -136,31 +129,23 @@ async fn draft_one(
     client: &mut IpcClient,
     thread_id: &ThreadId,
     instruction: String,
-) -> anyhow::Result<DraftAssistSuggestion> {
+    register: Option<VoiceRegisterData>,
+    length: Option<DraftLengthHintData>,
+) -> anyhow::Result<DraftSuggestionView> {
     let resp = client
-        .request(Request::DraftAssist {
-            thread_id: thread_id.clone(),
+        .request(Request::DraftCompose {
+            account_id: None,
+            to: None,
             instruction,
+            source_message_id: None,
+            thread_id: Some(thread_id.clone()),
+            register,
+            length_hint: length,
         })
         .await?;
     match resp {
-        Response::Ok {
-            data:
-                ResponseData::DraftSuggestion {
-                    body,
-                    model,
-                    voice_match,
-                    humanizer,
-                    rewrite_iterations,
-                },
-        } => Ok(DraftAssistSuggestion {
-            body,
-            model,
-            voice_match,
-            humanizer,
-            rewrite_iterations,
-        }),
+        Response::Ok { data } => DraftSuggestionView::from_response(data)
+            .ok_or_else(|| anyhow::anyhow!("Unexpected response")),
         Response::Error { message, .. } => anyhow::bail!("{message}"),
-        _ => anyhow::bail!("Unexpected response"),
     }
 }

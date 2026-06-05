@@ -1090,18 +1090,30 @@ pub enum Request {
         #[serde(default)]
         sort: Option<SortOrder>,
     },
-    /// Generate a draft reply grounded on the user's prior sent
-    /// messages and the current thread context. Caller is responsible
-    /// for opening the result in `$EDITOR` for review — the result is
-    /// never auto-sent.
-    DraftAssist {
-        thread_id: ThreadId,
+    /// Generate an LLM draft — a new message, a reply from compose, or a
+    /// reply from the reader — grounded on the conversation (when any) plus
+    /// the recipient relationship/voice profile. The tone and length are
+    /// inferred from how the user writes to this person unless `register` /
+    /// `length_hint` override them. The result is never auto-sent.
+    ///
+    /// Modes (resolved by the daemon):
+    /// - `thread_id` set → reply to that thread.
+    /// - `source_message_id` set → reply to the thread containing it.
+    /// - neither → a brand-new message (requires `to`).
+    /// `account_id` is required for a new message and derived from the thread
+    /// otherwise.
+    DraftCompose {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        to: Option<Address>,
+        /// The user's purpose/instruction (e.g. "follow up on pricing",
+        /// "decline politely").
         instruction: String,
-    },
-    DraftNew {
-        account_id: AccountId,
-        to: Address,
-        purpose: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_message_id: Option<MessageId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        thread_id: Option<ThreadId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         register: Option<VoiceRegisterData>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1468,8 +1480,7 @@ impl Request {
             | Self::ClearScreenerDecision { .. }
             | Self::SummarizeThread { .. }
             | Self::TriageSearch { .. }
-            | Self::DraftAssist { .. }
-            | Self::DraftNew { .. }
+            | Self::DraftCompose { .. }
             | Self::DraftRefine { .. }
             | Self::PrepareReply { .. }
             | Self::PrepareForward { .. }
@@ -2063,6 +2074,15 @@ pub enum ResponseData {
         humanizer: Option<HumanizerReportSummaryData>,
         #[serde(default)]
         rewrite_iterations: u8,
+        /// Tone/length the daemon inferred from the relationship (the
+        /// effective values used, even when the caller overrode them) so
+        /// the UI can show "Matched to {sender}" without re-deriving.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        inferred_register: Option<VoiceRegisterData>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        inferred_length: Option<DraftLengthHintData>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context_note: Option<String>,
     },
     ExportResult {
         content: String,

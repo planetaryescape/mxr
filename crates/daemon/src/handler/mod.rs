@@ -20,8 +20,8 @@ mod decisions_extract;
 pub(crate) mod deliveries;
 #[path = "diagnostics/mod.rs"]
 pub(crate) mod diagnostics_impl;
-mod draft_assist;
-mod draft_new;
+mod draft_compose;
+mod draft_context;
 mod draft_refine;
 mod error;
 mod expert;
@@ -362,8 +362,7 @@ pub fn request_lane(req: &Request) -> IpcLane {
         // many seconds while awaiting inference.
         Request::ArchiveAsk { .. }
         | Request::CheckDraftSafety { .. }
-        | Request::DraftAssist { .. }
-        | Request::DraftNew { .. }
+        | Request::DraftCompose { .. }
         | Request::DraftRefine { .. }
         | Request::ExtractDraftCommitments { .. }
         | Request::ExplainEntity { .. }
@@ -1202,22 +1201,22 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             )
             .await
         }
-        Request::DraftAssist {
-            thread_id,
-            instruction,
-        } => draft_assist::draft_assist(state, thread_id, instruction).await,
-        Request::DraftNew {
+        Request::DraftCompose {
             account_id,
             to,
-            purpose,
+            instruction,
+            source_message_id,
+            thread_id,
             register,
             length_hint,
         } => {
-            draft_new::draft_new(
+            draft_compose::draft_compose(
                 state,
-                account_id,
+                account_id.as_ref(),
                 to.clone(),
-                purpose,
+                instruction,
+                source_message_id.clone(),
+                thread_id.clone(),
                 *register,
                 *length_hint,
             )
@@ -1389,7 +1388,7 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::ListScreenerDecisions { .. }
             | Request::SummarizeThread { .. }
             | Request::TriageSearch { .. }
-            | Request::DraftNew { .. }
+            | Request::DraftCompose { .. }
             | Request::DraftRefine { .. }
             | Request::ListDrafts
             | Request::ListOrphanedDrafts
@@ -1536,8 +1535,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ClearScreenerDecision { .. } => "clear_screener_decision",
         Request::SummarizeThread { .. } => "summarize_thread",
         Request::TriageSearch { .. } => "triage_search",
-        Request::DraftAssist { .. } => "draft_assist",
-        Request::DraftNew { .. } => "draft_new",
+        Request::DraftCompose { .. } => "draft_compose",
         Request::DraftRefine { .. } => "draft_refine",
         Request::PrepareReply { .. } => "prepare_reply",
         Request::PrepareForward { .. } => "prepare_forward",
@@ -1646,8 +1644,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListCadenceDrift { account_id }
         | Request::GetRecipientBriefing { account_id, .. }
         | Request::GetUserVoice { account_id }
-        | Request::RebuildUserVoice { account_id }
-        | Request::DraftNew { account_id, .. } => Some(account_id),
+        | Request::RebuildUserVoice { account_id } => Some(account_id),
+        Request::DraftCompose { account_id, .. } => account_id.as_ref(),
         Request::SetSignatureDefault { account_id, .. }
         | Request::ClearSignatureDefault { account_id, .. }
         | Request::ResolveSignature { account_id, .. } => account_id.as_ref(),

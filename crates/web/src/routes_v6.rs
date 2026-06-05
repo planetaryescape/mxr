@@ -1483,58 +1483,60 @@ async fn summarize_thread(
 }
 
 #[derive(Debug, Deserialize)]
-struct DraftAssistBody {
-    thread_id: String,
+struct DraftComposeBody {
+    /// Required for a new message; derived from the thread otherwise.
+    #[serde(default)]
+    account_id: Option<String>,
+    /// Recipient for a brand-new message (omit for thread replies).
+    #[serde(default)]
+    to: Option<Address>,
+    /// The user's purpose/instruction.
     instruction: String,
-}
-
-async fn draft_assist(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Query(auth): Query<AuthQuery>,
-    Json(body): Json<DraftAssistBody>,
-) -> Result<Json<Value>, BridgeError> {
-    let id = ThreadId::from_str(&body.thread_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid thread_id: {err}")))?;
-    let response = dispatch(
-        &state,
-        &headers,
-        auth.token.as_deref(),
-        Request::DraftAssist {
-            thread_id: id,
-            instruction: body.instruction,
-        },
-    )
-    .await?;
-    passthrough(response)
-}
-
-#[derive(Debug, Deserialize)]
-struct DraftNewBody {
-    account_id: String,
-    to: Address,
-    purpose: String,
+    /// Reply to the thread containing this message (compose reply/forward).
+    #[serde(default)]
+    source_message_id: Option<String>,
+    /// Reply to this thread directly (reader / quick-reply).
+    #[serde(default)]
+    thread_id: Option<String>,
     #[serde(default)]
     register: Option<VoiceRegisterData>,
     #[serde(default)]
     length_hint: Option<DraftLengthHintData>,
 }
 
-async fn draft_new(
+async fn draft_compose(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
-    Json(body): Json<DraftNewBody>,
+    Json(body): Json<DraftComposeBody>,
 ) -> Result<Json<Value>, BridgeError> {
-    let account_id = parse_account_id(&body.account_id)?;
+    let account_id = body
+        .account_id
+        .as_deref()
+        .map(parse_account_id)
+        .transpose()?;
+    let source_message_id = body
+        .source_message_id
+        .as_deref()
+        .map(MessageId::from_str)
+        .transpose()
+        .map_err(|err| BridgeError::Ipc(format!("invalid source_message_id: {err}")))?;
+    let thread_id = body
+        .thread_id
+        .as_deref()
+        .map(ThreadId::from_str)
+        .transpose()
+        .map_err(|err| BridgeError::Ipc(format!("invalid thread_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
         auth.token.as_deref(),
-        Request::DraftNew {
+        Request::DraftCompose {
             account_id,
             to: body.to,
-            purpose: body.purpose,
+            instruction: body.instruction,
+            source_message_id,
+            thread_id,
             register: body.register,
             length_hint: body.length_hint,
         },
@@ -2572,8 +2574,7 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         )
         // LLM features
         .route("/threads/{thread_id}/summarize", post(summarize_thread))
-        .route("/threads/draft-assist", post(draft_assist))
-        .route("/drafts/new", post(draft_new))
+        .route("/drafts/compose", post(draft_compose))
         .route("/drafts/refine", post(draft_refine))
         .route("/humanizer/score", post(humanizer_score))
         .route("/humanizer/rewrite", post(humanizer_rewrite))

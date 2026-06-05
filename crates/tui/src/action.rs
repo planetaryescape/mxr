@@ -195,6 +195,7 @@ pub enum Action {
     InstallSemanticProfile(mxr_core::types::SemanticProfile),
     UseSemanticProfile(mxr_core::types::SemanticProfile),
     DraftAssistCurrentThread,
+    DraftWithOptions,
     DraftNewForSender,
     RefinePendingDraft,
     OpenVoiceProfile,

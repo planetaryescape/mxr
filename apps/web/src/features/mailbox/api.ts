@@ -250,15 +250,25 @@ export interface DraftAssistResponse {
   body?: string;
   draft?: string;
   message?: string;
+  inferred_register?: "casual" | "neutral" | "formal" | null;
+  inferred_length?: "short" | "medium" | "long" | null;
+  context_note?: string | null;
 }
 
 export function draftAssistThread(input: {
   threadId: string;
   instruction: string;
+  register?: "casual" | "neutral" | "formal";
+  lengthHint?: "short" | "medium" | "long";
 }): Promise<DraftAssistResponse> {
-  return apiFetch<DraftAssistResponse>("/api/v1/mail/threads/draft-assist", {
+  return apiFetch<DraftAssistResponse>("/api/v1/mail/drafts/compose", {
     method: "POST",
-    body: { thread_id: input.threadId, instruction: input.instruction },
+    body: {
+      thread_id: input.threadId,
+      instruction: input.instruction,
+      ...(input.register ? { register: input.register } : {}),
+      ...(input.lengthHint ? { length_hint: input.lengthHint } : {}),
+    },
   });
 }
 

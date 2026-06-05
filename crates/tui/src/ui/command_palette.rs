@@ -857,6 +857,12 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "AI".into(),
         },
         PaletteCommand {
+            label: "Draft: Reply with Tone & Length…".into(),
+            shortcut: String::new(),
+            action: Action::DraftWithOptions,
+            category: "AI".into(),
+        },
+        PaletteCommand {
             label: "Draft: New For Sender".into(),
             shortcut: String::new(),
             action: Action::DraftNewForSender,

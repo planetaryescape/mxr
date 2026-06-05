@@ -1100,6 +1100,7 @@ pub enum Request {
     /// - `thread_id` set → reply to that thread.
     /// - `source_message_id` set → reply to the thread containing it.
     /// - neither → a brand-new message (requires `to`).
+    ///
     /// `account_id` is required for a new message and derived from the thread
     /// otherwise.
     DraftCompose {

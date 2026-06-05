@@ -15,6 +15,12 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - name: Run deterministic provider smoke suite
         run: cargo test --workspace provider_offline_smoke_ -- --nocapture
+      - name: Run v1 launch proof (fake provider, daemon, CLI, MCP)
+        run: |
+          cargo build -p mxr
+          bash scripts/v1_launch_proof.sh
+      - name: Record live provider credential evidence
+        run: bash scripts/live_provider_smoke_evidence.sh
 
   # Real-Gmail end-to-end test, gated on workflow_dispatch + secrets being set
   # so it does not run on schedule by default — credentials are supplied

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.58](https://github.com/planetaryescape/mxr/compare/v0.5.57...v0.5.58) (2026-06-05)
+
+
+### Features
+
+* relationship-aware AI drafting, cross-client parity, compose redesign ([#58](https://github.com/planetaryescape/mxr/issues/58)) ([1674dd6](https://github.com/planetaryescape/mxr/commit/1674dd635602fa34820467573a5a168644c0e363))
+
 ## [0.5.57](https://github.com/planetaryescape/mxr/compare/v0.5.56...v0.5.57) (2026-06-04)
 
 

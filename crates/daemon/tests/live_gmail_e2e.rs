@@ -34,6 +34,24 @@ const ENV_CLIENT_ID: &str = "MXR_GMAIL_TEST_CLIENT_ID";
 const ENV_CLIENT_SECRET: &str = "MXR_GMAIL_TEST_CLIENT_SECRET";
 const ENV_REFRESH_TOKEN: &str = "MXR_GMAIL_TEST_REFRESH_TOKEN";
 
+#[test]
+fn live_gmail_creds_gate_reports_explicit_evidence() {
+    let status = if live_creds().is_some() {
+        "creds_available"
+    } else {
+        "skipped_missing_creds"
+    };
+    println!(
+        "{}",
+        serde_json::json!({
+            "provider": "gmail",
+            "path": "live_gmail_e2e",
+            "status": status,
+            "required_env": [ENV_CLIENT_ID, ENV_CLIENT_SECRET, ENV_REFRESH_TOKEN],
+        })
+    );
+}
+
 fn live_creds() -> Option<(String, String, String)> {
     let id = std::env::var(ENV_CLIENT_ID).ok()?;
     let secret = std::env::var(ENV_CLIENT_SECRET).ok()?;

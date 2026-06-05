@@ -77,6 +77,14 @@ jobs:
       - name: Run deterministic provider smoke suite
         if: needs.plan.outputs.cli_changed == 'true'
         run: cargo test --workspace provider_offline_smoke_ -- --nocapture
+      - name: Run v1 launch proof (fake provider, daemon, CLI, MCP)
+        if: needs.plan.outputs.cli_changed == 'true'
+        run: |
+          cargo build -p mxr
+          bash scripts/v1_launch_proof.sh
+      - name: Record live provider credential evidence
+        if: needs.plan.outputs.cli_changed == 'true'
+        run: bash scripts/live_provider_smoke_evidence.sh
       - name: Run live Gmail release smoke
         if: needs.plan.outputs.cli_changed == 'true'
         run: |

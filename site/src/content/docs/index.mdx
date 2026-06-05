@@ -160,7 +160,7 @@ mxr search "subject:invoice" --format json | jq -r '.[].from' | sort -u
 
 ## email your agent can <em>operate</em>
 
-<p>Anything you can do with email, your agent can do. Not "compose a draft and stop." Actually run the workflow.</p>
+<p>Search, draft, summarize, export, and preview mailbox mutations from an agent through the same local daemon humans use.</p>
 
 <div class="agent-conversation">
   <div class="agent-turn">
@@ -195,7 +195,7 @@ mxr search "subject:invoice" --format json | jq -r '.[].from' | sort -u
   </div>
 </div>
 
-<p>This works because mxr isn't a GUI with an API bolted on. The CLI <strong>is</strong> the interface. Most reads return <code>--format json</code>, mutations support <code>--dry-run</code> and accept piped IDs, and every command composes with the rest of your shell. Your agent doesn't need browser automation, screen scraping, or a provider-specific SDK.</p>
+<p>This works because mxr isn't a GUI with an API bolted on. The CLI, MCP server, web bridge, and TUI all call the same daemon. Most reads return <code>--format json</code>, mutations support <code>--dry-run</code>, MCP mutation/send tools require confirmation, and every command composes with the rest of your shell. Your agent doesn't need browser automation, screen scraping, or a provider-specific SDK.</p>
 
 <div class="agent-json-peek">
   <div class="agent-json-label">◈ what your agent sees</div>
@@ -218,7 +218,7 @@ mxr search "from:sarah after:2026-04-23" --format json | jq '.[0]'
 
 </div>
 
-<p><a href="/guides/agent-skill/">Install the mxr skill →</a></p>
+<p><a href="/guides/for-agents/">Use mxr with agents →</a> · <a href="/reference/mcp/">Run the MCP server →</a></p>
 
 </div>
 
@@ -368,7 +368,7 @@ mxr stale --mine --format json \\
 
 ## surfaces
 
-<p>mxr is a daemon plus clients. Three ship today; the daemon speaks JSON over a Unix socket and HTTP, so anything that can open a socket can drive your inbox.</p>
+<p>mxr is a daemon plus clients. The supported first-party surfaces are the TUI, CLI, web app, daemon socket, HTTP bridge, MCP server, and agent skill.</p>
 
 <div class="surface-stack">
   <div class="surface-block">
@@ -388,7 +388,7 @@ mxr stale --mine --format json \\
       <div class="surface-tag">◈ scriptable</div>
     </div>
     <div class="surface-body">
-      <p>Every TUI action has a CLI equivalent. Pipe through jq, xargs, anything Unix. Use it from a shell, a Makefile, your prompt, your editor, your agent.</p>
+      <p>Durable product actions go through the CLI and daemon contract. Pipe through jq, xargs, anything Unix. Use it from a shell, a Makefile, your prompt, your editor, your agent.</p>
       <pre class="surface-snippet"><code>{`mxr archive --search "from:noreply older:30d" --dry-run
 would archive 142 messages.`}</code></pre>
     </div>
@@ -413,7 +413,7 @@ would archive 142 messages.`}</code></pre>
       <div class="surface-tag">◈ build it</div>
     </div>
     <div class="surface-body">
-      <p>A Raycast extension. A phone app. A Slack bot. A custom dashboard. The OpenAPI spec is the contract; your agent can write the rest.</p>
+      <p>A Raycast extension. A phone app. A Slack bot. A custom dashboard. The OpenAPI and MCP surfaces are contracts your agent can write against.</p>
     </div>
   </div>
 </div>
@@ -438,7 +438,7 @@ would archive 142 messages.`}</code></pre>
     </div>
     <p class="lineage-tagline">Everything below, synthesised. One daemon underneath; many surfaces on top.</p>
     <ul class="lineage-deltas">
-      <li><span class="delta-add">+</span> daemon-backed: TUI, CLI, HTTP bridge, your agent share one engine</li>
+      <li><span class="delta-add">+</span> daemon-backed: TUI, CLI, HTTP bridge, MCP, and your agent share one engine</li>
       <li><span class="delta-add">+</span> eager body fetch: opening a message is a SQLite read, not a fetch</li>
       <li><span class="delta-add">+</span> Tantivy BM25 with field boosts; opportunistic local hybrid retrieval</li>
       <li><span class="delta-add">+</span> agent-native pipeable JSON across every command</li>
@@ -565,6 +565,7 @@ would archive 142 messages.`}</code></pre>
   <a href="/getting-started/install/" class="cta-primary">Get started →</a>
   <a href="https://github.com/planetaryescape/mxr">GitHub</a>
   <a href="/guides/agent-skill/">Agent skill</a>
+  <a href="/reference/mcp/">MCP server</a>
 </div>
 
 </div>

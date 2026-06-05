@@ -41,7 +41,7 @@ The following components are in scope:
 - **Daemon**: IPC socket server, request handling, sync loops
 - **OAuth tokens**: Storage, refresh, and transmission
 - **SQLite database**: Local mail storage, query handling
-- **IPC protocol**: JSON message parsing over Unix domain socket
+- **IPC protocol**: JSON message parsing over Unix domain socket, including `agent` and `mcp` request origins
 - **Config files**: TOML parsing, credential references
 - **Search index**: Tantivy query parsing
 
@@ -58,6 +58,12 @@ with mode `0600`; any process that can connect as the same OS user can
 drive the daemon with that user's authority. Do not place the socket in a
 shared directory or relax its permissions.
 
+Non-human origins are gated by explicit config profiles:
+`[agents.profiles.agent]` and `[agents.profiles.mcp]`. These profiles enforce
+safety policy, account allowlists, send gates, and destructive-action gates
+inside the daemon. They are not an OS sandbox; a coding agent still has any
+shell access you grant outside mxr.
+
 ## Shell Hooks
 
 Rules may run explicit user-configured shell hooks through `sh -c`.
@@ -70,5 +76,6 @@ running mxr. Only enable shell hooks you wrote or fully reviewed.
 Release binaries may include public desktop-app OAuth client identifiers
 for Gmail or Outlook. These identifiers are not user secrets; PKCE and
 the provider-issued user tokens protect the actual account access.
-Users who prefer bring-your-own-client setups can override the bundled
-identifiers in `config.toml`.
+For Gmail v1, users should prefer bring-your-own-client setup. The bundled
+Gmail client is an unverified fallback and may show Google's warning screen.
+Custom identifiers can be supplied through `mxr accounts add gmail --gmail-bundled=false` or `config.toml`.

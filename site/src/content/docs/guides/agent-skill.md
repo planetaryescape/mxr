@@ -9,9 +9,9 @@ The mxr skill teaches an agent how to use the CLI that already exists. It is a m
 
 ## Before you install it
 
-- Read [For agents](/guides/for-agents/) for the boundaries — what's safe, what's not yet enforced.
+- Read [For agents](/guides/for-agents/) for the boundaries — what's enforced by daemon profiles and what still depends on your OS/agent sandbox.
 - Treat `--dry-run` as the default for batch changes.
-- Remember: a first-party MCP server isn't shipped yet. The skill teaches the CLI; the CLI is the surface.
+- Remember: the skill teaches CLI use. If your agent supports MCP, use [the MCP server](/reference/mcp/) instead or alongside the skill.
 
 ## Supported agents
 
@@ -86,10 +86,11 @@ mxr response-time
 mxr subscriptions --rank
 mxr wrapped --ytd
 
-# Daemon
+# Daemon / MCP
 mxr status                                   # Daemon status
 mxr sync --status
 mxr web                                      # Open the web app via local bridge
+mxr mcp serve                                # Serve first-party MCP over stdio
 ```
 
 ### Important patterns the skill enforces
@@ -192,15 +193,16 @@ The skill itself is intentionally small. The full command reference (auto-genera
 
 ## What this is _not_
 
-- Not an MCP server. Each tool call is a `mxr ...` shell invocation, not an MCP message.
-- Not a permissioned agent platform. The agent has whatever access the user has.
-- Not a bypass of the safety primitives — the agent uses `--dry-run`, `--yes`, and `mxr undo` like a human would.
+- Not the MCP transport. The skill is instructions for shelling out to `mxr ...`; use `mxr mcp serve` when your agent wants MCP tools.
+- Not an OS sandbox. The agent has whatever shell access the user grants it.
+- Not a bypass of the safety primitives — the agent uses `--dry-run`, `--yes`, `confirm=true`, profile gates, and `mxr undo` like a human would.
 
-The point of the skill is not magic. It's that the agent uses the same CLI a human would, with the same output and the same guardrails.
+The point of the skill is not magic. It's that the agent uses the same CLI a human would, with the same output and daemon guardrails.
 
 ## See also
 
 - [For agents](/guides/for-agents/) — three worked examples and the safety primitives
 - [Automation contract](/guides/automation-contract/) — what's safe to script
+- [MCP server](/reference/mcp/) — first-party stdio MCP tools for MCP clients
 - [HTTP bridge](/reference/bridge/) — same surface over HTTP for non-shell agents
 - [API explorer](/reference/api-explorer/) — try requests interactively

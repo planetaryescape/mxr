@@ -58,7 +58,7 @@ Hosted connector layers are good fits when you want remote workflows, managed au
 - You want a hosted connector layer more than a local mail runtime.
 - You mainly want a terminal UI and do not care about a broad CLI or daemon.
 - You need a production backend email API, not a local user-facing workflow tool.
-- You need a first-party MCP server right now. mxr has not shipped that yet.
+- You need a hosted MCP endpoint or managed OAuth connector. mxr's MCP server is local stdio and uses your local daemon.
 
 ## Provider capability matrix
 
@@ -73,8 +73,9 @@ Hosted connector layers are good fits when you want remote workflows, managed au
 
 | Interface | Status | Best for | Notes |
 |---|---|---|---|
-| CLI | available | scripting, batch work, agents | broadest current surface |
+| CLI | available | scripting, batch work, agents | broadest current shell surface |
 | TUI | available | daily reading and triage | mailbox-focused interface |
 | Daemon socket | available | custom clients | JSON over Unix socket |
+| HTTP bridge | available | local web/custom clients | loopback bearer-token bridge |
 | Agent skill | available | coding-agent workflows | documents CLI patterns |
-| MCP server | not shipped | tool-native agent integration | planned, not current |
+| MCP server | available | MCP-native agents | `mxr mcp serve`, stdio, daemon profile gates |

@@ -1,109 +1,35 @@
 # mxr — Release Pipeline Addendum
 
-> This document covers the full CI/CD pipeline: PR checks, release automation, cross-compiled binary builds, Homebrew, changelog generation, and docs deployment.
+> This document covers the CI/CD pipeline: PR checks, release automation, scoped binary builds, Homebrew, changelog generation, and docs build checks.
 
-> **Current state note (`v0.5.47`)**
-> The live release flow is: pushes to `main` run `release-please`, merged release PRs create `vX.Y.Z` tags, and tag pushes run [.github/workflows/release.yml](../../.github/workflows/release.yml). Artifact builds are scoped by [scripts/release_change_scope.sh](../../scripts/release_change_scope.sh): CLI-affecting tags build macOS Apple Silicon and Linux x86_64 archives, create the GitHub Release, and update the `planetaryescape/homebrew-mxr` tap; docs-only or version-only tags create the GitHub Release/changelog but skip binary artifacts and Homebrew. Supported Cargo installs are `cargo install --git ...` and `cargo install --path .`; crates.io publication is no longer part of the current release model. The web app is embedded into the CLI release binary, and docs deploy independently on pushes to `main`. Read the checked-in workflows as the source of truth; the sections below include historical design context and earlier release-shape examples.
+> **Current state note (v1 launch)**
+> The live release flow is: pushes to `main` run `release-please`, merged release PRs create `vX.Y.Z` tags, and tag pushes run [.github/workflows/release.yml](../../.github/workflows/release.yml). Artifact builds are scoped by [scripts/release_change_scope.sh](../../scripts/release_change_scope.sh): CLI-affecting tags build macOS Apple Silicon and Linux x86_64 archives, create the GitHub Release, and update the `planetaryescape/homebrew-mxr` tap; docs-only or version-only tags create the GitHub Release/changelog but skip binary artifacts and Homebrew. Supported Cargo installs are `cargo install --git ...` and `cargo install --path .`; crates.io publication is no longer part of the current release model. The web app is embedded into the CLI release binary, and docs deploy independently on pushes to `main`. macOS signing and notarization are optional for v1; when Apple secrets are absent, the workflow ships unsigned macOS binaries and users may see Gatekeeper friction. Read the checked-in workflows as the source of truth; the sections below include historical design context and earlier release-shape examples.
 
 ---
 
-## CI on every PR
+## CI on PRs and main
 
-Every pull request runs these checks. All must pass before merge.
+The checked-in workflow is [.github/workflows/ci.yml](../../.github/workflows/ci.yml). It uses change detection so docs-only, web-only, and Rust-heavy changes do not pay the same CI cost. `workflow_dispatch` marks every lane as changed.
 
-### Workflow: `ci.yml`
+Always-on checks:
 
-```yaml
-name: CI
-on:
-  pull_request:
-  push:
-    branches: [main]
+- secret scan over checked-in files and Git history
+- release gate scripts: version gate, bundled Gmail OAuth gate, release workflow policy checks, provider smoke workflow checks, CI workflow checks
 
-env:
-  CARGO_TERM_COLOR: always
-  RUSTFLAGS: -Dwarnings
+Rust-affecting changes run `cargo deny`, `cargo check --workspace --all-targets`, architecture-boundary checks, `cargo fmt`, clippy, nextest lanes, SQLx offline checks, and MSRV checks where configured.
 
-jobs:
-  fmt:
-    name: Formatting
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - run: cargo fmt --all --check
+Web-affecting changes run npm audit, typecheck, lint, unit tests, and focused Playwright smoke checks.
 
-  clippy:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+Docs-affecting changes run the docs site build:
 
-  test:
-    name: Test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --all-features
-
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo build --workspace --all-features
-
-  # Verify sqlx compile-time checked queries
-  sqlx-check:
-    name: SQLx Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo sqlx prepare --check --workspace
-
-  # Docs site build check
-  docs:
-    name: Docs Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: site/package-lock.json
-      - working-directory: site
-        run: npm ci
-      - working-directory: site
-        run: npm run build
-
-  # Privacy/terms sync check
-  policy-sync:
-    name: Policy Sync
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check privacy policy sync
-        run: diff PRIVACY.md site/src/pages/privacy.md
-      - name: Check terms sync
-        run: diff TERMS.md site/src/pages/terms.md
+```bash
+cd site
+npm ci
+npm audit --audit-level=moderate
+npm run build
 ```
+
+Legal pages are built as part of the site. There is no separate checked-in `policy-sync` job today, so policy text changes must update both the root policy file and the corresponding `site/src/pages/` page in the same PR.
 
 ---
 
@@ -631,31 +557,18 @@ No extra work needed if the GitHub Release assets follow the naming pattern `{na
 
 ---
 
-## Docs site deployment on release
+## Docs site deployment
 
-The docs site deploys on every push to main (for content updates), but also on release (to ensure version numbers in docs match the release):
+The release workflow does not deploy the docs site. The docs site lives in
+`site/`, builds with Astro/Starlight, and deploys through Vercel for
+`https://mxr-mail.vercel.app` when `main` changes.
 
-```yaml
-  deploy-docs:
-    name: Deploy docs site
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - working-directory: site
-        run: npm ci
-      - working-directory: site
-        run: npm run build
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: mxr-docs
-          directory: site/dist
+Local proof:
+
+```bash
+cd site
+npm ci
+npm run build
 ```
 
 ---
@@ -664,10 +577,9 @@ The docs site deploys on every push to main (for content updates), but also on r
 
 | Secret | Purpose |
 |---|---|
-| `CARGO_REGISTRY_TOKEN` | crates.io API token for publishing |
+| `RELEASE_PLEASE_TOKEN` | PAT with `contents:write` + `workflows` so release-please tag pushes trigger `release.yml`. |
 | `HOMEBREW_TAP_TOKEN` | GitHub PAT with push access to the homebrew-tap repo |
-| `CLOUDFLARE_API_TOKEN` | Cloudflare Pages deployment |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account identifier |
+| `OUTLOOK_CLIENT_ID` | Optional bundled Outlook OAuth app client id compiled into release artifacts. |
 | `APPLE_CERT_P12_BASE64` | Optional Developer ID Application cert exported as `.p12`, then `base64 -i cert.p12 \| pbcopy`. When absent, macOS release artifacts ship unsigned. |
 | `APPLE_CERT_PASSWORD` | Optional password used when exporting the `.p12`; required only when `APPLE_CERT_P12_BASE64` is set. |
 | `APPLE_KEYCHAIN_PASSWORD` | Optional throwaway password used to unlock the temporary CI keychain; required only when `APPLE_CERT_P12_BASE64` is set. |
@@ -675,7 +587,7 @@ The docs site deploys on every push to main (for content updates), but also on r
 | `APPLE_ID` | Optional Apple account email for `notarytool submit`; required only for notarization. |
 | `APPLE_TEAM_ID` | Optional 10-char alphanumeric team identifier; required only for notarization. |
 | `APPLE_APP_SPECIFIC_PASSWORD` | Optional app-specific password generated at appleid.apple.com. Required only for notarization. |
-| `GMAIL_CLIENT_ID` | Optional bundled Gmail OAuth client id. When set with `GMAIL_CLIENT_SECRET`, it is compiled into release artifacts by default. |
+| `GMAIL_CLIENT_ID` | Optional bundled Gmail OAuth client id. For v1 this is an unverified fallback; official Gmail setup advice is user-created OAuth clients. When set with `GMAIL_CLIENT_SECRET`, it is compiled into release artifacts by default. |
 | `GMAIL_CLIENT_SECRET` | Optional bundled Gmail OAuth client secret. Must be set with `GMAIL_CLIENT_ID`, or both omitted. |
 | `MXR_GMAIL_TEST_CLIENT_ID` | Optional live Gmail E2E smoke test client id for release runs. |
 | `MXR_GMAIL_TEST_CLIENT_SECRET` | Optional live Gmail E2E smoke test client secret. |
@@ -684,7 +596,9 @@ The docs site deploys on every push to main (for content updates), but also on r
 For CLI-affecting release tags, deterministic CLI/provider tests remain
 release-blocking. Live Gmail smoke, macOS signing, and notarization are
 opportunistic: they run when their secrets are configured and skip with a
-warning when secrets are absent. Docs-only or version-only tags still skip binary artifacts via
+warning when secrets are absent. Unsigned macOS binaries are accepted for v1;
+document the Gatekeeper warning in install/release notes instead of blocking
+the release. Docs-only or version-only tags still skip binary artifacts via
 `scripts/release_change_scope.sh`. Every release run first verifies that
 the tag (for example `v0.5.47`) matches `workspace.package.version` in
 `Cargo.toml` via `scripts/release_version_gate.sh`.
@@ -695,7 +609,7 @@ the tag (for example `v0.5.47`) matches `workspace.package.version` in
 
 ```
 1. Developer finishes work, merges to main
-2. CI runs on main: fmt, clippy, test, build, sqlx-check, docs build, policy sync
+2. CI runs on main: secret scan, release gate scripts, and changed Rust/web/docs lanes
 3. Developer updates version in Cargo.toml
 4. Developer runs: git cliff --output CHANGELOG.md
 5. Developer commits: git commit -m "chore: release v0.1.0"
@@ -707,12 +621,13 @@ the tag (for example `v0.5.47`) matches `workspace.package.version` in
    c. Generate SHA256 checksums
    d. Create GitHub Release with binaries, checksums, and changelog
    e. If CLI artifacts changed, update Homebrew formula
-   f. Deploy docs site to Cloudflare Pages
 9. Done. Users can now:
    - cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
    - brew install planetaryescape/mxr/mxr
    - Download binary from GitHub Releases
 ```
+
+Docs deploy separately through Vercel when the merged `main` commit changes the site.
 
 ---
 

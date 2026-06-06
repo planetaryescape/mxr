@@ -52,7 +52,7 @@ jobs:
           fi
 
       - id: release
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v5
         with:
           # GitHub deliberately does NOT trigger downstream workflows from tags
           # created with the default GITHUB_TOKEN (security: prevents loops).

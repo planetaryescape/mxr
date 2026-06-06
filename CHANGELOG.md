@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.60](https://github.com/planetaryescape/mxr/compare/v0.5.59...v0.5.60) (2026-06-06)
+
+
+### Bug Fixes
+
+* prevent stuck sync and mutation rollback ([df3f90a](https://github.com/planetaryescape/mxr/commit/df3f90aff4ec195d0eb89db16cd373e795c3d9d6))
+
 ## [0.5.59](https://github.com/planetaryescape/mxr/compare/v0.5.58...v0.5.59) (2026-06-06)
 
 

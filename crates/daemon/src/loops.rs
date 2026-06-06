@@ -10,14 +10,19 @@
 use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_core::types::SyncCursor;
-use mxr_core::MailSyncProvider;
+use mxr_core::{MailSyncProvider, MxrError};
 use mxr_protocol::*;
 use mxr_rules::{Rule, RuleAction, RuleEngine, RuleExecutionLog};
 use mxr_store::{SyncRuntimeStatusUpdate, SyncStatus as StoreSyncStatus};
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use tokio::sync::watch;
-use tokio::time::{interval, Duration};
+use tokio::time::{interval, timeout, Duration};
+
+#[cfg(not(test))]
+const SYNC_CYCLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+#[cfg(test)]
+const SYNC_CYCLE_TIMEOUT: Duration = Duration::from_millis(50);
 
 /// Spawn sync loops for all configured accounts.
 pub fn spawn_sync_loops(state: Arc<AppState>) {
@@ -173,6 +178,7 @@ async fn sync_loop_for_account(
             }
         }
 
+        let provider_guard = state.acquire_provider_operation(&account_id).await;
         let started_at = chrono::Utc::now();
         let existing_status = state
             .store
@@ -209,11 +215,19 @@ async fn sync_loop_for_account(
             )
             .await;
 
-        match state
-            .sync_engine
-            .sync_account_with_outcome(provider.as_ref())
-            .await
-        {
+        match timeout(
+            SYNC_CYCLE_TIMEOUT,
+            state
+                .sync_engine
+                .sync_account_with_outcome(provider.as_ref()),
+        )
+        .await
+        .unwrap_or_else(|_| {
+            Err(MxrError::Provider(format!(
+                "sync timed out after {}s",
+                SYNC_CYCLE_TIMEOUT.as_secs()
+            )))
+        }) {
             Ok(outcome) => {
                 let count = outcome.synced_count;
                 backoff_secs = 0;
@@ -253,6 +267,7 @@ async fn sync_loop_for_account(
                         .complete_sync_log(log_id, &StoreSyncStatus::Success, count, None)
                         .await;
                 }
+                drop(provider_guard);
                 let _ = state
                     .store
                     .insert_event(
@@ -468,6 +483,7 @@ async fn sync_loop_for_account(
                         .complete_sync_log(log_id, &StoreSyncStatus::Error, 0, Some(&err_str))
                         .await;
                 }
+                drop(provider_guard);
                 let _ = state
                     .store
                     .insert_event(
@@ -602,13 +618,14 @@ async fn post_sync_fanout(
     }
 }
 
-fn classify_sync_error(error: &str) -> &'static str {
+pub(crate) fn classify_sync_error(error: &str) -> &'static str {
     let lower = error.to_ascii_lowercase();
     if lower.contains("rate limit") || lower.contains("retry after") {
         "rate_limit"
     } else if lower.contains("auth") || lower.contains("oauth") || lower.contains("login") {
         "auth"
     } else if lower.contains("timeout")
+        || lower.contains("timed out")
         || lower.contains("dns")
         || lower.contains("connection")
         || lower.contains("network")
@@ -648,7 +665,7 @@ mod classify_sync_error_tests {
 
 /// Delegate cursor display to the provider — each adapter owns its
 /// cursor schema (MSP Phase B).
-fn describe_sync_cursor(
+pub(crate) fn describe_sync_cursor(
     provider: &dyn mxr_core::MailSyncProvider,
     cursor: Option<&SyncCursor>,
 ) -> String {
@@ -1449,7 +1466,114 @@ pub async fn snooze_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mxr_core::{Label, MxrError, SyncBatch, SyncCapabilities};
     use mxr_protocol::{IpcMessage, IpcPayload, Request, Response, ResponseData};
+
+    struct HangingSyncProvider {
+        account_id: AccountId,
+    }
+
+    #[async_trait::async_trait]
+    impl MailSyncProvider for HangingSyncProvider {
+        fn name(&self) -> &str {
+            "hanging-sync"
+        }
+
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities::default()
+        }
+
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            std::future::pending().await
+        }
+
+        async fn sync_messages(&self, _cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            unreachable!("sync_labels hangs before sync_messages")
+        }
+
+        async fn fetch_attachment(
+            &self,
+            _provider_message_id: &str,
+            _provider_attachment_id: &str,
+        ) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+
+        async fn apply_mutation(
+            &self,
+            _mutation_id: &str,
+            _mutation: &mxr_core::Mutation,
+        ) -> Result<(), MxrError> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn sync_loop_times_out_stuck_provider_and_clears_runtime_status() {
+        let account_id = AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let provider = std::sync::Arc::new(HangingSyncProvider {
+            account_id: account_id.clone(),
+        });
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, provider, None)
+                .await
+                .unwrap(),
+        );
+        let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let loop_state = state.clone();
+        let loop_account_id = account_id.clone();
+        let handle = tokio::spawn(async move {
+            sync_loop_for_account(loop_state, loop_account_id, shutdown_rx).await;
+        });
+
+        let mut observed = None;
+        for _ in 0..40 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            let status = state
+                .store
+                .get_sync_runtime_status(&account_id)
+                .await
+                .unwrap();
+            if status
+                .as_ref()
+                .is_some_and(|status| !status.sync_in_progress && status.last_error.is_some())
+            {
+                observed = status;
+                break;
+            }
+        }
+
+        shutdown_tx.send_replace(true);
+        tokio::time::timeout(Duration::from_secs(1), handle)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let status = observed.expect("sync timeout should update runtime status");
+        assert!(!status.sync_in_progress);
+        assert_eq!(status.failure_class.as_deref(), Some("network"));
+        assert!(
+            status
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("sync timed out")),
+            "expected timeout error, got {:?}",
+            status.last_error
+        );
+    }
 
     /// Phase 3.1 / Behavior 4: a provider whose `idle_watch` returns
     /// `Ok(None)` (the default) does NOT keep an IDLE loop running.

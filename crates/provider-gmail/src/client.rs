@@ -11,9 +11,11 @@ use crate::auth::GmailAuth;
 use crate::error::GmailError;
 use crate::types::*;
 use async_trait::async_trait;
+use std::time::Duration;
 use tracing::{debug, warn};
 
 const GMAIL_API_BASE: &str = "https://gmail.googleapis.com/gmail/v1/users/me";
+const GMAIL_HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, Copy)]
 pub enum MessageFormat {
@@ -84,8 +86,15 @@ pub trait GmailApi: Send + Sync {
 
 impl GmailClient {
     pub fn new(auth: GmailAuth) -> Self {
+        let http = reqwest::Client::builder()
+            .timeout(GMAIL_HTTP_TIMEOUT)
+            .build()
+            .unwrap_or_else(|error| {
+                warn!(%error, "failed to configure Gmail HTTP timeout; using default client");
+                reqwest::Client::new()
+            });
         Self {
-            http: reqwest::Client::new(),
+            http,
             auth,
             base_url: GMAIL_API_BASE.to_string(),
         }

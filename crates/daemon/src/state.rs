@@ -10,7 +10,9 @@ use parking_lot::{Mutex as ParkingMutex, RwLock};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{broadcast, watch, Notify, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{
+    broadcast, watch, Mutex as TokioMutex, Notify, OwnedMutexGuard, OwnedSemaphorePermit, Semaphore,
+};
 use tokio::task::JoinHandle;
 
 pub(crate) struct ProviderSetup {
@@ -404,6 +406,7 @@ pub struct AppState {
     /// `account_addresses`. See Slice 8 in the analytics plan.
     pub account_addresses: Arc<mxr_core::types::InMemoryAccountAddressLookup>,
     runtime: RwLock<ProviderRuntime>,
+    provider_operation_locks: ParkingMutex<HashMap<AccountId, Arc<TokioMutex<()>>>>,
     sync_loop_accounts: ParkingMutex<HashSet<AccountId>>,
     /// Phase 3.1: tracks which accounts already have an IDLE watcher
     /// loop spawned. Mirrors `sync_loop_accounts` so a config reload
@@ -539,6 +542,7 @@ impl AppState {
                 default_provider: provider_setup.default_provider,
                 default_send_provider: provider_setup.default_send_provider,
             }),
+            provider_operation_locks: ParkingMutex::new(HashMap::new()),
             sync_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_notifies: ParkingMutex::new(HashMap::new()),
@@ -918,6 +922,17 @@ impl AppState {
         self.config_snapshot().general.sync_interval
     }
 
+    pub async fn acquire_provider_operation(&self, account_id: &AccountId) -> OwnedMutexGuard<()> {
+        let lock = {
+            let mut locks = self.provider_operation_locks.lock();
+            locks
+                .entry(account_id.clone())
+                .or_insert_with(|| Arc::new(TokioMutex::new(())))
+                .clone()
+        };
+        lock.lock_owned().await
+    }
+
     pub fn shutdown_receiver(&self) -> watch::Receiver<bool> {
         self.shutdown_tx.subscribe()
     }
@@ -1280,6 +1295,7 @@ impl AppState {
                 default_provider: Some(provider),
                 default_send_provider: send_provider,
             }),
+            provider_operation_locks: ParkingMutex::new(HashMap::new()),
             sync_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_notifies: ParkingMutex::new(HashMap::new()),
@@ -1344,6 +1360,7 @@ impl AppState {
                 default_provider: None,
                 default_send_provider: None,
             }),
+            provider_operation_locks: ParkingMutex::new(HashMap::new()),
             sync_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_notifies: ParkingMutex::new(HashMap::new()),
@@ -1434,6 +1451,7 @@ impl AppState {
                     default_provider: Some(provider),
                     default_send_provider: send_provider,
                 }),
+                provider_operation_locks: ParkingMutex::new(HashMap::new()),
                 sync_loop_accounts: ParkingMutex::new(HashSet::new()),
                 idle_loop_accounts: ParkingMutex::new(HashSet::new()),
                 idle_notifies: ParkingMutex::new(HashMap::new()),

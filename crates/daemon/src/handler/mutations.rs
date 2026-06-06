@@ -9,6 +9,7 @@ use mxr_core::types::{
     DraftStatus, Envelope, MessageBody, MessageDirection, MessageFlags, MessageMetadata,
     SendReceipt, UnsubscribeMethod,
 };
+use mxr_core::MxrError;
 use mxr_protocol::{
     AccountMutationResultData, DaemonEvent, DraftSafetyContextData, DraftSafetyModeData,
     ForwardContext, JobData, JobProgressData, JobStatusData, MutationCommand, MutationResultData,
@@ -17,6 +18,7 @@ use mxr_protocol::{
 use mxr_store::{EventLogRefs, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 /// How long after the mutation the user can undo it. Matches the plan
 /// (~60s) and pairs with `tick_connection_state`-style UI affordances on
@@ -24,6 +26,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 const UNDO_WINDOW_SECS: i64 = 60;
 const MUTATION_JOB_CHUNK_SIZE: usize = 100;
 const MAX_RETAINED_JOBS: usize = 100;
+#[cfg(not(test))]
+const PROVIDER_MUTATION_TIMEOUT: Duration = Duration::from_secs(60);
+#[cfg(test)]
+const PROVIDER_MUTATION_TIMEOUT: Duration = Duration::from_millis(50);
 
 static JOBS: OnceLock<Mutex<Vec<JobData>>> = OnceLock::new();
 
@@ -1235,6 +1241,7 @@ async fn apply_mutation_to_envelope(
     cmd: &MutationCommand,
     envelope: &Envelope,
 ) -> Result<(), String> {
+    let _provider_guard = state.acquire_provider_operation(&envelope.account_id).await;
     let message_id = &envelope.id;
     let provider_id = &envelope.provider_id;
     match cmd {
@@ -1520,10 +1527,18 @@ async fn apply_one_mutation(
         );
         return Ok(());
     }
-    provider
-        .apply_mutation(mutation_id, &mutation)
-        .await
-        .map_err(|e| e.to_string())?;
+    tokio::time::timeout(
+        PROVIDER_MUTATION_TIMEOUT,
+        provider.apply_mutation(mutation_id, &mutation),
+    )
+    .await
+    .unwrap_or_else(|_| {
+        Err(MxrError::Provider(format!(
+            "mutation timed out after {}s",
+            PROVIDER_MUTATION_TIMEOUT.as_secs()
+        )))
+    })
+    .map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().timestamp();
     if let Err(error) = state
         .store
@@ -2758,9 +2773,139 @@ mod safety_context_wiring_tests {
     use crate::state::AppState;
     use chrono::Utc;
     use mxr_core::types::{Address, ContactRow, DraftIntent};
-    use mxr_core::{AccountId, DraftId, MessageId, ThreadId};
+    use mxr_core::{
+        AccountId, DraftId, Label, MessageId, SyncBatch, SyncCapabilities, SyncCursor, ThreadId,
+    };
     use mxr_protocol::{DraftSafetyContextData, DraftSafetyModeData};
     use std::sync::Arc;
+
+    struct HangingMutationProvider {
+        account_id: AccountId,
+    }
+
+    #[async_trait::async_trait]
+    impl mxr_core::MailSyncProvider for HangingMutationProvider {
+        fn name(&self) -> &str {
+            "hanging-mutation"
+        }
+
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities {
+                mutate: mxr_core::MutateCaps {
+                    labels: true,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        }
+
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(Vec::new())
+        }
+
+        async fn sync_messages(&self, _cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            Ok(SyncBatch {
+                upserted: Vec::new(),
+                deleted_provider_ids: Vec::new(),
+                label_changes: Vec::new(),
+                next_cursor: SyncCursor::empty(),
+                has_more: false,
+                threads_changed: Vec::new(),
+            })
+        }
+
+        async fn fetch_attachment(
+            &self,
+            _provider_message_id: &str,
+            _provider_attachment_id: &str,
+        ) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+
+        async fn apply_mutation(
+            &self,
+            _mutation_id: &str,
+            _mutation: &mxr_core::Mutation,
+        ) -> Result<(), MxrError> {
+            std::future::pending().await
+        }
+    }
+
+    #[tokio::test]
+    async fn archive_timeout_reports_failure_without_changing_local_labels() {
+        let account_id = AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let provider = Arc::new(HangingMutationProvider {
+            account_id: account_id.clone(),
+        });
+        let state = AppState::in_memory_with_sync_provider(account, provider, None)
+            .await
+            .unwrap();
+
+        let inbox = crate::test_fixtures::test_label(&account_id, "Inbox", "INBOX");
+        state.store.upsert_label(&inbox).await.unwrap();
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .provider_id("provider-1")
+            .label_provider_ids(vec!["INBOX".to_string()])
+            .build();
+        state.store.upsert_envelope(&envelope).await.unwrap();
+        state
+            .store
+            .set_message_labels(
+                &envelope.id,
+                std::slice::from_ref(&inbox.id),
+                mxr_core::EventSource::Sync,
+            )
+            .await
+            .unwrap();
+
+        let response = mutation(
+            &state,
+            &MutationCommand::Archive {
+                message_ids: vec![envelope.id.clone()],
+            },
+            None,
+        )
+        .await
+        .expect("mutation response");
+
+        let result = match response {
+            ResponseData::MutationResult { result } => result,
+            other => panic!("expected MutationResult, got {other:?}"),
+        };
+        assert_eq!(result.succeeded, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(
+            result
+                .accounts
+                .iter()
+                .filter_map(|account| account.error.as_deref())
+                .any(|error| error.contains("mutation timed out")),
+            "expected timeout error, got {:?}",
+            result.accounts
+        );
+
+        let after = state
+            .store
+            .get_envelope(&envelope.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(after.label_provider_ids, vec!["INBOX".to_string()]);
+    }
 
     fn draft_to(account_id: AccountId, to: Vec<Address>, body: &str) -> Draft {
         Draft {

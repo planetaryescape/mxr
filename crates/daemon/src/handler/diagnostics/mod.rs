@@ -16,6 +16,7 @@ use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{
     Envelope, ExportFormat, MessageFlags, SearchMode, SemanticProfile, SortOrder,
 };
+use mxr_core::MxrError;
 use mxr_protocol::IPC_PROTOCOL_VERSION;
 use mxr_protocol::{
     DaemonEvent, IpcMessage, IpcPayload, LlmConfigData, LlmOverrideData, LlmOverridesData,
@@ -23,7 +24,13 @@ use mxr_protocol::{
     SearchExplainResult, SearchResultItem,
 };
 use mxr_search::{SearchPage, SearchResult};
+use mxr_store::{SyncRuntimeStatusUpdate, SyncStatus as StoreSyncStatus};
 use std::collections::HashMap;
+
+#[cfg(not(test))]
+const MANUAL_SYNC_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+#[cfg(test)]
+const MANUAL_SYNC_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(50);
 
 #[derive(Debug)]
 struct SearchExecution {
@@ -1240,14 +1247,95 @@ pub(crate) async fn sync_now(state: &AppState, account_id: Option<&AccountId>) -
         },
     );
 
-    let outcome = match state
-        .sync_engine
-        .sync_account_with_outcome(provider.as_ref())
+    let provider_account_id = provider.account_id().clone();
+    let provider_guard = state.acquire_provider_operation(&provider_account_id).await;
+    let started_at = chrono::Utc::now();
+    let existing_status = state
+        .store
+        .get_sync_runtime_status(&provider_account_id)
         .await
-    {
+        .ok()
+        .flatten();
+    let pre_sync_cursor = state
+        .store
+        .get_sync_cursor(&provider_account_id)
+        .await
+        .ok()
+        .flatten();
+    let sync_log_id = state
+        .store
+        .insert_sync_log(&provider_account_id, &StoreSyncStatus::Running)
+        .await
+        .ok();
+    let _ = state
+        .store
+        .upsert_sync_runtime_status(
+            &provider_account_id,
+            &SyncRuntimeStatusUpdate {
+                last_attempt_at: Some(started_at),
+                last_error: Some(None),
+                failure_class: Some(None),
+                sync_in_progress: Some(true),
+                current_cursor_summary: Some(Some(crate::loops::describe_sync_cursor(
+                    provider.as_ref(),
+                    pre_sync_cursor.as_ref(),
+                ))),
+                ..Default::default()
+            },
+        )
+        .await;
+
+    let outcome = match tokio::time::timeout(
+        MANUAL_SYNC_TIMEOUT,
+        state
+            .sync_engine
+            .sync_account_with_outcome(provider.as_ref()),
+    )
+    .await
+    .unwrap_or_else(|_| {
+        Err(MxrError::Provider(format!(
+            "sync timed out after {}s",
+            MANUAL_SYNC_TIMEOUT.as_secs()
+        )))
+    }) {
         Ok(outcome) => outcome,
         Err(error) => {
             let error = error.to_string();
+            let failure_class = crate::loops::classify_sync_error(&error);
+            let consecutive_failures = existing_status
+                .as_ref()
+                .map_or(1, |status| status.consecutive_failures.saturating_add(1));
+            let post_error_cursor = state
+                .store
+                .get_sync_cursor(&provider_account_id)
+                .await
+                .ok()
+                .flatten();
+            let _ = state
+                .store
+                .upsert_sync_runtime_status(
+                    &provider_account_id,
+                    &SyncRuntimeStatusUpdate {
+                        last_error: Some(Some(error.clone())),
+                        failure_class: Some(Some(failure_class.to_string())),
+                        consecutive_failures: Some(consecutive_failures),
+                        backoff_until: Some(None),
+                        sync_in_progress: Some(false),
+                        current_cursor_summary: Some(Some(crate::loops::describe_sync_cursor(
+                            provider.as_ref(),
+                            post_error_cursor.as_ref(),
+                        ))),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            if let Some(log_id) = sync_log_id {
+                let _ = state
+                    .store
+                    .complete_sync_log(log_id, &StoreSyncStatus::Error, 0, Some(&error))
+                    .await;
+            }
+            drop(provider_guard);
             emit_operation_event(
                 state,
                 DaemonEvent::OperationFailed {
@@ -1261,6 +1349,44 @@ pub(crate) async fn sync_now(state: &AppState, account_id: Option<&AccountId>) -
             return Err(crate::handler::HandlerError::Message(error));
         }
     };
+    let post_sync_cursor = state
+        .store
+        .get_sync_cursor(&provider_account_id)
+        .await
+        .ok()
+        .flatten();
+    let _ = state
+        .store
+        .upsert_sync_runtime_status(
+            &provider_account_id,
+            &SyncRuntimeStatusUpdate {
+                last_success_at: Some(chrono::Utc::now()),
+                last_error: Some(None),
+                failure_class: Some(None),
+                consecutive_failures: Some(0),
+                backoff_until: Some(None),
+                sync_in_progress: Some(false),
+                current_cursor_summary: Some(Some(crate::loops::describe_sync_cursor(
+                    provider.as_ref(),
+                    post_sync_cursor.as_ref(),
+                ))),
+                last_synced_count: Some(outcome.synced_count),
+                ..Default::default()
+            },
+        )
+        .await;
+    if let Some(log_id) = sync_log_id {
+        let _ = state
+            .store
+            .complete_sync_log(
+                log_id,
+                &StoreSyncStatus::Success,
+                outcome.synced_count,
+                None,
+            )
+            .await;
+    }
+    drop(provider_guard);
     if !outcome.upserted_message_ids.is_empty() {
         emit_operation_event(
             state,

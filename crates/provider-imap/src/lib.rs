@@ -2166,15 +2166,23 @@ mod tests {
 
         assert_eq!(batch.upserted.len(), 1);
         assert_eq!(batch.upserted[0].envelope.provider_id, "All Mail:50");
-        assert_eq!(batch.upserted[0].envelope.label_provider_ids, vec!["Projects"]);
+        assert_eq!(
+            batch.upserted[0].envelope.label_provider_ids,
+            vec!["Projects"]
+        );
         assert!(!batch.has_more);
-        assert_eq!(decoded_imap_mailboxes(&batch.next_cursor)[0].mailbox, "All Mail");
+        assert_eq!(
+            decoded_imap_mailboxes(&batch.next_cursor)[0].mailbox,
+            "All Mail"
+        );
 
         let commands = log.lock().unwrap().commands.clone();
         assert!(commands.iter().any(|command| {
             command.contains("UID FETCH 1:100") && command.contains("X-GM-LABELS")
         }));
-        assert!(!commands.iter().any(|command| command.contains("UID FETCH 100:*")));
+        assert!(!commands
+            .iter()
+            .any(|command| command.contains("UID FETCH 100:*")));
     }
 
     #[tokio::test]

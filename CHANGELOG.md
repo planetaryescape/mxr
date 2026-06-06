@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.59](https://github.com/planetaryescape/mxr/compare/v0.5.58...v0.5.59) (2026-06-06)
+
+
+### Bug Fixes
+
+* restore workspace ci after v1 merge ([fee262c](https://github.com/planetaryescape/mxr/commit/fee262c3a8bc03d9ebea11ab1ebb9ef6fc7b514d))
+
 ## [0.5.58](https://github.com/planetaryescape/mxr/compare/v0.5.57...v0.5.58) (2026-06-05)
 
 

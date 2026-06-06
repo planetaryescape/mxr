@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.61](https://github.com/planetaryescape/mxr/compare/v0.5.60...v0.5.61) (2026-06-06)
+
+
+### Bug Fixes
+
+* accept completed zero-change sync status in release smoke ([8fdeb8c](https://github.com/planetaryescape/mxr/commit/8fdeb8cbe19a2e3d1d72f15aef17387149d563ce))
+
 ## [0.5.60](https://github.com/planetaryescape/mxr/compare/v0.5.59...v0.5.60) (2026-06-06)
 
 

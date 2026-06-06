@@ -115,7 +115,7 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         status_arr
             .iter()
             .any(|status| status["sync_in_progress"].as_bool() == Some(false)
-                && status["last_synced_count"].as_u64().unwrap_or(0) > 0),
+                && status["last_success_at"].as_str().is_some()),
         "sync --status JSON should report a completed run; got: {status_after:#}"
     );
 

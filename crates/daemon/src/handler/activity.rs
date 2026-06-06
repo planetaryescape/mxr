@@ -57,9 +57,13 @@ fn proto_filter_to_store(f: &ActivityFilter) -> store::ActivityFilter {
 
 fn store_row_to_proto(r: &store::ActivityRow) -> ActivityEntry {
     let source = match r.source.as_str() {
+        "human" => ClientKind::Human,
         "tui" => ClientKind::Tui,
+        "script" => ClientKind::Script,
         "web" => ClientKind::Web,
         "daemon" => ClientKind::Daemon,
+        "agent" => ClientKind::Agent,
+        "mcp" => ClientKind::Mcp,
         _ => ClientKind::Cli,
     };
     let context = r

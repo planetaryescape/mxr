@@ -12,14 +12,20 @@
 
 ---
 
-## Bundled OAuth Client ID
+## Gmail OAuth client source
 
-mxr ships a bundled OAuth `client_id` and `client_secret` using Google's "Desktop app" (installed application) flow. This is the standard approach for native/CLI applications that cannot keep a secret. Local interactive sessions use the loopback redirect pattern; headless sessions may fall back to device code flow when the configured Google client supports it.
+The official v1 recommendation is bring-your-own-client: users create a
+Google Cloud OAuth Desktop app and configure mxr with that Client ID/Secret.
+Release builds may also ship a bundled OAuth `client_id` and `client_secret`,
+but that client is an unverified fallback for early adopters and may show
+Google's warning screen or hit shared-client limits. Local interactive sessions
+use Google's installed-app loopback redirect pattern; headless sessions may
+fall back to device code flow when the configured Google client supports it.
 
 ### How it works
 
-1. User runs `mxr accounts add gmail`.
-2. mxr uses the bundled client ID to initiate the OAuth2 installed-app flow via yup-oauth2.
+1. User runs `mxr accounts add gmail --gmail-bundled=false --gmail-client-id ...` or selects **custom** in the wizard.
+2. mxr uses the configured custom client ID/Secret to initiate the OAuth2 installed-app flow via yup-oauth2. If the user explicitly chooses bundled credentials, mxr uses the compiled fallback client instead.
 3. Browser opens to Google's consent screen.
 4. User grants access. Token is returned to the localhost redirect.
 5. mxr stores the yup-oauth2 token cache in the OS keychain/keyring under the Gmail OAuth service name, while retaining the legacy private on-disk cache as a fallback/migration source.
@@ -29,11 +35,9 @@ mxr ships a bundled OAuth `client_id` and `client_secret` using Google's "Deskto
 
 - `https://www.googleapis.com/auth/gmail.readonly` — read messages and labels
 - `https://www.googleapis.com/auth/gmail.labels` — manage labels
-- `https://www.googleapis.com/auth/gmail.modify` — mark read/unread, archive, trash
+- `https://www.googleapis.com/auth/gmail.modify` — mark read/unread, archive, trash, and perform Gmail API sends under the authorized Gmail client
 
-The current code does not request `gmail.send` separately. Gmail API sends
-run through the authorized Gmail client under the `gmail.modify` grant; SMTP
-sending remains a separate provider path.
+mxr does not request `gmail.send` as a separate scope today. SMTP sending remains a separate provider path.
 
 ---
 
@@ -58,9 +62,9 @@ When the app exceeds 100 users, Google requires:
 
 ### Release strategy
 
-**Official release builds** bundle the configured mxr Gmail client by default
-so first-run Gmail setup works without BYOC. To remove Google's unverified-app
-warning for broad distribution, complete:
+**V1 official setup** uses user-created OAuth clients. This is the documented safe path for Gmail because each user controls their own consent screen, test users, and quota.
+
+**Bundled fallback builds** may use an unverified bundled client while the audience is small and technically tolerant of Google's warning screen. To make that bundled fallback broadly safe, complete:
 
 - Privacy policy hosted at the docs site (mirrors `PRIVACY.md`).
 - Domain verified via Google Search Console.
@@ -98,7 +102,7 @@ Legacy token files under the mxr data-dir token directory may still exist. On lo
 
 ## BYOC: Bring Your Own Credentials
 
-Users who prefer their own Google Cloud project, own quota, or own consent-screen control can provide custom OAuth credentials. This is also the supported path for self-built binaries that were compiled without bundled Gmail credentials.
+Users should use their own Google Cloud project for the official v1 Gmail path. This gives them their own consent screen, quota, and token control while mxr still stores provider tokens locally.
 
 ### Configuration
 
@@ -114,6 +118,7 @@ type = "gmail"
 credential_source = "custom"
 client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
 client_secret = "YOUR_CLIENT_SECRET"
+token_ref = "gmail:personal"
 
 [accounts.personal.send]
 type = "gmail"
@@ -121,7 +126,7 @@ type = "gmail"
 
 ### Resolution order
 
-1. If the Gmail account uses `credential_source = "custom"`, use the configured `client_id` and `client_secret`.
+1. If `accounts.<name>.sync.credential_source = "custom"`, use the configured `client_id` and `client_secret`.
 2. Otherwise, use the bundled client ID and secret compiled into the binary.
 
 ### Documentation
@@ -134,9 +139,7 @@ The docs site includes a guide for creating your own Google Cloud project and OA
 - Configuring the consent screen
 - Adding the credentials to mxr config
 
-For GA, bundled credentials are the default user path. BYOC remains the repair
-path when a build omits bundled credentials or a user wants to avoid the shared
-mxr OAuth client.
+For v1, BYOC is primary. The bundled client is the fallback whenever a user explicitly accepts the unverified-client tradeoff.
 
 ---
 

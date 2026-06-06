@@ -69,6 +69,7 @@ site/
           cli/
             *.md
           bridge.md
+          mcp.md
           config.md
           keybindings.md
           json-output.md
@@ -89,7 +90,7 @@ site/
 | Power Features | Power users | Follow-ups, rules, LLM, semantic search, analytics, activity log |
 | Concepts | Evaluators and contributors | Why mxr, architecture, security, glossary, agent contract |
 | Building on mxr | Integrators | Adapter development, agent skill, public Rust crates |
-| Reference | Power users and agents | Generated CLI pages, config, JSON output, TUI, keybindings, bridge, API explorer |
+| Reference | Power users and agents | Generated CLI pages, config, JSON output, TUI, keybindings, bridge, MCP, API explorer |
 
 ---
 

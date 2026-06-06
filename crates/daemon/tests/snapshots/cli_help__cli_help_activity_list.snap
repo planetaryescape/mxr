@@ -9,7 +9,7 @@ Usage: mxr activity list [OPTIONS]
 Options:
       --since <SINCE>              Relative duration (e.g. `1h`, `3d`, `2w`) or ISO date inclusive lower bound
       --until <UNTIL>              Relative duration or ISO date exclusive upper bound. Defaults to now
-      --source <SOURCE>            Originating client. Repeatable [possible values: tui, cli, web, daemon]
+      --source <SOURCE>            Originating client. Repeatable [possible values: human, tui, cli, script, web, daemon, agent, mcp]
       --action <ACTION>            Exact action token (e.g. `mail.archive`). Repeatable
       --prefix <PREFIX>            Match all actions starting with this prefix (e.g. `mail.`)
       --target-kind <TARGET_KIND>  Filter by target kind (`thread`, `message`, `draft`, `search`, ...)

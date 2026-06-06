@@ -33,6 +33,21 @@ tar xzf mxr-v*.tar.gz
 cp mxr ~/.local/bin/  # or /usr/local/bin
 ```
 
+### macOS Gatekeeper
+
+V1 release binaries may be unsigned. macOS can show "Apple could not verify
+`mxr`" on first run. That is accepted for v1 distribution; it means the binary
+is not notarized with Apple, not that mxr phones home. If you trust the GitHub
+Release you downloaded, remove the quarantine bit once:
+
+```bash
+xattr -d com.apple.quarantine ~/.local/bin/mxr
+mxr --version
+```
+
+Homebrew and `cargo install` avoid some of this friction because they build or
+install through a path macOS already knows.
+
 ## Cargo (from source)
 
 mxr is not published to crates.io. Install directly from the git repo:

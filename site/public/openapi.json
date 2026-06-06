@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.5.47"
+    "version": "0.5.58"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -228,6 +228,21 @@
         "tags": [],
         "summary": "Unsubscribe from list mail",
         "operationId": "action_unsubscribe",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/actions/unsubscribe-purge": {
+      "post": {
+        "tags": [],
+        "summary": "Unsubscribe and clear sender footprint",
+        "operationId": "action_unsubscribe_purge",
         "responses": {
           "200": {
             "description": "OK"
@@ -463,11 +478,11 @@
         }
       }
     },
-    "/api/v1/mail/drafts/new": {
+    "/api/v1/mail/drafts/compose": {
       "post": {
         "tags": [],
-        "summary": "Start a new LLM-backed draft",
-        "operationId": "mail_draft_new",
+        "summary": "Generate an LLM draft (new message or reply)",
+        "operationId": "mail_draft_compose",
         "responses": {
           "200": {
             "description": "OK"
@@ -603,6 +618,36 @@
         "tags": [],
         "summary": "Score draft for human-like voice",
         "operationId": "mail_humanizer_score",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/jobs": {
+      "get": {
+        "tags": [],
+        "summary": "List background jobs",
+        "operationId": "mail_jobs",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/jobs/{job_id}": {
+      "get": {
+        "tags": [],
+        "summary": "Inspect a background job",
+        "operationId": "mail_job_detail",
         "responses": {
           "200": {
             "description": "OK"
@@ -798,6 +843,21 @@
         "tags": [],
         "summary": "Read and archive messages",
         "operationId": "mutation_read_archive",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/mutations/route": {
+      "post": {
+        "tags": [],
+        "summary": "Route messages from a queue to a label",
+        "operationId": "mutation_route",
         "responses": {
           "200": {
             "description": "OK"
@@ -1059,6 +1119,21 @@
         }
       }
     },
+    "/api/v1/mail/search/groups": {
+      "get": {
+        "tags": [],
+        "summary": "Group a mail search result set",
+        "operationId": "mail_search_groups",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/sender": {
       "get": {
         "tags": [],
@@ -1270,21 +1345,6 @@
         "tags": [],
         "summary": "Sync status",
         "operationId": "mail_sync_status",
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "401": {
-            "description": "Missing or invalid bridge token"
-          }
-        }
-      }
-    },
-    "/api/v1/mail/threads/draft-assist": {
-      "post": {
-        "tags": [],
-        "summary": "Generate a draft body",
-        "operationId": "draft_assist",
         "responses": {
           "200": {
             "description": "OK"
@@ -3733,10 +3793,14 @@
         "type": "string",
         "description": "Originating client for an IPC request. Carried on the envelope so the\ndaemon's activity recorder can tag rows with the surface that produced\nthem. Legacy clients (pre-source-field) decode as `Cli` — the most\nrealistic guess for scripts hand-rolled against the socket.",
         "enum": [
+          "human",
           "tui",
           "cli",
+          "script",
           "web",
-          "daemon"
+          "daemon",
+          "agent",
+          "mcp"
         ]
       },
       "CommitmentData": {
@@ -5860,6 +5924,109 @@
           "internal"
         ]
       },
+      "JobData": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "kind",
+          "status",
+          "progress",
+          "started_at"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/JobProgressData"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MutationResultData"
+              }
+            ]
+          },
+          "started_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatusData"
+          },
+          "undo_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "JobProgressData": {
+        "type": "object",
+        "required": [
+          "total",
+          "completed",
+          "succeeded",
+          "skipped",
+          "failed"
+        ],
+        "properties": {
+          "completed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "succeeded": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "JobStatusData": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed"
+        ]
+      },
       "Label": {
         "type": "object",
         "required": [
@@ -6598,6 +6765,41 @@
                 ]
               },
               "target_label": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_ids",
+              "to_label",
+              "from_queue_label",
+              "mutation"
+            ],
+            "properties": {
+              "archive": {
+                "type": "boolean"
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "from_queue_label": {
+                "type": "string"
+              },
+              "message_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MessageId"
+                }
+              },
+              "mutation": {
+                "type": "string",
+                "enum": [
+                  "Route"
+                ]
+              },
+              "to_label": {
                 "type": "string"
               }
             }
@@ -9125,6 +9327,56 @@
           {
             "type": "object",
             "required": [
+              "query",
+              "group_by",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SearchAggregation"
+                ]
+              },
+              "group_by": {
+                "$ref": "#/components/schemas/SearchAggregationGroupBy"
+              },
+              "limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              },
+              "mode": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SearchMode"
+                  }
+                ]
+              },
+              "query": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "message_id",
               "cmd"
             ],
@@ -9199,6 +9451,74 @@
             ]
           },
           {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MutationCommand"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "client_correlation_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Start a mutation as a daemon-side background job. Clients poll\n`ListJobs` / `GetJob` for progress and undo ids instead of holding\na long-lived IPC request open.",
+                "required": [
+                  "cmd"
+                ],
+                "properties": {
+                  "cmd": {
+                    "type": "string",
+                    "enum": [
+                      "StartMutationJob"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Start a mutation as a daemon-side background job. Clients poll\n`ListJobs` / `GetJob` for progress and undo ids instead of holding\na long-lived IPC request open."
+          },
+          {
+            "type": "object",
+            "description": "List recent daemon-side jobs (mutation batches, future long-running\nmail operations) with progress and failure/undo state.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListJobs"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Inspect one daemon-side job by id.",
+            "required": [
+              "job_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetJob"
+                ]
+              },
+              "job_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
             "type": "object",
             "description": "Reverse a recent undoable mutation by id. Available within ~60s of\nthe mutation landing; daemon refuses with an `Error` response\npast that window.",
             "required": [
@@ -9232,6 +9552,41 @@
               },
               "message_id": {
                 "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "address",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "address": {
+                "type": "string"
+              },
+              "archive_on_no_method": {
+                "type": "boolean",
+                "description": "If false, a sender with no usable List-Unsubscribe method previews\nthe footprint but does not archive it. If true, the daemon still\nread-archives the sender footprint and reports that unsubscribe was skipped."
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UnsubscribePurge"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
               }
             }
           },
@@ -10145,44 +10500,90 @@
           },
           {
             "type": "object",
-            "description": "Generate a draft reply grounded on the user's prior sent\nmessages and the current thread context. Caller is responsible\nfor opening the result in `$EDITOR` for review — the result is\nnever auto-sent.",
+            "description": "Return per-message triage verdicts for a search query. Cached\nmessages are returned without an LLM call; uncached messages use\nthe same summarizer verdict format as `SummarizeThread`.",
             "required": [
-              "thread_id",
-              "instruction",
+              "query",
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
-                  "DraftAssist"
+                  "TriageSearch"
                 ]
               },
-              "instruction": {
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "mode": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SearchMode"
+                  }
+                ]
+              },
+              "offset": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "query": {
                 "type": "string"
               },
-              "thread_id": {
-                "$ref": "#/components/schemas/ThreadId"
+              "sort": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SortOrder"
+                  }
+                ]
               }
             }
           },
           {
             "type": "object",
+            "description": "Generate an LLM draft — a new message, a reply from compose, or a\nreply from the reader — grounded on the conversation (when any) plus\nthe recipient relationship/voice profile. The tone and length are\ninferred from how the user writes to this person unless `register` /\n`length_hint` override them. The result is never auto-sent.\n\nModes (resolved by the daemon):\n- `thread_id` set → reply to that thread.\n- `source_message_id` set → reply to the thread containing it.\n- neither → a brand-new message (requires `to`).\n\n`account_id` is required for a new message and derived from the thread\notherwise.",
             "required": [
-              "account_id",
-              "to",
-              "purpose",
+              "instruction",
               "cmd"
             ],
             "properties": {
               "account_id": {
-                "$ref": "#/components/schemas/AccountId"
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
               },
               "cmd": {
                 "type": "string",
                 "enum": [
-                  "DraftNew"
+                  "DraftCompose"
                 ]
+              },
+              "instruction": {
+                "type": "string",
+                "description": "The user's purpose/instruction (e.g. \"follow up on pricing\",\n\"decline politely\")."
               },
               "length_hint": {
                 "oneOf": [
@@ -10194,9 +10595,6 @@
                   }
                 ]
               },
-              "purpose": {
-                "type": "string"
-              },
               "register": {
                 "oneOf": [
                   {
@@ -10207,8 +10605,35 @@
                   }
                 ]
               },
+              "source_message_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MessageId"
+                  }
+                ]
+              },
+              "thread_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ThreadId"
+                  }
+                ]
+              },
               "to": {
-                "$ref": "#/components/schemas/Address"
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Address"
+                  }
+                ]
               }
             }
           },
@@ -11740,6 +12165,41 @@
           {
             "type": "object",
             "required": [
+              "query",
+              "group_by",
+              "total",
+              "groups",
+              "kind"
+            ],
+            "properties": {
+              "group_by": {
+                "$ref": "#/components/schemas/SearchAggregationGroupBy"
+              },
+              "groups": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SearchAggregationRow"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SearchAggregation"
+                ]
+              },
+              "query": {
+                "type": "string"
+              },
+              "total": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "headers",
               "kind"
             ],
@@ -12302,6 +12762,55 @@
           {
             "type": "object",
             "required": [
+              "messages",
+              "total",
+              "has_more",
+              "llm_calls",
+              "prompt_version",
+              "kind"
+            ],
+            "properties": {
+              "has_more": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "TriageResults"
+                ]
+              },
+              "llm_calls": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "messages": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TriageMessageData"
+                }
+              },
+              "next_offset": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              },
+              "prompt_version": {
+                "type": "string"
+              },
+              "total": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "body",
               "model",
               "kind"
@@ -12310,6 +12819,12 @@
               "body": {
                 "type": "string"
               },
+              "context_note": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "humanizer": {
                 "oneOf": [
                   {
@@ -12317,6 +12832,27 @@
                   },
                   {
                     "$ref": "#/components/schemas/HumanizerReportSummaryData"
+                  }
+                ]
+              },
+              "inferred_length": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DraftLengthHintData"
+                  }
+                ]
+              },
+              "inferred_register": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VoiceRegisterData",
+                    "description": "Tone/length the daemon inferred from the relationship (the\neffective values used, even when the caller overrode them) so\nthe UI can show \"Matched to {sender}\" without re-deriving."
                   }
                 ]
               },
@@ -12379,6 +12915,81 @@
               },
               "result": {
                 "$ref": "#/components/schemas/MutationResultData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "job",
+              "kind"
+            ],
+            "properties": {
+              "job": {
+                "$ref": "#/components/schemas/JobData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "JobStarted"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "jobs",
+              "kind"
+            ],
+            "properties": {
+              "jobs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/JobData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Jobs"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "job",
+              "kind"
+            ],
+            "properties": {
+              "job": {
+                "$ref": "#/components/schemas/JobData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Job"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "result",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "UnsubscribePurgeResult"
+                ]
+              },
+              "result": {
+                "$ref": "#/components/schemas/UnsubscribePurgeResultData"
               }
             }
           },
@@ -14020,6 +14631,57 @@
           }
         }
       },
+      "SearchAggregationGroupBy": {
+        "type": "string",
+        "enum": [
+          "from",
+          "list",
+          "category"
+        ]
+      },
+      "SearchAggregationRow": {
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "count",
+          "unread"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "newest": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Newest message timestamp in this group (Unix seconds)."
+          },
+          "oldest": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Oldest message timestamp in this group (Unix seconds)."
+          },
+          "unread": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "SearchExplain": {
         "type": "object",
         "required": [
@@ -15210,6 +15872,67 @@
           }
         }
       },
+      "TriageMessageData": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "account_id",
+          "thread_id",
+          "score",
+          "verdict",
+          "verdict_token",
+          "verdict_line",
+          "reason",
+          "model",
+          "cached",
+          "generated_at"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "cached": {
+            "type": "boolean"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "model": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number",
+            "format": "float"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/TriageVerdictData"
+          },
+          "verdict_line": {
+            "type": "string"
+          },
+          "verdict_token": {
+            "type": "string"
+          }
+        }
+      },
+      "TriageVerdictData": {
+        "type": "string",
+        "enum": [
+          "ACTION",
+          "FYI",
+          "ROUTINE"
+        ]
+      },
       "UnsubscribeMethod": {
         "oneOf": [
           {
@@ -15300,6 +16023,83 @@
               "None"
             ]
           }
+        ]
+      },
+      "UnsubscribePurgeResultData": {
+        "type": "object",
+        "required": [
+          "address",
+          "query",
+          "dry_run",
+          "method",
+          "status",
+          "message_count",
+          "archived_count"
+        ],
+        "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AccountId"
+              }
+            ]
+          },
+          "address": {
+            "type": "string"
+          },
+          "archived_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "message_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageId"
+            }
+          },
+          "method": {
+            "$ref": "#/components/schemas/UnsubscribeMethod"
+          },
+          "mutation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "query": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/UnsubscribePurgeStatusData"
+          }
+        }
+      },
+      "UnsubscribePurgeStatusData": {
+        "type": "string",
+        "enum": [
+          "preview",
+          "unsubscribed",
+          "no_method",
+          "archive_only",
+          "failed"
         ]
       },
       "UserVoiceProfileData": {

@@ -98,6 +98,7 @@ members = [
     "crates/humanizer",
     "crates/llm",
     "crates/mail-parse",
+    "crates/mcp",
     "crates/outbound",
     "crates/protocol",
     "crates/provider-fake",
@@ -165,6 +166,7 @@ mxr-keychain = { path = "crates/keychain", version = "0.5.18" }
 mxr-humanizer = { path = "crates/humanizer", version = "0.5.18" }
 mxr-llm = { path = "crates/llm", version = "0.5.18" }
 mxr-mail-parse = { path = "crates/mail-parse", version = "0.5.18" }
+mxr-mcp = { path = "crates/mcp", version = "0.5.18" }
 mail-threading = "0.1.0"
 list-unsubscribe = "0.1.0"
 mail-query = "0.1.0"
@@ -191,6 +193,8 @@ mxr-web = { path = "crates/web", version = "0.5.18" }
 glob-match = "0.2"
 shell-words = "1.1"
 which = "7"
+rmcp = "1.7.0"
+schemars = "1.1.0"
 
 # Package/delivery detection: carrier tracking-number identification + checksum
 # validation (embeds the canonical tracking_number_data dataset).
@@ -318,6 +322,7 @@ mxr-keychain = { workspace = true }
 mxr-humanizer = { workspace = true }
 mxr-llm = { workspace = true }
 mxr-mail-parse = { workspace = true }
+mxr-mcp = { workspace = true }
 mxr-outbound = { workspace = true }
 mxr-protocol = { workspace = true }
 mxr-provider-fake = { workspace = true }

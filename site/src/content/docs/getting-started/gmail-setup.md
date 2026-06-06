@@ -3,27 +3,11 @@ title: Gmail setup
 description: Connect a Gmail account to mxr.
 ---
 
-mxr connects to Gmail through the Gmail API using OAuth. You have two options for credentials:
+mxr connects to Gmail through the Gmail API using OAuth. The official v1 path is **bring your own Google OAuth client**: create a Google Cloud project, paste its desktop-app Client ID/Secret into mxr, and authorize your own Gmail account. This avoids depending on mxr's shared client and keeps the consent screen under your control.
 
-1. **Bundled credentials** — official release builds include mxr's OAuth client and use it by default. This is the normal first-run path: install mxr, add Gmail, approve the browser prompt.
+Release builds may also include mxr's bundled OAuth client. Treat it as an unverified fallback for early adopters: it can show Google's "app has not completed verification" warning, can be quota-limited, and should not be the primary setup plan for production Gmail access.
 
-2. **Your own credentials** — create your own Google Cloud project if you want your own quota, your own consent-screen control, or you are building mxr yourself without bundled credentials.
-
-## Fast path
-
-```bash
-mxr accounts add gmail
-mxr sync
-mxr
-```
-
-What you get: mxr saves a Gmail account using bundled credentials when the installed build has them, opens the browser for OAuth, then syncs mail into the local daemon.
-
-If this build does not include bundled credentials, mxr tells you and points you at the custom-credentials path below.
-
-## Use your own Google Cloud project
-
-You only need this section when you want bring-your-own credentials, or when you built mxr without `GMAIL_CLIENT_ID` and `GMAIL_CLIENT_SECRET` at compile time.
+## Create your Google Cloud project
 
 ### 1. Create the project
 
@@ -49,6 +33,8 @@ This step is required. If you skip it, mxr will show a sync error when it tries 
    - `https://www.googleapis.com/auth/gmail.readonly`
    - `https://www.googleapis.com/auth/gmail.modify`
    - `https://www.googleapis.com/auth/gmail.labels`
+
+mxr does not request `gmail.send` as a separate scope today; Gmail API sends use the authorized Gmail client under the `gmail.modify` grant.
 5. On the **Test users** page, add your own Gmail address.
 6. Click **Save and Continue** through to the end.
 
@@ -66,19 +52,13 @@ Your app will be in "Testing" mode. This is fine — it means only the test user
 ### CLI setup
 
 ```bash
-mxr accounts add gmail
-```
-
-This uses bundled credentials when available. To force your own credentials:
-
-```bash
 MXR_GMAIL_CLIENT_SECRET="YOUR_CLIENT_SECRET" \
   mxr accounts add gmail \
     --gmail-bundled=false \
     --gmail-client-id "YOUR_CLIENT_ID.apps.googleusercontent.com"
 ```
 
-Complete browser authorization when it opens.
+You can also run `mxr accounts add gmail` interactively, select **custom** for credential source, paste the Client ID and Client Secret, and complete browser authorization when it opens.
 
 Verify the account:
 
@@ -92,23 +72,29 @@ mxr sync
 1. Press `4` to open the Accounts page.
 2. Press `n` to add a new account.
 3. Fill in your name and email, select Gmail as the sync and send provider.
-4. Use **bundled** for the default mxr OAuth client, or **custom** if you created your own Client ID and Client Secret.
+4. Select **custom** for credential source and paste your Client ID and Client Secret.
 5. Press `a` to authorize (opens browser for OAuth).
 6. Press `t` to test the connection.
 7. Press `s` to save.
 
-## When bundled credentials are unavailable
+## Bundled credentials fallback
 
-Self-built binaries may not include mxr's bundled OAuth client. In that case you can still connect Gmail with your own Google Cloud project:
+If you explicitly accept Google's unverified-app warning, you can try the bundled client in a release build:
 
 ```bash
-MXR_GMAIL_CLIENT_SECRET="YOUR_CLIENT_SECRET" \
-  mxr accounts add gmail \
-    --gmail-bundled=false \
-    --gmail-client-id "YOUR_CLIENT_ID.apps.googleusercontent.com"
+mxr accounts add gmail
+# Select "bundled" when prompted for credential source, or omit --gmail-bundled=false.
+# Browser opens — Google may require Advanced > Go to mxr (unsafe).
+# Complete authorization.
 ```
 
-To switch an existing account from bundled to custom credentials later, re-run `mxr accounts add gmail` with `--gmail-bundled=false`; it will replace the account config after authorization succeeds.
+Use this for small-scale testing only. To switch later, re-run `mxr accounts add gmail` with `--gmail-bundled=false`; mxr replaces the account config after authorization succeeds.
+
+## Archived mail and Gmail over IMAP
+
+The Gmail API path syncs Gmail labels directly. If you connect Gmail through the generic IMAP adapter instead, mxr now detects Gmail's IMAP extension and syncs canonical `[Gmail]/All Mail` / `\\All` when available. That matters for archived mail: Gmail archives messages by removing `INBOX`, so a folder-by-folder IMAP sync that skipped All Mail could miss archived-only messages. With the All Mail path, archived messages stay visible in mxr search and All Mail views.
+
+If the server does not advertise Gmail All Mail, mxr falls back to normal folder sync and documents IMAP folder semantics honestly: folders are not Gmail labels, and archive/move operations map to provider folder operations.
 
 ## Working over SSH or in a container
 
@@ -126,7 +112,7 @@ mxr accounts add gmail --account-name personal --email you@gmail.com
 
 The bundled Gmail OAuth client may be configured as a Desktop-app type, which Google does **not** allow for device flow. If you see `invalid_request: device_id` from Google, drop down to one of:
 
-- **Bring your own credentials** of OAuth client type *TV and Limited Input devices* (see [Use your own Google Cloud project](#use-your-own-google-cloud-project)) — this gives you a stable BYOC client that supports device flow.
+- **Bring your own credentials** of OAuth client type *TV and Limited Input devices* (see [Create your Google Cloud project](#create-your-google-cloud-project)) — this gives you a stable custom client that supports device flow.
 - **IMAP + app password** — the simplest SSH-friendly path:
 
   ```bash
@@ -152,7 +138,7 @@ Your Client ID or Client Secret is wrong. Double-check you copied them correctly
 
 ### "Access blocked: mxr has not completed the Google verification process"
 
-This is Google's warning for an OAuth app that has not completed verification for broad distribution. You can continue through **Advanced** when Google allows it, or switch to your own credentials with `--gmail-bundled=false`.
+This is Google's unverified-app warning, usually from the bundled fallback client. Use your own OAuth client (`--gmail-bundled=false`) for the official v1 path.
 
 ### "This app is blocked" (no Advanced option)
 

@@ -50,21 +50,10 @@ not a native desktop app; the GUI surface is the web app opened with
 
 Use something else when you need:
 
-- a hosted service that manages provider auth for users
-- one remote automation endpoint across many SaaS products
-- a production backend email API for many users
-- a terminal UI only, with no daemon or broad CLI contract
-- a first-party MCP server as the integration surface
-
-The documented agent surface is the CLI plus the HTTP bridge:
-
-```bash
-mxr search "from:alice newer_than:14d" --format ids
-mxr archive --search "from:no-reply older_than:30d" --dry-run
-```
-
-What you get: pipeable selectors first, then a preview of any batch
-mutation.
+- You want a hosted connector layer more than a local mail runtime.
+- You mainly want a terminal UI and do not care about a broad CLI or daemon.
+- You need a production backend email API, not a local user-facing workflow tool.
+- You need a hosted MCP endpoint or managed OAuth connector. mxr's MCP server is local stdio and uses your local daemon.
 
 ## Provider capability matrix
 
@@ -88,14 +77,14 @@ What you get: configured accounts and the latest sync state per account.
 
 ## Interface capability matrix
 
-| Interface | Use it for | Entry point |
-|---|---|---|
-| CLI | scripting, batch work, agents | `mxr <command>` |
-| TUI | daily reading and triage | `mxr` |
-| Web app | browser reading, sender views, dashboards | `mxr web` |
-| Daemon socket | custom local clients | `mxr daemon` |
-| HTTP bridge | browser and HTTP clients | `mxr web --print-url` |
-| Agent skill | coding-agent workflows over the CLI | [Agent skill](/guides/agent-skill/) |
+| Interface | Status | Best for | Notes |
+|---|---|---|---|
+| CLI | available | scripting, batch work, agents | broadest current shell surface |
+| TUI | available | daily reading and triage | mailbox-focused interface |
+| Daemon socket | available | custom clients | JSON over Unix socket |
+| HTTP bridge | available | local web/custom clients | loopback bearer-token bridge |
+| Agent skill | available | coding-agent workflows | documents CLI patterns |
+| MCP server | available | MCP-native agents | `mxr mcp serve`, stdio, daemon profile gates |
 
 Start with the demo when you are evaluating fit:
 
@@ -113,5 +102,6 @@ touching your real profile.
 - [Quick start](/getting-started/quick-start/)
 - [Automation contract](/guides/automation-contract/)
 - [For agents](/guides/for-agents/)
+- [MCP server](/reference/mcp/)
 - [No native desktop app](/guides/no-native-desktop-app/)
 - [Architecture](/guides/architecture/)

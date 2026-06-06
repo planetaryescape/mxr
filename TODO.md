@@ -6,7 +6,7 @@ Goal: make mxr legible as local-first email infrastructure for humans + agents, 
 
 ## P0 Product truth
 
-- [ ] Ship a real `mxr` MCP server, not just CLI/skill positioning.
+- [x] Ship a real `mxr` MCP server, not just CLI/skill positioning.
 - [ ] Decide the primary category language to test on the site: `local-first email runtime`, `local-first email infrastructure`, or `programmable email client`.
 - [ ] Make every public page honest about what works today vs what is roadmap.
 - [x] Publish a capability matrix by provider: Gmail, IMAP, SMTP, fake.
@@ -15,13 +15,13 @@ Goal: make mxr legible as local-first email infrastructure for humans + agents, 
 
 ## P0 Agent safety
 
-- [ ] Add read-only mode for agents.
-- [ ] Add draft-only mode for agents.
-- [ ] Add explicit send approval flow.
-- [ ] Add explicit destructive-action scopes: archive, trash, delete, label, unsubscribe.
+- [x] Add read-only mode for agents.
+- [x] Add draft-only mode for agents.
+- [x] Add explicit send approval flow.
+- [x] Add explicit destructive-action gates for agent/MCP profiles.
 - [ ] Add reversible batch ops where possible.
 - [x] Add audit logging for agent-initiated actions.
-- [ ] Surface action origin everywhere relevant: human, script, agent, MCP.
+- [x] Surface action origin in daemon activity/history surfaces: human, script, agent, MCP.
 - [x] Make `--dry-run` coverage complete for all risky mutations.
 - [x] Document the trust model clearly: local store, direct provider access, no hosted control plane.
 
@@ -59,19 +59,19 @@ Goal: make mxr legible as local-first email infrastructure for humans + agents, 
 
 ## P1 Agent interface
 
-- [ ] Decide the official agent surface area: CLI only, MCP only, or both.
-- [ ] If both, define the contract: when agents should call CLI vs MCP.
+- [x] Decide the official agent surface area: CLI and MCP, both backed by daemon IPC.
+- [x] If both, define the contract: CLI for shell skills/scripts, MCP for MCP-native clients; both obey daemon profiles.
 - [x] Expand the agent docs from `install the skill` into a real guide for safe operation.
 - [x] Add a dedicated `For agents` landing page/section.
 - [ ] Add setup docs for Codex, Claude Code, Cursor, VS Code, OpenAI Agents SDK.
-- [ ] Publish recommended permission presets for personal use vs work use.
-- [ ] Add examples for approval-gated sending and draft review loops.
+- [x] Publish recommended permission presets for personal use vs work use.
+- [x] Add examples for approval-gated sending and draft review loops.
 - [ ] Add docs for running `mxr` headless in CI/containers/remote shells.
 
 ## P1 Core product gaps to close
 
 - [ ] Finish Gmail adapter work and document current completeness.
-- [ ] Reduce Gmail setup pain in docs: OAuth, scopes, verification expectations, failure modes.
+- [x] Reduce Gmail setup pain in docs: OAuth, scopes, verification expectations, failure modes.
 - [ ] Make IMAP + SMTP setup feel first-class, not fallback.
 - [ ] Ensure every daemon capability has both CLI and TUI wiring where applicable.
 - [ ] Harden export flows for agent use: markdown, JSON, thread context.
@@ -96,8 +96,8 @@ Goal: make mxr legible as local-first email infrastructure for humans + agents, 
 - [ ] Add a user-visible action history / event log page.
 - [ ] Add undo/rollback affordances for supported bulk actions.
 - [ ] Add better confirmations for unsubscribe, archive-all, trash-all, send.
-- [ ] Add account scoping so agents can be restricted to one account.
-- [ ] Add config to disable risky commands entirely in specific environments.
+- [x] Add account scoping so agents can be restricted to one account.
+- [x] Add config to disable risky commands entirely in specific environments.
 - [ ] Add docs for safe defaults in shared/company machines.
 - [x] Add a dedicated `Security & Privacy` docs page.
 

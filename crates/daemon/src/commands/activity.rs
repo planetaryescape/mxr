@@ -96,10 +96,14 @@ pub async fn run(action: ActivityAction) -> anyhow::Result<()> {
 
 fn source_arg_to_proto(s: ActivitySourceArg) -> ClientKind {
     match s {
+        ActivitySourceArg::Human => ClientKind::Human,
         ActivitySourceArg::Tui => ClientKind::Tui,
         ActivitySourceArg::Cli => ClientKind::Cli,
+        ActivitySourceArg::Script => ClientKind::Script,
         ActivitySourceArg::Web => ClientKind::Web,
         ActivitySourceArg::Daemon => ClientKind::Daemon,
+        ActivitySourceArg::Agent => ClientKind::Agent,
+        ActivitySourceArg::Mcp => ClientKind::Mcp,
     }
 }
 

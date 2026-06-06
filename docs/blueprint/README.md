@@ -23,8 +23,8 @@
 | 14 | [Roadmap](14-roadmap.md) | Phased milestones with checklists: Phase 0-4 + future ideas |
 | 15 | [Decision Log](15-decision-log.md) | Every "we considered X, chose Y because Z" decision, including hybrid-search model and delivery choices |
 | 16 | [Addendum](16-addendum.md) | Post-blueprint amendments (A001-A009): inline CLI compose, full CLI surface, vim+Gmail keybindings, daemon observability, TUI batch ops, IMAP first-party, bug reporting |
-| 17 | [Release Pipeline](17-release-pipeline.md) | CI/CD pipeline: PR checks, release automation, scoped binaries, Homebrew, changelog, docs build checks (D066-D071) |
-| 18a | [OAuth Addendum](18-addendum-oauth.md) | Gmail OAuth client source, credential storage, redirect flow, and provider scope posture |
+| 17 | [Release Pipeline](17-release-pipeline.md) | CI/CD pipeline: PR checks, release automation, scoped binaries, Homebrew, changelog, docs build checks, v1 unsigned macOS policy (D066-D071) |
+| 18a | [OAuth Addendum](18-addendum-oauth.md) | Gmail BYOC-first OAuth guidance, bundled fallback posture, credential storage, redirect flow, and provider scopes |
 | 18b | [Bug Reporting](18-bug-reporting.md) | `mxr bug-report` command, log sanitization, log retention, diagnostic capture workflow (D072-D074) |
 | — | [Internal Model Audit](internal-model-audit.md) | Keep/document/tighten/adjust judgment on the current provider-agnostic mail model |
 | — | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |

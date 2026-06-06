@@ -513,6 +513,123 @@ fn special_use_from_attributes(
     })
 }
 
+fn fetched_message_from_attrs(
+    attrs: &[async_imap::imap_proto::types::AttributeValue<'_>],
+) -> Option<FetchedMessage> {
+    use async_imap::imap_proto::types::{AttributeValue, MessageSection, SectionPath};
+
+    let mut uid = None;
+    let mut flags = Vec::new();
+    let mut envelope = None;
+    let mut body = None;
+    let mut header = None;
+    let mut size = None;
+    let mut gmail_labels = Vec::new();
+    let mut gmail_msg_id = None;
+    let mut gmail_thread_id = None;
+
+    for attr in attrs {
+        match attr {
+            AttributeValue::Uid(value) => uid = Some(*value),
+            AttributeValue::Flags(values) => {
+                flags = values
+                    .iter()
+                    .map(|flag| flag.as_ref().to_string())
+                    .collect();
+            }
+            AttributeValue::Envelope(value) => envelope = Some(imap_envelope_from_proto(value)),
+            AttributeValue::BodySection {
+                section: None,
+                data: Some(value),
+                ..
+            }
+            | AttributeValue::Rfc822(Some(value)) => body = Some(value.as_ref().to_vec()),
+            AttributeValue::BodySection {
+                section: Some(SectionPath::Full(MessageSection::Header)),
+                data: Some(value),
+                ..
+            }
+            | AttributeValue::Rfc822Header(Some(value)) => header = Some(value.as_ref().to_vec()),
+            AttributeValue::Rfc822Size(value) => size = Some(*value),
+            AttributeValue::GmailLabels(values) => {
+                gmail_labels = values
+                    .iter()
+                    .map(|label| label.as_ref().to_string())
+                    .collect();
+            }
+            AttributeValue::GmailMsgId(value) => gmail_msg_id = Some(*value),
+            AttributeValue::GmailThrId(value) => gmail_thread_id = Some(*value),
+            _ => {}
+        }
+    }
+
+    Some(FetchedMessage {
+        uid: uid?,
+        flags,
+        envelope,
+        body,
+        header,
+        size,
+        gmail_labels,
+        gmail_msg_id,
+        gmail_thread_id,
+    })
+}
+
+fn imap_envelope_from_proto(env: &async_imap::imap_proto::Envelope<'_>) -> ImapEnvelope {
+    let convert_addrs = |addrs: Option<&Vec<async_imap::imap_proto::Address>>| -> Vec<ImapAddress> {
+        addrs
+            .map(|list| {
+                list.iter()
+                    .map(|addr| {
+                        let mailbox = addr
+                            .mailbox
+                            .as_ref()
+                            .map(|s| String::from_utf8_lossy(s).to_string())
+                            .unwrap_or_default();
+                        let host = addr
+                            .host
+                            .as_ref()
+                            .map(|s| String::from_utf8_lossy(s).to_string())
+                            .unwrap_or_default();
+                        let name = addr
+                            .name
+                            .as_ref()
+                            .map(|s| String::from_utf8_lossy(s).to_string());
+                        ImapAddress {
+                            name,
+                            email: format!("{mailbox}@{host}"),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    ImapEnvelope {
+        date: env
+            .date
+            .as_ref()
+            .map(|d| String::from_utf8_lossy(d).to_string()),
+        subject: env
+            .subject
+            .as_ref()
+            .map(|s| String::from_utf8_lossy(s).to_string()),
+        from: convert_addrs(env.from.as_ref()),
+        to: convert_addrs(env.to.as_ref()),
+        cc: convert_addrs(env.cc.as_ref()),
+        bcc: convert_addrs(env.bcc.as_ref()),
+        message_id: env
+            .message_id
+            .as_ref()
+            .map(|s| String::from_utf8_lossy(s).to_string()),
+        in_reply_to: env
+            .in_reply_to
+            .as_ref()
+            .map(|s| String::from_utf8_lossy(s).to_string()),
+    }
+}
+
 #[async_trait]
 impl ImapSession for RealImapSession {
     async fn capabilities(&mut self) -> Result<ImapCapabilities> {
@@ -531,6 +648,7 @@ impl ImapSession for RealImapSession {
             list_status: capabilities.has_str("LIST-STATUS"),
             utf8_accept: capabilities.has_str("UTF8=ACCEPT"),
             imap4rev2: capabilities.has_str("IMAP4rev2"),
+            x_gm_ext_1: capabilities.has_str("X-GM-EXT-1"),
         })
     }
 
@@ -613,107 +731,45 @@ impl ImapSession for RealImapSession {
     }
 
     async fn uid_fetch(&mut self, uid_set: &str, query: &str) -> Result<Vec<FetchedMessage>> {
-        use futures::TryStreamExt;
-
-        let stream = self
+        let id = self
             .session
-            .uid_fetch(uid_set, query)
+            .run_command(format!("UID FETCH {uid_set} {query}"))
             .await
             .map_err(|e| ImapProviderError::fetch_detail(e.to_string()))?;
 
-        let fetches: Vec<_> = stream
-            .try_collect()
-            .await
-            .map_err(|e| ImapProviderError::fetch_detail(e.to_string()))?;
-
-        let mut messages = Vec::with_capacity(fetches.len());
-        for fetch in &fetches {
-            let uid = match fetch.uid {
-                Some(u) => u,
-                None => continue,
-            };
-
-            let flags: Vec<String> = fetch
-                .flags()
-                .map(|f| match f {
-                    async_imap::types::Flag::Seen => "\\Seen".to_string(),
-                    async_imap::types::Flag::Answered => "\\Answered".to_string(),
-                    async_imap::types::Flag::Flagged => "\\Flagged".to_string(),
-                    async_imap::types::Flag::Deleted => "\\Deleted".to_string(),
-                    async_imap::types::Flag::Draft => "\\Draft".to_string(),
-                    async_imap::types::Flag::Recent => "\\Recent".to_string(),
-                    async_imap::types::Flag::MayCreate => "\\MayCreate".to_string(),
-                    async_imap::types::Flag::Custom(ref s) => s.to_string(),
-                })
-                .collect();
-
-            let envelope = fetch.envelope().map(|env| {
-                let convert_addrs =
-                    |addrs: Option<&Vec<async_imap::imap_proto::Address>>| -> Vec<ImapAddress> {
-                        addrs
-                            .map(|list| {
-                                list.iter()
-                                    .map(|addr| {
-                                        let mailbox = addr
-                                            .mailbox
-                                            .as_ref()
-                                            .map(|s| String::from_utf8_lossy(s).to_string())
-                                            .unwrap_or_default();
-                                        let host = addr
-                                            .host
-                                            .as_ref()
-                                            .map(|s| String::from_utf8_lossy(s).to_string())
-                                            .unwrap_or_default();
-                                        let name = addr
-                                            .name
-                                            .as_ref()
-                                            .map(|s| String::from_utf8_lossy(s).to_string());
-                                        ImapAddress {
-                                            name,
-                                            email: format!("{mailbox}@{host}"),
-                                        }
-                                    })
-                                    .collect()
-                            })
-                            .unwrap_or_default()
-                    };
-
-                ImapEnvelope {
-                    date: env
-                        .date
-                        .as_ref()
-                        .map(|d| String::from_utf8_lossy(d).to_string()),
-                    subject: env
-                        .subject
-                        .as_ref()
-                        .map(|s| String::from_utf8_lossy(s).to_string()),
-                    from: convert_addrs(env.from.as_ref()),
-                    to: convert_addrs(env.to.as_ref()),
-                    cc: convert_addrs(env.cc.as_ref()),
-                    bcc: convert_addrs(env.bcc.as_ref()),
-                    message_id: env
-                        .message_id
-                        .as_ref()
-                        .map(|s| String::from_utf8_lossy(s).to_string()),
-                    in_reply_to: env
-                        .in_reply_to
-                        .as_ref()
-                        .map(|s| String::from_utf8_lossy(s).to_string()),
+        let mut messages = Vec::new();
+        let mut saw_done = false;
+        while let Some(response) = self.session.read_response().await {
+            let response = response.map_err(|e| ImapProviderError::fetch_detail(e.to_string()))?;
+            match response.parsed() {
+                async_imap::imap_proto::Response::Done {
+                    tag,
+                    status,
+                    information,
+                    ..
+                } if tag == &id => {
+                    if matches!(status, async_imap::imap_proto::Status::Ok) {
+                        saw_done = true;
+                        break;
+                    }
+                    return Err(ImapProviderError::fetch_detail(format!(
+                        "UID FETCH failed: {status:?} {}",
+                        information.as_deref().unwrap_or_default()
+                    )));
                 }
-            });
+                async_imap::imap_proto::Response::Fetch(_, attrs) => {
+                    if let Some(message) = fetched_message_from_attrs(attrs) {
+                        messages.push(message);
+                    }
+                }
+                _ => {}
+            }
+        }
 
-            let body = fetch.body().map(|b: &[u8]| b.to_vec());
-            let header = fetch.header().map(|h: &[u8]| h.to_vec());
-            let size = fetch.size;
-
-            messages.push(FetchedMessage {
-                uid,
-                flags,
-                envelope,
-                body,
-                header,
-                size,
-            });
+        if !saw_done {
+            return Err(ImapProviderError::fetch_detail(
+                "UID FETCH ended before tagged OK".to_string(),
+            ));
         }
 
         Ok(messages)
@@ -1196,6 +1252,19 @@ pub mod mock {
             self
         }
 
+        pub fn with_mailbox_fetches(
+            self,
+            mailbox: &str,
+            responses: Vec<Vec<FetchedMessage>>,
+        ) -> Self {
+            self.state
+                .lock()
+                .unwrap()
+                .fetch_queues_by_mailbox
+                .insert(mailbox.to_string(), VecDeque::from(responses));
+            self
+        }
+
         pub fn commands(&self) -> Vec<String> {
             self.log.lock().unwrap().commands.clone()
         }
@@ -1361,6 +1430,9 @@ mod tests {
             body: None,
             header: None,
             size: Some(512),
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
         }];
 
         let mut session = MockImapSession::new(

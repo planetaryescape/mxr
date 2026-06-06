@@ -387,7 +387,7 @@ Auto-format detection: TTY → table, piped → json. Override with explicit `--
 
 ### Decision records
 
-**D026**: Durable mail actions should go through daemon-backed CLI surfaces. **D027**: `mxr cat` for reading messages. **D028**: `reply` and `reply-all` are separate commands. **D029**: `mxr attachments` subcommand tree. **D030**: `mxr notify` for status bars. **D031**: `mxr count` for quick counts. **D032**: Auto-format detection (TTY vs pipe). **D033**: `mxr spam` command. **D034**: `mxr open` for browser viewing.
+**D026**: Durable mail actions go through daemon-backed CLI/IPC surfaces; first-party clients should not bypass the daemon. **D027**: `mxr cat` for reading messages. **D028**: `reply` and `reply-all` are separate commands. **D029**: `mxr attachments` subcommand tree. **D030**: `mxr notify` for status bars. **D031**: `mxr count` for quick counts. **D032**: Auto-format detection (TTY vs pipe). **D033**: `mxr spam` command. **D034**: `mxr open` for browser viewing.
 
 ---
 
@@ -648,7 +648,7 @@ New crate: `crates/provider-imap/` — implements `MailSyncProvider` only. Send 
 
 **Threading**: JWZ algorithm from `In-Reply-To` + `References` headers. Lives in sync crate as shared module.
 
-**Folder → label mapping**: INBOX/Sent/Drafts/Trash → system labels. Custom folders → Label { kind: Folder }. IMAP flags → MessageFlags. RFC 6154 SPECIAL-USE for folder detection.
+**Folder → label mapping**: INBOX/Sent/Drafts/Trash/All Mail → system labels. Custom folders → Label { kind: Folder }. IMAP flags → MessageFlags. RFC 6154 SPECIAL-USE for folder detection. Gmail-over-IMAP detects `\\All` / `[Gmail]/All Mail` and uses it as the canonical sync source when available so archived-only Gmail messages remain searchable locally.
 
 **Mutations**: Archive = COPY to Archive + DELETE from source. Star = `\Flagged` flag. Read = `\Seen` flag. Move = COPY + DELETE (or MOVE if RFC 6851 supported).
 

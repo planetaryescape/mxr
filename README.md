@@ -6,10 +6,11 @@
 **Local-first email infrastructure.** Write `mxr`, say "Mixer".
 
 Use mxr to sync Gmail and IMAP into SQLite on your machine, then read,
-search, script, and mutate mail from the CLI, TUI, web app, or agent
-skill. Same local data. Same daemon. Same commands.
+search, script, and mutate mail from the CLI, TUI, web app, MCP server,
+or agent skill. Same local data. Same daemon. Same permission gates.
 
-This README covers the CLI, TUI, web app, daemon socket, and agent skill.
+This README covers the CLI, TUI, web app, daemon socket, MCP server, and
+agent skill.
 
 ## Install
 
@@ -36,6 +37,10 @@ Pre-built release tarballs are also available for:
 - Linux x86_64
 
 [Download a release asset](https://github.com/planetaryescape/mxr/releases/latest)
+
+V1 macOS tarballs may be unsigned. Gatekeeper can warn on first run; see the
+[installation guide](https://mxr-mail.vercel.app/getting-started/install/#macos-gatekeeper)
+for the quarantine workaround.
 
 To build from the repository instead:
 
@@ -91,7 +96,7 @@ The documented surfaces are:
 - IMAP sync (CONDSTORE / QRESYNC + UID fallback + IDLE for real-time delivery)
 - SMTP send
 - lexical + hybrid + semantic search with Gmail-style operators (`is:unread`, `from:`, `older_than:30d`, etc.)
-- CLI, TUI, web app, daemon socket, agent skill
+- CLI, TUI, web app, daemon socket, first-party MCP server, agent skill
 - Inbox tooling: snooze with presets, undoable mutations (60s window), saved searches, deterministic rules with `--dry-run`
 - Calendar invites: parse email invites, search `has:calendar`, inspect, backfill, and RSVP with dry-run previews
 - LLM-assisted summarize and draft-assist surfaces with local relationship context and deterministic humanizer scoring
@@ -240,14 +245,15 @@ Operating rules:
 
 - CLI first. The TUI is built on the same daemon surface and should not be the only way to do something.
 - Mutations should be previewable before commit.
-- JSON is for piping, scripting, and agents, not just debugging.
+- JSON is for piping, scripting, MCP tools, and agents, not just debugging.
 - Unix composition beats framework lock-in.
 - Daemon healing is event-driven: stale sockets are cleaned up, mismatched daemon builds are restarted, and bad indexes are repaired or rebuilt. No timed restarts. No self-updates.
 
 ## Use it from a shell or an agent
 
-The CLI is the integration surface. Tools that can run a command and
-parse JSON can work with mxr.
+The CLI and MCP server are the agent integration surfaces. Tools that can
+run a command can parse CLI JSON; tools that speak MCP can connect to
+`mxr mcp serve` over stdio. Both paths call the same local daemon.
 
 **Search is the universal selector.** Every list/search command writes one ID per line under `--format ids`; every read or mutate command takes an ID. Compose with anything:
 
@@ -266,7 +272,16 @@ mxr search "is:unread from:buildkite" --format json | jq -r '.[].message_id'
 
 `--search` is on every read command that takes an ID (`cat`, `thread`, `headers`, `summarize`, `draft-assist`, `open`, `attachments list`) and on every mutation. See [`docs/recipes`](https://mxr-mail.vercel.app/guides/recipes/) for the full cookbook (fzf / jq / xargs / cron / agent prompts).
 
-That same surface is what the agent skill uses. A coding agent can search, read, draft, export, and batch-mutate mail through the CLI that already exists.
+That same surface is what the agent skill uses. MCP clients can use the first-party server instead:
+
+```bash
+mxr mcp serve
+```
+
+The MCP tools set IPC source `mcp`, so daemon-enforced account allowlists,
+safety profiles, send gates, destructive gates, activity origins, and dry-run
+requirements still apply. A coding agent can search, read, draft, export, and
+batch-mutate mail without a Gmail-specific SDK.
 
 Example prompt:
 

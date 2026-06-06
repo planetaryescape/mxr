@@ -3,7 +3,7 @@ title: For agents
 description: How to drive mxr from a coding agent, an LLM script, or your own loop. Three worked examples, the safety primitives that make them safe, and the boundaries the daemon won't cross.
 ---
 
-mxr is built so an LLM agent can run it directly. The CLI emits structured JSON, every mutation has a dry-run, and the [HTTP bridge](/reference/bridge/) exposes the same surface for non-shell clients. There is no provider-specific SDK to wrap, no headless browser, no DOM scraping — the agent uses the same commands a human would.
+mxr is built so an LLM agent can run it directly. The CLI emits structured JSON, the first-party MCP server exposes typed tools over stdio, every risky mutation has a dry-run or preview path, and the [HTTP bridge](/reference/bridge/) exposes the same daemon for non-shell clients. There is no provider-specific SDK to wrap, no headless browser, no DOM scraping — the agent uses the local mxr daemon.
 
 This page is the practical guide. For the comprehensive list of what's safe to script, see the [automation contract](/guides/automation-contract/). For the field-level JSON shape, see [JSON output schemas](/reference/json-output/).
 
@@ -12,8 +12,8 @@ This page is the practical guide. For the comprehensive list of what's safe to s
 1. **Read first.** `mxr search`, `mxr cat`, `mxr stale`, `mxr sender`, `mxr summarize` never mutate. Use them to understand the situation before acting.
 2. **Dry-run everything.** `--dry-run` works on every mutation; show the user the affected count before you run the real thing.
 3. **`--yes` is opt-in.** Without `--yes`, mutations prompt. When stdin isn't a TTY (i.e. piped from an agent), pass `--yes` explicitly so the user has a clear "I authorise this batch" moment in the loop.
-4. **Carry account scope through the whole loop.** If the user says "work account" or "personal account", resolve it with `mxr accounts`, then use `--account <selector>` on search, dry-run, mutation, and verification reads.
-5. **Use `mxr history`.** Every mutation gets a `mutation_id`. Capture it; offer `mxr undo <id>` within ~60 seconds.
+4. **Carry account scope through the whole loop.** If the user says "work account" or "personal account", resolve it with `mxr accounts`, then use `--account <selector>` on CLI search, dry-run, mutation, and verification reads. MCP tools take `account_id` where they can select an account; daemon profiles also enforce `allowed_accounts` for `agent` and `mcp` IPC origins.
+5. **Use `mxr history` / `mxr activity`.** Every mutation gets a `mutation_id`. Capture it; offer `mxr undo <id>` within ~60 seconds. Activity rows include the request origin (`cli`, `agent`, `mcp`, etc.) and stay local.
 
 ## Worked example 1 — Newsletter prune
 
@@ -108,7 +108,7 @@ Agent feeds the markdown into its summariser, then uses `mxr draft-assist` to ge
 mxr draft-assist <thread_id> "Build a 1:1 agenda. Group by open question, decision needed, status update."
 ```
 
-The agent never sends. The user reviews the generated body, saves a draft, or sends only after explicit approval.
+The agent never sends from draft-assist. The user reviews the generated body, saves a draft, or sends only after explicit approval. For MCP, `mxr_send_draft` also requires `confirm=true`; the daemon can still block the send if the active `mcp` profile has `allow_send = false`.
 
 ## Worked example 3 — CI failure cleanup
 
@@ -153,17 +153,37 @@ If you want a strict local-only setup: set `[llm].base_url = "http://localhost:1
 - Use `mxr summarize <thread_id>` for long threads instead of feeding `mxr cat` into the model.
 - Use `mxr export <thread_id> --format llm` for thread context formatted for an LLM (omits redundant headers, strips signatures).
 
+## MCP quick start
+
+Run the server under an MCP client as a stdio command:
+
+```bash
+mxr mcp serve
+```
+
+Required daemon config is explicit. If `source = "mcp"` requests arrive without an `[agents.profiles.mcp]` profile, the daemon rejects them before handlers touch mail providers:
+
+```toml
+[agents.profiles.mcp]
+safety_policy = "draft-only"      # read-only | restricted | draft-only | full
+allowed_accounts = ["work"]       # account key, email, or account id
+allow_send = false
+allow_destructive = false
+```
+
+Use `safety_policy = "full"`, `allow_send = true`, and `allow_destructive = true` only for a client/session where the human approval loop is strong enough. MCP mutation and send tools still require `confirm=true`.
+
 ## IPC bucket model (skim)
 
-Behind the CLI, every request lands in one of four [IPC buckets](/guides/glossary/#ipc-buckets): `core-mail`, `mxr-platform`, `admin-maintenance`, `client-specific`. The first three are stable; the fourth is per-client view-shape and not part of the daemon contract. If you're scripting against the [HTTP bridge](/reference/bridge/), think in those buckets — they're the contract surface.
+Behind the CLI and MCP server, every request lands in one of four [IPC buckets](/guides/glossary/#ipc-buckets): `core-mail`, `mxr-platform`, `admin-maintenance`, `client-specific`. The first three are stable; the fourth is per-client view-shape and not part of the daemon contract. If you're scripting against the [HTTP bridge](/reference/bridge/) or MCP, think in those buckets — they're the contract surface.
 
 ## Current limits (be honest)
 
-- No first-party MCP server yet. The agent surface is the CLI plus the HTTP bridge; both are real and stable.
-- No `--read-only` daemon mode yet. Use `safety_policy = "restricted"` or `"read-only"` in `[general]` to cap mutations daemon-wide if you need the guardrail.
-- Account scoping is a CLI convention, not a separate agent permission model. `--account` limits mxr's command target set, but the agent can still run other commands with whatever OS access the user gave it.
+- MCP is stdio-only today; run `mxr mcp serve` under your client. There is no hosted MCP endpoint.
+- Agent/MCP profiles enforce daemon requests by IPC origin, account allowlist, safety policy, send gate, and destructive gate. They do not sandbox the rest of the OS; a coding agent can still run any shell command you allowed outside mxr.
+- Account scope must still be carried in prompts and commands. The daemon blocks out-of-profile accounts, but the best UX is to include account selectors in every search/read/mutation step.
 
-If you need any of these as enforcement (rather than convention), file an issue — the design space is open.
+If you need stronger OS sandboxing, run the agent in a separate user/session and give it only the mxr config/profile you intend.
 
 ## See also
 
@@ -172,5 +192,6 @@ If you need any of these as enforcement (rather than convention), file an issue 
 - [Unsubscribe](/guides/unsubscribe/) — header methods, body-link fallback, and safe cleanup flow
 - [Recipes](/guides/recipes/) — pipelines for common tasks
 - [Agent skill](/guides/agent-skill/) — install the mxr skill into Claude Code, Cursor, Continue, Aider
+- [MCP server](/reference/mcp/) — first-party stdio MCP tools and profile gates
 - [HTTP bridge](/reference/bridge/) — same surface over HTTP
 - [API explorer](/reference/api-explorer/) — interactive Scalar reference

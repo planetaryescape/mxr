@@ -2,8 +2,8 @@
 
 > This document covers the full CI/CD pipeline: PR checks, release automation, scoped binary builds, Homebrew, changelog generation, and docs build checks.
 
-> **Current state note (2026-05-31)**
-> The live release flow is: pushes to `main` run `release-please`, merged release PRs create `vX.Y.Z` tags, and tag pushes run [.github/workflows/release.yml](../../.github/workflows/release.yml). Artifact builds are scoped by [scripts/release_change_scope.sh](../../scripts/release_change_scope.sh): CLI-affecting tags build macOS Apple Silicon and Linux x86_64 archives, create the GitHub Release, and update the `planetaryescape/homebrew-mxr` tap; docs-only or version-only tags create the GitHub Release/changelog but skip binary artifacts and Homebrew. Supported Cargo installs are `cargo install --git ...` and `cargo install --path .`; crates.io publication is no longer part of the current release model. The web app is embedded into the CLI release binary. The docs site is built in CI and deployed by Vercel on pushes to `main`, not by the release workflow. Read the checked-in workflows as the source of truth; the sections below include historical design context and earlier release-shape examples.
+> **Current state note (v1 launch)**
+> The live release flow is: pushes to `main` run `release-please`, merged release PRs create `vX.Y.Z` tags, and tag pushes run [.github/workflows/release.yml](../../.github/workflows/release.yml). Artifact builds are scoped by [scripts/release_change_scope.sh](../../scripts/release_change_scope.sh): CLI-affecting tags build macOS Apple Silicon and Linux x86_64 archives, create the GitHub Release, and update the `planetaryescape/homebrew-mxr` tap; docs-only or version-only tags create the GitHub Release/changelog but skip binary artifacts and Homebrew. Supported Cargo installs are `cargo install --git ...` and `cargo install --path .`; crates.io publication is no longer part of the current release model. The web app is embedded into the CLI release binary. The docs site is built in CI and deployed by Vercel on pushes to `main`, not by the release workflow. macOS signing and notarization are optional for v1; when Apple secrets are absent, the workflow ships unsigned macOS binaries and users may see Gatekeeper friction. Read the checked-in workflows as the source of truth; the sections below include historical design context and earlier release-shape examples.
 
 ---
 
@@ -594,8 +594,8 @@ npm run build
 | `APPLE_ID` | Optional Apple account email for `notarytool submit`; required only for notarization. |
 | `APPLE_TEAM_ID` | Optional 10-char alphanumeric team identifier; required only for notarization. |
 | `APPLE_APP_SPECIFIC_PASSWORD` | Optional app-specific password generated at appleid.apple.com. Required only for notarization. |
-| `GMAIL_CLIENT_ID` | Bundled Gmail OAuth client id for official releases. When set with `GMAIL_CLIENT_SECRET`, it is compiled into release artifacts by default. The workflow can omit it for BYOC-only/self-built artifacts. |
-| `GMAIL_CLIENT_SECRET` | Bundled Gmail OAuth client secret. Must be set with `GMAIL_CLIENT_ID`, or both omitted. |
+| `GMAIL_CLIENT_ID` | Optional bundled Gmail OAuth client id. For v1 this is an unverified fallback; official Gmail setup advice is user-created OAuth clients. When set with `GMAIL_CLIENT_SECRET`, it is compiled into release artifacts by default. |
+| `GMAIL_CLIENT_SECRET` | Optional bundled Gmail OAuth client secret. Must be set with `GMAIL_CLIENT_ID`, or both omitted. |
 | `MXR_GMAIL_TEST_CLIENT_ID` | Optional live Gmail E2E smoke test client id for release runs. |
 | `MXR_GMAIL_TEST_CLIENT_SECRET` | Optional live Gmail E2E smoke test client secret. |
 | `MXR_GMAIL_TEST_REFRESH_TOKEN` | Optional live Gmail E2E smoke refresh token. When any live smoke secret is absent, release skips the live Gmail smoke. |
@@ -603,7 +603,9 @@ npm run build
 For CLI-affecting release tags, deterministic CLI/provider tests remain
 release-blocking. Live Gmail smoke, macOS signing, and notarization are
 opportunistic: they run when their secrets are configured and skip with a
-warning when secrets are absent. Docs-only or version-only tags still skip binary artifacts via
+warning when secrets are absent. Unsigned macOS binaries are accepted for v1;
+document the Gatekeeper warning in install/release notes instead of blocking
+the release. Docs-only or version-only tags still skip binary artifacts via
 `scripts/release_change_scope.sh`. Every release run first verifies that
 the tag (for example `v0.5.47`) matches `workspace.package.version` in
 `Cargo.toml` via `scripts/release_version_gate.sh`.

@@ -48,9 +48,46 @@ pub fn map_folder_to_label(
     }
 }
 
+/// Map Gmail IMAP folders to labels whose provider IDs match X-GM-LABELS.
+pub fn map_gmail_folder_to_label(
+    folder_name: &str,
+    special_use: Option<&str>,
+    account_id: &AccountId,
+) -> Label {
+    let mut label = map_folder_to_label(folder_name, special_use, account_id);
+    if let Some(system_provider_id) = special_use.and_then(normalize_gmail_label_provider_id) {
+        label.provider_id = system_provider_id.clone();
+        label.id = LabelId::from_scoped_provider_id(account_id, "imap", &system_provider_id);
+    } else if folder_name.eq_ignore_ascii_case("inbox") {
+        label.provider_id = "INBOX".to_string();
+        label.id = LabelId::from_scoped_provider_id(account_id, "imap", "INBOX");
+    }
+    label
+}
+
 /// Provider ID format for IMAP: "mailbox:uid" (e.g., "INBOX:12345")
 pub fn format_provider_id(mailbox: &str, uid: u32) -> String {
     format!("{mailbox}:{uid}")
+}
+
+/// Normalize Gmail's X-GM-LABELS atoms to mxr provider label IDs.
+/// Gmail returns system labels as IMAP atoms like `\\Inbox` and user labels
+/// as their display names; mxr's label matching expects stable provider IDs
+/// such as `INBOX`, `SENT`, `STARRED`, or the user label name.
+pub fn normalize_gmail_label_provider_id(label: &str) -> Option<String> {
+    let trimmed = label.trim().trim_matches('"');
+    let normalized = match trimmed.to_ascii_lowercase().as_str() {
+        "\\inbox" | "inbox" => "INBOX".to_string(),
+        "\\sent" | "sent" => "SENT".to_string(),
+        "\\draft" | "\\drafts" | "draft" | "drafts" => "DRAFT".to_string(),
+        "\\trash" | "trash" => "TRASH".to_string(),
+        "\\spam" | "\\junk" | "spam" | "junk" => "SPAM".to_string(),
+        "\\flagged" | "\\starred" | "flagged" | "starred" => "STARRED".to_string(),
+        "\\all" | "\\allmail" | "all" | "all mail" => "ALL".to_string(),
+        "" => return None,
+        _ => trimmed.to_string(),
+    };
+    Some(normalized)
 }
 
 pub fn parse_provider_id(id: &str) -> Result<(String, u32), crate::error::ImapProviderError> {

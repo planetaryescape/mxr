@@ -94,6 +94,9 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         Some(Command::Restart) => {
             crate::server::restart_daemon().await?;
         }
+        Some(Command::Mcp { action }) => match action {
+            cli::McpCommand::Serve => mxr_mcp::serve_stdio().await?,
+        },
 
         Some(Command::Version) => {
             commands::version::run();

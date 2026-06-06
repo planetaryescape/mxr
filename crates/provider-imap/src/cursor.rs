@@ -37,6 +37,17 @@ pub(crate) struct ImapCursorV1 {
     pub(crate) mailboxes: Vec<ImapMailboxCursor>,
     #[serde(default)]
     pub(crate) capabilities: Option<ImapCapabilityState>,
+    #[serde(default)]
+    pub(crate) backfill: Option<ImapBackfillCursor>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ImapBackfillCursor {
+    pub(crate) mailbox: ImapMailboxCursor,
+    pub(crate) next_uid: u32,
+    pub(crate) end_uid: u32,
+    #[serde(default)]
+    pub(crate) gmail_all_mail: bool,
 }
 
 impl ImapCursor {
@@ -47,6 +58,7 @@ impl ImapCursor {
         Self::V1(ImapCursorV1 {
             mailboxes,
             capabilities,
+            backfill: None,
         })
     }
 
@@ -92,9 +104,33 @@ impl ImapCursor {
         }
     }
 
+    pub(crate) fn new_backfill(
+        mailbox: ImapMailboxCursor,
+        next_uid: u32,
+        end_uid: u32,
+        gmail_all_mail: bool,
+        capabilities: Option<ImapCapabilityState>,
+    ) -> Self {
+        Self::V1(ImapCursorV1 {
+            mailboxes: vec![mailbox.clone()],
+            capabilities,
+            backfill: Some(ImapBackfillCursor {
+                mailbox,
+                next_uid,
+                end_uid,
+                gmail_all_mail,
+            }),
+        })
+    }
+
     pub(crate) fn into_mailboxes(self) -> Vec<ImapMailboxCursor> {
         let Self::V1(v) = self;
         v.mailboxes
+    }
+
+    pub(crate) fn backfill(&self) -> Option<&ImapBackfillCursor> {
+        let Self::V1(v) = self;
+        v.backfill.as_ref()
     }
 
     pub(crate) fn describe(&self) -> String {
@@ -105,9 +141,16 @@ impl ImapCursor {
             .find(|m| m.mailbox.eq_ignore_ascii_case("INBOX"))
             .or_else(|| v.mailboxes.first());
         let (uid_validity, uid_next) = fallback.map_or((0, 0), |m| (m.uid_validity, m.uid_next));
+        let suffix = v.backfill.as_ref().map_or_else(String::new, |backfill| {
+            format!(
+                " backfill_mailbox={} next_uid={} end_uid={}",
+                backfill.mailbox.mailbox, backfill.next_uid, backfill.end_uid
+            )
+        });
         format!(
-            "imap uid_validity={uid_validity} uid_next={uid_next} mailboxes={}",
-            v.mailboxes.len()
+            "imap uid_validity={uid_validity} uid_next={uid_next} mailboxes={}{}",
+            v.mailboxes.len(),
+            suffix
         )
     }
 }

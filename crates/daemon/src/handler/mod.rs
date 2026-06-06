@@ -49,7 +49,7 @@ mod user_voice;
 mod whois;
 
 use crate::state::AppState;
-use mxr_config::SafetyPolicy;
+use mxr_config::{AgentProfileConfig, MxrConfig, SafetyPolicy};
 use mxr_core::provider::MailSyncProvider;
 #[cfg(test)]
 use mxr_core::types::UnsubscribeMethod;
@@ -427,7 +427,7 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
                 account_id = account_id_str.as_str(),
                 account_key
             );
-            let response = dispatch(state, req).instrument(span).await;
+            let response = dispatch(state, msg.source, req).instrument(span).await;
 
             // Activity capture seam. Fire-and-forget; never propagates errors.
             // See `docs/activity-log.md`.
@@ -455,7 +455,7 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
     }
 }
 
-async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
+async fn dispatch(state: &Arc<AppState>, source: ClientKind, req: &Request) -> Response {
     let started_at = std::time::Instant::now();
     let request = request_kind(req);
     let account_id =
@@ -463,9 +463,13 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
     let account_key = request_account_key(req).unwrap_or("-");
     tracing::debug!(request, account_id, account_key, "handling request");
 
-    if let Err(message) = enforce_safety_policy(state.config_snapshot().general.safety_policy, req)
-    {
+    let config = state.config_snapshot();
+    if let Err(message) = enforce_safety_policy(config.general.safety_policy, req) {
         tracing::warn!(request, account_id, account_key, error = %message, "request rejected by safety policy");
+        return Response::error(message);
+    }
+    if let Err(message) = enforce_client_profile(state, &config, source, req).await {
+        tracing::warn!(request, account_id, account_key, source = source.as_str(), error = %message, "request rejected by client profile");
         return Response::error(message);
     }
 
@@ -1323,6 +1327,335 @@ fn enforce_safety_policy(policy: SafetyPolicy, req: &Request) -> Result<(), Stri
             request_kind(req)
         )),
     }
+}
+
+async fn enforce_client_profile(
+    state: &Arc<AppState>,
+    config: &MxrConfig,
+    source: ClientKind,
+    req: &Request,
+) -> Result<(), String> {
+    let profile_name = match source {
+        ClientKind::Agent | ClientKind::Mcp => source.as_str(),
+        ClientKind::Human
+        | ClientKind::Tui
+        | ClientKind::Cli
+        | ClientKind::Script
+        | ClientKind::Web
+        | ClientKind::Daemon => return Ok(()),
+    };
+
+    let profile = config
+        .agent_surfaces
+        .profiles
+        .get(profile_name)
+        .ok_or_else(|| format!("{profile_name} IPC requests require a configured profile"))?;
+
+    enforce_safety_policy(profile.safety_policy, req).map_err(|_| {
+        format!(
+            "Request `{}` rejected by {profile_name} profile safety policy",
+            request_kind(req)
+        )
+    })?;
+
+    if request_requires_send_capability(req) && !profile.allow_send {
+        return Err(format!(
+            "Request `{}` rejected by {profile_name} profile send gate",
+            request_kind(req)
+        ));
+    }
+
+    if request_requires_destructive_capability(req) && !profile.allow_destructive {
+        return Err(format!(
+            "Request `{}` rejected by {profile_name} profile destructive gate",
+            request_kind(req)
+        ));
+    }
+
+    enforce_account_allowlist(state, profile_name, profile, req).await
+}
+
+async fn enforce_account_allowlist(
+    state: &Arc<AppState>,
+    profile_name: &str,
+    profile: &AgentProfileConfig,
+    req: &Request,
+) -> Result<(), String> {
+    match request_account_scope(state, req).await? {
+        RequestAccountScope::None => Ok(()),
+        RequestAccountScope::AnyAccount => Err(format!(
+            "Request `{}` rejected by {profile_name} profile account allowlist; specify an allowed account",
+            request_kind(req)
+        )),
+        RequestAccountScope::AccountKeys(keys) => {
+            for key in keys {
+                if !account_token_allowed(profile, &key) {
+                    return Err(format!(
+                        "Request `{}` rejected by {profile_name} profile account allowlist",
+                        request_kind(req)
+                    ));
+                }
+            }
+            Ok(())
+        }
+        RequestAccountScope::Accounts(account_ids) => {
+            for account_id in account_ids {
+                if !account_id_allowed(state, profile, &account_id).await? {
+                    return Err(format!(
+                        "Request `{}` rejected by {profile_name} profile account allowlist",
+                        request_kind(req)
+                    ));
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+#[derive(Debug)]
+enum RequestAccountScope {
+    None,
+    AnyAccount,
+    AccountKeys(Vec<String>),
+    Accounts(Vec<mxr_core::AccountId>),
+}
+
+async fn request_account_scope(
+    state: &Arc<AppState>,
+    req: &Request,
+) -> Result<RequestAccountScope, String> {
+    if let Some(key) = request_account_key(req) {
+        return Ok(RequestAccountScope::AccountKeys(vec![key.to_string()]));
+    }
+    if let Some(account_id) = request_account_id(req) {
+        return Ok(RequestAccountScope::Accounts(vec![account_id.clone()]));
+    }
+
+    match req {
+        Request::ListAccounts
+        | Request::ListAccountsConfig
+        | Request::ListDrafts
+        | Request::ListOrphanedDrafts
+        | Request::ListSnoozed
+        | Request::ListReplyQueue
+        | Request::ListEnvelopes {
+            account_id: None, ..
+        }
+        | Request::ListThreads {
+            account_id: None, ..
+        }
+        | Request::ListLabels { account_id: None }
+        | Request::Search {
+            account_id: None, ..
+        }
+        | Request::TriageSearch {
+            account_id: None, ..
+        }
+        | Request::Count {
+            account_id: None, ..
+        }
+        | Request::SearchAggregation {
+            account_id: None, ..
+        }
+        | Request::ListSubscriptions {
+            account_id: None, ..
+        }
+        | Request::ListDeliveries {
+            account_id: None, ..
+        }
+        | Request::ScanDeliveries {
+            account_id: None, ..
+        }
+        | Request::ListSenders {
+            account_id: None, ..
+        }
+        | Request::ListStorageBreakdown {
+            account_id: None, ..
+        }
+        | Request::ListLargestMessages {
+            account_id: None, ..
+        }
+        | Request::SyncNow { account_id: None }
+        | Request::UnsubscribePurge {
+            account_id: None, ..
+        }
+        | Request::ArchiveAsk {
+            filters: ArchiveAskFiltersData {
+                account_id: None, ..
+            },
+            ..
+        } => Ok(RequestAccountScope::AnyAccount),
+        Request::GetEnvelope { message_id }
+        | Request::GetBody { message_id }
+        | Request::GetInvite { message_id }
+        | Request::GetHeaders { message_id }
+        | Request::GetHtmlImageAssets { message_id, .. }
+        | Request::DownloadAttachment { message_id, .. }
+        | Request::OpenAttachment { message_id, .. }
+        | Request::Unsubscribe { message_id }
+        | Request::Snooze { message_id, .. }
+        | Request::Unsnooze { message_id }
+        | Request::SetReplyLater { message_id, .. }
+        | Request::PrepareReply { message_id, .. }
+        | Request::PrepareForward { message_id }
+        | Request::RespondInvite { message_id, .. }
+        | Request::PrepareInviteResponse { message_id, .. }
+        | Request::MarkInviteAnswered { message_id, .. } => {
+            envelope_account_scope(state, std::slice::from_ref(message_id)).await
+        }
+        Request::ListEnvelopesByIds { message_ids } | Request::ListBodies { message_ids } => {
+            envelope_account_scope(state, message_ids).await
+        }
+        Request::Mutation { mutation, .. } | Request::StartMutationJob { mutation, .. } => {
+            mutation_account_scope(state, mutation).await
+        }
+        Request::GetThread { thread_id }
+        | Request::SummarizeThread { thread_id }
+        | Request::ExportThread { thread_id, .. } => {
+            let thread = state
+                .store
+                .get_thread(thread_id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("Thread not found: {thread_id}"))?;
+            Ok(RequestAccountScope::Accounts(vec![thread.account_id]))
+        }
+        Request::DraftCompose {
+            thread_id: Some(thread_id),
+            ..
+        } => {
+            let thread = state
+                .store
+                .get_thread(thread_id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("Thread not found: {thread_id}"))?;
+            Ok(RequestAccountScope::Accounts(vec![thread.account_id]))
+        }
+        Request::DraftCompose {
+            source_message_id: Some(message_id),
+            ..
+        } => envelope_account_scope(state, std::slice::from_ref(message_id)).await,
+        Request::SendStoredDraft { draft_id, .. }
+        | Request::DeleteDraft { draft_id }
+        | Request::ScheduleSend { draft_id, .. }
+        | Request::CancelScheduledSend { draft_id } => draft_account_scope(state, draft_id).await,
+        Request::DraftRefine { draft_id, .. } => draft_account_scope(state, draft_id).await,
+        _ => Ok(RequestAccountScope::None),
+    }
+}
+
+async fn envelope_account_scope(
+    state: &Arc<AppState>,
+    message_ids: &[mxr_core::MessageId],
+) -> Result<RequestAccountScope, String> {
+    let mut accounts = Vec::new();
+    for message_id in message_ids {
+        let envelope = state
+            .store
+            .get_envelope(message_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Message not found: {message_id}"))?;
+        push_unique_account(&mut accounts, envelope.account_id);
+    }
+    Ok(RequestAccountScope::Accounts(accounts))
+}
+
+async fn mutation_account_scope(
+    state: &Arc<AppState>,
+    mutation: &MutationCommand,
+) -> Result<RequestAccountScope, String> {
+    match mutation {
+        MutationCommand::Archive { message_ids }
+        | MutationCommand::ReadAndArchive { message_ids }
+        | MutationCommand::Trash { message_ids }
+        | MutationCommand::Spam { message_ids }
+        | MutationCommand::Star { message_ids, .. }
+        | MutationCommand::SetRead { message_ids, .. }
+        | MutationCommand::ModifyLabels { message_ids, .. }
+        | MutationCommand::Move { message_ids, .. }
+        | MutationCommand::Route { message_ids, .. } => {
+            envelope_account_scope(state, message_ids).await
+        }
+    }
+}
+
+async fn draft_account_scope(
+    state: &Arc<AppState>,
+    draft_id: &mxr_core::DraftId,
+) -> Result<RequestAccountScope, String> {
+    let draft = state
+        .store
+        .get_draft(draft_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
+    Ok(RequestAccountScope::Accounts(vec![draft.account_id]))
+}
+
+fn push_unique_account(accounts: &mut Vec<mxr_core::AccountId>, account_id: mxr_core::AccountId) {
+    if !accounts.iter().any(|existing| existing == &account_id) {
+        accounts.push(account_id);
+    }
+}
+
+async fn account_id_allowed(
+    state: &Arc<AppState>,
+    profile: &AgentProfileConfig,
+    account_id: &mxr_core::AccountId,
+) -> Result<bool, String> {
+    let account_id_token = account_id.as_str();
+    if account_token_allowed(profile, &account_id_token) {
+        return Ok(true);
+    }
+
+    let Some(account) = state
+        .store
+        .get_account(account_id)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(false);
+    };
+
+    if account_token_allowed(profile, &account.email) {
+        return Ok(true);
+    }
+    if let Some(sync) = &account.sync_backend {
+        if account_token_allowed(profile, &sync.config_key) {
+            return Ok(true);
+        }
+    }
+    if let Some(send) = &account.send_backend {
+        if account_token_allowed(profile, &send.config_key) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn account_token_allowed(profile: &AgentProfileConfig, token: &str) -> bool {
+    profile
+        .allowed_accounts
+        .iter()
+        .any(|allowed| allowed == token || allowed.eq_ignore_ascii_case(token))
+}
+
+fn request_requires_send_capability(req: &Request) -> bool {
+    matches!(
+        req,
+        Request::SendDraft { .. }
+            | Request::SendStoredDraft { .. }
+            | Request::ScheduleSend { .. }
+            | Request::RespondInvite { dry_run: false, .. }
+    )
+}
+
+fn request_requires_destructive_capability(req: &Request) -> bool {
+    !request_is_read_only(req)
+        && !request_is_draft_only(req)
+        && !request_requires_send_capability(req)
 }
 
 fn request_is_draft_only(req: &Request) -> bool {

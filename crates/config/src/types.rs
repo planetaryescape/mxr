@@ -17,6 +17,8 @@ pub enum GmailCredentialSource {
 pub struct MxrConfig {
     pub general: GeneralConfig,
     pub accounts: HashMap<String, AccountConfig>,
+    #[serde(alias = "agents", alias = "agent")]
+    pub agent_surfaces: AgentSurfaceConfig,
     pub render: RenderConfig,
     pub search: SearchConfig,
     pub snooze: SnoozeConfig,
@@ -438,6 +440,36 @@ impl SafetyPolicy {
             "draft-only" | "draft_only" => Some(Self::DraftOnly),
             "read-only" | "read_only" => Some(Self::ReadOnly),
             _ => None,
+        }
+    }
+}
+
+/// Local runtime authority profiles for non-human daemon clients such as
+/// agents and MCP servers. Profiles are selected by IPC `ClientKind`
+/// (`agent` or `mcp`) and enforced by the daemon before handlers touch
+/// providers.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AgentSurfaceConfig {
+    pub profiles: HashMap<String, AgentProfileConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AgentProfileConfig {
+    pub safety_policy: SafetyPolicy,
+    pub allowed_accounts: Vec<String>,
+    pub allow_send: bool,
+    pub allow_destructive: bool,
+}
+
+impl Default for AgentProfileConfig {
+    fn default() -> Self {
+        Self {
+            safety_policy: SafetyPolicy::ReadOnly,
+            allowed_accounts: Vec::new(),
+            allow_send: false,
+            allow_destructive: false,
         }
     }
 }

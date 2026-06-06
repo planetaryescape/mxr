@@ -77,7 +77,7 @@ mxr uses Google user data only to provide local mail sync, search, display, draf
 
 ## Optional AI Features
 
-Local search, reading, and core mailbox operations do not require a hosted AI service. If you configure a nonlocal LLM provider, mxr sends only the prompts required for the enabled feature to that provider. Agent and LLM workflows should be treated as user-directed exports of local mail context.
+Local search, reading, and core mailbox operations do not require a hosted AI service. If you configure a nonlocal LLM provider, mxr sends only the prompts required for the enabled feature to that provider. Agent, MCP, and LLM workflows should be treated as user-directed exports of local mail context.
 
 ---
 

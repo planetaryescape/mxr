@@ -1,0 +1,96 @@
+version: 1
+outcomes:
+  - model: openai-codex/gpt-5.5
+    provider: openai-codex
+    taskType: agent_safety
+    outcome: passed
+    recordedAt: 2026-06-04T18:06:39.119Z
+    notes: Implemented first-class agent/MCP origins and profile enforcement; host
+      focused validation passed; main-worktree validate hit local cargo stall.
+  - model: openai-codex/gpt-5.5
+    provider: openai-codex
+    taskType: provider_correctness
+    outcome: passed
+    recordedAt: 2026-06-04T21:37:14.440Z
+    notes: Gmail IMAP All Mail sync and old per-folder cursor migration guard passed
+      worker and host validation
+  - model: gpt-5.5
+    provider: openai-codex
+    taskType: mcp_server
+    outcome: passed
+    recordedAt: 2026-06-04T23:41:00.044Z
+    notes: task-003 accepted; official rmcp server; host and integrated validation
+      passed
+  - model: gpt-5.5
+    provider: openai-codex
+    taskType: launch_proof
+    outcome: passed
+    recordedAt: 2026-06-05T06:25:07.025Z
+    notes: task-004 accepted; launch proof, live evidence, build, CLI, Gmail
+      evidence, and MCP tests passed on task and integration worktrees
+  - model: gpt-5.5
+    provider: openai-codex
+    taskType: docs_worktree
+    outcome: passed
+    recordedAt: 2026-06-05T06:44:06.797Z
+    notes: task-005 docs/worktree cleanup accepted; cargo build, site build, launch
+      proof, release gates passed
+modelStats:
+  openai-codex/gpt-5.5:
+    agent_safety:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+    provider_correctness:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+  gpt-5.5:
+    mcp_server:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+    launch_proof:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+    docs_worktree:
+      attempts: 1
+      passed: 1
+      failed: 0
+      blocked: 0
+      timeout: 0
+      no_op: 0
+reviewQueue:
+  - id: 2026-06-04T18:06:39.119Z-openai-codex-gpt-5-5-agent-safety
+    reason: routing outcome recorded for review
+    proposedChange: Review whether openai-codex/gpt-5.5 should be preferred for
+      agent_safety after outcome passed.
+  - id: 2026-06-04T21:37:14.440Z-openai-codex-gpt-5-5-provider-correctness
+    reason: routing outcome recorded for review
+    proposedChange: Review whether openai-codex/gpt-5.5 should be preferred for
+      provider_correctness after outcome passed.
+  - id: 2026-06-04T23:41:00.044Z-gpt-5-5-mcp-server
+    reason: routing outcome recorded for review
+    proposedChange: Review whether gpt-5.5 should be preferred for mcp_server after
+      outcome passed.
+  - id: 2026-06-05T06:25:07.025Z-gpt-5-5-launch-proof
+    reason: routing outcome recorded for review
+    proposedChange: Review whether gpt-5.5 should be preferred for launch_proof
+      after outcome passed.
+  - id: 2026-06-05T06:44:06.797Z-gpt-5-5-docs-worktree
+    reason: routing outcome recorded for review
+    proposedChange: Review whether gpt-5.5 should be preferred for docs_worktree
+      after outcome passed.

@@ -169,9 +169,12 @@ safety_policy = "draft-only"      # read-only | restricted | draft-only | full
 allowed_accounts = ["work"]       # account key, email, or account id
 allow_send = false
 allow_destructive = false
+# Optional: restrict to specific destructive actions even when
+# allow_destructive = true. Omit for all-or-nothing.
+# allowed_destructive_actions = ["archive", "unsubscribe"]
 ```
 
-Use `safety_policy = "full"`, `allow_send = true`, and `allow_destructive = true` only for a client/session where the human approval loop is strong enough. MCP mutation and send tools still require `confirm=true`.
+Use `safety_policy = "full"`, `allow_send = true`, and `allow_destructive = true` only for a client/session where the human approval loop is strong enough. To let an agent tidy the inbox but never trash or delete, keep `allow_destructive = true` and set `allowed_destructive_actions = ["archive", "unsubscribe"]` (see the [config reference](/reference/config/) for the full action list). MCP mutation and send tools still require `confirm=true`.
 
 ## IPC bucket model (skim)
 

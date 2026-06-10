@@ -231,6 +231,23 @@ Fields:
 | `allowed_accounts` | Account keys, account ids, or emails this origin may touch |
 | `allow_send` | Required for `SendStoredDraft`, scheduled sends, and non-dry-run RSVP sends |
 | `allow_destructive` | Required for mutations outside read/draft/send buckets |
+| `allowed_destructive_actions` | Optional fine-grained allowlist *within* the destructive gate. When set, a destructive request is permitted only if its action is listed (and `allow_destructive` is still true). Empty/omitted = no per-action restriction. |
+
+`allowed_destructive_actions` values: `archive`, `trash`, `spam`, `move`,
+`delete_label`, `remove_account`, `unsubscribe`, `redact_activity`,
+`prune_activity`. Benign mailbox mutations (star, mark read, label tagging)
+are never restricted by this list — only the coarse `allow_destructive`
+gate applies to them.
+
+```toml
+# An agent that may archive and unsubscribe, but never trash or delete.
+[agents.profiles.agent]
+safety_policy = "full"
+allowed_accounts = ["work"]
+allow_send = false
+allow_destructive = true
+allowed_destructive_actions = ["archive", "unsubscribe"]
+```
 
 MCP tools also require explicit `confirm=true` before send or mutation tools
 apply changes.

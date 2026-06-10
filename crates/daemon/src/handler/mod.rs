@@ -49,7 +49,7 @@ mod user_voice;
 mod whois;
 
 use crate::state::AppState;
-use mxr_config::{AgentProfileConfig, MxrConfig, SafetyPolicy};
+use mxr_config::{AgentProfileConfig, DestructiveAction, MxrConfig, SafetyPolicy};
 use mxr_core::provider::MailSyncProvider;
 #[cfg(test)]
 use mxr_core::types::UnsubscribeMethod;
@@ -1372,7 +1372,63 @@ async fn enforce_client_profile(
         ));
     }
 
+    // Fine-grained restriction within the destructive gate: when the
+    // profile lists specific allowed actions, a destructive request whose
+    // action isn't listed is rejected even though `allow_destructive` is
+    // true. An empty list means "no per-action restriction" (back-compat).
+    if !profile.allowed_destructive_actions.is_empty() {
+        if let Some(action) = request_destructive_action(req) {
+            if !profile.allowed_destructive_actions.contains(&action) {
+                return Err(format!(
+                    "Request `{}` ({action:?}) rejected by {profile_name} profile destructive-action allowlist",
+                    request_kind(req)
+                ));
+            }
+        }
+    }
+
     enforce_account_allowlist(state, profile_name, profile, req).await
+}
+
+/// Map a destructive-class request to the specific action it performs,
+/// for per-action profile scoping. Benign mailbox mutations (star, mark
+/// read, label tagging) and non-destructive requests return `None` — the
+/// per-action allowlist doesn't constrain them (the coarse
+/// `allow_destructive` gate still applies via `classify_request`).
+fn request_destructive_action(req: &Request) -> Option<DestructiveAction> {
+    match req {
+        Request::Mutation { mutation, .. } | Request::StartMutationJob { mutation, .. } => {
+            mutation_destructive_action(mutation)
+        }
+        Request::DeleteLabel { .. } => Some(DestructiveAction::DeleteLabel),
+        Request::RemoveAccountConfig { .. } => Some(DestructiveAction::RemoveAccount),
+        Request::Unsubscribe { .. } | Request::UnsubscribePurge { .. } => {
+            Some(DestructiveAction::Unsubscribe)
+        }
+        Request::RedactActivity { .. } => Some(DestructiveAction::RedactActivity),
+        Request::PruneActivity { .. } => Some(DestructiveAction::PruneActivity),
+        _ => None,
+    }
+}
+
+fn mutation_destructive_action(cmd: &MutationCommand) -> Option<DestructiveAction> {
+    match cmd {
+        MutationCommand::Archive { .. } | MutationCommand::ReadAndArchive { .. } => {
+            Some(DestructiveAction::Archive)
+        }
+        MutationCommand::Route { archive, .. } => Some(if *archive {
+            DestructiveAction::Archive
+        } else {
+            DestructiveAction::Move
+        }),
+        MutationCommand::Trash { .. } => Some(DestructiveAction::Trash),
+        MutationCommand::Spam { .. } => Some(DestructiveAction::Spam),
+        MutationCommand::Move { .. } => Some(DestructiveAction::Move),
+        // Reversible / benign mailbox mutations: not per-action scoped.
+        MutationCommand::Star { .. }
+        | MutationCommand::SetRead { .. }
+        | MutationCommand::ModifyLabels { .. } => None,
+    }
 }
 
 async fn enforce_account_allowlist(

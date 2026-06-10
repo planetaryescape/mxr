@@ -60,6 +60,12 @@ export type DaemonEvent =
       account_id?: string | null;
       message: string;
     }
+  | {
+      type: "MutationReconciliationFailed";
+      event?: "MutationReconciliationFailed";
+      client_correlation_id: string;
+      error_summary: string;
+    }
   | { type: string; [key: string]: unknown };
 
 export type DaemonEventHandler = (event: DaemonEvent) => void;

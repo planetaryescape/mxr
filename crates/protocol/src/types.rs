@@ -3330,6 +3330,15 @@ pub enum DaemonEvent {
         client_correlation_id: String,
         error_summary: String,
     },
+    /// This client's event stream lagged and the daemon dropped
+    /// `skipped` broadcast events before it could deliver them (the
+    /// per-client channel filled during a burst, e.g. a large bulk
+    /// mutation or initial backfill). The client's cached views may now
+    /// be stale, so it should do a full resync. Sent point-to-point to
+    /// the affected client only — never broadcast.
+    EventsLagged {
+        skipped: u64,
+    },
 }
 
 impl DaemonEvent {
@@ -3346,7 +3355,9 @@ impl DaemonEvent {
             | Self::OperationCompleted { .. }
             | Self::OperationFailed { .. }
             | Self::OperationCancelled { .. } => IpcCategory::AdminMaintenance,
-            Self::MutationReconciliationFailed { .. } => IpcCategory::CoreMail,
+            Self::MutationReconciliationFailed { .. } | Self::EventsLagged { .. } => {
+                IpcCategory::CoreMail
+            }
         }
     }
 }

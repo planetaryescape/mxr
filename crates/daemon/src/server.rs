@@ -13,8 +13,8 @@ use crate::reindex::{reindex, ReindexProgress};
 use crate::state::AppState;
 use futures::{FutureExt, SinkExt, StreamExt};
 use mxr_protocol::{
-    AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response,
-    ResponseData, IPC_PROTOCOL_VERSION,
+    AccountSyncStatus, DaemonEvent, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request,
+    Response, ResponseData, IPC_PROTOCOL_VERSION,
 };
 use nix::errno::Errno;
 use nix::sys::signal::{kill, Signal};
@@ -377,7 +377,21 @@ async fn serve_client_connection(
                         }
                     }
                     Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                        tracing::debug!(skipped, "client event stream lagged");
+                        // The per-client channel filled and the broadcast
+                        // dropped `skipped` events for this client. It can't
+                        // know what it missed, so tell it to resync rather
+                        // than silently leaving its views stale. Sent only to
+                        // this client — it is not a broadcast event.
+                        tracing::debug!(skipped, "client event stream lagged; signalling resync");
+                        let lagged = IpcMessage {
+                            id: 0,
+                            source: mxr_protocol::ClientKind::default(),
+                            payload: IpcPayload::Event(DaemonEvent::EventsLagged { skipped }),
+                        };
+                        if sink.send(lagged).await.is_err() {
+                            can_send = false;
+                            accept_requests = false;
+                        }
                     }
                     Err(broadcast::error::RecvError::Closed) => {
                         accept_requests = false;
@@ -1161,8 +1175,8 @@ mod tests {
         types::{Address, Envelope, MessageFlags, UnsubscribeMethod},
     };
     use mxr_protocol::{
-        AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response,
-        ResponseData, IPC_PROTOCOL_VERSION,
+        AccountSyncStatus, DaemonEvent, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload,
+        Request, Response, ResponseData, IPC_PROTOCOL_VERSION,
     };
     use std::sync::Arc;
     use std::time::Duration;
@@ -1614,6 +1628,67 @@ mod tests {
             .expect("connection task should exit")
             .expect("connection task join");
 
+        state_for_cleanup
+            .shutdown_runtime_tasks(Duration::from_secs(1))
+            .await;
+    }
+
+    #[tokio::test]
+    async fn lagged_event_stream_signals_resync_to_client() {
+        let state = Arc::new(AppState::in_memory().await.expect("in-memory state"));
+        let state_for_cleanup = state.clone();
+        let (server_stream, client_stream) = UnixStream::pair().expect("unix stream pair");
+        let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
+        let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
+        let event_rx = state.event_tx.subscribe();
+        let shutdown_rx = state.shutdown_receiver();
+
+        // Overflow the 256-slot broadcast channel BEFORE the connection
+        // task starts draining it, so the first `recv()` returns
+        // `Lagged`. The account id is irrelevant — these events only exist
+        // to fill the channel.
+        let account_id = AccountId::new();
+        for _ in 0..400u32 {
+            let _ = state.event_tx.send(IpcMessage {
+                id: 0,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Event(DaemonEvent::SyncCompleted {
+                    account_id: account_id.clone(),
+                    messages_synced: 0,
+                }),
+            });
+        }
+
+        let server = tokio::spawn(async move {
+            serve_client_connection(
+                server_stream,
+                state,
+                request_semaphore,
+                bulk_semaphore,
+                event_rx,
+                shutdown_rx,
+            )
+            .await;
+        });
+
+        let mut client = Framed::new(client_stream, IpcCodec::new());
+        // The first frame the client sees must be the resync signal, not a
+        // silently-truncated event stream.
+        let frame = tokio::time::timeout(Duration::from_secs(1), client.next())
+            .await
+            .expect("a frame should arrive")
+            .expect("frame present")
+            .expect("frame decodes");
+        match frame.payload {
+            IpcPayload::Event(DaemonEvent::EventsLagged { skipped }) => {
+                assert!(skipped > 0, "skipped count should be positive");
+            }
+            other => panic!("expected EventsLagged resync signal, got {other:?}"),
+        }
+
+        drop(client);
+        state_for_cleanup.request_shutdown();
+        let _ = tokio::time::timeout(Duration::from_secs(1), server).await;
         state_for_cleanup
             .shutdown_runtime_tasks(Duration::from_secs(1))
             .await;

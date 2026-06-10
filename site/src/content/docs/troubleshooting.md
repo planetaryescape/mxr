@@ -50,6 +50,20 @@ Common causes:
 - **Stale Gmail history cursor.** mxr falls back to a full resync automatically. If it doesn't, force one with `mxr doctor --reindex`.
 - **Stale OAuth token.** Run `mxr accounts repair <name>` (works for any account whose credential lives in the OS keychain — Gmail OAuth, IMAP password, or SMTP password). Re-prompts for the credential and overwrites the keychain entry.
 
+### "sync still running" after 10 minutes
+
+A sync that takes longer than 10 minutes (a large initial backfill, a slow IMAP server) is never cancelled mid-flight — cancellation could abandon the connection mid-command. Instead:
+
+- `mxr sync` returns an error telling you the sync is still running in the background.
+- `mxr sync status` keeps showing `sync_in_progress: true` with a `last_error` of `sync still running after …; continuing in background`.
+- When the sync eventually finishes, the status row is finalized normally (success or the real error) and the next sync can start.
+
+No action needed — check `mxr sync status` again later. A second `mxr sync` while one is running simply waits for the first to finish.
+
+### `sync interrupted by daemon restart`
+
+If the daemon dies mid-sync (crash, `kill -9`, reboot), the next daemon start clears the stale in-progress flag and records `failure_class: interrupted`. The next sync cycle resumes from the last persisted cursor — no data is lost and no cleanup is needed.
+
 ## Sent message isn't searchable
 
 In v1+ this should never happen — the daemon inserts a synthetic Sent envelope immediately on send. If you upgraded from `0.4.x` and a message is missing, force a resync:

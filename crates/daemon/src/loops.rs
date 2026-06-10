@@ -24,6 +24,250 @@ const SYNC_CYCLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 #[cfg(test)]
 const SYNC_CYCLE_TIMEOUT: Duration = Duration::from_millis(50);
 
+/// Result of waiting on a detached sync task for up to a wall-clock
+/// limit.
+pub(crate) enum SyncWait {
+    /// The sync finished within the limit. The caller finalizes
+    /// runtime status, sync log, and provider guard exactly as if it
+    /// had run the sync inline.
+    Finished {
+        result: Result<mxr_sync::SyncOutcome, MxrError>,
+        provider_guard: tokio::sync::OwnedMutexGuard<()>,
+    },
+    /// The limit elapsed while the sync was still running. The sync
+    /// task keeps running; a reaper task now owns the provider guard,
+    /// sync log row, and runtime status row and finalizes all three
+    /// when the sync actually completes. The caller must not touch
+    /// any of them.
+    TimedOut,
+}
+
+/// Everything the reaper needs to finalize a sync that outlived its
+/// caller's wait limit.
+pub(crate) struct DetachedSyncHandoff {
+    pub state: Arc<AppState>,
+    pub account_id: AccountId,
+    pub provider: Arc<dyn MailSyncProvider>,
+    pub provider_guard: tokio::sync::OwnedMutexGuard<()>,
+    pub sync_log_id: Option<i64>,
+    pub prior_consecutive_failures: u32,
+}
+
+/// Run `sync_account_with_outcome` on its own task and wait up to
+/// `limit`. Wrapping the sync future directly in
+/// `tokio::time::timeout` cancels it at an arbitrary await point on
+/// timeout — dropping an IMAP session mid-command and abandoning
+/// cursor/status writes partway through. Spawning means the sync
+/// always runs to completion; the limit only bounds how long the
+/// caller waits before handing finalization to a reaper task.
+pub(crate) async fn sync_with_detach_timeout(
+    handoff: DetachedSyncHandoff,
+    limit: Duration,
+) -> SyncWait {
+    let task_state = handoff.state.clone();
+    let task_provider = handoff.provider.clone();
+    let mut task = tokio::spawn(async move {
+        task_state
+            .sync_engine
+            .sync_account_with_outcome(task_provider.as_ref())
+            .await
+    });
+    match timeout(limit, &mut task).await {
+        Ok(joined) => {
+            let result = joined.unwrap_or_else(|join_error| {
+                Err(MxrError::Provider(format!(
+                    "sync task failed: {join_error}"
+                )))
+            });
+            SyncWait::Finished {
+                result,
+                provider_guard: handoff.provider_guard,
+            }
+        }
+        Err(_) => {
+            // Mark the row so `mxr sync status` is honest about the
+            // wedged-but-alive state. `sync_in_progress` stays true —
+            // the sync genuinely is still running.
+            let _ = handoff
+                .state
+                .store
+                .upsert_sync_runtime_status(
+                    &handoff.account_id,
+                    &SyncRuntimeStatusUpdate {
+                        last_error: Some(Some(format!(
+                            "sync still running after {limit:?}; continuing in background"
+                        ))),
+                        failure_class: Some(Some("timeout".to_string())),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            tokio::spawn(reap_detached_sync(handoff, task));
+            SyncWait::TimedOut
+        }
+    }
+}
+
+/// Wait for a detached sync to finish, then finalize the runtime
+/// status row, the sync log row, and release the provider guard.
+/// The caller-side post-sync fan-out (semantic ingest, contacts and
+/// relationship refresh, `NewMessages` chime) is skipped on purpose:
+/// the data is in the store, and the next sync tick plus the startup
+/// analytics repair pick it up. `SyncCompleted` still fires so
+/// connected clients refresh.
+async fn reap_detached_sync(
+    handoff: DetachedSyncHandoff,
+    task: tokio::task::JoinHandle<Result<mxr_sync::SyncOutcome, MxrError>>,
+) {
+    let DetachedSyncHandoff {
+        state,
+        account_id,
+        provider,
+        provider_guard,
+        sync_log_id,
+        prior_consecutive_failures,
+    } = handoff;
+    let result = task.await.unwrap_or_else(|join_error| {
+        Err(MxrError::Provider(format!(
+            "sync task failed: {join_error}"
+        )))
+    });
+    let cursor = state
+        .store
+        .get_sync_cursor(&account_id)
+        .await
+        .ok()
+        .flatten();
+    let cursor_summary = describe_sync_cursor(provider.as_ref(), cursor.as_ref());
+    match &result {
+        Ok(outcome) => {
+            let _ = state
+                .store
+                .upsert_sync_runtime_status(
+                    &account_id,
+                    &SyncRuntimeStatusUpdate {
+                        last_success_at: Some(chrono::Utc::now()),
+                        last_error: Some(None),
+                        failure_class: Some(None),
+                        consecutive_failures: Some(0),
+                        backoff_until: Some(None),
+                        sync_in_progress: Some(false),
+                        current_cursor_summary: Some(Some(cursor_summary.clone())),
+                        last_synced_count: Some(outcome.synced_count),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            if let Some(log_id) = sync_log_id {
+                let _ = state
+                    .store
+                    .complete_sync_log(
+                        log_id,
+                        &StoreSyncStatus::Success,
+                        outcome.synced_count,
+                        None,
+                    )
+                    .await;
+            }
+            let _ = state
+                .store
+                .insert_event(
+                    "info",
+                    "sync",
+                    &format!("Sync completed for {account_id} after exceeding its wait limit"),
+                    Some(&account_id),
+                    Some(&format!(
+                        "messages_synced={}; cursor={cursor_summary}",
+                        outcome.synced_count
+                    )),
+                )
+                .await;
+            crate::chimes::emit_daemon_event(
+                &state,
+                DaemonEvent::SyncCompleted {
+                    account_id: account_id.clone(),
+                    messages_synced: outcome.synced_count,
+                },
+            );
+            tracing::info!(
+                account = %account_id,
+                "detached sync completed: {} messages",
+                outcome.synced_count
+            );
+        }
+        Err(error) => {
+            let err_str = error.to_string();
+            let failure_class = classify_sync_error(&err_str);
+            let _ = state
+                .store
+                .upsert_sync_runtime_status(
+                    &account_id,
+                    &SyncRuntimeStatusUpdate {
+                        last_error: Some(Some(err_str.clone())),
+                        failure_class: Some(Some(failure_class.to_string())),
+                        consecutive_failures: Some(prior_consecutive_failures.saturating_add(1)),
+                        backoff_until: Some(None),
+                        sync_in_progress: Some(false),
+                        current_cursor_summary: Some(Some(cursor_summary.clone())),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            if let Some(log_id) = sync_log_id {
+                let _ = state
+                    .store
+                    .complete_sync_log(log_id, &StoreSyncStatus::Error, 0, Some(&err_str))
+                    .await;
+            }
+            let _ = state
+                .store
+                .insert_event(
+                    "error",
+                    "sync",
+                    &format!("Sync failed for {account_id} after exceeding its wait limit"),
+                    Some(&account_id),
+                    Some(&format!(
+                        "class={failure_class}; error={err_str}; cursor={cursor_summary}"
+                    )),
+                )
+                .await;
+            tracing::error!(account = %account_id, "detached sync failed: {err_str}");
+        }
+    }
+    drop(provider_guard);
+}
+
+/// Clear `sync_in_progress` rows left behind by a daemon that died
+/// mid-sync. Runs once at startup, before any sync loop spawns, so a
+/// stale flag can't survive into the new process.
+pub async fn reconcile_interrupted_syncs(state: &AppState) {
+    let statuses = match state.store.list_sync_runtime_statuses().await {
+        Ok(statuses) => statuses,
+        Err(error) => {
+            tracing::warn!("startup sync-status reconciliation skipped: {error}");
+            return;
+        }
+    };
+    for status in statuses.iter().filter(|status| status.sync_in_progress) {
+        let _ = state
+            .store
+            .upsert_sync_runtime_status(
+                &status.account_id,
+                &SyncRuntimeStatusUpdate {
+                    last_error: Some(Some("sync interrupted by daemon restart".to_string())),
+                    failure_class: Some(Some("interrupted".to_string())),
+                    sync_in_progress: Some(false),
+                    ..Default::default()
+                },
+            )
+            .await;
+        tracing::info!(
+            account = %status.account_id,
+            "cleared stale sync_in_progress from previous daemon run"
+        );
+    }
+}
+
 /// Spawn sync loops for all configured accounts.
 pub fn spawn_sync_loops(state: Arc<AppState>) {
     for (account_id, provider) in state.sync_provider_entries() {
@@ -215,19 +459,35 @@ async fn sync_loop_for_account(
             )
             .await;
 
-        match timeout(
+        let wait = sync_with_detach_timeout(
+            DetachedSyncHandoff {
+                state: state.clone(),
+                account_id: account_id.clone(),
+                provider: provider.clone(),
+                provider_guard,
+                sync_log_id,
+                prior_consecutive_failures: existing_status
+                    .as_ref()
+                    .map_or(0, |status| status.consecutive_failures),
+            },
             SYNC_CYCLE_TIMEOUT,
-            state
-                .sync_engine
-                .sync_account_with_outcome(provider.as_ref()),
         )
-        .await
-        .unwrap_or_else(|_| {
-            Err(MxrError::Provider(format!(
-                "sync timed out after {}s",
-                SYNC_CYCLE_TIMEOUT.as_secs()
-            )))
-        }) {
+        .await;
+        let (sync_result, provider_guard) = match wait {
+            SyncWait::Finished {
+                result,
+                provider_guard,
+            } => (result, provider_guard),
+            SyncWait::TimedOut => {
+                tracing::warn!(
+                    account = %account_id,
+                    "sync exceeded {SYNC_CYCLE_TIMEOUT:?}; leaving it to finish in background"
+                );
+                backoff_secs = (backoff_secs * 2).clamp(30, 300);
+                continue;
+            }
+        };
+        match sync_result {
             Ok(outcome) => {
                 let count = outcome.synced_count;
                 backoff_secs = 0;
@@ -1520,8 +1780,108 @@ mod tests {
         }
     }
 
+    /// A provider that never returns must not be cancelled mid-flight.
+    /// The loop's wait times out, the status row stays honest
+    /// (`sync_in_progress=true` + "still running" marker), and the loop
+    /// itself keeps running and shuts down cleanly.
+    /// Succeeds with an empty batch after `delay`. Slow enough to
+    /// outlive a short caller wait, fast enough for the reaper path to
+    /// be observable in tests.
+    struct SlowThenEmptySyncProvider {
+        account_id: AccountId,
+        delay: Duration,
+    }
+
+    #[async_trait::async_trait]
+    impl MailSyncProvider for SlowThenEmptySyncProvider {
+        fn name(&self) -> &str {
+            "slow-then-empty-sync"
+        }
+
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities::default()
+        }
+
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            tokio::time::sleep(self.delay).await;
+            Ok(Vec::new())
+        }
+
+        async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            Ok(SyncBatch {
+                upserted: Vec::new(),
+                deleted_provider_ids: Vec::new(),
+                label_changes: Vec::new(),
+                next_cursor: cursor.clone(),
+                has_more: false,
+                threads_changed: Vec::new(),
+            })
+        }
+
+        async fn fetch_attachment(
+            &self,
+            _provider_message_id: &str,
+            _provider_attachment_id: &str,
+        ) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+
+        async fn apply_mutation(
+            &self,
+            _mutation_id: &str,
+            _mutation: &mxr_core::Mutation,
+        ) -> Result<(), MxrError> {
+            Ok(())
+        }
+    }
+
+    /// Stale `sync_in_progress=true` rows from a daemon that died
+    /// mid-sync are cleared by the startup reconciliation.
     #[tokio::test]
-    async fn sync_loop_times_out_stuck_provider_and_clears_runtime_status() {
+    async fn reconcile_interrupted_syncs_clears_stale_in_progress_rows() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let account_id = state.default_provider().account_id().clone();
+        let _ = state
+            .store
+            .upsert_sync_runtime_status(
+                &account_id,
+                &SyncRuntimeStatusUpdate {
+                    sync_in_progress: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await;
+
+        reconcile_interrupted_syncs(&state).await;
+
+        let status = state
+            .store
+            .get_sync_runtime_status(&account_id)
+            .await
+            .unwrap()
+            .expect("status row should exist");
+        assert!(!status.sync_in_progress);
+        assert_eq!(status.failure_class.as_deref(), Some("interrupted"));
+        assert!(status
+            .last_error
+            .as_deref()
+            .is_some_and(|error| error.contains("daemon restart")));
+    }
+
+    #[tokio::test]
+    async fn sync_loop_detaches_stuck_provider_and_marks_status_still_running() {
         let account_id = AccountId::new();
         let account = crate::test_fixtures::test_account_with_id(account_id.clone());
         let provider = std::sync::Arc::new(HangingSyncProvider {
@@ -1549,7 +1909,7 @@ mod tests {
                 .unwrap();
             if status
                 .as_ref()
-                .is_some_and(|status| !status.sync_in_progress && status.last_error.is_some())
+                .is_some_and(|status| status.sync_in_progress && status.last_error.is_some())
             {
                 observed = status;
                 break;
@@ -1562,16 +1922,98 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let status = observed.expect("sync timeout should update runtime status");
-        assert!(!status.sync_in_progress);
-        assert_eq!(status.failure_class.as_deref(), Some("network"));
+        let status = observed.expect("sync timeout should mark runtime status");
+        // The sync was detached, not cancelled: it is genuinely still
+        // running, and the row says so.
+        assert!(status.sync_in_progress);
+        assert_eq!(status.failure_class.as_deref(), Some("timeout"));
         assert!(
             status
                 .last_error
                 .as_deref()
-                .is_some_and(|error| error.contains("sync timed out")),
-            "expected timeout error, got {:?}",
+                .is_some_and(|error| error.contains("still running")),
+            "expected still-running marker, got {:?}",
             status.last_error
+        );
+    }
+
+    /// A sync that finishes *after* the wait limit must still be
+    /// finalized by the reaper: status row cleared, success recorded,
+    /// provider guard released so the next sync can run.
+    #[tokio::test]
+    async fn detached_sync_is_finalized_by_reaper_after_late_completion() {
+        let account_id = AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let provider = std::sync::Arc::new(SlowThenEmptySyncProvider {
+            account_id: account_id.clone(),
+            delay: Duration::from_millis(200),
+        });
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, provider.clone(), None)
+                .await
+                .unwrap(),
+        );
+
+        let provider_guard = state.acquire_provider_operation(&account_id).await;
+        let sync_log_id = state
+            .store
+            .insert_sync_log(&account_id, &StoreSyncStatus::Running)
+            .await
+            .ok();
+        let _ = state
+            .store
+            .upsert_sync_runtime_status(
+                &account_id,
+                &SyncRuntimeStatusUpdate {
+                    sync_in_progress: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await;
+
+        let wait = sync_with_detach_timeout(
+            DetachedSyncHandoff {
+                state: state.clone(),
+                account_id: account_id.clone(),
+                provider: provider as std::sync::Arc<dyn MailSyncProvider>,
+                provider_guard,
+                sync_log_id,
+                prior_consecutive_failures: 0,
+            },
+            Duration::from_millis(20),
+        )
+        .await;
+        assert!(
+            matches!(wait, SyncWait::TimedOut),
+            "200ms sync must outlive a 20ms wait"
+        );
+
+        // The reaper finalizes once the sync completes: poll for the
+        // cleared flag, then confirm the guard was released.
+        let mut finalized = None;
+        for _ in 0..50 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            let status = state
+                .store
+                .get_sync_runtime_status(&account_id)
+                .await
+                .unwrap();
+            if status.as_ref().is_some_and(|s| !s.sync_in_progress) {
+                finalized = status;
+                break;
+            }
+        }
+        let status = finalized.expect("reaper should clear sync_in_progress after late completion");
+        assert!(status.last_success_at.is_some());
+        assert_eq!(status.last_error, None);
+        let reacquired = tokio::time::timeout(
+            Duration::from_millis(500),
+            state.acquire_provider_operation(&account_id),
+        )
+        .await;
+        assert!(
+            reacquired.is_ok(),
+            "provider guard must be released by the reaper"
         );
     }
 

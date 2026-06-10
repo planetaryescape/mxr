@@ -16,7 +16,6 @@ use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{
     Envelope, ExportFormat, MessageFlags, SearchMode, SemanticProfile, SortOrder,
 };
-use mxr_core::MxrError;
 use mxr_protocol::IPC_PROTOCOL_VERSION;
 use mxr_protocol::{
     DaemonEvent, IpcMessage, IpcPayload, LlmConfigData, LlmOverrideData, LlmOverridesData,
@@ -29,8 +28,11 @@ use std::collections::HashMap;
 
 #[cfg(not(test))]
 const MANUAL_SYNC_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+// Generous in tests on purpose: a fake-provider sync can exceed a
+// tight limit under parallel test load, and the detach/timeout path
+// is exercised directly in `loops::tests` with explicit limits.
 #[cfg(test)]
-const MANUAL_SYNC_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(50);
+const MANUAL_SYNC_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 #[derive(Debug)]
 struct SearchExecution {
@@ -1204,7 +1206,10 @@ pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
     })
 }
 
-pub(crate) async fn sync_now(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
+pub(crate) async fn sync_now(
+    state: &std::sync::Arc<AppState>,
+    account_id: Option<&AccountId>,
+) -> HandlerResult {
     let operation_id = uuid::Uuid::now_v7().to_string();
     let operation = "sync".to_string();
     let account_id = account_id.cloned();
@@ -1285,19 +1290,43 @@ pub(crate) async fn sync_now(state: &AppState, account_id: Option<&AccountId>) -
         )
         .await;
 
-    let outcome = match tokio::time::timeout(
+    let wait = crate::loops::sync_with_detach_timeout(
+        crate::loops::DetachedSyncHandoff {
+            state: state.clone(),
+            account_id: provider_account_id.clone(),
+            provider: provider.clone(),
+            provider_guard,
+            sync_log_id,
+            prior_consecutive_failures: existing_status
+                .as_ref()
+                .map_or(0, |status| status.consecutive_failures),
+        },
         MANUAL_SYNC_TIMEOUT,
-        state
-            .sync_engine
-            .sync_account_with_outcome(provider.as_ref()),
     )
-    .await
-    .unwrap_or_else(|_| {
-        Err(MxrError::Provider(format!(
-            "sync timed out after {}s",
-            MANUAL_SYNC_TIMEOUT.as_secs()
-        )))
-    }) {
+    .await;
+    let (sync_result, provider_guard) = match wait {
+        crate::loops::SyncWait::Finished {
+            result,
+            provider_guard,
+        } => (result, provider_guard),
+        crate::loops::SyncWait::TimedOut => {
+            let error = format!(
+                "sync did not finish within {MANUAL_SYNC_TIMEOUT:?}; it is still running in the background — check `mxr sync status`"
+            );
+            emit_operation_event(
+                state,
+                DaemonEvent::OperationFailed {
+                    operation_id,
+                    operation,
+                    account_id,
+                    error: error.clone(),
+                    retryable: false,
+                },
+            );
+            return Err(crate::handler::HandlerError::Message(error));
+        }
+    };
+    let outcome = match sync_result {
         Ok(outcome) => outcome,
         Err(error) => {
             let error = error.to_string();

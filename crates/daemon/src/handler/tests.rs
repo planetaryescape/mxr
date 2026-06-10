@@ -643,6 +643,36 @@ fn classify_request_keeps_send_and_destructive_gates() {
     assert!(!request_requires_send_capability(&del));
 }
 
+/// The rules form maps the link-density search filters to the rules
+/// engine's `LinkDensity` condition (and rejects `has:calendar`, which
+/// has no rule-engine equivalent). Guards the live
+/// `query_ast_to_conditions` path — previously only "covered" by an
+/// orphaned, never-compiled duplicate of this logic, now deleted.
+#[test]
+fn rules_form_maps_link_filters_to_link_density() {
+    use mxr_rules::LinkDensityMatch;
+
+    for (query, expected) in [
+        ("has:link", LinkDensityMatch::Any),
+        ("has:link-heavy", LinkDensityMatch::Heavy),
+        ("has:link-none", LinkDensityMatch::None),
+    ] {
+        match parse_rule_condition_string(query) {
+            Ok(Conditions::Field(FieldCondition::LinkDensity { match_kind })) => {
+                assert_eq!(match_kind, expected, "wrong density for {query}");
+            }
+            other => panic!("expected a LinkDensity condition for {query}, got {other:?}"),
+        }
+    }
+
+    // `has:calendar` has no rules-engine condition, so it must stay an
+    // explicit unsupported error rather than silently matching everything.
+    assert!(
+        parse_rule_condition_string("has:calendar").is_err(),
+        "has:calendar has no rule-engine equivalent and must be rejected"
+    );
+}
+
 mod body_and_invites;
 mod mutations_and_delivery;
 mod platform_and_export;

@@ -1,7 +1,7 @@
 use crate::schema::MxrSchema;
 use crate::{
-    DateBound, DateValue, FilterKind, QueryField, QueryNode, RelativeUnit, SizeOp,
-    FILTER_OWED_REPLY, FILTER_REPLY_LATER,
+    parse_query, DateBound, DateValue, FilterKind, ParseError, QueryField, QueryNode, RelativeUnit,
+    SizeOp, FILTER_OWED_REPLY, FILTER_REPLY_LATER,
 };
 use chrono::{Datelike, Local, NaiveDate};
 use std::ops::Bound;
@@ -589,6 +589,38 @@ fn normalize_message_id(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
+/// A parsed query plus the schema needed to compile it, so callers
+/// don't repeat the `parse_query` + `MxrSchema::build` + `QueryBuilder`
+/// dance at every search site. Holds the schema so it isn't rebuilt per
+/// call in a paging loop — Tantivy queries are consumed by `search_ast`,
+/// so each page needs a fresh `build()`.
+pub struct CompiledQuery {
+    schema: MxrSchema,
+    ast: QueryNode,
+}
+
+impl CompiledQuery {
+    /// Parse a query string and capture the schema once.
+    pub fn parse(query: &str) -> Result<Self, ParseError> {
+        Ok(Self {
+            schema: MxrSchema::build(),
+            ast: parse_query(query)?,
+        })
+    }
+
+    /// Produce a fresh Tantivy query for one search call.
+    pub fn build(&self) -> Box<dyn Query> {
+        QueryBuilder::new(&self.schema).build(&self.ast)
+    }
+}
+
+/// Parse and compile a query string into a Tantivy query in one call.
+/// For a paging loop, use [`CompiledQuery::parse`] once and `build()`
+/// per page instead so the schema isn't rebuilt each iteration.
+pub fn build_query(query: &str) -> Result<Box<dyn Query>, ParseError> {
+    Ok(CompiledQuery::parse(query)?.build())
+}
+
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -601,6 +633,34 @@ mod tests {
     use crate::test_fixtures::TestEnvelopeBuilder;
     use crate::{parse_query, ParseError};
     use mxr_core::types::*;
+
+    #[test]
+    fn build_query_matches_the_manual_parse_schema_build_path() {
+        for query in [
+            "from:alice@example.com",
+            "is:unread subject:report",
+            "has:link-heavy",
+        ] {
+            let schema = MxrSchema::build();
+            let manual = QueryBuilder::new(&schema).build(&parse_query(query).unwrap());
+            let helper = build_query(query).unwrap();
+            assert_eq!(
+                format!("{manual:?}"),
+                format!("{helper:?}"),
+                "build_query must match the manual path for {query:?}"
+            );
+            // CompiledQuery builds an equivalent query and can do so
+            // repeatedly (each call yields a fresh boxed query).
+            let compiled = CompiledQuery::parse(query).unwrap();
+            assert_eq!(format!("{:?}", compiled.build()), format!("{manual:?}"));
+            assert_eq!(format!("{:?}", compiled.build()), format!("{manual:?}"));
+        }
+    }
+
+    #[test]
+    fn build_query_propagates_parse_errors() {
+        assert!(build_query("subject:(unbalanced").is_err());
+    }
     use proptest::prelude::*;
 
     fn make_test_envelope(

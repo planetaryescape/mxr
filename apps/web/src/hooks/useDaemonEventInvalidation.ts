@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
+import { toast } from "sonner";
 
 import { shellKey } from "@/features/mailbox/api";
 import { useDaemonEvents } from "@/hooks/useDaemonEvents";
@@ -56,6 +57,40 @@ export function useDaemonEventInvalidation(): void {
             void qc.invalidateQueries({ queryKey: ["search"] });
             void qc.invalidateQueries({ queryKey: shellKey });
             break;
+          case "SyncError":
+            // A background sync failed. Stop any sync-progress spinner,
+            // surface the reason, and record it on the connection store
+            // so the status pill can reflect the failure.
+            clearSyncProgressSoon();
+            if (isSyncErrorEvent(event)) {
+              useConnectionStore.getState().setState({
+                lastErrorAt: Date.now(),
+                errorMessage: event.error,
+              });
+              toast.error(`Sync failed: ${event.error}`);
+            }
+            void qc.invalidateQueries({ queryKey: shellKey });
+            break;
+          case "ReminderTriggered":
+            // An auto-reminder fired; the nudge surfaces in the reply
+            // queue and the mailbox follow-up views.
+            void qc.invalidateQueries({ queryKey: ["reply-queue"] });
+            void qc.invalidateQueries({ queryKey: ["mailbox"] });
+            void qc.invalidateQueries({ queryKey: shellKey });
+            break;
+          case "MutationReconciliationFailed":
+            // Optimistic UI rollback hint: the provider/store rejected a
+            // mutation we already reflected locally. Refetch the affected
+            // surfaces so the UI converges back to server truth, and tell
+            // the user the action didn't stick.
+            void qc.invalidateQueries({ queryKey: ["mailbox"] });
+            void qc.invalidateQueries({ queryKey: ["thread"] });
+            void qc.invalidateQueries({ queryKey: ["search"] });
+            void qc.invalidateQueries({ queryKey: shellKey });
+            if (isReconciliationFailedEvent(event)) {
+              toast.error(`Action didn't stick: ${event.error_summary}`);
+            }
+            break;
         }
       },
       [qc],
@@ -100,4 +135,18 @@ function isSyncProgressEvent(
     typeof candidate.current === "number" &&
     typeof candidate.total === "number"
   );
+}
+
+function isSyncErrorEvent(event: unknown): event is { account_id: string; error: string } {
+  if (typeof event !== "object" || event === null) return false;
+  const candidate = event as Record<string, unknown>;
+  return typeof candidate.error === "string";
+}
+
+function isReconciliationFailedEvent(
+  event: unknown,
+): event is { client_correlation_id: string; error_summary: string } {
+  if (typeof event !== "object" || event === null) return false;
+  const candidate = event as Record<string, unknown>;
+  return typeof candidate.error_summary === "string";
 }

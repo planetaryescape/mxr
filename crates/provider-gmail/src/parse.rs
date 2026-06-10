@@ -110,11 +110,22 @@ fn parse_internal_date(
     let millis: i64 = internal_date
         .parse()
         .map_err(|_| ParseError::InvalidDate(internal_date.to_string()))?;
-    Ok(Some(
-        Utc.timestamp_millis_opt(millis)
-            .single()
-            .unwrap_or_else(Utc::now),
-    ))
+    match Utc.timestamp_millis_opt(millis).single() {
+        Some(date) => Ok(Some(date)),
+        // An out-of-range / ambiguous millis value is almost never real for
+        // Gmail, but silently stamping the message with `Utc::now()` would
+        // corrupt sort order and threading with no trail. Return `None` so
+        // the caller falls back to the parsed `Date:` header (a real
+        // timestamp — see the `internal_date.unwrap_or(parsed_headers.date)`
+        // call site), and log it.
+        None => {
+            tracing::warn!(
+                internal_date,
+                "Gmail internalDate out of range; falling back to Date header"
+            );
+            Ok(None)
+        }
+    }
 }
 
 pub fn labels_to_flags(label_ids: &[String]) -> MessageFlags {
@@ -907,6 +918,28 @@ mod tests {
             ("From", "Alice <alice@example.com>"),
             ("To", "Bob <bob@example.com>"),
             ("Subject", "Header date fallback"),
+            ("Date", "Sun, 15 Jun 2025 09:08:00 +0000"),
+        ]));
+
+        let account_id = AccountId::from_provider_id("gmail", "test-account");
+        let env = gmail_message_to_envelope(&msg, &account_id).unwrap();
+
+        assert_eq!(env.date.year(), 2025);
+        assert_eq!(env.date.month(), 6);
+        assert_eq!(env.date.day(), 15);
+    }
+
+    #[test]
+    fn gmail_envelope_falls_back_to_header_date_when_internal_date_out_of_range() {
+        // An out-of-range internalDate must NOT silently stamp the message
+        // with `Utc::now()` (which would corrupt sort order / threading) —
+        // it falls back to the real `Date:` header instead.
+        let mut msg = make_test_message();
+        msg.internal_date = Some(i64::MAX.to_string());
+        msg.payload.as_mut().unwrap().headers = Some(make_headers(&[
+            ("From", "Alice <alice@example.com>"),
+            ("To", "Bob <bob@example.com>"),
+            ("Subject", "Out-of-range internalDate"),
             ("Date", "Sun, 15 Jun 2025 09:08:00 +0000"),
         ]));
 

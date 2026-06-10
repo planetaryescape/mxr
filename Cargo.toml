@@ -444,5 +444,14 @@ harness = false
 name = "user_activity"
 harness = false
 
+# Test/dev build speed: the bottleneck for `cargo test` here is linking
+# many large binaries (the daemon test suite especially), and full
+# variable debuginfo dominates that link time. `line-tables-only` keeps
+# file:line in panic backtraces while dropping the heavy per-variable
+# DWARF, and on macOS it skips the slow dsymutil packaging step. The
+# `test` profile inherits these from `dev`, so this covers both.
+[profile.dev]
+debug = "line-tables-only"
+
 [lints]
 workspace = true

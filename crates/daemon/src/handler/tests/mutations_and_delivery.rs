@@ -1463,6 +1463,7 @@ async fn agent_profile_enforces_account_allowlist_in_dispatch() {
             allowed_accounts: vec![account_id.as_str()],
             allow_send: false,
             allow_destructive: false,
+            allowed_destructive_actions: vec![],
         },
     );
     state.set_config_for_test(config).await;
@@ -1508,6 +1509,63 @@ async fn agent_profile_enforces_account_allowlist_in_dispatch() {
     }
 }
 
+/// A profile with `allow_destructive = true` but an
+/// `allowed_destructive_actions` allowlist restricts to those specific
+/// actions: an in-list action (archive) is permitted while an
+/// out-of-list one (trash) is rejected, even though the coarse gate is
+/// open.
+#[tokio::test]
+async fn agent_profile_destructive_action_allowlist_scopes_per_action() {
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let state = Arc::new(state);
+    let message_id = sync_and_get_first_id(&state).await;
+    let account_id = state.default_account_id();
+
+    let mut config = state.config_snapshot();
+    config.agent_surfaces.profiles.insert(
+        "agent".into(),
+        mxr_config::AgentProfileConfig {
+            safety_policy: mxr_config::SafetyPolicy::Full,
+            allowed_accounts: vec![account_id.as_str()],
+            allow_send: false,
+            allow_destructive: true,
+            allowed_destructive_actions: vec![mxr_config::DestructiveAction::Archive],
+        },
+    );
+    state.set_config_for_test(config).await;
+
+    // Archive is in the allowlist → permitted.
+    let archive = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::Agent,
+        payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
+            message_ids: vec![message_id.clone()],
+        })),
+    };
+    match handle_request(&state, &archive).await.payload {
+        IpcPayload::Response(Response::Ok { .. }) => {}
+        other => panic!("expected archive to be allowed, got {other:?}"),
+    }
+
+    // Trash is NOT in the allowlist → rejected by the per-action gate.
+    let trash = IpcMessage {
+        id: 2,
+        source: ::mxr_protocol::ClientKind::Agent,
+        payload: IpcPayload::Request(Request::mutation(MutationCommand::Trash {
+            message_ids: vec![message_id],
+        })),
+    };
+    match handle_request(&state, &trash).await.payload {
+        IpcPayload::Response(Response::Error { message, .. }) => {
+            assert!(
+                message.contains("destructive-action allowlist"),
+                "expected per-action rejection, got {message}"
+            );
+        }
+        other => panic!("expected trash to be rejected, got {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn mcp_profile_send_gate_blocks_provider_send() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -1522,6 +1580,7 @@ async fn mcp_profile_send_gate_blocks_provider_send() {
             allowed_accounts: vec![account_id.as_str()],
             allow_send: false,
             allow_destructive: true,
+            allowed_destructive_actions: vec![],
         },
     );
     state.set_config_for_test(config).await;

@@ -454,6 +454,24 @@ pub struct AgentSurfaceConfig {
     pub profiles: HashMap<String, AgentProfileConfig>,
 }
 
+/// A specific destructive action an agent profile can be allowed to
+/// perform. Used to refine the coarse `allow_destructive` gate down to
+/// individual operations (the daemon maps each destructive request to
+/// one of these).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DestructiveAction {
+    Archive,
+    Trash,
+    Spam,
+    Move,
+    DeleteLabel,
+    RemoveAccount,
+    Unsubscribe,
+    RedactActivity,
+    PruneActivity,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AgentProfileConfig {
@@ -461,6 +479,12 @@ pub struct AgentProfileConfig {
     pub allowed_accounts: Vec<String>,
     pub allow_send: bool,
     pub allow_destructive: bool,
+    /// Optional fine-grained restriction *within* the destructive gate.
+    /// When non-empty, a destructive request is allowed only if its
+    /// mapped action is listed here (and `allow_destructive` is still
+    /// true). When empty (the default), `allow_destructive` alone gates,
+    /// preserving the previous all-or-nothing behaviour.
+    pub allowed_destructive_actions: Vec<DestructiveAction>,
 }
 
 impl Default for AgentProfileConfig {
@@ -470,6 +494,7 @@ impl Default for AgentProfileConfig {
             allowed_accounts: Vec::new(),
             allow_send: false,
             allow_destructive: false,
+            allowed_destructive_actions: Vec::new(),
         }
     }
 }

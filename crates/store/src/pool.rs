@@ -781,6 +781,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "triage_cache",
         kind: MigrationKind::Sql(include_str!("../migrations/044_triage_cache.sql")),
     },
+    Migration {
+        version: 45,
+        name: "mutation_jobs",
+        kind: MigrationKind::Sql(include_str!("../migrations/045_mutation_jobs.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

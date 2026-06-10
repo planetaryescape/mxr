@@ -961,8 +961,8 @@ async fn dispatch(state: &Arc<AppState>, source: ClientKind, req: &Request) -> R
             mutations::start_mutation_job(state.clone(), cmd.clone(), client_correlation_id.clone())
                 .await
         }
-        Request::ListJobs => mutations::list_jobs(),
-        Request::GetJob { job_id } => mutations::get_job(job_id),
+        Request::ListJobs => mutations::list_jobs(state).await,
+        Request::GetJob { job_id } => mutations::get_job(state, job_id).await,
         Request::UndoMutation { mutation_id } => mutations::undo_mutation(state, mutation_id).await,
         Request::Snooze {
             message_id,

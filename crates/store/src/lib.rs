@@ -32,6 +32,7 @@ mod message;
 mod message_events;
 mod message_flags;
 mod mutation_dedup;
+mod mutation_jobs;
 mod owed_replies;
 mod pool;
 mod relationship_watchlist;

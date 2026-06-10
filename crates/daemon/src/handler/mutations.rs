@@ -17,7 +17,7 @@ use mxr_protocol::{
 };
 use mxr_store::{EventLogRefs, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// How long after the mutation the user can undo it. Matches the plan
@@ -30,12 +30,6 @@ const MAX_RETAINED_JOBS: usize = 100;
 const PROVIDER_MUTATION_TIMEOUT: Duration = Duration::from_secs(60);
 #[cfg(test)]
 const PROVIDER_MUTATION_TIMEOUT: Duration = Duration::from_millis(50);
-
-static JOBS: OnceLock<Mutex<Vec<JobData>>> = OnceLock::new();
-
-fn jobs_store() -> &'static Mutex<Vec<JobData>> {
-    JOBS.get_or_init(|| Mutex::new(Vec::new()))
-}
 
 pub(crate) fn check_draft_safety(draft: &Draft) -> DraftSafetyReport {
     let mut issues = Vec::new();
@@ -724,7 +718,7 @@ pub(super) async fn start_mutation_job(
         finished_at: None,
         result: None,
     };
-    upsert_job(job.clone());
+    persist_job(&state, &job).await;
 
     let background_job_id = job_id.clone();
     tokio::spawn(async move {
@@ -734,24 +728,28 @@ pub(super) async fn start_mutation_job(
     Ok(ResponseData::JobStarted { job })
 }
 
-pub(super) fn list_jobs() -> HandlerResult {
-    let mut jobs = jobs_store()
-        .lock()
-        .map_err(|_| HandlerError::from("jobs store poisoned"))?
-        .clone();
-    jobs.sort_by_key(|job| std::cmp::Reverse(job.started_at));
+pub(super) async fn list_jobs(state: &AppState) -> HandlerResult {
+    let rows = state
+        .store
+        .list_mutation_jobs(MAX_RETAINED_JOBS as i64)
+        .await
+        .map_err(|e| HandlerError::from(e.to_string()))?;
+    let jobs = rows
+        .iter()
+        .filter_map(|json| serde_json::from_str::<JobData>(json).ok())
+        .collect();
     Ok(ResponseData::Jobs { jobs })
 }
 
-pub(super) fn get_job(job_id: &str) -> HandlerResult {
-    let jobs = jobs_store()
-        .lock()
-        .map_err(|_| HandlerError::from("jobs store poisoned"))?;
-    let job = jobs
-        .iter()
-        .find(|job| job.job_id == job_id)
-        .cloned()
+pub(super) async fn get_job(state: &AppState, job_id: &str) -> HandlerResult {
+    let json = state
+        .store
+        .get_mutation_job(job_id)
+        .await
+        .map_err(|e| HandlerError::from(e.to_string()))?
         .ok_or_else(|| HandlerError::from(format!("job not found: {job_id}")))?;
+    let job =
+        serde_json::from_str::<JobData>(&json).map_err(|e| HandlerError::from(e.to_string()))?;
     Ok(ResponseData::Job { job })
 }
 
@@ -761,9 +759,10 @@ async fn run_mutation_job(
     cmd: MutationCommand,
     client_correlation_id: Option<String>,
 ) {
-    update_job(&job_id, |job| {
+    update_job(&state, &job_id, |job| {
         job.status = JobStatusData::Running;
-    });
+    })
+    .await;
     crate::chimes::emit_daemon_event(
         &state,
         DaemonEvent::OperationStarted {
@@ -790,7 +789,7 @@ async fn run_mutation_job(
                     undo_ids.push(mutation_id.clone());
                 }
                 merge_mutation_result(&mut aggregate, &result);
-                update_job(&job_id, |job| {
+                update_job(&state, &job_id, |job| {
                     job.progress.completed =
                         aggregate.succeeded + aggregate.skipped + aggregate.failed;
                     job.progress.succeeded = aggregate.succeeded;
@@ -798,7 +797,8 @@ async fn run_mutation_job(
                     job.progress.failed = aggregate.failed;
                     job.undo_ids = undo_ids.clone();
                     job.result = Some(aggregate.clone());
-                });
+                })
+                .await;
                 crate::chimes::emit_daemon_event(
                     &state,
                     DaemonEvent::OperationProgress {
@@ -845,7 +845,7 @@ async fn run_mutation_job(
     } else {
         JobStatusData::Succeeded
     };
-    update_job(&job_id, |job| {
+    update_job(&state, &job_id, |job| {
         job.status = status;
         job.error = terminal_error.clone();
         job.finished_at = Some(finished_at);
@@ -855,7 +855,8 @@ async fn run_mutation_job(
         job.progress.skipped = aggregate.skipped;
         job.progress.failed = aggregate.failed;
         job.result = Some(aggregate.clone());
-    });
+    })
+    .await;
 
     match terminal_error {
         Some(error) => crate::chimes::emit_daemon_event(
@@ -883,23 +884,65 @@ async fn run_mutation_job(
     }
 }
 
-fn upsert_job(job: JobData) {
-    if let Ok(mut jobs) = jobs_store().lock() {
-        jobs.retain(|existing| existing.job_id != job.job_id);
-        jobs.push(job);
-        if jobs.len() > MAX_RETAINED_JOBS {
-            let overflow = jobs.len() - MAX_RETAINED_JOBS;
-            jobs.drain(0..overflow);
-        }
+const fn job_status_str(status: &JobStatusData) -> &'static str {
+    match status {
+        JobStatusData::Queued => "queued",
+        JobStatusData::Running => "running",
+        JobStatusData::Succeeded => "succeeded",
+        JobStatusData::Failed => "failed",
     }
 }
 
-fn update_job(job_id: &str, update: impl FnOnce(&mut JobData)) {
-    if let Ok(mut jobs) = jobs_store().lock() {
-        if let Some(job) = jobs.iter_mut().find(|job| job.job_id == job_id) {
-            update(job);
+/// Persist (insert or replace) a job row and prune the table to the
+/// retention cap. Persistence failures are non-fatal — the mutation
+/// itself already ran; we just lose the history row.
+async fn persist_job(state: &AppState, job: &JobData) {
+    let data_json = match serde_json::to_string(job) {
+        Ok(json) => json,
+        Err(error) => {
+            tracing::warn!(%error, job_id = %job.job_id, "failed to serialize job for persistence");
+            return;
         }
+    };
+    if let Err(error) = state
+        .store
+        .upsert_mutation_job(
+            &job.job_id,
+            &job.kind,
+            job_status_str(&job.status),
+            job.started_at,
+            job.finished_at,
+            &data_json,
+        )
+        .await
+    {
+        tracing::warn!(%error, job_id = %job.job_id, "failed to persist mutation job");
+        return;
     }
+    let _ = state
+        .store
+        .prune_mutation_jobs(MAX_RETAINED_JOBS as i64)
+        .await;
+}
+
+/// Load a job, apply an in-place update, and persist it. A no-op if the
+/// job row is missing. Each job is only ever updated by its own
+/// `run_mutation_job` task, so this read-modify-write is race-free.
+async fn update_job(state: &AppState, job_id: &str, update: impl FnOnce(&mut JobData)) {
+    let json = match state.store.get_mutation_job(job_id).await {
+        Ok(Some(json)) => json,
+        Ok(None) => return,
+        Err(error) => {
+            tracing::warn!(%error, job_id, "failed to load mutation job for update");
+            return;
+        }
+    };
+    let Ok(mut job) = serde_json::from_str::<JobData>(&json) else {
+        tracing::warn!(job_id, "failed to deserialize stored mutation job");
+        return;
+    };
+    update(&mut job);
+    persist_job(state, &job).await;
 }
 
 fn empty_mutation_result(requested: u32) -> MutationResultData {

@@ -93,12 +93,12 @@ function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
     );
   }
   if (kind === "attachments" && Array.isArray(payload)) {
+    const attachments = payload.filter(isAttachmentView);
     return (
       <div className="space-y-2">
-        {payload.map((item, index) => {
-          const attachment = item as AttachmentView;
-          return <AttachmentActions key={attachment.id ?? index} attachment={attachment} />;
-        })}
+        {attachments.map((attachment, index) => (
+          <AttachmentActions key={attachment.id ?? index} attachment={attachment} />
+        ))}
       </div>
     );
   }
@@ -143,9 +143,7 @@ interface RoutePickerPayload {
 
 function isRoutePickerPayload(value: unknown): value is RoutePickerPayload {
   return (
-    isRecord(value) &&
-    Array.isArray(value.messageIds) &&
-    typeof value.fromQueueLabel === "string"
+    isRecord(value) && Array.isArray(value.messageIds) && typeof value.fromQueueLabel === "string"
   );
 }
 
@@ -596,6 +594,12 @@ function removeCommitmentFromSenderPayload(payload: unknown, commitmentId: strin
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isAttachmentView(value: unknown): value is AttachmentView {
+  return (
+    isRecord(value) && typeof value.filename === "string" && typeof value.mime_type === "string"
+  );
 }
 
 function formatNumber(value: number): string {

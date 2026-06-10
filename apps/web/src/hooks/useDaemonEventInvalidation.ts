@@ -91,6 +91,13 @@ export function useDaemonEventInvalidation(): void {
               toast.error(`Action didn't stick: ${event.error_summary}`);
             }
             break;
+          case "EventsLagged":
+            // The daemon dropped events for this client during a burst, so
+            // any cached view could be stale. Invalidate everything and let
+            // React Query refetch what's on screen — correctness over a
+            // targeted diff we can't compute from missed events.
+            void qc.invalidateQueries();
+            break;
         }
       },
       [qc],

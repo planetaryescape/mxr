@@ -37,7 +37,8 @@ function setup() {
   const emit = (event: DaemonEvent) => events.handler?.(event);
   const invalidatedKeys = () =>
     invalidate.mock.calls.map((call) => JSON.stringify(call[0]?.queryKey));
-  return { emit, invalidatedKeys };
+  const invalidatedEverything = () => invalidate.mock.calls.some((call) => call[0] === undefined);
+  return { emit, invalidatedKeys, invalidatedEverything };
 }
 
 describe("useDaemonEventInvalidation", () => {
@@ -88,5 +89,14 @@ describe("useDaemonEventInvalidation", () => {
     expect(keys).toContain(JSON.stringify(["thread"]));
     expect(keys).toContain(JSON.stringify(["search"]));
     expect(toastMock.error).toHaveBeenCalledWith("Action didn't stick: Gmail rejected the archive");
+  });
+
+  test("EventsLagged invalidates every query for a full resync", () => {
+    const { emit, invalidatedEverything } = setup();
+    emit({ type: "EventsLagged", skipped: 512 });
+
+    // A keyless invalidateQueries() invalidates the whole cache.
+    expect(invalidatedEverything()).toBe(true);
+    expect(toastMock.error).not.toHaveBeenCalled();
   });
 });

@@ -87,7 +87,9 @@ pub(crate) fn event_for_daemon_event(event: &DaemonEvent) -> Option<ChimeEvent> 
         | DaemonEvent::OperationStarted { .. }
         | DaemonEvent::OperationProgress { .. }
         | DaemonEvent::OperationCompleted { .. }
-        | DaemonEvent::OperationCancelled { .. } => None,
+        | DaemonEvent::OperationCancelled { .. }
+        // Internal resync signal, not a user-facing notification.
+        | DaemonEvent::EventsLagged { .. } => None,
     }
 }
 

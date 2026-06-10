@@ -66,6 +66,7 @@ export type DaemonEvent =
       client_correlation_id: string;
       error_summary: string;
     }
+  | { type: "EventsLagged"; event?: "EventsLagged"; skipped: number }
   | { type: string; [key: string]: unknown };
 
 export type DaemonEventHandler = (event: DaemonEvent) => void;

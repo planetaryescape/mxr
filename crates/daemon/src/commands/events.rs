@@ -113,6 +113,9 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
             } => format!(
                 "mutation reconciliation_failed correlation_id={client_correlation_id} {error_summary}"
             ),
+            DaemonEvent::EventsLagged { skipped } => {
+                format!("events lagged skipped={skipped}")
+            }
         },
     })
 }

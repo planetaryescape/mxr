@@ -1417,6 +1417,9 @@ pub enum Command {
     },
 
     /// List or inspect background jobs (large batch mutations, progress, undo ids).
+    ///
+    /// Job history is persisted locally and survives a daemon restart; the
+    /// most recent jobs are retained.
     Jobs {
         /// Optional job id to inspect. Omit to list recent jobs.
         job_id: Option<String>,

@@ -1065,6 +1065,16 @@ fn undoable_kind(cmd: &MutationCommand) -> Option<UndoableMutationKind> {
     }
 }
 
+/// Log a non-fatal error rather than silently discarding it. For
+/// best-effort cleanup — dropping a spent undo entry, removing a draft
+/// after it sends — where a failure must not abort the caller but
+/// shouldn't vanish without a trace either.
+fn log_non_fatal<T, E: std::fmt::Display>(context: &str, result: Result<T, E>) {
+    if let Err(error) = result {
+        tracing::warn!(%error, "{context}");
+    }
+}
+
 /// Reverse a recent undoable mutation by id.
 ///
 /// Restores both local state (label memberships and read flag) and
@@ -1082,7 +1092,10 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     };
     let now = chrono::Utc::now().timestamp();
     if entry.expires_at <= now {
-        let _ = state.store.delete_undo_entry(&entry.mutation_id).await;
+        log_non_fatal(
+            "undo: failed to delete expired undo entry",
+            state.store.delete_undo_entry(&entry.mutation_id).await,
+        );
         return Err(format!("undo: window expired for mutation `{mutation_id}`").into());
     }
 
@@ -1129,7 +1142,10 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     }
 
     // Successful undo: drop the entry so the same id can't be replayed.
-    let _ = state.store.delete_undo_entry(&entry.mutation_id).await;
+    log_non_fatal(
+        "undo: failed to delete spent undo entry (the id could be replayed until it expires)",
+        state.store.delete_undo_entry(&entry.mutation_id).await,
+    );
     Ok(ResponseData::Ack)
 }
 
@@ -2129,7 +2145,10 @@ pub(crate) async fn send_stored_draft(
         )
         .await
         .map_err(|e| format!("send succeeded but receipt persistence failed: {e}"))?;
-    let _ = state.store.delete_draft(draft_id).await;
+    log_non_fatal(
+        "send: failed to delete draft after a successful send (it may linger in the drafts list)",
+        state.store.delete_draft(draft_id).await,
+    );
     Ok(ResponseData::SendReceipt {
         local_message_id,
         provider_message_id: receipt.provider_message_id,

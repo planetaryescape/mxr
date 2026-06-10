@@ -258,9 +258,7 @@ async fn retrieve_candidates(
     let lexical_ids: Vec<mxr_core::MessageId> = if want_lexical {
         let query = lexical_query_with_filters(question, filters);
         let page = if has_structured_filters(filters) {
-            let ast = mxr_search::parse_query(&query).map_err(|e| e.to_string())?;
-            let schema = mxr_search::MxrSchema::build();
-            let query = mxr_search::QueryBuilder::new(&schema).build(&ast);
+            let query = mxr_search::build_query(&query).map_err(|e| e.to_string())?;
             state
                 .search
                 .search_ast(query, pool_size, 0, SortOrder::Relevance)

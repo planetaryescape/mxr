@@ -2509,10 +2509,9 @@ async fn select_sender_footprint(
     let mut envelopes = Vec::new();
     let mut offset = 0usize;
     const PAGE_SIZE: usize = 500;
-    let ast = mxr_search::parse_query(&query).map_err(|e| e.to_string())?;
-    let schema = mxr_search::MxrSchema::build();
+    let compiled = mxr_search::CompiledQuery::parse(&query).map_err(|e| e.to_string())?;
     loop {
-        let query_ast = mxr_search::QueryBuilder::new(&schema).build(&ast);
+        let query_ast = compiled.build();
         let page = state
             .search
             .search_ast(

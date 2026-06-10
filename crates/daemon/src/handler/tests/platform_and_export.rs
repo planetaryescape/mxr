@@ -828,6 +828,115 @@ async fn override_token_unblocks_send_exactly_once() {
     }
 }
 
+/// A plain `SendStoredDraft` (no token) on a blocked draft must carry a
+/// freshly-minted, usable override token in its error, so the caller can
+/// resend with `--override-safety <token>` without a separate
+/// `CheckDraftSafety` round-trip.
+#[tokio::test]
+async fn blocked_send_error_carries_usable_override_token() {
+    let account_id = mxr_core::AccountId::new();
+    let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+    let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+    let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake.clone();
+    let send_provider: Arc<dyn mxr_core::MailSendProvider> = fake.clone();
+    let state = Arc::new(
+        AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+            .await
+            .unwrap(),
+    );
+
+    let draft = mxr_core::types::Draft {
+        id: mxr_core::DraftId::new(),
+        account_id: account_id.clone(),
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![mxr_core::types::Address {
+            name: None,
+            email: "alice@example.com".to_string(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "key transfer".to_string(),
+        body_markdown: concat!(
+            "Here is the key:\n",
+            "-----BEGIN RSA ",
+            "PRIVATE KEY-----\n...\n"
+        )
+        .to_string(),
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+
+    handle_request(
+        &state,
+        &IpcMessage {
+            id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SaveDraft {
+                draft: draft.clone(),
+            }),
+        },
+    )
+    .await;
+
+    // Plain send → blocked, with a resend command + token in the error.
+    let blocked = handle_request(
+        &state,
+        &IpcMessage {
+            id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SendStoredDraft {
+                draft_id: draft.id.clone(),
+                override_safety_token: None,
+            }),
+        },
+    )
+    .await;
+    let token = match blocked.payload {
+        IpcPayload::Response(Response::Error { message, .. }) => {
+            assert!(message.contains("blocked"), "{message}");
+            let (_, after) = message
+                .split_once("--override-safety ")
+                .expect("error must carry a resend command with a token");
+            after.trim().to_string()
+        }
+        other => panic!("expected blocked Error with token, got {other:?}"),
+    };
+    assert!(!token.is_empty(), "token must be non-empty");
+    assert_eq!(
+        fake.sent_drafts().len(),
+        0,
+        "provider untouched while blocked"
+    );
+
+    // Resending with the token from the error succeeds.
+    let ok = handle_request(
+        &state,
+        &IpcMessage {
+            id: 3,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SendStoredDraft {
+                draft_id: draft.id.clone(),
+                override_safety_token: Some(token),
+            }),
+        },
+    )
+    .await;
+    assert!(
+        matches!(
+            ok.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::SendReceipt { .. }
+            })
+        ),
+        "expected SendReceipt with the error-supplied token, got {:?}",
+        ok.payload
+    );
+    assert_eq!(fake.sent_drafts().len(), 1);
+}
+
 /// The live send pipeline must touch `last_heartbeat_at` once it has
 /// CAS'd a draft into `Sending`. Otherwise, a long-running send (large
 /// attachment, slow OAuth refresh) could be misidentified as orphaned

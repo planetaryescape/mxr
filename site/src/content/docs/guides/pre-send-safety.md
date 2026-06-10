@@ -250,8 +250,18 @@ temperature = 0.0
 
 ## The override flow
 
-When a check fires a Blocker, `--check` mints a single-use override
-token and stamps it onto the issue. The token has these properties:
+When a check fires a Blocker, mxr mints a single-use override token. You
+do **not** need a separate `--check` run to get one: a plain `mxr send`
+of a blocked draft is rejected with the token and the exact resend
+command right in the error, e.g.
+
+```text
+draft safety blocked send: PEM private key detected in draft — to send anyway after review, resend with --override-safety 01HXYZ...
+```
+
+`--check` still mints and stamps the token onto each blocker issue when
+you want to inspect the report first (or in the TUI/web pre-send modal).
+The token has these properties:
 
 - **Single use.** Consumed on first send attempt; subsequent attempts
   with the same token are rejected.

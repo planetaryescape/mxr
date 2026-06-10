@@ -109,6 +109,10 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     // The daemon starts accepting clients immediately. The sync loops detect
     // Initial/GmailBackfill cursors and handles them with no startup delay.
 
+    // A previous daemon that died mid-sync leaves sync_in_progress=true
+    // behind; clear it before any loop can read it as "already syncing".
+    loops::reconcile_interrupted_syncs(&state).await;
+
     // Spawn background loops
     loops::spawn_sync_loops(state.clone());
     let startup_handle = spawn_startup_maintenance(state.clone());

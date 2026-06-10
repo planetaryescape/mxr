@@ -8,7 +8,7 @@
 
 mod engine;
 pub mod links;
-pub use engine::SyncEngine;
+pub use engine::{SyncEngine, SyncOutcome};
 
 #[cfg(test)]
 mod tests {

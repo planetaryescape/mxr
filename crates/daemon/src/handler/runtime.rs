@@ -42,7 +42,10 @@ pub(super) async fn get_headers(state: &AppState, message_id: &MessageId) -> Han
     diagnostics_impl::get_headers(state, message_id).await
 }
 
-pub(super) async fn sync_now(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
+pub(super) async fn sync_now(
+    state: &std::sync::Arc<AppState>,
+    account_id: Option<&AccountId>,
+) -> HandlerResult {
     diagnostics_impl::sync_now(state, account_id).await
 }
 

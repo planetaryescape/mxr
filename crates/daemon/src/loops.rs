@@ -1250,40 +1250,53 @@ pub async fn process_due_scheduled_sends(
         .map_err(|e| e.to_string())?;
     let count = due.len() as u32;
     for draft_id in due {
-        // Clear the scheduled flag before sending so a retry from a
-        // crashed prior attempt doesn't re-fire indefinitely.
-        if let Err(e) = state.store.cancel_scheduled_send(&draft_id).await {
+        // Clear `send_at` and record a durable attempt marker in one
+        // transaction, BEFORE sending — so a retry from a crashed prior
+        // attempt can't re-fire indefinitely (at-most-once), and a crash
+        // mid-send leaves an unresolved marker we can surface at startup
+        // rather than a silent loss.
+        if let Err(e) = state
+            .store
+            .clear_send_at_and_record_attempt(&draft_id, now)
+            .await
+        {
             tracing::warn!(
                 draft_id = %draft_id,
-                "scheduled-send: failed to clear send_at before send: {e}"
+                "scheduled-send: failed to clear send_at / record attempt before send: {e}"
             );
             continue;
         }
-        match crate::handler::send_stored_draft(state, &draft_id, None).await {
-            Ok(_) => tracing::debug!(draft_id = %draft_id, "scheduled-send: sent"),
+        let outcome = match crate::handler::send_stored_draft(state, &draft_id, None).await {
+            Ok(_) => {
+                tracing::debug!(draft_id = %draft_id, "scheduled-send: sent");
+                "sent"
+            }
             Err(e) => {
                 if e.to_string().contains("draft safety blocked send") {
-                    // Per docs/reference/ai-email.md: keep the
-                    // draft, clear the schedule, log a warning event so
-                    // the user notices on next sync. Without this the
-                    // flusher would retry every tick forever.
-                    if let Err(clear_err) = state.store.cancel_scheduled_send(&draft_id).await {
-                        tracing::warn!(
-                            draft_id = %draft_id,
-                            "scheduled-send: failed to clear schedule after safety block: {clear_err}"
-                        );
-                    }
+                    // Keep the draft; the schedule is already cleared.
+                    // The error carries an override token and resend
+                    // command (see the blocked-send path).
                     tracing::warn!(
                         draft_id = %draft_id,
-                        "scheduled-send: blocked by safety pipeline; schedule cleared. Use --check to inspect, then resend with --override-safety <token>: {e}"
+                        "scheduled-send: blocked by safety pipeline; schedule cleared. {e}"
                     );
+                    "blocked"
                 } else {
-                    tracing::warn!(
-                        draft_id = %draft_id,
-                        "scheduled-send: send failed: {e}"
-                    );
+                    tracing::warn!(draft_id = %draft_id, "scheduled-send: send failed: {e}");
+                    "failed"
                 }
             }
+        };
+        // Resolve the attempt marker so it isn't surfaced as a lost send.
+        if let Err(e) = state
+            .store
+            .record_scheduled_send_outcome(&draft_id, now, outcome)
+            .await
+        {
+            tracing::warn!(
+                draft_id = %draft_id,
+                "scheduled-send: failed to record outcome '{outcome}': {e}"
+            );
         }
     }
     Ok(count)

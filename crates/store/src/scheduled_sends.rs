@@ -8,6 +8,16 @@
 use crate::{decode_id, decode_timestamp, trace_query};
 use chrono::{DateTime, Utc};
 use mxr_core::id::DraftId;
+use sqlx::Row;
+
+/// A scheduled-send firing whose outcome was never recorded — the daemon
+/// is presumed to have died between clearing `send_at` and the send
+/// resolving, so the message may or may not have actually gone out.
+#[derive(Debug, Clone)]
+pub struct LostScheduledSend {
+    pub draft_id: DraftId,
+    pub attempted_at: DateTime<Utc>,
+}
 
 impl super::Store {
     /// Schedule a draft to be sent at `send_at`. Idempotent — re-calling
@@ -38,6 +48,75 @@ impl super::Store {
             .execute(self.writer())
             .await?;
         Ok(())
+    }
+
+    /// Clear `send_at` AND record a send-attempt marker in a single
+    /// transaction, so a crash can never leave the schedule cleared with
+    /// no durable record that a send was attempted. The marker's outcome
+    /// starts NULL and is resolved by `record_scheduled_send_outcome`.
+    pub async fn clear_send_at_and_record_attempt(
+        &self,
+        draft_id: &DraftId,
+        attempted_at: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        let id = draft_id.as_str();
+        let ts = attempted_at.timestamp();
+        let mut tx = self.writer().begin().await?;
+        sqlx::query("UPDATE drafts SET send_at = NULL WHERE id = ?1")
+            .bind(id.clone())
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "INSERT OR IGNORE INTO scheduled_send_attempts (draft_id, attempted_at, outcome)
+             VALUES (?1, ?2, NULL)",
+        )
+        .bind(id)
+        .bind(ts)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Resolve a previously-recorded attempt with its final outcome
+    /// (`sent`, `blocked`, `failed`, `interrupted`).
+    pub async fn record_scheduled_send_outcome(
+        &self,
+        draft_id: &DraftId,
+        attempted_at: DateTime<Utc>,
+        outcome: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE scheduled_send_attempts SET outcome = ?3
+             WHERE draft_id = ?1 AND attempted_at = ?2",
+        )
+        .bind(draft_id.as_str())
+        .bind(attempted_at.timestamp())
+        .bind(outcome)
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
+    /// Scheduled-send attempts that never recorded an outcome. At daemon
+    /// startup these are presumed lost (the daemon died mid-send).
+    pub async fn list_lost_scheduled_sends(&self) -> Result<Vec<LostScheduledSend>, sqlx::Error> {
+        let rows = sqlx::query(
+            "SELECT draft_id, attempted_at FROM scheduled_send_attempts
+             WHERE outcome IS NULL ORDER BY attempted_at ASC",
+        )
+        .fetch_all(self.reader())
+        .await?;
+        rows.into_iter()
+            .map(|row| {
+                let id: String = row.get(0);
+                let ts: i64 = row.get(1);
+                Ok(LostScheduledSend {
+                    draft_id: decode_id(&id)?,
+                    attempted_at: decode_timestamp(ts)?,
+                })
+            })
+            .collect()
     }
 
     /// Read the scheduled send time for a draft, if any.
@@ -160,6 +239,32 @@ mod tests {
         store.cancel_scheduled_send(&id).await.unwrap();
 
         assert_eq!(store.get_scheduled_send(&id).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn attempt_marker_atomically_clears_and_surfaces_lost_send_until_resolved() {
+        let store = Store::in_memory().await.unwrap();
+        let id = seed_draft(&store).await;
+        let at = anchor();
+        store.schedule_send(&id, at).await.unwrap();
+
+        // Atomic clear + attempt marker: send_at is cleared AND a
+        // NULL-outcome marker now exists (a candidate lost send).
+        store
+            .clear_send_at_and_record_attempt(&id, at)
+            .await
+            .unwrap();
+        assert_eq!(store.get_scheduled_send(&id).await.unwrap(), None);
+        let lost = store.list_lost_scheduled_sends().await.unwrap();
+        assert_eq!(lost.len(), 1);
+        assert_eq!(lost[0].draft_id, id);
+
+        // Recording an outcome resolves it — no longer reported as lost.
+        store
+            .record_scheduled_send_outcome(&id, at, "sent")
+            .await
+            .unwrap();
+        assert!(store.list_lost_scheduled_sends().await.unwrap().is_empty());
     }
 
     #[tokio::test]

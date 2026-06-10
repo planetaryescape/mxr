@@ -786,6 +786,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "mutation_jobs",
         kind: MigrationKind::Sql(include_str!("../migrations/045_mutation_jobs.sql")),
     },
+    Migration {
+        version: 46,
+        name: "scheduled_send_attempts",
+        kind: MigrationKind::Sql(include_str!("../migrations/046_scheduled_send_attempts.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

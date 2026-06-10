@@ -916,6 +916,11 @@ pub struct MessageMetadata {
     pub text_html_source: Option<BodyPartSource>,
     pub calendar: Option<CalendarMetadata>,
     pub raw_headers: Option<String>,
+    /// Addresses from the `Reply-To:` header, if the sender set one.
+    /// Replies target these instead of `From:` (mailing lists and
+    /// no-reply senders rely on it). Empty when absent.
+    #[serde(default)]
+    pub reply_to: Vec<Address>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

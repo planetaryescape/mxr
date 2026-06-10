@@ -81,3 +81,20 @@ it. The combination — local CAS state + stable Message-ID — means a
 recovered-and-resumed draft can be resent without producing two copies
 on the wire even if the original send actually completed but the
 acknowledgement was lost.
+
+## Scheduled sends are at-most-once, and losses are surfaced
+
+A scheduled send (`mxr send <draft> --at ...`) clears its `send_at`
+*before* the daemon calls the provider, so a crash can never make it
+re-fire on every tick. The trade-off is a narrow window — daemon dies
+between clearing the schedule and the provider accepting — where the
+send could be silently lost.
+
+mxr makes that window visible. Clearing `send_at` and writing a
+send-attempt marker happen in a single transaction; the marker's outcome
+is resolved (`sent` / `blocked` / `failed`) once the send returns. If the
+daemon restarts and finds an attempt with no recorded outcome, it logs a
+warning and records an event (visible in `mxr events` / `mxr doctor`)
+telling you a scheduled send may not have completed, so you can verify
+and resend. Scheduled sends stay at-most-once; you just never lose one
+silently.

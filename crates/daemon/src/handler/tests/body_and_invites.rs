@@ -1189,6 +1189,18 @@ async fn dispatch_schedule_send_persists_and_loop_flushes_when_due() {
         .await
         .unwrap();
     assert_eq!(fired_again, 0);
+
+    // A successful flush records the attempt's outcome, so it must NOT
+    // linger as a "lost send" candidate for startup surfacing.
+    assert!(
+        state
+            .store
+            .list_lost_scheduled_sends()
+            .await
+            .unwrap()
+            .is_empty(),
+        "a completed scheduled send must not be flagged as lost"
+    );
 }
 
 #[tokio::test]

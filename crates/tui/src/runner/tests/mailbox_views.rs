@@ -858,6 +858,7 @@ fn format_mutation_failure_joins_per_account_errors() {
             error: None,
         }],
         mutation_id: None,
+        undo_unavailable: false,
     };
     assert_eq!(
         format_mutation_failure(&bare),

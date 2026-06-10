@@ -274,6 +274,7 @@ mod tests {
                 error: None,
             }],
             mutation_id: None,
+            undo_unavailable: false,
         }
     }
 }

@@ -546,6 +546,7 @@ pub(super) async fn mutation(
                 failed: 0,
                 accounts,
                 mutation_id: None,
+                undo_unavailable: false,
             },
         });
     }
@@ -637,7 +638,7 @@ pub(super) async fn mutation(
     // Persist an undo entry only for undoable kinds and only if at
     // least one envelope succeeded. The mutation_id is the same one
     // used for dedup above; undo + dedup share a key by design.
-    let mutation_id = match (undoable_kind, succeeded_snapshots.is_empty()) {
+    let (mutation_id, undo_unavailable) = match (undoable_kind, succeeded_snapshots.is_empty()) {
         (Some(kind), false) => {
             let now = chrono::Utc::now().timestamp();
             let entry = UndoEntry {
@@ -648,15 +649,16 @@ pub(super) async fn mutation(
                 expires_at: now + UNDO_WINDOW_SECS,
             };
             if let Err(error) = state.store.write_undo_entry(&entry).await {
-                // Non-fatal: the mutation already succeeded; the user
-                // just loses the undo affordance.
+                // Non-fatal: the mutation already succeeded. The user
+                // loses the undo affordance, but flag it so clients can
+                // say so rather than silently dropping undo.
                 tracing::warn!(%error, "failed to write undo entry");
-                None
+                (None, true)
             } else {
-                Some(mutation_id)
+                (Some(mutation_id), false)
             }
         }
-        _ => None,
+        _ => (None, false),
     };
 
     let result = MutationResultData {
@@ -666,6 +668,7 @@ pub(super) async fn mutation(
         failed,
         accounts,
         mutation_id,
+        undo_unavailable,
     };
 
     emit_mutation_reconciliation_failed_if_needed(state, client_correlation_id, &result);
@@ -888,6 +891,7 @@ fn empty_mutation_result(requested: u32) -> MutationResultData {
         failed: 0,
         accounts: Vec::new(),
         mutation_id: None,
+        undo_unavailable: false,
     }
 }
 
@@ -2710,6 +2714,7 @@ mod reconciliation_failed_emit_tests {
             failed: 0,
             accounts: vec![],
             mutation_id: None,
+            undo_unavailable: false,
         }
     }
 
@@ -2750,6 +2755,7 @@ mod reconciliation_failed_emit_tests {
             failed: 0,
             accounts: vec![],
             mutation_id: None,
+            undo_unavailable: false,
         };
         emit_mutation_reconciliation_failed_if_needed(&state, Some("1"), &result);
         assert!(

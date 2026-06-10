@@ -1700,6 +1700,12 @@ pub struct MutationResultData {
     /// `None` for non-undoable mutations (Star, ModifyLabels, Move).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mutation_id: Option<String>,
+    /// True when an undoable mutation succeeded but persisting its undo
+    /// entry failed, so `mutation_id` is `None` even though undo was
+    /// expected. Lets clients distinguish "no undo by design" from "undo
+    /// was lost" and warn the user instead of silently dropping it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub undo_unavailable: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -16,6 +16,35 @@ mod tests {
 
     use super::*;
     use bytes::BytesMut;
+
+    #[test]
+    fn mutation_result_undo_unavailable_serializes_only_when_set() {
+        let mut result = MutationResultData {
+            requested: 1,
+            succeeded: 1,
+            skipped: 0,
+            failed: 0,
+            accounts: vec![],
+            mutation_id: None,
+            undo_unavailable: false,
+        };
+        // Default (false) is omitted from the wire, so existing
+        // consumers see no new field.
+        let json = serde_json::to_value(&result).unwrap();
+        assert!(json.get("undo_unavailable").is_none());
+
+        // Set to true, it appears so clients can warn the user.
+        result.undo_unavailable = true;
+        let json = serde_json::to_value(&result).unwrap();
+        assert_eq!(json.get("undo_unavailable"), Some(&serde_json::json!(true)));
+
+        // And it round-trips back through a missing field as false.
+        let parsed: MutationResultData =
+            serde_json::from_value(serde_json::json!({"requested":1,"succeeded":1,"skipped":0,"failed":0,"accounts":[]}))
+                .unwrap();
+        assert!(!parsed.undo_unavailable);
+    }
+
     use mxr_core::id::*;
     use mxr_core::{
         Address, Draft, DraftIntent, ExportFormat, SavedSearch, SearchMode, SemanticProfile,
@@ -774,6 +803,7 @@ mod tests {
                             error: None,
                         }],
                         mutation_id: None,
+                        undo_unavailable: false,
                     },
                 },
                 IpcCategory::CoreMail,

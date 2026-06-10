@@ -2721,6 +2721,7 @@ async fn read_mutation_endpoint_reports_skipped_result_as_not_ok() {
                                 error: Some("account unavailable".into()),
                             }],
                             mutation_id: None,
+                            undo_unavailable: false,
                         },
                     },
                 })

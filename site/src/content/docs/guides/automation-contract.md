@@ -128,6 +128,7 @@ mxr archive --search 'from:noreply older_than:30d' --account work --yes
 - `mxr send DRAFT_ID` is **not idempotent** — calling twice will send twice (the daemon schedules the second send). Always check `mxr drafts list` first.
 - `mxr unsubscribe` may hit a provider URL once; re-running on an already-unsubscribed message is harmless but emits no useful new state.
 - `mxr undo MUTATION_ID` works within a 60-second window; after that it returns an error.
+- An undoable mutation normally returns a `mutation_id`. If that field is absent **and** the result has `"undo_unavailable": true`, the mutation succeeded but its undo entry could not be recorded — it can't be reversed with `mxr undo`. A plain absent `mutation_id` (no `undo_unavailable`) just means the mutation isn't undoable by design (e.g. star, label, move).
 
 ## See also
 

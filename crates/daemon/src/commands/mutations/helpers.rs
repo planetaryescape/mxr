@@ -640,6 +640,11 @@ fn print_mutation_result_output(
             println!("{}", counts.changed_line(result.succeeded as usize));
             if let Some(mutation_id) = result.mutation_id.as_deref() {
                 println!("Undo with: mxr undo {mutation_id}");
+            } else if result.undo_unavailable {
+                eprintln!(
+                    "Note: undo is unavailable for this mutation — recording the undo entry failed, \
+                     so it can't be reversed with `mxr undo`."
+                );
             }
         }
         OutputFormat::Json => println!(

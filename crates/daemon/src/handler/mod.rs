@@ -1642,96 +1642,259 @@ fn account_token_allowed(profile: &AgentProfileConfig, token: &str) -> bool {
         .any(|allowed| allowed == token || allowed.eq_ignore_ascii_case(token))
 }
 
-fn request_requires_send_capability(req: &Request) -> bool {
-    matches!(
-        req,
-        Request::SendDraft { .. }
-            | Request::SendStoredDraft { .. }
-            | Request::ScheduleSend { .. }
-            | Request::RespondInvite { dry_run: false, .. }
-    )
+/// Safety class for an IPC request. Every `Request` variant maps to
+/// exactly one class via an exhaustive match — adding a new request
+/// variant is a compile error until it is classified here, which is
+/// the whole point: a new mutating request can never silently slip
+/// through a `ReadOnly`/`DraftOnly` policy because someone forgot to
+/// add it to an allowlist.
+///
+/// Classes, from least to most authority:
+/// - `Read`: no user-visible state change and no significant side
+///   effect. Pure DB reads, exports, previews, and local AI analysis.
+///   Remote-fetching requests (tracking-pixel risk) and requests that
+///   persist anything are deliberately NOT `Read`.
+/// - `DraftOnly`: creates or deletes a *local* draft.
+/// - `Send`: transmits mail to a provider.
+/// - `Mutate`: reversible local/provider state change that isn't a
+///   send and isn't destructive (config, rules, snippets, signatures,
+///   snooze, reminders, semantic, screener, activity controls).
+/// - `Destructive`: irreversible or provider-destructive mailbox /
+///   account / data mutation (batch mailbox mutations, label/account
+///   removal, unsubscribe, activity redaction/pruning).
+/// - `Admin`: daemon lifecycle (shutdown).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RequestClass {
+    Read,
+    DraftOnly,
+    Send,
+    Mutate,
+    Destructive,
+    Admin,
 }
 
+fn classify_request(req: &Request) -> RequestClass {
+    use RequestClass::{Admin, Destructive, DraftOnly, Mutate, Read, Send};
+    match req {
+        // --- Read: pure reads, exports, previews, local AI analysis ---
+        Request::ListEnvelopes { .. }
+        | Request::ListEnvelopesByIds { .. }
+        | Request::GetEnvelope { .. }
+        | Request::GetBody { .. }
+        | Request::GetInvite { .. }
+        | Request::ListInvites { .. }
+        | Request::PrepareInviteResponse { .. }
+        | Request::ListBodies { .. }
+        | Request::GetThread { .. }
+        | Request::ListThreads { .. }
+        | Request::ListLabels { .. }
+        | Request::ListRules
+        | Request::ListAccounts
+        | Request::ListAccountsConfig
+        | Request::GetAuthSession { .. }
+        | Request::GetRule { .. }
+        | Request::GetRuleForm { .. }
+        | Request::DryRunRules { .. }
+        | Request::ListEvents { .. }
+        | Request::GetLogs { .. }
+        | Request::GetDoctorReport
+        | Request::GenerateBugReport { .. }
+        | Request::ListRuleHistory { .. }
+        | Request::Search { .. }
+        | Request::GetSyncStatus { .. }
+        | Request::Count { .. }
+        | Request::SearchAggregation { .. }
+        | Request::GetHeaders { .. }
+        | Request::ListSavedSearches
+        | Request::ListSavedSearchUnreadCounts
+        | Request::ListSubscriptions { .. }
+        | Request::ListStorageBreakdown { .. }
+        | Request::ListLargestMessages { .. }
+        | Request::Wrapped { .. }
+        | Request::ListStaleThreads { .. }
+        | Request::ListContactAsymmetry { .. }
+        | Request::ListContactDecay { .. }
+        | Request::ListResponseTime { .. }
+        | Request::ListAccountAddresses { .. }
+        | Request::GetLlmStatus
+        | Request::GetLlmConfig
+        | Request::GetNotificationChimes
+        | Request::GetSemanticStatus
+        | Request::RunSavedSearch { .. }
+        | Request::ListJobs
+        | Request::GetJob { .. }
+        | Request::ListSnoozed
+        | Request::ListReplyQueue
+        | Request::ListSnippets
+        | Request::ListDeliveries { .. }
+        | Request::GetDelivery { .. }
+        | Request::ListSignatures
+        | Request::ListSignatureDefaults
+        | Request::ResolveSignature { .. }
+        | Request::GetSenderProfile { .. }
+        | Request::ListSenders { .. }
+        | Request::GetRelationshipProfile { .. }
+        | Request::ListCommitments { .. }
+        | Request::GetUserVoice { .. }
+        | Request::HumanizerScore { .. }
+        | Request::HumanizerRewrite { .. }
+        | Request::ListScreenerQueue { .. }
+        | Request::ListScreenerDecisions { .. }
+        | Request::SummarizeThread { .. }
+        | Request::TriageSearch { .. }
+        | Request::DraftCompose { .. }
+        | Request::DraftRefine { .. }
+        | Request::PrepareReply { .. }
+        | Request::PrepareForward { .. }
+        | Request::ListOwedReplies { .. }
+        | Request::ListDecisionLog { .. }
+        | Request::GetDecision { .. }
+        | Request::SendTimeRecommendation { .. }
+        | Request::GetThreadBriefing { .. }
+        | Request::GetRecipientBriefing { .. }
+        | Request::SuggestCollaborators { .. }
+        | Request::FindExpert { .. }
+        | Request::ExplainEntity { .. }
+        | Request::ListCadenceWatch { .. }
+        | Request::ListCadenceDrift { .. }
+        | Request::ListDrafts
+        | Request::ListOrphanedDrafts
+        | Request::ExportThread { .. }
+        | Request::ExportSearch { .. }
+        | Request::GetStatus
+        | Request::Ping
+        | Request::ListEventCategories
+        | Request::CountEvents { .. }
+        | Request::ListActivity { .. }
+        | Request::CountActivity { .. }
+        | Request::ActivityStats { .. }
+        | Request::ExportActivity { .. }
+        | Request::ListSavedActivityFilters
+        | Request::GetSavedActivityFilter { .. } => Read,
+
+        // --- DraftOnly: local draft create/delete ---
+        Request::SaveDraft { .. } | Request::DeleteDraft { .. } => DraftOnly,
+
+        // --- Send: transmits mail to a provider ---
+        Request::SendDraft { .. }
+        | Request::SendStoredDraft { .. }
+        | Request::ScheduleSend { .. }
+        | Request::RespondInvite { dry_run: false, .. } => Send,
+
+        // --- Destructive: irreversible / provider-destructive ---
+        Request::Mutation { .. }
+        | Request::StartMutationJob { .. }
+        | Request::DeleteLabel { .. }
+        | Request::RemoveAccountConfig { .. }
+        | Request::Unsubscribe { .. }
+        | Request::UnsubscribePurge { .. }
+        | Request::RedactActivity { .. }
+        | Request::PruneActivity { .. } => Destructive,
+
+        // --- Admin: daemon lifecycle ---
+        Request::Shutdown => Admin,
+
+        // --- Mutate: everything else (reversible state change) ---
+        // A dry-run RSVP is the same verb as a real RSVP, so it stays
+        // out of `Read`; `GetHtmlImageAssets`/attachment fetches do
+        // remote egress and are deliberately not `Read` either.
+        Request::RespondInvite { dry_run: true, .. }
+        | Request::BackfillCalendarInvites { .. }
+        | Request::MarkInviteAnswered { .. }
+        | Request::GetHtmlImageAssets { .. }
+        | Request::DownloadAttachment { .. }
+        | Request::OpenAttachment { .. }
+        | Request::CreateLabel { .. }
+        | Request::RenameLabel { .. }
+        | Request::AuthorizeAccountConfig { .. }
+        | Request::StartAuthSession { .. }
+        | Request::CancelAuthSession { .. }
+        | Request::CompleteAuthSession { .. }
+        | Request::UpsertAccountConfig { .. }
+        | Request::SetDefaultAccount { .. }
+        | Request::TestAccountConfig { .. }
+        | Request::DisableAccountConfig { .. }
+        | Request::RepairAccountConfig { .. }
+        | Request::UpsertRule { .. }
+        | Request::UpsertRuleForm { .. }
+        | Request::DeleteRule { .. }
+        | Request::SyncNow { .. }
+        | Request::SetFlags { .. }
+        | Request::RefreshContacts
+        | Request::RebuildAnalytics
+        | Request::RecomputeLinkCounts
+        | Request::AddAccountAddress { .. }
+        | Request::RemoveAccountAddress { .. }
+        | Request::SetPrimaryAccountAddress { .. }
+        | Request::UpdateLlmConfig { .. }
+        | Request::UpdateNotificationChimes { .. }
+        | Request::PreviewNotificationChime { .. }
+        | Request::EnableSemantic { .. }
+        | Request::InstallSemanticProfile { .. }
+        | Request::UseSemanticProfile { .. }
+        | Request::ReindexSemantic
+        | Request::BackfillSemantic
+        | Request::CreateSavedSearch { .. }
+        | Request::DeleteSavedSearch { .. }
+        | Request::UpdateSavedSearch { .. }
+        | Request::UndoMutation { .. }
+        | Request::Snooze { .. }
+        | Request::Unsnooze { .. }
+        | Request::SetReplyLater { .. }
+        | Request::SetAutoReminder { .. }
+        | Request::CancelAutoReminder { .. }
+        | Request::CancelScheduledSend { .. }
+        | Request::SetSnippet { .. }
+        | Request::DeleteSnippet { .. }
+        | Request::ResolveDelivery { .. }
+        | Request::DismissDelivery { .. }
+        | Request::ScanDeliveries { .. }
+        | Request::SetSignature { .. }
+        | Request::DeleteSignature { .. }
+        | Request::SetSignatureDefault { .. }
+        | Request::ClearSignatureDefault { .. }
+        | Request::RebuildRelationshipProfile { .. }
+        | Request::ResolveCommitment { .. }
+        | Request::RebuildUserVoice { .. }
+        | Request::SetScreenerDecision { .. }
+        | Request::ClearScreenerDecision { .. }
+        | Request::CheckDraftSafety { .. }
+        | Request::ExtractDraftCommitments { .. }
+        | Request::ArchiveAsk { .. }
+        | Request::RebuildDecisionLog { .. }
+        | Request::WatchCadence { .. }
+        | Request::UnwatchCadence { .. }
+        | Request::SaveDraftToServer { .. }
+        | Request::ResetOrphanedDraft { .. }
+        | Request::PauseActivity { .. }
+        | Request::ResumeActivity
+        | Request::UpsertSavedActivityFilter { .. }
+        | Request::DeleteSavedActivityFilter { .. } => Mutate,
+    }
+}
+
+fn request_requires_send_capability(req: &Request) -> bool {
+    matches!(classify_request(req), RequestClass::Send)
+}
+
+/// The destructive capability gates everything that is not a read, a
+/// local-draft edit, or a send. This intentionally spans `Mutate`,
+/// `Destructive`, and `Admin` so the gate's behaviour is unchanged
+/// from the previous hand-rolled definition; PR 2.1 will split the
+/// gate per granular scope using the finer `RequestClass`.
 fn request_requires_destructive_capability(req: &Request) -> bool {
-    !request_is_read_only(req)
-        && !request_is_draft_only(req)
-        && !request_requires_send_capability(req)
+    matches!(
+        classify_request(req),
+        RequestClass::Mutate | RequestClass::Destructive | RequestClass::Admin
+    )
 }
 
 fn request_is_draft_only(req: &Request) -> bool {
-    matches!(req, Request::SaveDraft { .. } | Request::DeleteDraft { .. })
+    matches!(classify_request(req), RequestClass::DraftOnly)
 }
 
 fn request_is_read_only(req: &Request) -> bool {
-    matches!(
-        req,
-        Request::ListEnvelopes { .. }
-            | Request::ListEnvelopesByIds { .. }
-            | Request::GetEnvelope { .. }
-            | Request::GetBody { .. }
-            | Request::ListBodies { .. }
-            | Request::GetThread { .. }
-            | Request::ListThreads { .. }
-            | Request::ListLabels { .. }
-            | Request::ListAccounts
-            | Request::ListAccountsConfig
-            | Request::GetAuthSession { .. }
-            | Request::ListRules
-            | Request::GetRule { .. }
-            | Request::GetRuleForm { .. }
-            | Request::DryRunRules { .. }
-            | Request::ListSavedSearches
-            | Request::ListSavedSearchUnreadCounts
-            | Request::ListSubscriptions { .. }
-            | Request::ListStorageBreakdown { .. }
-            | Request::ListLargestMessages { .. }
-            | Request::Wrapped { .. }
-            | Request::ListStaleThreads { .. }
-            | Request::ListContactAsymmetry { .. }
-            | Request::ListContactDecay { .. }
-            | Request::ListResponseTime { .. }
-            | Request::ListAccountAddresses { .. }
-            | Request::GetLlmStatus
-            | Request::GetLlmConfig
-            | Request::GetSemanticStatus
-            | Request::RunSavedSearch { .. }
-            | Request::ListEvents { .. }
-            | Request::GetLogs { .. }
-            | Request::GetDoctorReport
-            | Request::GenerateBugReport { .. }
-            | Request::Search { .. }
-            | Request::GetSyncStatus { .. }
-            | Request::Count { .. }
-            | Request::SearchAggregation { .. }
-            | Request::GetHeaders { .. }
-            | Request::ListRuleHistory { .. }
-            | Request::ListJobs
-            | Request::GetJob { .. }
-            | Request::ListSnoozed
-            | Request::ListReplyQueue
-            | Request::ListSnippets
-            | Request::ListDeliveries { .. }
-            | Request::GetDelivery { .. }
-            | Request::ListSignatures
-            | Request::ListSignatureDefaults
-            | Request::ResolveSignature { .. }
-            | Request::GetSenderProfile { .. }
-            | Request::ListSenders { .. }
-            | Request::ListScreenerQueue { .. }
-            | Request::ListScreenerDecisions { .. }
-            | Request::SummarizeThread { .. }
-            | Request::TriageSearch { .. }
-            | Request::DraftCompose { .. }
-            | Request::DraftRefine { .. }
-            | Request::ListDrafts
-            | Request::ListOrphanedDrafts
-            | Request::PrepareReply { .. }
-            | Request::PrepareForward { .. }
-            | Request::ExportThread { .. }
-            | Request::ExportSearch { .. }
-            | Request::GetStatus
-            | Request::Ping
-    )
+    matches!(classify_request(req), RequestClass::Read)
 }
 
 fn request_kind(req: &Request) -> &'static str {

@@ -189,6 +189,17 @@ mxr inside a CI sandbox or behind an agent you don't fully trust:
 | `draft-only` | Read + compose; no provider sends |
 | `read-only` | Read-only IPCs only — no mutations, no sends |
 
+"Read-only" covers every request that doesn't change state: listing and
+reading mail and threads, search and aggregation, exports, draft and reply
+*previews*, local AI analysis (summaries, briefings, sender/relationship
+profiles, humanizer scoring), and read access to the calendar-invite list,
+the activity log, saved searches, and saved activity filters. Requests that
+fetch remote content (HTML image assets, attachments) are **not** read-only
+— they trigger network egress, so an agent under `read-only` can't be used
+to load tracking pixels. Every request is assigned its category by a single
+exhaustive classifier in the daemon, so a new request type can never slip
+through a policy by being forgotten in an allowlist.
+
 The TUI greys out mutation actions when the policy disallows them.
 
 ## `agents.profiles`

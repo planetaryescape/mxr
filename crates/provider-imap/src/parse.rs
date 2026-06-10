@@ -191,6 +191,23 @@ pub fn imap_fetch_to_synced_message(
         flags |= MessageFlags::SPAM;
     }
 
+    // A message with no parseable From header is rare but real (drafts,
+    // malformed senders). We still surface it rather than dropping it, but
+    // a silent synthetic address corrupts sender grouping and reply-to-all
+    // with no trail — so log it. (A first-class "unknown sender" envelope
+    // field is the schema-change follow-up; see the Reply-To/threading
+    // migration.)
+    let from = parsed_headers.from.unwrap_or_else(|| {
+        tracing::warn!(
+            provider_id = %provider_id,
+            "IMAP message has no parseable From header; using placeholder sender"
+        );
+        Address {
+            name: None,
+            email: "unknown@unknown".to_string(),
+        }
+    });
+
     let envelope = Envelope {
         id: message_id.clone(),
         account_id: account_id.clone(),
@@ -199,10 +216,7 @@ pub fn imap_fetch_to_synced_message(
         message_id_header: parsed_headers.message_id_header,
         in_reply_to: parsed_headers.in_reply_to,
         references: parsed_headers.references,
-        from: parsed_headers.from.unwrap_or_else(|| Address {
-            name: None,
-            email: "unknown@unknown".to_string(),
-        }),
+        from,
         to: parsed_headers.to,
         cc: parsed_headers.cc,
         bcc: parsed_headers.bcc,

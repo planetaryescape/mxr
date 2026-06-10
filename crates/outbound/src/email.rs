@@ -315,4 +315,159 @@ mod tests {
             "invite-reply MIME should omit text/html alternative"
         );
     }
+
+    fn plain_draft(subject: &str, body: &str) -> Draft {
+        Draft {
+            id: mxr_core::id::DraftId::new(),
+            account_id: mxr_core::id::AccountId::new(),
+            reply_headers: None,
+            intent: mxr_core::types::DraftIntent::New,
+            to: vec![Address {
+                name: Some("Alice Example".into()),
+                email: "alice@example.com".into(),
+            }],
+            cc: vec![Address {
+                name: None,
+                email: "carol@example.com".into(),
+            }],
+            bcc: vec![Address {
+                name: None,
+                email: "secret@example.com".into(),
+            }],
+            subject: subject.into(),
+            body_markdown: body.into(),
+            attachments: vec![],
+            inline_calendar_reply: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    fn sender() -> Address {
+        Address {
+            name: Some("Bob Sender".into()),
+            email: "bob@example.com".into(),
+        }
+    }
+
+    #[test]
+    fn build_message_addresses_subject_and_alternative_body() {
+        let draft = plain_draft("Weekly sync", "Hello **world**");
+        let message =
+            build_message_with_id(&draft, &sender(), false, &[], "<m1@example.com>").unwrap();
+        let raw = String::from_utf8(message.formatted()).unwrap();
+
+        assert!(raw.contains("bob@example.com"));
+        assert!(raw.contains("alice@example.com"));
+        assert!(raw.contains("Cc:") && raw.contains("carol@example.com"));
+        assert!(raw.contains("Subject: Weekly sync"));
+        assert!(raw.contains("Message-ID: <m1@example.com>"));
+        // markdown renders to a text/plain + text/html alternative.
+        assert!(raw.contains("Content-Type: multipart/alternative"));
+        assert!(raw.contains("Content-Type: text/plain"));
+        assert!(raw.contains("Content-Type: text/html"));
+        // The markdown emphasis survives into the HTML part.
+        assert!(raw.contains("<strong>world</strong>"));
+    }
+
+    #[test]
+    fn keep_bcc_controls_whether_bcc_header_is_emitted() {
+        let draft = plain_draft("Bcc test", "body");
+        let without =
+            build_message_with_id(&draft, &sender(), false, &[], "<m@example.com>").unwrap();
+        assert!(
+            !String::from_utf8(without.formatted())
+                .unwrap()
+                .contains("secret@example.com"),
+            "Bcc recipient must not leak into the formatted message by default"
+        );
+
+        let with = build_message_with_id(&draft, &sender(), true, &[], "<m@example.com>").unwrap();
+        assert!(
+            String::from_utf8(with.formatted())
+                .unwrap()
+                .contains("secret@example.com"),
+            "keep_bcc=true must emit the Bcc recipient (for IMAP append / Sent copies)"
+        );
+    }
+
+    #[test]
+    fn attachment_emits_mixed_multipart_with_disposition_and_payload() {
+        let draft = plain_draft("With attachment", "see attached");
+        let attachment = crate::attachments::LoadedAttachment {
+            filename: "report.pdf".into(),
+            mime_type: "application/pdf".into(),
+            bytes: b"%PDF-1.4 fake pdf bytes".to_vec(),
+        };
+        let message =
+            build_message_with_id(&draft, &sender(), false, &[attachment], "<a@example.com>")
+                .unwrap();
+        let raw = String::from_utf8(message.formatted()).unwrap();
+
+        assert!(raw.contains("Content-Type: multipart/mixed"));
+        assert!(raw.contains("application/pdf"));
+        assert!(
+            raw.contains("Content-Disposition: attachment") && raw.contains("report.pdf"),
+            "attachment must carry an attachment disposition with its filename"
+        );
+    }
+
+    #[test]
+    fn binary_attachment_is_base64_transfer_encoded() {
+        // Truly binary content (non-printable bytes) must be base64
+        // transfer-encoded so it survives an 8-bit-unclean transport.
+        let draft = plain_draft("Binary attachment", "see attached");
+        let attachment = crate::attachments::LoadedAttachment {
+            filename: "logo.png".into(),
+            mime_type: "image/png".into(),
+            bytes: vec![
+                0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0xFF, 0xD8, 0x00, 0x01,
+            ],
+        };
+        let message =
+            build_message_with_id(&draft, &sender(), false, &[attachment], "<b@example.com>")
+                .unwrap();
+        let raw = String::from_utf8(message.formatted()).unwrap();
+        assert!(
+            raw.contains("Content-Transfer-Encoding: base64"),
+            "binary attachment must be base64 transfer-encoded"
+        );
+    }
+
+    #[test]
+    fn non_ascii_subject_is_rfc2047_encoded() {
+        let draft = plain_draft("Déjà vu — café", "body");
+        let message =
+            build_message_with_id(&draft, &sender(), false, &[], "<u@example.com>").unwrap();
+        let raw = String::from_utf8(message.formatted()).unwrap();
+        // The raw 8-bit subject must not appear unencoded; it's an
+        // encoded-word per RFC 2047.
+        assert!(!raw.contains("Subject: Déjà vu — café"));
+        assert!(
+            raw.to_lowercase().contains("=?utf-8?"),
+            "non-ASCII subject must be RFC 2047 encoded; got:\n{}",
+            raw.lines().take(12).collect::<Vec<_>>().join("\n")
+        );
+    }
+
+    #[test]
+    fn generate_message_id_uses_sender_domain_and_is_unique() {
+        let from = Address {
+            name: None,
+            email: "bob@mail.example.org".into(),
+        };
+        let a = generate_message_id(&from);
+        let b = generate_message_id(&from);
+        assert!(a.starts_with('<') && a.ends_with('>'));
+        assert!(a.contains("@mail.example.org"));
+        assert_ne!(a, b, "each generated Message-ID must be unique");
+
+        // A from-address with no domain falls back rather than producing a
+        // malformed `@`-less id.
+        let no_domain = generate_message_id(&Address {
+            name: None,
+            email: "weird".into(),
+        });
+        assert!(no_domain.contains('@'));
+    }
 }

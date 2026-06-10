@@ -837,6 +837,53 @@ async fn dispatch_prepare_reply_renders_html_context() {
 }
 
 #[tokio::test]
+async fn dispatch_prepare_reply_prefers_reply_to_header() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let id = sync_and_get_first_id(&state).await;
+
+    // The original message carries a Reply-To distinct from its From
+    // (the mailing-list / no-reply case).
+    state
+        .store
+        .insert_body(&mxr_core::types::MessageBody {
+            message_id: id.clone(),
+            text_plain: Some("digest".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: mxr_core::types::MessageMetadata {
+                reply_to: vec![mxr_core::types::Address {
+                    name: Some("List Discussion".into()),
+                    email: "discuss@list.example.com".into(),
+                }],
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+
+    let msg = IpcMessage {
+        id: 2,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::PrepareReply {
+            message_id: id,
+            reply_all: false,
+        }),
+    };
+    match handle_request(&state, &msg).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::ReplyContext { context },
+        }) => {
+            assert_eq!(
+                context.reply_to, "discuss@list.example.com",
+                "reply must target the Reply-To header, not From"
+            );
+        }
+        other => panic!("Expected ReplyContext, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn dispatch_prepare_forward() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let id = sync_and_get_first_id(&state).await;

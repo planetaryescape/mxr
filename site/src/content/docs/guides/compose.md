@@ -56,6 +56,10 @@ Hello from mxr.
 
 Reply and forward drafts include message context. If the original message only had HTML, mxr uses the rendered reader output, not raw HTML tags.
 
+## Reply recipient
+
+A reply targets the original message's `Reply-To:` header when the sender set one, falling back to `From:` otherwise. This is what mailing lists and `no-reply@` senders rely on — a reply to a list digest goes to the list, not the unmonitored sender address. `reply-all` adds the other original recipients as Cc on top of that target.
+
 ## Send confirmation
 
 After the editor closes, mxr shows a confirmation modal:

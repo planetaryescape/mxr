@@ -446,6 +446,8 @@ fn extract_metadata(message: &Message<'_>, raw_headers: Option<String>) -> Messa
         .map(std::string::ToString::to_string);
     let text_plain_format = message.content_type().and_then(parse_text_plain_format);
 
+    let reply_to = message.reply_to().map(extract_addrs).unwrap_or_default();
+
     MessageMetadata {
         list_id,
         auth_results,
@@ -455,6 +457,7 @@ fn extract_metadata(message: &Message<'_>, raw_headers: Option<String>) -> Messa
         text_html_source: None,
         calendar: None,
         raw_headers,
+        reply_to,
     }
 }
 
@@ -775,6 +778,39 @@ mod tests {
             ambiguous.is_none(),
             "lenient path soft-fails on multi-match, unlike strict"
         );
+    }
+
+    #[test]
+    fn reply_to_header_is_captured_into_metadata() {
+        let raw = concat!(
+            "From: No Reply <no-reply@list.example.com>\r\n",
+            "Reply-To: List Discussion <discuss@list.example.com>\r\n",
+            "To: me@example.com\r\n",
+            "Subject: Weekly digest\r\n",
+            "Message-ID: <digest-1@list.example.com>\r\n",
+            "\r\n",
+            "Body.\r\n",
+        );
+        let metadata = parse_message_metadata_from_raw(raw.as_bytes()).unwrap();
+        assert_eq!(metadata.reply_to.len(), 1);
+        assert_eq!(metadata.reply_to[0].email, "discuss@list.example.com");
+        assert_eq!(
+            metadata.reply_to[0].name.as_deref(),
+            Some("List Discussion")
+        );
+    }
+
+    #[test]
+    fn absent_reply_to_leaves_metadata_empty() {
+        let raw = concat!(
+            "From: Alice <alice@example.com>\r\n",
+            "To: me@example.com\r\n",
+            "Subject: Hi\r\n",
+            "\r\n",
+            "Body.\r\n",
+        );
+        let metadata = parse_message_metadata_from_raw(raw.as_bytes()).unwrap();
+        assert!(metadata.reply_to.is_empty());
     }
 
     #[test]

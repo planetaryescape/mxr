@@ -1789,15 +1789,23 @@ pub(super) async fn prepare_reply(
         .map(|account| account.email)
         .unwrap_or_default();
 
-    let thread_context = match state.sync_engine.get_body(message_id).await {
-        Ok(body) => (*get_or_render_reply_context(state, message_id, &body)).clone(),
-        Err(_) => String::new(),
+    let body = state.sync_engine.get_body(message_id).await.ok();
+    let thread_context = match body.as_ref() {
+        Some(body) => (*get_or_render_reply_context(state, message_id, body)).clone(),
+        None => String::new(),
     };
 
     let self_address = from.to_ascii_lowercase();
-    // Envelope does not yet capture the Reply-To: header — using From: as the reply target
-    // covers the common case. Capturing Reply-To: properly is a post-v1 envelope schema change.
-    let reply_to = envelope.from.email.clone();
+    // Prefer the Reply-To: header when the sender set one — mailing lists
+    // and no-reply senders depend on it — falling back to From: otherwise.
+    // Reply-To is captured into the body metadata at parse time.
+    let reply_to = body
+        .as_ref()
+        .and_then(|body| body.metadata.reply_to.first())
+        .map_or_else(
+            || envelope.from.email.clone(),
+            |address| address.email.clone(),
+        );
 
     let cc = if reply_all {
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();

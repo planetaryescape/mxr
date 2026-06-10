@@ -1533,9 +1533,12 @@ pub async fn process_due_scheduled_sends(
                             "scheduled-send: failed to clear schedule after safety block: {clear_err}"
                         );
                     }
+                    // The error already carries a freshly-minted
+                    // single-use override token and the exact resend
+                    // command, so just surface it.
                     tracing::warn!(
                         draft_id = %draft_id,
-                        "scheduled-send: blocked by safety pipeline; schedule cleared. Use --check to inspect, then resend with --override-safety <token>: {e}"
+                        "scheduled-send: blocked by safety pipeline; schedule cleared. {e}"
                     );
                 } else {
                     tracing::warn!(

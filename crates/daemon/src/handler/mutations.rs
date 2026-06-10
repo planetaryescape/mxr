@@ -203,7 +203,29 @@ async fn enforce_draft_safety_with_override(
         .map(|issue| issue.message.as_str())
         .collect::<Vec<_>>()
         .join("; ");
-    Err(format!("draft safety blocked send: {messages}"))
+
+    // Mint a single-use override token scoped to this draft and the
+    // blocker kinds that fired, and surface it in the error so the
+    // caller can resend with `--override-safety <token>` without a
+    // separate `mxr send --check` round-trip. This does NOT auto-approve
+    // the send: the token only exists in the rejection, and the user
+    // must consciously re-issue the send carrying it.
+    let resend_hint = match state
+        .store
+        .mint_safety_override(Some(&draft.id), &blocker_kinds)
+        .await
+    {
+        Ok(token) => {
+            format!(" — to send anyway after review, resend with --override-safety {token}")
+        }
+        Err(error) => {
+            tracing::warn!(%error, "failed to mint override token for blocked send");
+            String::new()
+        }
+    };
+    Err(format!(
+        "draft safety blocked send: {messages}{resend_hint}"
+    ))
 }
 
 /// Build a `mxr_safety::SafetyContext` from store data: self addresses,

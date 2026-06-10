@@ -557,6 +557,92 @@ fn tiny_png_bytes() -> Vec<u8> {
             .expect("valid 1x1 png")
 }
 
+/// The classifier is exhaustive at compile time, so total coverage is
+/// already guaranteed by the build. These assertions pin the
+/// audit-flagged reads that were previously mis-classified as
+/// mutations (and so wrongly rejected under read-only / draft-only
+/// policies), plus the security-sensitive non-reads, so a future
+/// reclassification can't silently regress them. `classify_request`
+/// and `RequestClass` are in scope via `use super::*`.
+#[test]
+fn classify_request_pins_previously_broken_reads() {
+    // Calendar-invite and activity-log reads: the original bug — these
+    // are pure reads but were absent from the old allowlist, so an
+    // agent under read-only policy got hard failures on them.
+    let reads: &[Request] = &[
+        Request::ListInvites {
+            account_id: None,
+            limit: 50,
+        },
+        Request::ListEventCategories,
+        Request::CountActivity {
+            filter: ActivityFilter::default(),
+        },
+        Request::ActivityStats {
+            since: 0,
+            until: 0,
+            group_by: ActivityStatGroupBy::Action,
+        },
+        Request::ListSavedActivityFilters,
+        Request::GetNotificationChimes,
+    ];
+    for req in reads {
+        assert_eq!(
+            classify_request(req),
+            RequestClass::Read,
+            "{} should be Read",
+            request_kind(req)
+        );
+        assert!(request_is_read_only(req), "{} read-only", request_kind(req));
+    }
+}
+
+#[test]
+fn classify_request_keeps_send_and_destructive_gates() {
+    // Sends require the send capability.
+    let send = Request::SendStoredDraft {
+        draft_id: mxr_core::DraftId::new(),
+        override_safety_token: None,
+    };
+    assert_eq!(classify_request(&send), RequestClass::Send);
+    assert!(request_requires_send_capability(&send));
+    assert!(!request_is_read_only(&send));
+
+    // Mailbox mutations and unsubscribe require the destructive
+    // capability and are not reads.
+    let destructive: &[Request] = &[
+        Request::mutation(MutationCommand::Trash {
+            message_ids: vec![mxr_core::MessageId::new()],
+        }),
+        Request::Unsubscribe {
+            message_id: mxr_core::MessageId::new(),
+        },
+    ];
+    for req in destructive {
+        assert!(
+            request_requires_destructive_capability(req),
+            "{} destructive",
+            request_kind(req)
+        );
+        assert!(!request_is_read_only(req), "{} not read", request_kind(req));
+    }
+
+    // A GET of remote HTML image assets does remote egress
+    // (tracking-pixel risk) and must NOT be read-only.
+    assert!(!request_is_read_only(&Request::GetHtmlImageAssets {
+        message_id: mxr_core::MessageId::new(),
+        allow_remote: true,
+    }));
+
+    // Local draft delete is draft-only, not read and not send.
+    let del = Request::DeleteDraft {
+        draft_id: mxr_core::DraftId::new(),
+    };
+    assert!(request_is_draft_only(&del));
+    assert!(!request_is_read_only(&del));
+    assert!(!request_requires_send_capability(&del));
+}
+
 mod body_and_invites;
 mod mutations_and_delivery;
 mod platform_and_export;

@@ -324,7 +324,7 @@ async fn relationship_context_for_summary(
         }
         prompt.push('\n');
         if prompt.len() > 2_000 {
-            prompt.truncate(2_000);
+            mxr_core::text::truncate_to_char_boundary(&mut prompt, 2_000);
             prompt.push_str("\n[...relationship context truncated...]\n");
             break;
         }

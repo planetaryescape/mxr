@@ -123,3 +123,9 @@ mxr reset --hard                  # destructive; preserves config + credentials
 ```
 
 `mxr reset --hard` wipes local cache and the search index but keeps your account config and credentials. Re-run `mxr sync --wait` after.
+
+## Daemon unreachable after an upgrade
+
+When you run a newly upgraded `mxr` binary, the first command restarts the daemon to match the new build. The restart waits for the old daemon to fully exit before starting its successor, and a shutting-down daemon never removes a socket it no longer owns — so the replacement daemon is reachable as soon as the restart message finishes.
+
+On versions up to 0.5.62 this handoff could race: the old daemon's exit cleanup deleted the new daemon's socket, leaving a daemon that was alive and syncing but that no client could reach (the TUI would show an action status like `Archiving...` forever). If you hit that state on an old version, run any `mxr` command — it detects the missing socket and restarts the daemon — then retry the stuck action, which was never applied.

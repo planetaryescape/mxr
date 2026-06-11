@@ -130,7 +130,7 @@ pub(crate) async fn build_relationship_block(
             prompt.push('\n');
         }
         if prompt.len() > budget_chars {
-            prompt.truncate(budget_chars);
+            mxr_core::text::truncate_to_char_boundary(&mut prompt, budget_chars);
             prompt.push_str("\n[...relationship context truncated...]\n");
             break;
         }
@@ -293,7 +293,7 @@ pub(crate) async fn build_transcript(state: &AppState, envelopes: &[Envelope]) -
         };
         transcript.push_str(&format!("--- {from} ---\n{body}\n\n"));
         if transcript.len() > PROMPT_BUDGET_CHARS {
-            transcript.truncate(PROMPT_BUDGET_CHARS);
+            mxr_core::text::truncate_to_char_boundary(&mut transcript, PROMPT_BUDGET_CHARS);
             transcript.push_str("\n[...thread truncated...]\n");
             break;
         }
@@ -456,7 +456,7 @@ pub(crate) async fn prior_sent_grounding(
         }
     }
     if grounding.len() > GROUNDING_BUDGET_CHARS {
-        grounding.truncate(GROUNDING_BUDGET_CHARS);
+        mxr_core::text::truncate_to_char_boundary(&mut grounding, GROUNDING_BUDGET_CHARS);
         grounding.push_str("\n[...prior replies truncated...]\n");
     }
     grounding

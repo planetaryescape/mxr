@@ -64,7 +64,9 @@ pub async fn generate_relationship_summary(
             body.trim()
         ));
         if prompt.len() > MAX_PROMPT_CHARS {
-            prompt.truncate(MAX_PROMPT_CHARS);
+            // Byte-budget cut over arbitrary email bodies: must be
+            // boundary-safe or multi-byte content panics the worker.
+            mxr_core::text::truncate_to_char_boundary(&mut prompt, MAX_PROMPT_CHARS);
             prompt.push_str("\n[...truncated...]\n");
             break;
         }

@@ -660,7 +660,10 @@ fn daemon_pid_file_path() -> PathBuf {
 /// socket we bound is still the one on disk. (dev, ino) alone is not
 /// enough: ext4 recycles inode numbers, so a successor daemon's freshly
 /// bound socket can land on the inode we just freed. The bind timestamp
-/// (ns resolution on apfs/ext4/tmpfs) disambiguates a recycled inode.
+/// disambiguates a recycled inode. Caveat: Linux stamps files from the
+/// kernel's coarse clock (~ms ticks), so two binds inside one tick could
+/// collide — irrelevant here because successor binds are separated from
+/// ours by a full daemon startup.
 #[cfg(unix)]
 fn socket_file_identity(path: &Path) -> Option<(u64, u64, i64, i64)> {
     use std::os::unix::fs::MetadataExt;
@@ -1354,10 +1357,15 @@ mod tests {
         remove_socket_if_owned(&path, ours);
         assert!(!path.exists(), "own socket should be removed");
 
-        // Path re-created by a successor (different inode) → left alone.
+        // Path re-created by a successor → left alone. ext4 can recycle
+        // the freed inode AND Linux stamps files from the kernel's coarse
+        // clock (~ms ticks), so a same-tick re-create can be byte-identical
+        // to ours. Sleep past the tick — in production the two binds are
+        // separated by a full daemon startup.
         std::fs::write(&path, b"ours").expect("write socket stand-in");
         let ours = socket_file_identity(&path);
         std::fs::remove_file(&path).expect("simulate successor re-bind");
+        std::thread::sleep(Duration::from_millis(20));
         std::fs::write(&path, b"successor").expect("successor socket stand-in");
         remove_socket_if_owned(&path, ours);
         assert!(path.exists(), "successor's socket must survive our cleanup");

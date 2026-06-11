@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.63](https://github.com/planetaryescape/mxr/compare/v0.5.62...v0.5.63) (2026-06-11)
+
+
+### Bug Fixes
+
+* race-free daemon upgrade handoff + UTF-8-safe prompt truncation ([#82](https://github.com/planetaryescape/mxr/issues/82)) ([5077dc8](https://github.com/planetaryescape/mxr/commit/5077dc866ce0a8ca34253781864c5dd9f4ba5863))
+
 ## [0.5.62](https://github.com/planetaryescape/mxr/compare/v0.5.61...v0.5.62) (2026-06-11)
 
 

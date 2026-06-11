@@ -43,6 +43,11 @@ const CONNECTION_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const SOCKET_PROBE_ATTEMPTS: usize = 5;
 const SOCKET_PROBE_DELAY: Duration = Duration::from_millis(100);
 const ORPHAN_DAEMON_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long a restart waits for the previous daemon process to fully exit
+/// before spawning its successor. Graceful shutdown can take connection
+/// drain (5s) + runtime-task drain (5s) + final flushes; matches the window
+/// `shutdown_daemon_for_maintenance` already allows.
+const DAEMON_EXIT_DRAIN_TIMEOUT: Duration = Duration::from_secs(12);
 
 /// CLI-time overrides for the HTTP bridge. Always merged on top of the
 /// `[bridge]` section in `~/.config/mxr/config.toml`.
@@ -100,6 +105,10 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     let _ = std::fs::remove_file(&sock_path);
     let listener = UnixListener::bind(&sock_path)?;
     set_socket_permissions(&sock_path)?;
+    // Remember which socket file is OURS. During an upgrade restart a
+    // successor daemon can re-bind this path while we are still draining;
+    // the exit cleanup below must not delete the successor's socket.
+    let socket_identity = socket_file_identity(&sock_path);
     write_daemon_pid_file()?;
     tracing::info!("Daemon listening on {}", sock_path.display());
     let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
@@ -253,8 +262,14 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     drop(listener);
     drain_connection_tasks(&mut connections, CONNECTION_DRAIN_TIMEOUT).await;
     state.shutdown_runtime_tasks(Duration::from_secs(5)).await;
-    let _ = std::fs::remove_file(&sock_path);
-    clear_daemon_pid_file();
+    // Only remove the socket / pid file if they are still ours. The accept
+    // loop stops several seconds before this line runs (connection +
+    // runtime-task drain), and a successor daemon spawned during that
+    // window may have already re-bound the socket path and written its own
+    // pid. Deleting them here would orphan that successor: alive and
+    // syncing, but unreachable by every client.
+    remove_socket_if_owned(&sock_path, socket_identity);
+    clear_daemon_pid_file_if_owned();
     Ok(())
 }
 
@@ -641,6 +656,49 @@ fn daemon_pid_file_path() -> PathBuf {
     AppState::data_dir().join("daemon.pid")
 }
 
+/// Identity of the file currently at `path`, used to detect whether the
+/// socket we bound is still the one on disk. (dev, ino) uniquely names an
+/// inode while it exists; a successor daemon re-binding the path creates a
+/// new inode.
+#[cfg(unix)]
+fn socket_file_identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+
+    std::fs::metadata(path).ok().map(|m| (m.dev(), m.ino()))
+}
+
+#[cfg(not(unix))]
+fn socket_file_identity(_path: &Path) -> Option<(u64, u64)> {
+    None
+}
+
+/// Remove the socket file only if it is still the one this daemon bound.
+/// `owned` of `None` (identity capture failed at bind time) falls back to
+/// unconditional removal, matching the previous behavior.
+fn remove_socket_if_owned(path: &Path, owned: Option<(u64, u64)>) {
+    match (owned, socket_file_identity(path)) {
+        (Some(ours), Some(current)) if ours != current => {
+            tracing::info!(
+                "leaving IPC socket in place: the path was re-bound by a successor daemon"
+            );
+        }
+        _ => {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+/// Clear the pid file only if it still names this process. A successor
+/// daemon overwrites the pid file when it starts; deleting it then would
+/// leave the successor undiscoverable by `live_daemon_pid`.
+fn clear_daemon_pid_file_if_owned() {
+    if read_daemon_pid_file() == Some(std::process::id()) {
+        clear_daemon_pid_file();
+    } else {
+        tracing::info!("leaving daemon pid file untouched: it no longer names this process");
+    }
+}
+
 fn write_daemon_pid_file() -> anyhow::Result<()> {
     let pid_path = daemon_pid_file_path();
     if let Some(parent) = pid_path.parent() {
@@ -743,12 +801,50 @@ fn fallback_live_daemon_pid_without_pid_file() -> Option<u32> {
 async fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
     let deadline = tokio::time::Instant::now() + timeout;
     while tokio::time::Instant::now() < deadline {
-        if !process_is_alive(pid) {
+        if process_has_exited(pid) {
             return true;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    !process_is_alive(pid)
+    process_has_exited(pid)
+}
+
+/// `kill(pid, 0)` reports zombies as alive, so a plain liveness probe can
+/// never observe the exit of a daemon whose parent doesn't reap it (the TUI
+/// spawns daemons and never waits on them). Treat zombies as exited, and
+/// opportunistically reap the process when it is our own child.
+fn process_has_exited(pid: u32) -> bool {
+    {
+        use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+
+        // Only reaps when `pid` is our child; ECHILD otherwise, which we
+        // ignore and fall through to the generic probes.
+        if matches!(
+            waitpid(Pid::from_raw(pid as i32), Some(WaitPidFlag::WNOHANG)),
+            Ok(WaitStatus::Exited(..) | WaitStatus::Signaled(..))
+        ) {
+            return true;
+        }
+    }
+
+    if !process_is_alive(pid) {
+        return true;
+    }
+    process_is_zombie(pid)
+}
+
+/// There is no portable zombie probe (macOS has no procfs); shelling out to
+/// `ps` matches the existing ps-based daemon discovery fallback in this file.
+fn process_is_zombie(pid: u32) -> bool {
+    std::process::Command::new("ps")
+        .args(["-o", "state=", "-p", &pid.to_string()])
+        .output()
+        .ok()
+        .is_some_and(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .trim_start()
+                .starts_with('Z')
+        })
 }
 
 fn send_signal(pid: u32, signal: Signal) -> anyhow::Result<()> {
@@ -909,6 +1005,16 @@ async fn restart_daemon_process(
 ) -> anyhow::Result<()> {
     eprint!("{message}");
 
+    // Capture the old daemon's pid before shutdown clears the pid file. The
+    // socket stops accepting the moment the old daemon leaves its accept
+    // loop, but the process keeps draining connections and background tasks
+    // for up to ~10s after that — and still holds the search-index lock.
+    // Spawning the successor inside that window loses a race: the old
+    // daemon's exit cleanup runs after the successor binds the socket, and
+    // an unguarded cleanup deletes the successor's socket, orphaning it
+    // (alive and syncing, but unreachable by every client).
+    let old_pid = daemon_pid.or_else(read_daemon_pid_file);
+
     if matches!(
         inspect_socket_state(sock_path).await,
         SocketState::Reachable
@@ -940,6 +1046,15 @@ async fn restart_daemon_process(
             clear_daemon_pid_file();
         }
         SocketState::Missing => {}
+    }
+
+    if let Some(pid) = old_pid {
+        if !wait_for_process_exit(pid, DAEMON_EXIT_DRAIN_TIMEOUT).await {
+            eprintln!(" failed.");
+            anyhow::bail!(
+                "Existing daemon (pid {pid}) is still shutting down. Wait a few seconds and rerun, or check `mxr logs --level error`."
+            );
+        }
     }
 
     spawn_daemon_process(sock_path, "").await
@@ -1221,6 +1336,54 @@ mod tests {
     use tokio::net::{UnixListener, UnixStream};
     use tokio::sync::Semaphore;
     use tokio_util::codec::Framed;
+
+    #[test]
+    fn socket_removal_skips_a_rebound_path() {
+        use super::{remove_socket_if_owned, socket_file_identity};
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("mxr.sock");
+
+        // Same inode → removed (normal shutdown).
+        std::fs::write(&path, b"ours").expect("write socket stand-in");
+        let ours = socket_file_identity(&path);
+        assert!(ours.is_some());
+        remove_socket_if_owned(&path, ours);
+        assert!(!path.exists(), "own socket should be removed");
+
+        // Path re-created by a successor (different inode) → left alone.
+        std::fs::write(&path, b"ours").expect("write socket stand-in");
+        let ours = socket_file_identity(&path);
+        std::fs::remove_file(&path).expect("simulate successor re-bind");
+        std::fs::write(&path, b"successor").expect("successor socket stand-in");
+        remove_socket_if_owned(&path, ours);
+        assert!(path.exists(), "successor's socket must survive our cleanup");
+
+        // Unknown identity (capture failed at bind) → fall back to removal.
+        remove_socket_if_owned(&path, None);
+        assert!(!path.exists(), "unknown ownership falls back to removal");
+    }
+
+    #[tokio::test]
+    async fn wait_for_process_exit_observes_an_unreaped_child() {
+        use super::wait_for_process_exit;
+
+        // Spawn a child that exits immediately and deliberately do not
+        // reap it: it stays a zombie, which `kill(pid, 0)` reports as
+        // alive. The exit probe must still observe it as exited.
+        let child = std::process::Command::new("true")
+            .spawn()
+            .expect("spawn child");
+        let pid = child.id();
+        // Drop the handle without wait() so nothing reaps the zombie
+        // before the probe runs.
+        std::mem::forget(child);
+
+        assert!(
+            wait_for_process_exit(pid, Duration::from_secs(5)).await,
+            "zombie child must count as exited"
+        );
+    }
 
     #[test]
     fn detects_tantivy_lockbusy_message() {

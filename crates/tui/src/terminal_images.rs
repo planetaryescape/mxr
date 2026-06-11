@@ -114,7 +114,7 @@ impl HtmlImageEntry {
         match &self.render {
             HtmlImageRenderState::Ready(protocol) => protocol
                 .as_ref()
-                .size_for(Resize::Fit(None), Rect::new(0, 0, width, max_height))
+                .size_for(Resize::Fit(None), Rect::new(0, 0, width, max_height).into())
                 .map_or_else(|| self.placeholder_height(), |size| size.height.max(1)),
             HtmlImageRenderState::Pending | HtmlImageRenderState::Failed(_) => {
                 self.placeholder_height()

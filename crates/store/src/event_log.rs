@@ -138,7 +138,7 @@ impl super::Store {
         }
         sql.push_str(" ORDER BY timestamp DESC LIMIT ? OFFSET ?");
 
-        let mut query = sqlx::query(&sql);
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
         if let Some(l) = f.level {
             query = query.bind(l);
         }
@@ -220,7 +220,7 @@ impl super::Store {
         if f.search.is_some() {
             sql.push_str(" AND (summary LIKE ? OR details LIKE ?)");
         }
-        let mut query = sqlx::query_scalar::<_, i64>(&sql);
+        let mut query = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql.as_str()));
         if let Some(l) = f.level {
             query = query.bind(l);
         }
@@ -288,7 +288,8 @@ impl super::Store {
         }
         sql.push_str(" ORDER BY timestamp DESC LIMIT 1");
 
-        let mut query = sqlx::query_scalar::<_, i64>(&sql).bind(category);
+        let mut query =
+            sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql.as_str())).bind(category);
         if let Some(prefix) = summary_prefix {
             query = query.bind(format!("{prefix}%"));
         }

@@ -565,7 +565,7 @@ impl Store {
     }
 }
 
-fn push_filter_clauses<'a>(qb: &mut QueryBuilder<'a, sqlx::Sqlite>, filter: &'a ActivityFilter) {
+fn push_filter_clauses(qb: &mut QueryBuilder<sqlx::Sqlite>, filter: &ActivityFilter) {
     if let Some(since) = filter.since {
         qb.push(" AND ts >= ");
         qb.push_bind(since);

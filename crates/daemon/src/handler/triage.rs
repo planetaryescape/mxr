@@ -257,7 +257,7 @@ fn triage_content_hash(envelope: &Envelope, body_text: &str) -> String {
     hash_addresses(&mut hasher, &envelope.bcc);
     hash_str(&mut hasher, &envelope.snippet);
     hash_str(&mut hasher, body_text);
-    format!("{:x}", hasher.finalize())
+    base16ct::lower::encode_string(&hasher.finalize())
 }
 
 fn hash_addresses(hasher: &mut Sha256, addresses: &[Address]) {

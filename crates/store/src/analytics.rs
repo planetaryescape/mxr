@@ -270,14 +270,15 @@ impl super::Store {
             LIMIT ?4"
         );
 
-        let rows: Vec<(String, String, String, i64, String, String)> = sqlx::query_as(&sql)
-            .bind(account_filter)
-            .bind(direction_str)
-            .bind(older_than_unix)
-            .bind(lim)
-            .bind(date_floor)
-            .fetch_all(self.reader())
-            .await?;
+        let rows: Vec<(String, String, String, i64, String, String)> =
+            sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(account_filter)
+                .bind(direction_str)
+                .bind(older_than_unix)
+                .bind(lim)
+                .bind(date_floor)
+                .fetch_all(self.reader())
+                .await?;
         trace_query("analytics.list_stale_threads", started_at, rows.len());
 
         let now = chrono::Utc::now().timestamp();

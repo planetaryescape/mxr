@@ -2328,7 +2328,11 @@ pub(crate) fn render_reply_quoted_text(body: &mxr_core::types::MessageBody) -> S
     }
     if let Some(html) = body.text_html.as_deref() {
         if !html.is_empty() {
-            return html2text::from_read(html.as_bytes(), 80).unwrap_or_default();
+            // plain_no_decorate keeps the pre-0.17 behavior: no
+            // markdown-style emphasis markers in rendered context.
+            return html2text::config::plain_no_decorate()
+                .string_from_read(html.as_bytes(), 80)
+                .unwrap_or_default();
         }
     }
     String::new()

@@ -1193,7 +1193,7 @@ fn chunk_text(text: &str, window_words: usize, overlap_words: usize) -> Vec<Stri
 #[cfg(feature = "local")]
 fn content_hash(normalized: &str) -> String {
     let digest = Sha256::digest(normalized.as_bytes());
-    format!("{digest:x}")
+    base16ct::lower::encode_string(&digest)
 }
 
 #[cfg(feature = "local")]

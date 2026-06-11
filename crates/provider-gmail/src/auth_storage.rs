@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
-use yup_oauth2::storage::{TokenInfo, TokenStorage};
+use yup_oauth2::storage::{TokenInfo, TokenStorage, TokenStorageError};
 
 pub(crate) const KEYCHAIN_SERVICE: &str = "mxr-gmail-oauth";
 
@@ -288,21 +288,23 @@ fn load_fallback_token_cache(
 
 #[async_trait]
 impl TokenStorage for KeychainTokenStorage {
-    async fn set(&self, scopes: &[&str], token: TokenInfo) -> anyhow::Result<()> {
+    async fn set(&self, scopes: &[&str], token: TokenInfo) -> Result<(), TokenStorageError> {
         let scopes_owned = normalize_scopes(scopes);
         let json = {
             let mut cache = self
                 .cache
                 .lock()
-                .map_err(|_| anyhow::anyhow!("token cache mutex poisoned"))?;
+                .map_err(|_| TokenStorageError::Other("token cache mutex poisoned".into()))?;
             cache.retain(|stored| normalize_scopes_owned(&stored.scopes) != scopes_owned);
             cache.push(StoredToken {
                 scopes: scopes_owned,
                 token,
             });
-            serde_json::to_string(&*cache)?
+            serde_json::to_string(&*cache)
+                .map_err(|error| TokenStorageError::Other(error.to_string().into()))?
         };
-        self.persist(&json)?;
+        self.persist(&json)
+            .map_err(|error| TokenStorageError::Other(error.to_string().into()))?;
         Ok(())
     }
 

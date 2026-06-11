@@ -128,7 +128,9 @@ impl Store {
                 for step in steps.iter() {
                     match step {
                         MigrationStep::Sql(sql) => {
-                            sqlx::raw_sql(sql).execute(&self.writer).await?;
+                            sqlx::raw_sql(sqlx::AssertSqlSafe(*sql))
+                                .execute(&self.writer)
+                                .await?;
                         }
                         MigrationStep::AddColumn { table, column, sql } => {
                             self.add_column_if_missing(table, column, sql).await?;
@@ -158,7 +160,9 @@ impl Store {
         sql: &str,
     ) -> Result<(), sqlx::Error> {
         if !self.column_exists(table, column).await? {
-            sqlx::raw_sql(sql).execute(&self.writer).await?;
+            sqlx::raw_sql(sqlx::AssertSqlSafe(sql))
+                .execute(&self.writer)
+                .await?;
         }
         Ok(())
     }
@@ -174,9 +178,11 @@ impl Store {
 
     async fn column_exists(&self, table: &str, column: &str) -> Result<bool, sqlx::Error> {
         let query = format!("PRAGMA table_info({table})");
-        let rows = sqlx::query_as::<_, (i64, String, String, i64, Option<String>, i64)>(&query)
-            .fetch_all(&self.writer)
-            .await?;
+        let rows = sqlx::query_as::<_, (i64, String, String, i64, Option<String>, i64)>(
+            sqlx::AssertSqlSafe(query.as_str()),
+        )
+        .fetch_all(&self.writer)
+        .await?;
         Ok(rows.iter().any(|(_, name, _, _, _, _)| name == column))
     }
 
@@ -215,7 +221,10 @@ impl Store {
             sqlx::raw_sql("BEGIN IMMEDIATE")
                 .execute(&self.writer)
                 .await?;
-            if let Err(error) = sqlx::raw_sql(sql).execute(&self.writer).await {
+            if let Err(error) = sqlx::raw_sql(sqlx::AssertSqlSafe(sql))
+                .execute(&self.writer)
+                .await
+            {
                 let _ = sqlx::raw_sql("ROLLBACK").execute(&self.writer).await;
                 return Err(error);
             }

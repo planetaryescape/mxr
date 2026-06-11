@@ -164,7 +164,7 @@ fn thread_content_hash(envelopes: &[mxr_core::types::Envelope]) -> String {
         h.update(env.date.timestamp().to_le_bytes());
         h.update(b"|");
     }
-    format!("{:x}", h.finalize())
+    base16ct::lower::encode_string(&h.finalize())
 }
 
 fn deterministic_thread_fallback(envelopes: &[mxr_core::types::Envelope]) -> String {
@@ -356,7 +356,7 @@ fn recipient_content_hash(
         h.update((c.total_inbound as u64).to_le_bytes());
         h.update((c.total_outbound as u64).to_le_bytes());
     }
-    format!("{:x}", h.finalize())
+    base16ct::lower::encode_string(&h.finalize())
 }
 
 fn recipient_baseline(email: &str, contact: Option<&ContactSummary>) -> String {

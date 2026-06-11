@@ -127,7 +127,7 @@ pub fn aggregate_metrics(texts: &[WeightedText<'_>]) -> (StylometryMetrics, Stri
             top_openers: Vec::new(),
             top_signoffs: Vec::new(),
         },
-        format!("{:x}", hasher.finalize()),
+        base16ct::lower::encode_string(&hasher.finalize()),
     )
 }
 

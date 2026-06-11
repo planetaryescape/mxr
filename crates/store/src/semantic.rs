@@ -302,7 +302,7 @@ impl super::Store {
 }
 
 async fn count_semantic_gap(pool: &sqlx::SqlitePool, sql: &str) -> Result<u32, sqlx::Error> {
-    Ok(sqlx::query_scalar::<_, i64>(sql)
+    Ok(sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql))
         .fetch_one(pool)
         .await?
         .max(0) as u32)

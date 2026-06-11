@@ -91,7 +91,7 @@ impl super::Store {
         let sql = format!(
             "SELECT message_id, keyword FROM message_keywords WHERE message_id IN ({placeholders})"
         );
-        let mut query = sqlx::query(&sql);
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
         for id in message_ids {
             query = query.bind(id.as_str());
         }

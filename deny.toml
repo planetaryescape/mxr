@@ -28,6 +28,8 @@ allow = [
     "MIT-0",
     "MPL-2.0",
     "Unicode-3.0",
+    # Unicode data-files license; same family as Unicode-3.0 (finl_unicode via comrak).
+    "Unicode-DFS-2016",
     "Unlicense",
     "Zlib",
     "0BSD",
@@ -35,6 +37,8 @@ allow = [
     "CDLA-Permissive-2.0",
     "NCSA",
     "zlib-acknowledgement",
+    # BSD-style permissive license of libbz2 (libbz2-rs-sys via zip/calamine).
+    "bzip2-1.0.6",
 ]
 confidence-threshold = 0.8
 

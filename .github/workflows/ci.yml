@@ -369,13 +369,13 @@ jobs:
       - run: cargo doc --workspace --no-deps
 
   msrv:
-    name: MSRV (1.88)
+    name: MSRV (1.94)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.88
+      - uses: dtolnay/rust-toolchain@1.94
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - run: cargo check --workspace --locked

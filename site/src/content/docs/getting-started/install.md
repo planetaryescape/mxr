@@ -19,6 +19,14 @@ brew install planetaryescape/mxr/mxr
 
 Equivalent to `brew tap planetaryescape/mxr && brew install mxr` if you prefer to tap explicitly.
 
+Homebrew 5.1.15+ requires third-party taps to be trusted before it will load their formulae. If `brew install` or `brew upgrade` refuses with `untrusted tap planetaryescape/mxr`, trust it once:
+
+```bash
+brew trust planetaryescape/mxr
+```
+
+(Or trust just this formula with `brew trust --formula planetaryescape/mxr/mxr`.)
+
 ## Pre-built binaries
 
 Download from [GitHub Releases](https://github.com/planetaryescape/mxr/releases/latest):

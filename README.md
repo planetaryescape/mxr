@@ -18,6 +18,8 @@ agent skill.
 # Homebrew (recommended)
 brew tap planetaryescape/mxr
 brew install mxr
+# Homebrew 5.1.15+ asks you to trust third-party taps once:
+brew trust planetaryescape/mxr
 
 # Cargo from source at a release tag
 # (replace vX.Y.Z with a tag from the releases page)

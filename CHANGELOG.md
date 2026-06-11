@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.5.62](https://github.com/planetaryescape/mxr/compare/v0.5.61...v0.5.62) (2026-06-11)
+
+
+### Features
+
+* issue a safety override token in the blocked-send error ([abe45ed](https://github.com/planetaryescape/mxr/commit/abe45ed4efa66d713b9e4c35501eb5eee3c71b1a))
+* per-action destructive scopes for agent profiles ([1577177](https://github.com/planetaryescape/mxr/commit/1577177b00c0ca716d0883502b0e5427b34ca199))
+* persist mutation job history across daemon restarts ([02d5b43](https://github.com/planetaryescape/mxr/commit/02d5b434481eceb548eb79a3d8fcd9a02f2cc4e4))
+* reply to the Reply-To address when the sender set one ([af02b7c](https://github.com/planetaryescape/mxr/commit/af02b7c1c196182e2d30411f576b3fb0c0ed3b36))
+* surface scheduled sends lost to a crash mid-flush ([d3157b4](https://github.com/planetaryescape/mxr/commit/d3157b47f108b89c7d44b2383340c9220af5e6c5))
+* tell users when a mutation's undo could not be recorded ([be880f5](https://github.com/planetaryescape/mxr/commit/be880f50206479f2b562b0485c7d710f20b6446d))
+
+
+### Bug Fixes
+
+* detach sync on timeout instead of cancelling mid-flight ([67c1329](https://github.com/planetaryescape/mxr/commit/67c132996c2e6d7e7559ffd4fee462fd5d34ae1c))
+* signal clients to resync when their event stream lags ([eae6756](https://github.com/planetaryescape/mxr/commit/eae675626de1060070a7600fd2288d94906cd065))
+* stop silently dating/attributing mail to wrong values ([f70b52d](https://github.com/planetaryescape/mxr/commit/f70b52d22d7737a70920dfd1dbfb79ca04e27266))
+* **web:** handle SyncError, ReminderTriggered, and reconciliation events ([21528ba](https://github.com/planetaryescape/mxr/commit/21528baf3d1eb47e620cd531eb92fe60929ceb4b))
+
+
+### Refactoring
+
+* classify every IPC request exhaustively for safety policy ([83c5a80](https://github.com/planetaryescape/mxr/commit/83c5a8010858e64dd639753728c7cbda05081f8f))
+* consolidate the parse+schema+build query idiom ([9ba92e1](https://github.com/planetaryescape/mxr/commit/9ba92e1100bf448f924dcb438ef044be71d892f5))
+* log best-effort cleanup failures instead of swallowing them ([72e2365](https://github.com/planetaryescape/mxr/commit/72e2365f07259c720628b3d66332f3e3dcf10c6d))
+* **web:** guard RightRail attachment payload instead of casting ([21ce202](https://github.com/planetaryescape/mxr/commit/21ce202110644aac87d5b1d40f36de40ed2411cd))
+
 ## [0.5.61](https://github.com/planetaryescape/mxr/compare/v0.5.60...v0.5.61) (2026-06-06)
 
 

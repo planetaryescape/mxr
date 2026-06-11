@@ -1279,13 +1279,47 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     detach_daemon_child(&mut command);
-    command.spawn()?;
+    let mut child = command.spawn()?;
 
     for i in 0..40 {
         tokio::time::sleep(std::time::Duration::from_millis(100 * (i + 1))).await;
         if daemon_responds_to_ping(sock_path, Duration::from_millis(250)).await {
             eprintln!(" ready.");
             return Ok(());
+        }
+        // A dead child will never answer; fail fast with the log tail
+        // instead of pinging into the void for the rest of the window.
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            break;
+        }
+    }
+
+    // Past the normal window. Startup legitimately takes minutes after an
+    // upgrade — schema migrations and WAL recovery on a multi-GB store, or
+    // a search-index rebuild — and those run before the socket binds.
+    // While the process is alive, keep waiting instead of declaring
+    // failure and tempting the user (or a wrapper script) into spawning a
+    // second daemon against a half-migrated store.
+    if matches!(child.try_wait(), Ok(None)) {
+        eprintln!();
+        eprintln!(
+            "Daemon is still starting — this can take a few minutes after an upgrade (database migration, search-index rebuild)."
+        );
+        let patient_deadline = tokio::time::Instant::now() + Duration::from_secs(300);
+        let mut next_note = tokio::time::Instant::now() + Duration::from_secs(30);
+        while tokio::time::Instant::now() < patient_deadline {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            if daemon_responds_to_ping(sock_path, Duration::from_millis(250)).await {
+                eprintln!("Daemon ready.");
+                return Ok(());
+            }
+            if matches!(child.try_wait(), Ok(Some(_))) {
+                break;
+            }
+            if tokio::time::Instant::now() >= next_note {
+                eprintln!("Still starting...");
+                next_note = tokio::time::Instant::now() + Duration::from_secs(30);
+            }
         }
     }
 

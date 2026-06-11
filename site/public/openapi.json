@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.5.58"
+    "version": "0.5.62"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -4382,6 +4382,27 @@
                 ]
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "This client's event stream lagged and the daemon dropped\n`skipped` broadcast events before it could deliver them (the\nper-client channel filled during a burst, e.g. a large bulk\nmutation or initial backfill). The client's cached views may now\nbe stale, so it should do a full resync. Sent point-to-point to\nthe affected client only — never broadcast.",
+            "required": [
+              "skipped",
+              "event"
+            ],
+            "properties": {
+              "event": {
+                "type": "string",
+                "enum": [
+                  "EventsLagged"
+                ]
+              },
+              "skipped": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            }
           }
         ]
       },
@@ -6541,6 +6562,13 @@
               "null"
             ]
           },
+          "reply_to": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Address"
+            },
+            "description": "Addresses from the `Reply-To:` header, if the sender set one.\nReplies target these instead of `From:` (mailing lists and\nno-reply senders rely on it). Empty when absent."
+          },
           "text_html_source": {
             "oneOf": [
               {
@@ -6849,6 +6877,10 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "undo_unavailable": {
+            "type": "boolean",
+            "description": "True when an undoable mutation succeeded but persisting its undo\nentry failed, so `mutation_id` is `None` even though undo was\nexpected. Lets clients distinguish \"no undo by design\" from \"undo\nwas lost\" and warn the user instead of silently dropping it."
           }
         }
       },

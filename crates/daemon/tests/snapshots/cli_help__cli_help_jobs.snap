@@ -2,13 +2,19 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-List or inspect background jobs (large batch mutations, progress, undo ids)
+List or inspect background jobs (large batch mutations, progress, undo ids).
+
+Job history is persisted locally and survives a daemon restart; the most recent jobs are retained.
 
 Usage: mxr jobs [OPTIONS] [JOB_ID]
 
 Arguments:
-  [JOB_ID]  Optional job id to inspect. Omit to list recent jobs
+  [JOB_ID]
+          Optional job id to inspect. Omit to list recent jobs
 
 Options:
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

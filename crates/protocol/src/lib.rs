@@ -39,9 +39,10 @@ mod tests {
         assert_eq!(json.get("undo_unavailable"), Some(&serde_json::json!(true)));
 
         // And it round-trips back through a missing field as false.
-        let parsed: MutationResultData =
-            serde_json::from_value(serde_json::json!({"requested":1,"succeeded":1,"skipped":0,"failed":0,"accounts":[]}))
-                .unwrap();
+        let parsed: MutationResultData = serde_json::from_value(
+            serde_json::json!({"requested":1,"succeeded":1,"skipped":0,"failed":0,"accounts":[]}),
+        )
+        .unwrap();
         assert!(!parsed.undo_unavailable);
     }
 

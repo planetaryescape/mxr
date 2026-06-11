@@ -8,6 +8,13 @@ use std::process::Stdio;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{sleep, Duration, Instant};
 
+/// Upper bound on any single request through the shared IPC worker. The
+/// daemon answers everything on this path in well under a second when
+/// healthy (slow LLM work uses dedicated connections); large list fetches
+/// on a cold multi-GB store are the slowest legitimate case, still far
+/// inside this bound. Only a dead or wedged peer ever reaches it.
+pub(crate) const IPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// A request sent from the main loop to the background IPC worker.
 pub(crate) struct IpcRequest {
     pub(crate) request: Request,
@@ -67,13 +74,57 @@ pub(crate) fn spawn_ipc_worker(
                 req = rx.recv() => {
                     match req {
                         Some(req) => {
-                            let mut result = client.raw_request(req.request.clone()).await;
+                            // Bound every request. Without this, a daemon that
+                            // accepts the connection but never replies (wedged,
+                            // killed mid-request, orphaned socket) parks this
+                            // worker forever: the in-flight oneshot never fires,
+                            // the UI shows its queued status ("Archiving...")
+                            // indefinitely, and every later request queues
+                            // behind the stuck one. Slow LLM work doesn't go
+                            // through this worker (see ipc_call_dedicated), so
+                            // a generous bound only ever fires on a dead peer.
+                            let mut result = match tokio::time::timeout(
+                                IPC_REQUEST_TIMEOUT,
+                                client.raw_request(req.request.clone()),
+                            )
+                            .await
+                            {
+                                Ok(result) => result,
+                                Err(_) => {
+                                    // The old connection has a stranded
+                                    // in-flight request; a late reply would be
+                                    // misattributed to the next request. Drop
+                                    // it and connect fresh. If the reconnect
+                                    // fails, keep going — the next request
+                                    // re-enters the reconnect path.
+                                    if let Ok(fresh) =
+                                        connect_ipc_client(&socket_path, event_tx.clone()).await
+                                    {
+                                        client = fresh;
+                                    }
+                                    Err(MxrError::Ipc(format!(
+                                        "daemon did not respond within {}s — the request may or may not have been applied",
+                                        IPC_REQUEST_TIMEOUT.as_secs()
+                                    )))
+                                }
+                            };
                             if should_reconnect_ipc(&result)
                                 && request_supports_retry(&req.request)
                             {
                                 match connect_ipc_client(&socket_path, event_tx.clone()).await {
                                     Ok(mut reconnected) => {
-                                        let retry = reconnected.raw_request(req.request.clone()).await;
+                                        let retry = match tokio::time::timeout(
+                                            IPC_REQUEST_TIMEOUT,
+                                            reconnected.raw_request(req.request.clone()),
+                                        )
+                                        .await
+                                        {
+                                            Ok(retry) => retry,
+                                            Err(_) => Err(MxrError::Ipc(format!(
+                                                "daemon did not respond within {}s — the request may or may not have been applied",
+                                                IPC_REQUEST_TIMEOUT.as_secs()
+                                            ))),
+                                        };
                                         if retry.is_ok() {
                                             client = reconnected;
                                         }
@@ -256,4 +307,43 @@ pub(crate) async fn ipc_call_dedicated(
     drop(event_rx);
     let mut client = connect_ipc_client(socket_path, event_tx).await?;
     client.raw_request(request).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::AsyncReadExt;
+
+    /// A daemon that accepts the connection but never replies must produce
+    /// a timeout error, not park the worker (and the UI status) forever.
+    #[tokio::test(start_paused = true)]
+    async fn unresponsive_daemon_times_out_instead_of_hanging() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let sock = dir.path().join("mxr.sock");
+        let listener = tokio::net::UnixListener::bind(&sock).expect("bind");
+
+        // Accept and read forever, never writing a response.
+        tokio::spawn(async move {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut sink = [0u8; 1024];
+            loop {
+                match stream.read(&mut sink).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {}
+                }
+            }
+        });
+
+        let (result_tx, _result_rx) = mpsc::unbounded_channel();
+        let worker = spawn_ipc_worker(sock, result_tx);
+
+        let result = ipc_call(&worker, Request::Ping).await;
+        let error = result.expect_err("must not hang or succeed");
+        assert!(
+            error.to_string().contains("did not respond"),
+            "unexpected error: {error}"
+        );
+    }
 }

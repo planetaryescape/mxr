@@ -657,25 +657,28 @@ fn daemon_pid_file_path() -> PathBuf {
 }
 
 /// Identity of the file currently at `path`, used to detect whether the
-/// socket we bound is still the one on disk. (dev, ino) uniquely names an
-/// inode while it exists; a successor daemon re-binding the path creates a
-/// new inode.
+/// socket we bound is still the one on disk. (dev, ino) alone is not
+/// enough: ext4 recycles inode numbers, so a successor daemon's freshly
+/// bound socket can land on the inode we just freed. The bind timestamp
+/// (ns resolution on apfs/ext4/tmpfs) disambiguates a recycled inode.
 #[cfg(unix)]
-fn socket_file_identity(path: &Path) -> Option<(u64, u64)> {
+fn socket_file_identity(path: &Path) -> Option<(u64, u64, i64, i64)> {
     use std::os::unix::fs::MetadataExt;
 
-    std::fs::metadata(path).ok().map(|m| (m.dev(), m.ino()))
+    std::fs::metadata(path)
+        .ok()
+        .map(|m| (m.dev(), m.ino(), m.mtime(), m.mtime_nsec()))
 }
 
 #[cfg(not(unix))]
-fn socket_file_identity(_path: &Path) -> Option<(u64, u64)> {
+fn socket_file_identity(_path: &Path) -> Option<(u64, u64, i64, i64)> {
     None
 }
 
 /// Remove the socket file only if it is still the one this daemon bound.
 /// `owned` of `None` (identity capture failed at bind time) falls back to
 /// unconditional removal, matching the previous behavior.
-fn remove_socket_if_owned(path: &Path, owned: Option<(u64, u64)>) {
+fn remove_socket_if_owned(path: &Path, owned: Option<(u64, u64, i64, i64)>) {
     match (owned, socket_file_identity(path)) {
         (Some(ours), Some(current)) if ours != current => {
             tracing::info!(

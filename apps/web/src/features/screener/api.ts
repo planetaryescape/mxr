@@ -30,3 +30,27 @@ export function setScreenerDecision(input: {
     },
   });
 }
+
+export interface ScreenerDecision {
+  account_id: string;
+  sender_email: string;
+  disposition: ScreenerDisposition;
+  route_label?: string | null;
+  decided_at: string;
+}
+
+export function fetchScreenerDecisions(accountId: string) {
+  return apiFetch<{ decisions: ScreenerDecision[] }>(
+    `/api/v1/mail/screener/decisions?account_id=${encodeURIComponent(accountId)}`,
+  );
+}
+
+export function clearScreenerDecision(input: { accountId: string; senderEmail: string }) {
+  return apiFetch<unknown>("/api/v1/mail/screener/decisions", {
+    method: "DELETE",
+    body: {
+      account_id: input.accountId,
+      sender_email: input.senderEmail,
+    },
+  });
+}

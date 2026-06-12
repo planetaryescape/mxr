@@ -104,6 +104,22 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
 
       <div className="shrink-0 border-b border-border">
         <div className="mx-auto w-full max-w-[860px] px-4 py-1.5">
+          {controller.collaboratorSuggestions.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5 px-1 pb-1 text-2xs text-muted-foreground">
+              <span>Maybe include:</span>
+              {controller.collaboratorSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion.email}
+                  type="button"
+                  className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-2xs text-foreground transition-colors hover:border-primary/50 hover:bg-muted"
+                  title={suggestion.reason}
+                  onClick={() => controller.addRecipient(suggestion.email)}
+                >
+                  {suggestion.display_name || suggestion.email}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <RecipientField
             label="To"
             value={draft.frontmatter.to}

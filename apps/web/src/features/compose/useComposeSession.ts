@@ -24,6 +24,7 @@ import {
   saveLocalDraft,
   sendComposeSession,
   startComposeSession,
+  suggestComposeCollaborators,
   updateComposeSession,
   uploadComposeAttachment,
   type ComposeFrontmatter,
@@ -33,6 +34,7 @@ import {
   type DraftAddress,
   type DraftSafetyReport,
   type RuntimeAccount,
+  type SuggestedCollaborator,
 } from "./api";
 import { archiveMessages } from "@/features/mailbox/api";
 import { requestCoordinator } from "@/lib/requestCoordinator";
@@ -157,6 +159,11 @@ export interface ComposeController {
   signatureList: Signature[];
   /** Append a signature block (`\n\n--\n{body}`) to the message body. */
   insertSignature: (body: string) => void;
+  /** "Maybe include" suggestions for the chip row; empty when none or the
+   * lookup failed (the row hides silently). */
+  collaboratorSuggestions: SuggestedCollaborator[];
+  /** Append an address to the To field (collaborator chip click). */
+  addRecipient: (email: string) => void;
   sendLaterOpen: boolean;
   setSendLaterOpen: Dispatch<SetStateAction<boolean>>;
   /** Open the send-later dialog (same local validation gate as send). */
@@ -251,6 +258,12 @@ export function useComposeSession(
   const [safetyCheckError, setSafetyCheckError] = useState<string | null>(null);
   const [checkingSafety, setCheckingSafety] = useState(false);
   const hasAutofocusedRef = useRef(false);
+  const [collaboratorSuggestions, setCollaboratorSuggestions] = useState<SuggestedCollaborator[]>(
+    [],
+  );
+  // One collaborators lookup per draft path — recipients settling for 1s
+  // with at least one To address triggers it.
+  const collaboratorsFetchedRef = useRef(new Set<string>());
   // Set per send pipeline run (cmd+shift+Enter); consumed at dispatch time so
   // the safety-dialog detour keeps the archive intent and a cancelled undo
   // window drops it.
@@ -455,6 +468,26 @@ export function useComposeSession(
       if (!focusIsElsewhere) toInputRef.current?.focus();
     });
   }, [draft?.draftPath]);
+
+  // Suggest collaborators once per draft, after the recipients settle for a
+  // second with at least one To address. Best-effort: errors hide the row.
+  const collaboratorDraftPath = draft?.draftPath;
+  const collaboratorAccountId = draft?.accountId;
+  const collaboratorTo = draft?.frontmatter.to ?? "";
+  useEffect(() => {
+    if (!collaboratorDraftPath || !collaboratorAccountId) return;
+    if (collaboratorsFetchedRef.current.has(collaboratorDraftPath)) return;
+    if (splitAddresses(collaboratorTo).length === 0) return;
+    const handle = window.setTimeout(() => {
+      collaboratorsFetchedRef.current.add(collaboratorDraftPath);
+      suggestComposeCollaborators(collaboratorDraftPath, collaboratorAccountId)
+        .then((response) => setCollaboratorSuggestions(response.suggestions ?? []))
+        .catch(() => {
+          // Silently hide — suggestions are a nicety, never an error state.
+        });
+    }, 1000);
+    return () => window.clearTimeout(handle);
+  }, [collaboratorDraftPath, collaboratorAccountId, collaboratorTo]);
 
   const runtimeAccounts = accounts.data?.accounts ?? [];
   const selectedAccount = draft
@@ -677,6 +710,14 @@ export function useComposeSession(
     } finally {
       setCheckingSafety(false);
     }
+  }
+
+  function addRecipient(email: string) {
+    const current = draftRef.current;
+    if (!current) return;
+    const existing = splitAddresses(current.frontmatter.to);
+    if (existing.some((chip) => chip.toLowerCase().includes(email.toLowerCase()))) return;
+    updateFrontmatter("to", [...existing, email].join(", "));
   }
 
   function insertSnippet(body: string) {
@@ -981,6 +1022,15 @@ export function useComposeSession(
     setSignaturePickerOpen,
     signatureList: signatures.data?.signatures ?? [],
     insertSignature,
+    collaboratorSuggestions: draft
+      ? collaboratorSuggestions.filter(
+          (item) =>
+            !`${draft.frontmatter.to},${draft.frontmatter.cc},${draft.frontmatter.bcc}`
+              .toLowerCase()
+              .includes(item.email.toLowerCase()),
+        )
+      : [],
+    addRecipient,
     sendLaterOpen,
     setSendLaterOpen,
     requestSendLater,

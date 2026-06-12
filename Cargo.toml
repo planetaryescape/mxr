@@ -157,38 +157,38 @@ derive_partial_eq_without_eq = "warn"
 significant_drop_in_scrutinee = "warn"
 
 [workspace.dependencies]
-mxr-compose = { path = "crates/compose", version = "0.5.18" }
-mxr-config = { path = "crates/config", version = "0.5.18" }
-mxr-core = { path = "crates/core", version = "0.5.18" }
-mxr-deliveries = { path = "crates/deliveries", version = "0.5.18" }
-mxr-export = { path = "crates/export", version = "0.5.18" }
-mxr-keychain = { path = "crates/keychain", version = "0.5.18" }
-mxr-humanizer = { path = "crates/humanizer", version = "0.5.18" }
-mxr-llm = { path = "crates/llm", version = "0.5.18" }
-mxr-mail-parse = { path = "crates/mail-parse", version = "0.5.18" }
-mxr-mcp = { path = "crates/mcp", version = "0.5.18" }
+mxr-compose = { path = "crates/compose", version = "0.6.0" }
+mxr-config = { path = "crates/config", version = "0.6.0" }
+mxr-core = { path = "crates/core", version = "0.6.0" }
+mxr-deliveries = { path = "crates/deliveries", version = "0.6.0" }
+mxr-export = { path = "crates/export", version = "0.6.0" }
+mxr-keychain = { path = "crates/keychain", version = "0.6.0" }
+mxr-humanizer = { path = "crates/humanizer", version = "0.6.0" }
+mxr-llm = { path = "crates/llm", version = "0.6.0" }
+mxr-mail-parse = { path = "crates/mail-parse", version = "0.6.0" }
+mxr-mcp = { path = "crates/mcp", version = "0.6.0" }
 mail-threading = "0.1.0"
 list-unsubscribe = "0.1.3"
 mail-query = "0.1.0"
 mailbox-formats = "0.1.0"
-mxr-outbound = { path = "crates/outbound", version = "0.5.18" }
-mxr-protocol = { path = "crates/protocol", version = "0.5.18" }
-mxr-provider-fake = { path = "crates/provider-fake", version = "0.5.18" }
-mxr-provider-gmail = { path = "crates/provider-gmail", version = "0.5.18" }
-mxr-provider-imap = { path = "crates/provider-imap", version = "0.5.18" }
-mxr-provider-outlook = { path = "crates/provider-outlook", version = "0.5.18" }
-mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.5.18" }
-mxr-reader = { path = "crates/reader", version = "0.5.18" }
-mxr-relationship = { path = "crates/relationship", version = "0.5.18" }
-mxr-rules = { path = "crates/rules", version = "0.5.18" }
-mxr-safety = { path = "crates/safety", version = "0.5.18" }
-mxr-search = { path = "crates/search", version = "0.5.18" }
-mxr-semantic = { path = "crates/semantic", version = "0.5.18" }
-mxr-store = { path = "crates/store", version = "0.5.18" }
-mxr-sync = { path = "crates/sync", version = "0.5.18" }
-mxr-test-support = { path = "crates/test-support", version = "0.5.18" }
-mxr-tui = { path = "crates/tui", version = "0.5.18" }
-mxr-web = { path = "crates/web", version = "0.5.18" }
+mxr-outbound = { path = "crates/outbound", version = "0.6.0" }
+mxr-protocol = { path = "crates/protocol", version = "0.6.0" }
+mxr-provider-fake = { path = "crates/provider-fake", version = "0.6.0" }
+mxr-provider-gmail = { path = "crates/provider-gmail", version = "0.6.0" }
+mxr-provider-imap = { path = "crates/provider-imap", version = "0.6.0" }
+mxr-provider-outlook = { path = "crates/provider-outlook", version = "0.6.0" }
+mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.6.0" }
+mxr-reader = { path = "crates/reader", version = "0.6.0" }
+mxr-relationship = { path = "crates/relationship", version = "0.6.0" }
+mxr-rules = { path = "crates/rules", version = "0.6.0" }
+mxr-safety = { path = "crates/safety", version = "0.6.0" }
+mxr-search = { path = "crates/search", version = "0.6.0" }
+mxr-semantic = { path = "crates/semantic", version = "0.6.0" }
+mxr-store = { path = "crates/store", version = "0.6.0" }
+mxr-sync = { path = "crates/sync", version = "0.6.0" }
+mxr-test-support = { path = "crates/test-support", version = "0.6.0" }
+mxr-tui = { path = "crates/tui", version = "0.6.0" }
+mxr-web = { path = "crates/web", version = "0.6.0" }
 
 glob-match = "0.2"
 shell-words = "1.1"

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { resolveCommitment as resolveCommitmentApi } from "@/features/mailbox/api";
+import { ExpertFinderPanel } from "@/features/mailbox/ExpertFinderPanel";
 import { LabelPicker } from "@/features/mailbox/LabelPicker";
 import { MovePicker } from "@/features/mailbox/MovePicker";
 import { RoutePicker } from "@/features/mailbox/RoutePicker";
@@ -107,6 +108,12 @@ function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
   }
   if (kind === "commitments") {
     return <CommitmentsPanel payload={payload} />;
+  }
+  if (kind === "thread-briefing" || kind === "recipient-briefing") {
+    return <BriefingPanel payload={payload} />;
+  }
+  if (kind === "expert-finder") {
+    return <ExpertFinderPanel />;
   }
   return <pre className="font-mono text-2xs">{JSON.stringify(payload ?? null, null, 2)}</pre>;
 }
@@ -523,6 +530,66 @@ function CommitmentsPanel({ payload }: { payload: unknown }) {
       ))}
     </div>
   );
+}
+
+interface Briefing {
+  thread_id: string;
+  body_markdown: string;
+  citations?: { message_id?: string; subject?: string; date?: string }[];
+  generated_at: string;
+  from_cache: boolean;
+}
+
+function BriefingPanel({ payload }: { payload: unknown }) {
+  const briefing = extractBriefing(payload);
+  if (!briefing) {
+    return (
+      <div className="rounded-md border border-border bg-muted/40 px-3 py-4 text-sm text-foreground">
+        No briefing available.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3 text-foreground">
+      <div className="flex items-center gap-2">
+        <Badge variant={briefing.from_cache ? "secondary" : "outline"}>
+          {briefing.from_cache ? "Cached" : "Fresh"}
+        </Badge>
+        <span className="text-2xs text-muted-foreground">
+          {formatDate(briefing.generated_at)}
+        </span>
+      </div>
+      {/* Reader-first: render the markdown body as plain wrapped text rather
+          than pulling in a markdown renderer the app doesn't already ship. */}
+      <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground">
+        {briefing.body_markdown.trim() || "No briefing content."}
+      </p>
+      {briefing.citations && briefing.citations.length > 0 ? (
+        <div className="space-y-1.5 rounded-md border border-border bg-muted/30 p-3">
+          <h4 className="text-xs font-medium">Sources</h4>
+          <ul className="space-y-1">
+            {briefing.citations.slice(0, 12).map((citation, index) => (
+              <li
+                key={citation.message_id ?? index}
+                className="truncate text-2xs text-muted-foreground"
+                title={citation.subject ?? citation.message_id}
+              >
+                {citation.subject?.trim() || citation.message_id || "(source)"}
+                {citation.date ? ` · ${formatShortDate(citation.date)}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function extractBriefing(value: unknown): Briefing | null {
+  if (!isRecord(value)) return null;
+  const candidate = isRecord(value.briefing) ? value.briefing : value;
+  if (typeof candidate.body_markdown !== "string") return null;
+  return candidate as unknown as Briefing;
 }
 
 function styleSummary(score: number): string {

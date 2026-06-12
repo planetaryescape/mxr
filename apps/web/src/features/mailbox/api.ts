@@ -99,6 +99,64 @@ export function resolveCommitment(commitmentId: string): Promise<unknown> {
   });
 }
 
+export interface ThreadBriefing {
+  thread_id: string;
+  body_markdown: string;
+  citations: { message_id?: string; subject?: string; date?: string }[];
+  generated_at: string;
+  from_cache: boolean;
+}
+
+export function getThreadBriefing(input: {
+  threadId: string;
+  refresh?: boolean;
+}): Promise<{ briefing: ThreadBriefing }> {
+  const query = input.refresh ? "?refresh=true" : "";
+  return apiFetch<{ briefing: ThreadBriefing }>(
+    `/api/v1/mail/threads/${encodeURIComponent(input.threadId)}/briefing${query}`,
+  );
+}
+
+export function getRecipientBriefing(input: {
+  accountId: string;
+  email: string;
+  refresh?: boolean;
+}): Promise<{ briefing: ThreadBriefing }> {
+  const query = new URLSearchParams({ account_id: input.accountId, email: input.email });
+  if (input.refresh) query.set("refresh", "true");
+  return apiFetch<{ briefing: ThreadBriefing }>(
+    `/api/v1/mail/contacts/briefing?${query.toString()}`,
+  );
+}
+
+export interface ExpertSuggestion {
+  email: string;
+  display_name?: string | null;
+  reason: string;
+  answered_thread_count: number;
+  evidence_msg_ids: string[];
+}
+
+export function findExpert(input: {
+  accountId: string;
+  query: string;
+  limit?: number;
+}): Promise<{ experts: ExpertSuggestion[] }> {
+  const query = new URLSearchParams({ account_id: input.accountId, query: input.query });
+  if (input.limit) query.set("limit", String(input.limit));
+  return apiFetch<{ experts: ExpertSuggestion[] }>(
+    `/api/v1/mail/contacts/expert?${query.toString()}`,
+  );
+}
+
+export function getRelationshipProfile(input: {
+  accountId: string;
+  email: string;
+}): Promise<unknown> {
+  const query = new URLSearchParams({ account_id: input.accountId, email: input.email });
+  return apiFetch<unknown>(`/api/v1/mail/relationship?${query.toString()}`);
+}
+
 interface AttachmentActionInput {
   messageId: string;
   attachmentId: string;

@@ -7,7 +7,15 @@
  * the picker components — these registry runners just open the right panel.
  */
 
-import { Archive, ArrowRightCircle, Route as RouteIcon, Tag, MailX, Undo2 } from "lucide-react";
+import {
+  Archive,
+  ArrowRightCircle,
+  Route as RouteIcon,
+  Tag,
+  MailX,
+  Undo2,
+  UserSearch,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -186,6 +194,18 @@ export const mailboxActions: Action[] = [
       }
       useModals.getState().setCommandPaletteOpen(false);
       useModals.getState().openRightRail("draft-assist", { threadId });
+    },
+  },
+  {
+    id: "mail.find-expert",
+    label: "Find an expert",
+    description: "Surface people in your archive who answered similar questions",
+    group: "Mail",
+    icon: UserSearch,
+    paletteOnly: true,
+    run: () => {
+      useModals.getState().setCommandPaletteOpen(false);
+      useModals.getState().openRightRail("expert-finder");
     },
   },
   {

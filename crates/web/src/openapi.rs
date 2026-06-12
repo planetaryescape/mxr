@@ -41,7 +41,8 @@ use utoipa::{
         mail_draft_refine, mail_humanizer_score, mail_humanizer_rewrite,
         mail_relationship_profile, mail_relationship_rebuild, mail_commitments_list,
         mail_commitments_resolve, compose_session_start, compose_session_refresh, compose_session_restore,
-        compose_session_update, compose_session_send, compose_session_save,
+        compose_session_update, compose_session_send, compose_session_safety_check,
+        compose_session_collaborators, compose_session_save,
         compose_session_attachment, compose_session_discard, rules_list, rule_detail, rule_form,
         rule_history, rule_dry_run, rule_upsert, rule_upsert_form, rule_delete,
         saved_searches_list, saved_searches_create, saved_searches_delete, saved_searches_update,
@@ -173,6 +174,8 @@ endpoint!(post compose_session_refresh "/api/v1/mail/compose/session/refresh", "
 endpoint!(post compose_session_restore "/api/v1/mail/compose/session/restore", "Restore compose session");
 endpoint!(post compose_session_update "/api/v1/mail/compose/session/update", "Update compose session");
 endpoint!(post compose_session_send "/api/v1/mail/compose/session/send", "Send compose session");
+endpoint!(post compose_session_safety_check "/api/v1/mail/compose/session/safety-check", "Run the pre-send safety report for a compose session");
+endpoint!(post compose_session_collaborators "/api/v1/mail/compose/session/collaborators", "Suggest maybe-include recipients for a compose session");
 endpoint!(post compose_session_save "/api/v1/mail/compose/session/save", "Save compose session");
 endpoint!(post compose_session_attachment "/api/v1/mail/compose/session/attachment", "Upload compose attachment");
 endpoint!(post compose_session_discard "/api/v1/mail/compose/session/discard", "Discard compose session");

@@ -43,6 +43,7 @@ import {
   type EmailHtmlTheme,
   type ReaderLayout,
   type Theme,
+  type UndoSendSeconds,
 } from "@/state/uiPrefsStore";
 
 const sections = [
@@ -330,6 +331,8 @@ export function ComposeSettingsSection() {
   const qc = useQueryClient();
   const composeEditor = useUiPrefs((state) => state.composeEditor);
   const setComposeEditor = useUiPrefs((state) => state.setComposeEditor);
+  const undoSendSeconds = useUiPrefs((state) => state.undoSendSeconds);
+  const setUndoSendSeconds = useUiPrefs((state) => state.setUndoSendSeconds);
   const accounts = useQuery({
     queryKey: ["accounts"],
     queryFn: fetchAccounts,
@@ -399,6 +402,15 @@ export function ComposeSettingsSection() {
             values={["codemirror-vim", "tiptap"]}
             onChange={(value) => setComposeEditor(value as ComposeEditor)}
           />
+          <SelectRow
+            label="Undo send window"
+            value={String(undoSendSeconds)}
+            values={["0", "5", "10", "30"]}
+            onChange={(value) => setUndoSendSeconds(Number(value) as UndoSendSeconds)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Seconds to cancel after pressing send (z or the toast). 0 sends immediately.
+          </p>
         </Card>
 
         <Card className="space-y-3 p-4">

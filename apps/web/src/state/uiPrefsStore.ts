@@ -12,6 +12,8 @@ export type Density = "compact" | "regular" | "comfortable";
 export type ComposeEditor = "codemirror-vim" | "tiptap";
 export type EmailHtmlTheme = "dark" | "original";
 export type ReaderLayout = "split" | "full";
+/** Undo-send window in seconds; 0 sends immediately. */
+export type UndoSendSeconds = 0 | 5 | 10 | 30;
 
 export interface UiPrefsState {
   theme: Theme;
@@ -23,6 +25,8 @@ export interface UiPrefsState {
   notificationsEnabled: boolean;
   notifyAllNewMail: boolean;
   vipAllowlist: string[];
+  undoSendSeconds: UndoSendSeconds;
+  setUndoSendSeconds: (seconds: UndoSendSeconds) => void;
   setTheme: (t: Theme) => void;
   setDensity: (d: Density) => void;
   setSidebarCollapsed: (b: boolean) => void;
@@ -47,6 +51,8 @@ export const useUiPrefs = create<UiPrefsState>()(
       notificationsEnabled: false,
       notifyAllNewMail: false,
       vipAllowlist: [],
+      undoSendSeconds: 10,
+      setUndoSendSeconds: (undoSendSeconds) => set({ undoSendSeconds }),
       setTheme: (theme) => set({ theme }),
       setDensity: (density) => set({ density }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),

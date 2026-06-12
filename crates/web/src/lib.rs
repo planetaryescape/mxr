@@ -802,6 +802,60 @@ async fn send_compose_session(
     Ok(Json(json!({ "ok": true, "draft_id": draft_id })))
 }
 
+/// Run the pre-send safety gate against the current compose session
+/// without sending. Mirrors the report `SendDraft` would enforce.
+async fn check_compose_session_safety(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<ComposeSessionSendRequest>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let request_id = bridge_request_id(&headers);
+    let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
+    match ipc_request_with_id(
+        &state.config.socket_path,
+        request_id,
+        Request::CheckDraftSafety {
+            draft,
+            context: Default::default(),
+        },
+    )
+    .await
+    {
+        Ok(ResponseData::DraftSafetyReportResponse { report }) => {
+            Ok(Json(json!({ "report": report })))
+        }
+        Ok(_) => Err(BridgeError::UnexpectedResponse),
+        Err(error) => Err(error),
+    }
+}
+
+/// Suggest "maybe include" recipients for the current compose session.
+async fn suggest_compose_collaborators(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<ComposeSessionSendRequest>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let request_id = bridge_request_id(&headers);
+    let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
+    match ipc_request_with_id(
+        &state.config.socket_path,
+        request_id,
+        Request::SuggestCollaborators { draft, limit: 5 },
+    )
+    .await
+    {
+        Ok(ResponseData::SuggestedCollaborators { suggestions }) => {
+            Ok(Json(json!({ "suggestions": suggestions })))
+        }
+        Ok(_) => Err(BridgeError::UnexpectedResponse),
+        Err(error) => Err(error),
+    }
+}
+
 async fn save_compose_session(
     State(state): State<AppState>,
     headers: HeaderMap,

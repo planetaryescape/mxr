@@ -126,6 +126,14 @@ fn mail_router() -> Router<AppState> {
         .route("/compose/session/restore", post(restore_compose_session))
         .route("/compose/session/update", post(update_compose_session))
         .route("/compose/session/send", post(send_compose_session))
+        .route(
+            "/compose/session/safety-check",
+            post(check_compose_session_safety),
+        )
+        .route(
+            "/compose/session/collaborators",
+            post(suggest_compose_collaborators),
+        )
         .route("/compose/session/save", post(save_compose_session))
         .route(
             "/compose/session/attachment",

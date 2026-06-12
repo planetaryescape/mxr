@@ -15,6 +15,7 @@ interface ComposeActionBarProps {
   saveStatus: string;
   dirty: boolean;
   saveError: string | null;
+  onRetrySave: () => void;
   editorPreference: ComposeEditor;
   onEditorChange: (editor: ComposeEditor) => void;
   suggestion: DraftSuggestionResponse | null;
@@ -28,6 +29,7 @@ export function ComposeActionBar({
   saveStatus,
   dirty,
   saveError,
+  onRetrySave,
   editorPreference,
   onEditorChange,
   suggestion,
@@ -73,8 +75,20 @@ export function ComposeActionBar({
         <div className="ml-auto flex min-w-0 items-center gap-3">
           <DraftQualityBadges suggestion={suggestion} compact />
           {saveError ? (
-            <span className="truncate text-2xs text-destructive" title={saveError}>
-              {saveError}
+            <span role="alert" className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-2xs font-medium text-destructive" title={saveError}>
+                Not saved — {saveError}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onRetrySave}
+                disabled={busy}
+                className="h-6 px-2 text-2xs"
+              >
+                Retry
+              </Button>
             </span>
           ) : (
             <span className={cn("text-2xs", dirty ? "text-warning" : "text-success")}>

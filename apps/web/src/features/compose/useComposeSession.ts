@@ -15,11 +15,13 @@ import { toast } from "sonner";
 import { apiFetch } from "@/api/client";
 import {
   checkComposeSafety,
+  createScheduledSend,
   discardComposeSession,
   fetchAccounts,
   refreshComposeSession,
   restoreComposeSession,
   saveComposeSession,
+  saveLocalDraft,
   sendComposeSession,
   startComposeSession,
   updateComposeSession,
@@ -28,6 +30,7 @@ import {
   type ComposeIssue,
   type ComposeKind,
   type ComposeSession,
+  type DraftAddress,
   type DraftSafetyReport,
   type RuntimeAccount,
 } from "./api";
@@ -136,6 +139,13 @@ export interface ComposeController {
   handleComposeKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
   requestSend: () => void;
   confirmSend: () => Promise<void>;
+  sendLaterOpen: boolean;
+  setSendLaterOpen: Dispatch<SetStateAction<boolean>>;
+  /** Open the send-later dialog (same local validation gate as send). */
+  requestSendLater: () => void;
+  /** Persist the session as a stored draft and schedule it for `at`. */
+  scheduleSend: (at: Date, label?: string) => Promise<void>;
+  scheduling: boolean;
   /** Pre-send safety report backing the confirm dialog; null when the
    * check passed clean (no dialog) or hasn't run. */
   safetyReport: DraftSafetyReport | null;
@@ -204,6 +214,7 @@ export function useComposeSession(
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
+  const [sendLaterOpen, setSendLaterOpen] = useState(false);
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
   const [uploading, setUploading] = useState(0);
@@ -244,6 +255,28 @@ export function useComposeSession(
       saveComposeSession(draftPath, accountId),
   });
   const discardSession = useMutation({ mutationFn: discardComposeSession });
+  const scheduleSession = useMutation({
+    mutationFn: async (at: Date) => {
+      const current = draftRef.current;
+      if (!current) throw new Error("No draft is open");
+      const now = new Date().toISOString();
+      const draftId = crypto.randomUUID();
+      await saveLocalDraft({
+        id: draftId,
+        account_id: current.accountId,
+        intent: draftIntentFromKind(current.kind),
+        to: parseDraftAddresses(current.frontmatter.to),
+        cc: parseDraftAddresses(current.frontmatter.cc),
+        bcc: parseDraftAddresses(current.frontmatter.bcc),
+        subject: current.frontmatter.subject,
+        body_markdown: current.bodyMarkdown,
+        attachments: [...current.frontmatter.attach],
+        created_at: now,
+        updated_at: now,
+      });
+      await createScheduledSend(draftId, at);
+    },
+  });
   const draftForMe = useMutation({
     mutationFn: async () => {
       const current = draftRef.current;
@@ -504,6 +537,12 @@ export function useComposeSession(
       handleAttachShortcut();
       return;
     }
+    if (event.shiftKey && key === "l") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!busy) requestSendLater();
+      return;
+    }
     if (event.shiftKey && key === "r") {
       event.preventDefault();
       event.stopPropagation();
@@ -577,6 +616,49 @@ export function useComposeSession(
       setSendConfirmOpen(true);
     } finally {
       setCheckingSafety(false);
+    }
+  }
+
+  function requestSendLater() {
+    const current = draftRef.current;
+    if (!current) return;
+    const errors = localComposeIssues(current).filter((issue) => issue.severity === "error");
+    if (errors.length > 0) {
+      toast.error("Fix compose errors before scheduling", { description: errors[0]?.message });
+      return;
+    }
+    setSendLaterOpen(true);
+  }
+
+  /** Save → store as a local draft → schedule. Closes the composer like a
+   * send; the daemon dispatches the stored draft at `at`. */
+  async function scheduleSend(at: Date, label?: string) {
+    await saveCurrentDraft().catch((error: Error) => {
+      toast.error("Save before schedule failed", { description: error.message });
+    });
+    const current = draftRef.current;
+    if (!current || !isCurrentDraftSaved(current)) {
+      toast.error("Draft changed while saving", {
+        description: "Retry scheduling after the latest save.",
+      });
+      return;
+    }
+    try {
+      await scheduleSession.mutateAsync(at);
+    } catch (error) {
+      toast.error("Schedule failed", { description: errorMessage(error) });
+      return;
+    }
+    setSendLaterOpen(false);
+    forgetActiveDraft(intent.key);
+    toast.success("Send scheduled", {
+      description: label ? `Sends ${label}` : undefined,
+    });
+    void queryClient.invalidateQueries({ queryKey: ["drafts"] });
+    if (options.onSent) {
+      options.onSent();
+    } else {
+      await navigate({ to: "/m/$mailbox", params: { mailbox: "sent" } });
     }
   }
 
@@ -803,6 +885,11 @@ export function useComposeSession(
     handleComposeKeyDown,
     requestSend,
     confirmSend,
+    sendLaterOpen,
+    setSendLaterOpen,
+    requestSendLater,
+    scheduleSend,
+    scheduling: scheduleSession.isPending,
     safetyReport,
     safetyCheckError,
     checkingSafety,
@@ -948,6 +1035,19 @@ function firstAddress(value: string): string | undefined {
   if (!first) return undefined;
   const match = first.match(/<([^>]+)>/);
   return (match?.[1] ?? first).trim() || undefined;
+}
+
+function draftIntentFromKind(kind: string): ComposeKind {
+  return kind === "reply" || kind === "reply_all" || kind === "forward" ? kind : "new";
+}
+
+/** "Name <email>" / bare-email chips → daemon `Address` values. */
+function parseDraftAddresses(value: string): DraftAddress[] {
+  return splitAddresses(value).map((raw) => {
+    const match = raw.match(/^(.*?)\s*<([^>]+)>$/);
+    if (match?.[2]) return { name: match[1]?.trim() || null, email: match[2].trim() };
+    return { name: null, email: raw };
+  });
 }
 
 function countRecipients(frontmatter: ComposeFrontmatter): number {

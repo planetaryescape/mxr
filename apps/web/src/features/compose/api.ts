@@ -182,6 +182,42 @@ export function suggestComposeCollaborators(
   );
 }
 
+export interface DraftAddress {
+  name: string | null;
+  email: string;
+}
+
+/** Payload for `POST /drafts/save-local` (the daemon `Draft` shape). Scheduled
+ * sends operate on stored drafts, so the compose session is materialised into
+ * one before scheduling. */
+export interface LocalDraftPayload {
+  id: string;
+  account_id: string;
+  intent: ComposeKind;
+  to: DraftAddress[];
+  cc: DraftAddress[];
+  bcc: DraftAddress[];
+  subject: string;
+  body_markdown: string;
+  attachments: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export function saveLocalDraft(draft: LocalDraftPayload): Promise<unknown> {
+  return apiFetch<unknown>("/api/v1/mail/drafts/save-local", {
+    method: "POST",
+    body: draft,
+  });
+}
+
+export function createScheduledSend(draftId: string, sendAt: Date): Promise<unknown> {
+  return apiFetch<unknown>("/api/v1/mail/scheduled-sends", {
+    method: "POST",
+    body: { draft_id: draftId, send_at: sendAt.toISOString() },
+  });
+}
+
 export function saveComposeSession(draftPath: string, accountId: string): Promise<{ ok: boolean }> {
   return apiFetch<{ ok: boolean }>("/api/v1/mail/compose/session/save", {
     method: "POST",

@@ -32,6 +32,7 @@ import { ComposeTopBar } from "./ComposeTopBar";
 import { DraftAssist } from "./DraftAssist";
 import { DraftQualityBadges } from "./DraftQualityBadges";
 import { RecipientField } from "./RecipientField";
+import { SendLaterDialog } from "./SendLaterDialog";
 import type { DraftSuggestionResponse } from "./types";
 import type { ComposeController } from "./useComposeSession";
 
@@ -257,6 +258,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
 
       <ComposeActionBar
         onSend={controller.requestSend}
+        onSendLater={controller.requestSendLater}
         onAttach={controller.handleAttachShortcut}
         uploading={controller.uploading}
         busy={controller.busy}
@@ -291,6 +293,12 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         safetyReport={controller.safetyReport}
         safetyCheckError={controller.safetyCheckError}
         onConfirm={controller.confirmSend}
+      />
+      <SendLaterDialog
+        open={controller.sendLaterOpen}
+        onOpenChange={controller.setSendLaterOpen}
+        scheduling={controller.scheduling}
+        onConfirm={(at, label) => void controller.scheduleSend(at, label)}
       />
       <DiscardConfirmDialog
         open={controller.discardConfirmOpen}

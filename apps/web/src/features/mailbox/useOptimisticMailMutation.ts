@@ -24,6 +24,24 @@ import type {
 import { requestAccountReauth } from "@/features/accounts/reauthRequest";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 import { useSelection } from "@/state/selectionStore";
+import { useUndo } from "@/state/undoStore";
+
+/** Undo a mutation by id and refresh every mail surface. Shared by the
+ * success-toast Undo button and the global `z` shortcut. */
+export function performUndo(qc: QueryClient, mutationId: string): Promise<void> {
+  return undoMutation(mutationId)
+    .then(() => {
+      const undo = useUndo.getState();
+      if (undo.lastMutationId === mutationId) undo.clear();
+      toast.success("Undo applied");
+      void qc.invalidateQueries({ queryKey: ["mailbox"] });
+      void qc.invalidateQueries({ queryKey: ["thread"] });
+      void qc.invalidateQueries({ queryKey: shellKey });
+    })
+    .catch((error: Error) => {
+      toast.error("Undo failed", { description: error.message });
+    });
+}
 
 export type MailAction =
   | "archive"
@@ -286,21 +304,14 @@ export function useOptimisticMailMutation(action: MailAction, options: MailMutat
       const label = actionLabel(action, payload);
       const mutationId = response.result?.mutation_id;
       if (mutationId) {
+        useUndo.getState().setLastMutationId(mutationId);
         toast.success(`${label} ${count}`, {
           duration: 60_000,
+          description: "z to undo",
           action: {
             label: "Undo",
             onClick: () => {
-              undoMutation(mutationId)
-                .then(() => {
-                  toast.success("Undo applied");
-                  void qc.invalidateQueries({ queryKey: ["mailbox"] });
-                  void qc.invalidateQueries({ queryKey: ["thread"] });
-                  void qc.invalidateQueries({ queryKey: shellKey });
-                })
-                .catch((error: Error) =>
-                  toast.error("Undo failed", { description: error.message }),
-                );
+              void performUndo(qc, mutationId);
             },
           },
         });

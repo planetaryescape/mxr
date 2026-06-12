@@ -1,10 +1,10 @@
 //! Slice 5.4 (C2.8 cont): renders the expert-finder modal —
 //! ranks people who have answered similar questions before.
 
+use super::centered_rect;
 use crate::app::ExpertModalState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 pub fn draw(frame: &mut Frame, area: Rect, state: &ExpertModalState, theme: &crate::theme::Theme) {
     if !state.visible {
@@ -60,7 +60,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ExpertModalState, theme: &cra
     )));
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
-
 
 #[cfg(test)]
 mod tests {

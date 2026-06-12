@@ -141,7 +141,11 @@ mod tests {
         let t0 = Instant::now();
         let mut queue = ToastQueue::default();
         queue.push(toast_at("old", t0, Duration::from_secs(5)));
-        queue.push(toast_at("fresh", t0 + Duration::from_secs(4), Duration::from_secs(5)));
+        queue.push(toast_at(
+            "fresh",
+            t0 + Duration::from_secs(4),
+            Duration::from_secs(5),
+        ));
 
         queue.sweep_expired(t0 + Duration::from_secs(6));
 

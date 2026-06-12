@@ -3,11 +3,11 @@
 //! the analytics screen. Field navigation: Tab/Shift-Tab. Submit:
 //! Enter. Cancel: Esc.
 
+use super::centered_rect;
 use crate::app::AnalyticsFilterModalState;
 use crate::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 pub fn draw(
     frame: &mut Frame,
@@ -114,4 +114,3 @@ fn option_line<'a>(
     }
     Line::from(spans)
 }
-

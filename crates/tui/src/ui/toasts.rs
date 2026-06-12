@@ -13,7 +13,13 @@ const TOAST_HEIGHT: u16 = 3;
 /// Draw stacked toast boxes anchored bottom-right, directly above the
 /// status bar. `toasts` is expected newest-first (see
 /// `ToastQueue::visible`); the newest renders closest to the status bar.
-pub fn draw(frame: &mut Frame, area: Rect, toasts: &[&Toast], now: std::time::Instant, theme: &Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    toasts: &[&Toast],
+    now: std::time::Instant,
+    theme: &Theme,
+) {
     if toasts.is_empty() {
         return;
     }

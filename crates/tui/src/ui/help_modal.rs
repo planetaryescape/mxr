@@ -1,3 +1,4 @@
+use super::centered_rect;
 use crate::action::UiContext;
 use crate::keybindings::{all_bindings_for_context, ViewContext};
 use crate::ui::command_palette::commands_for_context;
@@ -6,7 +7,6 @@ use nucleo::{Config, Matcher, Utf32Str};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::collections::{BTreeMap, BTreeSet};
-use super::centered_rect;
 
 #[derive(Debug, Clone)]
 struct HelpSection {
@@ -687,7 +687,6 @@ fn draw_search_results(
     );
     frame.render_widget(footer, chunks[2]);
 }
-
 
 #[cfg(test)]
 mod tests {

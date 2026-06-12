@@ -1,9 +1,9 @@
+use super::centered_rect;
 use crate::app::PlatformModalState;
 use crate::theme::Theme;
 use ratatui::layout::Margin;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 pub fn draw(frame: &mut Frame, area: Rect, state: &PlatformModalState, theme: &Theme) {
     if !state.visible {
@@ -41,7 +41,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &PlatformModalState, theme: &T
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, inner);
 }
-
 
 #[cfg(test)]
 mod tests {

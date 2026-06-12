@@ -1,7 +1,7 @@
+use super::centered_rect;
 use crate::app::{SavedSearchFormField, SavedSearchFormState};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 pub fn draw(
     frame: &mut Frame,
@@ -166,7 +166,6 @@ fn search_mode_label(mode: mxr_core::types::SearchMode) -> &'static str {
         mxr_core::types::SearchMode::Hybrid => "hybrid",
     }
 }
-
 
 #[cfg(test)]
 mod tests {

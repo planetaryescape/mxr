@@ -1,7 +1,7 @@
+use super::centered_rect;
 use crate::app::ErrorModalState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 pub fn draw(
     frame: &mut Frame,
@@ -57,7 +57,6 @@ pub fn draw(
         );
     }
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -1,8 +1,8 @@
+use super::centered_rect;
 use crate::app::{PendingSend, PendingSendMode};
 use mxr_core::{DraftSafetyReport, DraftSafetySeverity, DraftSafetyVerdict};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 pub fn draw(
     frame: &mut Frame,
@@ -152,7 +152,6 @@ fn push_safety_lines(
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -84,16 +84,25 @@ struct SidebarBuildState<'a> {
 #[derive(Debug, Clone)]
 enum SidebarEntry<'a> {
     Separator,
-    Header { title: &'static str, expanded: bool },
+    Header {
+        title: &'static str,
+        expanded: bool,
+    },
     Account {
         email: String,
         is_default: bool,
         sync: AccountSyncIndicator,
     },
     AllMail,
-    Subscriptions { count: usize },
-    Owed { count: usize },
-    CalendarInvites { count: usize },
+    Subscriptions {
+        count: usize,
+    },
+    Owed {
+        count: usize,
+    },
+    CalendarInvites {
+        count: usize,
+    },
     Label(&'a Label),
     SavedSearch(&'a SavedSearch),
 }

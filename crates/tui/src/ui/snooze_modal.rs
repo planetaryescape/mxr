@@ -1,8 +1,8 @@
+use super::centered_rect;
 use crate::app::{snooze_presets, SnoozePanelState, SnoozePreset};
 use mxr_config::SnoozeConfig;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 /// Row label rendered for the trailing "Custom..." entry that opens
 /// the conversational time input. Kept as a constant so tests can match
@@ -144,7 +144,6 @@ fn draw_custom_input(
 fn format_preset(preset: SnoozePreset, config: &SnoozeConfig) -> String {
     mxr_config::snooze::format_preset(preset, config)
 }
-
 
 #[cfg(test)]
 mod tests {

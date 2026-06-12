@@ -4,10 +4,10 @@
 //! shows error inline on failure. Same shape as `summary_modal` /
 //! `sender_profile_modal` so the visual language is consistent.
 
+use super::centered_rect;
 use crate::app::{BriefingModalState, BriefingModalSubject};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 pub fn draw(
     frame: &mut Frame,
@@ -105,7 +105,6 @@ fn short_id(id: &str) -> String {
         id.to_string()
     }
 }
-
 
 #[cfg(test)]
 mod tests {

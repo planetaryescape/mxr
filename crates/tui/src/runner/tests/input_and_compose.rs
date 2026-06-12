@@ -467,7 +467,7 @@ fn ctrl_a_adds_top_suggestion_to_cc() {
         intent: mxr_core::DraftIntent::New,
         mode: PendingSendMode::SendOrSave,
         safety_report: None,
-            safety_check_failed: None,
+        safety_check_failed: None,
         override_token: None,
         invite_reply: None,
         suggested_collaborators: vec![mxr_protocol::SuggestedRecipientData {
@@ -1409,7 +1409,6 @@ fn sidebar_system_labels_before_user_labels() {
 /// clears the override so help tracks focus again.
 #[test]
 fn help_modal_tab_cycles_context_filter_and_wraps_to_focused_view() {
-    use crate::action::UiContext;
     let mut app = App::new();
     app.apply(Action::Help);
     assert!(app.modals.help_open, "help must open");
@@ -1457,5 +1456,9 @@ fn pending_chord_prefix_is_exposed_for_the_hint_bar() {
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
     assert_eq!(app.pending_input_prefix(), Some('g'));
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE));
-    assert_eq!(app.pending_input_prefix(), None, "chord completion clears the prefix");
+    assert_eq!(
+        app.pending_input_prefix(),
+        None,
+        "chord completion clears the prefix"
+    );
 }

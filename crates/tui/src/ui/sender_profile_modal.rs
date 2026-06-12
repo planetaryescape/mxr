@@ -1,9 +1,9 @@
+use super::centered_rect;
 use crate::app::{SenderProfileModalState, SenderProfileTab};
 use crate::theme::Theme;
 use ratatui::layout::Margin;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 const MODAL_WIDTH_PERCENT: u16 = 70;
 const MODAL_HEIGHT_PERCENT: u16 = 78;
@@ -403,7 +403,6 @@ fn push_message_lines<'a>(
         }
     }
 }
-
 
 fn truncate(value: &str, max_chars: usize) -> String {
     let mut chars = value.chars();

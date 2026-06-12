@@ -1,8 +1,8 @@
+use super::centered_rect;
 use crate::app::{AccountFormMode, AccountsPageState};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use throbber_widgets_tui::{Throbber, BRAILLE_SIX};
-use super::centered_rect;
 
 pub fn draw(
     frame: &mut Frame,
@@ -927,7 +927,6 @@ fn draw_device_code_overlay(
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, popup);
 }
-
 
 #[cfg(test)]
 mod tests {

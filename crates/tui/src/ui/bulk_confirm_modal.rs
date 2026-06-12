@@ -1,7 +1,7 @@
+use super::centered_rect;
 use crate::app::PendingBulkConfirm;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 pub fn draw(
     frame: &mut Frame,
@@ -31,7 +31,6 @@ pub fn draw(
     ];
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
-
 
 #[cfg(test)]
 mod tests {

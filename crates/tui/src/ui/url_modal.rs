@@ -1,8 +1,8 @@
+use super::centered_rect;
 use crate::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::collections::HashSet;
-use super::centered_rect;
 
 #[derive(Debug, Clone)]
 pub struct UrlEntry {
@@ -221,7 +221,6 @@ fn strip_html_tags(text: &str) -> String {
     }
     result.trim().to_string()
 }
-
 
 pub fn open_url(url: &str) {
     #[cfg(target_os = "macos")]

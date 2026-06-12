@@ -2,12 +2,12 @@
 //! local `user_activity` rows. Lives over whatever screen the user is on
 //! — opened via `g y` chord or palette entry.
 
+use super::centered_rect;
 use crate::app::ActivityModalState;
 use crate::theme::Theme;
 use ratatui::layout::Margin;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 const MODAL_WIDTH_PERCENT: u16 = 90;
 const MODAL_HEIGHT_PERCENT: u16 = 80;
@@ -165,4 +165,3 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ActivityModalState, theme: &T
         .wrap(Wrap { trim: false });
     frame.render_widget(detail, chunks[1]);
 }
-

@@ -2,10 +2,10 @@
 //! using local evidence (sender_profile + relationship for emails,
 //! lexical-search citations for terms, candidate list for ambiguous).
 
+use super::centered_rect;
 use crate::app::WhoisModalState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 pub fn draw(frame: &mut Frame, area: Rect, state: &WhoisModalState, theme: &crate::theme::Theme) {
     if !state.visible {
@@ -85,7 +85,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &WhoisModalState, theme: &crat
 
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
-
 
 #[cfg(test)]
 mod tests {

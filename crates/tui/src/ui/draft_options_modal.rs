@@ -4,11 +4,11 @@
 //! disclosure). Tab switches field, ←/→ cycle the option, Enter generates,
 //! Esc cancels.
 
+use super::centered_rect;
 use crate::app::{DraftOptionsField, DraftOptionsModalState};
 use crate::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 pub fn draw(frame: &mut Frame, area: Rect, state: &DraftOptionsModalState, theme: &Theme) {
     if !state.visible {
@@ -100,4 +100,3 @@ fn render_field(
     ];
     frame.render_widget(Paragraph::new(lines), area);
 }
-

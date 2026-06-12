@@ -1,7 +1,7 @@
+use super::centered_rect;
 use crate::app::FeatureOnboardingState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 pub fn draw(
     frame: &mut Frame,
@@ -88,4 +88,3 @@ fn step_lines(step: usize) -> Vec<Line<'static>> {
         ],
     }
 }
-

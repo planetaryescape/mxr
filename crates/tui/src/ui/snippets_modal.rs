@@ -1,9 +1,9 @@
+use super::centered_rect;
 use crate::app::SnippetsModalState;
 use crate::theme::Theme;
 use ratatui::layout::Margin;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use super::centered_rect;
 
 const MODAL_WIDTH_PERCENT: u16 = 80;
 const MODAL_HEIGHT_PERCENT: u16 = 70;
@@ -105,7 +105,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &SnippetsModalState, theme: &T
         frame.render_widget(paragraph, body_area);
     }
 }
-
 
 #[cfg(test)]
 mod tests {

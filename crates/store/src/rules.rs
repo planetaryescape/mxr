@@ -101,7 +101,7 @@ impl super::Store {
             sql.push_str(" WHERE rule_id = ?");
         }
         sql.push_str(" ORDER BY timestamp DESC LIMIT ?");
-        let mut query = sqlx::query(&sql);
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
         if let Some(rule_id) = rule_id {
             query = query.bind(rule_id);
         }

@@ -6,27 +6,57 @@
       {
         "name": "id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signatures",
+            "name": "id"
+          }
+        }
       },
       {
         "name": "name!",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signatures",
+            "name": "name"
+          }
+        }
       },
       {
         "name": "body!",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signatures",
+            "name": "body"
+          }
+        }
       },
       {
         "name": "created_at!",
         "ordinal": 3,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "signatures",
+            "name": "created_at"
+          }
+        }
       },
       {
         "name": "updated_at!",
         "ordinal": 4,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "signatures",
+            "name": "updated_at"
+          }
+        }
       }
     ],
     "parameters": {

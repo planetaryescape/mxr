@@ -6,7 +6,13 @@
       {
         "name": "message_id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "message_flags",
+            "name": "message_id"
+          }
+        }
       }
     ],
     "parameters": {

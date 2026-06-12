@@ -185,7 +185,10 @@ fn commitment_id(
     hasher.update(direction.as_str());
     hasher.update(normalize_what(what).to_ascii_lowercase());
     hasher.update(evidence_msg_id.as_str());
-    format!("commitment-{:x}", hasher.finalize())
+    format!(
+        "commitment-{}",
+        base16ct::lower::encode_string(&hasher.finalize())
+    )
 }
 
 #[cfg(test)]

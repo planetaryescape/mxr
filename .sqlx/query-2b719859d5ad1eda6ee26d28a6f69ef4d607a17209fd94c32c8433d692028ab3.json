@@ -6,57 +6,123 @@
       {
         "name": "scope_key!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signature_defaults",
+            "name": "scope_key"
+          }
+        }
       },
       {
         "name": "kind!",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signature_defaults",
+            "name": "kind"
+          }
+        }
       },
       {
         "name": "account_id",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signature_defaults",
+            "name": "account_id"
+          }
+        }
       },
       {
         "name": "from_email",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signature_defaults",
+            "name": "from_email"
+          }
+        }
       },
       {
         "name": "default_created_at!",
         "ordinal": 4,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "signature_defaults",
+            "name": "created_at"
+          }
+        }
       },
       {
         "name": "default_updated_at!",
         "ordinal": 5,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "signature_defaults",
+            "name": "updated_at"
+          }
+        }
       },
       {
         "name": "signature_id!",
         "ordinal": 6,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signatures",
+            "name": "id"
+          }
+        }
       },
       {
         "name": "signature_name!",
         "ordinal": 7,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signatures",
+            "name": "name"
+          }
+        }
       },
       {
         "name": "signature_body!",
         "ordinal": 8,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signatures",
+            "name": "body"
+          }
+        }
       },
       {
         "name": "signature_created_at!",
         "ordinal": 9,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "signatures",
+            "name": "created_at"
+          }
+        }
       },
       {
         "name": "signature_updated_at!",
         "ordinal": 10,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "signatures",
+            "name": "updated_at"
+          }
+        }
       }
     ],
     "parameters": {

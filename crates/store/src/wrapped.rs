@@ -101,7 +101,7 @@ impl super::Store {
                 AND m.date <= ?3
                 AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}"#
         );
-        let row: (i64, i64, i64) = sqlx::query_as(&sql)
+        let row: (i64, i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(acct)
             .bind(since)
             .bind(until)
@@ -135,7 +135,7 @@ impl super::Store {
                  AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}
                GROUP BY dow"#,
         );
-        let dow_query = sqlx::query_as::<_, (i64, i64)>(&dow_sql)
+        let dow_query = sqlx::query_as::<_, (i64, i64)>(sqlx::AssertSqlSafe(dow_sql.as_str()))
             .bind(acct)
             .bind(since)
             .bind(until)
@@ -150,7 +150,7 @@ impl super::Store {
                  AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}
                GROUP BY hr"#,
         );
-        let hour_query = sqlx::query_as::<_, (i64, i64)>(&hour_sql)
+        let hour_query = sqlx::query_as::<_, (i64, i64)>(sqlx::AssertSqlSafe(hour_sql.as_str()))
             .bind(acct)
             .bind(since)
             .bind(until)
@@ -166,7 +166,7 @@ impl super::Store {
                ORDER BY c DESC, first_ts ASC
                LIMIT 1"#,
         );
-        let day_query = sqlx::query_as::<_, (i64, i64)>(&day_sql)
+        let day_query = sqlx::query_as::<_, (i64, i64)>(sqlx::AssertSqlSafe(day_sql.as_str()))
             .bind(acct)
             .bind(since)
             .bind(until)
@@ -248,12 +248,14 @@ impl super::Store {
                ORDER BY c DESC
                LIMIT ?4"#,
         );
-        let inbound_query = sqlx::query_as::<_, (String, Option<String>, i64)>(&inbound_sql)
-            .bind(acct)
-            .bind(since)
-            .bind(until)
-            .bind(TOP_N)
-            .fetch_all(self.reader());
+        let inbound_query = sqlx::query_as::<_, (String, Option<String>, i64)>(
+            sqlx::AssertSqlSafe(inbound_sql.as_str()),
+        )
+        .bind(acct)
+        .bind(since)
+        .bind(until)
+        .bind(TOP_N)
+        .fetch_all(self.reader());
 
         let outbound_query = sqlx::query_as::<_, (String, i64)>(
             r#"SELECT LOWER(json_extract(t.value, '$.email')) AS email,
@@ -321,11 +323,13 @@ impl super::Store {
                      in_c + out_c DESC
               LIMIT 3"#,
         );
-        let asym_query = sqlx::query_as::<_, (String, Option<String>, i64, i64)>(&asym_sql)
-            .bind(acct)
-            .bind(since)
-            .bind(until)
-            .fetch_all(self.reader());
+        let asym_query = sqlx::query_as::<_, (String, Option<String>, i64, i64)>(
+            sqlx::AssertSqlSafe(asym_sql.as_str()),
+        )
+        .bind(acct)
+        .bind(since)
+        .bind(until)
+        .fetch_all(self.reader());
 
         let (inbound, outbound, asym): (
             Vec<NamedContactCountRow>,
@@ -574,7 +578,7 @@ impl super::Store {
                  AND m.date >= ?2 AND m.date <= ?3
                  AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}"#
         );
-        let unique_query = sqlx::query_as::<_, (i64,)>(&unique_sql)
+        let unique_query = sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(unique_sql.as_str()))
             .bind(acct)
             .bind(since)
             .bind(until)
@@ -593,12 +597,13 @@ impl super::Store {
                ORDER BY COUNT(*) DESC
                LIMIT 1"#,
         );
-        let top_list_query = sqlx::query_as::<_, (String, i64, i64)>(&top_list_sql)
-            .bind(acct)
-            .bind(since)
-            .bind(until)
-            .bind(read_flag)
-            .fetch_optional(self.reader());
+        let top_list_query =
+            sqlx::query_as::<_, (String, i64, i64)>(sqlx::AssertSqlSafe(top_list_sql.as_str()))
+                .bind(acct)
+                .bind(since)
+                .bind(until)
+                .bind(read_flag)
+                .fetch_optional(self.reader());
 
         // Share of inbound that is list-bearing.
         let share_sql = format!(
@@ -613,11 +618,12 @@ impl super::Store {
                 AND m.date >= ?2 AND m.date <= ?3
                 AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}"#
         );
-        let share_query = sqlx::query_as::<_, (Option<f64>,)>(&share_sql)
-            .bind(acct)
-            .bind(since)
-            .bind(until)
-            .fetch_one(self.reader());
+        let share_query =
+            sqlx::query_as::<_, (Option<f64>,)>(sqlx::AssertSqlSafe(share_sql.as_str()))
+                .bind(acct)
+                .bind(since)
+                .bind(until)
+                .fetch_one(self.reader());
 
         let (unique_row, top_list, share_row): ((i64,), Option<TopListSqlRow>, (Option<f64>,)) =
             tokio::try_join!(unique_query, top_list_query, share_query)?;
@@ -651,12 +657,13 @@ impl super::Store {
                ORDER BY c DESC
                LIMIT 1"#,
         );
-        let longest: Option<(String, i64, String)> = sqlx::query_as(&longest_sql)
-            .bind(acct)
-            .bind(since)
-            .bind(until)
-            .fetch_optional(self.reader())
-            .await?;
+        let longest: Option<(String, i64, String)> =
+            sqlx::query_as(sqlx::AssertSqlSafe(longest_sql.as_str()))
+                .bind(acct)
+                .bind(since)
+                .bind(until)
+                .fetch_optional(self.reader())
+                .await?;
 
         // Most ghosted: high inbound, zero outbound. Reuses the window_contacts
         // CTE shape from top_contacts but constrains to out_count = 0.
@@ -695,12 +702,13 @@ impl super::Store {
               ORDER BY in_c DESC
               LIMIT 1"#,
         );
-        let ghosted: Option<(String, i64, i64)> = sqlx::query_as(&ghosted_sql)
-            .bind(acct)
-            .bind(since)
-            .bind(until)
-            .fetch_optional(self.reader())
-            .await?;
+        let ghosted: Option<(String, i64, i64)> =
+            sqlx::query_as(sqlx::AssertSqlSafe(ghosted_sql.as_str()))
+                .bind(acct)
+                .bind(since)
+                .bind(until)
+                .fetch_optional(self.reader())
+                .await?;
 
         Ok(WrappedSuperlatives {
             longest_thread: match longest {

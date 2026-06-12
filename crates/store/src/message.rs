@@ -455,7 +455,7 @@ impl super::Store {
             placeholders.join(", ")
         );
 
-        let mut query = sqlx::query(&sql);
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
         for message_id in message_ids {
             query = query.bind(message_id.as_str());
         }
@@ -492,7 +492,7 @@ impl super::Store {
             placeholders.join(", ")
         );
 
-        let mut query = sqlx::query(&sql);
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
         for message_id in message_ids {
             query = query.bind(message_id.as_str());
         }
@@ -524,7 +524,7 @@ impl super::Store {
             "DELETE FROM messages WHERE account_id = ? AND provider_id IN ({})",
             placeholders.join(", ")
         );
-        let mut query = sqlx::query(&sql).bind(account_id.as_str());
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(account_id.as_str());
         for pid in provider_ids {
             query = query.bind(pid);
         }
@@ -1151,7 +1151,7 @@ impl super::Store {
              FROM messages WHERE id IN ({})",
             placeholders.join(",")
         );
-        let mut query = sqlx::query(&sql);
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
         for envelope in envelopes.iter() {
             query = query.bind(envelope.id.as_str());
         }

@@ -91,14 +91,14 @@ impl super::Store {
 }
 
 async fn count_rows(pool: &SqlitePool, sql: &str) -> Result<u32, sqlx::Error> {
-    Ok(sqlx::query_scalar::<_, i64>(sql)
+    Ok(sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql))
         .fetch_one(pool)
         .await?
         .max(0) as u32)
 }
 
 async fn count_bound_rows(pool: &SqlitePool, sql: &str, value: i64) -> Result<u32, sqlx::Error> {
-    Ok(sqlx::query_scalar::<_, i64>(sql)
+    Ok(sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql))
         .bind(value)
         .fetch_one(pool)
         .await?

@@ -143,11 +143,15 @@ impl SearchIndex {
         let dir = tantivy::directory::MmapDirectory::open(index_path)
             .map_err(|e| MxrError::Search(e.to_string()))?;
 
+        // The index is rebuildable derived data (SQLite is canonical), so
+        // ANY failure to open an existing index — our schema changed, a
+        // tantivy upgrade changed the on-disk format, or the directory is
+        // corrupt — is handled by wiping and rebuilding rather than failing
+        // daemon startup. Upgrades must never require manual intervention.
         let (index, rebuilt) = match Index::open_or_create(dir, schema_def.schema.clone()) {
             Ok(idx) => (idx, false),
-            Err(e) if e.to_string().contains("schema does not match") => {
-                tracing::warn!("Search index schema mismatch, rebuilding: {e}");
-                // Wipe and recreate
+            Err(e) => {
+                tracing::warn!("Search index unusable ({e}); wiping and rebuilding from store");
                 if index_path.exists() {
                     std::fs::remove_dir_all(index_path)
                         .map_err(|e| MxrError::Search(e.to_string()))?;
@@ -162,7 +166,6 @@ impl SearchIndex {
                     true,
                 )
             }
-            Err(e) => return Err(MxrError::Search(e.to_string())),
         };
 
         let reader = index
@@ -458,7 +461,12 @@ impl SearchIndex {
         let fetch_limit = limit.saturating_add(1);
         let top_docs = match sort {
             SortOrder::Relevance => searcher
-                .search(&query, &TopDocs::with_limit(fetch_limit).and_offset(offset))
+                .search(
+                    &query,
+                    &TopDocs::with_limit(fetch_limit)
+                        .and_offset(offset)
+                        .order_by_score(),
+                )
                 .map_err(|e| MxrError::Search(e.to_string()))?
                 .into_iter()
                 .collect::<Vec<_>>(),
@@ -471,7 +479,9 @@ impl SearchIndex {
                 )
                 .map_err(|e| MxrError::Search(e.to_string()))?
                 .into_iter()
-                .map(|(sort_score, doc_address)| (sort_score as f32, doc_address))
+                .map(|(sort_score, doc_address)| {
+                    (sort_score.map_or(0.0, |v| v as f32), doc_address)
+                })
                 .collect::<Vec<_>>(),
             SortOrder::DateAsc => searcher
                 .search(
@@ -482,7 +492,9 @@ impl SearchIndex {
                 )
                 .map_err(|e| MxrError::Search(e.to_string()))?
                 .into_iter()
-                .map(|(sort_score, doc_address)| (sort_score as f32, doc_address))
+                .map(|(sort_score, doc_address)| {
+                    (sort_score.map_or(0.0, |v| v as f32), doc_address)
+                })
                 .collect::<Vec<_>>(),
         };
 
@@ -557,7 +569,9 @@ impl SearchIndex {
             SortOrder::Relevance => searcher
                 .search(
                     &*query,
-                    &TopDocs::with_limit(fetch_limit).and_offset(offset),
+                    &TopDocs::with_limit(fetch_limit)
+                        .and_offset(offset)
+                        .order_by_score(),
                 )
                 .map_err(|e| MxrError::Search(e.to_string()))?
                 .into_iter()
@@ -571,7 +585,9 @@ impl SearchIndex {
                 )
                 .map_err(|e| MxrError::Search(e.to_string()))?
                 .into_iter()
-                .map(|(sort_score, doc_address)| (sort_score as f32, doc_address))
+                .map(|(sort_score, doc_address)| {
+                    (sort_score.map_or(0.0, |v| v as f32), doc_address)
+                })
                 .collect::<Vec<_>>(),
             SortOrder::DateAsc => searcher
                 .search(
@@ -582,7 +598,9 @@ impl SearchIndex {
                 )
                 .map_err(|e| MxrError::Search(e.to_string()))?
                 .into_iter()
-                .map(|(sort_score, doc_address)| (sort_score as f32, doc_address))
+                .map(|(sort_score, doc_address)| {
+                    (sort_score.map_or(0.0, |v| v as f32), doc_address)
+                })
                 .collect::<Vec<_>>(),
         };
 

@@ -6,32 +6,68 @@
       {
         "name": "sent_message_id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "auto_reminders",
+            "name": "sent_message_id"
+          }
+        }
       },
       {
         "name": "account_id!",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "auto_reminders",
+            "name": "account_id"
+          }
+        }
       },
       {
         "name": "remind_at!",
         "ordinal": 2,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "auto_reminders",
+            "name": "remind_at"
+          }
+        }
       },
       {
         "name": "set_at!",
         "ordinal": 3,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "auto_reminders",
+            "name": "set_at"
+          }
+        }
       },
       {
         "name": "triggered_at",
         "ordinal": 4,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "auto_reminders",
+            "name": "triggered_at"
+          }
+        }
       },
       {
         "name": "cancelled_at",
         "ordinal": 5,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "auto_reminders",
+            "name": "cancelled_at"
+          }
+        }
       }
     ],
     "parameters": {

@@ -31,7 +31,11 @@ pub fn to_plain_text(html: &str, config: &ReaderConfig) -> String {
 }
 
 fn builtin_to_plain_text(html: &str) -> String {
-    html2text::from_read(html.as_bytes(), 80).unwrap_or_default()
+    // plain_no_decorate keeps the pre-0.17 behavior: no markdown-style
+    // `**bold**` / `*italic*` markers in the reader's plain text.
+    html2text::config::plain_no_decorate()
+        .string_from_read(html.as_bytes(), 80)
+        .unwrap_or_default()
 }
 
 pub(crate) fn looks_like_html_document(input: &str) -> bool {

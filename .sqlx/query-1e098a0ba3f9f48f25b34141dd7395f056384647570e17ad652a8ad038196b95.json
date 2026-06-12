@@ -6,7 +6,13 @@
       {
         "name": "send_at",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "drafts",
+            "name": "send_at"
+          }
+        }
       }
     ],
     "parameters": {

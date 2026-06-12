@@ -173,7 +173,7 @@ pub fn decision_id(
         .collect();
     sorted.sort();
     h.update(sorted.join(",").as_bytes());
-    format!("{:x}", h.finalize())
+    base16ct::lower::encode_string(&h.finalize())
 }
 
 /// Compute a hash of the input prompt context. When the underlying
@@ -189,7 +189,7 @@ pub fn source_hash(thread_text: &str, evidence_msg_ids: &[MessageId]) -> String 
         .collect();
     sorted.sort();
     h.update(sorted.join(",").as_bytes());
-    format!("{:x}", h.finalize())
+    base16ct::lower::encode_string(&h.finalize())
 }
 
 #[cfg(test)]

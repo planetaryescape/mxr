@@ -208,7 +208,8 @@ impl super::Store {
             "SELECT id FROM labels WHERE account_id = ? AND provider_id IN ({})",
             placeholders.join(", ")
         );
-        let mut query = sqlx::query_scalar::<_, String>(&sql).bind(aid);
+        let mut query =
+            sqlx::query_scalar::<_, String>(sqlx::AssertSqlSafe(sql.as_str())).bind(aid);
         for pid in provider_ids {
             query = query.bind(pid);
         }

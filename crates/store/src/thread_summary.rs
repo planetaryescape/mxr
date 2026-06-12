@@ -74,7 +74,7 @@ impl super::Store {
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!("SELECT DISTINCT thread_id FROM messages WHERE id IN ({placeholders})");
-        let mut query = sqlx::query(&sql);
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
         for message_id in message_ids {
             query = query.bind(message_id.as_str());
         }
@@ -115,7 +115,7 @@ pub fn thread_summary_content_hash(envelopes: &[Envelope]) -> String {
         hash_addresses(&mut hasher, &envelope.bcc);
         hash_str(&mut hasher, &envelope.size_bytes.to_string());
     }
-    format!("{:x}", hasher.finalize())
+    base16ct::lower::encode_string(&hasher.finalize())
 }
 
 fn hash_addresses(hasher: &mut Sha256, addresses: &[Address]) {

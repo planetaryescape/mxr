@@ -6,7 +6,13 @@
       {
         "name": "label_id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "message_labels",
+            "name": "label_id"
+          }
+        }
       }
     ],
     "parameters": {

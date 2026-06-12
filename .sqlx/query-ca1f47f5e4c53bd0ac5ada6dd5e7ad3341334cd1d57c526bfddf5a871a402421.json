@@ -6,7 +6,13 @@
       {
         "name": "reply_later!: i64",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "message_flags",
+            "name": "reply_later"
+          }
+        }
       }
     ],
     "parameters": {

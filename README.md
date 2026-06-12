@@ -1,7 +1,7 @@
 # mxr
 
 [![CI](https://github.com/planetaryescape/mxr/actions/workflows/ci.yml/badge.svg)](https://github.com/planetaryescape/mxr/actions/workflows/ci.yml)
-[![MSRV](https://img.shields.io/badge/rust-1.88%2B-blue.svg)](https://github.com/planetaryescape/mxr/blob/main/Cargo.toml)
+[![MSRV](https://img.shields.io/badge/rust-1.94%2B-blue.svg)](https://github.com/planetaryescape/mxr/blob/main/Cargo.toml)
 
 **Local-first email infrastructure.** Write `mxr`, say "Mixer".
 
@@ -18,6 +18,8 @@ agent skill.
 # Homebrew (recommended)
 brew tap planetaryescape/mxr
 brew install mxr
+# Homebrew 5.1.15+ asks you to trust third-party taps once:
+brew trust planetaryescape/mxr
 
 # Cargo from source at a release tag
 # (replace vX.Y.Z with a tag from the releases page)

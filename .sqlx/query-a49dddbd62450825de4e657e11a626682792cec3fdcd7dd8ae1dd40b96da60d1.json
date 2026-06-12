@@ -6,42 +6,90 @@
       {
         "name": "reply_message_id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reply_pair_pending",
+            "name": "reply_message_id"
+          }
+        }
       },
       {
         "name": "in_reply_to_header!",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reply_pair_pending",
+            "name": "in_reply_to_header"
+          }
+        }
       },
       {
         "name": "reply_id!",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "id"
+          }
+        }
       },
       {
         "name": "reply_account_id!",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "account_id"
+          }
+        }
       },
       {
         "name": "reply_date!",
         "ordinal": 4,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "date"
+          }
+        }
       },
       {
         "name": "reply_in_reply_to",
         "ordinal": 5,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "in_reply_to"
+          }
+        }
       },
       {
         "name": "reply_from_email!",
         "ordinal": 6,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "from_email"
+          }
+        }
       },
       {
         "name": "reply_direction!",
         "ordinal": 7,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "direction"
+          }
+        }
       }
     ],
     "parameters": {

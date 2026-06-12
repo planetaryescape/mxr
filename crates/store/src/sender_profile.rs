@@ -493,7 +493,7 @@ impl super::Store {
                LIMIT ?"#,
         );
 
-        let mut query = sqlx::query(&sql);
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
         if let Some(account_id) = account_id {
             query = query.bind(account_id.as_str());
         }

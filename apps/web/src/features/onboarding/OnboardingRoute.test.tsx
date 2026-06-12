@@ -17,6 +17,7 @@ const api = vi.hoisted(() => ({
     vi.fn<(account: unknown, reauth?: boolean) => Promise<{ session: AuthSession }>>(),
   fetchAuthSession: vi.fn<(id: string) => Promise<{ session: AuthSession }>>(),
   completeAuthSession: vi.fn<(id: string) => Promise<{ session: AuthSession }>>(),
+  cancelAuthSession: vi.fn<(id: string) => Promise<unknown>>(),
   testAccount: vi.fn<(account: unknown) => Promise<unknown>>(),
   upsertAccount: vi.fn<(account: unknown) => Promise<unknown>>(),
 }));
@@ -29,6 +30,7 @@ vi.mock("@/features/accounts/api", () => ({
   startAuthSession: api.startAuthSession,
   fetchAuthSession: api.fetchAuthSession,
   completeAuthSession: api.completeAuthSession,
+  cancelAuthSession: api.cancelAuthSession,
   testAccount: api.testAccount,
   upsertAccount: api.upsertAccount,
   gmailAccountConfig: (email: string) => ({ key: `gmail-${email}`, sync: { type: "gmail" } }),
@@ -115,5 +117,25 @@ describe("OnboardingRoute auth step", () => {
     await waitFor(() => expect(api.completeAuthSession).toHaveBeenCalledWith("sess-1"));
     // Step 4 (initial sync) exposes the "Open inbox" affordance.
     expect(await screen.findByRole("button", { name: /open inbox/i })).toBeVisible();
+  });
+
+  test("a failed session surfaces the error and Complete stays disabled", async () => {
+    await reachAuthStep("gmail", session({ state: "failed", error: "invalid_client" }));
+
+    expect(await screen.findByText(/authorization failed: invalid_client/i)).toBeVisible();
+    expect(screen.getByRole("button", { name: /^complete$/i })).toBeDisabled();
+  });
+
+  test("Cancel cancels the daemon session and returns to provider choice", async () => {
+    api.cancelAuthSession.mockResolvedValue(undefined);
+    await reachAuthStep(
+      "gmail",
+      session({ auth_url: "https://accounts.google.com/o/oauth2/v2/auth" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() => expect(api.cancelAuthSession).toHaveBeenCalledWith("sess-1"));
+    expect(await screen.findByRole("heading", { name: /choose provider/i })).toBeVisible();
   });
 });

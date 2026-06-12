@@ -227,9 +227,21 @@ pub fn format_keybinding(kb: &KeyBinding) -> String {
 /// default bindings registry (`default_keybindings` mail list map). Used so
 /// the command palette shortcuts stay aligned with canonical keybindings.
 pub(crate) fn primary_mail_list_key_display(action: &Action) -> Option<String> {
+    primary_key_display(ViewContext::MailList, action)
+}
+
+/// Shortest formatted key chord bound to [`Action`] in `context`, sourced
+/// from the bindings registry. Context-aware sibling of
+/// [`primary_mail_list_key_display`] so the command palette can show the
+/// key that actually fires in the focused view.
+pub(crate) fn primary_key_display(context: ViewContext, action: &Action) -> Option<String> {
     let cfg = default_keybindings();
-    let mut matches: Vec<String> = cfg
-        .mail_list
+    let map = match context {
+        ViewContext::MailList => &cfg.mail_list,
+        ViewContext::MessageView => &cfg.message_view,
+        ViewContext::ThreadView => &cfg.thread_view,
+    };
+    let mut matches: Vec<String> = map
         .iter()
         .filter_map(|(binding, name)| {
             let mapped = action_from_name(name)?;
@@ -728,6 +740,28 @@ mod tests {
         assert!(labels.contains(&"Visual Line Mode".to_string()));
         assert!(labels.contains(&"Go Inbox".to_string()));
         assert!(labels.contains(&"Edit Config".to_string()));
+    }
+
+    #[test]
+    fn primary_key_display_resolves_per_context() {
+        // Compose is bound in the mail list but not the thread view.
+        assert_eq!(
+            primary_key_display(ViewContext::MailList, &Action::Compose),
+            Some("c".to_string())
+        );
+        assert_eq!(
+            primary_key_display(ViewContext::ThreadView, &Action::Compose),
+            None
+        );
+        // Open Links exists only in message/thread views.
+        assert_eq!(
+            primary_key_display(ViewContext::MailList, &Action::OpenLinks),
+            None
+        );
+        assert_eq!(
+            primary_key_display(ViewContext::ThreadView, &Action::OpenLinks),
+            Some("L".to_string())
+        );
     }
 
     #[test]

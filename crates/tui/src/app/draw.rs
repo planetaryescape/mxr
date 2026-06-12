@@ -104,6 +104,7 @@ impl App {
                 bulk_confirm_open: self.modals.pending_bulk_confirm.is_some(),
                 sync_status: self.last_sync_status.clone(),
                 viewing_invite,
+                pending_prefix: self.pending_input_prefix(),
                 _marker: std::marker::PhantomData,
             },
             theme,
@@ -464,7 +465,7 @@ impl App {
             area,
             ui::help_modal::HelpModalState {
                 open: self.modals.help_open,
-                ui_context,
+                ui_context: self.help_modal_context(),
                 selected_count: self.mailbox.selected_set.len(),
                 scroll_offset: self.modals.help_scroll_offset,
                 query: &self.modals.help_query,

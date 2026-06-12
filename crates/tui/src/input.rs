@@ -35,6 +35,15 @@ impl InputHandler {
         matches!(self.state, KeyState::WaitingForSecond { .. })
     }
 
+    /// First key of an in-progress multi-key chord, if any. Lets the
+    /// hint bar surface "g …" while the handler waits for the second key.
+    pub fn pending_prefix(&self) -> Option<char> {
+        match self.state {
+            KeyState::WaitingForSecond { first, .. } => Some(first),
+            KeyState::Normal => None,
+        }
+    }
+
     pub fn check_timeout(&mut self) -> Option<Action> {
         if let KeyState::WaitingForSecond { deadline, .. } = &self.state {
             if Instant::now() > *deadline {

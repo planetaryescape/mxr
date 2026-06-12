@@ -17,6 +17,7 @@ impl App {
                 self.modals.help_scroll_offset = 0;
                 self.modals.help_query.clear();
                 self.modals.help_selected = 0;
+                self.modals.help_context_filter = None;
             }
             _ => unreachable!("action routed to wrong handler"),
         }

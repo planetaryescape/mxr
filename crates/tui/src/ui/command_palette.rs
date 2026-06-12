@@ -49,6 +49,13 @@ impl CommandPalette {
         self.visible = !self.visible;
         if self.visible {
             self.context = context;
+            // Re-derive shortcuts for the focused view so each row shows
+            // the key that actually fires there (e.g. thread-view chords
+            // when the palette opens over a message). Mail-list shortcuts
+            // re-apply first as the baseline so a previous context's
+            // overrides don't linger.
+            apply_registered_mail_list_shortcuts(&mut self.commands);
+            apply_context_shortcuts(&mut self.commands, context);
             self.input.clear();
             self.selected = 0;
             self.update_filtered(None);
@@ -172,10 +179,36 @@ impl CommandPalette {
 }
 
 pub fn commands_for_context(context: UiContext) -> Vec<PaletteCommand> {
-    default_commands()
+    let mut commands = default_commands();
+    apply_context_shortcuts(&mut commands, context);
+    commands
         .into_iter()
         .filter(|command| action_allowed_in_context(&command.action, context))
         .collect()
+}
+
+/// Keybinding view map that governs which chord fires for `context`.
+/// Message/preview panes resolve through the thread-view map (matching
+/// the help modal's mapping); everything else uses the mail-list map.
+fn view_context_for(context: UiContext) -> crate::keybindings::ViewContext {
+    match context {
+        UiContext::MailboxMessage | UiContext::SearchPreview => {
+            crate::keybindings::ViewContext::ThreadView
+        }
+        _ => crate::keybindings::ViewContext::MailList,
+    }
+}
+
+/// Override each command's shortcut with the key bound to its action in
+/// the focused view's keybinding map. Commands without a binding in that
+/// map keep their registry-derived (mail-list) or hand-set shortcut.
+fn apply_context_shortcuts(commands: &mut [PaletteCommand], context: UiContext) {
+    let view = view_context_for(context);
+    for cmd in commands.iter_mut() {
+        if let Some(shortcut) = crate::keybindings::primary_key_display(view, &cmd.action) {
+            cmd.shortcut = shortcut;
+        }
+    }
 }
 
 fn filtered_indices(
@@ -1174,6 +1207,32 @@ fn category_style(category: &str, theme: &crate::theme::Theme) -> (&'static str,
 mod tests {
     use super::{commands_for_context, CommandPalette};
     use crate::action::UiContext;
+
+    #[test]
+    fn toggle_rederives_shortcuts_for_the_focused_context() {
+        let mut palette = CommandPalette::default();
+        let shortcut_of = |palette: &CommandPalette, label: &str| {
+            palette
+                .commands
+                .iter()
+                .find(|cmd| cmd.label == label)
+                .map(|cmd| cmd.shortcut.clone())
+                .unwrap()
+        };
+
+        // Message context resolves through the thread-view map.
+        palette.toggle(UiContext::MailboxMessage);
+        assert_eq!(shortcut_of(&palette, "Open Links"), "L");
+        // Compose has no thread-view binding; the mail-list baseline
+        // shortcut survives as the fallback.
+        assert_eq!(shortcut_of(&palette, "Compose"), "c");
+
+        // Back in the mailbox list, the mail-list map wins again.
+        palette.toggle(UiContext::MailboxMessage); // close
+        palette.toggle(UiContext::MailboxList); // reopen
+        assert_eq!(shortcut_of(&palette, "Compose"), "c");
+        assert_eq!(shortcut_of(&palette, "Archive"), "e");
+    }
 
     #[test]
     fn rules_context_hides_mail_only_commands() {

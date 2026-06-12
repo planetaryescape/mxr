@@ -1399,3 +1399,60 @@ fn sidebar_system_labels_before_user_labels() {
         );
     }
 }
+
+/// Phase 4: Tab inside the help modal cycles the context filter so a
+/// user can browse another view's bindings without leaving the modal.
+/// Cycling all the way around lands back on the focused view, which
+/// clears the override so help tracks focus again.
+#[test]
+fn help_modal_tab_cycles_context_filter_and_wraps_to_focused_view() {
+    use crate::action::UiContext;
+    let mut app = App::new();
+    app.apply(Action::Help);
+    assert!(app.modals.help_open, "help must open");
+    assert!(
+        app.modals.help_context_filter.is_none(),
+        "filter defaults to the focused view"
+    );
+    let focused = app.help_modal_context();
+
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+    let first_override = app
+        .modals
+        .help_context_filter
+        .expect("first Tab must set an override");
+    assert_ne!(first_override, focused, "override must move off focus");
+    assert_eq!(app.help_modal_context(), first_override);
+
+    // Cycle through the remaining contexts; the wrap back to the focused
+    // view clears the override instead of storing a redundant Some.
+    for _ in 0..16 {
+        if app.modals.help_context_filter.is_none() {
+            break;
+        }
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+    }
+    assert!(
+        app.modals.help_context_filter.is_none(),
+        "cycling must eventually wrap back to following focus"
+    );
+    assert_eq!(app.help_modal_context(), focused);
+
+    // Closing and reopening help resets any leftover filter.
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+    app.apply(Action::Help);
+    app.apply(Action::Help);
+    assert!(app.modals.help_context_filter.is_none());
+}
+
+/// Phase 4: while a multi-key chord is pending ("g …"), the input
+/// handler exposes the prefix so the hint bar can render it.
+#[test]
+fn pending_chord_prefix_is_exposed_for_the_hint_bar() {
+    let mut app = App::new();
+    assert_eq!(app.pending_input_prefix(), None);
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+    assert_eq!(app.pending_input_prefix(), Some('g'));
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE));
+    assert_eq!(app.pending_input_prefix(), None, "chord completion clears the prefix");
+}

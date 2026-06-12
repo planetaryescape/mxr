@@ -611,6 +611,12 @@ impl App {
         self.toasts.push(toast);
     }
 
+    /// First key of an in-progress multi-key chord ("g …"), surfaced in
+    /// the hint bar so the user can see the pending prefix.
+    pub fn pending_input_prefix(&self) -> Option<char> {
+        self.input.pending_prefix()
+    }
+
     /// True while any replaceable request or queued mutation is in
     /// flight. Drives the status-bar spinner so background work is
     /// visible even when no pane-local loading indicator is active.

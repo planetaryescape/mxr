@@ -60,6 +60,10 @@ pub struct ModalsState {
     pub help_scroll_offset: u16,
     pub help_query: String,
     pub help_selected: usize,
+    /// Optional context override for the help modal's keybinding
+    /// sections. `None` follows the focused view; Tab cycles through
+    /// the other contexts without leaving the modal.
+    pub help_context_filter: Option<crate::action::UiContext>,
     pub onboarding: FeatureOnboardingState,
     pub label_picker: LabelPicker,
     pub snooze_panel: SnoozePanelState,

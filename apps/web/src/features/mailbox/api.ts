@@ -170,6 +170,31 @@ export function modifyLabels(
   });
 }
 
+export function renameLabel(input: {
+  oldName: string;
+  newName: string;
+  accountId?: string;
+}): Promise<unknown> {
+  return apiFetch<unknown>("/api/v1/mail/labels/rename", {
+    method: "POST",
+    body: {
+      old: input.oldName,
+      new: input.newName,
+      ...(input.accountId ? { account_id: input.accountId } : {}),
+    },
+  });
+}
+
+export function deleteLabel(input: { name: string; accountId?: string }): Promise<unknown> {
+  return apiFetch<unknown>("/api/v1/mail/labels/delete", {
+    method: "POST",
+    body: {
+      name: input.name,
+      ...(input.accountId ? { account_id: input.accountId } : {}),
+    },
+  });
+}
+
 export function moveMessagesToLabel(
   messageIds: string[],
   targetLabel: string,

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/planetaryescape/mxr/compare/v0.5.63...v0.6.0) (2026-06-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** dependency major migration + upgrade-resilience follow-ups ([#84](https://github.com/planetaryescape/mxr/issues/84))
+
+### Chores
+
+* **deps:** dependency major migration + upgrade-resilience follow-ups ([#84](https://github.com/planetaryescape/mxr/issues/84)) ([af007b8](https://github.com/planetaryescape/mxr/commit/af007b8bb0362d6a2da79e6c913907e47fab6221))
+
 ## [0.5.63](https://github.com/planetaryescape/mxr/compare/v0.5.62...v0.5.63) (2026-06-11)
 
 

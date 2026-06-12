@@ -6,102 +6,217 @@
       {
         "name": "id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "id"
+          }
+        }
       },
       {
         "name": "account_id!",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "account_id"
+          }
+        }
       },
       {
         "name": "provider_id!",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "provider_id"
+          }
+        }
       },
       {
         "name": "thread_id!",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "thread_id"
+          }
+        }
       },
       {
         "name": "message_id_header",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "message_id_header"
+          }
+        }
       },
       {
         "name": "in_reply_to",
         "ordinal": 5,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "in_reply_to"
+          }
+        }
       },
       {
         "name": "reference_headers",
         "ordinal": 6,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "reference_headers"
+          }
+        }
       },
       {
         "name": "from_name",
         "ordinal": 7,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "from_name"
+          }
+        }
       },
       {
         "name": "from_email!",
         "ordinal": 8,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "from_email"
+          }
+        }
       },
       {
         "name": "to_addrs!",
         "ordinal": 9,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "to_addrs"
+          }
+        }
       },
       {
         "name": "cc_addrs!",
         "ordinal": 10,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "cc_addrs"
+          }
+        }
       },
       {
         "name": "bcc_addrs!",
         "ordinal": 11,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "bcc_addrs"
+          }
+        }
       },
       {
         "name": "subject!",
         "ordinal": 12,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "subject"
+          }
+        }
       },
       {
         "name": "date!",
         "ordinal": 13,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "date"
+          }
+        }
       },
       {
         "name": "flags!",
         "ordinal": 14,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "flags"
+          }
+        }
       },
       {
         "name": "snippet!",
         "ordinal": 15,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "snippet"
+          }
+        }
       },
       {
         "name": "has_attachments!: bool",
         "ordinal": 16,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "has_attachments"
+          }
+        }
       },
       {
         "name": "size_bytes!",
         "ordinal": 17,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "size_bytes"
+          }
+        }
       },
       {
         "name": "unsubscribe_method",
         "ordinal": 18,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "unsubscribe_method"
+          }
+        }
       },
       {
         "name": "label_provider_ids!: String",
         "ordinal": 19,
-        "type_info": "Null"
+        "type_info": "Text",
+        "origin": "Expression"
       }
     ],
     "parameters": {
@@ -127,7 +242,7 @@
       false,
       false,
       true,
-      null
+      false
     ]
   },
   "hash": "3d35ae53d947ead4af2a4726e7951e0e2824767e1e09858b50d37b682d5f6c14"

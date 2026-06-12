@@ -6,50 +6,72 @@
       {
         "name": "thread_id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "thread_id"
+          }
+        }
       },
       {
         "name": "account_id!",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "account_id"
+          }
+        }
       },
       {
         "name": "subject!: String",
         "ordinal": 2,
-        "type_info": "Null"
+        "type_info": "Text",
+        "origin": "Expression"
       },
       {
         "name": "message_count!: i64",
         "ordinal": 3,
-        "type_info": "Null"
+        "type_info": "Integer",
+        "origin": "Expression"
       },
       {
         "name": "unread_count!: i64",
         "ordinal": 4,
-        "type_info": "Null"
+        "type_info": "Integer",
+        "origin": "Expression"
       },
       {
         "name": "latest_date!: i64",
         "ordinal": 5,
-        "type_info": "Null"
+        "type_info": "Integer",
+        "origin": "Expression"
       },
       {
         "name": "snippet!",
         "ordinal": 6,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "snippet"
+          }
+        }
       }
     ],
     "parameters": {
       "Right": 2
     },
     "nullable": [
+      true,
+      true,
       false,
       false,
-      null,
-      null,
-      null,
-      null,
-      false
+      false,
+      false,
+      true
     ]
   },
   "hash": "92123d650f5d5ec8cb114329612575f7591d93cacd7da6f7c5072846af36195a"

@@ -6,27 +6,57 @@
       {
         "name": "message_id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "snoozed",
+            "name": "message_id"
+          }
+        }
       },
       {
         "name": "account_id!",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "snoozed",
+            "name": "account_id"
+          }
+        }
       },
       {
         "name": "snoozed_at!",
         "ordinal": 2,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "snoozed",
+            "name": "snoozed_at"
+          }
+        }
       },
       {
         "name": "wake_at!",
         "ordinal": 3,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "snoozed",
+            "name": "wake_at"
+          }
+        }
       },
       {
         "name": "original_labels!",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "snoozed",
+            "name": "original_labels"
+          }
+        }
       }
     ],
     "parameters": {

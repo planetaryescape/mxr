@@ -6,107 +6,233 @@
       {
         "name": "id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "id"
+          }
+        }
       },
       {
         "name": "account_id!",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "account_id"
+          }
+        }
       },
       {
         "name": "dedup_key!",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "dedup_key"
+          }
+        }
       },
       {
         "name": "merchant",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "merchant"
+          }
+        }
       },
       {
         "name": "carrier",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "carrier"
+          }
+        }
       },
       {
         "name": "tracking_number",
         "ordinal": 5,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "tracking_number"
+          }
+        }
       },
       {
         "name": "tracking_url",
         "ordinal": 6,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "tracking_url"
+          }
+        }
       },
       {
         "name": "order_number",
         "ordinal": 7,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "order_number"
+          }
+        }
       },
       {
         "name": "status!",
         "ordinal": 8,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "status"
+          }
+        }
       },
       {
         "name": "eta_from",
         "ordinal": 9,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "eta_from"
+          }
+        }
       },
       {
         "name": "eta_until",
         "ordinal": 10,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "eta_until"
+          }
+        }
       },
       {
         "name": "delivered_at",
         "ordinal": 11,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "delivered_at"
+          }
+        }
       },
       {
         "name": "items_json!",
         "ordinal": 12,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "items_json"
+          }
+        }
       },
       {
         "name": "confidence!: f64",
         "ordinal": 13,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "confidence"
+          }
+        }
       },
       {
         "name": "source!",
         "ordinal": 14,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "source"
+          }
+        }
       },
       {
         "name": "thread_id",
         "ordinal": 15,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "thread_id"
+          }
+        }
       },
       {
         "name": "last_event_at!",
         "ordinal": 16,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "last_event_at"
+          }
+        }
       },
       {
         "name": "created_at!",
         "ordinal": 17,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "created_at"
+          }
+        }
       },
       {
         "name": "updated_at!",
         "ordinal": 18,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "updated_at"
+          }
+        }
       },
       {
         "name": "resolved_at",
         "ordinal": 19,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "resolved_at"
+          }
+        }
       },
       {
         "name": "dismissed_at",
         "ordinal": 20,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "deliveries",
+            "name": "dismissed_at"
+          }
+        }
       }
     ],
     "parameters": {

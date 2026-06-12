@@ -6,67 +6,145 @@
       {
         "name": "account_id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "account_id"
+          }
+        }
       },
       {
         "name": "email!",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "email"
+          }
+        }
       },
       {
         "name": "display_name",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "display_name"
+          }
+        }
       },
       {
         "name": "first_seen_at!",
         "ordinal": 3,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "first_seen_at"
+          }
+        }
       },
       {
         "name": "last_seen_at!",
         "ordinal": 4,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "last_seen_at"
+          }
+        }
       },
       {
         "name": "last_inbound_at",
         "ordinal": 5,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "last_inbound_at"
+          }
+        }
       },
       {
         "name": "last_outbound_at",
         "ordinal": 6,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "last_outbound_at"
+          }
+        }
       },
       {
         "name": "total_inbound!",
         "ordinal": 7,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "total_inbound"
+          }
+        }
       },
       {
         "name": "total_outbound!",
         "ordinal": 8,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "total_outbound"
+          }
+        }
       },
       {
         "name": "replied_count!",
         "ordinal": 9,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "replied_count"
+          }
+        }
       },
       {
         "name": "cadence_days_p50",
         "ordinal": 10,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "cadence_days_p50"
+          }
+        }
       },
       {
         "name": "is_list_sender!",
         "ordinal": 11,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "is_list_sender"
+          }
+        }
       },
       {
         "name": "list_id",
         "ordinal": 12,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "list_id"
+          }
+        }
       }
     ],
     "parameters": {

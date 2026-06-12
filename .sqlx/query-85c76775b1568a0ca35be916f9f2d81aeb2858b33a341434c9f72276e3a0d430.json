@@ -6,7 +6,13 @@
       {
         "name": "message_id_header",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "drafts",
+            "name": "message_id_header"
+          }
+        }
       }
     ],
     "parameters": {

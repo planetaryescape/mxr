@@ -6,37 +6,79 @@
       {
         "name": "message_id!",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "message_events",
+            "name": "message_id"
+          }
+        }
       },
       {
         "name": "account_id!",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "message_events",
+            "name": "account_id"
+          }
+        }
       },
       {
         "name": "event_type!",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "message_events",
+            "name": "event_type"
+          }
+        }
       },
       {
         "name": "source!",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "message_events",
+            "name": "source"
+          }
+        }
       },
       {
         "name": "label_id",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "message_events",
+            "name": "label_id"
+          }
+        }
       },
       {
         "name": "occurred_at!: i64",
         "ordinal": 5,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "message_events",
+            "name": "occurred_at"
+          }
+        }
       },
       {
         "name": "metadata_json",
         "ordinal": 6,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "message_events",
+            "name": "metadata_json"
+          }
+        }
       }
     ],
     "parameters": {

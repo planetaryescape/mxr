@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.6.1](https://github.com/planetaryescape/mxr/compare/v0.6.0...v0.6.1) (2026-06-12)
+
+
+### Features
+
+* **tui:** context-aware shortcuts, help context filter, pending chord hint ([1b7f5b2](https://github.com/planetaryescape/mxr/commit/1b7f5b2359f84dd14cd3aacbbfdc3a25bc652dce))
+* **tui:** per-account sync state in the sidebar ([1823fa7](https://github.com/planetaryescape/mxr/commit/1823fa7cd920ee5063efd359154131c6260cb6ee))
+* **tui:** Phase 4 production polish ([cb8bc6d](https://github.com/planetaryescape/mxr/commit/cb8bc6dbe61968211afade22c297759b291c35a7))
+* **tui:** status-bar spinner for in-flight work and bulk n/m progress ([2666d37](https://github.com/planetaryescape/mxr/commit/2666d371b5ccfa53ffbff3268346708c98fa6508))
+* **tui:** toast notification queue for operation outcomes ([98709e8](https://github.com/planetaryescape/mxr/commit/98709e862f2450a4c5b97904f9906b6720d7c8ae))
+* **web:** attachment size warning and per-file upload progress ([56802f0](https://github.com/planetaryescape/mxr/commit/56802f06f8cb53ac751111d160336f423ba5a37a))
+* **web:** cmd+shift+enter sends and archives the source conversation ([b7ca1ed](https://github.com/planetaryescape/mxr/commit/b7ca1edda0469c1a297108640da6f820598e175a))
+* **web:** global z shortcut undoes the last mail mutation ([16d5b51](https://github.com/planetaryescape/mxr/commit/16d5b518daf10dbb4b8b2b542d9075ed8884b3b9))
+* **web:** inline/popout compose surfaces and safety-gated send ([c478e3b](https://github.com/planetaryescape/mxr/commit/c478e3b106bbb0184dc160c23ab72a923734b68e))
+* **web:** maybe-include collaborator chips above recipients ([6f13fd1](https://github.com/planetaryescape/mxr/commit/6f13fd1238b24451505f19c29d2d3c54a3fd04b9))
+* **web:** minimal formatting toolbar for the rich text editor ([14ba86e](https://github.com/planetaryescape/mxr/commit/14ba86e8411fa56bbeddc1e716e7efa29cbf780a))
+* **web:** paginate subscription drilldown lens ([960039d](https://github.com/planetaryescape/mxr/commit/960039d99254c2ef996d05f147fa86c8b618d503))
+* **web:** Phase 1 — keyboard foundation ([8181fa2](https://github.com/planetaryescape/mxr/commit/8181fa2161f1e195c059607fe07d8ae3b074673d))
+* **web:** Phase 2 — compose redesign ([7bb5abb](https://github.com/planetaryescape/mxr/commit/7bb5abbf6e43029fc2f8ba1a48ca3bca62a02afc))
+* **web:** Phase 3 parity backfill ([f3d7d18](https://github.com/planetaryescape/mxr/commit/f3d7d1897cf24a483f5cc89c3f058785d0e39204))
+* **web:** recipient field RFC 5322 parsing and combobox a11y ([0c5870f](https://github.com/planetaryescape/mxr/commit/0c5870f1b6552b5e08f55fc4e43e1309bb873033))
+* **web:** rename and delete labels from the label picker ([ae577dc](https://github.com/planetaryescape/mxr/commit/ae577dc89777bb619cdb5fda5663281d68cdaf95))
+* **web:** safety-check + collaborators bridge routes, undo-send pref, send-later parser ([ba2225a](https://github.com/planetaryescape/mxr/commit/ba2225acb0fe8050f90d152fe1dc28f9dddec3b5))
+* **web:** scoped shortcut registry, [/] triage keys, * sequences, pending-prefix chip ([9dbcc02](https://github.com/planetaryescape/mxr/commit/9dbcc021ed8a8b2a009e417d1e0f4cfea9e41539))
+* **web:** screener account switcher and decisions tab ([d10801c](https://github.com/planetaryescape/mxr/commit/d10801cf3645a51537ad675a074d78a40e1ce79e))
+* **web:** send later from compose with natural-language scheduling ([f375943](https://github.com/planetaryescape/mxr/commit/f375943d87d0e05d83d17cde002bbdbcdda4fd6c))
+* **web:** signature picker dialog on cmd+shift+g ([3c6f9f4](https://github.com/planetaryescape/mxr/commit/3c6f9f43c7a9f39e191b6fd6d834bb0139c79db4))
+* **web:** snippet picker dialog on cmd+semicolon ([e4c1f36](https://github.com/planetaryescape/mxr/commit/e4c1f36ae9e96a51be3a1aa477e08f652ee643bc))
+* **web:** terminate OAuth poll on terminal states, add cancel + error surfacing ([6b75e21](https://github.com/planetaryescape/mxr/commit/6b75e21002ea843eada5b556e321a00c3976a5ac))
+* **web:** thread/recipient briefings, expert finder, commitment resolve, relationship view ([e153b2e](https://github.com/planetaryescape/mxr/commit/e153b2e24146fe58864c90214b61a6652e493ed2))
+* **web:** vim mode line and ex commands in markdown compose editor ([254f960](https://github.com/planetaryescape/mxr/commit/254f9601dd4f90513f920901e8d447b1e9e2a7e6))
+
+
+### Bug Fixes
+
+* Phase 0 — keybinding collision, IPC error surfacing, compose data-loss guards, global z undo ([c28ab7e](https://github.com/planetaryescape/mxr/commit/c28ab7eef88a0e2eec9d4cb93c78cec18687920c))
+* **tui:** bind activity log to g y and guard against keybinding collisions ([e3b420a](https://github.com/planetaryescape/mxr/commit/e3b420a8c20cd1c03f28a3f3ff2dcc7b57b8676d))
+* **tui:** name the request in IPC error messages and surface thread-load failures ([12abbc3](https://github.com/planetaryescape/mxr/commit/12abbc355083c30bbe92bbfc7b0f8f0b8f14c52e))
+* **tui:** rustfmt the Phase 4 changes and drop an unused test import ([2833fbd](https://github.com/planetaryescape/mxr/commit/2833fbdfe2d1a544b0a032373474c4e63d45d65a))
+* **tui:** surface failed pre-send safety checks in the send modal ([44280fe](https://github.com/planetaryescape/mxr/commit/44280fe33c0b5dc56f1f12f6934181b94efcc14d))
+* **web:** close compose data-loss holes ([6cd92d7](https://github.com/planetaryescape/mxr/commit/6cd92d741dc4dd20f065e87f6332c49e7f099c4c))
+* **web:** point e2e harness at target-cli binary, regen OpenAPI types ([8e7635f](https://github.com/planetaryescape/mxr/commit/8e7635f448020ff8c45b5f1bcfb2f70be73b3b2f))
+* **web:** rustfmt the Phase 3 bridge handlers ([ad9a7e5](https://github.com/planetaryescape/mxr/commit/ad9a7e582ff5202ed3a0eda405c8bc7a5eab8a03))
+
+
+### Refactoring
+
+* **tui:** hygiene — shared centered_rect, theme contrast tokens, small-terminal guard, modal cleanup on tab switch ([1dac48b](https://github.com/planetaryescape/mxr/commit/1dac48bdebd4698726eced5144c817fa0d36c982))
+* **web:** extract useComposeSession and ComposeEditorPanel from ComposeRoute ([be5f9a6](https://github.com/planetaryescape/mxr/commit/be5f9a656b9c8a0ef3f382201f2cffd4aab3e48d))
+
 ## [0.6.0](https://github.com/planetaryescape/mxr/compare/v0.5.63...v0.6.0) (2026-06-12)
 
 

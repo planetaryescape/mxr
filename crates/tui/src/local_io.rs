@@ -275,6 +275,7 @@ mod tests {
             intent: mxr_core::DraftIntent::New,
             mode: PendingSendMode::DraftOnlyNoRecipients,
             safety_report: None,
+            safety_check_failed: None,
             override_token: None,
             suggested_collaborators: vec![],
             invite_reply: None,

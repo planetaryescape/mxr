@@ -15,6 +15,11 @@ pub struct PendingSend {
     pub mode: PendingSendMode,
     /// Latest safety report, if a pre-send check has run.
     pub safety_report: Option<mxr_core::DraftSafetyReport>,
+    /// Why the pre-send safety check produced no report (daemon error,
+    /// dropped IPC worker, unexpected response). Rendered in the send
+    /// modal as "Safety check unavailable: …" so the failure isn't
+    /// silently indistinguishable from a clean run.
+    pub safety_check_failed: Option<String>,
     /// Single-use override token minted when the latest check
     /// returned a Blocked verdict; consumed when the user confirms.
     pub override_token: Option<String>,

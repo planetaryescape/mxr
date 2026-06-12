@@ -63,6 +63,9 @@ fn modal_lines(
     if let Some(report) = pending.safety_report.as_ref() {
         lines.push(String::new());
         push_safety_lines(&mut lines, report, pending.override_token.as_deref());
+    } else if let Some(reason) = pending.safety_check_failed.as_deref() {
+        lines.push(String::new());
+        lines.push(format!("Safety check unavailable: {reason}"));
     }
 
     if !pending.suggested_collaborators.is_empty() {
@@ -179,10 +182,55 @@ mod tests {
             intent: mxr_core::DraftIntent::New,
             mode,
             safety_report: None,
+            safety_check_failed: None,
             override_token: None,
             suggested_collaborators: vec![],
             invite_reply: None,
         }
+    }
+
+    /// Phase 4: a failed pre-send safety check is no longer silent —
+    /// the modal says why no safety block is shown, so the user can
+    /// tell "checked clean" apart from "check never ran".
+    #[test]
+    fn failed_safety_check_renders_unavailable_warning() {
+        let mut p = pending(PendingSendMode::SendOrSave);
+        p.safety_check_failed = Some("daemon unreachable".into());
+        let rendered = render_to_string(120, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 120, 24),
+                Some(&p),
+                None,
+                None,
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(
+            rendered.contains("Safety check unavailable: daemon unreachable"),
+            "modal must surface the safety-check failure; got:\n{rendered}"
+        );
+    }
+
+    /// And when a report did come back, the unavailable line must not
+    /// appear even if a stale failure string is set.
+    #[test]
+    fn safety_report_takes_precedence_over_failure_line() {
+        let mut p = pending(PendingSendMode::SendOrSave);
+        p.safety_report = Some(mxr_core::DraftSafetyReport::safe());
+        p.safety_check_failed = Some("stale".into());
+        let rendered = render_to_string(120, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 120, 24),
+                Some(&p),
+                None,
+                None,
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(!rendered.contains("Safety check unavailable"));
+        assert!(rendered.contains("Safety: SAFE"));
     }
 
     #[test]

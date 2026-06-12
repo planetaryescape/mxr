@@ -1264,6 +1264,7 @@ fn refine_pending_draft_saves_then_queues_refine_request() {
         intent: mxr_core::DraftIntent::New,
         mode: PendingSendMode::SendOrSave,
         safety_report: None,
+            safety_check_failed: None,
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: None,

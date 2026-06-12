@@ -252,6 +252,7 @@ fn pressing_s_with_blocked_verdict_is_a_noop() {
         intent: mxr_core::DraftIntent::New,
         mode: PendingSendMode::SendOrSave,
         safety_report: Some(report),
+        safety_check_failed: None,
         override_token: Some("tok-1".into()),
         suggested_collaborators: vec![],
         invite_reply: None,
@@ -305,6 +306,7 @@ fn ctrl_o_dispatches_send_with_override_token() {
         intent: mxr_core::DraftIntent::New,
         mode: PendingSendMode::SendOrSave,
         safety_report: Some(report),
+        safety_check_failed: None,
         override_token: Some("tok-override-9".into()),
         suggested_collaborators: vec![],
         invite_reply: None,
@@ -465,6 +467,7 @@ fn ctrl_a_adds_top_suggestion_to_cc() {
         intent: mxr_core::DraftIntent::New,
         mode: PendingSendMode::SendOrSave,
         safety_report: None,
+            safety_check_failed: None,
         override_token: None,
         invite_reply: None,
         suggested_collaborators: vec![mxr_protocol::SuggestedRecipientData {

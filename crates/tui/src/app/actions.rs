@@ -56,6 +56,7 @@ impl App {
 
     pub fn tick(&mut self) {
         self.input.check_timeout();
+        self.toasts.sweep_expired(std::time::Instant::now());
         if self.search_is_pending() {
             self.search.page.throbber.calc_next();
         }
@@ -67,6 +68,18 @@ impl App {
         }
         if self.analytics.should_show_cold_load() {
             self.analytics.loading_throbber.calc_next();
+        }
+        if self.has_in_flight_work() {
+            self.status_throbber.calc_next();
+        }
+        if self
+            .diagnostics
+            .page
+            .sync_statuses
+            .iter()
+            .any(|status| status.sync_in_progress)
+        {
+            self.mailbox.sidebar_sync_throbber.calc_next();
         }
         self.process_pending_search_debounce();
         self.process_pending_preview_read();

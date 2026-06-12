@@ -426,6 +426,7 @@ pub(crate) async fn pending_send_from_edited_draft(
         draft_path: data.draft_path.clone(),
         mode,
         safety_report: None,
+        safety_check_failed: None,
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: data.invite_reply.clone(),
@@ -493,13 +494,20 @@ async fn stamp_safety_report(pending: &mut PendingSend, bg: &mpsc::UnboundedSend
             pending.override_token = report.issues.iter().find_map(|i| i.override_token.clone());
             pending.safety_report = Some(report);
         }
-        Ok(Response::Ok { .. } | Response::Error { .. }) => {
-            // Unexpected variant or daemon error: leave safety_report
-            // unset so the modal renders without the safety block.
+        Ok(Response::Error { message, .. }) => {
+            // Daemon error: non-fatal, but record why so the modal can
+            // say "Safety check unavailable" instead of silently
+            // looking like a clean run.
+            pending.safety_check_failed = Some(message);
         }
-        Err(_) => {
+        Ok(Response::Ok { .. }) => {
+            pending.safety_check_failed =
+                Some("unexpected daemon response to CheckDraftSafety".into());
+        }
+        Err(error) => {
             // IPC worker dropped or daemon unreachable. The user can
             // still see the modal; they just won't have safety hints.
+            pending.safety_check_failed = Some(error.to_string());
         }
     }
 }

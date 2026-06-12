@@ -1,6 +1,7 @@
 //! Slice 5.4 (C2.8 cont): renders the expert-finder modal —
 //! ranks people who have answered similar questions before.
 
+use super::centered_rect;
 use crate::app::ExpertModalState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -58,25 +59,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ExpertModalState, theme: &cra
         Style::default().fg(theme.text_muted),
     )));
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let vertical = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(vertical[1])[1]
 }
 
 #[cfg(test)]

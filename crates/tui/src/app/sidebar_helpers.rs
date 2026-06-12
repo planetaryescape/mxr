@@ -66,6 +66,25 @@ impl App {
         items
     }
 
+    /// Sidebar sync indicator for one account, looked up from the most
+    /// recent daemon sync-status snapshot (refreshed on sync events).
+    pub(crate) fn account_sync_indicator(
+        &self,
+        account_id: &mxr_core::AccountId,
+    ) -> crate::ui::sidebar::AccountSyncIndicator {
+        let status = self
+            .diagnostics
+            .page
+            .sync_statuses
+            .iter()
+            .find(|status| &status.account_id == account_id);
+        let synced_age = status
+            .and_then(|status| status.last_success_at.as_deref())
+            .and_then(Self::format_sync_age)
+            .map(|(display, _)| display);
+        crate::ui::sidebar::sync_indicator_for(status, synced_age)
+    }
+
     pub fn sidebar_view(&self) -> crate::ui::sidebar::SidebarView<'_> {
         use crate::ui::sidebar::{AccountInfo, SidebarView};
         let accounts: Vec<AccountInfo> = self
@@ -77,6 +96,7 @@ impl App {
             .map(|a| AccountInfo {
                 email: a.email.clone(),
                 is_default: a.is_default,
+                sync: self.account_sync_indicator(&a.account_id),
             })
             .collect();
         SidebarView {
@@ -96,6 +116,7 @@ impl App {
             calendar_invites_count: self.mailbox.calendar_invites_page.entries.len(),
             accounts,
             accounts_expanded: self.mailbox.sidebar_accounts_expanded,
+            sync_throbber: Some(&self.mailbox.sidebar_sync_throbber),
             system_expanded: self.mailbox.sidebar_system_expanded,
             user_expanded: self.mailbox.sidebar_user_expanded,
             saved_searches_expanded: self.mailbox.sidebar_saved_searches_expanded,

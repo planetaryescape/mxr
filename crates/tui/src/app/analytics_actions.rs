@@ -8,6 +8,7 @@ impl App {
     pub(super) fn apply_analytics_action(&mut self, action: Action) {
         match action {
             Action::OpenAnalyticsScreen => {
+                self.close_transient_modals();
                 // Cancel the auto-mark-read timer scheduled by mailbox
                 // preview. Otherwise it fires later while we're in
                 // Analytics, queues a SetRead the user didn't ask for,

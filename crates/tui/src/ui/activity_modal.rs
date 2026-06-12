@@ -2,6 +2,7 @@
 //! local `user_activity` rows. Lives over whatever screen the user is on
 //! — opened via `g y` chord or palette entry.
 
+use super::centered_rect;
 use crate::app::ActivityModalState;
 use crate::theme::Theme;
 use ratatui::layout::Margin;
@@ -15,7 +16,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ActivityModalState, theme: &T
     if !state.visible {
         return;
     }
-    let modal_area = centered_rect(area, MODAL_WIDTH_PERCENT, MODAL_HEIGHT_PERCENT);
+    let modal_area = centered_rect(MODAL_WIDTH_PERCENT, MODAL_HEIGHT_PERCENT, area);
     Clear.render(modal_area, frame.buffer_mut());
 
     let pause_marker = if state.paused { " [PAUSED]" } else { "" };
@@ -163,24 +164,4 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ActivityModalState, theme: &T
         )
         .wrap(Wrap { trim: false });
     frame.render_widget(detail, chunks[1]);
-}
-
-fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
-    let v = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-    let h = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(v[1]);
-    h[1]
 }

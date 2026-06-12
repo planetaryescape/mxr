@@ -27,6 +27,12 @@ pub struct Theme {
     pub warning: Color,
     pub success: Color,
 
+    // Contrast poles for text rendered over computed/tinted backgrounds
+    // (e.g. blended selection rows). Pick whichever pole contrasts with
+    // the background instead of hardcoding black/white at call sites.
+    pub contrast_dark: Color,
+    pub contrast_light: Color,
+
     // Specific UI
     pub unread_fg: Color,
     pub label_bg: Color,
@@ -69,6 +75,8 @@ impl Theme {
             error: Color::Red,
             warning: Color::Yellow,
             success: Color::Green,
+            contrast_dark: Color::Black,
+            contrast_light: Color::White,
             unread_fg: Color::White,
             label_bg: Color::Rgb(40, 40, 50),
             modal_bg: Color::Rgb(18, 18, 26),
@@ -94,6 +102,8 @@ impl Theme {
             error: Color::Red,
             warning: Color::Yellow,
             success: Color::Green,
+            contrast_dark: Color::Black,
+            contrast_light: Color::White,
             unread_fg: Color::White,
             label_bg: Color::Black,
             modal_bg: Color::Black,
@@ -119,6 +129,8 @@ impl Theme {
             error: Color::Red,
             warning: Color::Rgb(180, 120, 0),
             success: Color::Green,
+            contrast_dark: Color::Black,
+            contrast_light: Color::White,
             unread_fg: Color::Black,
             label_bg: Color::Rgb(236, 242, 255),
             modal_bg: Color::Rgb(248, 249, 252),
@@ -144,6 +156,8 @@ impl Theme {
             error: Color::Rgb(243, 139, 168),
             warning: Color::Rgb(249, 226, 175),
             success: Color::Rgb(166, 227, 161),
+            contrast_dark: Color::Rgb(17, 17, 27),
+            contrast_light: Color::Rgb(205, 214, 244),
             unread_fg: Color::Rgb(205, 214, 244),
             label_bg: Color::Rgb(69, 71, 90),
             modal_bg: Color::Rgb(30, 30, 46),

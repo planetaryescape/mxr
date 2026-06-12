@@ -47,13 +47,52 @@ impl App {
     fn help_modal_state(&self) -> crate::ui::help_modal::HelpModalState<'_> {
         crate::ui::help_modal::HelpModalState {
             open: self.modals.help_open,
-            ui_context: self.current_ui_context(),
+            ui_context: self.help_modal_context(),
             selected_count: self.mailbox.selected_set.len(),
             scroll_offset: self.modals.help_scroll_offset,
             query: &self.modals.help_query,
             selected: self.modals.help_selected,
             _marker: std::marker::PhantomData,
         }
+    }
+
+    /// Context whose bindings the help modal shows: the user's Tab-cycled
+    /// override when set, otherwise the focused view.
+    pub(crate) fn help_modal_context(&self) -> UiContext {
+        self.modals
+            .help_context_filter
+            .unwrap_or_else(|| self.current_ui_context())
+    }
+
+    /// Cycle the help modal's context filter (Tab while help is open).
+    /// Starts from the focused view and wraps; landing back on the
+    /// focused view clears the override so help tracks focus again.
+    fn cycle_help_context(&mut self) {
+        const CYCLE: [UiContext; 8] = [
+            UiContext::MailboxList,
+            UiContext::MailboxMessage,
+            UiContext::SearchResults,
+            UiContext::RulesList,
+            UiContext::Diagnostics,
+            UiContext::AccountsList,
+            UiContext::Analytics,
+            UiContext::Deliveries,
+        ];
+        let current = self.help_modal_context();
+        let position = CYCLE.iter().position(|context| *context == current);
+        let next = match position {
+            Some(index) => CYCLE[(index + 1) % CYCLE.len()],
+            // Focused view isn't in the cycle list (sidebar/form variants):
+            // start from the top.
+            None => CYCLE[0],
+        };
+        self.modals.help_context_filter = if next == self.current_ui_context() {
+            None
+        } else {
+            Some(next)
+        };
+        self.modals.help_scroll_offset = 0;
+        self.clamp_help_selected();
     }
 
     fn help_search_active(&self) -> bool {
@@ -249,6 +288,10 @@ impl App {
         if self.modals.help_open {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?' | 'q'), _) => Some(Action::Help),
+                (KeyCode::Tab, _) => {
+                    self.cycle_help_context();
+                    None
+                }
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
                     if self.help_search_active() {
                         self.help_select_next();

@@ -1,3 +1,4 @@
+use super::centered_rect;
 use crate::action::UiContext;
 use crate::keybindings::{all_bindings_for_context, ViewContext};
 use crate::ui::command_palette::commands_for_context;
@@ -685,26 +686,6 @@ fn draw_search_results(
             .border_style(Style::default().fg(theme.border_unfocused)),
     );
     frame.render_widget(footer, chunks[2]);
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let vertical = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(vertical[1])[1]
 }
 
 #[cfg(test)]

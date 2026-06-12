@@ -1,3 +1,4 @@
+use super::centered_rect;
 use crate::app::FeatureOnboardingState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -86,24 +87,4 @@ fn step_lines(step: usize) -> Vec<Line<'static>> {
             Line::from("Open Help with ? any time, then search Start Here or use Ctrl-p to reopen this walkthrough."),
         ],
     }
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, rect: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(rect);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }

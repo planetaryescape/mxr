@@ -196,9 +196,14 @@ fn mutation_reconciliation_failed_event_replays_optimistic_snapshot() {
             .contains(MessageFlags::STARRED),
         "daemon failure event rolls back starred state"
     );
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Mutation failed: provider rejected")
+    let now = std::time::Instant::now();
+    let toasts = app.toasts.visible(now);
+    assert!(
+        toasts
+            .iter()
+            .any(|toast| toast.text == "Mutation failed: provider rejected"),
+        "failure must surface as an error toast; got {:?}",
+        toasts.iter().map(|t| t.text.as_str()).collect::<Vec<_>>()
     );
 }
 
@@ -1296,9 +1301,14 @@ fn preview_read_exhausted_failure_reconciles_without_error_modal() {
     assert!(app.mailbox.pending_labels_refresh);
     assert!(app.mailbox.pending_all_envelopes_refresh);
     assert!(app.diagnostics.pending_status_refresh);
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Mailbox refreshing to reconcile state")
+    let now = std::time::Instant::now();
+    let toasts = app.toasts.visible(now);
+    assert!(
+        toasts
+            .iter()
+            .any(|toast| toast.text == "Mailbox refreshing to reconcile state"),
+        "best-effort failure must surface as a warn toast; got {:?}",
+        toasts.iter().map(|t| t.text.as_str()).collect::<Vec<_>>()
     );
 }
 
@@ -1330,4 +1340,24 @@ fn reopening_same_message_does_not_queue_duplicate_read_mutation() {
     app.expire_pending_preview_read_for_tests();
     app.tick();
     assert_eq!(app.pending_mutation_queue.len(), 1);
+}
+
+/// Phase 4 hygiene: below the 80x20 minimum the renderer shows a
+/// placeholder instead of collapsing the full layout into slivers.
+#[test]
+fn tiny_terminal_renders_too_small_placeholder() {
+    let mut app = App::new();
+    let output = mxr_test_support::render_to_string(60, 12, |frame| app.draw(frame));
+    assert!(
+        output.contains("Terminal too small"),
+        "placeholder must render below 80x20; got:\n{output}"
+    );
+    assert!(output.contains("80x20"));
+
+    // At or above the minimum, the normal layout renders.
+    let output = mxr_test_support::render_to_string(80, 20, |frame| app.draw(frame));
+    assert!(
+        !output.contains("Terminal too small"),
+        "80x20 exactly must render the full layout"
+    );
 }

@@ -1125,12 +1125,12 @@ fn delete_saved_search_cancel_path_does_not_queue_request() {
     );
 }
 
-/// Phase 1.4 / Behavior 6: setting a pending-undo handle exposes
-/// the human-readable label "Archived N — u to undo" while the
+/// Phase 1.4 / Behavior 6: setting a pending-undo handle exposes a
+/// toast reading "Archived N" with an "u to undo" hint while the
 /// window is fresh, and `take_pending_undo` returns the same id
 /// the input handler will dispatch.
 #[test]
-fn pending_undo_label_renders_within_window_then_clears() {
+fn pending_undo_toast_renders_within_window_then_clears() {
     use crate::app::PendingUndo;
     let mut app = App::new();
     let t0 = std::time::Instant::now();
@@ -1141,17 +1141,25 @@ fn pending_undo_label_renders_within_window_then_clears() {
         applied_at: t0,
     });
 
-    // Fresh: label is shown.
-    let label = app
-        .pending_undo_label(t0 + std::time::Duration::from_secs(5))
-        .expect("label must be present within window");
-    assert_eq!(label, "Archived 15 — u to undo");
+    // Fresh: toast is shown with the undo hint and a live countdown.
+    let toast = app
+        .pending_undo_toast(t0 + std::time::Duration::from_secs(5))
+        .expect("toast must be present within window");
+    assert_eq!(toast.text, "Archived 15");
+    assert_eq!(toast.action_hint.as_deref(), Some("u to undo"));
+    assert_eq!(
+        toast
+            .remaining(t0 + std::time::Duration::from_secs(5))
+            .as_secs(),
+        55,
+        "countdown must reflect the remaining 60s undo window"
+    );
 
-    // Past 60s: label gone (and tick clears the handle).
+    // Past 60s: toast gone (and tick clears the handle).
     assert!(
-        app.pending_undo_label(t0 + std::time::Duration::from_secs(61))
+        app.pending_undo_toast(t0 + std::time::Duration::from_secs(61))
             .is_none(),
-        "label must clear after the 60s window"
+        "toast must clear after the 60s window"
     );
     app.tick_pending_undo(t0 + std::time::Duration::from_secs(61));
     assert!(app.pending_undo.is_none(), "tick must drop expired handle");

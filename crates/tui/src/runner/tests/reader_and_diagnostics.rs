@@ -526,7 +526,13 @@ fn sent_success_effect_refreshes_active_label_and_sets_status() {
         app.mailbox.pending_subscriptions_refresh,
         "subscriptions must refresh after a successful send"
     );
-    assert_eq!(app.status_message.as_deref(), Some("Sent!"));
+    assert!(
+        app.toasts
+            .visible(std::time::Instant::now())
+            .iter()
+            .any(|toast| toast.text == "Sent!"),
+        "send completion must surface as a toast"
+    );
 }
 
 #[test]
@@ -579,7 +585,13 @@ fn sent_success_effect_with_no_active_label_only_updates_status() {
     );
 
     assert_eq!(app.mailbox.pending_label_fetch, None);
-    assert_eq!(app.status_message.as_deref(), Some("Sent!"));
+    assert!(
+        app.toasts
+            .visible(std::time::Instant::now())
+            .iter()
+            .any(|toast| toast.text == "Sent!"),
+        "send completion must surface as a toast"
+    );
 }
 
 /// Phase 1.2 / Behavior 4: connection_state_label exposes a non-empty
@@ -1252,6 +1264,7 @@ fn refine_pending_draft_saves_then_queues_refine_request() {
         intent: mxr_core::DraftIntent::New,
         mode: PendingSendMode::SendOrSave,
         safety_report: None,
+        safety_check_failed: None,
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: None,

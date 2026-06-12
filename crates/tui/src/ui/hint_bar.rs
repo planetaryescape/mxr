@@ -20,11 +20,14 @@ pub struct HintBarState<'a> {
     /// user can RSVP to. Surfaces accept/decline keys in the hint bar so
     /// the action is discoverable without opening the palette.
     pub viewing_invite: bool,
+    /// First key of an in-progress multi-key chord; renders as "g …" at
+    /// the head of the bar so the user can see the pending prefix.
+    pub pending_prefix: Option<char>,
     pub _marker: std::marker::PhantomData<&'a ()>,
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Theme) {
-    let lines = if state.bulk_confirm_open {
+    let mut lines = if state.bulk_confirm_open {
         vec![hint_line(
             &[("Enter", "Confirm"), ("y", "Confirm"), ("Esc", "Cancel")],
             theme,
@@ -34,6 +37,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
             &[
                 ("Type", "Search"),
                 ("j/k ↑↓", "Navigate"),
+                ("Tab", "Context"),
                 ("Ctrl-u/d", "Page"),
                 ("Esc", "Close"),
             ],
@@ -54,6 +58,19 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
             theme,
         )
     };
+
+    // Pending multi-key chord: prepend "g …" so the user can see the
+    // handler is waiting for the second key.
+    if let Some(prefix) = state.pending_prefix {
+        let pending_span = Span::styled(
+            format!(" {prefix} … "),
+            Style::default().fg(theme.accent).bold(),
+        );
+        match lines.first_mut() {
+            Some(line) => line.spans.insert(0, pending_span),
+            None => lines.push(Line::from(pending_span)),
+        }
+    }
 
     // Split area: hints on left, sync status on right
     let sync_text = state.sync_status.as_deref().unwrap_or("not synced");

@@ -1,3 +1,4 @@
+use super::centered_rect;
 use crate::app::PlatformModalState;
 use crate::theme::Theme;
 use ratatui::layout::Margin;
@@ -9,7 +10,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &PlatformModalState, theme: &T
         return;
     }
 
-    let modal_area = centered_rect(area, 76, 62);
+    let modal_area = centered_rect(76, 62, area);
     Clear.render(modal_area, frame.buffer_mut());
 
     let title = format!(" {} · Esc close ", state.title);
@@ -39,26 +40,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &PlatformModalState, theme: &T
         .style(style)
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, inner);
-}
-
-fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }
 
 #[cfg(test)]

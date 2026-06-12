@@ -39,6 +39,47 @@ pub mod snooze_modal;
 pub mod status_bar;
 pub mod subscriptions_page;
 pub mod summary_modal;
+pub mod toasts;
 pub mod unsubscribe_modal;
 pub mod url_modal;
 pub mod whois_modal;
+
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+
+/// Centered popup rect sized as a percentage of `area`. Single shared
+/// implementation for every modal renderer — replaces the per-module
+/// copies that had drifted into two different argument orders.
+pub(crate) fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+    let vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(area);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(vertical[1])[1]
+}
+
+#[cfg(test)]
+mod centered_rect_tests {
+    use super::*;
+
+    #[test]
+    fn centered_rect_centers_within_area() {
+        let area = Rect::new(0, 0, 100, 50);
+        let popup = centered_rect(60, 40, area);
+        assert_eq!(popup.width, 60);
+        assert_eq!(popup.height, 20);
+        assert_eq!(popup.x, 20);
+        assert_eq!(popup.y, 15);
+    }
+}

@@ -213,8 +213,19 @@ pub struct App {
     pub in_flight_html_image_asset_requests: HashSet<MessageId>,
     pub pending_local_state_save: bool,
     pub status_message: Option<String>,
+    /// Animated spinner state for the status-bar in-flight indicator.
+    /// Ticks while `has_in_flight_work()` is true.
+    pub status_throbber: ThrobberState,
+    /// Transient operation-outcome notifications rendered as stacked
+    /// bottom-right boxes above the status bar. Ambient state stays on
+    /// `status_message`; completed/failed operations go here.
+    pub toasts: ToastQueue,
     pub pending_mutation_count: usize,
     pub pending_mutation_status: Option<String>,
+    /// Peak size of the current mutation batch. Set while mutations are
+    /// queued/in flight so the status bar can render "n/m" progress for
+    /// bulk operations; resets to 0 once the batch drains.
+    pub mutation_batch_total: usize,
     pub pending_mutation_queue: Vec<QueuedMutation>,
     pub mutation_snapshots: MutationSnapshotStore,
     pub mutation_id_generator: MutationIdGenerator,
@@ -363,8 +374,11 @@ impl App {
             in_flight_html_image_asset_requests: HashSet::new(),
             pending_local_state_save: false,
             status_message: None,
+            status_throbber: ThrobberState::default(),
+            toasts: ToastQueue::default(),
             pending_mutation_count: 0,
             pending_mutation_status: None,
+            mutation_batch_total: 0,
             pending_mutation_queue: Vec::new(),
             mutation_snapshots: MutationSnapshotStore::default(),
             mutation_id_generator: MutationIdGenerator::default(),
@@ -574,16 +588,46 @@ impl App {
         );
     }
 
-    /// Status-bar text for the active undo affordance, e.g.
-    /// `"Archived 15 — u to undo"`. Returns `None` when no fresh
-    /// pending undo exists; pairs with the override chain in
-    /// `body_helpers::status_bar_state`.
-    pub fn pending_undo_label(&self, now: std::time::Instant) -> Option<String> {
+    /// Toast for the active undo affordance, e.g. `"Archived 15"` with an
+    /// `"u to undo"` hint and a live countdown of the remaining window.
+    /// Synthesized from `pending_undo` at draw time (rather than queued)
+    /// so pressing `u` dismisses it immediately and the countdown always
+    /// reflects the daemon-side expiry.
+    pub fn pending_undo_toast(&self, now: std::time::Instant) -> Option<Toast> {
         let undo = self.pending_undo.as_ref()?;
-        if now.saturating_duration_since(undo.applied_at) >= UNDO_HINT_TTL {
-            return None;
-        }
-        Some(format!("{} {} — u to undo", undo.verb_past, undo.count))
+        let toast = Toast {
+            text: format!("{} {}", undo.verb_past, undo.count),
+            severity: ToastSeverity::Success,
+            created_at: undo.applied_at,
+            ttl: UNDO_HINT_TTL,
+            action_hint: Some("u to undo".into()),
+        };
+        (!toast.expired(now)).then_some(toast)
+    }
+
+    /// Queue a transient toast notification. Severity colors and expiry
+    /// are handled by the queue and the `ui::toasts` renderer.
+    pub fn push_toast(&mut self, toast: Toast) {
+        self.toasts.push(toast);
+    }
+
+    /// First key of an in-progress multi-key chord ("g …"), surfaced in
+    /// the hint bar so the user can see the pending prefix.
+    pub fn pending_input_prefix(&self) -> Option<char> {
+        self.input.pending_prefix()
+    }
+
+    /// True while any replaceable request or queued mutation is in
+    /// flight. Drives the status-bar spinner so background work is
+    /// visible even when no pane-local loading indicator is active.
+    pub fn has_in_flight_work(&self) -> bool {
+        self.pending_mutation_count > 0
+            || self.search_is_pending()
+            || self.mailbox.pending_thread_fetch.is_some()
+            || self.mailbox.in_flight_thread_fetch.is_some()
+            || !self.mailbox.in_flight_body_requests.is_empty()
+            || !self.mailbox.thread_summary_in_flight.is_empty()
+            || self.accounts.page.operation_in_flight
     }
 
     /// Take the active undo handle, returning the `mutation_id` to

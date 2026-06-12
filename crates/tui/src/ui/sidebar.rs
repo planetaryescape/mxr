@@ -3,10 +3,48 @@ use crate::theme::Theme;
 use mxr_core::types::{Label, LabelKind, SavedSearch};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
+use throbber_widgets_tui::{Throbber, ThrobberState, BRAILLE_SIX};
+
+/// Per-account sync state shown on the account's sidebar line. Derived
+/// from the daemon's `AccountSyncStatus` snapshots (GetSyncStatus) which
+/// refresh on sync daemon events.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AccountSyncIndicator {
+    /// A sync is currently running — renders an animated spinner.
+    Syncing,
+    /// Last sync succeeded; carries the relative age, e.g. "2m ago".
+    Synced(String),
+    /// The account is unhealthy or the last sync errored.
+    Offline,
+    /// No status known yet (daemon snapshot not loaded).
+    Unknown,
+}
 
 pub struct AccountInfo {
     pub email: String,
     pub is_default: bool,
+    pub sync: AccountSyncIndicator,
+}
+
+/// Map a daemon sync-status row to the sidebar indicator. `None` means
+/// the snapshot hasn't loaded (or the account is missing from it).
+pub fn sync_indicator_for(
+    status: Option<&mxr_protocol::AccountSyncStatus>,
+    synced_age: Option<String>,
+) -> AccountSyncIndicator {
+    let Some(status) = status else {
+        return AccountSyncIndicator::Unknown;
+    };
+    if status.sync_in_progress {
+        return AccountSyncIndicator::Syncing;
+    }
+    if !status.healthy || status.last_error.is_some() {
+        return AccountSyncIndicator::Offline;
+    }
+    match synced_age {
+        Some(age) => AccountSyncIndicator::Synced(age),
+        None => AccountSyncIndicator::Unknown,
+    }
 }
 
 pub struct SidebarView<'a> {
@@ -23,6 +61,9 @@ pub struct SidebarView<'a> {
     pub calendar_invites_count: usize,
     pub accounts: Vec<AccountInfo>,
     pub accounts_expanded: bool,
+    /// Spinner state for accounts currently syncing; ticked by the app
+    /// while any account reports `sync_in_progress`.
+    pub sync_throbber: Option<&'a ThrobberState>,
     pub system_expanded: bool,
     pub user_expanded: bool,
     pub saved_searches_expanded: bool,
@@ -43,12 +84,25 @@ struct SidebarBuildState<'a> {
 #[derive(Debug, Clone)]
 enum SidebarEntry<'a> {
     Separator,
-    Header { title: &'static str, expanded: bool },
-    Account { email: String, is_default: bool },
+    Header {
+        title: &'static str,
+        expanded: bool,
+    },
+    Account {
+        email: String,
+        is_default: bool,
+        sync: AccountSyncIndicator,
+    },
     AllMail,
-    Subscriptions { count: usize },
-    Owed { count: usize },
-    CalendarInvites { count: usize },
+    Subscriptions {
+        count: usize,
+    },
+    Owed {
+        count: usize,
+    },
+    CalendarInvites {
+        count: usize,
+    },
     Label(&'a Label),
     SavedSearch(&'a SavedSearch),
 }
@@ -88,9 +142,18 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
                 ),
                 Span::styled(*title, Style::default().fg(theme.accent).bold()),
             ])),
-            SidebarEntry::Account { email, is_default } => {
-                render_account_item(inner_width, email, *is_default, theme)
-            }
+            SidebarEntry::Account {
+                email,
+                is_default,
+                sync,
+            } => render_account_item(
+                inner_width,
+                email,
+                *is_default,
+                sync,
+                view.sync_throbber,
+                theme,
+            ),
             SidebarEntry::AllMail => render_all_mail_item(inner_width, view.all_mail_active, theme),
             SidebarEntry::Subscriptions { count } => {
                 render_subscriptions_item(inner_width, *count, view.subscriptions_active, theme)
@@ -167,6 +230,7 @@ fn build_sidebar_entries<'a>(
             entries.extend(state.accounts.iter().map(|a| SidebarEntry::Account {
                 email: a.email.clone(),
                 is_default: a.is_default,
+                sync: a.sync.clone(),
             }));
         }
         entries.push(SidebarEntry::Separator);
@@ -248,22 +312,60 @@ fn render_account_item<'a>(
     inner_width: usize,
     email: &str,
     is_default: bool,
+    sync: &AccountSyncIndicator,
+    sync_throbber: Option<&ThrobberState>,
     theme: &Theme,
 ) -> ListItem<'a> {
-    let indicator = if is_default { " ●" } else { "" };
-    let name_part = format!("  {email}");
-    let line = if is_default {
-        let padding = inner_width.saturating_sub(name_part.len() + indicator.len());
-        format!("{}{}{}", name_part, " ".repeat(padding), indicator)
-    } else {
-        name_part
-    };
     let style = if is_default {
         Style::default().fg(theme.accent).bold()
     } else {
         Style::default().fg(theme.text_muted)
     };
-    ListItem::new(line).style(style)
+    let default_marker = if is_default { " ●" } else { "" };
+    let name_part = format!("  {email}{default_marker}");
+
+    // Right-aligned per-account sync state: spinner while syncing,
+    // "synced <age>" when healthy, an offline marker on errors.
+    let (sync_spans, sync_width): (Vec<Span<'a>>, usize) = match sync {
+        AccountSyncIndicator::Syncing => {
+            let spinner = sync_throbber.map_or_else(
+                || Span::styled("…", Style::default().fg(theme.accent)),
+                |state| {
+                    Throbber::default()
+                        .throbber_set(BRAILLE_SIX)
+                        .throbber_style(Style::default().fg(theme.accent))
+                        .to_symbol_span(state)
+                },
+            );
+            let width = spinner.width();
+            (vec![spinner], width)
+        }
+        AccountSyncIndicator::Synced(age) => {
+            let text = format!("synced {age}");
+            let width = text.len();
+            (
+                vec![Span::styled(text, Style::default().fg(theme.text_muted))],
+                width,
+            )
+        }
+        AccountSyncIndicator::Offline => (
+            vec![Span::styled(
+                "offline".to_string(),
+                Style::default().fg(theme.warning),
+            )],
+            "offline".len(),
+        ),
+        AccountSyncIndicator::Unknown => (Vec::new(), 0),
+    };
+
+    if sync_spans.is_empty() || name_part.len() + sync_width + 1 > inner_width {
+        return ListItem::new(name_part).style(style);
+    }
+
+    let padding = inner_width.saturating_sub(name_part.len() + sync_width);
+    let mut spans = vec![Span::raw(name_part), Span::raw(" ".repeat(padding))];
+    spans.extend(sync_spans);
+    ListItem::new(Line::from(spans)).style(style)
 }
 
 fn render_all_mail_item<'a>(inner_width: usize, is_active: bool, theme: &Theme) -> ListItem<'a> {
@@ -446,6 +548,58 @@ mod tests {
             total_count: 1,
             role: None,
         }
+    }
+
+    fn sync_status(
+        sync_in_progress: bool,
+        healthy: bool,
+        error: Option<&str>,
+    ) -> mxr_protocol::AccountSyncStatus {
+        mxr_protocol::AccountSyncStatus {
+            account_id: AccountId::new(),
+            account_name: "test".into(),
+            last_attempt_at: None,
+            last_success_at: None,
+            last_error: error.map(String::from),
+            failure_class: None,
+            consecutive_failures: 0,
+            backoff_until: None,
+            sync_in_progress,
+            current_cursor_summary: None,
+            last_synced_count: 0,
+            healthy,
+        }
+    }
+
+    #[test]
+    fn sync_indicator_maps_daemon_status_to_sidebar_state() {
+        assert_eq!(
+            sync_indicator_for(None, None),
+            AccountSyncIndicator::Unknown,
+            "missing snapshot must read as unknown, not offline"
+        );
+        assert_eq!(
+            sync_indicator_for(Some(&sync_status(true, true, None)), None),
+            AccountSyncIndicator::Syncing
+        );
+        assert_eq!(
+            sync_indicator_for(Some(&sync_status(false, false, None)), None),
+            AccountSyncIndicator::Offline
+        );
+        assert_eq!(
+            sync_indicator_for(Some(&sync_status(false, true, Some("boom"))), None),
+            AccountSyncIndicator::Offline,
+            "a recorded sync error must surface even when marked healthy"
+        );
+        assert_eq!(
+            sync_indicator_for(Some(&sync_status(false, true, None)), Some("2m ago".into())),
+            AccountSyncIndicator::Synced("2m ago".into())
+        );
+        assert_eq!(
+            sync_indicator_for(Some(&sync_status(false, true, None)), None),
+            AccountSyncIndicator::Unknown,
+            "healthy but never-synced accounts show no stale age"
+        );
     }
 
     #[test]

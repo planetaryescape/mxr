@@ -206,27 +206,27 @@ impl App {
             MutationEffect::RemoveFromList(id) => {
                 self.apply_removed_message_ids(std::slice::from_ref(&id));
                 if show_completion_status {
-                    self.status_message = Some("Done".into());
+                    self.push_toast(Toast::success("Done"));
                 }
                 self.mailbox.pending_subscriptions_refresh = true;
             }
             MutationEffect::RemoveFromListMany(ids) => {
                 self.apply_removed_message_ids(&ids);
                 if show_completion_status {
-                    self.status_message = Some("Done".into());
+                    self.push_toast(Toast::success("Done"));
                 }
                 self.mailbox.pending_subscriptions_refresh = true;
             }
             MutationEffect::UpdateFlags { message_id, flags } => {
                 self.apply_local_flags(&message_id, flags);
                 if show_completion_status {
-                    self.status_message = Some("Done".into());
+                    self.push_toast(Toast::success("Done"));
                 }
             }
             MutationEffect::UpdateFlagsMany { updates } => {
                 self.apply_local_flags_many(&updates);
                 if show_completion_status {
-                    self.status_message = Some("Done".into());
+                    self.push_toast(Toast::success("Done"));
                 }
             }
             MutationEffect::RefreshList => {
@@ -235,7 +235,7 @@ impl App {
                 }
                 self.mailbox.pending_subscriptions_refresh = true;
                 if show_completion_status {
-                    self.status_message = Some("Synced".into());
+                    self.push_toast(Toast::success("Synced"));
                 }
             }
             MutationEffect::ModifyLabels {
@@ -246,7 +246,7 @@ impl App {
             } => {
                 self.apply_local_label_refs(&message_ids, &add, &remove);
                 if show_completion_status {
-                    self.status_message = Some(status);
+                    self.push_toast(Toast::success(status));
                 }
             }
             MutationEffect::ReplyLater {
@@ -260,12 +260,12 @@ impl App {
                     self.mailbox.reply_later_message_ids.remove(&message_id);
                 }
                 if show_completion_status {
-                    self.status_message = Some(status);
+                    self.push_toast(Toast::success(status));
                 }
             }
             MutationEffect::StatusOnly(msg) => {
-                if show_completion_status {
-                    self.status_message = Some(msg);
+                if show_completion_status && !msg.is_empty() {
+                    self.push_toast(Toast::success(msg));
                 }
             }
             MutationEffect::SentSuccess {
@@ -284,7 +284,7 @@ impl App {
                 self.mailbox.pending_subscriptions_refresh = true;
                 self.mailbox.pending_owed_refresh = true;
                 if show_completion_status {
-                    self.status_message = Some(status);
+                    self.push_toast(Toast::success(status));
                 }
                 if let (Some(sent_message_id), Some(remind_at)) = (sent_message_id, remind_at) {
                     self.queue_mutation(
@@ -345,6 +345,7 @@ impl App {
             run_after: None,
         });
         self.pending_mutation_count += 1;
+        self.mutation_batch_total = self.mutation_batch_total.max(self.pending_mutation_count);
         self.pending_mutation_status = Some(status_message.clone());
         self.status_message = Some(status_message);
         id
@@ -363,6 +364,7 @@ impl App {
         );
         self.pending_mutation_queue.push(queued);
         self.pending_mutation_count += 1;
+        self.mutation_batch_total = self.mutation_batch_total.max(self.pending_mutation_count);
         let status = format!("Retrying mailbox update in {}s...", delay.as_secs());
         self.pending_mutation_status = Some(status.clone());
         self.status_message = Some(status);
@@ -532,6 +534,7 @@ impl App {
         self.pending_mutation_count = self.pending_mutation_count.saturating_sub(1);
         if self.pending_mutation_count == 0 {
             self.pending_mutation_status = None;
+            self.mutation_batch_total = 0;
         }
     }
 
@@ -546,7 +549,7 @@ impl App {
                 "Optimistic changes could not be applied.\nMailbox is refreshing to reconcile state.\n\n{error}"
             ),
         );
-        self.status_message = Some(format!("Error: {error}"));
+        self.push_toast(Toast::error(format!("Error: {error}")));
     }
 
     pub fn handle_mutation_failure_result(
@@ -559,7 +562,7 @@ impl App {
         self.pending_optimistic.clear(id);
         self.refresh_mailbox_after_mutation_failure();
         if best_effort {
-            self.status_message = Some("Mailbox refreshing to reconcile state".into());
+            self.push_toast(Toast::warn("Mailbox refreshing to reconcile state"));
         } else {
             self.show_mutation_failure(error);
         }

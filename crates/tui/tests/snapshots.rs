@@ -261,6 +261,7 @@ fn send_confirm_snapshot() {
         intent: mxr_core::DraftIntent::New,
         mode: PendingSendMode::SendOrSave,
         safety_report: None,
+        safety_check_failed: None,
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: None,
@@ -319,6 +320,7 @@ fn sidebar_snapshot() {
                 calendar_invites_count: 0,
                 accounts: Vec::new(),
                 accounts_expanded: true,
+                sync_throbber: None,
                 system_expanded: true,
                 user_expanded: true,
                 saved_searches_expanded: true,
@@ -905,7 +907,10 @@ fn bars_snapshot() {
                 status_message: None,
                 pending_mutation_count: 0,
                 pending_mutation_status: None,
+                mutation_batch_total: 0,
+                busy: false,
             },
+            None,
             &mxr_tui::theme::Theme::default(),
         );
     });

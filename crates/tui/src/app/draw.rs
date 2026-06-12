@@ -24,6 +24,37 @@ fn selected_tab(screen: Screen) -> usize {
     }
 }
 
+/// Minimum terminal geometry the full layout stays readable at. Below
+/// this, `draw` renders a placeholder instead of squeezed panes.
+const MIN_TERMINAL_WIDTH: u16 = 80;
+const MIN_TERMINAL_HEIGHT: u16 = 20;
+
+fn draw_terminal_too_small(frame: &mut Frame, area: Rect, theme: &Theme) {
+    let lines = vec![
+        Line::from(Span::styled(
+            "Terminal too small",
+            Style::default().fg(theme.warning).bold(),
+        )),
+        Line::from(Span::styled(
+            format!(
+                "Need at least {MIN_TERMINAL_WIDTH}x{MIN_TERMINAL_HEIGHT}, have {}x{}",
+                area.width, area.height
+            ),
+            Style::default().fg(theme.text_secondary),
+        )),
+        Line::from(Span::styled(
+            "Resize the window to continue",
+            Style::default().fg(theme.text_muted),
+        )),
+    ];
+    let top_pad = area.height.saturating_sub(lines.len() as u16) / 2;
+    let mut target = area;
+    target.y += top_pad;
+    target.height = area.height.saturating_sub(top_pad);
+    let paragraph = ratatui::widgets::Paragraph::new(lines).alignment(Alignment::Center);
+    frame.render_widget(paragraph, target);
+}
+
 impl App {
     fn thread_summary_block(&self) -> Option<ui::message_view::ThreadSummaryBlock> {
         let current_thread_id = self.context_envelope().map(|env| env.thread_id.clone())?;
@@ -56,6 +87,13 @@ impl App {
     pub fn draw(&mut self, frame: &mut Frame) {
         let theme = &self.theme;
         let area = frame.area();
+
+        // Below the minimum usable geometry the layout collapses into
+        // unreadable slivers — show a plain placeholder instead.
+        if area.width < MIN_TERMINAL_WIDTH || area.height < MIN_TERMINAL_HEIGHT {
+            draw_terminal_too_small(frame, area, theme);
+            return;
+        }
 
         // Layout: tabs (1 line) | hint bar (2 lines) | content | status bar (1 line)
         let outer_chunks = Layout::default()
@@ -104,6 +142,7 @@ impl App {
                 bulk_confirm_open: self.modals.pending_bulk_confirm.is_some(),
                 sync_status: self.last_sync_status.clone(),
                 viewing_invite,
+                pending_prefix: self.pending_input_prefix(),
                 _marker: std::marker::PhantomData,
             },
             theme,
@@ -372,7 +411,13 @@ impl App {
         }
 
         let status_bar = self.status_bar_state();
-        ui::status_bar::draw(frame, bottom_bar_area, &status_bar, theme);
+        ui::status_bar::draw(
+            frame,
+            bottom_bar_area,
+            &status_bar,
+            Some(&self.status_throbber),
+            theme,
+        );
 
         if self.search.bar.active {
             ui::search_bar::draw(frame, area, &self.search.bar, theme);
@@ -458,7 +503,7 @@ impl App {
             area,
             ui::help_modal::HelpModalState {
                 open: self.modals.help_open,
-                ui_context,
+                ui_context: self.help_modal_context(),
                 selected_count: self.mailbox.selected_set.len(),
                 scroll_offset: self.modals.help_scroll_offset,
                 query: &self.modals.help_query,
@@ -506,6 +551,17 @@ impl App {
         if self.accounts.page.onboarding_modal_open {
             ui::accounts_page::draw_account_setup_onboarding(frame, area, theme);
         }
+
+        // Toast notifications — stacked bottom-right above the status bar,
+        // drawn last so operation outcomes stay visible over any overlay.
+        let now = std::time::Instant::now();
+        let undo_toast = self.pending_undo_toast(now);
+        let mut visible_toasts = self.toasts.visible(now);
+        if let Some(undo) = undo_toast.as_ref() {
+            visible_toasts.insert(0, undo);
+            visible_toasts.truncate(crate::app::TOAST_MAX_VISIBLE);
+        }
+        ui::toasts::draw(frame, area, &visible_toasts, now, theme);
     }
 
     fn draw_saved_search_tabs(&self, frame: &mut Frame, area: Rect, theme: &Theme) -> Rect {

@@ -425,7 +425,11 @@ pub(crate) async fn load_mailbox_selection(
         }
         MailboxLensKind::Subscription => {
             if let Some(sender_email) = lens.sender_email.as_deref() {
-                let envelopes = search_envelopes(socket_path, sender_email, limit).await?;
+                // A subscription drilldown is a sender search; `Request::Search`
+                // supports offset, so this lens paginates (unlike the saved-search
+                // and subscription-overview lenses, whose IPC variants take no
+                // offset).
+                let envelopes = search_envelopes(socket_path, sender_email, limit, offset).await?;
                 return Ok(MailboxSelection {
                     lens_label: chrome
                         .subscriptions

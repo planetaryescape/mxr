@@ -89,6 +89,12 @@ export interface Snippet {
   body: string;
 }
 
+export interface Signature {
+  id: string;
+  name: string;
+  body: string;
+}
+
 /** Everything the compose UI consumes from the session lifecycle. */
 export interface ComposeController {
   intent: ComposeIntent;
@@ -146,6 +152,11 @@ export interface ComposeController {
   snippetList: Snippet[];
   /** Append a snippet body to the end of the message body. */
   insertSnippet: (body: string) => void;
+  signaturePickerOpen: boolean;
+  setSignaturePickerOpen: Dispatch<SetStateAction<boolean>>;
+  signatureList: Signature[];
+  /** Append a signature block (`\n\n--\n{body}`) to the message body. */
+  insertSignature: (body: string) => void;
   sendLaterOpen: boolean;
   setSendLaterOpen: Dispatch<SetStateAction<boolean>>;
   /** Open the send-later dialog (same local validation gate as send). */
@@ -223,6 +234,14 @@ export function useComposeSession(
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
   const [sendLaterOpen, setSendLaterOpen] = useState(false);
   const [snippetPickerOpen, setSnippetPickerOpen] = useState(false);
+  const [signaturePickerOpen, setSignaturePickerOpen] = useState(false);
+  // Fetched lazily — the list is only needed once the picker opens.
+  const signatures = useQuery({
+    queryKey: ["signatures"],
+    queryFn: () => apiFetch<{ signatures: Signature[] }>("/api/v1/mail/signatures"),
+    enabled: signaturePickerOpen,
+    staleTime: 60_000,
+  });
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
   const [uploading, setUploading] = useState(0);
@@ -555,6 +574,12 @@ export function useComposeSession(
       if (!busy) requestSendLater();
       return;
     }
+    if (event.shiftKey && key === "g") {
+      event.preventDefault();
+      event.stopPropagation();
+      setSignaturePickerOpen(true);
+      return;
+    }
     if (event.shiftKey && key === "r") {
       event.preventDefault();
       event.stopPropagation();
@@ -660,6 +685,13 @@ export function useComposeSession(
     const base = current.bodyMarkdown;
     updateBody(base.trim() ? `${base.replace(/\n*$/, "")}\n\n${body}` : body);
     setSnippetPickerOpen(false);
+  }
+
+  function insertSignature(body: string) {
+    const current = draftRef.current;
+    if (!current) return;
+    updateBody(`${current.bodyMarkdown.replace(/\n*$/, "")}\n\n--\n${body}`);
+    setSignaturePickerOpen(false);
   }
 
   function requestSendLater() {
@@ -945,6 +977,10 @@ export function useComposeSession(
     setSnippetPickerOpen,
     snippetList: snippets.data?.snippets ?? [],
     insertSnippet,
+    signaturePickerOpen,
+    setSignaturePickerOpen,
+    signatureList: signatures.data?.signatures ?? [],
+    insertSignature,
     sendLaterOpen,
     setSendLaterOpen,
     requestSendLater,

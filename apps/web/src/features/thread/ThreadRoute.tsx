@@ -49,6 +49,7 @@ import { InviteCard } from "@/features/thread/InviteCard";
 import { MailboxRoute } from "@/features/mailbox/MailboxRoute";
 import { MessageBody } from "@/features/thread/MessageBody";
 import type {
+  MailboxResponse,
   MessageBodyView,
   MessageLabelView,
   MessageRowView,
@@ -57,6 +58,7 @@ import type {
 } from "@/features/mailbox/types";
 import { useOptimisticMailMutation } from "@/features/mailbox/useOptimisticMailMutation";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
+import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -262,6 +264,42 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   const toggleReaderLayout = useCallback(() => {
     setReaderLayout(readerFull ? "split" : "full");
   }, [readerFull, setReaderLayout]);
+  useShortcutScope("thread", activePane === "reader");
+  // Sibling threads come from the already-cached mailbox list (the split
+  // pane keeps that query warm), so [ / ] can archive-and-advance. Read the
+  // cache lazily — the list containing this thread is the active lens.
+  const siblingThreadIds = useCallback((): string[] => {
+    const cached = queryClient.getQueriesData<{ pages?: MailboxResponse[] }>({
+      queryKey: ["mailbox"],
+    });
+    for (const [, value] of cached) {
+      const pages = value?.pages ?? [];
+      const ids = [
+        ...new Set(
+          pages.flatMap((page) =>
+            page.mailbox.groups.flatMap((group) => group.rows.map((row) => row.thread_id)),
+          ),
+        ),
+      ];
+      if (ids.includes(data.thread.id)) return ids;
+    }
+    return [];
+  }, [data.thread.id, queryClient]);
+  const archiveAndStep = useCallback(
+    (delta: 1 | -1) => {
+      if (allMessageIds.length === 0) return;
+      const siblings = siblingThreadIds();
+      const index = siblings.indexOf(data.thread.id);
+      const nextId = index >= 0 ? siblings[index + delta] : undefined;
+      archive.mutate(allMessageIds);
+      if (nextId) {
+        void navigate({ to: `${mailboxPath}/${nextId}` });
+      } else {
+        void navigate({ to: mailboxPath });
+      }
+    },
+    [allMessageIds, archive, data.thread.id, mailboxPath, navigate, siblingThreadIds],
+  );
   const labelMutation = useMutation({
     mutationFn: ({ add, remove }: LabelChange) => modifyLabels(allMessageIds, add, remove),
     onSuccess: (response) => {
@@ -323,6 +361,12 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         event.preventDefault();
         archive.mutate(allMessageIds);
         void navigate({ to: mailboxPath });
+      } else if (event.key === "]") {
+        event.preventDefault();
+        archiveAndStep(1);
+      } else if (event.key === "[") {
+        event.preventDefault();
+        archiveAndStep(-1);
       } else if (event.key === "s") {
         event.preventDefault();
         toggleStar();
@@ -347,7 +391,9 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
       } else if (event.key === "l") {
         event.preventDefault();
         setLabelDialogOpen(true);
-      } else if (event.key.toLowerCase() === "z") {
+      } else if (event.key === "Z") {
+        // Shift+Z snoozes (matches the TUI); lowercase z stays free for the
+        // global undo binding.
         event.preventDefault();
         setSnoozeOpen(true);
       } else if (event.key === "r") {
@@ -394,6 +440,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
     toggleStar,
     toggleReaderLayout,
     compose,
+    archiveAndStep,
   ]);
 
   useEffect(() => {
@@ -467,7 +514,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
       },
       {
         label: "Snooze",
-        shortcut: "z",
+        shortcut: "Z",
         icon: <Clock className="size-3" />,
         onSelect: () => setSnoozeOpen(true),
       },

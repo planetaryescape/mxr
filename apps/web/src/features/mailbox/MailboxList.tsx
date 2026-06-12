@@ -8,6 +8,8 @@ import type { MessageGroupView, MessageRowView } from "./types";
 import { useOptimisticMailMutation } from "./useOptimisticMailMutation";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { useShortcutScope } from "@/hooks/useShortcutScope";
+import { useKeyScope } from "@/state/keyScopeStore";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useSelection } from "@/state/selectionStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -56,6 +58,7 @@ export function MailboxList({
 }: MailboxListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const pendingGoTimerRef = useRef<number | null>(null);
+  const pendingStarTimerRef = useRef<number | null>(null);
   const navigate = useNavigate();
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const activePane = useMailboxPane((state) => state.activePane);
@@ -151,11 +154,22 @@ export function MailboxList({
     [mailboxPath, navigate, setActivePane, setSuppressNextReaderFocus],
   );
 
+  useShortcutScope("mailbox", activePane === "mailbox");
+  const setPendingPrefix = useKeyScope((state) => state.setPendingPrefix);
+
   const clearGoPrefix = useCallback(() => {
     if (pendingGoTimerRef.current === null) return;
     window.clearTimeout(pendingGoTimerRef.current);
     pendingGoTimerRef.current = null;
-  }, []);
+    setPendingPrefix(null);
+  }, [setPendingPrefix]);
+
+  const clearStarPrefix = useCallback(() => {
+    if (pendingStarTimerRef.current === null) return;
+    window.clearTimeout(pendingStarTimerRef.current);
+    pendingStarTimerRef.current = null;
+    setPendingPrefix(null);
+  }, [setPendingPrefix]);
 
   const focusRowAt = useCallback(
     (index: number, align: "auto" | "start" | "end" = "auto") => {
@@ -195,11 +209,36 @@ export function MailboxList({
           ((event.metaKey || event.ctrlKey) && k.toLowerCase() === "a") ||
           ["x", "e", "s", "m"].includes(k.toLowerCase()) ||
           k === "!" ||
+          k === "*" ||
           k === "Delete" ||
           k === "Backspace";
         if (blocked) return;
       }
       const rowItems = rows;
+      // Gmail-style * sequences: *a select all, *n select none.
+      if (pendingStarTimerRef.current !== null) {
+        clearStarPrefix();
+        if (event.key === "a") {
+          event.preventDefault();
+          selectMany(rowItems.map((row) => row.id));
+          return;
+        }
+        if (event.key === "n") {
+          event.preventDefault();
+          clearSelection();
+          return;
+        }
+      }
+      if (event.key === "*") {
+        event.preventDefault();
+        clearGoPrefix();
+        pendingStarTimerRef.current = window.setTimeout(() => {
+          pendingStarTimerRef.current = null;
+          setPendingPrefix(null);
+        }, 1500);
+        setPendingPrefix("*");
+        return;
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
         selectMany(rowItems.map((row) => row.id));
@@ -216,7 +255,9 @@ export function MailboxList({
         }
         pendingGoTimerRef.current = window.setTimeout(() => {
           pendingGoTimerRef.current = null;
+          setPendingPrefix(null);
         }, 800);
+        setPendingPrefix("g");
       } else if (event.key === "j") {
         clearGoPrefix();
         event.preventDefault();
@@ -309,12 +350,15 @@ export function MailboxList({
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       clearGoPrefix();
+      clearStarPrefix();
     };
   }, [
     activePane,
     activeThreadId,
     archive,
     clearGoPrefix,
+    clearStarPrefix,
+    setPendingPrefix,
     clearSelection,
     focusRowAt,
     focusedIndex,

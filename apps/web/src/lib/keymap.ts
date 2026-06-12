@@ -12,6 +12,7 @@ import type { KeyBindingMap } from "tinykeys";
 
 import { getRegistry, setRuntimeNavigate } from "@/lib/actions";
 import type { ActionContext } from "@/lib/actions";
+import { useKeyScope } from "@/state/keyScopeStore";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
 import { useSelection } from "@/state/selectionStore";
@@ -46,11 +47,17 @@ export function buildGlobalKeymap(nav: Navigator): KeyBindingMap {
   setRuntimeNavigate(nav);
   const reg = getRegistry();
   const map: KeyBindingMap = {};
-  for (const [chord, actionId] of Object.entries(reg.getShortcutMap())) {
-    const action = reg.get(actionId);
-    if (!action) continue;
+  for (const [chord, byScope] of Object.entries(reg.getShortcutMap())) {
     map[chord] = (e) => {
+      // A page component that already handled (and preventDefault-ed) this
+      // key wins over the global binding.
+      if (e.defaultPrevented) return;
       if (suppressedInTextField(e)) return;
+      // Resolve at dispatch time: active scope first, then global fallback.
+      const scope = useKeyScope.getState().activeScope();
+      const actionId = byScope[scope] ?? byScope.global;
+      const action = actionId ? reg.get(actionId) : undefined;
+      if (!action) return;
       e.preventDefault();
       void action.run(buildContextSnapshot());
     };

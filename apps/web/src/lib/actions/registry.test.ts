@@ -79,7 +79,7 @@ describe("ActionRegistry", () => {
     reg.define(action({ id: "no-shortcut" }));
 
     const map = reg.getShortcutMap();
-    expect(map).toEqual({ "g i": "go-inbox" });
+    expect(map).toEqual({ "g i": { global: "go-inbox" } });
   });
 
   test("getShortcutMap includes aliases pointing to the same action id", () => {
@@ -87,10 +87,39 @@ describe("ActionRegistry", () => {
     reg.define(action({ id: "go-inbox", shortcut: "g i", aliases: ["1", "Digit1"] }));
 
     expect(reg.getShortcutMap()).toEqual({
-      "g i": "go-inbox",
-      "1": "go-inbox",
-      Digit1: "go-inbox",
+      "g i": { global: "go-inbox" },
+      "1": { global: "go-inbox" },
+      Digit1: { global: "go-inbox" },
     });
+  });
+
+  test("the same chord may bind different actions in different scopes", () => {
+    const reg = new ActionRegistry();
+    reg.define(action({ id: "global-z", shortcut: "KeyZ" }));
+    reg.define(action({ id: "thread-z", shortcut: "KeyZ", scope: "thread" }));
+
+    expect(reg.getShortcutMap()).toEqual({
+      KeyZ: { global: "global-z", thread: "thread-z" },
+    });
+    expect(reg.getActionForShortcut("KeyZ", "thread")?.id).toBe("thread-z");
+    expect(reg.getActionForShortcut("KeyZ")?.id).toBe("global-z");
+  });
+
+  test("duplicate chord within one scope still throws", () => {
+    const reg = new ActionRegistry();
+    reg.define(action({ id: "first", shortcut: "KeyE", scope: "mailbox" }));
+    expect(() => reg.define(action({ id: "second", shortcut: "KeyE", scope: "mailbox" }))).toThrow(
+      /duplicate shortcut "KeyE" in scope "mailbox"/,
+    );
+  });
+
+  test("displayOnly entries reserve their chord but are omitted from the binding map", () => {
+    const reg = new ActionRegistry();
+    reg.define(action({ id: "page-key", shortcut: "KeyJ", displayOnly: true }));
+    expect(reg.getShortcutMap()).toEqual({});
+    expect(() => reg.define(action({ id: "usurper", shortcut: "KeyJ" }))).toThrow(
+      /duplicate shortcut "KeyJ" in scope "global"/,
+    );
   });
 
   test("defineAction rejects when an alias collides with another action's shortcut", () => {

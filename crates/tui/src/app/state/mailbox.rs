@@ -299,6 +299,9 @@ pub struct MailboxState {
     pub visual_anchor: Option<usize>,
     pub pending_export_thread: Option<mxr_core::id::ThreadId>,
     pub sidebar_accounts_expanded: bool,
+    /// Spinner state for the per-account "syncing" indicator in the
+    /// sidebar. Ticked while any account reports sync_in_progress.
+    pub sidebar_sync_throbber: ThrobberState,
     pub sidebar_system_expanded: bool,
     pub sidebar_user_expanded: bool,
     pub sidebar_saved_searches_expanded: bool,
@@ -377,6 +380,7 @@ impl MailboxState {
             visual_anchor: None,
             pending_export_thread: None,
             sidebar_accounts_expanded: true,
+            sidebar_sync_throbber: ThrobberState::default(),
             sidebar_system_expanded: true,
             sidebar_user_expanded: true,
             sidebar_saved_searches_expanded: true,

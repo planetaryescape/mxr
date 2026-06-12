@@ -319,6 +319,7 @@ fn sidebar_snapshot() {
                 calendar_invites_count: 0,
                 accounts: Vec::new(),
                 accounts_expanded: true,
+                sync_throbber: None,
                 system_expanded: true,
                 user_expanded: true,
                 saved_searches_expanded: true,

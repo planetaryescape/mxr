@@ -72,6 +72,15 @@ impl App {
         if self.has_in_flight_work() {
             self.status_throbber.calc_next();
         }
+        if self
+            .diagnostics
+            .page
+            .sync_statuses
+            .iter()
+            .any(|status| status.sync_in_progress)
+        {
+            self.mailbox.sidebar_sync_throbber.calc_next();
+        }
         self.process_pending_search_debounce();
         self.process_pending_preview_read();
     }

@@ -175,7 +175,8 @@ async fn mailbox(
     let supports_pagination = matches!(
         lens.kind,
         MailboxLensKind::Inbox | MailboxLensKind::AllMail | MailboxLensKind::Label
-    ) || (lens.kind == MailboxLensKind::Subscription && lens.sender_email.is_some());
+    ) || (lens.kind == MailboxLensKind::Subscription
+        && lens.sender_email.is_some());
     let has_more = supports_pagination && envelope_page_size == query.limit;
     let next_offset = has_more.then(|| query.offset.saturating_add(query.limit));
     Ok(Json(json!({

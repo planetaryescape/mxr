@@ -22,7 +22,9 @@ pub(crate) async fn request_account_operation(
         }) => Ok(result),
         Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
         Err(e) => Err(e),
-        _ => Err(MxrError::Ipc("unexpected response".into())),
+        _ => Err(MxrError::Ipc(
+            "unexpected response to account operation".into(),
+        )),
     }
 }
 
@@ -46,7 +48,9 @@ pub(crate) async fn ipc_start_auth_session(
         }) => Ok(session),
         Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
         Err(e) => Err(e),
-        _ => Err(MxrError::Ipc("unexpected response".into())),
+        _ => Err(MxrError::Ipc(
+            "unexpected response to StartAuthSession".into(),
+        )),
     }
 }
 
@@ -61,7 +65,9 @@ pub(crate) async fn ipc_get_auth_session(
         }) => Ok(session),
         Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
         Err(e) => Err(e),
-        _ => Err(MxrError::Ipc("unexpected response".into())),
+        _ => Err(MxrError::Ipc(
+            "unexpected response to GetAuthSession".into(),
+        )),
     }
 }
 

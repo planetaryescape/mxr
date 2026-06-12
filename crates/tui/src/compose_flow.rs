@@ -54,7 +54,7 @@ fn extract_reply_context(resp: Response) -> Result<ReplyContext, MxrError> {
             data: ResponseData::ReplyContext { context },
         } => Ok(context),
         Response::Error { message, .. } => Err(MxrError::Ipc(message)),
-        _ => Err(MxrError::Ipc("unexpected response".into())),
+        _ => Err(MxrError::Ipc("unexpected response to PrepareReply".into())),
     }
 }
 
@@ -158,7 +158,11 @@ pub(crate) async fn handle_compose_action(
                     original_context: context.forwarded_content,
                 },
                 Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
-                _ => return Err(MxrError::Ipc("unexpected response".into())),
+                _ => {
+                    return Err(MxrError::Ipc(
+                        "unexpected response to PrepareForward".into(),
+                    ))
+                }
             };
             (
                 account_id,

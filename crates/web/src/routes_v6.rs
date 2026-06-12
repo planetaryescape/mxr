@@ -1353,6 +1353,106 @@ async fn resolve_commitment(
 }
 
 #[derive(Debug, Deserialize)]
+struct ThreadBriefingQuery {
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default)]
+    refresh: bool,
+}
+
+/// Render a thread briefing for someone returning to a dormant thread.
+/// Cached unless `refresh=true`.
+async fn get_thread_briefing(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(thread_id): Path<String>,
+    Query(query): Query<ThreadBriefingQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = ThreadId::from_str(&thread_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid thread_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::GetThreadBriefing {
+            thread_id: id,
+            refresh: query.refresh,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct RecipientBriefingQuery {
+    #[serde(default)]
+    token: Option<String>,
+    account_id: String,
+    email: String,
+    #[serde(default)]
+    refresh: bool,
+}
+
+/// Render a recipient briefing for compose-time context.
+async fn get_recipient_briefing(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<RecipientBriefingQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = parse_account_id(&query.account_id)?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::GetRecipientBriefing {
+            account_id,
+            email: query.email,
+            refresh: query.refresh,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct FindExpertQuery {
+    #[serde(default)]
+    token: Option<String>,
+    account_id: String,
+    query: String,
+    #[serde(default)]
+    include_self: bool,
+    #[serde(default = "default_expert_limit")]
+    limit: u32,
+}
+
+fn default_expert_limit() -> u32 {
+    5
+}
+
+/// Find people in the local archive who have answered similar questions.
+async fn find_expert(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<FindExpertQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = parse_account_id(&query.account_id)?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::FindExpert {
+            account_id,
+            query: query.query,
+            include_self: query.include_self,
+            limit: query.limit,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
 struct ScreenerQueueQuery {
     #[serde(default)]
     token: Option<String>,
@@ -2564,6 +2664,10 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
             "/commitments/{commitment_id}/resolve",
             post(resolve_commitment),
         )
+        // briefings + expert finder
+        .route("/threads/{thread_id}/briefing", get(get_thread_briefing))
+        .route("/contacts/briefing", get(get_recipient_briefing))
+        .route("/contacts/expert", get(find_expert))
         // screener
         .route("/screener/queue", get(list_screener_queue))
         .route(

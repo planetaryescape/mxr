@@ -93,13 +93,14 @@ pub(crate) async fn search_envelopes(
     socket_path: &Path,
     query: &str,
     limit: u32,
+    offset: u32,
 ) -> Result<Vec<Envelope>, BridgeError> {
     match ipc_request(
         socket_path,
         Request::Search {
             query: query.to_string(),
             limit,
-            offset: 0,
+            offset,
             account_id: None,
             mode: Some(SearchMode::Lexical),
             sort: Some(SortOrder::DateDesc),

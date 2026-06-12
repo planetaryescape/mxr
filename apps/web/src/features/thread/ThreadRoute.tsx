@@ -38,8 +38,10 @@ import { toast } from "sonner";
 import {
   fetchSenderProfile,
   fetchThread,
+  getThreadBriefing,
   listCommitments,
   modifyLabels,
+  resolveCommitment,
   shellKey,
   summarizeThread,
 } from "@/features/mailbox/api";
@@ -226,6 +228,12 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
     onSuccess: (result) => openRail("sender-profile", result),
     onError: (error) => toast.error("Sender profile failed", { description: error.message }),
   });
+  const briefing = useMutation({
+    mutationFn: (refresh?: boolean) =>
+      getThreadBriefing({ threadId: data.thread.id, refresh: refresh ?? false }),
+    onSuccess: (result) => openRail("thread-briefing", result.briefing),
+    onError: (error) => toast.error("Briefing failed", { description: error.message }),
+  });
   const bodiesByMessage = useMemo(
     () => new Map(data.bodies.map((body) => [body.message_id, body])),
     [data.bodies],
@@ -261,6 +269,16 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
     () => extractThreadCommitments(commitments.data),
     [commitments.data],
   );
+  const resolveThreadCommitment = useMutation({
+    mutationFn: resolveCommitment,
+    onSuccess: () => {
+      toast.success("Commitment resolved");
+      void queryClient.invalidateQueries({
+        queryKey: ["commitments", data.thread.account_id, primarySenderEmail],
+      });
+    },
+    onError: (error) => toast.error("Resolve failed", { description: error.message }),
+  });
   const readerFull = readerLayout === "full";
   const toggleReaderLayout = useCallback(() => {
     setReaderLayout(readerFull ? "split" : "full");
@@ -537,6 +555,12 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         disabled: !primarySenderEmail || senderProfile.isPending,
         onSelect: () => primarySenderEmail && senderProfile.mutate(primarySenderEmail),
       },
+      {
+        label: "Briefing",
+        icon: <FileText className="size-3" />,
+        disabled: briefing.isPending,
+        onSelect: () => briefing.mutate(false),
+      },
       ...(attachments.length > 0
         ? [
             {
@@ -554,6 +578,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
       anyUnread,
       archive,
       attachments,
+      briefing,
       data.right_rail,
       openRail,
       primarySenderEmail,
@@ -702,7 +727,11 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
             <ThreadSummaryLoading />
           ) : null}
           {openCommitments.length > 0 ? (
-            <ThreadCommitmentChips commitments={openCommitments} />
+            <ThreadCommitmentChips
+              commitments={openCommitments}
+              onResolve={(id) => resolveThreadCommitment.mutate(id)}
+              resolving={resolveThreadCommitment.isPending}
+            />
           ) : null}
           {data.messages.map((message) => (
             <ThreadMessage
@@ -787,7 +816,15 @@ function ThreadSummaryLoading() {
   );
 }
 
-function ThreadCommitmentChips({ commitments }: { commitments: ThreadCommitmentView[] }) {
+function ThreadCommitmentChips({
+  commitments,
+  onResolve,
+  resolving,
+}: {
+  commitments: ThreadCommitmentView[];
+  onResolve: (commitmentId: string) => void;
+  resolving: boolean;
+}) {
   return (
     <section
       aria-label="Open commitments"
@@ -799,19 +836,29 @@ function ThreadCommitmentChips({ commitments }: { commitments: ThreadCommitmentV
       </div>
       <div className="flex flex-wrap gap-2">
         {commitments.slice(0, 4).map((commitment) => (
-          <Badge
+          <div
             key={commitment.id}
-            variant="outline"
-            className="max-w-full gap-1.5 border-amber-500/40 bg-background/70 py-1 text-2xs"
+            className="flex max-w-full items-center gap-1.5 rounded-md border border-amber-500/40 bg-background/70 py-1 pl-2 pr-1 text-2xs"
             title={commitment.what}
           >
             <span className="font-medium">{commitment.whoOwes}</span>
             <span className="text-muted-foreground">{commitment.direction}</span>
-            <span className="max-w-[320px] truncate">{commitment.what}</span>
+            <span className="max-w-[280px] truncate">{commitment.what}</span>
             {commitment.byWhen ? (
               <span className="text-muted-foreground">due {shortDate(commitment.byWhen)}</span>
             ) : null}
-          </Badge>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="shrink-0"
+              aria-label={`Resolve commitment: ${commitment.what}`}
+              disabled={resolving}
+              onClick={() => onResolve(commitment.id)}
+            >
+              <Check className="size-3" />
+            </Button>
+          </div>
         ))}
       </div>
     </section>

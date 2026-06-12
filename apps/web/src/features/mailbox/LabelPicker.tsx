@@ -1,9 +1,22 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Pencil, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchShell } from "@/features/mailbox/api";
+import { deleteLabel, fetchShell, renameLabel, shellKey } from "@/features/mailbox/api";
 import {
   useOptimisticMailMutation,
   type MailAction,
@@ -20,7 +33,7 @@ interface LabelPickerProps {
 }
 
 export function LabelPicker({ mode, messageIds, appliedLabels, onClose }: LabelPickerProps) {
-  const shell = useQuery({ queryKey: ["shell"], queryFn: fetchShell, staleTime: 60_000 });
+  const shell = useQuery({ queryKey: shellKey, queryFn: fetchShell, staleTime: 60_000 });
   const [filter, setFilter] = useState("");
 
   const labelItems = useMemo(() => {
@@ -88,19 +101,140 @@ function LabelRow({
   messageIds: string[];
   onApplied: () => void;
 }) {
+  const qc = useQueryClient();
   const mutation = useOptimisticMailMutation(mode, { payload: { label } });
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(label);
+
+  const invalidateLabels = () => {
+    void qc.invalidateQueries({ queryKey: shellKey });
+  };
+
+  const rename = useMutation({
+    mutationFn: () => renameLabel({ oldName: label, newName: draft.trim() }),
+    onSuccess: () => {
+      toast.success(`Renamed to ${draft.trim()}`);
+      setEditing(false);
+      invalidateLabels();
+    },
+    onError: (error) => toast.error("Rename failed", { description: error.message }),
+  });
+  const remove = useMutation({
+    mutationFn: () => deleteLabel({ name: label }),
+    onSuccess: () => {
+      toast.success(`Deleted ${label}`);
+      invalidateLabels();
+    },
+    onError: (error) => toast.error("Delete failed", { description: error.message }),
+  });
+
+  if (editing) {
+    return (
+      <form
+        className="flex items-center gap-1"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (draft.trim() && draft.trim() !== label) rename.mutate();
+          else setEditing(false);
+        }}
+      >
+        <Input
+          autoFocus
+          aria-label={`Rename label ${label}`}
+          className="h-8 text-xs"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setDraft(label);
+              setEditing(false);
+            }
+          }}
+        />
+        <Button
+          type="submit"
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0"
+          aria-label="Save label name"
+          disabled={rename.isPending}
+        >
+          <Check className="size-3" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0"
+          aria-label="Cancel rename"
+          onClick={() => {
+            setDraft(label);
+            setEditing(false);
+          }}
+        >
+          <X className="size-3" />
+        </Button>
+      </form>
+    );
+  }
+
   return (
-    <Button
-      variant="ghost"
-      className="h-8 w-full justify-start text-xs"
-      disabled={mutation.isPending}
-      onClick={() => {
-        mutation.mutate(messageIds, {
-          onSuccess: () => onApplied(),
-        });
-      }}
-    >
-      {label}
-    </Button>
+    <div className="group flex items-center gap-1">
+      <Button
+        variant="ghost"
+        className="h-8 flex-1 justify-start text-xs"
+        disabled={mutation.isPending}
+        onClick={() => {
+          mutation.mutate(messageIds, {
+            onSuccess: () => onApplied(),
+          });
+        }}
+      >
+        {label}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-8 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+        aria-label={`Rename label ${label}`}
+        onClick={() => {
+          setDraft(label);
+          setEditing(true);
+        }}
+      >
+        <Pencil className="size-3" />
+      </Button>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 text-destructive opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+            aria-label={`Delete label ${label}`}
+            disabled={remove.isPending}
+          >
+            <Trash2 className="size-3" />
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete label “{label}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the label from mxr. Messages carrying it stay, but lose this label.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={remove.isPending}
+              onClick={() => remove.mutate()}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }

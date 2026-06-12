@@ -169,10 +169,14 @@ async fn mailbox(
     };
     annotate_open_commitment_counts(&mut rows, &commitment_counts);
     let groups = group_row_views(rows);
+    // Saved-search and subscription-overview lenses can't paginate: their IPC
+    // variants (RunSavedSearch, ListSubscriptions) take no offset. A subscription
+    // drilldown (sender_email present) runs through Request::Search, which does.
     let supports_pagination = matches!(
         lens.kind,
         MailboxLensKind::Inbox | MailboxLensKind::AllMail | MailboxLensKind::Label
-    );
+    ) || (lens.kind == MailboxLensKind::Subscription
+        && lens.sender_email.is_some());
     let has_more = supports_pagination && envelope_page_size == query.limit;
     let next_offset = has_more.then(|| query.offset.saturating_add(query.limit));
     Ok(Json(json!({

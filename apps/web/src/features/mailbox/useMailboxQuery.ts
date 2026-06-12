@@ -80,7 +80,11 @@ export function useMailboxQuery() {
       fetchMailbox({ ...lens, view: "threads", limit: MAILBOX_PAGE_SIZE, offset: pageParam }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
-      if (lens.lens_kind === "saved_search" || lens.lens_kind === "subscription") return undefined;
+      // Saved-search runs can't paginate: Request::RunSavedSearch takes no
+      // offset. A subscription drilldown (sender_email set) runs through
+      // Request::Search, which does — the bridge reports has_more for it.
+      if (lens.lens_kind === "saved_search") return undefined;
+      if (lens.lens_kind === "subscription" && !lens.sender_email) return undefined;
       if (lastPage.mailbox.has_more && typeof lastPage.mailbox.next_offset === "number") {
         return lastPage.mailbox.next_offset;
       }

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import {
+  cancelAuthSession,
   completeAuthSession,
   fetchAuthSession,
   gmailAccountConfig,
@@ -45,7 +46,15 @@ export function OnboardingRoute() {
     queryKey: ["auth-session", sessionId],
     queryFn: () => fetchAuthSession(sessionId ?? ""),
     enabled: Boolean(sessionId),
-    refetchInterval: (query) => (query.state.data?.session.state === "authorized" ? false : 1500),
+    // Stop polling once the daemon reaches a terminal state — authorized,
+    // failed, or cancelled — mirroring the TUI's spawn_outlook_auth_session
+    // loop. Use the daemon-supplied poll interval when present.
+    refetchInterval: (query) => {
+      const state = query.state.data?.session.state;
+      if (state && isTerminalAuthState(state)) return false;
+      const secs = query.state.data?.session.poll_interval_secs;
+      return secs ? secs * 1000 : 1500;
+    },
   });
   const startAuth = useMutation({
     mutationFn: (account: AccountConfig) => startAuthSession(account),
@@ -54,6 +63,14 @@ export function OnboardingRoute() {
       setStep(3);
     },
     onError: (error) => toast.error("OAuth start failed", { description: error.message }),
+  });
+  const cancelAuth = useMutation({
+    mutationFn: () => cancelAuthSession(sessionId ?? ""),
+    onSuccess: () => {
+      setSessionId(null);
+      setStep(2);
+    },
+    onError: (error) => toast.error("Cancel failed", { description: error.message }),
   });
   const completeAuth = useMutation({
     mutationFn: () => completeAuthSession(sessionId ?? ""),
@@ -206,6 +223,14 @@ export function OnboardingRoute() {
                 </div>
               ) : null}
             </div>
+            {session && isTerminalAuthState(session.state) && session.state !== "authorized" ? (
+              <p className="mt-3 text-xs text-destructive">
+                {session.state === "failed"
+                  ? `Authorization failed${session.error ? `: ${session.error}` : "."}`
+                  : "Authorization was cancelled."}{" "}
+                Start over to try again.
+              </p>
+            ) : null}
             <div className="mt-4 flex gap-2">
               <Button
                 disabled={session?.state !== "authorized" || completeAuth.isPending}
@@ -214,8 +239,12 @@ export function OnboardingRoute() {
                 <CheckCircle2 className="size-3" />
                 Complete
               </Button>
-              <Button variant="ghost" onClick={() => setStep(2)}>
-                Back
+              <Button
+                variant="ghost"
+                disabled={cancelAuth.isPending}
+                onClick={() => (sessionId ? cancelAuth.mutate() : setStep(2))}
+              >
+                Cancel
               </Button>
             </div>
           </section>
@@ -309,6 +338,10 @@ export function OnboardingRoute() {
       </div>
     </div>
   );
+}
+
+function isTerminalAuthState(state: string): boolean {
+  return state === "authorized" || state === "failed" || state === "cancelled";
 }
 
 const providerTiles = [

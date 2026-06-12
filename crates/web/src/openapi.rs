@@ -40,7 +40,8 @@ use utoipa::{
         screener_decisions_clear, thread_summarize, mail_draft_compose,
         mail_draft_refine, mail_humanizer_score, mail_humanizer_rewrite,
         mail_relationship_profile, mail_relationship_rebuild, mail_commitments_list,
-        mail_commitments_resolve, compose_session_start, compose_session_refresh, compose_session_restore,
+        mail_commitments_resolve, mail_thread_briefing, mail_contacts_briefing, mail_contacts_expert,
+        compose_session_start, compose_session_refresh, compose_session_restore,
         compose_session_update, compose_session_send, compose_session_safety_check,
         compose_session_collaborators, compose_session_save,
         compose_session_attachment, compose_session_discard, rules_list, rule_detail, rule_form,
@@ -168,6 +169,9 @@ endpoint!(get mail_relationship_profile "/api/v1/mail/relationship", "Relationsh
 endpoint!(post mail_relationship_rebuild "/api/v1/mail/relationship/rebuild", "Rebuild relationship analytics");
 endpoint!(get mail_commitments_list "/api/v1/mail/commitments", "List detected commitments");
 endpoint!(post mail_commitments_resolve "/api/v1/mail/commitments/{commitment_id}/resolve", "Resolve a commitment");
+endpoint!(get mail_thread_briefing "/api/v1/mail/threads/{thread_id}/briefing", "Briefing for a dormant thread");
+endpoint!(get mail_contacts_briefing "/api/v1/mail/contacts/briefing", "Recipient briefing for compose context");
+endpoint!(get mail_contacts_expert "/api/v1/mail/contacts/expert", "Find experts who answered similar questions");
 
 endpoint!(post compose_session_start "/api/v1/mail/compose/session", "Start compose session");
 endpoint!(post compose_session_refresh "/api/v1/mail/compose/session/refresh", "Refresh compose session");

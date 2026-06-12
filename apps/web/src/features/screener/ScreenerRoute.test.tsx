@@ -17,6 +17,9 @@ const screener = vi.hoisted(() => ({
     vi.fn<
       (input: { accountId: string; senderEmail: string; disposition: string }) => Promise<unknown>
     >(),
+  fetchScreenerDecisions: vi.fn<(accountId: string) => Promise<unknown>>(),
+  clearScreenerDecision:
+    vi.fn<(input: { accountId: string; senderEmail: string }) => Promise<unknown>>(),
 }));
 
 vi.mock("@/features/accounts/api", () => ({
@@ -26,11 +29,14 @@ vi.mock("@/features/accounts/api", () => ({
 vi.mock("./api", () => ({
   fetchScreenerQueue: screener.fetchScreenerQueue,
   setScreenerDecision: screener.setScreenerDecision,
+  fetchScreenerDecisions: screener.fetchScreenerDecisions,
+  clearScreenerDecision: screener.clearScreenerDecision,
 }));
 
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn<(message: string) => void>(),
+    error: vi.fn<(message: string, options?: unknown) => void>(),
   },
 }));
 
@@ -67,6 +73,17 @@ describe("ScreenerRoute", () => {
       ],
     });
     screener.setScreenerDecision.mockResolvedValue({ ok: true });
+    screener.fetchScreenerDecisions.mockResolvedValue({
+      decisions: [
+        {
+          account_id: "account-1",
+          sender_email: "spammer@example.com",
+          disposition: "deny",
+          decided_at: "2026-05-10T08:00:00Z",
+        },
+      ],
+    });
+    screener.clearScreenerDecision.mockResolvedValue({ ok: true });
   });
 
   afterEach(() => {
@@ -85,6 +102,25 @@ describe("ScreenerRoute", () => {
         accountId: "account-1",
         senderEmail: "unknown@example.com",
         disposition: "allow",
+      });
+    });
+  });
+
+  test("Decisions tab lists decisions and clears one", async () => {
+    renderWithQueryClient(<ScreenerRoute />);
+
+    const decisionsTab = await screen.findByRole("tab", { name: /decisions/i });
+    // Radix Tabs activates on mousedown; click alone doesn't flip the panel in jsdom.
+    fireEvent.mouseDown(decisionsTab);
+    fireEvent.click(decisionsTab);
+
+    expect(await screen.findByText("spammer@example.com")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /^clear$/i }));
+
+    await waitFor(() => {
+      expect(screener.clearScreenerDecision).toHaveBeenCalledWith({
+        accountId: "account-1",
+        senderEmail: "spammer@example.com",
       });
     });
   });

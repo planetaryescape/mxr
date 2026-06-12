@@ -11,6 +11,7 @@ import {
   useActionShortcutSections,
 } from "@/lib/actions";
 import { useConnectionStore } from "@/state/connectionStore";
+import { useKeyScope } from "@/state/keyScopeStore";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
 
@@ -18,6 +19,7 @@ export function StatusBar() {
   const sync = useConnectionStore((s) => s.syncProgress);
   const reindex = useConnectionStore((s) => s.semanticReindexProgress);
   const state = useConnectionStore((s) => s.state);
+  const pendingPrefix = useKeyScope((s) => s.pendingPrefix);
   const path = useRouterState({ select: (routerState) => routerState.location.pathname });
   const activePane = useMailboxPane((s) => s.activePane);
   const helpOpen = useModals((s) => s.helpOpen);
@@ -61,6 +63,12 @@ export function StatusBar() {
         </>
       ) : null}
       <span className="ml-auto flex items-center gap-2">
+        {pendingPrefix ? (
+          <span aria-live="polite" className="inline-flex items-center gap-1">
+            <KeyChip>{pendingPrefix}</KeyChip>
+            <span>…</span>
+          </span>
+        ) : null}
         {primaryHints.map((hint) => (
           <span
             key={`${hint.key}-${hint.label}`}

@@ -28,6 +28,14 @@ export type ActionGroup =
 /** tinykeys grammar — e.g. "g a", "$mod+KeyK", "Shift+Slash". */
 export type ShortcutChord = string;
 
+/**
+ * Binding scope. "global" chords fire everywhere; scoped chords only fire
+ * while their scope is active (pushed by the owning view via
+ * useShortcutScope). The same chord may bind different actions in different
+ * scopes; within one scope it must be unique.
+ */
+export type ActionScope = "global" | "mailbox" | "thread" | "compose" | "screener";
+
 export interface ActionContext {
   path: string;
   activePane: MailPane;
@@ -55,6 +63,14 @@ export interface Action {
   aliases?: ShortcutChord[];
   /** When true, action does not bind to the global keymap even if `shortcut` is set. */
   paletteOnly?: boolean;
+  /** Binding scope; defaults to "global". Only meaningful for bound shortcuts. */
+  scope?: ActionScope;
+  /**
+   * Documentation-only entry: appears in help/palette with its chord, but the
+   * key handling lives in a page component (vim-style motion keys). Never
+   * bound by the keymap; `run` may still be invoked from the palette.
+   */
+  displayOnly?: boolean;
   when?: ActionPredicate;
   run: ActionRunner;
 }

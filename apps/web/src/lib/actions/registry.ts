@@ -4,29 +4,33 @@
  * and shortcut collisions (the `g a` bug we're closing).
  */
 
-import type { Action, ActionContext, ShortcutChord } from "./types";
+import type { Action, ActionContext, ActionScope, ShortcutChord } from "./types";
 
 export class ActionRegistry {
   #actions: Action[] = [];
   #ids = new Set<string>();
-  #shortcuts = new Map<ShortcutChord, string>();
+  /** "<scope>:<chord>" → action id. Scoped uniqueness; displayOnly entries
+   * also reserve their chord so a real binding can't shadow a page key. */
+  #shortcuts = new Map<string, string>();
 
   define(action: Action): void {
     if (this.#ids.has(action.id)) {
       throw new Error(`ActionRegistry: duplicate id "${action.id}"`);
     }
     if (!action.paletteOnly) {
+      const scope = action.scope ?? "global";
       const allChords: ShortcutChord[] = [];
       if (action.shortcut) allChords.push(action.shortcut);
       if (action.aliases) allChords.push(...action.aliases);
       for (const chord of allChords) {
-        const owner = this.#shortcuts.get(chord);
+        const key = `${scope}:${chord}`;
+        const owner = this.#shortcuts.get(key);
         if (owner) {
           throw new Error(
-            `ActionRegistry: duplicate shortcut "${chord}" (already bound to "${owner}")`,
+            `ActionRegistry: duplicate shortcut "${chord}" in scope "${scope}" (already bound to "${owner}")`,
           );
         }
-        this.#shortcuts.set(chord, action.id);
+        this.#shortcuts.set(key, action.id);
       }
     }
     this.#ids.add(action.id);
@@ -45,8 +49,8 @@ export class ActionRegistry {
     return this.#actions.find((a) => a.id === id);
   }
 
-  getActionForShortcut(chord: ShortcutChord): Action | undefined {
-    const id = this.#shortcuts.get(chord);
+  getActionForShortcut(chord: ShortcutChord, scope: ActionScope = "global"): Action | undefined {
+    const id = this.#shortcuts.get(`${scope}:${chord}`) ?? this.#shortcuts.get(`global:${chord}`);
     if (!id) return undefined;
     return this.get(id);
   }
@@ -55,11 +59,20 @@ export class ActionRegistry {
     return this.#actions.filter((a) => !a.when || a.when(ctx));
   }
 
-  /** Returns chord → action id, omitting paletteOnly entries. Includes aliases. */
-  getShortcutMap(): Record<ShortcutChord, string> {
-    const map: Record<ShortcutChord, string> = {};
-    for (const [chord, id] of this.#shortcuts) {
-      map[chord] = id;
+  /**
+   * Returns chord → candidate action ids by scope, omitting paletteOnly and
+   * displayOnly entries. The keymap resolves the winner at dispatch time:
+   * active scope first, then global.
+   */
+  getShortcutMap(): Record<ShortcutChord, Partial<Record<ActionScope, string>>> {
+    const map: Record<ShortcutChord, Partial<Record<ActionScope, string>>> = {};
+    for (const [key, id] of this.#shortcuts) {
+      const action = this.get(id);
+      if (action?.displayOnly) continue;
+      const sep = key.indexOf(":");
+      const scope = key.slice(0, sep) as ActionScope;
+      const chord = key.slice(sep + 1);
+      (map[chord] ??= {})[scope] = id;
     }
     return map;
   }

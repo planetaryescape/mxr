@@ -34,6 +34,8 @@ const READER_HINTS: PageHint[] = [
   { key: "y", label: "Summary" },
   { key: "p", label: "Sender" },
   { key: "e", label: "Archive" },
+  { key: "[/]", label: "Archive & prev/next" },
+  { key: "Z", label: "Snooze" },
   { key: "!", label: "Spam" },
   { key: "Del", label: "Trash" },
 ];
@@ -46,8 +48,10 @@ const SIDEBAR_HINTS: PageHint[] = [
 
 const MAILBOX_HINTS: PageHint[] = [
   { key: "j/k", label: "Move" },
+  { key: "gg/G", label: "Top/bottom" },
   { key: "o", label: "Open" },
   { key: "x", label: "Select" },
+  { key: "*a/*n", label: "Select all/none" },
   { key: "h", label: "Sidebar" },
   { key: "e", label: "Archive" },
   { key: "s", label: "Star" },

@@ -372,7 +372,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "View activity".into(),
-            shortcut: "ga".into(),
+            shortcut: "gy".into(),
             action: Action::OpenActivityScreen,
             category: "Activity".into(),
         },

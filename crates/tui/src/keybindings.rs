@@ -405,190 +405,187 @@ pub fn load_keybindings(config_dir: &std::path::Path) -> KeybindingConfig {
     config
 }
 
+// Mail list defaults — Gmail-native scheme (A005). Module-level so tests
+// can assert the table has no duplicate keys before HashMap insertion
+// silently drops one of the colliding entries.
+const ML_DEFAULTS: &[(&str, &str)] = &[
+    // Navigation (vim-native)
+    ("j", "move_down"),
+    ("k", "move_up"),
+    ("gg", "jump_top"),
+    ("gy", "open_activity"),
+    ("G", "jump_bottom"),
+    ("Ctrl-d", "page_down"),
+    ("Ctrl-u", "page_up"),
+    ("H", "visible_top"),
+    ("M", "visible_middle"),
+    ("L", "visible_bottom"),
+    ("zz", "center_current"),
+    ("/", "search_all_mail"),
+    ("Ctrl-f", "mailbox_filter"),
+    ("n", "next_search_result"),
+    ("N", "prev_search_result"),
+    ("Enter", "open"),
+    ("o", "open"),
+    ("q", "quit_view"),
+    ("?", "help"),
+    ("Escape", "clear_selection"),
+    // Email actions (Gmail-native A005)
+    ("c", "compose"),
+    ("r", "reply"),
+    ("a", "reply_all"),
+    ("f", "forward"),
+    ("y", "summarize_current_thread"),
+    ("ia", "invite_accept"),
+    ("im", "invite_tentative"),
+    ("id", "invite_decline"),
+    ("e", "archive"),
+    ("m", "mark_read_archive"),
+    ("#", "trash"),
+    ("!", "spam"),
+    ("s", "star"),
+    ("I", "mark_read"),
+    ("U", "mark_unread"),
+    ("l", "apply_label"),
+    ("v", "move_to_label"),
+    ("x", "toggle_select"),
+    // mxr-specific
+    ("D", "unsubscribe"),
+    ("b", "flag_reply_later"),
+    ("Z", "snooze"),
+    ("O", "open_in_browser"),
+    ("R", "toggle_reader_mode"),
+    ("S", "toggle_signature"),
+    ("E", "export_thread"),
+    ("V", "visual_line_mode"),
+    ("Ctrl-p", "command_palette"),
+    ("Tab", "switch_panes"),
+    ("F", "toggle_fullscreen"),
+    ("1", "open_tab_1"),
+    ("2", "open_tab_2"),
+    ("3", "open_tab_3"),
+    ("4", "open_tab_4"),
+    ("5", "open_tab_5"),
+    // Gmail go-to (A005)
+    ("gi", "go_inbox"),
+    ("gs", "go_starred"),
+    ("gt", "go_sent"),
+    ("gd", "go_drafts"),
+    ("ga", "go_all_mail"),
+    ("gl", "go_label"),
+    ("gc", "edit_config"),
+    ("gL", "open_logs"),
+    ("gA", "draft_assist"),
+    ("gD", "draft_new_for_sender"),
+    ("gC", "open_commitments"),
+    ("gV", "open_voice_profile"),
+];
+
+// Message view defaults
+const MV_DEFAULTS: &[(&str, &str)] = &[
+    ("j", "scroll_down"),
+    ("k", "scroll_up"),
+    ("F", "toggle_fullscreen"),
+    ("R", "toggle_reader_mode"),
+    ("H", "toggle_html_view"),
+    ("M", "toggle_remote_content"),
+    ("O", "open_in_browser"),
+    ("A", "attachment_list"),
+    ("L", "open_links"),
+    ("r", "reply"),
+    ("a", "reply_all"),
+    ("f", "forward"),
+    ("y", "summarize_current_thread"),
+    ("ia", "invite_accept"),
+    ("im", "invite_tentative"),
+    ("id", "invite_decline"),
+    ("e", "archive"),
+    ("m", "mark_read_archive"),
+    ("#", "trash"),
+    ("!", "spam"),
+    ("s", "star"),
+    ("I", "mark_read"),
+    ("U", "mark_unread"),
+    ("D", "unsubscribe"),
+    ("S", "toggle_signature"),
+    ("1", "open_tab_1"),
+    ("2", "open_tab_2"),
+    ("3", "open_tab_3"),
+    ("4", "open_tab_4"),
+    ("5", "open_tab_5"),
+    ("gc", "edit_config"),
+    ("gL", "open_logs"),
+    ("gA", "draft_assist"),
+    ("gD", "draft_new_for_sender"),
+    ("gC", "open_commitments"),
+    ("gV", "open_voice_profile"),
+];
+
+// Thread view defaults
+const TV_DEFAULTS: &[(&str, &str)] = &[
+    ("j", "next_message"),
+    ("k", "prev_message"),
+    ("F", "toggle_fullscreen"),
+    ("r", "reply"),
+    ("a", "reply_all"),
+    ("f", "forward"),
+    ("y", "summarize_current_thread"),
+    ("ia", "invite_accept"),
+    ("im", "invite_tentative"),
+    ("id", "invite_decline"),
+    ("A", "attachment_list"),
+    ("L", "open_links"),
+    ("R", "toggle_reader_mode"),
+    ("H", "toggle_html_view"),
+    ("M", "toggle_remote_content"),
+    ("E", "export_thread"),
+    ("O", "open_in_browser"),
+    ("e", "archive"),
+    ("m", "mark_read_archive"),
+    ("#", "trash"),
+    ("!", "spam"),
+    ("s", "star"),
+    ("I", "mark_read"),
+    ("U", "mark_unread"),
+    ("D", "unsubscribe"),
+    ("S", "toggle_signature"),
+    ("1", "open_tab_1"),
+    ("2", "open_tab_2"),
+    ("3", "open_tab_3"),
+    ("4", "open_tab_4"),
+    ("5", "open_tab_5"),
+    ("gc", "edit_config"),
+    ("gL", "open_logs"),
+    ("gA", "draft_assist"),
+    ("gD", "draft_new_for_sender"),
+    ("gC", "open_commitments"),
+    ("gV", "open_voice_profile"),
+];
+
 pub fn default_keybindings() -> KeybindingConfig {
     let mut mail_list = HashMap::new();
     let mut message_view = HashMap::new();
     let mut thread_view = HashMap::new();
 
-    // Mail list defaults — Gmail-native scheme (A005)
-    let ml_defaults = [
-        // Navigation (vim-native)
-        ("j", "move_down"),
-        ("k", "move_up"),
-        ("gg", "jump_top"),
-        ("ga", "open_activity"),
-        ("G", "jump_bottom"),
-        ("Ctrl-d", "page_down"),
-        ("Ctrl-u", "page_up"),
-        ("H", "visible_top"),
-        ("M", "visible_middle"),
-        ("L", "visible_bottom"),
-        ("zz", "center_current"),
-        ("/", "search_all_mail"),
-        ("Ctrl-f", "mailbox_filter"),
-        ("n", "next_search_result"),
-        ("N", "prev_search_result"),
-        ("Enter", "open"),
-        ("o", "open"),
-        ("q", "quit_view"),
-        ("?", "help"),
-        ("Escape", "clear_selection"),
-        // Email actions (Gmail-native A005)
-        ("c", "compose"),
-        ("r", "reply"),
-        ("a", "reply_all"),
-        ("f", "forward"),
-        ("y", "summarize_current_thread"),
-        ("ia", "invite_accept"),
-        ("im", "invite_tentative"),
-        ("id", "invite_decline"),
-        ("e", "archive"),
-        ("m", "mark_read_archive"),
-        ("#", "trash"),
-        ("!", "spam"),
-        ("s", "star"),
-        ("I", "mark_read"),
-        ("U", "mark_unread"),
-        ("l", "apply_label"),
-        ("v", "move_to_label"),
-        ("x", "toggle_select"),
-        // mxr-specific
-        ("D", "unsubscribe"),
-        ("b", "flag_reply_later"),
-        ("Z", "snooze"),
-        ("O", "open_in_browser"),
-        ("R", "toggle_reader_mode"),
-        ("S", "toggle_signature"),
-        ("E", "export_thread"),
-        ("V", "visual_line_mode"),
-        ("Ctrl-p", "command_palette"),
-        ("Tab", "switch_panes"),
-        ("F", "toggle_fullscreen"),
-        ("1", "open_tab_1"),
-        ("2", "open_tab_2"),
-        ("3", "open_tab_3"),
-        ("4", "open_tab_4"),
-        ("5", "open_tab_5"),
-        // Gmail go-to (A005)
-        ("gi", "go_inbox"),
-        ("gs", "go_starred"),
-        ("gt", "go_sent"),
-        ("gd", "go_drafts"),
-        ("ga", "go_all_mail"),
-        ("gl", "go_label"),
-        ("gc", "edit_config"),
-        ("gL", "open_logs"),
-        ("gA", "draft_assist"),
-        ("gD", "draft_new_for_sender"),
-        ("gC", "open_commitments"),
-        ("gV", "open_voice_profile"),
-    ];
-    for (key, action) in ml_defaults {
+    for (key, action) in ML_DEFAULTS {
         if let Ok(kb) = parse_key_string(key) {
             mail_list.insert(kb, action.to_string());
         }
     }
-    #[cfg(debug_assertions)]
-    if let Ok(kb) = parse_key_string("Ctrl-Alt-d") {
-        mail_list.insert(kb, "dump_action_trace".to_string());
-    }
-
-    // Message view defaults
-    let mv_defaults = [
-        ("j", "scroll_down"),
-        ("k", "scroll_up"),
-        ("F", "toggle_fullscreen"),
-        ("R", "toggle_reader_mode"),
-        ("H", "toggle_html_view"),
-        ("M", "toggle_remote_content"),
-        ("O", "open_in_browser"),
-        ("A", "attachment_list"),
-        ("L", "open_links"),
-        ("r", "reply"),
-        ("a", "reply_all"),
-        ("f", "forward"),
-        ("y", "summarize_current_thread"),
-        ("ia", "invite_accept"),
-        ("im", "invite_tentative"),
-        ("id", "invite_decline"),
-        ("e", "archive"),
-        ("m", "mark_read_archive"),
-        ("#", "trash"),
-        ("!", "spam"),
-        ("s", "star"),
-        ("I", "mark_read"),
-        ("U", "mark_unread"),
-        ("D", "unsubscribe"),
-        ("S", "toggle_signature"),
-        ("1", "open_tab_1"),
-        ("2", "open_tab_2"),
-        ("3", "open_tab_3"),
-        ("4", "open_tab_4"),
-        ("5", "open_tab_5"),
-        ("gc", "edit_config"),
-        ("gL", "open_logs"),
-        ("gA", "draft_assist"),
-        ("gD", "draft_new_for_sender"),
-        ("gC", "open_commitments"),
-        ("gV", "open_voice_profile"),
-    ];
-    for (key, action) in mv_defaults {
+    for (key, action) in MV_DEFAULTS {
         if let Ok(kb) = parse_key_string(key) {
             message_view.insert(kb, action.to_string());
         }
     }
-    #[cfg(debug_assertions)]
-    if let Ok(kb) = parse_key_string("Ctrl-Alt-d") {
-        message_view.insert(kb, "dump_action_trace".to_string());
-    }
-
-    // Thread view defaults
-    let tv_defaults = [
-        ("j", "next_message"),
-        ("k", "prev_message"),
-        ("F", "toggle_fullscreen"),
-        ("r", "reply"),
-        ("a", "reply_all"),
-        ("f", "forward"),
-        ("y", "summarize_current_thread"),
-        ("ia", "invite_accept"),
-        ("im", "invite_tentative"),
-        ("id", "invite_decline"),
-        ("A", "attachment_list"),
-        ("L", "open_links"),
-        ("R", "toggle_reader_mode"),
-        ("H", "toggle_html_view"),
-        ("M", "toggle_remote_content"),
-        ("E", "export_thread"),
-        ("O", "open_in_browser"),
-        ("e", "archive"),
-        ("m", "mark_read_archive"),
-        ("#", "trash"),
-        ("!", "spam"),
-        ("s", "star"),
-        ("I", "mark_read"),
-        ("U", "mark_unread"),
-        ("D", "unsubscribe"),
-        ("S", "toggle_signature"),
-        ("1", "open_tab_1"),
-        ("2", "open_tab_2"),
-        ("3", "open_tab_3"),
-        ("4", "open_tab_4"),
-        ("5", "open_tab_5"),
-        ("gc", "edit_config"),
-        ("gL", "open_logs"),
-        ("gA", "draft_assist"),
-        ("gD", "draft_new_for_sender"),
-        ("gC", "open_commitments"),
-        ("gV", "open_voice_profile"),
-    ];
-    for (key, action) in tv_defaults {
+    for (key, action) in TV_DEFAULTS {
         if let Ok(kb) = parse_key_string(key) {
             thread_view.insert(kb, action.to_string());
         }
     }
     #[cfg(debug_assertions)]
     if let Ok(kb) = parse_key_string("Ctrl-Alt-d") {
+        mail_list.insert(kb.clone(), "dump_action_trace".to_string());
+        message_view.insert(kb.clone(), "dump_action_trace".to_string());
         thread_view.insert(kb, "dump_action_trace".to_string());
     }
 
@@ -737,6 +734,27 @@ mod tests {
     fn display_bindings_for_actions_joins_aliases_stably() {
         let bindings = display_bindings_for_actions(ViewContext::MailList, &["open"]);
         assert_eq!(bindings, vec![("Enter/o".to_string(), "Open".to_string())]);
+    }
+
+    /// HashMap insertion makes a duplicate key in the default tables a
+    /// silent last-one-wins bug (the `ga` open_activity/go_all_mail
+    /// collision shipped exactly this way). Catch it at the source table.
+    #[test]
+    fn default_tables_have_no_duplicate_keys() {
+        for (name, table) in [
+            ("mail_list", ML_DEFAULTS),
+            ("message_view", MV_DEFAULTS),
+            ("thread_view", TV_DEFAULTS),
+        ] {
+            let mut seen: HashMap<&str, &str> = HashMap::new();
+            for (key, action) in table {
+                if let Some(prev) = seen.insert(key, action) {
+                    panic!(
+                        "duplicate key '{key}' in {name} defaults: bound to both '{prev}' and '{action}'"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

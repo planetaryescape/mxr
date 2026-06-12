@@ -111,7 +111,8 @@ pub enum Action {
     /// Close the screener triage modal (Esc).
     CloseScreenerModal,
     /// Open the local activity log modal (Phase 5).
-    /// Chord: `g a` (g-prefix for "go to") · palette: View activity.
+    /// Chord: `g y` (g-prefix for "go to"; `g a` is GoToAllMail) ·
+    /// palette: View activity.
     OpenActivityScreen,
     /// Close the activity log modal (Esc).
     CloseActivityModal,

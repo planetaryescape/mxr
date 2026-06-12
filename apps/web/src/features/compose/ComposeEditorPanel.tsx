@@ -33,6 +33,7 @@ import { DraftAssist } from "./DraftAssist";
 import { DraftQualityBadges } from "./DraftQualityBadges";
 import { RecipientField } from "./RecipientField";
 import { SendLaterDialog } from "./SendLaterDialog";
+import { SnippetPicker } from "./SnippetPicker";
 import type { DraftSuggestionResponse } from "./types";
 import type { ComposeController } from "./useComposeSession";
 
@@ -293,6 +294,12 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         safetyReport={controller.safetyReport}
         safetyCheckError={controller.safetyCheckError}
         onConfirm={controller.confirmSend}
+      />
+      <SnippetPicker
+        open={controller.snippetPickerOpen}
+        onOpenChange={controller.setSnippetPickerOpen}
+        snippets={controller.snippetList}
+        onInsert={controller.insertSnippet}
       />
       <SendLaterDialog
         open={controller.sendLaterOpen}

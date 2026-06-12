@@ -84,7 +84,7 @@ interface ComposeSaveSnapshot {
   body: string;
 }
 
-interface Snippet {
+export interface Snippet {
   name: string;
   body: string;
 }
@@ -140,6 +140,12 @@ export interface ComposeController {
   handleComposeKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
   requestSend: () => void;
   confirmSend: () => Promise<void>;
+  snippetPickerOpen: boolean;
+  setSnippetPickerOpen: Dispatch<SetStateAction<boolean>>;
+  /** Snippets available for the picker and `;name ` inline expansion. */
+  snippetList: Snippet[];
+  /** Append a snippet body to the end of the message body. */
+  insertSnippet: (body: string) => void;
   sendLaterOpen: boolean;
   setSendLaterOpen: Dispatch<SetStateAction<boolean>>;
   /** Open the send-later dialog (same local validation gate as send). */
@@ -216,6 +222,7 @@ export function useComposeSession(
   const [saveError, setSaveError] = useState<string | null>(null);
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
   const [sendLaterOpen, setSendLaterOpen] = useState(false);
+  const [snippetPickerOpen, setSnippetPickerOpen] = useState(false);
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
   const [uploading, setUploading] = useState(0);
@@ -560,6 +567,12 @@ export function useComposeSession(
       if (!busy && canServerSave) void handleServerSaveClick();
       return;
     }
+    if (!event.shiftKey && key === ";") {
+      event.preventDefault();
+      event.stopPropagation();
+      setSnippetPickerOpen(true);
+      return;
+    }
     if (!event.shiftKey && key === "s") {
       event.preventDefault();
       event.stopPropagation();
@@ -639,6 +652,14 @@ export function useComposeSession(
     } finally {
       setCheckingSafety(false);
     }
+  }
+
+  function insertSnippet(body: string) {
+    const current = draftRef.current;
+    if (!current) return;
+    const base = current.bodyMarkdown;
+    updateBody(base.trim() ? `${base.replace(/\n*$/, "")}\n\n${body}` : body);
+    setSnippetPickerOpen(false);
   }
 
   function requestSendLater() {
@@ -920,6 +941,10 @@ export function useComposeSession(
     handleComposeKeyDown,
     requestSend,
     confirmSend,
+    snippetPickerOpen,
+    setSnippetPickerOpen,
+    snippetList: snippets.data?.snippets ?? [],
+    insertSnippet,
     sendLaterOpen,
     setSendLaterOpen,
     requestSendLater,

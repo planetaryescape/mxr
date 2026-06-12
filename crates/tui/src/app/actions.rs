@@ -69,6 +69,9 @@ impl App {
         if self.analytics.should_show_cold_load() {
             self.analytics.loading_throbber.calc_next();
         }
+        if self.has_in_flight_work() {
+            self.status_throbber.calc_next();
+        }
         self.process_pending_search_debounce();
         self.process_pending_preview_read();
     }

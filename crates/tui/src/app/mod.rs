@@ -213,12 +213,19 @@ pub struct App {
     pub in_flight_html_image_asset_requests: HashSet<MessageId>,
     pub pending_local_state_save: bool,
     pub status_message: Option<String>,
+    /// Animated spinner state for the status-bar in-flight indicator.
+    /// Ticks while `has_in_flight_work()` is true.
+    pub status_throbber: ThrobberState,
     /// Transient operation-outcome notifications rendered as stacked
     /// bottom-right boxes above the status bar. Ambient state stays on
     /// `status_message`; completed/failed operations go here.
     pub toasts: ToastQueue,
     pub pending_mutation_count: usize,
     pub pending_mutation_status: Option<String>,
+    /// Peak size of the current mutation batch. Set while mutations are
+    /// queued/in flight so the status bar can render "n/m" progress for
+    /// bulk operations; resets to 0 once the batch drains.
+    pub mutation_batch_total: usize,
     pub pending_mutation_queue: Vec<QueuedMutation>,
     pub mutation_snapshots: MutationSnapshotStore,
     pub mutation_id_generator: MutationIdGenerator,
@@ -367,9 +374,11 @@ impl App {
             in_flight_html_image_asset_requests: HashSet::new(),
             pending_local_state_save: false,
             status_message: None,
+            status_throbber: ThrobberState::default(),
             toasts: ToastQueue::default(),
             pending_mutation_count: 0,
             pending_mutation_status: None,
+            mutation_batch_total: 0,
             pending_mutation_queue: Vec::new(),
             mutation_snapshots: MutationSnapshotStore::default(),
             mutation_id_generator: MutationIdGenerator::default(),
@@ -600,6 +609,19 @@ impl App {
     /// are handled by the queue and the `ui::toasts` renderer.
     pub fn push_toast(&mut self, toast: Toast) {
         self.toasts.push(toast);
+    }
+
+    /// True while any replaceable request or queued mutation is in
+    /// flight. Drives the status-bar spinner so background work is
+    /// visible even when no pane-local loading indicator is active.
+    pub fn has_in_flight_work(&self) -> bool {
+        self.pending_mutation_count > 0
+            || self.search_is_pending()
+            || self.mailbox.pending_thread_fetch.is_some()
+            || self.mailbox.in_flight_thread_fetch.is_some()
+            || !self.mailbox.in_flight_body_requests.is_empty()
+            || !self.mailbox.thread_summary_in_flight.is_empty()
+            || self.accounts.page.operation_in_flight
     }
 
     /// Take the active undo handle, returning the `mutation_id` to

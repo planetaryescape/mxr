@@ -372,7 +372,13 @@ impl App {
         }
 
         let status_bar = self.status_bar_state();
-        ui::status_bar::draw(frame, bottom_bar_area, &status_bar, theme);
+        ui::status_bar::draw(
+            frame,
+            bottom_bar_area,
+            &status_bar,
+            Some(&self.status_throbber),
+            theme,
+        );
 
         if self.search.bar.active {
             ui::search_bar::draw(frame, area, &self.search.bar, theme);

@@ -345,6 +345,7 @@ impl App {
             run_after: None,
         });
         self.pending_mutation_count += 1;
+        self.mutation_batch_total = self.mutation_batch_total.max(self.pending_mutation_count);
         self.pending_mutation_status = Some(status_message.clone());
         self.status_message = Some(status_message);
         id
@@ -363,6 +364,7 @@ impl App {
         );
         self.pending_mutation_queue.push(queued);
         self.pending_mutation_count += 1;
+        self.mutation_batch_total = self.mutation_batch_total.max(self.pending_mutation_count);
         let status = format!("Retrying mailbox update in {}s...", delay.as_secs());
         self.pending_mutation_status = Some(status.clone());
         self.status_message = Some(status);
@@ -532,6 +534,7 @@ impl App {
         self.pending_mutation_count = self.pending_mutation_count.saturating_sub(1);
         if self.pending_mutation_count == 0 {
             self.pending_mutation_status = None;
+            self.mutation_batch_total = 0;
         }
     }
 

@@ -905,7 +905,10 @@ fn bars_snapshot() {
                 status_message: None,
                 pending_mutation_count: 0,
                 pending_mutation_status: None,
+                mutation_batch_total: 0,
+                busy: false,
             },
+            None,
             &mxr_tui::theme::Theme::default(),
         );
     });

@@ -50,6 +50,8 @@ impl App {
                     .or_else(|| self.status_message.clone()),
                 pending_mutation_count: self.pending_mutation_count,
                 pending_mutation_status: self.pending_mutation_status.clone(),
+                mutation_batch_total: self.mutation_batch_total,
+                busy: self.has_in_flight_work(),
             };
         }
 
@@ -77,6 +79,8 @@ impl App {
                     .or_else(|| self.status_message.clone()),
                 pending_mutation_count: self.pending_mutation_count,
                 pending_mutation_status: self.pending_mutation_status.clone(),
+                mutation_batch_total: self.mutation_batch_total,
+                busy: self.has_in_flight_work(),
             };
         }
 
@@ -95,6 +99,8 @@ impl App {
                     .or_else(|| self.status_message.clone()),
                 pending_mutation_count: self.pending_mutation_count,
                 pending_mutation_status: self.pending_mutation_status.clone(),
+                mutation_batch_total: self.mutation_batch_total,
+                busy: self.has_in_flight_work(),
             };
         }
 
@@ -119,6 +125,8 @@ impl App {
             status_message: self.status_message.clone(),
             pending_mutation_count: self.pending_mutation_count,
             pending_mutation_status: self.pending_mutation_status.clone(),
+            mutation_batch_total: self.mutation_batch_total,
+            busy: self.has_in_flight_work(),
         }
     }
 

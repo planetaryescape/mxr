@@ -165,6 +165,8 @@ export function ComposeRoute() {
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(0);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  const [pendingSends, setPendingSends] = useState(0);
+  const hasAutofocusedRef = useRef(false);
   const [aiPurpose, setAiPurpose] = useState("");
   const [aiRegister, setAiRegister] = useState<VoiceRegister>("neutral");
   const [aiLength, setAiLength] = useState<DraftLengthHint>("medium");
@@ -301,9 +303,41 @@ export function ComposeRoute() {
     return () => window.clearTimeout(handle);
   }, [dirty, draft, saveCurrentDraft]);
 
+  // Flush the autosave debounce the moment the tab is hidden — a closed tab
+  // never comes back for the 3s timer.
   useEffect(() => {
-    if (!draft?.draftPath) return;
-    toInputRef.current?.focus();
+    const flush = () => {
+      if (document.visibilityState !== "hidden") return;
+      if (!draftRef.current) return;
+      void saveCurrentDraft().catch(() => {
+        // beforeunload below still warns about the unsaved state.
+      });
+    };
+    document.addEventListener("visibilitychange", flush);
+    return () => document.removeEventListener("visibilitychange", flush);
+  }, [saveCurrentDraft]);
+
+  const hasUnsavedWork = dirty || updateSession.isPending || pendingSends > 0;
+  useEffect(() => {
+    if (!hasUnsavedWork) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasUnsavedWork]);
+
+  useEffect(() => {
+    if (!draft?.draftPath || hasAutofocusedRef.current) return;
+    hasAutofocusedRef.current = true;
+    // Defer past the loading→loaded re-render, and never steal focus the
+    // user has already placed somewhere else.
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      const focusIsElsewhere =
+        active instanceof HTMLElement && active !== document.body && active.tabIndex >= 0;
+      if (!focusIsElsewhere) toInputRef.current?.focus();
+    });
   }, [draft?.draftPath]);
 
   if (sessionQuery.isLoading) {
@@ -500,7 +534,10 @@ export function ComposeRoute() {
 
     // Outbound undo: defer the actual send by 5 seconds. The toast offers an
     // Undo button that cancels the timer. Auto-fire after the window expires.
+    // The pending window counts as unsaved work so beforeunload warns —
+    // closing the tab here would silently drop the send.
     let cancelled = false;
+    setPendingSends((count) => count + 1);
     const toastId = toast("Sending in 5s", {
       duration: 5000,
       action: {
@@ -512,6 +549,7 @@ export function ComposeRoute() {
     });
     setTimeout(() => {
       if (cancelled) {
+        setPendingSends((count) => Math.max(0, count - 1));
         toast.dismiss(toastId);
         toast.info("Send cancelled");
         return;
@@ -523,7 +561,8 @@ export function ComposeRoute() {
           toast.success("Message sent");
           await navigate({ to: "/m/$mailbox", params: { mailbox: "sent" } });
         })
-        .catch((err: Error) => toast.error("Send failed", { description: err.message }));
+        .catch((err: Error) => toast.error("Send failed", { description: err.message }))
+        .finally(() => setPendingSends((count) => Math.max(0, count - 1)));
     }, 5000);
   }
 
@@ -813,6 +852,11 @@ export function ComposeRoute() {
         saveStatus={saveStatus}
         dirty={dirty}
         saveError={saveError}
+        onRetrySave={() => {
+          void saveCurrentDraft().catch((error: Error) => {
+            toast.error("Save failed", { description: error.message });
+          });
+        }}
         editorPreference={editorPreference}
         onEditorChange={setComposeEditor}
         suggestion={draftSuggestion}

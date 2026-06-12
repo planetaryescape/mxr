@@ -1,6 +1,6 @@
 //! Activity log modal (Phase 5). Read-only viewer of the last day of
 //! local `user_activity` rows. Lives over whatever screen the user is on
-//! — opened via `g a` chord or palette entry.
+//! — opened via `g y` chord or palette entry.
 
 use crate::app::ActivityModalState;
 use crate::theme::Theme;

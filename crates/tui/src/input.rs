@@ -133,6 +133,14 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 Some(Action::OpenAnalyticsScreen)
             }
+            (
+                KeyState::WaitingForSecond { first: 'g', .. },
+                KeyCode::Char('y'),
+                KeyModifiers::NONE,
+            ) => {
+                self.state = KeyState::Normal;
+                Some(Action::OpenActivityScreen)
+            }
             // g <0-9>: jump to a saved-search tab by index. `g 0` returns
             // to the default inbox view; `g N` (1..=9) targets the Nth
             // saved search. Out-of-range indices are no-ops.
@@ -365,6 +373,18 @@ mod tests {
         let _ = input.handle_key(key(KeyCode::Char('g')));
         let action = input.handle_key(key(KeyCode::Char('a')));
         assert_eq!(action, Some(Action::GoToAllMail));
+    }
+
+    /// `g y` opens the activity log modal. The activity chord used to be
+    /// documented as `g a`, which collided with GoToAllMail and never
+    /// actually dispatched — this is the working binding.
+    #[test]
+    fn chord_g_then_y_opens_activity_screen() {
+        let mut input = InputHandler::new();
+        let first = input.handle_key(key(KeyCode::Char('g')));
+        assert_eq!(first, None, "g alone must wait, not act");
+        let action = input.handle_key(key(KeyCode::Char('y')));
+        assert_eq!(action, Some(Action::OpenActivityScreen));
     }
 
     /// `g <digit>` jumps to the corresponding saved-search tab. `g 1`

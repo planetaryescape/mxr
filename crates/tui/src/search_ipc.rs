@@ -76,13 +76,15 @@ pub(crate) async fn ipc_search_segment(
                     }),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(error) => Err(error),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to ListEnvelopesByIds".into(),
+                    )),
                 }
             }
         }
         Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
         Err(error) => Err(error),
-        _ => Err(MxrError::Ipc("unexpected response".into())),
+        _ => Err(MxrError::Ipc("unexpected response to Search".into())),
     }
 }
 
@@ -180,12 +182,14 @@ async fn ipc_triage_segment(
                 }),
                 Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
-                _ => Err(MxrError::Ipc("unexpected response".into())),
+                _ => Err(MxrError::Ipc(
+                    "unexpected response to ListEnvelopesByIds".into(),
+                )),
             }
         }
         Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
         Err(error) => Err(error),
-        _ => Err(MxrError::Ipc("unexpected response".into())),
+        _ => Err(MxrError::Ipc("unexpected response to TriageSearch".into())),
     }
 }
 

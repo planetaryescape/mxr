@@ -200,7 +200,7 @@ async fn execute_replaceable_request(
                 }) => Ok(count),
                 Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
-                _ => Err(MxrError::Ipc("unexpected response".into())),
+                _ => Err(MxrError::Ipc("unexpected response to Count".into())),
             };
             Some(AsyncResult::SearchCount { session_id, result })
         }
@@ -232,7 +232,7 @@ async fn execute_replaceable_request(
                 }) => Ok((thread, messages, summary)),
                 Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
-                _ => Err(MxrError::Ipc("unexpected response".into())),
+                _ => Err(MxrError::Ipc("unexpected response to GetThread".into())),
             };
             Some(AsyncResult::Thread {
                 thread_id,
@@ -256,7 +256,7 @@ async fn execute_replaceable_request(
                 }) => Ok(rule),
                 Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
-                _ => Err(MxrError::Ipc("unexpected response".into())),
+                _ => Err(MxrError::Ipc("unexpected response to GetRule".into())),
             };
             Some(AsyncResult::RuleDetail { request_id, result })
         }
@@ -284,7 +284,9 @@ async fn execute_replaceable_request(
                 }) => Ok(entries),
                 Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
-                _ => Err(MxrError::Ipc("unexpected response".into())),
+                _ => Err(MxrError::Ipc(
+                    "unexpected response to ListRuleHistory".into(),
+                )),
             };
             Some(AsyncResult::RuleHistory { request_id, result })
         }
@@ -304,7 +306,7 @@ async fn execute_replaceable_request(
                 }) => Ok(form),
                 Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
-                _ => Err(MxrError::Ipc("unexpected response".into())),
+                _ => Err(MxrError::Ipc("unexpected response to GetRuleForm".into())),
             };
             Some(AsyncResult::RuleForm { request_id, result })
         }
@@ -337,7 +339,7 @@ async fn execute_replaceable_request(
                 }),
                 Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
-                _ => Err(MxrError::Ipc("unexpected response".into())),
+                _ => Err(MxrError::Ipc("unexpected response to GetStatus".into())),
             };
             Some(AsyncResult::Status { request_id, result })
         }

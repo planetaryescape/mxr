@@ -176,7 +176,7 @@ If you add a new top-level action prefix that doesn't fit existing buckets, deci
 
 The activity surface in the TUI lives in two places:
 
-1. **Modal** (`g a` chord from any screen): `crates/tui/src/ui/activity_modal.rs` + `ActivityModalState`. Read-only browser of the last 24h. Pause toggle, but no redact — destructive ops flow through the CLI in v1.
+1. **Modal** (`g y` chord from any screen): `crates/tui/src/ui/activity_modal.rs` + `ActivityModalState`. Read-only browser of the last 24h. Pause toggle, but no redact — destructive ops flow through the CLI in v1.
 2. **Diagnostics pane**: `DiagnosticsPaneKind::Activity` in the existing diagnostics six-pane layout. Same data, different framing — diagnostics is for "something's broken, what was I doing?".
 
 Both consume the same `ListActivity` IPC. Refetch is opt-in via `r` in the diagnostics page; the modal refetches on open and on pause toggle. Don't add an auto-poll — the TUI is keyboard-driven and pollers fight with vim-style navigation.
@@ -316,7 +316,7 @@ mxr activity pause --for 1h
 mxr activity status
 
 # Surfaces:
-# TUI:   press `g a` from any screen, or open Diagnostics and tab to Activity.
+# TUI:   press `g y` from any screen, or open Diagnostics and tab to Activity.
 # Web:   /activity route, or /diagnostics → Activity tab.
 
 # Inspect the schema:

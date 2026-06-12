@@ -7,7 +7,7 @@
  * the picker components — these registry runners just open the right panel.
  */
 
-import { Archive, ArrowRightCircle, Route as RouteIcon, Tag, MailX } from "lucide-react";
+import { Archive, ArrowRightCircle, Route as RouteIcon, Tag, MailX, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -15,6 +15,8 @@ import {
   unsubscribeAndClearSender,
   unsubscribeFromSender,
 } from "@/features/mailbox/api";
+import { performUndo } from "@/features/mailbox/useOptimisticMailMutation";
+import { useUndo } from "@/state/undoStore";
 import type { ThreadResponse } from "@/features/mailbox/types";
 import type { Action } from "@/lib/actions/types";
 import { getActiveQueryClient } from "@/lib/queryClient";
@@ -61,6 +63,24 @@ function targetMessageIds(): string[] {
 const visible = or(withSelection(1), withFocusedThread());
 
 export const mailboxActions: Action[] = [
+  {
+    id: "mail.undo",
+    label: "Undo last action",
+    description: "Reverse the most recent archive/trash/label mutation (daemon window ~60s)",
+    group: "Mail",
+    icon: Undo2,
+    shortcut: "KeyZ",
+    run: () => {
+      const mutationId = useUndo.getState().lastMutationId;
+      const qc = getActiveQueryClient();
+      if (!mutationId || !qc) {
+        toast.info("Nothing to undo");
+        return;
+      }
+      useModals.getState().setCommandPaletteOpen(false);
+      void performUndo(qc, mutationId);
+    },
+  },
   {
     id: "mail.label",
     label: "Apply label",

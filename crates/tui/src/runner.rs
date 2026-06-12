@@ -403,7 +403,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok((bodies, failures)),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to ListBodies".into())),
                 };
                 AsyncResult::Bodies { requested, result }
             });
@@ -485,7 +485,7 @@ pub async fn run() -> anyhow::Result<()> {
                         }),
                         Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                         Err(error) => Err(error),
-                        _ => Err(MxrError::Ipc("unexpected response".into())),
+                        _ => Err(MxrError::Ipc("unexpected response to Unsubscribe".into())),
                     }
                 } else {
                     let purge_resp = ipc_call(
@@ -521,7 +521,9 @@ pub async fn run() -> anyhow::Result<()> {
                         }))),
                         Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                         Err(error) => Err(error),
-                        _ => Err(MxrError::Ipc("unexpected response".into())),
+                        _ => Err(MxrError::Ipc(
+                            "unexpected response to UnsubscribePurge".into(),
+                        )),
                     }
                 };
                 AsyncResult::Unsubscribe(result)
@@ -539,7 +541,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(rules),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to ListRules".into())),
                 };
                 AsyncResult::Rules(result)
             });
@@ -556,7 +558,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(snippets),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to ListSnippets".into())),
                 };
                 AsyncResult::SnippetsList(result)
             });
@@ -573,7 +575,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(messages),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to ListReplyQueue".into(),
+                    )),
                 };
                 AsyncResult::ReplyQueueList(result)
             });
@@ -598,7 +602,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(deliveries),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to ListDeliveries".into(),
+                    )),
                 };
                 AsyncResult::DeliveriesList(result)
             });
@@ -623,7 +629,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(deliveries),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to ListDeliveries".into(),
+                    )),
                 };
                 AsyncResult::DeliveriesList(result)
             });
@@ -648,7 +656,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(deliveries),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to ListDeliveries".into(),
+                    )),
                 };
                 AsyncResult::DeliveriesList(result)
             });
@@ -664,7 +674,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(messages),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to GetThread".into())),
                 };
                 AsyncResult::DeliveryThreadOpened(result)
             });
@@ -692,7 +702,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(entries),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to ListActivity".into())),
                 };
                 AsyncResult::ActivityList(result)
             });
@@ -715,7 +725,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(!now_paused),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to PauseActivity".into())),
                 };
                 AsyncResult::ActivityPauseToggled(result)
             });
@@ -739,7 +749,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(entries),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to ListScreenerQueue".into(),
+                    )),
                 };
                 AsyncResult::ScreenerQueueLoaded {
                     account_id: captured_account,
@@ -794,7 +806,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(profile),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to GetSenderProfile".into(),
+                    )),
                 };
                 AsyncResult::SenderProfileLoaded {
                     email: captured_email,
@@ -859,7 +873,9 @@ pub async fn run() -> anyhow::Result<()> {
                         data: ResponseData::ThreadSummary { text, model },
                     })) => Ok((text, model)),
                     Ok(Ok(Response::Error { message, .. })) => Err(MxrError::Ipc(message)),
-                    Ok(Ok(_)) => Err(MxrError::Ipc("unexpected response".into())),
+                    Ok(Ok(_)) => Err(MxrError::Ipc(
+                        "unexpected response to SummarizeThread".into(),
+                    )),
                     Ok(Err(e)) => Err(e),
                     Err(_) => Err(MxrError::Ipc(format!(
                         "summary request timed out after {}s",
@@ -909,7 +925,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(results),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to DryRunRules".into())),
                 };
                 AsyncResult::RuleDryRun(result)
             });
@@ -947,7 +963,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(rule),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to UpsertRule".into())),
                 };
                 AsyncResult::RuleUpsert(result)
             });
@@ -981,7 +997,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(rule),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to UpsertRuleForm".into(),
+                    )),
                 };
                 AsyncResult::RuleUpsert(result)
             });
@@ -1030,7 +1048,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(searches),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to ListSavedSearches".into(),
+                    )),
                 };
                 AsyncResult::SavedSearchListRefreshed(result)
             });
@@ -1169,7 +1189,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(labels),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to ListLabels".into())),
                 };
                 AsyncResult::Labels(result)
             });
@@ -1195,7 +1215,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(envelopes),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to ListEnvelopes".into())),
                 };
                 AsyncResult::AllEnvelopes(result)
             });
@@ -1219,7 +1239,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(subscriptions),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to ListSubscriptions".into(),
+                    )),
                 };
                 AsyncResult::Subscriptions(result)
             });
@@ -1248,7 +1270,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(experts),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to FindExpert".into())),
                 };
                 AsyncResult::Expert(result)
             });
@@ -1276,7 +1298,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(entity),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to ExplainEntity".into())),
                 };
                 AsyncResult::Whois(result)
             });
@@ -1315,7 +1337,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(briefing),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to GetRecipientBriefing".into(),
+                    )),
                 };
                 AsyncResult::Briefing(result)
             });
@@ -1345,7 +1369,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(rows),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to ListOwedReplies".into(),
+                    )),
                 };
                 AsyncResult::OwedReplies(result)
             });
@@ -1369,7 +1395,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(invites),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to ListInvites".into())),
                 };
                 AsyncResult::CalendarInvites(result)
             });
@@ -1385,7 +1411,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(envelope),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to GetEnvelope".into())),
                 };
                 AsyncResult::InviteEnvelopeOpened(result)
             });
@@ -1611,7 +1637,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(content),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to GenerateBugReport".into(),
+                    )),
                 };
                 AsyncResult::BugReport(result)
             });
@@ -1638,7 +1666,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(file),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to DownloadAttachment".into(),
+                    )),
                 };
                 AsyncResult::AttachmentFile {
                     operation: pending.operation,
@@ -1667,7 +1697,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(envelopes),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to ListEnvelopes".into())),
                 };
                 AsyncResult::LabelEnvelopes(envelopes)
             });
@@ -1746,7 +1776,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(effect),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to mutation".into())),
                 };
                 AsyncResult::MutationResult {
                     id: mutation_id,
@@ -1787,7 +1817,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                    _ => Err(MxrError::Ipc("unexpected response to ExportThread".into())),
                 };
                 AsyncResult::ExportResult(result)
             });
@@ -2506,13 +2536,14 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Thread {
                             thread_id,
                             request_id,
-                            result: Err(_),
+                            result: Err(e),
                         } => {
                             if request_id != app.mailbox.thread_request_id {
                                 tracing::trace!(request_id, current_id = app.mailbox.thread_request_id, "tui stale thread dropped");
                                 continue;
                             }
                             app.resolve_thread_fetch_error(&thread_id);
+                            app.status_message = Some(format!("Thread load failed: {e}"));
                         }
                         AsyncResult::MutationResult {
                             id,
@@ -2735,7 +2766,7 @@ pub async fn run() -> anyhow::Result<()> {
                                         Err(MxrError::Ipc(message))
                                     }
                                     Err(e) => Err(e),
-                                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                                    _ => Err(MxrError::Ipc("unexpected response to ListSavedSearchUnreadCounts".into())),
                                 };
                                 AsyncResult::SavedSearchUnreadCountsRefreshed(result)
                             });

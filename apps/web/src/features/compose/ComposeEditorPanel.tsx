@@ -26,7 +26,7 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useUiPrefs } from "@/state/uiPrefsStore";
-import type { ComposeIssue, RuntimeAccount } from "./api";
+import type { ComposeIssue, DraftSafetyReport, RuntimeAccount } from "./api";
 import { ComposeActionBar } from "./ComposeActionBar";
 import { ComposeTopBar } from "./ComposeTopBar";
 import { DraftAssist } from "./DraftAssist";
@@ -288,6 +288,8 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         subject={draft.frontmatter.subject}
         suggestion={controller.draftSuggestion}
         sending={controller.sending}
+        safetyReport={controller.safetyReport}
+        safetyCheckError={controller.safetyCheckError}
         onConfirm={controller.confirmSend}
       />
       <DiscardConfirmDialog
@@ -368,6 +370,8 @@ function SendConfirmDialog({
   subject,
   suggestion,
   sending,
+  safetyReport,
+  safetyCheckError,
   onConfirm,
 }: {
   open: boolean;
@@ -377,8 +381,11 @@ function SendConfirmDialog({
   subject: string;
   suggestion: DraftSuggestionResponse | null;
   sending: boolean;
+  safetyReport: DraftSafetyReport | null;
+  safetyCheckError: string | null;
   onConfirm: () => void;
 }) {
+  const blocked = safetyReport ? !safetyReport.allowed : false;
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent
@@ -390,7 +397,7 @@ function SendConfirmDialog({
         }}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>Send message?</AlertDialogTitle>
+          <AlertDialogTitle>{blocked ? "Send despite warnings?" : "Send message?"}</AlertDialogTitle>
           <AlertDialogDescription>
             Send to {recipientCount} {recipientCount === 1 ? "recipient" : "recipients"} via{" "}
             {account?.email ?? "the selected account"}.
@@ -399,6 +406,37 @@ function SendConfirmDialog({
         <div className="rounded-lg border border-border bg-muted px-3 py-2 text-sm">
           {subject.trim() || "(no subject)"}
         </div>
+        {safetyCheckError ? (
+          <Alert variant="warning" className="flex items-center gap-2 px-3 py-2">
+            <AlertTriangle className="size-3 shrink-0 text-warning" />
+            <AlertDescription>Safety check unavailable: {safetyCheckError}</AlertDescription>
+          </Alert>
+        ) : null}
+        {safetyReport && safetyReport.issues.length > 0 ? (
+          <div className="space-y-2" role="alert">
+            {safetyReport.issues.map((issue) => (
+              <Alert
+                key={`${issue.code}-${issue.message}`}
+                variant={issue.severity === "blocker" ? "destructive" : "warning"}
+                className="flex items-start gap-2 px-3 py-2"
+              >
+                <AlertTriangle
+                  className={
+                    issue.severity === "blocker"
+                      ? "mt-0.5 size-3 shrink-0 text-destructive"
+                      : "mt-0.5 size-3 shrink-0 text-warning"
+                  }
+                />
+                <AlertDescription>
+                  {issue.message}
+                  {issue.detail ? (
+                    <span className="block text-2xs text-muted-foreground">{issue.detail}</span>
+                  ) : null}
+                </AlertDescription>
+              </Alert>
+            ))}
+          </div>
+        ) : null}
         <DraftQualityBadges suggestion={suggestion} />
         <AlertDialogFooter>
           <AlertDialogCancel variant="outline" disabled={sending}>
@@ -406,13 +444,14 @@ function SendConfirmDialog({
           </AlertDialogCancel>
           <AlertDialogAction
             disabled={sending}
+            variant={blocked ? "destructive" : undefined}
             onClick={(event) => {
               event.preventDefault();
               onConfirm();
             }}
           >
             {sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
-            Send
+            {blocked ? "Send anyway" : "Send"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

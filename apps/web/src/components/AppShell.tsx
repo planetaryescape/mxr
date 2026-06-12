@@ -11,6 +11,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { StatusBar } from "@/components/StatusBar";
 import { Topbar } from "@/components/Topbar";
 import { CommandPaletteMount } from "@/features/command-palette/CommandPalette";
+import { ComposeHost } from "@/features/compose/ComposeHost";
 import { ComposeLauncher } from "@/features/compose/ComposeLauncher";
 import { SearchPalette } from "@/features/search/SearchPalette";
 import { fetchAccounts } from "@/features/accounts/api";
@@ -97,6 +98,7 @@ export function AppShell() {
       </div>
       <CommandPaletteMount />
       <ComposeLauncher />
+      <ComposeHost />
       <SearchPalette />
       <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} path={path} activePane={activePane} />
     </div>

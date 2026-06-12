@@ -14,6 +14,7 @@ import { toast } from "sonner";
 
 import { apiFetch } from "@/api/client";
 import {
+  checkComposeSafety,
   discardComposeSession,
   fetchAccounts,
   refreshComposeSession,
@@ -27,10 +28,13 @@ import {
   type ComposeIssue,
   type ComposeKind,
   type ComposeSession,
+  type DraftSafetyReport,
   type RuntimeAccount,
 } from "./api";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 import { formatRelativeAge } from "@/lib/utils";
+import { useUiPrefs } from "@/state/uiPrefsStore";
+import { useUndo } from "@/state/undoStore";
 import type {
   DraftLengthHint,
   DraftRefineKnobs,
@@ -132,6 +136,12 @@ export interface ComposeController {
   handleComposeKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
   requestSend: () => void;
   confirmSend: () => Promise<void>;
+  /** Pre-send safety report backing the confirm dialog; null when the
+   * check passed clean (no dialog) or hasn't run. */
+  safetyReport: DraftSafetyReport | null;
+  /** Set when the safety check itself failed — dialog shows a notice. */
+  safetyCheckError: string | null;
+  checkingSafety: boolean;
   requestDiscard: () => void;
   discardDraft: () => Promise<void>;
   retrySave: () => void;
@@ -158,7 +168,18 @@ export interface ComposeController {
   canRefine: boolean;
 }
 
-export function useComposeSession(intent: ComposeIntent): ComposeController {
+export interface ComposeSessionOptions {
+  /** Called after a successful send instead of the default
+   * navigate-to-Sent (surface hosts close in place). */
+  onSent?: () => void;
+  /** Called after a successful discard instead of navigating to inbox. */
+  onDiscarded?: () => void;
+}
+
+export function useComposeSession(
+  intent: ComposeIntent,
+  options: ComposeSessionOptions = {},
+): ComposeController {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -188,6 +209,9 @@ export function useComposeSession(intent: ComposeIntent): ComposeController {
   const [uploading, setUploading] = useState(0);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [pendingSends, setPendingSends] = useState(0);
+  const [safetyReport, setSafetyReport] = useState<DraftSafetyReport | null>(null);
+  const [safetyCheckError, setSafetyCheckError] = useState<string | null>(null);
+  const [checkingSafety, setCheckingSafety] = useState(false);
   const hasAutofocusedRef = useRef(false);
   const [aiPurpose, setAiPurpose] = useState("");
   const [aiRegister, setAiRegister] = useState<VoiceRegister>("neutral");
@@ -205,8 +229,15 @@ export function useComposeSession(intent: ComposeIntent): ComposeController {
 
   const updateSession = useMutation({ mutationFn: updateComposeSession });
   const sendSession = useMutation({
-    mutationFn: ({ draftPath, accountId }: { draftPath: string; accountId: string }) =>
-      sendComposeSession(draftPath, accountId),
+    mutationFn: ({
+      draftPath,
+      accountId,
+      overrideToken,
+    }: {
+      draftPath: string;
+      accountId: string;
+      overrideToken?: string;
+    }) => sendComposeSession(draftPath, accountId, overrideToken),
   });
   const serverSave = useMutation({
     mutationFn: ({ draftPath, accountId }: { draftPath: string; accountId: string }) =>
@@ -512,7 +543,41 @@ export function useComposeSession(intent: ComposeIntent): ComposeController {
       toast.error("Fix compose errors before sending", { description: errors[0]?.message });
       return;
     }
-    setSendConfirmOpen(true);
+    void runSendPipeline();
+  }
+
+  /** Save → safety check → clean drafts dispatch straight away; reports
+   * with issues (or a failed check) open the confirm dialog instead. */
+  async function runSendPipeline() {
+    await saveCurrentDraft().catch((error: Error) => {
+      toast.error("Save before send failed", { description: error.message });
+    });
+    const current = draftRef.current;
+    if (!current || !isCurrentDraftSaved(current)) {
+      toast.error("Draft changed while saving", {
+        description: "Retry send after the latest save.",
+      });
+      return;
+    }
+    setCheckingSafety(true);
+    setSafetyCheckError(null);
+    try {
+      const { report } = await checkComposeSafety(current.draftPath, current.accountId);
+      if (report.allowed && report.issues.length === 0) {
+        setSafetyReport(null);
+        dispatchSend();
+        return;
+      }
+      setSafetyReport(report);
+      setSendConfirmOpen(true);
+    } catch (error) {
+      // Fail closed into the dialog, not into a silent send.
+      setSafetyReport(null);
+      setSafetyCheckError(errorMessage(error));
+      setSendConfirmOpen(true);
+    } finally {
+      setCheckingSafety(false);
+    }
   }
 
   function revealCc() {
@@ -525,51 +590,72 @@ export function useComposeSession(intent: ComposeIntent): ComposeController {
     window.setTimeout(() => bccInputRef.current?.focus(), 0);
   }
 
+  /** Confirm from the safety dialog. Picks up the override token from the
+   * report's blocking issue when one exists. */
   async function confirmSend() {
-    await saveCurrentDraft();
+    const overrideToken =
+      safetyReport && !safetyReport.allowed
+        ? (safetyReport.issues.find((issue) => issue.override_token)?.override_token ?? undefined)
+        : undefined;
+    setSendConfirmOpen(false);
+    setSafetyReport(null);
+    setSafetyCheckError(null);
+    dispatchSend(overrideToken);
+  }
+
+  /** Deferred dispatch with a configurable undo window. The pending window
+   * counts as unsaved work so beforeunload warns — closing the tab here
+   * would silently drop the send. Cancellable via the toast or global z. */
+  function dispatchSend(overrideToken?: string) {
     const current = draftRef.current;
-    if (!current || !isCurrentDraftSaved(current)) {
-      toast.error("Draft changed while saving", {
-        description: "Retry send after the latest save.",
-      });
-      return;
-    }
+    if (!current) return;
     const accountId = current.accountId;
     const draftPath = current.draftPath;
-    setSendConfirmOpen(false);
+    const windowSeconds = useUiPrefs.getState().undoSendSeconds;
 
-    // Outbound undo: defer the actual send by 5 seconds. The toast offers an
-    // Undo button that cancels the timer. Auto-fire after the window expires.
-    // The pending window counts as unsaved work so beforeunload warns —
-    // closing the tab here would silently drop the send.
-    let cancelled = false;
-    setPendingSends((count) => count + 1);
-    const toastId = toast("Sending in 5s", {
-      duration: 5000,
-      action: {
-        label: "Undo",
-        onClick: () => {
-          cancelled = true;
-        },
-      },
-    });
-    setTimeout(() => {
-      if (cancelled) {
-        setPendingSends((count) => Math.max(0, count - 1));
-        toast.dismiss(toastId);
-        toast.info("Send cancelled");
-        return;
-      }
+    const fire = () => {
       sendSession
-        .mutateAsync({ draftPath, accountId })
+        .mutateAsync({ draftPath, accountId, overrideToken })
         .then(async () => {
           forgetActiveDraft(intent.key);
           toast.success("Message sent");
-          await navigate({ to: "/m/$mailbox", params: { mailbox: "sent" } });
+          if (options.onSent) {
+            options.onSent();
+          } else {
+            await navigate({ to: "/m/$mailbox", params: { mailbox: "sent" } });
+          }
         })
         .catch((err: Error) => toast.error("Send failed", { description: err.message }))
         .finally(() => setPendingSends((count) => Math.max(0, count - 1)));
-    }, 5000);
+    };
+
+    setPendingSends((count) => count + 1);
+    if (windowSeconds === 0) {
+      fire();
+      return;
+    }
+
+    let cancelled = false;
+    const cancel = () => {
+      if (cancelled) return;
+      cancelled = true;
+      window.clearTimeout(timer);
+      useUndo.getState().setPendingSendCancel(null);
+      setPendingSends((count) => Math.max(0, count - 1));
+      toast.dismiss(toastId);
+      toast.info("Send cancelled");
+    };
+    const toastId = toast(`Sending in ${windowSeconds}s`, {
+      duration: windowSeconds * 1000,
+      description: "z to cancel",
+      action: { label: "Undo", onClick: cancel },
+    });
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      useUndo.getState().setPendingSendCancel(null);
+      fire();
+    }, windowSeconds * 1000);
+    useUndo.getState().setPendingSendCancel(cancel);
   }
 
   function requestDiscard() {
@@ -587,7 +673,11 @@ export function useComposeSession(intent: ComposeIntent): ComposeController {
     forgetActiveDraft(intent.key);
     setDiscardConfirmOpen(false);
     toast.success("Draft discarded");
-    await navigate({ to: "/m/$mailbox", params: { mailbox: "inbox" } });
+    if (options.onDiscarded) {
+      options.onDiscarded();
+    } else {
+      await navigate({ to: "/m/$mailbox", params: { mailbox: "inbox" } });
+    }
   }
 
   function retrySave() {
@@ -713,6 +803,9 @@ export function useComposeSession(intent: ComposeIntent): ComposeController {
     handleComposeKeyDown,
     requestSend,
     confirmSend,
+    safetyReport,
+    safetyCheckError,
+    checkingSafety,
     requestDiscard,
     discardDraft,
     retrySave,

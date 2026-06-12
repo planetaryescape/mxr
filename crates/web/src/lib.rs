@@ -770,7 +770,7 @@ async fn send_compose_session(
         request_id,
         Request::SendDraft {
             draft,
-            override_safety_token: None,
+            override_safety_token: request.override_safety_token.clone(),
         },
     )
     .await

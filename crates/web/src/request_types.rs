@@ -168,6 +168,10 @@ pub(super) struct ComposeSessionUpdateRequest {
 pub(super) struct ComposeSessionSendRequest {
     pub(super) draft_path: String,
     pub(super) account_id: String,
+    /// Token from a prior safety-check report authorizing a send despite
+    /// blockers. Forwarded to `SendDraft`; ignored by save/check handlers.
+    #[serde(default)]
+    pub(super) override_safety_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

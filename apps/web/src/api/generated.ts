@@ -378,6 +378,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/compose/session/collaborators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suggest maybe-include recipients for a compose session */
+        post: operations["compose_session_collaborators"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/compose/session/discard": {
         parameters: {
             query?: never;
@@ -423,6 +440,23 @@ export interface paths {
         put?: never;
         /** Restore compose session */
         post: operations["compose_session_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/compose/session/safety-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run the pre-send safety report for a compose session */
+        post: operations["compose_session_safety_check"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2789,7 +2823,7 @@ export interface components {
          *     realistic guess for scripts hand-rolled against the socket.
          * @enum {string}
          */
-        ClientKind: "tui" | "cli" | "web" | "daemon";
+        ClientKind: "human" | "tui" | "cli" | "script" | "web" | "daemon" | "agent" | "mcp";
         CommitmentData: {
             account_id: components["schemas"]["AccountId"];
             /** Format: date-time */
@@ -2934,6 +2968,11 @@ export interface components {
             error_summary: string;
             /** @enum {string} */
             event: "MutationReconciliationFailed";
+        } | {
+            /** @enum {string} */
+            event: "EventsLagged";
+            /** Format: int64 */
+            skipped: number;
         };
         /** @enum {string} */
         DaemonHealthClass: "healthy" | "degraded" | "restart_required" | "repair_required";
@@ -3543,6 +3582,12 @@ export interface components {
             content_language?: string[];
             list_id?: string | null;
             raw_headers?: string | null;
+            /**
+             * @description Addresses from the `Reply-To:` header, if the sender set one.
+             *     Replies target these instead of `From:` (mailing lists and
+             *     no-reply senders rely on it). Empty when absent.
+             */
+            reply_to?: components["schemas"]["Address"][];
             text_html_source?: null | components["schemas"]["BodyPartSource"];
             text_plain_format?: null | components["schemas"]["TextPlainFormat"];
             text_plain_source?: null | components["schemas"]["BodyPartSource"];
@@ -3612,6 +3657,13 @@ export interface components {
             skipped: number;
             /** Format: int32 */
             succeeded: number;
+            /**
+             * @description True when an undoable mutation succeeded but persisting its undo
+             *     entry failed, so `mutation_id` is `None` even though undo was
+             *     expected. Lets clients distinguish "no undo by design" from "undo
+             *     was lost" and warn the user instead of silently dropping it.
+             */
+            undo_unavailable?: boolean;
         };
         /** @enum {string} */
         NotificationChimeEventData: "new_mail" | "sent" | "archived" | "trashed" | "spam" | "snoozed" | "unsnoozed" | "reminder" | "error";
@@ -6515,6 +6567,31 @@ export interface operations {
             };
         };
     };
+    compose_session_collaborators: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     compose_session_discard: {
         parameters: {
             query?: never;
@@ -6566,6 +6643,31 @@ export interface operations {
         };
     };
     compose_session_restore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    compose_session_safety_check: {
         parameters: {
             query?: never;
             header?: never;

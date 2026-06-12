@@ -84,7 +84,9 @@ type = "fake"
 }
 
 function startDaemon() {
-  const bin = resolve(process.env.MXR_E2E_BIN ?? join(repoRoot, "target/debug/mxr"));
+  // CLI builds land in target-cli/ (.cargo/config.toml isolates them from
+  // rust-analyzer's target/); CI sets MXR_E2E_BIN to the same path.
+  const bin = resolve(process.env.MXR_E2E_BIN ?? join(repoRoot, "target-cli/debug/mxr"));
   if (!existsSync(bin)) {
     throw new Error(`missing mxr binary at ${bin}; run cargo build -p mxr or set MXR_E2E_BIN`);
   }

@@ -34,6 +34,7 @@ import {
   type DraftSafetyReport,
   type RuntimeAccount,
 } from "./api";
+import { archiveMessages } from "@/features/mailbox/api";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 import { formatRelativeAge } from "@/lib/utils";
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -224,6 +225,10 @@ export function useComposeSession(
   const [safetyCheckError, setSafetyCheckError] = useState<string | null>(null);
   const [checkingSafety, setCheckingSafety] = useState(false);
   const hasAutofocusedRef = useRef(false);
+  // Set per send pipeline run (cmd+shift+Enter); consumed at dispatch time so
+  // the safety-dialog detour keeps the archive intent and a cancelled undo
+  // window drops it.
+  const archiveAfterSendRef = useRef(false);
   const [aiPurpose, setAiPurpose] = useState("");
   const [aiRegister, setAiRegister] = useState<VoiceRegister>("neutral");
   const [aiLength, setAiLength] = useState<DraftLengthHint>("medium");
@@ -561,6 +566,12 @@ export function useComposeSession(
       if (!busy) void handleSaveClick();
       return;
     }
+    if (event.shiftKey && event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!busy) requestSendAndArchive();
+      return;
+    }
     if (!event.shiftKey && event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
@@ -575,6 +586,16 @@ export function useComposeSession(
   }
 
   function requestSend() {
+    startSendPipeline(false);
+  }
+
+  /** cmd+shift+Enter: send, then archive the source conversation (replies
+   * only — a new message has no source to archive). */
+  function requestSendAndArchive() {
+    startSendPipeline(true);
+  }
+
+  function startSendPipeline(archiveAfterSend: boolean) {
     const current = draftRef.current;
     if (!current) return;
     const errors = localComposeIssues(current).filter((issue) => issue.severity === "error");
@@ -582,6 +603,7 @@ export function useComposeSession(
       toast.error("Fix compose errors before sending", { description: errors[0]?.message });
       return;
     }
+    archiveAfterSendRef.current = archiveAfterSend;
     void runSendPipeline();
   }
 
@@ -694,6 +716,9 @@ export function useComposeSession(
     const accountId = current.accountId;
     const draftPath = current.draftPath;
     const windowSeconds = useUiPrefs.getState().undoSendSeconds;
+    const archiveSourceId =
+      archiveAfterSendRef.current && intent.messageId ? intent.messageId : undefined;
+    archiveAfterSendRef.current = false;
 
     const fire = () => {
       sendSession
@@ -701,6 +726,16 @@ export function useComposeSession(
         .then(async () => {
           forgetActiveDraft(intent.key);
           toast.success("Message sent");
+          if (archiveSourceId) {
+            try {
+              await archiveMessages([archiveSourceId]);
+              void queryClient.invalidateQueries({ queryKey: ["mailbox"] });
+              void queryClient.invalidateQueries({ queryKey: ["thread"] });
+              toast.success("Conversation archived");
+            } catch (error) {
+              toast.error("Archive after send failed", { description: errorMessage(error) });
+            }
+          }
           if (options.onSent) {
             options.onSent();
           } else {

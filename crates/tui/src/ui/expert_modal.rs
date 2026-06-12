@@ -4,6 +4,7 @@
 use crate::app::ExpertModalState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
+use super::centered_rect;
 
 pub fn draw(frame: &mut Frame, area: Rect, state: &ExpertModalState, theme: &crate::theme::Theme) {
     if !state.visible {
@@ -60,24 +61,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ExpertModalState, theme: &cra
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let vertical = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(vertical[1])[1]
-}
 
 #[cfg(test)]
 mod tests {

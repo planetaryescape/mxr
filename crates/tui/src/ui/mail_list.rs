@@ -324,14 +324,14 @@ fn row_base_style(theme: &Theme, is_selected: bool, is_in_set: bool, is_unread: 
     match (is_selected, is_in_set) {
         (true, true) => {
             let bg = blend_bg(theme.selection_bg, theme.accent, 96);
-            let fg = contrast_foreground(bg, theme.selection_fg);
+            let fg = contrast_foreground(bg, theme);
             Style::default()
                 .bg(bg)
                 .fg(fg)
                 .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
         }
         (true, false) => {
-            let fg = contrast_foreground(theme.selection_bg, theme.selection_fg);
+            let fg = contrast_foreground(theme.selection_bg, theme);
             Style::default()
                 .bg(theme.selection_bg)
                 .fg(fg)
@@ -339,7 +339,7 @@ fn row_base_style(theme: &Theme, is_selected: bool, is_in_set: bool, is_unread: 
         }
         (false, true) => {
             let bg = blend_bg(theme.selection_bg, theme.accent_dim, 72);
-            let fg = contrast_foreground(bg, theme.selection_fg);
+            let fg = contrast_foreground(bg, theme);
             Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD)
         }
         (false, false) if is_unread => theme.unread_style(),
@@ -347,15 +347,15 @@ fn row_base_style(theme: &Theme, is_selected: bool, is_in_set: bool, is_unread: 
     }
 }
 
-fn contrast_foreground(bg: Color, fallback: Color) -> Color {
+fn contrast_foreground(bg: Color, theme: &Theme) -> Color {
     let Some((r, g, b)) = color_rgb(bg) else {
-        return fallback;
+        return theme.selection_fg;
     };
     let luminance = (u32::from(r) * 299 + u32::from(g) * 587 + u32::from(b) * 114) / 1000;
     if luminance >= 140 {
-        Color::Black
+        theme.contrast_dark
     } else {
-        Color::White
+        theme.contrast_light
     }
 }
 
@@ -1028,7 +1028,7 @@ mod tests {
         );
 
         assert_eq!(style.bg, Some(Color::Rgb(73, 88, 109)));
-        assert_eq!(style.fg, Some(Color::White));
+        assert_eq!(style.fg, Some(Theme::default().contrast_light));
     }
 
     #[test]

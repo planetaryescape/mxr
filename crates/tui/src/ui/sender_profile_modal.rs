@@ -3,6 +3,7 @@ use crate::theme::Theme;
 use ratatui::layout::Margin;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
+use super::centered_rect;
 
 const MODAL_WIDTH_PERCENT: u16 = 70;
 const MODAL_HEIGHT_PERCENT: u16 = 78;
@@ -12,7 +13,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &SenderProfileModalState, them
         return;
     }
 
-    let modal_area = centered_rect(area, MODAL_WIDTH_PERCENT, MODAL_HEIGHT_PERCENT);
+    let modal_area = centered_rect(MODAL_WIDTH_PERCENT, MODAL_HEIGHT_PERCENT, area);
     Clear.render(modal_area, frame.buffer_mut());
 
     let title = match &state.email {
@@ -403,25 +404,6 @@ fn push_message_lines<'a>(
     }
 }
 
-fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
-}
 
 fn truncate(value: &str, max_chars: usize) -> String {
     let mut chars = value.chars();

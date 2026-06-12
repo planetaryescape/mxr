@@ -7,6 +7,7 @@ use crate::theme::Theme;
 use ratatui::layout::Margin;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
+use super::centered_rect;
 
 const MODAL_WIDTH_PERCENT: u16 = 90;
 const MODAL_HEIGHT_PERCENT: u16 = 80;
@@ -15,7 +16,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ActivityModalState, theme: &T
     if !state.visible {
         return;
     }
-    let modal_area = centered_rect(area, MODAL_WIDTH_PERCENT, MODAL_HEIGHT_PERCENT);
+    let modal_area = centered_rect(MODAL_WIDTH_PERCENT, MODAL_HEIGHT_PERCENT, area);
     Clear.render(modal_area, frame.buffer_mut());
 
     let pause_marker = if state.paused { " [PAUSED]" } else { "" };
@@ -165,22 +166,3 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ActivityModalState, theme: &T
     frame.render_widget(detail, chunks[1]);
 }
 
-fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
-    let v = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-    let h = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(v[1]);
-    h[1]
-}

@@ -6,6 +6,7 @@ use nucleo::{Config, Matcher, Utf32Str};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::collections::{BTreeMap, BTreeSet};
+use super::centered_rect;
 
 #[derive(Debug, Clone)]
 struct HelpSection {
@@ -687,25 +688,6 @@ fn draw_search_results(
     frame.render_widget(footer, chunks[2]);
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let vertical = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(vertical[1])[1]
-}
 
 #[cfg(test)]
 mod tests {

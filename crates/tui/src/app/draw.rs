@@ -24,6 +24,37 @@ fn selected_tab(screen: Screen) -> usize {
     }
 }
 
+/// Minimum terminal geometry the full layout stays readable at. Below
+/// this, `draw` renders a placeholder instead of squeezed panes.
+const MIN_TERMINAL_WIDTH: u16 = 80;
+const MIN_TERMINAL_HEIGHT: u16 = 20;
+
+fn draw_terminal_too_small(frame: &mut Frame, area: Rect, theme: &Theme) {
+    let lines = vec![
+        Line::from(Span::styled(
+            "Terminal too small",
+            Style::default().fg(theme.warning).bold(),
+        )),
+        Line::from(Span::styled(
+            format!(
+                "Need at least {MIN_TERMINAL_WIDTH}x{MIN_TERMINAL_HEIGHT}, have {}x{}",
+                area.width, area.height
+            ),
+            Style::default().fg(theme.text_secondary),
+        )),
+        Line::from(Span::styled(
+            "Resize the window to continue",
+            Style::default().fg(theme.text_muted),
+        )),
+    ];
+    let top_pad = area.height.saturating_sub(lines.len() as u16) / 2;
+    let mut target = area;
+    target.y += top_pad;
+    target.height = area.height.saturating_sub(top_pad);
+    let paragraph = ratatui::widgets::Paragraph::new(lines).alignment(Alignment::Center);
+    frame.render_widget(paragraph, target);
+}
+
 impl App {
     fn thread_summary_block(&self) -> Option<ui::message_view::ThreadSummaryBlock> {
         let current_thread_id = self.context_envelope().map(|env| env.thread_id.clone())?;
@@ -56,6 +87,13 @@ impl App {
     pub fn draw(&mut self, frame: &mut Frame) {
         let theme = &self.theme;
         let area = frame.area();
+
+        // Below the minimum usable geometry the layout collapses into
+        // unreadable slivers — show a plain placeholder instead.
+        if area.width < MIN_TERMINAL_WIDTH || area.height < MIN_TERMINAL_HEIGHT {
+            draw_terminal_too_small(frame, area, theme);
+            return;
+        }
 
         // Layout: tabs (1 line) | hint bar (2 lines) | content | status bar (1 line)
         let outer_chunks = Layout::default()

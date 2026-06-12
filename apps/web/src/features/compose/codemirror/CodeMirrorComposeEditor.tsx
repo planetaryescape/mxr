@@ -1,9 +1,9 @@
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { vim } from "@replit/codemirror-vim";
+import { getCM, Vim, vim } from "@replit/codemirror-vim";
 import { basicSetup } from "codemirror";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface CodeMirrorComposeEditorProps {
   value: string;
@@ -11,6 +11,9 @@ interface CodeMirrorComposeEditorProps {
   onSave: () => void;
   onSend: () => void;
   onDiscard: () => void;
+  /** Close the composer chrome (`:q` / `:wq`); optional for hosts without
+   * a closable surface. */
+  onClose?: () => void;
   autoFocus?: boolean;
 }
 
@@ -51,16 +54,32 @@ export function CodeMirrorComposeEditor({
   onSave,
   onSend,
   onDiscard,
+  onClose,
   autoFocus = false,
 }: CodeMirrorComposeEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const initialValueRef = useRef(value);
-  const callbacksRef = useRef({ onChange, onSave, onSend, onDiscard });
-  callbacksRef.current = { onChange, onSave, onSend, onDiscard };
+  const callbacksRef = useRef({ onChange, onSave, onSend, onDiscard, onClose });
+  callbacksRef.current = { onChange, onSave, onSend, onDiscard, onClose };
+  const [vimMode, setVimMode] = useState("normal");
 
   useEffect(() => {
     if (!hostRef.current) return;
+    // Ex commands live in a global vim registry; redefining on mount keeps
+    // them routed at the latest callbacks via callbacksRef.
+    Vim.defineEx("write", "w", () => {
+      callbacksRef.current.onSave();
+    });
+    Vim.defineEx("quit", "q", () => {
+      callbacksRef.current.onClose?.();
+    });
+    const saveAndClose = () => {
+      callbacksRef.current.onSave();
+      callbacksRef.current.onClose?.();
+    };
+    Vim.defineEx("wq", "wq", saveAndClose);
+    Vim.defineEx("xit", "x", saveAndClose);
     const view = new EditorView({
       parent: hostRef.current,
       state: EditorState.create({
@@ -101,6 +120,10 @@ export function CodeMirrorComposeEditor({
       }),
     });
     viewRef.current = view;
+    const cm = getCM(view);
+    cm?.on("vim-mode-change", (event: { mode: string; subMode?: string }) => {
+      setVimMode(event.subMode ? `${event.mode} ${event.subMode}` : event.mode);
+    });
     if (autoFocus) window.setTimeout(() => view.focus(), 0);
     return () => {
       view.destroy();
@@ -117,5 +140,16 @@ export function CodeMirrorComposeEditor({
     }
   }, [value]);
 
-  return <div ref={hostRef} className="h-full min-h-0" />;
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div ref={hostRef} className="min-h-0 flex-1" />
+      <div
+        aria-live="polite"
+        className="flex h-5 shrink-0 items-center justify-between border-t border-border/60 px-3 font-mono text-2xs uppercase tracking-wide text-muted-foreground"
+      >
+        <span data-testid="vim-mode">-- {vimMode} --</span>
+        <span className="normal-case tracking-normal">:w save · :q close · :wq both</span>
+      </div>
+    </div>
+  );
 }

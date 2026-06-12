@@ -58,6 +58,7 @@
     "cmdk": "*",
     "codemirror": "*",
     "dompurify": "^3.4.1",
+    "email-addresses": "^5.0.0",
     "linkifyjs": "^4.3.2",
     "lucide-react": "^0.577.0",
     "openapi-fetch": "*",

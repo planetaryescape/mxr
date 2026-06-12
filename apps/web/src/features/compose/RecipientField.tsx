@@ -10,6 +10,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
+import emailAddresses from "email-addresses";
 import { X } from "lucide-react";
 import {
   useEffect,
@@ -85,8 +86,11 @@ export function RecipientField({
   function addToken(token: string) {
     const trimmed = token.trim();
     if (!trimmed) return;
-    const exists = chips.some((chip) => chip.toLowerCase() === trimmed.toLowerCase());
-    onChange((exists ? chips : [...chips, trimmed]).join(", "));
+    // RFC 5322 parse normalises "Name <addr>" forms; unparseable input is
+    // kept verbatim and rendered as an invalid chip.
+    const normalized = normalizeAddress(trimmed) ?? trimmed;
+    const exists = chips.some((chip) => chip.toLowerCase() === normalized.toLowerCase());
+    onChange((exists ? chips : [...chips, normalized]).join(", "));
     setPending("");
     setDebounced("");
     setClosed(true);
@@ -157,10 +161,7 @@ export function RecipientField({
     const text = event.clipboardData.getData("text");
     if (!text || !/[,;\n]/.test(text)) return;
     event.preventDefault();
-    const tokens = text
-      .split(/[,;\n]+/)
-      .map((token) => token.trim())
-      .filter(Boolean);
+    const tokens = parseAddressTokens(text);
     if (tokens.length === 0) return;
     const merged = [...chips];
     for (const token of tokens) {
@@ -188,12 +189,23 @@ export function RecipientField({
               if (event.target === event.currentTarget) innerRef.current?.focus();
             }}
           >
-            {chips.map((chip, index) => (
+            {chips.map((chip, index) => {
+              const invalid = !isValidAddress(chip);
+              return (
               <span
                 key={chip}
-                className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-muted py-0.5 pl-0.5 pr-1.5 text-xs text-foreground"
+                title={invalid ? `Invalid address: ${chip}` : undefined}
+                className={cn(
+                  "inline-flex max-w-full items-center gap-1.5 rounded-full bg-muted py-0.5 pl-0.5 pr-1.5 text-xs text-foreground",
+                  invalid && "bg-destructive/10 text-destructive ring-1 ring-destructive/50",
+                )}
               >
-                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[10px] font-semibold text-primary">
+                <span
+                  className={cn(
+                    "flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[10px] font-semibold text-primary",
+                    invalid && "bg-destructive/20 text-destructive",
+                  )}
+                >
                   {initials(chip)}
                 </span>
                 <span className="truncate" title={chip}>
@@ -213,7 +225,8 @@ export function RecipientField({
                   <X className="size-3" />
                 </button>
               </span>
-            ))}
+              );
+            })}
             <input
               id={id}
               ref={setRefs}
@@ -221,6 +234,9 @@ export function RecipientField({
               aria-autocomplete="list"
               aria-expanded={open}
               aria-controls={open ? listboxId : undefined}
+              aria-activedescendant={
+                open && suggestions[highlight] ? optionId(listboxId, highlight) : undefined
+              }
               value={pending}
               placeholder={chips.length === 0 ? `${label}…` : ""}
               className="min-w-[8rem] flex-1 bg-transparent py-0.5 text-xs outline-none placeholder:text-muted-foreground"
@@ -251,6 +267,7 @@ export function RecipientField({
               {suggestions.map((suggestion, index) => (
                 <li
                   key={suggestion.email}
+                  id={optionId(listboxId, index)}
                   role="option"
                   aria-selected={index === highlight}
                   className={cn(
@@ -285,6 +302,45 @@ export function RecipientField({
       </div>
     </div>
   );
+}
+
+function optionId(listboxId: string, index: number): string {
+  return `${listboxId}-option-${index}`;
+}
+
+function isValidAddress(value: string): boolean {
+  return emailAddresses.parseOneAddress(value) !== null;
+}
+
+/** RFC 5322 parse → canonical chip text ("Name <email>" or bare email).
+ * Returns null when the input isn't a parseable single mailbox. Names that
+ * contain a comma fall back to the bare address — the comma-joined field
+ * value is the source of truth and must stay splittable on commas. */
+function normalizeAddress(value: string): string | null {
+  const parsed = emailAddresses.parseOneAddress(value);
+  if (!parsed || parsed.type !== "mailbox") return null;
+  if (parsed.name && !parsed.name.includes(",")) return `${parsed.name} <${parsed.address}>`;
+  return parsed.address;
+}
+
+/** Pasted text → chip tokens. Tries a full RFC 5322 address-list parse first
+ * (handles quoted names, groups); falls back to separator splitting so partial
+ * garbage still lands as editable chips. */
+function parseAddressTokens(text: string): string[] {
+  const parsed = emailAddresses.parseAddressList(text.replace(/[;\n]+/g, ","));
+  if (parsed) {
+    return parsed
+      .flatMap((entry) => (entry.type === "group" ? entry.addresses : [entry]))
+      .map((mailbox) =>
+        mailbox.name && !mailbox.name.includes(",")
+          ? `${mailbox.name} <${mailbox.address}>`
+          : mailbox.address,
+      );
+  }
+  return text
+    .split(/[,;\n]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
 }
 
 function splitAddresses(value: string): string[] {

@@ -62,6 +62,7 @@ const COMPOSE_HINTS: PageHint[] = [
   { key: "Esc", label: "Leave dialogs" },
   { key: "Tab", label: "Move fields" },
   { key: "⌘Enter", label: "Send from confirmation" },
+  { key: "⌘;", label: "Insert snippet" },
 ];
 
 export function pageHintsForRoute(ctx: ActionContext): PageHintSection[] {

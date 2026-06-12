@@ -19,6 +19,7 @@ import {
   Star,
 } from "lucide-react";
 
+import { newMessageIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { useModals } from "@/state/modalStore";
 
 import { getRuntimeNavigate } from "./runtime";
@@ -65,7 +66,7 @@ export const navigationActions: Action[] = [
     group: "Compose",
     icon: Mail,
     shortcut: "KeyC",
-    run: () => useModals.getState().setComposeLauncherOpen(true),
+    run: () => useComposeUi.getState().openCompose(newMessageIntent(), "overlay"),
   },
   {
     id: "nav.inbox",

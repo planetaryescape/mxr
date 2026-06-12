@@ -1,4 +1,4 @@
-import { Loader2, Paperclip, Send } from "lucide-react";
+import { Clock, Loader2, Paperclip, Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -9,6 +9,7 @@ import type { DraftSuggestionResponse } from "./types";
 
 interface ComposeActionBarProps {
   onSend: () => void;
+  onSendLater: () => void;
   onAttach: () => void;
   uploading: number;
   busy: boolean;
@@ -23,6 +24,7 @@ interface ComposeActionBarProps {
 
 export function ComposeActionBar({
   onSend,
+  onSendLater,
   onAttach,
   uploading,
   busy,
@@ -43,6 +45,17 @@ export function ComposeActionBar({
           <kbd className="ml-0.5 rounded border border-primary-foreground/25 bg-primary-foreground/10 px-1 py-0.5 font-mono text-[10px] leading-none">
             ⌘↵
           </kbd>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={onSendLater}
+          disabled={busy}
+          aria-label="Send later"
+          title="Send later (⇧⌘L)"
+        >
+          <Clock className="size-3.5" />
         </Button>
         <Button
           type="button"

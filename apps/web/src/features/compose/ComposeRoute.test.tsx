@@ -186,9 +186,10 @@ describe("ComposeRoute keyboard flow", () => {
   test("surfaces the send shortcut and writing controls", async () => {
     renderWithQueryClient(<ComposeRoute />);
 
-    const send = await screen.findByRole("button", { name: /send/i });
+    const send = await screen.findByRole("button", { name: "Send⌘↵" });
     expect(send).toBeVisible();
     expect(screen.getByText("⌘↵")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Send later" })).toBeVisible();
     expect(screen.getByRole("button", { name: /attach/i })).toBeVisible();
     expect(screen.getByRole("button", { name: /more compose actions/i })).toBeVisible();
   });

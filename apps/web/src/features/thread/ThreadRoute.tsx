@@ -58,6 +58,7 @@ import type {
 } from "@/features/mailbox/types";
 import { useOptimisticMailMutation } from "@/features/mailbox/useOptimisticMailMutation";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
+import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
@@ -318,12 +319,11 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   const compose = useCallback(
     (composeMode: "single" | "all" | "forward") => {
       if (!primaryMessage) return;
-      void navigate({
-        to: "/compose/new",
-        search: { reply: primaryMessage.id, mode: composeMode },
-      });
+      // Reply opens inline at the bottom of the thread; the host keeps the
+      // session alive if the user pops it out or goes fullscreen.
+      useComposeUi.getState().openCompose(replyIntent(primaryMessage.id, composeMode), "inline");
     },
-    [navigate, primaryMessage],
+    [primaryMessage],
   );
 
   const toggleStar = useCallback(() => {
@@ -715,6 +715,8 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
               threadId={data.thread.id}
             />
           ))}
+          {/* ComposeHost portals the inline reply composer here. */}
+          <div id="inline-composer-slot" className="mt-3 empty:hidden" />
         </div>
       </div>
     </article>

@@ -122,10 +122,99 @@ export async function fetchContactsAutocomplete(
   return data.contacts ?? [];
 }
 
-export function sendComposeSession(draftPath: string, accountId: string): Promise<{ ok: boolean }> {
+export function sendComposeSession(
+  draftPath: string,
+  accountId: string,
+  overrideSafetyToken?: string,
+): Promise<{ ok: boolean }> {
   return apiFetch<{ ok: boolean }>("/api/v1/mail/compose/session/send", {
     method: "POST",
+    body: {
+      draft_path: draftPath,
+      account_id: accountId,
+      ...(overrideSafetyToken ? { override_safety_token: overrideSafetyToken } : {}),
+    },
+  });
+}
+
+export interface DraftSafetyIssue {
+  code: string;
+  severity: string;
+  message: string;
+  detail?: string | null;
+  override_token?: string | null;
+}
+
+export interface DraftSafetyReport {
+  allowed: boolean;
+  verdict: string;
+  issues: DraftSafetyIssue[];
+  checked_at?: string | null;
+}
+
+export function checkComposeSafety(
+  draftPath: string,
+  accountId: string,
+): Promise<{ report: DraftSafetyReport }> {
+  return apiFetch<{ report: DraftSafetyReport }>("/api/v1/mail/compose/session/safety-check", {
+    method: "POST",
     body: { draft_path: draftPath, account_id: accountId },
+  });
+}
+
+export interface SuggestedCollaborator {
+  email: string;
+  display_name?: string | null;
+  reason: string;
+  confidence: string;
+}
+
+export function suggestComposeCollaborators(
+  draftPath: string,
+  accountId: string,
+): Promise<{ suggestions: SuggestedCollaborator[] }> {
+  return apiFetch<{ suggestions: SuggestedCollaborator[] }>(
+    "/api/v1/mail/compose/session/collaborators",
+    {
+      method: "POST",
+      body: { draft_path: draftPath, account_id: accountId },
+    },
+  );
+}
+
+export interface DraftAddress {
+  name: string | null;
+  email: string;
+}
+
+/** Payload for `POST /drafts/save-local` (the daemon `Draft` shape). Scheduled
+ * sends operate on stored drafts, so the compose session is materialised into
+ * one before scheduling. */
+export interface LocalDraftPayload {
+  id: string;
+  account_id: string;
+  intent: ComposeKind;
+  to: DraftAddress[];
+  cc: DraftAddress[];
+  bcc: DraftAddress[];
+  subject: string;
+  body_markdown: string;
+  attachments: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export function saveLocalDraft(draft: LocalDraftPayload): Promise<unknown> {
+  return apiFetch<unknown>("/api/v1/mail/drafts/save-local", {
+    method: "POST",
+    body: draft,
+  });
+}
+
+export function createScheduledSend(draftId: string, sendAt: Date): Promise<unknown> {
+  return apiFetch<unknown>("/api/v1/mail/scheduled-sends", {
+    method: "POST",
+    body: { draft_id: draftId, send_at: sendAt.toISOString() },
   });
 }
 

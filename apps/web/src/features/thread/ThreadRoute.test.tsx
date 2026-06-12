@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { ThreadRoute } from "./ThreadRoute";
 import { RightRail } from "@/components/RightRail";
+import { useComposeUi } from "@/features/compose/composeUiStore";
 import type { ThreadResponse } from "@/features/mailbox/types";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
@@ -288,10 +289,9 @@ describe("ThreadRoute", () => {
 
     fireEvent.keyDown(window, { key: "f" });
 
-    expect(router.navigate).toHaveBeenCalledWith({
-      to: "/compose/new",
-      search: { reply: "msg-1", mode: "forward" },
-    });
+    // Forward opens the inline composer instead of navigating away.
+    expect(useComposeUi.getState().intent?.key).toBe("compose:forward:msg-1");
+    expect(useComposeUi.getState().surface).toBe("inline");
     expect(useUiPrefs.getState().readerLayout).toBe("split");
 
     fireEvent.keyDown(window, { key: "F", shiftKey: true });

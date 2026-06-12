@@ -71,7 +71,14 @@ export const mailboxActions: Action[] = [
     icon: Undo2,
     shortcut: "KeyZ",
     run: () => {
-      const mutationId = useUndo.getState().lastMutationId;
+      const undo = useUndo.getState();
+      // A pending undo-send window outranks mutation undo — it's the
+      // most recent reversible action.
+      if (undo.pendingSendCancel) {
+        undo.pendingSendCancel();
+        return;
+      }
+      const mutationId = undo.lastMutationId;
       const qc = getActiveQueryClient();
       if (!mutationId || !qc) {
         toast.info("Nothing to undo");

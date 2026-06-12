@@ -213,6 +213,10 @@ pub struct App {
     pub in_flight_html_image_asset_requests: HashSet<MessageId>,
     pub pending_local_state_save: bool,
     pub status_message: Option<String>,
+    /// Transient operation-outcome notifications rendered as stacked
+    /// bottom-right boxes above the status bar. Ambient state stays on
+    /// `status_message`; completed/failed operations go here.
+    pub toasts: ToastQueue,
     pub pending_mutation_count: usize,
     pub pending_mutation_status: Option<String>,
     pub pending_mutation_queue: Vec<QueuedMutation>,
@@ -363,6 +367,7 @@ impl App {
             in_flight_html_image_asset_requests: HashSet::new(),
             pending_local_state_save: false,
             status_message: None,
+            toasts: ToastQueue::default(),
             pending_mutation_count: 0,
             pending_mutation_status: None,
             pending_mutation_queue: Vec::new(),
@@ -574,16 +579,27 @@ impl App {
         );
     }
 
-    /// Status-bar text for the active undo affordance, e.g.
-    /// `"Archived 15 — u to undo"`. Returns `None` when no fresh
-    /// pending undo exists; pairs with the override chain in
-    /// `body_helpers::status_bar_state`.
-    pub fn pending_undo_label(&self, now: std::time::Instant) -> Option<String> {
+    /// Toast for the active undo affordance, e.g. `"Archived 15"` with an
+    /// `"u to undo"` hint and a live countdown of the remaining window.
+    /// Synthesized from `pending_undo` at draw time (rather than queued)
+    /// so pressing `u` dismisses it immediately and the countdown always
+    /// reflects the daemon-side expiry.
+    pub fn pending_undo_toast(&self, now: std::time::Instant) -> Option<Toast> {
         let undo = self.pending_undo.as_ref()?;
-        if now.saturating_duration_since(undo.applied_at) >= UNDO_HINT_TTL {
-            return None;
-        }
-        Some(format!("{} {} — u to undo", undo.verb_past, undo.count))
+        let toast = Toast {
+            text: format!("{} {}", undo.verb_past, undo.count),
+            severity: ToastSeverity::Success,
+            created_at: undo.applied_at,
+            ttl: UNDO_HINT_TTL,
+            action_hint: Some("u to undo".into()),
+        };
+        (!toast.expired(now)).then_some(toast)
+    }
+
+    /// Queue a transient toast notification. Severity colors and expiry
+    /// are handled by the queue and the `ui::toasts` renderer.
+    pub fn push_toast(&mut self, toast: Toast) {
+        self.toasts.push(toast);
     }
 
     /// Take the active undo handle, returning the `mutation_id` to

@@ -56,6 +56,7 @@ impl App {
 
     pub fn tick(&mut self) {
         self.input.check_timeout();
+        self.toasts.sweep_expired(std::time::Instant::now());
         if self.search_is_pending() {
             self.search.page.throbber.calc_next();
         }

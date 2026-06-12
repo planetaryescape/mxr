@@ -196,9 +196,14 @@ fn mutation_reconciliation_failed_event_replays_optimistic_snapshot() {
             .contains(MessageFlags::STARRED),
         "daemon failure event rolls back starred state"
     );
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Mutation failed: provider rejected")
+    let now = std::time::Instant::now();
+    let toasts = app.toasts.visible(now);
+    assert!(
+        toasts
+            .iter()
+            .any(|toast| toast.text == "Mutation failed: provider rejected"),
+        "failure must surface as an error toast; got {:?}",
+        toasts.iter().map(|t| t.text.as_str()).collect::<Vec<_>>()
     );
 }
 
@@ -1296,9 +1301,14 @@ fn preview_read_exhausted_failure_reconciles_without_error_modal() {
     assert!(app.mailbox.pending_labels_refresh);
     assert!(app.mailbox.pending_all_envelopes_refresh);
     assert!(app.diagnostics.pending_status_refresh);
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Mailbox refreshing to reconcile state")
+    let now = std::time::Instant::now();
+    let toasts = app.toasts.visible(now);
+    assert!(
+        toasts
+            .iter()
+            .any(|toast| toast.text == "Mailbox refreshing to reconcile state"),
+        "best-effort failure must surface as a warn toast; got {:?}",
+        toasts.iter().map(|t| t.text.as_str()).collect::<Vec<_>>()
     );
 }
 

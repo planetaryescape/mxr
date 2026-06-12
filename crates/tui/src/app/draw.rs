@@ -506,6 +506,17 @@ impl App {
         if self.accounts.page.onboarding_modal_open {
             ui::accounts_page::draw_account_setup_onboarding(frame, area, theme);
         }
+
+        // Toast notifications — stacked bottom-right above the status bar,
+        // drawn last so operation outcomes stay visible over any overlay.
+        let now = std::time::Instant::now();
+        let undo_toast = self.pending_undo_toast(now);
+        let mut visible_toasts = self.toasts.visible(now);
+        if let Some(undo) = undo_toast.as_ref() {
+            visible_toasts.insert(0, undo);
+            visible_toasts.truncate(crate::app::TOAST_MAX_VISIBLE);
+        }
+        ui::toasts::draw(frame, area, &visible_toasts, now, theme);
     }
 
     fn draw_saved_search_tabs(&self, frame: &mut Frame, area: Rect, theme: &Theme) -> Rect {

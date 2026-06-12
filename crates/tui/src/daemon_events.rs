@@ -1,4 +1,4 @@
-use crate::app::{self, App, MutationId};
+use crate::app::{self, App, MutationId, Toast};
 use mxr_core::MxrError;
 use mxr_protocol::{DaemonEvent, Request};
 
@@ -129,7 +129,7 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
                 app.handle_mutation_reconciliation_failed(mid);
                 app.pending_optimistic.clear(mid);
                 app.refresh_mailbox_after_mutation_failure();
-                app.status_message = Some(format!("Mutation failed: {error_summary}"));
+                app.push_toast(Toast::error(format!("Mutation failed: {error_summary}")));
             }
         }
         DaemonEvent::EventsLagged { skipped } => {

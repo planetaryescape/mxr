@@ -8,6 +8,7 @@ mod mailbox;
 mod modals;
 mod rules;
 mod search;
+mod toasts;
 
 pub(in crate::app) use accounts::AccountFormToggleField;
 pub use accounts::{AccountFormMode, AccountFormState, AccountsPageState, AccountsState};
@@ -45,3 +46,4 @@ pub use search::{
     PendingSearchCountRequest, PendingSearchDebounce, PendingSearchRequest, SearchPageState,
     SearchPane, SearchState, SearchTarget, SearchUiStatus,
 };
+pub use toasts::{Toast, ToastQueue, ToastSeverity, TOAST_DEFAULT_TTL, TOAST_MAX_VISIBLE};

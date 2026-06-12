@@ -37,7 +37,7 @@ import { SendLaterDialog } from "./SendLaterDialog";
 import { SignaturePicker } from "./SignaturePicker";
 import { SnippetPicker } from "./SnippetPicker";
 import type { DraftSuggestionResponse } from "./types";
-import type { ComposeController } from "./useComposeSession";
+import type { ComposeController, ComposeUploadProgress } from "./useComposeSession";
 
 const CodeMirrorComposeEditor = lazy(() =>
   import("./codemirror/CodeMirrorComposeEditor").then((module) => ({
@@ -265,12 +265,15 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         ) : null}
       </div>
 
-      {draft.frontmatter.attach.length > 0 || controller.visibleIssues.length > 0 ? (
+      {draft.frontmatter.attach.length > 0 ||
+      controller.uploadProgress.length > 0 ||
+      controller.visibleIssues.length > 0 ? (
         <div className="shrink-0 border-t border-border">
           <div className="mx-auto w-full max-w-[860px] space-y-2 px-5 py-2">
-            {draft.frontmatter.attach.length > 0 ? (
+            {draft.frontmatter.attach.length > 0 || controller.uploadProgress.length > 0 ? (
               <AttachmentList
                 attachments={draft.frontmatter.attach}
+                uploads={controller.uploadProgress}
                 onRemove={controller.removeAttachment}
               />
             ) : null}
@@ -347,16 +350,35 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
 
 function AttachmentList({
   attachments,
+  uploads,
   onRemove,
 }: {
   attachments: string[];
+  uploads: ComposeUploadProgress[];
   onRemove: (path: string) => void;
 }) {
-  if (attachments.length === 0) {
+  if (attachments.length === 0 && uploads.length === 0) {
     return <div className="text-2xs text-muted-foreground">No attachments</div>;
   }
   return (
     <div className="flex flex-1 flex-wrap gap-1.5">
+      {uploads.map((upload) => (
+        <Badge
+          key={upload.id}
+          variant="outline"
+          className="max-w-full bg-background py-1 text-muted-foreground"
+        >
+          {upload.done ? (
+            <Paperclip className="size-3" />
+          ) : (
+            <Loader2 className="size-3 animate-spin" />
+          )}
+          <span className="max-w-[220px] truncate" title={upload.name}>
+            {upload.name}
+          </span>
+          <span className="text-2xs">{upload.done ? "uploaded" : "uploading…"}</span>
+        </Badge>
+      ))}
       {attachments.map((path) => (
         <Badge
           key={path}

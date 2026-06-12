@@ -49,6 +49,7 @@ import type {
 } from "./types";
 
 const activeDraftStorageKey = "mxr.compose.activeDrafts";
+const LARGE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 export interface ComposeDraftState {
   draftPath: string;
@@ -76,6 +77,13 @@ interface ActiveDraftEntry {
   draftPath: string;
   accountId?: string;
   updatedAt: number;
+}
+
+export interface ComposeUploadProgress {
+  /** Stable render key — duplicate filenames are legal within a batch. */
+  id: string;
+  name: string;
+  done: boolean;
 }
 
 interface ComposeSaveSnapshot {
@@ -181,6 +189,9 @@ export interface ComposeController {
   discardDraft: () => Promise<void>;
   retrySave: () => void;
   addFiles: (files: FileList | File[]) => Promise<void>;
+  /** In-flight upload entries for the attachments strip (cleared when the
+   * batch settles). */
+  uploadProgress: ComposeUploadProgress[];
   removeAttachment: (path: string) => void;
 
   assistOpen: boolean;
@@ -252,6 +263,7 @@ export function useComposeSession(
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
   const [uploading, setUploading] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState<ComposeUploadProgress[]>([]);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [pendingSends, setPendingSends] = useState(0);
   const [safetyReport, setSafetyReport] = useState<DraftSafetyReport | null>(null);
@@ -902,16 +914,36 @@ export function useComposeSession(
     if (!current) return;
     const fileList = Array.from(files);
     if (fileList.length === 0) return;
+    // Warn (but still upload) on oversized files — many receiving servers
+    // bounce attachments past ~10 MB.
+    for (const file of fileList) {
+      if (file.size > LARGE_ATTACHMENT_BYTES) {
+        toast.warning(`${file.name} is ${formatMegabytes(file.size)}`, {
+          description: "Large attachments are often rejected by mail servers. Uploading anyway.",
+        });
+      }
+    }
     setUploading((value) => value + fileList.length);
+    const batch = fileList.map((file) => ({
+      id: crypto.randomUUID(),
+      file,
+    }));
+    setUploadProgress((items) => [
+      ...items,
+      ...batch.map((entry) => ({ id: entry.id, name: entry.file.name, done: false })),
+    ]);
     try {
       const paths = await Promise.all(
-        fileList.map(async (file) => {
+        batch.map(async ({ id, file }) => {
           const contentBase64 = await fileToBase64(file);
           const uploaded = await uploadComposeAttachment({
             draftPath: current.draftPath,
             filename: file.name,
             contentBase64,
           });
+          setUploadProgress((items) =>
+            items.map((item) => (item.id === id ? { ...item, done: true } : item)),
+          );
           return uploaded.path;
         }),
       );
@@ -932,6 +964,9 @@ export function useComposeSession(
       toast.error("Attachment failed", { description: errorMessage(error) });
     } finally {
       setUploading((value) => Math.max(0, value - fileList.length));
+      // Drop this batch's entries; another concurrent batch keeps its own.
+      const batchIds = new Set<string>(batch.map((entry) => entry.id));
+      setUploadProgress((items) => items.filter((item) => !batchIds.has(item.id)));
     }
   }
 
@@ -1043,6 +1078,7 @@ export function useComposeSession(
     discardDraft,
     retrySave,
     addFiles,
+    uploadProgress,
     removeAttachment,
 
     assistOpen,
@@ -1259,6 +1295,10 @@ function fileToBase64(file: File): Promise<string> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function formatMegabytes(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function expandSnippet(value: string, snippets: Snippet[]): string {

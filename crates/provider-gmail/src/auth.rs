@@ -6,10 +6,15 @@ use yup_oauth2::InstalledFlowReturnMethod;
 
 use crate::auth_storage::{has_keychain_token_cache, KeychainTokenStorage};
 
+const UNSAFE_TOKEN_REF_CHARS: &[char] = &['\\', ':', '*', '?', '"', '<', '>', '|'];
+
 #[derive(Debug, Error)]
 pub enum AuthError {
     #[error("OAuth2 error: {0}")]
     OAuth2(String),
+
+    #[error("Invalid token_ref: {0}")]
+    InvalidTokenRef(String),
 
     #[error("Token expired or missing")]
     TokenExpired,
@@ -33,12 +38,42 @@ mod tests {
         .with_storage(token_root.clone(), "mxr-dev-gmail-oauth".to_string());
 
         assert_eq!(
-            auth.storage_config_for_test(),
+            auth.storage_config_for_test().expect("valid token_ref"),
             (
                 token_root.join("mxr/work-gmail.json"),
                 "mxr-dev-gmail-oauth".to_string()
             )
         );
+    }
+
+    #[test]
+    fn token_ref_validation_rejects_unsafe_disk_paths() {
+        for token_ref in [
+            "",
+            "/tmp/mxr-token",
+            "../mxr-token",
+            "mxr/../work-gmail",
+            "mxr//work-gmail",
+            "mxr/work-gmail/",
+            "mxr/./work-gmail",
+            "mxr\\work-gmail",
+            "gmail:personal",
+            "mxr/work*.gmail",
+            "mxr/work\ngmail",
+        ] {
+            let err = GmailAuth::new(
+                "client".to_string(),
+                "secret".to_string(),
+                token_ref.to_string(),
+            )
+            .storage_config_for_test()
+            .expect_err("unsafe token_ref should be rejected");
+
+            assert!(
+                matches!(err, AuthError::InvalidTokenRef(_)),
+                "expected InvalidTokenRef for {token_ref:?}, got {err:?}"
+            );
+        }
     }
 }
 
@@ -152,8 +187,10 @@ impl GmailAuth {
     }
 
     #[cfg(test)]
-    pub(crate) fn storage_config_for_test(&self) -> (std::path::PathBuf, String) {
-        (self.token_path(), self.keychain_service.clone())
+    pub(crate) fn storage_config_for_test(
+        &self,
+    ) -> Result<(std::path::PathBuf, String), AuthError> {
+        Ok((self.token_path()?, self.keychain_service.clone()))
     }
 
     pub fn with_refresh_token(
@@ -225,8 +262,9 @@ impl GmailAuth {
         }
     }
 
-    fn token_path(&self) -> std::path::PathBuf {
-        self.token_root.join(format!("{}.json", self.token_ref))
+    fn token_path(&self) -> Result<std::path::PathBuf, AuthError> {
+        validate_token_ref(&self.token_ref)?;
+        Ok(self.token_root.join(format!("{}.json", self.token_ref)))
     }
 
     fn make_secret(&self) -> yup_oauth2::ApplicationSecret {
@@ -264,7 +302,7 @@ impl GmailAuth {
         device_delegate: Option<Box<dyn DeviceFlowDelegate>>,
     ) -> Result<(), AuthError> {
         let secret = self.make_secret();
-        let token_path = self.token_path();
+        let token_path = self.token_path()?;
 
         if let Some(parent) = token_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
@@ -350,7 +388,7 @@ impl GmailAuth {
     }
 
     pub async fn load_existing(&mut self) -> Result<(), AuthError> {
-        let token_path = self.token_path();
+        let token_path = self.token_path()?;
         // Either the keychain entry or the legacy on-disk cache must exist.
         // The keychain check is fast enough (one OS call) that it's fine in
         // the common case even when nothing is stored.
@@ -400,4 +438,40 @@ fn legacy_token_root() -> std::path::PathBuf {
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("mxr")
         .join("tokens")
+}
+
+fn validate_token_ref(token_ref: &str) -> Result<(), AuthError> {
+    if token_ref.is_empty() {
+        return Err(AuthError::InvalidTokenRef("must not be empty".to_string()));
+    }
+
+    if std::path::Path::new(token_ref).is_absolute() {
+        return Err(AuthError::InvalidTokenRef(
+            "must be a relative path".to_string(),
+        ));
+    }
+
+    if token_ref
+        .chars()
+        .any(|c| c.is_control() || UNSAFE_TOKEN_REF_CHARS.contains(&c))
+    {
+        return Err(AuthError::InvalidTokenRef(
+            "contains unsafe path characters".to_string(),
+        ));
+    }
+
+    for component in token_ref.split('/') {
+        if component.is_empty() {
+            return Err(AuthError::InvalidTokenRef(
+                "must not contain empty path components".to_string(),
+            ));
+        }
+        if component == "." || component == ".." {
+            return Err(AuthError::InvalidTokenRef(
+                "must not contain traversal path components".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
 }

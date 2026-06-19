@@ -1,5 +1,34 @@
 use super::*;
 
+async fn assert_request_waits_for_provider_lock(
+    state: Arc<AppState>,
+    request: Request,
+    action: &str,
+) -> IpcMessage {
+    let provider_guard = state
+        .acquire_provider_operation(&state.default_account_id())
+        .await;
+    let task_state = state.clone();
+    let mut task = tokio::spawn(async move {
+        let msg = IpcMessage {
+            id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(request),
+        };
+        handle_request(&task_state, &msg).await
+    });
+
+    tokio::select! {
+        result = &mut task => {
+            panic!("{action} completed before provider lock was released: {result:?}");
+        }
+        _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {}
+    }
+
+    drop(provider_guard);
+    task.await.expect("request task should complete")
+}
+
 #[tokio::test]
 async fn snooze_on_folder_provider_reanchors_to_reconciled_message_copy() {
     let state = folder_copy_state().await;
@@ -78,6 +107,69 @@ async fn snooze_on_folder_provider_reanchors_to_reconciled_message_copy() {
         state.store.list_snoozed().await.unwrap().is_empty(),
         "expected snooze row to be cleared after unsnooze"
     );
+}
+
+#[tokio::test]
+async fn snooze_waits_for_account_provider_lock() {
+    let state = folder_copy_state().await;
+    let original_id = sync_and_get_first_id(&state).await;
+
+    let response = assert_request_waits_for_provider_lock(
+        state.clone(),
+        Request::Snooze {
+            message_id: original_id,
+            wake_at: chrono::Utc::now() + chrono::Duration::hours(4),
+        },
+        "snooze",
+    )
+    .await;
+
+    match response.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack,
+        }) => {}
+        other => panic!("Expected Ack for Snooze, got {other:?}"),
+    }
+    assert_eq!(state.store.list_snoozed().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn unsnooze_waits_for_account_provider_lock() {
+    let state = folder_copy_state().await;
+    let original_id = sync_and_get_first_id(&state).await;
+
+    let snooze = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::Snooze {
+            message_id: original_id,
+            wake_at: chrono::Utc::now() + chrono::Duration::hours(4),
+        }),
+    };
+    match handle_request(&state, &snooze).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack,
+        }) => {}
+        other => panic!("Expected Ack for Snooze, got {other:?}"),
+    }
+    let snoozed = state.store.list_snoozed().await.unwrap();
+
+    let response = assert_request_waits_for_provider_lock(
+        state.clone(),
+        Request::Unsnooze {
+            message_id: snoozed[0].message_id.clone(),
+        },
+        "unsnooze",
+    )
+    .await;
+
+    match response.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack,
+        }) => {}
+        other => panic!("Expected Ack for Unsnooze, got {other:?}"),
+    }
+    assert!(state.store.list_snoozed().await.unwrap().is_empty());
 }
 
 #[tokio::test]

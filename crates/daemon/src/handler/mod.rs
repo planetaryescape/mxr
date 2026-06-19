@@ -2519,6 +2519,7 @@ pub(crate) async fn apply_snooze(
         .await
         .map_err(|e| e.to_string())?;
     let provider = state.get_provider(Some(&envelope.account_id))?;
+    let _provider_guard = state.acquire_provider_operation(&envelope.account_id).await;
     let snooze_mutation_id = uuid::Uuid::now_v7().to_string();
     provider
         .apply_mutation(
@@ -2587,6 +2588,7 @@ pub(crate) async fn restore_snoozed_message(
         .collect();
 
     let provider = state.get_provider(Some(&snoozed.account_id))?;
+    let _provider_guard = state.acquire_provider_operation(&snoozed.account_id).await;
     let wake_mutation_id = uuid::Uuid::now_v7().to_string();
     provider
         .apply_mutation(

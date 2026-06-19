@@ -1,10 +1,6 @@
 /*
- * Global navigation + system actions. Mirror the chords already in
- * lib/keymap.ts so PR #3 can swap keymap to consume `getShortcutMap()`
- * without changing user-visible bindings.
- *
- * `g a` keeps Archive (matches lib/keymap.ts:75); Analytics moves to `g y`
- * in PR #3 to resolve the collision documented in PARITY_MATRIX.md.
+ * Global navigation + system actions shared by the command palette and the
+ * shortcut map.
  */
 
 import {

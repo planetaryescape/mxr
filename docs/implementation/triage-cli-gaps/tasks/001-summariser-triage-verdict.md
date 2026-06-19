@@ -1,7 +1,7 @@
 ---
 id: task-001
 title: Summariser emits strict triage-verdict first line (Part 2)
-status: ready
+status: accepted
 phase: phase-001
 depends_on: []
 blocks:

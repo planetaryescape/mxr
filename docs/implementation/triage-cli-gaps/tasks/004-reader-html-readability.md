@@ -1,7 +1,7 @@
 ---
 id: task-004
 title: Readability HTML-to-text in reader view (P0-3)
-status: ready
+status: accepted
 phase: phase-002
 depends_on: []
 blocks: []

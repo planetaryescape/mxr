@@ -1,7 +1,7 @@
 ---
 id: task-003
 title: Query-scoped sender aggregation across all clients (P0-2)
-status: ready
+status: accepted
 phase: phase-002
 depends_on: []
 blocks: []

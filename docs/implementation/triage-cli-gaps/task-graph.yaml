@@ -2,6 +2,7 @@ feature: triage-cli-gaps
 
 # Scoped from docs/triage-session-feedback-2026-06-03.md (a real inbox-triage field report).
 # Priority maps to phases: Part 2 prompt first (foundational), then P0, P1, P2.
+# Historical tracker: all tasks were accepted and merged to main. Kept for audit, not scheduling.
 
 phases:
   phase-001:
@@ -32,7 +33,7 @@ tasks:
     title: Summariser emits strict triage-verdict first line (Part 2)
     phase: phase-001
     depends_on: []
-    status: ready
+    status: accepted
     executor_type: frontier_model
     lane: frontier
     risk: medium
@@ -41,7 +42,7 @@ tasks:
     phase: phase-002
     depends_on:
       - task-001
-    status: pending
+    status: accepted
     executor_type: frontier_model
     lane: frontier
     risk: high
@@ -49,7 +50,7 @@ tasks:
     title: Query-scoped sender aggregation via --group-by (P0-2)
     phase: phase-002
     depends_on: []
-    status: ready
+    status: accepted
     executor_type: frontier_model
     lane: frontier
     risk: medium
@@ -57,7 +58,7 @@ tasks:
     title: Readability HTML-to-text in reader view (P0-3)
     phase: phase-002
     depends_on: []
-    status: ready
+    status: accepted
     executor_type: frontier_model
     lane: frontier
     risk: medium
@@ -65,7 +66,7 @@ tasks:
     title: One-shot unsubscribe + footprint clear --purge (P0-4)
     phase: phase-002
     depends_on: []
-    status: ready
+    status: accepted
     executor_type: frontier_model
     lane: frontier
     risk: high
@@ -73,7 +74,7 @@ tasks:
     title: Multi-action rules + atomic queue route verb (P1-5)
     phase: phase-003
     depends_on: []
-    status: pending
+    status: accepted
     executor_type: frontier_model
     lane: frontier
     risk: high
@@ -81,7 +82,7 @@ tasks:
     title: Large-batch mutation chunking / async job surface (P1-6)
     phase: phase-003
     depends_on: []
-    status: pending
+    status: accepted
     executor_type: frontier_model
     lane: frontier
     risk: high
@@ -89,7 +90,7 @@ tasks:
     title: Search result pagination / lift discovery ceiling (P1-7)
     phase: phase-003
     depends_on: []
-    status: pending
+    status: accepted
     executor_type: frontier_model
     lane: frontier
     risk: medium
@@ -97,7 +98,7 @@ tasks:
     title: CLI output polish bundle - count plain, dry-run parity, unsub preflight (P2-8,9,10)
     phase: phase-004
     depends_on: []
-    status: pending
+    status: accepted
     executor_type: frontier_model
     lane: frontier
     risk: low
@@ -105,7 +106,7 @@ tasks:
     title: Document subscriptions --rank opened_count semantics (P2-11)
     phase: phase-004
     depends_on: []
-    status: pending
+    status: accepted
     executor_type: frontier_model
     lane: frontier
     risk: low

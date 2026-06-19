@@ -1,7 +1,7 @@
 ---
 id: task-010
 title: Document subscriptions --rank opened_count semantics (P2-11)
-status: pending
+status: accepted
 phase: phase-004
 depends_on: []
 blocks: []

@@ -1,7 +1,7 @@
 ---
 id: task-008
 title: Search result pagination / lift discovery ceiling across all clients (P1-7)
-status: pending
+status: accepted
 phase: phase-003
 depends_on: []
 blocks: []

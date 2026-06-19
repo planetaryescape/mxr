@@ -1,7 +1,7 @@
 ---
 id: task-007
 title: Large-batch mutation chunking / async job surface across all clients (P1-6)
-status: pending
+status: accepted
 phase: phase-003
 depends_on: []
 blocks: []

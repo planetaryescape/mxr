@@ -1,7 +1,7 @@
 ---
 id: task-009
 title: CLI output polish bundle - count plain, dry-run parity, unsub preflight (P2-8,9,10)
-status: pending
+status: accepted
 phase: phase-004
 depends_on: []
 blocks: []

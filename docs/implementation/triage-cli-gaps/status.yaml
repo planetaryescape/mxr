@@ -1,5 +1,12 @@
 feature: triage-cli-gaps
-current_phase: phase-004
+current_phase: complete
+tracker_state: archived
+last_reconciled: 2026-06-19
+reconciliation_note: >
+  Historical tracker only. build-log.md records the 2026-06-03 merge to main;
+  code verified on 2026-06-19 still contains the shipped triage cache,
+  search aggregation, reader HTML-to-text fallback, unsubscribe purge, route/jobs,
+  pagination, CLI polish, and opened_count docs surfaces.
 tasks:
   task-001:
     status: accepted

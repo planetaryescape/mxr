@@ -1,7 +1,7 @@
 ---
 id: task-002
 title: Surface a cached triage signal across all clients (P0-1)
-status: pending
+status: accepted
 phase: phase-002
 depends_on:
   - task-001

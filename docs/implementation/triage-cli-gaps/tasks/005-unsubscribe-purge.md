@@ -1,7 +1,7 @@
 ---
 id: task-005
 title: One-shot unsubscribe + footprint clear across all clients (P0-4)
-status: ready
+status: accepted
 phase: phase-002
 depends_on: []
 blocks: []

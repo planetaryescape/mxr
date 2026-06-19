@@ -1,7 +1,7 @@
 ---
 id: task-006
 title: Multi-action rules + atomic queue route across all clients (P1-5)
-status: pending
+status: accepted
 phase: phase-003
 depends_on: []
 blocks: []

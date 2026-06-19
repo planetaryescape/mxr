@@ -1326,7 +1326,9 @@ async fn apply_mutation_to_envelope(
     cmd: &MutationCommand,
     envelope: &Envelope,
 ) -> Result<(), String> {
-    let _provider_guard = state.acquire_provider_operation(&envelope.account_id).await;
+    // Keep the account-scoped provider guard held across the dedup
+    // check, provider apply, dedup record, and local reconciliation.
+    let provider_guard = state.acquire_provider_operation(&envelope.account_id).await;
     let message_id = &envelope.id;
     let provider_id = &envelope.provider_id;
     match cmd {
@@ -1334,6 +1336,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
+                &provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::ModifyLabels {
@@ -1353,6 +1356,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
+                &provider_guard,
                 mutation_id,
                 &format!("{provider_id}#read"),
                 mxr_core::Mutation::SetRead {
@@ -1370,6 +1374,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
+                &provider_guard,
                 mutation_id,
                 &format!("{provider_id}#labels"),
                 mxr_core::Mutation::ModifyLabels {
@@ -1387,6 +1392,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
+                &provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::Trash {
@@ -1411,6 +1417,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
+                &provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::ModifyLabels {
@@ -1434,6 +1441,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
+                &provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::SetStarred {
@@ -1453,6 +1461,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
+                &provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::SetRead {
@@ -1479,6 +1488,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
+                &provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::ModifyLabels {
@@ -1503,6 +1513,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
+                &provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::ModifyLabels {
@@ -1546,6 +1557,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
+                &provider_guard,
                 mutation_id,
                 &format!("{provider_id}#route-labels"),
                 mxr_core::Mutation::ModifyLabels {
@@ -1562,6 +1574,7 @@ async fn apply_mutation_to_envelope(
                 apply_one_mutation(
                     state,
                     provider,
+                    &provider_guard,
                     mutation_id,
                     &format!("{provider_id}#route-read"),
                     mxr_core::Mutation::SetRead {
@@ -1587,6 +1600,9 @@ async fn apply_mutation_to_envelope(
 /// Dedup-aware provider mutation: skips the provider call if a row for
 /// `(mutation_id, dedup_key)` already exists in `mutation_dedup_log`,
 /// otherwise calls the provider and records the apply.
+/// The caller must hold the account-scoped provider operation guard
+/// across this whole helper; that serializes the non-atomic check/apply/record
+/// sequence within a daemon process.
 ///
 /// `dedup_key` is normally the envelope's provider id, but
 /// ReadAndArchive uses suffixed keys (`${pid}#read`, `${pid}#labels`)
@@ -1594,6 +1610,7 @@ async fn apply_mutation_to_envelope(
 async fn apply_one_mutation(
     state: &AppState,
     provider: &dyn mxr_core::MailSyncProvider,
+    _provider_guard: &tokio::sync::OwnedMutexGuard<()>,
     mutation_id: &str,
     dedup_key: &str,
     mutation: mxr_core::Mutation,
@@ -2852,6 +2869,171 @@ mod reconciliation_failed_emit_tests {
         assert!(
             timeout(Duration::from_millis(30), rx.recv()).await.is_err(),
             "no event when succeeded >= requested"
+        );
+    }
+}
+
+#[cfg(test)]
+mod mutation_dedup_invariant_tests {
+    use super::*;
+    use crate::state::AppState;
+    use mxr_core::{AccountId, Label, MxrError, SyncBatch, SyncCapabilities, SyncCursor};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    use std::time::Duration;
+
+    struct SlowMutationProvider {
+        account_id: AccountId,
+        calls: AtomicUsize,
+    }
+
+    impl SlowMutationProvider {
+        fn new(account_id: AccountId) -> Self {
+            Self {
+                account_id,
+                calls: AtomicUsize::new(0),
+            }
+        }
+
+        fn call_count(&self) -> usize {
+            self.calls.load(Ordering::SeqCst)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl mxr_core::MailSyncProvider for SlowMutationProvider {
+        fn name(&self) -> &str {
+            "slow-mutation"
+        }
+
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities {
+                mutate: mxr_core::MutateCaps {
+                    labels: true,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        }
+
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(Vec::new())
+        }
+
+        async fn sync_messages(&self, _cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            Ok(SyncBatch {
+                upserted: Vec::new(),
+                deleted_provider_ids: Vec::new(),
+                label_changes: Vec::new(),
+                next_cursor: SyncCursor::empty(),
+                has_more: false,
+                threads_changed: Vec::new(),
+            })
+        }
+
+        async fn fetch_attachment(
+            &self,
+            _provider_message_id: &str,
+            _provider_attachment_id: &str,
+        ) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+
+        async fn apply_mutation(
+            &self,
+            _mutation_id: &str,
+            _mutation: &mxr_core::Mutation,
+        ) -> Result<(), MxrError> {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn provider_guard_serializes_mutation_dedup_check_and_record() {
+        let account_id = AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let provider = Arc::new(SlowMutationProvider::new(account_id.clone()));
+        let provider_for_state: Arc<dyn mxr_core::MailSyncProvider> = provider.clone();
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, provider_for_state, None)
+                .await
+                .unwrap(),
+        );
+
+        let inbox = crate::test_fixtures::test_label(&account_id, "Inbox", "INBOX");
+        state.store.upsert_label(&inbox).await.unwrap();
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .provider_id("provider-1")
+            .label_provider_ids(vec!["INBOX".to_string()])
+            .build();
+        state.store.upsert_envelope(&envelope).await.unwrap();
+        state
+            .store
+            .set_message_labels(
+                &envelope.id,
+                std::slice::from_ref(&inbox.id),
+                mxr_core::EventSource::Sync,
+            )
+            .await
+            .unwrap();
+
+        let cmd = MutationCommand::Archive {
+            message_ids: vec![envelope.id.clone()],
+        };
+        let mutation_id = "dedup-lock-test";
+        let first = {
+            let state = Arc::clone(&state);
+            let provider = Arc::clone(&provider);
+            let cmd = cmd.clone();
+            let envelope = envelope.clone();
+            tokio::spawn(async move {
+                apply_mutation_to_envelope(&state, provider.as_ref(), mutation_id, &cmd, &envelope)
+                    .await
+            })
+        };
+        let second = {
+            let state = Arc::clone(&state);
+            let provider = Arc::clone(&provider);
+            let cmd = cmd.clone();
+            let envelope = envelope.clone();
+            tokio::spawn(async move {
+                apply_mutation_to_envelope(&state, provider.as_ref(), mutation_id, &cmd, &envelope)
+                    .await
+            })
+        };
+
+        first.await.unwrap().unwrap();
+        second.await.unwrap().unwrap();
+
+        assert_eq!(
+            provider.call_count(),
+            1,
+            "same mutation_id/dedup key must reach provider once"
+        );
+        assert!(
+            state
+                .store
+                .was_mutation_applied(mutation_id, "provider-1")
+                .await
+                .unwrap(),
+            "first apply must record the dedup row before the second check"
         );
     }
 }

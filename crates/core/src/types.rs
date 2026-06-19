@@ -1750,8 +1750,8 @@ pub struct SubscriptionSummary {
     /// Combined with `message_count` gives the open-rate used by `unsub --rank`.
     #[serde(default)]
     pub opened_count: u32,
-    /// Number of messages where I replied. Placeholder zero until Slice 9
-    /// wires `reply_pairs`. Field exists so the JSON contract is stable.
+    /// Stable JSON field. The subscriptions query currently returns zero;
+    /// reply-pair counts power sender/contact analytics, not this ranker.
     #[serde(default)]
     pub replied_count: u32,
     /// Messages that landed in ARCHIVE without ever being read. Strong

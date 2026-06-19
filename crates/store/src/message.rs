@@ -1108,7 +1108,8 @@ impl super::Store {
                         .transpose()?
                         .unwrap_or(UnsubscribeMethod::None),
                     opened_count: row.get::<i64, _>("opened_count") as u32,
-                    replied_count: 0, // Slice 9 will fill this from reply_pairs.
+                    // Stable JSON field; subscriptions do not rank by reply pairs.
+                    replied_count: 0,
                     archived_unread_count: row.get::<i64, _>("archived_unread_count") as u32,
                 })
             })

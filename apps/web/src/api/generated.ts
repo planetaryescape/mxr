@@ -5773,8 +5773,8 @@ export interface components {
             opened_count?: number;
             /**
              * Format: int32
-             * @description Number of messages where I replied. Placeholder zero until Slice 9
-             *     wires `reply_pairs`. Field exists so the JSON contract is stable.
+             * @description Stable JSON field. The subscriptions query currently returns zero;
+             *     reply-pair counts power sender/contact analytics, not this ranker.
              */
             replied_count?: number;
             sender_email: string;

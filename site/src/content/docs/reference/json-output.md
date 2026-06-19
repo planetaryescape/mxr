@@ -87,7 +87,7 @@ mxr subscriptions --rank --format json \
 | `message_count` | number | Non-trash, non-spam messages from that sender with an unsubscribe method. |
 | `opened_count` | number | Messages in the bucket whose local `READ` flag is set. This is not tracking-pixel telemetry or distinct open events. |
 | `archived_unread_count` | number | Messages that are archived while still unread; tie-breaker for `--rank`. |
-| `replied_count` | number | Stable JSON field, currently `0` for `subscriptions`; reply-pair counts power sender/contact analytics, not this ranker yet. |
+| `replied_count` | number | Stable JSON field, currently `0` for `subscriptions`; reply-pair counts power sender/contact analytics, not this ranker. |
 
 If `opened_count == message_count`, every message in that sender bucket is read
 locally. That can come from the `mxr read` command, another mail client,

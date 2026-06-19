@@ -15716,7 +15716,7 @@
           "replied_count": {
             "type": "integer",
             "format": "int32",
-            "description": "Number of messages where I replied. Placeholder zero until Slice 9\nwires `reply_pairs`. Field exists so the JSON contract is stable.",
+            "description": "Stable JSON field. The subscriptions query currently returns zero;\nreply-pair counts power sender/contact analytics, not this ranker.",
             "minimum": 0
           },
           "sender_email": {

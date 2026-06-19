@@ -32,7 +32,7 @@ validation:
   test_commands:
     - cargo build -p mxr
   success_criteria:
-    - "The meaning of `opened_count` (and `replied_count`) in `subscriptions --rank` is documented accurately, verified against the code that computes it."
+    - "The meaning of `opened_count` and the stable-zero `replied_count` field in `subscriptions --rank` is documented accurately, verified against the code that emits them."
     - "Docs explain why opened_count can equal message_count for some senders (the field session found this ambiguous when judging engagement)."
     - "Docs land in the user-facing site content (site/src/content/docs/), NOT the generated CLI reference under reference/cli/ (that is auto-generated)."
     - "Follows docs/guides/writing-docs.md conventions."
@@ -48,8 +48,8 @@ calls fuzzy. Document what it actually measures.
 
 ## Work
 
-- Read the code that computes `opened_count`/`replied_count` (start in the daemon subscriptions
-  handler and `crates/relationship/`). Establish ground truth.
+- Read the code that computes `opened_count` and emits `replied_count` (start in the daemon
+  subscriptions handler and the store query). Establish ground truth.
 - Document the metric (proxied pixel opens? distinct opens? counted how?) in the user-facing docs,
   including the equal-to-message-count case.
 - Respect writing-docs conventions; do not hand-edit the generated CLI reference.

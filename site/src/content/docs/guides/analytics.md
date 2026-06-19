@@ -147,7 +147,7 @@ message from that sender is already read locally, including reads synced from
 your provider or messages marked read by another client, filter, or bulk
 action. `replied_count` is present in the JSON contract but the subscriptions
 query currently returns `0`; reply-pair counts are wired into sender/contact
-analytics, not the subscription ranker yet. Action: pick a row, hit
+analytics, not the subscription ranker. Action: pick a row, hit
 `mxr unsubscribe` (the actual unsubscribe command).
 
 ### Stale

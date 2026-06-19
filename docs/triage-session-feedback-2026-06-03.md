@@ -24,9 +24,10 @@ Confirmed present while writing this — do **not** rebuild:
 - **`mxr storage --by sender`** — a real per-sender aggregation, but disk-ranked and not
   scoped to an arbitrary query. The building block for P0-2 exists; it just isn't
   generalised to triage.
-- **`mxr subscriptions --rank`** — engagement (`opened_count`/`replied_count`) plus the
+- **`mxr subscriptions --rank`** — open-rate and archived-unread ranking plus the
   resolved unsubscribe method per sender, in one place. The single most useful command of
-  the session. (One caveat — see P2-11.)
+  the session. (`replied_count` is present in JSON but currently stable-zero; one caveat —
+  see P2-11.)
 
 ## Part 1 — CLI gaps, prioritised {#part-1}
 

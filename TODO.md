@@ -1,145 +1,75 @@
 # mxr TODO
 
-Comprehensive repo TODO distilled from the 2026-03-20 market + positioning review.
+Status: triaged on 2026-06-19 from `main`.
 
-Goal: make mxr legible as local-first email infrastructure for humans + agents, not just another terminal mail client.
+This is a backlog index, not a sprint plan. Root TODO items stay here only when
+they are cross-cutting or not yet scoped. Once work is validated, move it into a
+scoped implementation task with `status:` frontmatter and explicit
+owner/executor/milestone context.
 
-## P0 Product truth
+Status labels:
 
-- [x] Ship a real `mxr` MCP server, not just CLI/skill positioning.
-- [ ] Decide the primary category language to test on the site: `local-first email runtime`, `local-first email infrastructure`, or `programmable email client`.
-- [ ] Make every public page honest about what works today vs what is roadmap.
-- [x] Publish a capability matrix by provider: Gmail, IMAP, SMTP, fake.
-- [x] Publish a capability matrix by interface: CLI, TUI, daemon socket, skill, MCP.
-- [ ] Add end-to-end smoke tests for the real user journey: install -> auth -> sync -> search -> draft -> approve -> send.
+- `Validated` means current code/docs show the gap still exists.
+- `Needs validation` means positioning, market, or site work that should not be
+  built until the problem is tested.
+- `Stale / archived` means the old item appears shipped or contradicted by
+  current code/docs; evidence is linked inline.
 
-## P0 Agent safety
+## Validated
 
-- [x] Add read-only mode for agents.
-- [x] Add draft-only mode for agents.
-- [x] Add explicit send approval flow.
-- [x] Add explicit destructive-action gates for agent/MCP profiles.
-- [ ] Add reversible batch ops where possible.
-- [x] Add audit logging for agent-initiated actions.
-- [x] Surface action origin in daemon activity/history surfaces: human, script, agent, MCP.
-- [x] Make `--dry-run` coverage complete for all risky mutations.
-- [x] Document the trust model clearly: local store, direct provider access, no hosted control plane.
+### Product and Docs Truth
 
-## P0 Website + README
+- [ ] Audit public docs for stale safety copy. `site/src/content/docs/guides/security-and-privacy.md` still lists first-party MCP server, read-only/draft-only agent modes, account-scoped permissions, send approval, and config-based risky-command blocking under "Not shipped yet", while MCP/config/agent docs and code show those exist. Evidence: `crates/mcp/src/lib.rs`, `site/src/content/docs/reference/mcp.md`, `site/src/content/docs/reference/config.md`, `site/src/content/docs/guides/for-agents.md`.
+- [ ] Make public pages explicit about what is shipped vs roadmap anywhere they imply a fully permissioned agent sandbox. Evidence: `site/src/content/docs/guides/for-agents.md` has current limits; `site/src/content/docs/guides/security-and-privacy.md` is stale.
+- [ ] Decide whether the landing page provider line "tested with Fastmail, Migadu, Proton Bridge" should be backed by live evidence docs or softened. Evidence: `site/src/content/docs/index.mdx` claims tested providers, while `scripts/live_provider_smoke_evidence.sh` still emits `unavailable_no_live_smoke` for IMAP/SMTP when creds exist but no network-safe live smoke is committed.
 
-- [ ] Test a stronger hero than `The CLI for your email.`
-- [x] Add a local-first/privacy paragraph directly under the hero.
-- [x] Add `no cloud middleware / no third party in the data path` copy where accurate.
-- [x] Add explicit positioning copy for `why mxr exists if Nylas CLI exists`.
-- [x] Add explicit positioning copy for `why mxr exists if Composio / Zapier MCP exist`.
-- [ ] Decide whether to explicitly contrast against Nylas, Superhuman, HEY, and Gmail MCP servers on the site.
-- [x] Move one concrete agent workflow above the fold.
-- [x] Add `no SDK needed` / Unix composability copy with a real pipeline example.
-- [ ] Add copy for user-controlled encryption: `bring your own gpg/age/etc`.
-- [ ] Surface the `Superhuman for terminal people, but local-first and scriptable` line if it survives review.
-- [x] Mention the conformance suite on the landing page as a trust signal.
-- [x] Add a short HTML-email story: clean text by default, open full HTML when needed.
-- [x] Add a dedicated `Why mxr vs hosted agent connectors` section or page.
-- [x] Add a dedicated `Why mxr vs terminal mail clients` section or page.
-- [ ] Add a `local-first trust boundary` diagram to the landing page.
-- [ ] Add an `agent-safe by default` section to the landing page once the product supports it.
-- [x] Keep README and landing page copy in sync.
+### Core Operability
 
-## P0 Proof, not promises
+- [ ] Reconcile end-to-end smoke coverage for install -> auth -> sync -> search -> draft -> approve -> send. Keep `scripts/v1_launch_proof.sh` as the deterministic fake-provider gate; add live-provider proof only where network-safe. Evidence: `docs/implementation/v1-agent-mcp-gmail-launch/launch-proof.md`, `.github/workflows/provider-live-smoke.yml`.
+- [ ] Add network-safe IMAP and SMTP live smoke tests or document why the current `unavailable_no_live_smoke` result is acceptable for launch. Evidence: `scripts/live_provider_smoke_evidence.sh`.
+- [ ] Keep diagnostics honest for auth/sync/send failures; verify user-facing remediation paths match shipped commands. Evidence: README setup failure path, `site/src/content/docs/troubleshooting.md`, and diagnostics surfaces under `apps/web/src/features/diagnostics/`.
+- [ ] Harden export flows for agent use only where gaps are found against `mxr export` markdown/json/mbox/llm. Evidence: `site/src/content/docs/guides/for-agents.md` uses export; `crates/export/` owns formats.
 
-- [ ] Record at least 3 short demos: inbox triage, meeting prep, CI/build-failure cleanup.
-- [ ] Record a canonical terminal demo with asciinema or VHS.
-- [x] Add copy that shows concrete workflows, not generic AI claims.
-- [x] Publish example commands with real JSON output.
-- [ ] Publish example agent prompts paired with the exact `mxr` commands they trigger.
-- [ ] Add benchmark/proof for local search speed and local-open latency.
-- [ ] Add screenshots or GIFs for daemon + TUI + CLI working together.
-- [ ] Add a GIF for HTML email fallback: TUI read -> open in browser.
-- [ ] Add a demo of an agent safely using `mxr`.
+### Trust and Bulk Actions
 
-## P1 Agent interface
+- [ ] Define which batch ops can be reversible beyond the current 60s undo window; document non-undoable cases. Evidence: `site/src/content/docs/guides/automation-contract.md`.
+- [ ] Review confirmations for unsubscribe, archive-all, trash-all, and send across CLI/TUI/Web before adding new mutation features. Evidence: `site/src/content/docs/guides/automation-contract.md`, `crates/tui/src/ui/send_confirm_modal.rs`, and mutation docs.
+- [ ] Decide whether "user-visible action history page" is already satisfied by `mxr history`, `mxr activity`, web `/activity`, and observability docs, or whether a new first-class page is needed. Evidence: `site/src/content/docs/guides/observability.md`, `apps/web/src/routes/activity.tsx`.
 
-- [x] Decide the official agent surface area: CLI and MCP, both backed by daemon IPC.
-- [x] If both, define the contract: CLI for shell skills/scripts, MCP for MCP-native clients; both obey daemon profiles.
-- [x] Expand the agent docs from `install the skill` into a real guide for safe operation.
-- [x] Add a dedicated `For agents` landing page/section.
-- [ ] Add setup docs for Codex, Claude Code, Cursor, VS Code, OpenAI Agents SDK.
-- [x] Publish recommended permission presets for personal use vs work use.
-- [x] Add examples for approval-gated sending and draft review loops.
-- [ ] Add docs for running `mxr` headless in CI/containers/remote shells.
+### Distribution and Proof
 
-## P1 Core product gaps to close
+- [ ] Keep install paths polished: Homebrew, cargo-from-tag, release binaries, and Gatekeeper docs. Evidence: README install section and `docs/blueprint/17-release-pipeline.md`.
+- [ ] Test clean macOS and Linux installs before launch; publish pass/fail notes.
+- [ ] Record release assets: canonical terminal demo, short inbox-triage/meeting-prep/CI-cleanup demos, and screenshots/GIFs for CLI + TUI + daemon + HTML fallback.
+- [ ] Prepare launch assets: announcement/HN/Reddit copy, screenshots, and concise feature bullets.
+- [ ] Write a conformance-suite post or section as a proof asset, based on existing conformance docs.
 
-- [ ] Finish Gmail adapter work and document current completeness.
-- [x] Reduce Gmail setup pain in docs: OAuth, scopes, verification expectations, failure modes.
-- [ ] Make IMAP + SMTP setup feel first-class, not fallback.
-- [ ] Ensure every daemon capability has both CLI and TUI wiring where applicable.
-- [ ] Harden export flows for agent use: markdown, JSON, thread context.
-- [ ] Ensure search + batch mutation flows are reliable enough to be trusted by agents.
-- [ ] Expose diagnostics that explain exactly why auth/sync/send failed.
+## Needs Validation
 
-## P1 Competitive framing
+- [ ] Primary public category language: `local-first email infrastructure` vs `notebook for your email` vs `local mail runtime` vs `programmable email client`. README and site currently differ; decide by testing, not taste.
+- [ ] Hero experiment: current site uses "Your inbox, on your computer." and README uses "Local-first email infrastructure." Test alternatives only if there is a concrete clarity/conversion problem.
+- [ ] Explicit competitor comparison against Nylas, Superhuman, HEY, Gmail MCP servers, Composio/Zapier MCP, EmailEngine, Post, and `email-mcp`. Existing docs use fit/non-goals and lineage instead of direct comparison; add tables only if readers are confused.
+- [ ] User-controlled encryption copy (`bring your own gpg/age/etc`). Keep out until product/docs show a real supported workflow.
+- [ ] "Superhuman for terminal people..." line. Keep archival unless it survives positioning review.
+- [ ] Dedicated `agent-safe by default` landing section and `local-first trust boundary` diagram. Current docs cover the substance; add visual/site sections only if they improve comprehension.
 
-- [x] Add Nylas CLI to competitive framing as the closest modern all-in-one CLI + MCP analog.
-- [x] Add Composio to competitive framing as hosted Gmail/agent middleware.
-- [x] Add Zapier MCP to competitive framing as hosted Gmail/action middleware.
-- [x] Add EmailEngine to competitive framing as self-hosted email gateway/integration infra.
-- [x] Add Post to competitive framing as a recent local mail daemon + CLI + MCP analog.
-- [x] Add `email-mcp` to competitive framing as local MCP plumbing without the broader mail runtime.
-- [x] Add Gmail MCP servers to competitive framing as Gmail-only access paths.
-- [ ] Keep the comparison table honest and narrow: direct peers in one table, hosted connectors in another section.
-- [ ] Build a second comparison table specifically for agent/automation email access.
-- [x] Write a short `when to choose mxr / when not to choose mxr` page.
+## Stale or Archived
 
-## P1 Trust + operability
+- [x] First-party MCP server, CLI+MCP agent contract, and MCP tools shipped. Evidence: `crates/mcp/src/lib.rs`, `crates/mcp/Cargo.toml`, `site/src/content/docs/reference/mcp.md`, `docs/implementation/v1-agent-mcp-gmail-launch/build-log.md`.
+- [x] Agent read-only/draft-only profiles, account allowlists, send gates, destructive gates, activity origins, and dry-run requirements are documented/shipped. Evidence: `site/src/content/docs/reference/config.md`, `site/src/content/docs/guides/for-agents.md`, `crates/config/src/types.rs`.
+- [x] Provider and interface capability matrices exist. Evidence: `site/src/content/docs/guides/why-mxr.md`.
+- [x] README/site positioning no longer uses "The CLI for your email." Evidence: README intro and `site/src/content/docs/index.mdx`.
+- [x] Local-first/privacy/no-cloud/control-plane copy exists. Evidence: README "Fit and Non-Goals", `site/src/pages/privacy.md`, `site/src/content/docs/guides/security-and-privacy.md`.
+- [x] Conformance suite is mentioned on site/docs. Evidence: `site/src/content/docs/index.mdx`, `site/src/content/docs/reference/conformance.md`.
+- [x] Concrete agent workflows and examples exist in docs. Evidence: `site/src/content/docs/index.mdx`, `site/src/content/docs/guides/for-agents.md`.
+- [x] IMAP+SMTP setup is documented as first-party. Evidence: README supported surfaces, `site/src/content/docs/getting-started/imap-smtp-setup.md`.
+- [x] Security & Privacy docs page exists, but needs stale-section audit. Evidence: `site/src/content/docs/guides/security-and-privacy.md`.
+- [x] Architecture root/docs/posts exist. Evidence: `ARCHITECTURE.md`, `site/src/content/docs/guides/architecture.md`, `docs/articles/why-local-first-daemon-backed-email.md`.
+- [x] Fast-start/demo path exists. Evidence: README `mxr demo`, `site/src/content/docs/getting-started/quick-start.md`, `docs/demo.tape`.
+- [x] Tested-provider list exists on landing/setup docs, but evidence backing needs audit. Evidence: `site/src/content/docs/index.mdx`, `site/src/content/docs/getting-started/imap-smtp-setup.md`.
 
-- [ ] Add a user-visible action history / event log page.
-- [ ] Add undo/rollback affordances for supported bulk actions.
-- [ ] Add better confirmations for unsubscribe, archive-all, trash-all, send.
-- [x] Add account scoping so agents can be restricted to one account.
-- [x] Add config to disable risky commands entirely in specific environments.
-- [ ] Add docs for safe defaults in shared/company machines.
-- [x] Add a dedicated `Security & Privacy` docs page.
+## Hygiene
 
-## P1 Architecture docs
-
-- [x] Create root-level `ARCHITECTURE.md` that summarizes the core principles and links to the full blueprint.
-- [x] Link `ARCHITECTURE.md` from `README.md`.
-- [x] Add an architecture page to the docs site.
-- [x] Write the opinionated architecture post: why local-first + daemon-backed is the right shape.
-
-## P2 Distribution + adoption
-
-- [ ] Polish install paths: Homebrew, cargo, binaries, docs.
-- [ ] Add a fast-start path for people who only want agent access.
-- [ ] Add a fast-start path for people who only want human CLI/TUI use.
-- [x] Add an honest status badge / support matrix for current platform + provider support.
-- [ ] Publish one opinionated `agent inbox triage` recipe.
-- [ ] Publish one opinionated `founder / manager meeting prep` recipe.
-- [ ] Publish one opinionated `engineering incident / CI cleanup` recipe.
-- [ ] Prepare launch assets: announcement post, HN copy, screenshots, feature bullets.
-
-## P2 Provider compatibility
-
-- [ ] Test Fastmail via IMAP and document results.
-- [ ] Test Proton Mail Bridge via IMAP and document results.
-- [ ] Add a `tested providers` list to the site once results exist.
-
-## P2 Launch + outreach
-
-- [ ] Test install on clean macOS and Linux machines before launch.
-- [ ] Draft the HN launch post.
-- [ ] Draft Reddit launch posts for `r/rust`, `r/commandline`, `r/selfhosted`, `r/neovim`, `r/privacy`.
-- [ ] Prepare short outreach copy for creators/newsletters.
-- [ ] Build a target list for terminal/Rust/privacy/self-hosted creators.
-
-## P2 Content
-
-- [x] Write `Why mxr?` / philosophy docs page.
-- [x] Write the `spec is the innovation` post about the blueprint + conformance approach.
-- [ ] Write a conformance-suite post or section as a marketing asset.
-
-## P2 Repo hygiene
-
-- [ ] Add an owner + target milestone next to each high-priority item once priorities settle.
-- [ ] Review this list after each release; remove shipped items, split vague items, add evidence.
+- [ ] Before moving any item to implementation, create or attach a scoped task with `status:`, owner/executor, and target milestone using the implementation-task convention.
+- [ ] Review this file after each release; remove shipped items only with code/doc evidence.
+- [ ] Keep root TODO small. Detailed plans belong under `docs/implementation/**`.

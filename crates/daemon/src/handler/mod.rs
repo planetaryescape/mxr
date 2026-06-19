@@ -3360,21 +3360,19 @@ fn sanitized_attachment_filename(filename: &str, attachment_id: &mxr_core::Attac
         })
         .collect();
 
-    let sanitized =
-        if sanitized.trim().is_empty() || is_reserved_windows_attachment_name(&sanitized) {
-            format!("attachment-{}", attachment_id.as_str())
-        } else {
-            sanitized
-        };
+    let sanitized = if sanitized.trim().is_empty()
+        || is_special_attachment_path_component(&sanitized)
+        || is_reserved_windows_attachment_name(&sanitized)
+    {
+        "attachment".to_string()
+    } else {
+        sanitized
+    };
 
     // APFS limits individual path components to 255 bytes. Some
     // real-world attachment filenames exceed that once MIME-decoded;
-    // keep the extension when possible and add a stable attachment-id
-    // suffix to avoid collisions after truncation.
-    if sanitized.len() <= MAX_ATTACHMENT_FILENAME_BYTES {
-        return sanitized;
-    }
-
+    // keep the extension when possible and always add a stable attachment-id
+    // suffix to avoid cache collisions between same-name attachments.
     let path = std::path::Path::new(&sanitized);
     let extension = path
         .extension()
@@ -3394,6 +3392,10 @@ fn sanitized_attachment_filename(filename: &str, attachment_id: &mxr_core::Attac
         stem.pop();
     }
     format!("{stem}{suffix}")
+}
+
+fn is_special_attachment_path_component(filename: &str) -> bool {
+    matches!(filename, "." | "..")
 }
 
 fn is_reserved_windows_attachment_name(filename: &str) -> bool {

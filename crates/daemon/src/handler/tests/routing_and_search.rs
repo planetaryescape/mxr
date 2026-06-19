@@ -75,6 +75,46 @@ fn sanitized_attachment_filename_truncates_long_names_preserving_extension() {
 }
 
 #[test]
+fn sanitized_attachment_filename_disambiguates_duplicate_safe_names() {
+    let first_id = mxr_core::AttachmentId::from_provider_id("test", "first");
+    let second_id = mxr_core::AttachmentId::from_provider_id("test", "second");
+
+    let first = sanitized_attachment_filename("invoice.pdf", &first_id);
+    let second = sanitized_attachment_filename("invoice.pdf", &second_id);
+
+    assert_ne!(first, second);
+    assert_ne!(
+        std::path::Path::new("/tmp/mxr-message-cache").join(first),
+        std::path::Path::new("/tmp/mxr-message-cache").join(second)
+    );
+}
+
+#[test]
+fn sanitized_attachment_filename_rejects_special_or_unsafe_components() {
+    let target_dir = std::path::Path::new("/tmp/mxr-message-cache");
+
+    for filename in [
+        ".",
+        "..",
+        "nested/name.txt",
+        "nested\\name.txt",
+        "bad\nname.txt",
+    ] {
+        let attachment_id = mxr_core::AttachmentId::from_provider_id("test", filename);
+        let sanitized = sanitized_attachment_filename(filename, &attachment_id);
+        let path = target_dir.join(&sanitized);
+
+        assert_ne!(sanitized, ".");
+        assert_ne!(sanitized, "..");
+        assert!(!sanitized.contains(['/', '\\', ':']));
+        assert!(!sanitized.chars().any(char::is_control));
+        assert_ne!(path, target_dir);
+        assert_ne!(Some(path.as_path()), target_dir.parent());
+        assert_eq!(path.parent(), Some(target_dir));
+    }
+}
+
+#[test]
 fn sanitized_attachment_filename_truncates_utf8_on_char_boundary() {
     let attachment_id = mxr_core::AttachmentId::from_provider_id("test", "utf8-pdf");
     let filename = format!("{}.pdf", "é".repeat(200));

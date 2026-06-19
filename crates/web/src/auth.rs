@@ -32,19 +32,14 @@ pub(super) struct AuthQuery {
     pub(super) token: Option<String>,
 }
 
-/// Resolve the bridge token from the request, checking each path that
-/// the OpenAPI spec documents:
+/// Resolve the bridge token from request headers.
 ///
 /// 1. `Authorization: Bearer <token>` — preferred, what generated SDKs use
-/// 2. `?token=<token>` — fallback for `EventSource` and curl users
-/// 3. `Sec-WebSocket-Protocol: bearer, <token>` — browser WebSocket clients
+/// 2. `Sec-WebSocket-Protocol: bearer, <token>` — browser WebSocket clients
 ///    (browsers cannot set `Authorization` on WS upgrades)
-/// 4. `x-mxr-bridge-token: <token>` — v0.4.x compat, kept for the v0.5
+/// 3. `x-mxr-bridge-token: <token>` — v0.4.x compat, kept for the v0.5
 ///    cycle while older local clients migrate
-pub(crate) fn extract_token<'a>(
-    headers: &'a HeaderMap,
-    query_token: Option<&'a str>,
-) -> Option<&'a str> {
+pub(crate) fn extract_token(headers: &HeaderMap) -> Option<&str> {
     if let Some(value) = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -54,9 +49,6 @@ pub(crate) fn extract_token<'a>(
         })
     {
         return Some(value);
-    }
-    if let Some(token) = query_token {
-        return Some(token);
     }
     if let Some(value) = headers
         .get("sec-websocket-protocol")
@@ -79,10 +71,23 @@ pub(crate) fn extract_token<'a>(
 
 pub(super) fn ensure_authorized(
     headers: &HeaderMap,
+    _query_token: Option<&str>,
+    expected_token: &str,
+) -> Result<(), BridgeError> {
+    // Handlers still deserialize `token` for compatibility with older query
+    // shapes, but regular HTTP routes must not authenticate from it.
+    if extract_token(headers) == Some(expected_token) {
+        return Ok(());
+    }
+    Err(BridgeError::Unauthorized)
+}
+
+pub(super) fn ensure_authorized_with_query_token(
+    headers: &HeaderMap,
     query_token: Option<&str>,
     expected_token: &str,
 ) -> Result<(), BridgeError> {
-    if extract_token(headers, query_token) == Some(expected_token) {
+    if extract_token(headers).or(query_token) == Some(expected_token) {
         return Ok(());
     }
     Err(BridgeError::Unauthorized)

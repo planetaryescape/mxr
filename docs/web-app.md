@@ -81,7 +81,7 @@ OpenAPI and Swagger UI are also bridge-auth routes. Tests assert that
 `/api/v1/openapi.json` and `/api/v1/docs` reject missing tokens, then
 serve authenticated local clients.
 
-WebSocket auth uses `Sec-WebSocket-Protocol: bearer, <token>` (already supported by the bridge) — chosen because browsers don't allow setting custom WS headers.
+WebSocket auth uses `Sec-WebSocket-Protocol: bearer, <token>` (already supported by the bridge) — chosen because browsers don't allow setting custom WS headers. Query-string tokens are limited to the `/api/v1/events` socket fallback and are not accepted for regular HTTP routes.
 
 ## Embedded SPA serving
 

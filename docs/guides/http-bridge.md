@@ -87,15 +87,17 @@ but it is still part of the local daemon capability surface. By default the toke
 the active runtime identity's config directory. Rotate it by deleting
 that file and restarting the daemon.
 
-The bridge accepts the token via four mechanisms:
+The bridge accepts the token via these mechanisms:
 
 1. **`Authorization: Bearer <token>`** (preferred — what generated SDKs
-   use, what Swagger UI's Authorize button does)
-2. **`?token=<token>`** query string — fallback for `EventSource` and
-   `curl` users who can't easily set headers
-3. **`Sec-WebSocket-Protocol: bearer, <token>`** subprotocol — for
+   use, what Swagger UI's Authorize button does) on HTTP routes.
+2. **`Sec-WebSocket-Protocol: bearer, <token>`** subprotocol — for
    browser WebSocket clients (browsers can't set arbitrary headers on
-   WS upgrades)
+   WS upgrades).
+3. **`?token=<token>`** query string — accepted only by
+   `/api/v1/events`, for command-line WebSocket clients that can't
+   easily set headers. Do not use query tokens for regular HTTP routes;
+   they are easier to leak through history, logs, and referrers.
 4. **`x-mxr-bridge-token: <token>`** — v0.4.x compat header, kept
    through the v0.5 cycle, removed in v0.6
 

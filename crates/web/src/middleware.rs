@@ -111,20 +111,10 @@ pub async fn require_bridge_auth(
     request: Request,
     next: Next,
 ) -> Response {
-    let query_token = request.uri().query().and_then(query_token);
-    if crate::auth::extract_token(request.headers(), query_token.as_deref())
-        == Some(state.config.auth_token.as_str())
-    {
+    if crate::auth::extract_token(request.headers()) == Some(state.config.auth_token.as_str()) {
         return next.run(request).await;
     }
     crate::auth::BridgeError::Unauthorized.into_response()
-}
-
-fn query_token(query: &str) -> Option<String> {
-    query.split('&').find_map(|pair| {
-        let (key, value) = pair.split_once('=')?;
-        (key == "token").then(|| value.to_string())
-    })
 }
 
 /// `http(s)://(localhost|127.0.0.1|[::1])(:port)?`
@@ -162,15 +152,5 @@ mod tests {
         assert!(is_loopback_origin("http://[::1]:7777"));
         assert!(!is_loopback_origin("http://evil.example.com"));
         assert!(!is_loopback_origin("https://localhost.evil.com"));
-    }
-
-    #[test]
-    fn query_token_extracts_token_param() {
-        assert_eq!(query_token("token=abc-123"), Some("abc-123".to_string()));
-        assert_eq!(
-            query_token("a=1&token=abc-123"),
-            Some("abc-123".to_string())
-        );
-        assert_eq!(query_token("a=1"), None);
     }
 }

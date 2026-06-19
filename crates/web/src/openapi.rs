@@ -277,9 +277,10 @@ impl Modify for BearerSecurity {
                     .description(Some(
                         "Token from `~/.config/mxr/bridge-token`. Send via \
                          `Authorization: Bearer <token>` header. \
-                         WebSocket clients can also pass it via the \
-                         `?token=<token>` query string or the \
-                         `Sec-WebSocket-Protocol: bearer, <token>` subprotocol.",
+                         Browser WebSocket clients can use the \
+                         `Sec-WebSocket-Protocol: bearer, <token>` subprotocol. \
+                         The `?token=<token>` query string is accepted only by \
+                         `/api/v1/events` for command-line WebSocket fallback.",
                     ))
                     .build(),
             ),

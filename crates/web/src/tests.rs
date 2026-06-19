@@ -463,13 +463,23 @@ async fn auth_rejects_wrong_bearer_token() {
     assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
 }
 
-/// Slice 4 — `?token=X` query string still works (EventSource clients
-/// can't set arbitrary headers, so this is the documented fallback).
+/// Slice 4 — `?token=X` is not a general HTTP auth path. Query strings
+/// leak through shell history, logs, and referrers, so authority-bearing
+/// HTTP routes require header auth.
 #[tokio::test]
-async fn auth_accepts_query_string_token_for_event_source() {
+async fn auth_rejects_query_string_token_for_http_routes() {
     let temp = TempDir::new().unwrap();
     let socket_path = temp.path().join("mxr.sock");
-    let _ipc = spawn_fake_event_server(&socket_path).await;
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        |_| {
+            Some(Response::Ok {
+                data: ResponseData::Ack,
+            })
+        },
+        None,
+    )
+    .await;
 
     let addr = bind_and_serve(
         std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
@@ -479,21 +489,28 @@ async fn auth_accepts_query_string_token_for_event_source() {
     .await
     .unwrap();
 
-    // EventSource is HTTP, so prove the same query-string auth works
-    // for plain HTTP endpoints too (used by tools that can't set
-    // headers — same situation as EventSource).
-    let response = reqwest::get(format!(
+    let status_response = reqwest::get(format!(
         "http://{addr}/api/v1/admin/status?token={TEST_AUTH_TOKEN}"
     ))
     .await
     .unwrap();
-    // The fake responder returns no payload for GetStatus so the
-    // response is 5xx; what we're testing is that auth let it through
-    // (not 401).
-    assert_ne!(
-        response.status(),
+    assert_eq!(
+        status_response.status(),
         reqwest::StatusCode::UNAUTHORIZED,
-        "query-string token must satisfy auth"
+        "query-string token must not satisfy regular HTTP auth"
+    );
+
+    let sync_response = reqwest::Client::new()
+        .post(format!(
+            "http://{addr}/api/v1/mail/sync?token={TEST_AUTH_TOKEN}"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        sync_response.status(),
+        reqwest::StatusCode::UNAUTHORIZED,
+        "query-string token must not satisfy mutating HTTP auth"
     );
 }
 

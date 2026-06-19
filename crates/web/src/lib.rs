@@ -1644,8 +1644,11 @@ async fn events(
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
 ) -> impl IntoResponse {
-    if let Err(error) = ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)
-    {
+    if let Err(error) = ensure_authorized_with_query_token(
+        &headers,
+        auth.token.as_deref(),
+        &state.config.auth_token,
+    ) {
         return error.into_response();
     }
     // If the client offered the `bearer` subprotocol (browser auth path),

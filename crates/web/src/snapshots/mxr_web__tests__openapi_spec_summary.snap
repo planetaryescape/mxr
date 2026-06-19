@@ -214,7 +214,7 @@ expression: summary
   "security_schemes": {
     "bearer": {
       "bearerFormat": "opaque",
-      "description": "Token from `~/.config/mxr/bridge-token`. Send via `Authorization: Bearer <token>` header. WebSocket clients can also pass it via the `?token=<token>` query string or the `Sec-WebSocket-Protocol: bearer, <token>` subprotocol.",
+      "description": "Token from `~/.config/mxr/bridge-token`. Send via `Authorization: Bearer <token>` header. Browser WebSocket clients can use the `Sec-WebSocket-Protocol: bearer, <token>` subprotocol. The `?token=<token>` query string is accepted only by `/api/v1/events` for command-line WebSocket fallback.",
       "scheme": "bearer",
       "type": "http"
     }

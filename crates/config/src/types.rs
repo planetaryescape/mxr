@@ -623,7 +623,11 @@ pub struct SemanticConfig {
     pub enabled: bool,
     pub auto_download_models: bool,
     pub active_profile: SemanticProfile,
+    /// Reserved/internal: parsed and persisted for a future semantic worker queue limit.
+    /// The current runtime does not enforce it.
     pub max_pending_jobs: usize,
+    /// Reserved/internal: parsed and persisted for a future dense query timeout budget.
+    /// The current runtime does not enforce it.
     pub query_timeout_ms: u64,
 }
 

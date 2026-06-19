@@ -64,6 +64,7 @@ default_mode = "lexical"   # lexical | hybrid | semantic
 enabled = true
 auto_download_models = true
 active_profile = "bge-small-en-v1.5"
+# Reserved/internal: parsed and persisted, not active tuning knobs.
 max_pending_jobs = 256
 query_timeout_ms = 1500
 
@@ -129,11 +130,11 @@ This is the local embedding profile mxr will use when semantic search is enabled
 
 ### `max_pending_jobs`
 
-Currently parsed and persisted in config, but not yet enforced by a separate semantic job queue. Keep it as configuration shape, not as an active runtime guarantee today.
+Reserved/internal. Currently parsed and persisted in config, but not yet enforced by a separate semantic job queue. Keep it as configuration shape, not as an active runtime guarantee today.
 
 ### `query_timeout_ms`
 
-Currently parsed and persisted in config, but the dense search path does not yet enforce a separate timeout budget from this value. Document it as reserved/currently inactive rather than pretending it is wired.
+Reserved/internal. Currently parsed and persisted in config, but the dense search path does not yet enforce a separate timeout budget from this value. Document it as reserved/currently inactive rather than pretending it is wired.
 
 ## What happens when semantic is enabled later
 

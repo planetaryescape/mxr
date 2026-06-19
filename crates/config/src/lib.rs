@@ -107,6 +107,7 @@ default_mode = "hybrid"
 enabled = true
 auto_download_models = false
 active_profile = "multilingual-e5-small"
+# Reserved/internal; parsed for compatibility, not active runtime tuning.
 max_pending_jobs = 32
 query_timeout_ms = 3000
 

@@ -410,11 +410,29 @@ fn sanitize(input: &str) -> String {
         .replace_all(&output, "[REDACTED_EMAIL]")
         .into_owned();
 
-    let token_re = Regex::new(
-        r#"(?im)^(\s*[- ]*(client_secret|token_ref|password_ref|access_token|refresh_token|api[_-]?key|authorization)\s*[:=]\s*).*$"#,
+    let secret_assignment_re = Regex::new(
+        r#"(?i)(?P<key>["']?\b(?:client_secret|password_ref|token_ref|access_token|refresh_token|api[_-]?key|password|token)\b["']?)(?P<sep>\s*[:=]\s*)(?P<value>Some\(\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s*\)|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s,}\]]+)"#,
     )
-    .expect("secret redaction regex should compile");
-    output = token_re
+    .expect("secret assignment redaction regex should compile");
+    output = secret_assignment_re
+        .replace_all(&output, |caps: &regex::Captures<'_>| {
+            redact_secret_assignment(caps)
+        })
+        .into_owned();
+
+    let authorization_assignment_re = Regex::new(
+        r#"(?i)(?P<key>["']?\bauthorization\b["']?)(?P<sep>\s*[:=]\s*)(?P<value>Some\(\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s*\)|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|(?:Bearer|Basic)\s+[^\s,}\]]+|[^\s,}\]]+)"#,
+    )
+    .expect("authorization assignment redaction regex should compile");
+    output = authorization_assignment_re
+        .replace_all(&output, |caps: &regex::Captures<'_>| {
+            redact_secret_assignment(caps)
+        })
+        .into_owned();
+
+    let authorization_re = Regex::new(r#"(?im)^(\s*[- ]*authorization\s*[:=]\s*).*$"#)
+        .expect("authorization redaction regex should compile");
+    output = authorization_re
         .replace_all(&output, "$1[REDACTED_SECRET]")
         .into_owned();
 
@@ -440,6 +458,25 @@ fn sanitize(input: &str) -> String {
     }
 
     output
+}
+
+fn redact_secret_assignment(caps: &regex::Captures<'_>) -> String {
+    let value = caps.name("value").map_or("", |m| m.as_str()).trim_start();
+    let redacted = if value.starts_with("Some(") {
+        r#"Some("[REDACTED_SECRET]")"#
+    } else if value.starts_with('"') {
+        r#""[REDACTED_SECRET]""#
+    } else if value.starts_with('\'') {
+        "'[REDACTED_SECRET]'"
+    } else {
+        "[REDACTED_SECRET]"
+    };
+    format!(
+        "{}{}{}",
+        caps.name("key").map_or("", |m| m.as_str()),
+        caps.name("sep").map_or("", |m| m.as_str()),
+        redacted
+    )
 }
 
 fn read_recent_logs(
@@ -611,13 +648,65 @@ mod tests {
     #[test]
     fn sanitize_redacts_common_sensitive_values() {
         let sanitized = sanitize(
-            "email=user@example.com\npassword_ref=secret\nsubject: hi\nbody_text: hello\nip=10.0.0.1",
+            "email=user@example.com\npassword_ref=secret\nauthorization: Bearer line-token\nsubject: hi\nbody_text: hello\nip=10.0.0.1",
         );
         assert!(sanitized.contains("[REDACTED_EMAIL]"));
         assert!(sanitized.contains("[REDACTED_SECRET]"));
+        assert!(sanitized.contains("authorization: [REDACTED_SECRET]"));
         assert!(sanitized.contains("[REDACTED_SUBJECT]"));
         assert!(sanitized.contains("[REDACTED_BODY]"));
         assert!(sanitized.contains("[REDACTED_IP]"));
+        assert!(!sanitized.contains("line-token"));
+    }
+
+    #[test]
+    fn sanitize_redacts_inline_secret_assignments() {
+        let sanitized = sanitize(
+            r#"imap auth failed password="hunter2" account=work
+oauth exchange failed client_secret=oauth-client-secret retry=true
+provider returned token=tok_live_123, status=401
+json={"token":"json-token-value","ok":false}"#,
+        );
+
+        assert!(sanitized.contains(r#"password="[REDACTED_SECRET]" account=work"#));
+        assert!(sanitized.contains("client_secret=[REDACTED_SECRET] retry=true"));
+        assert!(sanitized.contains("token=[REDACTED_SECRET], status=401"));
+        assert!(sanitized.contains(r#""token":"[REDACTED_SECRET]","ok":false"#));
+        assert!(!sanitized.contains("hunter2"));
+        assert!(!sanitized.contains("oauth-client-secret"));
+        assert!(!sanitized.contains("tok_live_123"));
+        assert!(!sanitized.contains("json-token-value"));
+    }
+
+    #[test]
+    fn sanitize_redacts_inline_authorization_assignments() {
+        let sanitized = sanitize(
+            r#"request headers authorization="Bearer secret-token" status=401
+request headers Authorization="Bearer capital-token" status=403
+headers={ authorization: Bearer secret-token, accept: */* }"#,
+        );
+
+        assert!(sanitized.contains(r#"authorization="[REDACTED_SECRET]" status=401"#));
+        assert!(sanitized.contains(r#"Authorization="[REDACTED_SECRET]" status=403"#));
+        assert!(sanitized.contains("authorization: [REDACTED_SECRET], accept: */*"));
+        assert!(!sanitized.contains("secret-token"));
+        assert!(!sanitized.contains("capital-token"));
+    }
+
+    #[test]
+    fn sanitize_redacts_rust_debug_secret_values() {
+        let sanitized = sanitize(
+            r#"ImapConfig { host: "imap.example.com", password: Some("debug-password"), username: "user" }
+GmailConfig { client_secret: Some("debug-client-secret"), token: Some("debug-token") }"#,
+        );
+
+        assert!(sanitized.contains(r#"password: Some("[REDACTED_SECRET]")"#));
+        assert!(sanitized.contains(r#"client_secret: Some("[REDACTED_SECRET]")"#));
+        assert!(sanitized.contains(r#"token: Some("[REDACTED_SECRET]")"#));
+        assert!(sanitized.contains(r#"host: "imap.example.com""#));
+        assert!(!sanitized.contains("debug-password"));
+        assert!(!sanitized.contains("debug-client-secret"));
+        assert!(!sanitized.contains("debug-token"));
     }
 
     #[test]

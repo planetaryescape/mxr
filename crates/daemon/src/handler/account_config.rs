@@ -1298,6 +1298,7 @@ fn config_sync_capabilities(sync: &mxr_config::SyncProviderConfig) -> AccountCap
         mxr_config::SyncProviderConfig::Imap { .. } => AccountCapabilitiesData {
             server_search: true,
             delta_sync: true,
+            push: true,
             ..AccountCapabilitiesData::default()
         },
         mxr_config::SyncProviderConfig::Fake => AccountCapabilitiesData {
@@ -1602,4 +1603,23 @@ fn persist_account_password(
         "credential persisted to keychain"
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn imap_config_capabilities_advertise_idle_push_support() {
+        let capabilities = config_sync_capabilities(&mxr_config::SyncProviderConfig::Imap {
+            host: "imap.example.com".to_string(),
+            port: 993,
+            username: "me@example.com".to_string(),
+            password_ref: "mxr/test".to_string(),
+            auth_required: true,
+            use_tls: true,
+        });
+
+        assert!(capabilities.push);
+    }
 }

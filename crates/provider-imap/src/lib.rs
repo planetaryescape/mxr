@@ -1015,12 +1015,10 @@ impl MailSyncProvider for ImapProvider {
                 custom_keywords: true,
             },
             search: SearchCaps { server_side: true },
-            // Phase 3.1: capability flag is set by detection in
-            // session::capabilities(); until the real IDLE handle
-            // wiring lands the daemon-side framework remains
-            // poll-only for IMAP. Tracked alongside the TODO on
-            // `idle_watch` below.
-            push: PushCaps { streaming: false },
+            // IMAP has an IDLE watcher. Per-server availability is
+            // checked when `idle_watch()` opens the dedicated session;
+            // non-IDLE servers return `Ok(None)` and stay on polling.
+            push: PushCaps { streaming: true },
         }
     }
 
@@ -2814,6 +2812,15 @@ mod tests {
     }
 
     // -- integration: full sync flow ------------------------------------------
+
+    #[test]
+    fn capabilities_advertise_idle_streaming_support() {
+        let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        assert!(provider.capabilities().push.streaming);
+    }
 
     #[tokio::test]
     async fn full_sync_flow_initial_then_delta_then_fetch_and_mutate() {

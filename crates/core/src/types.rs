@@ -2051,8 +2051,9 @@ pub struct SearchCaps {
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PushCaps {
-    /// Adapter can open a long-lived push channel (IMAP IDLE, Gmail
-    /// pub/sub, JMAP push) instead of being polled.
+    /// Adapter can open a long-lived provider-side change channel instead
+    /// of being polled. Gmail Pub/Sub/webhook-style push is deferred until
+    /// the product and security model for provider push is validated.
     pub streaming: bool,
 }
 

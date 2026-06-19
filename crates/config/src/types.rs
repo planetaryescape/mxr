@@ -341,16 +341,16 @@ pub struct BridgeConfig {
     /// When true (default), `mxr daemon` automatically starts the bridge.
     /// Disable with `enabled = false` or `mxr daemon --no-bridge`.
     pub enabled: bool,
-    /// Bind address. Defaults to `127.0.0.1`. Setting this to a non-loopback
-    /// address requires explicit operator opt-in and additional safeguards
-    /// (see `mxr-web`'s startup checks).
+    /// Bind address. Defaults to `127.0.0.1`. Non-loopback serving is
+    /// reserved for a future TLS-backed remote bridge decision; current
+    /// daemon startup checks refuse it.
     pub bind: String,
     /// TCP port. Default `42829`, used for the stable local web URL.
     pub port: u16,
     /// Origins additive to the loopback CORS defaults. Empty by default.
     pub cors_allowlist: Vec<String>,
     /// Hostnames additive to the loopback Host-header defaults. Empty
-    /// by default; populated only when binding to a non-loopback address.
+    /// by default; reserved for future non-loopback remote bridge mode.
     pub host_allowlist: Vec<String>,
     /// Path to the bridge token file. Defaults to
     /// `~/.config/mxr/bridge-token` (resolved at runtime when `None`).
@@ -388,7 +388,7 @@ impl Default for BridgeConfig {
 
 impl BridgeConfig {
     /// True iff `bind` is one of the loopback addresses. Used by the
-    /// daemon's startup checks to refuse non-loopback binds without TLS.
+    /// daemon's startup checks to keep managed bridge serving loopback-only.
     pub fn is_loopback_bind(&self) -> bool {
         matches!(
             self.bind.as_str(),

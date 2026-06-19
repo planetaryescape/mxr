@@ -405,7 +405,12 @@ state via the sync method. The differences:
 - mxr doesn't have a `state_hint` in the event (the daemon just
   triggers a full delta sync).
 
-**Refactor:**
+**Future product/protocol decision:** this is not authorization to implement
+Gmail Pub/Sub push in mxr. Provider push needs validation around hosted
+endpoints, credentials, privacy, retries, and measurable benefit over polling
+plus provider delta sync.
+
+**Refactor candidate:**
 - Add an opaque `subscription_id: String` to the watcher.
 - Add a `pushState` resume token (JMAP RFC 8887's contribution).
 - Optionally add a `scope` field to events for fine-grained

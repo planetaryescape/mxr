@@ -680,7 +680,9 @@ impl MailSyncProvider for GmailProvider {
                 custom_keywords: false,
             },
             search: SearchCaps { server_side: true },
-            push: PushCaps { streaming: false }, // push via pub/sub not yet implemented
+            // Gmail Pub/Sub push is deferred product work; the shipped path is
+            // periodic polling plus `history.list` delta sync.
+            push: PushCaps { streaming: false },
         }
     }
 

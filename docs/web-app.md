@@ -415,7 +415,7 @@ cd apps/web && npm run gen:types  # commit the diff in apps/web/src/api/generate
 
 - **Never edit `apps/web/src/routeTree.gen.ts` by hand.** TSR's auto-codegen plugin watches `routes/` and regenerates on every save.
 - The bridge serves auth-gated Swagger UI at `/api/v1/docs` and OpenAPI JSON at `/api/v1/openapi.json` — SPA fallback routes must not shadow these.
-- The bridge auto-rejects non-loopback binds without TLS. For `--remote-host`, the local CLI does **not** bind anything; it just opens the browser to the remote URL. The remote operator handles TLS.
+- The bridge auto-rejects non-loopback binds because remote bridge TLS is future product work. For `--remote-host`, the local CLI does **not** bind anything; it just opens the browser to the remote URL.
 - shadcn components depend on `lib/utils.ts:cn()`. Don't break it.
 - CLI snapshot tests will fail when help text changes — regenerate via `cargo test -p mxr cli_help`.
 - Bridge PRs that change protocol must regenerate `apps/web/src/api/generated.ts` and commit the diff. Web PRs consuming new endpoints must rebase on main after the bridge PR lands.

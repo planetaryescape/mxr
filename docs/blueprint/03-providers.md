@@ -97,7 +97,7 @@ pub struct SyncCapabilities {
     pub labels: bool,           // Stable multi-assign labels (Gmail: yes, IMAP folders: no)
     pub server_search: bool,    // Provider can search remotely; app may still choose local search
     pub delta_sync: bool,       // Incremental sync (Gmail: yes via history.list, IMAP: yes/partial)
-    pub push: bool,             // Push notifications (Gmail: pub/sub, IMAP: IDLE)
+    pub push: bool,             // Provider push (IMAP IDLE now; Gmail Pub/Sub deferred)
     pub batch_operations: bool, // Batch API calls (Gmail: yes, IMAP: no)
     pub native_thread_ids: bool,// Native provider thread ids (Gmail: yes, IMAP: no)
 }
@@ -198,6 +198,8 @@ The sync loop:
 4. Update the stored `historyId`
 
 If `historyId` is invalid (too old, account changes), fall back to a full re-sync. This should be rare.
+
+Gmail Pub/Sub push (`users.watch`) is deliberately not part of the current provider plan. Treat it as future product/security work, not a missing bug: adopting it needs validation around Google Cloud topic ownership, webhook hosting, auth, privacy, retry semantics, and how it improves the local-first polling + `history.list` path.
 
 ### Snooze integration with Gmail
 

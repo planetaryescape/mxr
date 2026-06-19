@@ -1,8 +1,8 @@
 //! Bridge middleware: Host-header allowlist and CORS layer construction.
 //!
 //! The bridge defaults to loopback-only operation; both layers are tuned
-//! for that. When the daemon is intentionally bound to a non-loopback
-//! address, the operator must opt-in via `[bridge]` config.
+//! for that. Non-loopback remote bridge mode is deferred product/security
+//! work, not a config-only switch.
 
 use axum::{
     extract::{Request, State},

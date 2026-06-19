@@ -113,11 +113,11 @@ This **does not bind a local bridge**. It reads the per-host token from
 — place it there yourself) and opens the browser to
 `https://<host>/#token=<token>`.
 
-This mode is for manually configured remote bridges only. Requirements on
-the remote side:
+This mode is for manually configured remote bridges only; public/LAN bridge
+serving remains future product work. Requirements on the remote side:
 
 - TLS termination (Caddy / nginx / Cloudflare). The bridge itself does
-  not yet terminate TLS.
+  not terminate TLS today.
 - `[bridge].cors_allowlist` includes your browser's origin.
 - `[bridge].host_allowlist` includes the public hostname (defends
   against DNS rebinding).

@@ -444,7 +444,7 @@ HTTP bridge configuration.
 - `bind` — bind address (default `127.0.0.1`).
 - `port` — fixed TCP port for the local web URL (default `42829`). `mxr web` fails on `EADDRINUSE` by default and can opt into walking up with `--auto-port`. The actual bound port is written to `<config_dir>/bridge-port` for clients to discover.
 - `cors_allowlist` — additional origins (defaults already cover loopback).
-- `host_allowlist` — additional hostnames for non-loopback binds.
+- `host_allowlist` — additional hostnames for future non-loopback bridge mode; the managed daemon refuses non-loopback binds today.
 - `auto_local_token` — when `true` (default), `GET /api/v1/auth/local-token` returns the bridge token to callers whose TCP peer is a loopback IP. Lets the web SPA bootstrap on the same machine without a paste prompt. Set to `false` for paranoid setups that want strict bearer auth even on loopback. Non-loopback peers never receive the token regardless of this setting.
 - `token_path` — path to the auth token file. Omit it to use `<config_dir>/bridge-token` for the active runtime identity.
 

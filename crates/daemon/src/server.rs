@@ -190,8 +190,8 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     });
 
     // Managed HTTP bridge. Reads [bridge] from config, applies CLI
-    // overrides, refuses to start non-loopback binds without operator
-    // intent.
+    // overrides, and keeps daemon-hosted serving loopback-only until remote
+    // bridge TLS is a validated product decision.
     if !bridge_overrides.disabled {
         match crate::bridge::spawn_bridge_loop(state.clone(), &bridge_overrides).await {
             Ok(Some(handle)) => {

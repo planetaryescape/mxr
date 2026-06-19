@@ -50,7 +50,7 @@ enabled = true                      # default true
 bind = "127.0.0.1"
 port = 42829                        # stable local web URL port
 cors_allowlist = []                 # additive to localhost defaults
-host_allowlist = []                 # additive to loopback (only honoured on non-loopback binds)
+host_allowlist = []                 # reserved for future non-loopback remote mode
 auto_local_token = true             # let loopback callers auto-fetch the token (see below)
 # token_path = "..."                # default <config_dir>/bridge-token
 ```
@@ -274,8 +274,9 @@ defends with three layers:
    (`http://localhost:*`, `http://mxr.localhost:*`, and HTTPS forms).
    Cross-origin requests from other domains get rejected at the preflight.
 
-Non-loopback binds (`bind = "0.0.0.0"`) are refused at startup unless
-TLS termination is configured (deferred — see "Out of scope" below).
+Non-loopback binds (`bind = "0.0.0.0"`) are refused at startup today.
+Making them first-class is deferred product/security work that must
+validate TLS termination, token distribution, and Host/CORS policy first.
 
 ## Out of scope (deliberately)
 
@@ -285,5 +286,5 @@ TLS termination is configured (deferred — see "Out of scope" below).
 - Multi-user / multi-tenant — mxr is single-user
 - Auto-generated SDKs — provide the spec, let users generate themselves
 - Rate limiting — single-user, loopback-default
-- TLS termination — out of scope for v0.5; lands when
-  non-loopback binds are first-class
+- TLS termination — out of scope for v0.5; lands only if
+  non-loopback bridge serving becomes a validated product decision

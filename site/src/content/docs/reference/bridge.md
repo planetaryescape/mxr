@@ -54,7 +54,7 @@ curl http://mxr.localhost:$MXR_PORT/api/v1/auth/local-token
 
 The endpoint returns **404** (not 401) when:
 - `[bridge].auto_local_token = false` — operator opted out.
-- The connecting peer is **not** a loopback address — the bridge is bound to a non-loopback interface and the caller is on a different machine.
+- The connecting peer is **not** a loopback address — non-loopback bridge serving is reserved for future TLS-backed remote mode.
 
 This lets the local SPA self-authenticate while keeping the same
 strict bearer-handshake story for remote callers.

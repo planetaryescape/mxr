@@ -21,7 +21,7 @@ pub enum BridgeStartupError {
     Config(String),
 
     #[error(
-        "bridge bind {bind} is non-loopback; refusing to start without TLS \
+        "bridge bind {bind} is non-loopback; remote bridge TLS is future product work \
          (set [bridge].bind = \"127.0.0.1\" or run `mxr daemon --no-bridge`)"
     )]
     NonLoopbackWithoutTls { bind: String },
@@ -120,9 +120,9 @@ fn enforce_non_loopback_safety(cfg: &BridgeConfig) -> Result<(), BridgeStartupEr
     if cfg.is_loopback_bind() {
         return Ok(());
     }
-    // Non-loopback binds require TLS to avoid leaking the bridge token in
-    // plaintext. TLS termination isn't shipped yet (out of scope for
-    // v0.5), so refuse the bind here with a clear message.
+    // Non-loopback bridge serving is future product/security work. It needs
+    // a validated remote-access story covering TLS termination, token
+    // distribution, and Host/CORS policy, so refuse the bind here.
     Err(BridgeStartupError::NonLoopbackWithoutTls {
         bind: cfg.bind.clone(),
     })

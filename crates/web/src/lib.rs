@@ -81,8 +81,8 @@ pub struct WebServerConfig {
     /// `[bridge].cors_allowlist` in `~/.config/mxr/config.toml`.
     pub cors_allowlist: Vec<String>,
     /// Hostnames allowed in the HTTP `Host` header in addition to the
-    /// loopback defaults. Empty by default; populated only when the
-    /// daemon is intentionally bound to a non-loopback address.
+    /// loopback defaults. Empty by default; reserved for future
+    /// non-loopback remote bridge mode.
     pub host_allowlist: Vec<String>,
     /// When true, `GET /api/v1/auth/local-token` returns the bridge token
     /// to callers whose TCP peer is a loopback IP. Lets the web SPA

@@ -13,7 +13,7 @@
   "dependencies": {
     "@astrojs/starlight": "0.39.2",
     "@scalar/api-reference": "^1.57.5",
-    "astro": "6.3.7",
+    "astro": "6.4.8",
     "sharp": "^0.34.5"
   },
   "overrides": {

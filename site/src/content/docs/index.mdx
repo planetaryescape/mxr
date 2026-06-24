@@ -19,15 +19,24 @@ hero:
       variant: minimal
 ---
 
-<div class="hero-pronounce" aria-label="Pronunciation">
-  <code>mxr</code> <span class="hero-pronounce-sep">◈</span> say it <strong>Mixer</strong>
-</div>
-
 <div class="hero-install" aria-label="Install one-liner">
   <span class="hero-install-prompt">$</span>
   <code class="hero-install-cmd" id="install-cmd">brew install planetaryescape/mxr/mxr</code>
   <button class="hero-install-copy" type="button" data-copy-target="install-cmd" aria-label="Copy install command">copy</button>
   <span class="hero-install-alt">cargo and binary methods <a href="#install">below</a></span>
+</div>
+
+<div class="hero-badges" aria-label="What mxr is, at a glance">
+  <span class="hero-badge">local-first</span>
+  <span class="hero-badge">TUI · CLI · web</span>
+  <span class="hero-badge">MCP-native</span>
+  <span class="hero-badge">works offline</span>
+  <span class="hero-badge">built in Rust</span>
+  <span class="hero-badge">open source</span>
+</div>
+
+<div class="hero-pronounce" aria-label="Pronunciation">
+  <code>mxr</code> <span class="hero-pronounce-sep">◈</span> say it <strong>Mixer</strong>
 </div>
 
 <div class="provider-line" aria-label="Supported providers">
@@ -77,6 +86,67 @@ cargo install --git \
 </div>
 
 <p class="install-coda">Not ready to hand over your inbox? Run <code>mxr demo</code>. It uses a separate demo config, database, and daemon with two accounts, repeat senders, threads, attachments, links, images, newsletters, promos, spam, suspicious inbox mail, alerts, receipts, starter rules, and prewarmed analytics/semantic data so you can explore search, labels, summaries, sender profiles, analytics, and keyboard triage safely.</p>
+
+</div>
+
+<div class="landing-section tryit-section">
+
+## try it
+
+<p>Every workflow is a one-liner. A taste of what you can run after <code>mxr demo</code> or connecting an account — the <a href="/examples/">full set lives here</a>.</p>
+
+```bash
+# search your whole mailbox, locally, instantly
+mxr search "from:supplier has:attachment after:2019"
+
+# rank newsletters by how little you read them, then leave
+mxr subscriptions --rank --format json
+mxr unsubscribe newsletter@example.com --dry-run
+
+# surface what you owe a reply to
+mxr owed --since 7 --format json
+
+# let an agent drive the same daemon — JSON in, JSON out
+mxr search "from:sarah after:2026-04-23" --format json | jq '.[0]'
+```
+
+<p class="tryit-contract">Reads emit <code>--format json|jsonl|ids|csv</code>; mutations take <code>--dry-run</code>; MCP send tools require confirmation. Every command composes with the rest of your shell.</p>
+
+<p><a href="/examples/">See everything mxr can do →</a></p>
+
+</div>
+
+<div class="landing-section capabilities-section">
+
+## what mxr does
+
+<div class="cap-grid">
+  <div class="cap"><strong>One daemon, every surface.</strong> TUI, CLI, web app, HTTP bridge, and MCP server all drive the same local engine.</div>
+  <div class="cap"><strong>Opens instantly.</strong> A message is a SQLite read, not a network fetch — even offline, even on a plane.</div>
+  <div class="cap"><strong>Real search, not a filter.</strong> Tantivy BM25 across your whole mailbox, with optional local semantic search.</div>
+  <div class="cap"><strong>Two-way sync.</strong> Gmail, any IMAP server, any SMTP relay — changes flow both directions.</div>
+  <div class="cap"><strong>Compose in $EDITOR.</strong> Markdown in, multipart out. Your keybindings, your muscle memory.</div>
+  <div class="cap"><strong>Reader mode.</strong> Strips trackers, banners, and quoted noise. Unsubscribe and archive in one key.</div>
+  <div class="cap"><strong>Never drop a thread.</strong> Owed-reply tracking, follow-up reminders, snooze, and send-later.</div>
+  <div class="cap"><strong>Local analytics.</strong> Response times, one-sided relationships, storage, and your year in email.</div>
+  <div class="cap"><strong>Pipeable by default.</strong> JSON on every read, <code>--dry-run</code> on every mutation, IDs on stdin.</div>
+  <div class="cap"><strong>Yours, on disk.</strong> No telemetry, no phone-home. Local-first, MIT / Apache-2.0.</div>
+</div>
+
+</div>
+
+<div class="landing-section pickpath-section">
+
+## pick your path
+
+<div class="pickpath-grid">
+  <a class="pickpath" href="/getting-started/quick-start/"><span class="pp-when">New here</span><span class="pp-go">Quick Start</span></a>
+  <a class="pickpath" href="/getting-started/gmail-setup/"><span class="pp-when">Switching from Gmail</span><span class="pp-go">Gmail setup + first sync</span></a>
+  <a class="pickpath" href="/examples/"><span class="pp-when">Want to see what's possible</span><span class="pp-go">Examples</span></a>
+  <a class="pickpath" href="/guides/recipes/"><span class="pp-when">Scripting it</span><span class="pp-go">Recipes + automation contract</span></a>
+  <a class="pickpath" href="/guides/for-agents/"><span class="pp-when">Wiring up an agent</span><span class="pp-go">For agents + MCP</span></a>
+  <a class="pickpath" href="/reference/cli/"><span class="pp-when">Looking up a flag</span><span class="pp-go">CLI reference</span></a>
+</div>
 
 </div>
 
@@ -146,9 +216,9 @@ cargo install --git \
   <p>Find a 2019 contract by the supplier's name. Pull every receipt from a vendor. List the apology email you sent in March. mxr indexes your mail with <a href="https://github.com/quickwit-oss/tantivy">Tantivy</a>, the BM25 engine behind Quickwit, with field boosts on subject, body, sender, and attachment names. Local hybrid retrieval is opportunistic; lexical search stays instant and exact. No round trips, no rate limits, no "loading more."</p>
 
 ```bash
-mxr storage --by sender --limit 20
+mxr storage --by label --limit 20
 mxr stale --mine --older-than-days 14
-mxr wrapped --year 2025
+mxr wrapped
 mxr search "subject:invoice" --format json | jq -r '.[].from' | sort -u
 ```
 
@@ -389,7 +459,7 @@ mxr stale --mine --format json \\
     </div>
     <div class="surface-body">
       <p>Durable product actions go through the CLI and daemon contract. Pipe through jq, xargs, anything Unix. Use it from a shell, a Makefile, your prompt, your editor, your agent.</p>
-      <pre class="surface-snippet"><code>{`mxr archive --search "from:noreply older:30d" --dry-run
+      <pre class="surface-snippet"><code>{`mxr archive --search "from:noreply older_than:30d" --dry-run
 would archive 142 messages.`}</code></pre>
     </div>
   </div>

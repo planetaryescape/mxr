@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mxr.sh/sitemap-index.xml

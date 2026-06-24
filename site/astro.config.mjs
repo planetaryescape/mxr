@@ -2,11 +2,11 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
-  site: 'https://mxr-mail.vercel.app',
+  site: 'https://mxr.sh',
   integrations: [
     starlight({
       title: 'mxr',
-      description: 'Local-first email infrastructure for humans and agents',
+      description: 'Local-first, CLI-first email for humans and agents. Read, search, draft, and send offline. Two-way Gmail/IMAP sync. Scriptable from your shell and operable by your agent.',
       disable404Route: true,
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/planetaryescape/mxr' },
@@ -18,6 +18,21 @@ export default defineConfig({
         { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
         { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' } },
         { tag: 'meta', attrs: { name: 'theme-color', content: '#0d0d0c' } },
+        // Social cards / SEO. Starlight derives canonical, og:title/type/url/locale/
+        // description/site_name, and twitter:card from `site` + page frontmatter; these
+        // add the image and the bits it does not emit. Absolute URLs are required for og.
+        { tag: 'meta', attrs: { property: 'og:image', content: 'https://mxr.sh/og.png' } },
+        { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
+        { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
+        { tag: 'meta', attrs: { property: 'og:image:type', content: 'image/png' } },
+        { tag: 'meta', attrs: { property: 'og:image:alt', content: 'mxr — your inbox, on your computer. Local-first, CLI-first email.' } },
+        { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://mxr.sh/og.png' } },
+        { tag: 'meta', attrs: { name: 'twitter:image:alt', content: 'mxr — your inbox, on your computer.' } },
+        { tag: 'meta', attrs: { name: 'twitter:title', content: 'mxr — your inbox, on your computer' } },
+        { tag: 'meta', attrs: { name: 'twitter:description', content: 'Local-first, CLI-first email. Read, search, draft, and send offline. Two-way Gmail/IMAP sync. Scriptable and agent-operable.' } },
+        { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' } },
+        { tag: 'meta', attrs: { name: 'author', content: 'planetaryescape' } },
+        { tag: 'meta', attrs: { name: 'keywords', content: 'email client, local-first email, CLI email, terminal email client, TUI email, Gmail CLI, IMAP client, SMTP, Rust, MCP server, agent email, offline email, self-hosted email' } },
       ],
       sidebar: [
         {
@@ -25,6 +40,7 @@ export default defineConfig({
           items: [
             { label: 'Installation', slug: 'getting-started/install' },
             { label: 'Quick Start', slug: 'getting-started/quick-start' },
+            { label: 'Examples', slug: 'examples' },
             { label: 'Gmail Setup', slug: 'getting-started/gmail-setup' },
             { label: 'IMAP / SMTP Setup', slug: 'getting-started/imap-smtp-setup' },
             { label: 'First Sync', slug: 'getting-started/first-sync' },

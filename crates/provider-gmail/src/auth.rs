@@ -8,6 +8,13 @@ use crate::auth_storage::{has_keychain_token_cache, KeychainTokenStorage};
 
 const UNSAFE_TOKEN_REF_CHARS: &[char] = &['\\', ':', '*', '?', '"', '<', '>', '|'];
 
+/// Upper bound on a single token acquisition/refresh. The underlying
+/// OAuth client (yup-oauth2 / reqwest) has no inherent timeout, so a
+/// refresh that stalls on a dead connection — e.g. a half-open socket
+/// left behind by a network blip — would otherwise hang the caller, and
+/// any sync holding the provider lock, indefinitely.
+const TOKEN_REFRESH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
 #[derive(Debug, Error)]
 pub enum AuthError {
     #[error("OAuth2 error: {0}")]
@@ -429,7 +436,12 @@ impl GmailAuth {
 
     pub async fn access_token(&self) -> Result<String, AuthError> {
         let token_fn = self.token_fn.as_ref().ok_or(AuthError::TokenExpired)?;
-        (token_fn)().await
+        match tokio::time::timeout(TOKEN_REFRESH_TIMEOUT, (token_fn)()).await {
+            Ok(result) => result,
+            Err(_) => Err(AuthError::OAuth2(format!(
+                "token refresh timed out after {TOKEN_REFRESH_TIMEOUT:?}"
+            ))),
+        }
     }
 }
 

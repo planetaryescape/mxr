@@ -24,6 +24,17 @@ const SYNC_CYCLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 #[cfg(test)]
 const SYNC_CYCLE_TIMEOUT: Duration = Duration::from_millis(50);
 
+/// Extra grace a detached sync gets to finish before the reaper aborts
+/// it. The detach path exists for syncs that outlive their caller's wait
+/// limit but are still making progress; this caps how long a genuinely
+/// *wedged* sync can hold the per-account provider lock. Without it, a
+/// sync stuck on an await that never resolves keeps the lock forever and
+/// every later sync blocks on `acquire_provider_operation`.
+#[cfg(not(test))]
+const DETACHED_SYNC_GRACE: Duration = Duration::from_secs(10 * 60);
+#[cfg(test)]
+const DETACHED_SYNC_GRACE: Duration = Duration::from_millis(500);
+
 /// Result of waiting on a detached sync task for up to a wall-clock
 /// limit.
 pub(crate) enum SyncWait {
@@ -117,7 +128,7 @@ pub(crate) async fn sync_with_detach_timeout(
 /// connected clients refresh.
 async fn reap_detached_sync(
     handoff: DetachedSyncHandoff,
-    task: tokio::task::JoinHandle<Result<mxr_sync::SyncOutcome, MxrError>>,
+    mut task: tokio::task::JoinHandle<Result<mxr_sync::SyncOutcome, MxrError>>,
 ) {
     let DetachedSyncHandoff {
         state,
@@ -127,11 +138,29 @@ async fn reap_detached_sync(
         sync_log_id,
         prior_consecutive_failures,
     } = handoff;
-    let result = task.await.unwrap_or_else(|join_error| {
-        Err(MxrError::Provider(format!(
-            "sync task failed: {join_error}"
-        )))
-    });
+    // Normally we let the detached sync run to completion — aborting at an
+    // arbitrary await point risks dropping a session mid-command. But a
+    // sync that never completes would hold `provider_guard` forever and
+    // wedge every future sync on this account. Bound the wait: after the
+    // grace period, abort so the guard (dropped at the end of this fn) is
+    // released and the sync loop recovers on its next tick.
+    let result = match timeout(DETACHED_SYNC_GRACE, &mut task).await {
+        Ok(joined) => joined.unwrap_or_else(|join_error| {
+            Err(MxrError::Provider(format!(
+                "sync task failed: {join_error}"
+            )))
+        }),
+        Err(_) => {
+            task.abort();
+            tracing::error!(
+                account = %account_id,
+                "detached sync still unfinished after {DETACHED_SYNC_GRACE:?}; aborting to release the provider lock"
+            );
+            Err(MxrError::Provider(format!(
+                "sync aborted: unfinished after exceeding its wait limit by {DETACHED_SYNC_GRACE:?}"
+            )))
+        }
+    };
     let cursor = state
         .store
         .get_sync_cursor(&account_id)
@@ -2028,6 +2057,94 @@ mod tests {
         assert!(
             reacquired.is_ok(),
             "provider guard must be released by the reaper"
+        );
+    }
+
+    /// A detached sync that *never* completes must not hold the provider
+    /// guard forever. After the grace period the reaper aborts it, records
+    /// the failure, and releases the lock so the next sync can run.
+    /// Regression for the 7-day wedge: a stuck sync held the per-account
+    /// lock indefinitely and every later sync blocked on it.
+    #[tokio::test]
+    async fn detached_sync_that_never_finishes_is_aborted_and_releases_lock() {
+        let account_id = AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let provider = std::sync::Arc::new(HangingSyncProvider {
+            account_id: account_id.clone(),
+        });
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, provider.clone(), None)
+                .await
+                .unwrap(),
+        );
+
+        let provider_guard = state.acquire_provider_operation(&account_id).await;
+        let sync_log_id = state
+            .store
+            .insert_sync_log(&account_id, &StoreSyncStatus::Running)
+            .await
+            .ok();
+        let _ = state
+            .store
+            .upsert_sync_runtime_status(
+                &account_id,
+                &SyncRuntimeStatusUpdate {
+                    sync_in_progress: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await;
+
+        let wait = sync_with_detach_timeout(
+            DetachedSyncHandoff {
+                state: state.clone(),
+                account_id: account_id.clone(),
+                provider: provider as std::sync::Arc<dyn MailSyncProvider>,
+                provider_guard,
+                sync_log_id,
+                prior_consecutive_failures: 0,
+            },
+            Duration::from_millis(20),
+        )
+        .await;
+        assert!(
+            matches!(wait, SyncWait::TimedOut),
+            "a never-finishing sync must outlive the caller wait"
+        );
+
+        // The reaper aborts after DETACHED_SYNC_GRACE: poll well past it
+        // for the cleared flag, then confirm the guard was released.
+        let mut finalized = None;
+        for _ in 0..200 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            let status = state
+                .store
+                .get_sync_runtime_status(&account_id)
+                .await
+                .unwrap();
+            if status.as_ref().is_some_and(|s| !s.sync_in_progress) {
+                finalized = status;
+                break;
+            }
+        }
+        let status =
+            finalized.expect("reaper should clear sync_in_progress after aborting a wedged sync");
+        assert!(
+            status
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("aborted")),
+            "expected abort marker, got {:?}",
+            status.last_error
+        );
+        let reacquired = tokio::time::timeout(
+            Duration::from_millis(500),
+            state.acquire_provider_operation(&account_id),
+        )
+        .await;
+        assert!(
+            reacquired.is_ok(),
+            "provider guard must be released after the reaper aborts a wedged sync"
         );
     }
 

@@ -1,5 +1,13 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "framework": "astro"
+  "framework": "astro",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "mxr-mail.vercel.app" }],
+      "destination": "https://mxr.sh/:path*",
+      "permanent": true
+    }
+  ]
 }

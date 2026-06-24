@@ -129,7 +129,7 @@ body {
    and targets `.actions > a` to match by structural position rather
    than Starlight's class names. */
 .hero {
-  padding-block: clamp(3rem, 8vw, 8rem) clamp(1.5rem, 4vw, 4rem);
+  padding-block: clamp(1.25rem, 3.5vw, 3rem) clamp(1.5rem, 4vw, 3.5rem);
   position: relative;
   max-width: 84rem;
   margin-inline: auto;
@@ -153,7 +153,7 @@ body {
   color: var(--paper-mute);
   border-top: 1px solid var(--paper);
   padding-top: 0.6rem;
-  margin-bottom: clamp(2rem, 6vw, 5rem);
+  margin-bottom: clamp(1rem, 3vw, 2rem);
   text-transform: lowercase;
 }
 
@@ -1600,4 +1600,151 @@ body {
 :not([data-page-title]) main h3 {
   font-family: var(--font-display);
   letter-spacing: -0.02em;
+}
+
+/* ==========================================================
+   Front-loaded landing additions
+   Badge line, automation contract coda, "what mxr does"
+   scan-grid, and the intent router. Rules and columns carry
+   these, in keeping with the no-cards house style.
+   ========================================================== */
+
+/* Hero badge line — the 1-second "what it is" scan, right
+   under the actions. Quiet mono tags, not a logo wall. */
+.hero-badges {
+  max-width: 84rem;
+  margin: clamp(1rem, 2.5vw, 1.75rem) auto 0;
+  padding: 0 clamp(1.25rem, 4vw, 4rem);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.55rem;
+}
+
+.hero-badge {
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: var(--paper-mute);
+  border: 1px solid var(--rule);
+  padding: 0.24rem 0.62rem;
+  white-space: nowrap;
+}
+
+/* Automation contract one-liner inside §try-it. Overrides the
+   narrow .landing-section p measure; this line wants to breathe. */
+.tryit-contract {
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.8rem !important;
+  letter-spacing: 0.01em;
+  color: var(--paper-mute) !important;
+  max-width: 62rem !important;
+  margin-top: 1.1rem !important;
+}
+
+.tryit-contract code {
+  background: var(--ink-fold);
+  color: var(--signal-deep);
+  padding: 0.05em 0.4em;
+}
+
+/* "what mxr does" — a two-column scan grid built from hairlines,
+   not panels. One bold lead phrase per cell. */
+.cap-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--rule);
+  max-width: 74rem;
+}
+
+.cap {
+  border-bottom: 1px solid var(--rule);
+  padding: 1rem 0;
+  font-family: var(--font-body);
+  font-variation-settings: var(--rec-body);
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: var(--paper-soft);
+}
+
+.cap:nth-child(odd) {
+  padding-right: 2rem;
+  border-right: 1px solid var(--rule);
+}
+
+.cap:nth-child(even) {
+  padding-left: 1.75rem;
+}
+
+.cap strong {
+  display: block;
+  margin-bottom: 0.1rem;
+  color: var(--paper);
+  font-variation-settings: var(--rec-body-em);
+}
+
+.cap code {
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-mono);
+  font-size: 0.85em;
+  background: var(--ink-fold);
+  color: var(--signal-deep);
+  padding: 0.03em 0.35em;
+}
+
+@media (max-width: 720px) {
+  .cap-grid { grid-template-columns: 1fr; }
+  .cap:nth-child(odd) { border-right: 0; padding-right: 0; }
+  .cap:nth-child(even) { padding-left: 0; }
+}
+
+/* "pick your path" — route by intent. Intent on the left,
+   destination on the right, hairline rows with a hover nudge. */
+.pickpath-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  border-top: 1px solid var(--rule);
+  max-width: 62rem;
+}
+
+.pickpath {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 0.95rem 0.5rem;
+  border-bottom: 1px solid var(--rule);
+  text-decoration: none !important;
+  transition: background 0.15s ease, padding-left 0.15s ease;
+}
+
+.pickpath:hover { background: var(--ink-soft); padding-left: 1rem; }
+
+.pickpath:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: -2px;
+}
+
+.pp-when {
+  font-family: var(--font-body);
+  font-variation-settings: var(--rec-body);
+  font-size: 1rem;
+  color: var(--paper-soft);
+}
+
+.pp-go {
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  color: var(--signal);
+  white-space: nowrap;
+}
+
+.pp-go::after { content: ' →'; }
+
+@media (max-width: 540px) {
+  .pickpath { flex-direction: column; gap: 0.3rem; }
 }

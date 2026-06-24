@@ -74,7 +74,11 @@ If the user says `ship it`, run the full release flow:
 3. Push `main`.
 4. Create and push `v{version}`.
 5. Wait for the tag-driven release workflow.
-6. Verify Homebrew and `cargo install --git ... --tag v{version} --locked mxr`.
+6. Verify all three install channels, in throwaway locations so they never collide with the real install:
+   - Homebrew: `brew update && brew upgrade mxr` (the real install on this machine); `mxr version` must report the new release.
+   - install.sh: `MXR_INSTALL_DIR="$(mktemp -d)" ./install.sh v{version}`, run `<tmp>/mxr version`, then `rm -rf` the temp dir.
+   - cargo: `cargo install --git https://github.com/planetaryescape/mxr --tag v{version} --locked --root "$(mktemp -d)" mxr`, run `<tmp>/bin/mxr version`, then `rm -rf` the temp root.
+7. Converge this machine on Homebrew only. After verification, the sole `mxr` on PATH must be Homebrew's: remove any `~/.cargo/bin/mxr` (`cargo uninstall mxr`) and any `~/.local/bin/mxr` left by past install.sh runs, then confirm with `which -a mxr`. Multiple mxr binaries on PATH carry different build ids, and every invocation restarts the daemon to "match the current binary" — ping-ponging the daemon between versions.
 
 Source of truth: `docs/blueprint/17-release-pipeline.md` and checked-in GitHub workflows.
 

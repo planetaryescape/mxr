@@ -429,6 +429,7 @@ body {
    seeded demo inbox. Framed like the code blocks elsewhere: a thin
    title bar with traffic-light dots, then the video edge to edge. */
 .hero-cast {
+  position: relative;
   max-width: 72rem;
   margin: clamp(1.5rem, 3vw, 2.5rem) auto 0;
   padding: 0 clamp(1.25rem, 4vw, 4rem);
@@ -450,20 +451,27 @@ body {
   color: var(--paper-mute);
 }
 
-.hero-cast-dots { display: inline-flex; gap: 0.4rem; }
-.hero-cast-dots i {
-  width: 0.62rem;
-  height: 0.62rem;
-  border-radius: 50%;
-  background: var(--rule);
+/* window dots — a clean, vertically-centred horizontal row */
+.hero-cast-dots {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
 }
-.hero-cast-dots i:first-child { background: var(--signal); }
-.hero-cast-dots i:nth-child(2) { background: var(--signal-deep); }
-.hero-cast-dots i:nth-child(3) { background: var(--quiet); }
+.hero-cast-dots i {
+  display: block;
+  flex: 0 0 auto;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: var(--paper-faint);
+}
+.hero-cast-dots i:nth-child(1) { background: var(--signal); }
 
-.hero-cast-meta { margin-left: auto; color: var(--paper-faint); }
+.hero-cast-meta { margin-left: auto; flex: 0 1 auto; color: var(--paper-faint); }
 
-/* CLI / TUI toggle — pure CSS via hidden radios + label tabs. */
+/* CLI / TUI / agent toggle — a segmented control so it clearly reads
+   as clickable tabs: one bordered group, dividers between, filled active. */
 .hero-cast-radio {
   position: absolute;
   width: 1px;
@@ -471,33 +479,44 @@ body {
   opacity: 0;
   pointer-events: none;
 }
-.hero-cast-tabs { display: inline-flex; gap: 0.3rem; }
+.hero-cast-tabs {
+  display: inline-flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  overflow: hidden;
+}
 .hero-cast-tab {
   cursor: pointer;
+  display: flex;
+  align-items: center;
   font-family: var(--font-mono);
-  font-variation-settings: var(--rec-meta);
+  font-variation-settings: var(--rec-mono-em);
   font-size: 0.74rem;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   text-transform: lowercase;
   color: var(--paper-mute);
-  padding: 0.12rem 0.55rem;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  background: transparent;
+  padding: 0.26rem 0.85rem;
+  border-right: 1px solid var(--rule);
+  transition: color 0.15s ease, background 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.hero-cast-tab:hover { color: var(--paper); }
+.hero-cast-tab:last-child { border-right: 0; }
+.hero-cast-tab:hover { color: var(--paper); background: var(--ink-fold); }
 #cast-cli:checked ~ .hero-cast-bar .tab-cli,
 #cast-tui:checked ~ .hero-cast-bar .tab-tui,
 #cast-agent:checked ~ .hero-cast-bar .tab-agent {
-  color: var(--signal);
-  background: var(--ink-fold);
-  border-color: var(--rule);
+  color: var(--ink);
+  background: var(--signal);
 }
 #cast-cli:focus-visible ~ .hero-cast-bar .tab-cli,
 #cast-tui:focus-visible ~ .hero-cast-bar .tab-tui,
 #cast-agent:focus-visible ~ .hero-cast-bar .tab-agent {
-  outline: 2px solid var(--signal);
-  outline-offset: 2px;
+  outline: 2px solid var(--signal-deep);
+  outline-offset: -2px;
 }
 
 .hero-cast-pane { display: none; }

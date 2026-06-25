@@ -35,17 +35,32 @@ hero:
   <span class="hero-badge">open source</span>
 </div>
 
-<div class="hero-cast" aria-label="Terminal demo of mxr: instant search, piping to Unix tools, and ranking subscriptions">
+<div class="hero-cast" aria-label="Terminal demos of mxr: the CLI and the TUI">
+  <input type="radio" name="hero-cast-tab" id="cast-cli" class="hero-cast-radio" checked />
+  <input type="radio" name="hero-cast-tab" id="cast-tui" class="hero-cast-radio" />
   <div class="hero-cast-bar">
     <span class="hero-cast-dots"><i></i><i></i><i></i></span>
-    <span class="hero-cast-title">mxr</span>
+    <span class="hero-cast-tabs" role="tablist">
+      <label for="cast-cli" class="hero-cast-tab tab-cli">cli</label>
+      <label for="cast-tui" class="hero-cast-tab tab-tui">tui</label>
+    </span>
     <span class="hero-cast-meta">real commands · seeded demo inbox</span>
   </div>
-  <video class="hero-cast-video" autoplay loop muted playsinline preload="auto" poster="/mxr-demo-poster.png">
-    <source src="/mxr-demo.webm" type="video/webm" />
-    <img src="/mxr-demo.gif" alt="mxr running in a terminal: instant full-text search across thousands of messages, piping JSON output to jq, sort and uniq to rank senders, and listing subscriptions by open rate" />
-  </video>
-  <div class="hero-cast-cap">instant search, Unix pipes, triage — from your shell. <a href="/examples/">see every command →</a></div>
+  <div class="hero-cast-panes">
+    <div class="hero-cast-pane pane-cli">
+      <video class="hero-cast-video" autoplay loop muted playsinline preload="auto" poster="/mxr-demo-poster.jpg">
+        <source src="/mxr-demo.webm" type="video/webm" />
+        <img src="/mxr-demo.gif" alt="mxr CLI: instant full-text search across thousands of messages, piping JSON output to jq/sort/uniq to rank senders, and subscriptions by open rate" />
+      </video>
+    </div>
+    <div class="hero-cast-pane pane-tui">
+      <video class="hero-cast-video" autoplay loop muted playsinline preload="metadata" poster="/mxr-tui-poster.jpg">
+        <source src="/mxr-tui.webm" type="video/webm" />
+        <img src="/mxr-tui.gif" alt="mxr TUI: keyboard-driven inbox with sidebar, full-index search, and the rules and accounts screens" />
+      </video>
+    </div>
+  </div>
+  <div class="hero-cast-cap">instant search, Unix pipes, triage — from your shell or the keyboard-driven TUI. <a href="/examples/">see every command →</a></div>
 </div>
 
 <div class="hero-pronounce" aria-label="Pronunciation">

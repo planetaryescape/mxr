@@ -461,12 +461,46 @@ body {
 .hero-cast-dots i:nth-child(2) { background: var(--signal-deep); }
 .hero-cast-dots i:nth-child(3) { background: var(--quiet); }
 
-.hero-cast-title {
-  color: var(--paper);
-  font-variation-settings: var(--rec-mono-em);
-  text-transform: lowercase;
-}
 .hero-cast-meta { margin-left: auto; color: var(--paper-faint); }
+
+/* CLI / TUI toggle — pure CSS via hidden radios + label tabs. */
+.hero-cast-radio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.hero-cast-tabs { display: inline-flex; gap: 0.3rem; }
+.hero-cast-tab {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  color: var(--paper-mute);
+  padding: 0.12rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.hero-cast-tab:hover { color: var(--paper); }
+#cast-cli:checked ~ .hero-cast-bar .tab-cli,
+#cast-tui:checked ~ .hero-cast-bar .tab-tui {
+  color: var(--signal);
+  background: var(--ink-fold);
+  border-color: var(--rule);
+}
+#cast-cli:focus-visible ~ .hero-cast-bar .tab-cli,
+#cast-tui:focus-visible ~ .hero-cast-bar .tab-tui {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.hero-cast-pane { display: none; }
+#cast-cli:checked ~ .hero-cast-panes .pane-cli { display: block; }
+#cast-tui:checked ~ .hero-cast-panes .pane-tui { display: block; }
 
 .hero-cast-video,
 .hero-cast img {

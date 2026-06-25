@@ -160,12 +160,12 @@ body {
 .hero h1 {
   font-family: var(--font-display);
   font-variation-settings: var(--rec-display);
-  font-size: clamp(2.8rem, 10vw, 8.5rem);
-  line-height: 0.94;
-  letter-spacing: -0.05em;
+  font-size: clamp(1.9rem, 4vw, 3.4rem);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
   color: var(--paper);
-  max-width: 16ch;
-  margin-bottom: clamp(1.5rem, 3vw, 2.75rem);
+  max-width: 18ch;
+  margin-bottom: clamp(1rem, 2vw, 1.5rem);
 }
 
 .hero h1 .hero-accent {
@@ -177,15 +177,15 @@ body {
 .hero .tagline {
   font-family: var(--font-body);
   font-variation-settings: var(--rec-body);
-  font-size: clamp(1.1rem, 1.5vw, 1.35rem);
+  font-size: clamp(1rem, 1.2vw, 1.18rem);
   line-height: 1.5;
-  max-width: 50ch;
+  max-width: 56ch;
   color: var(--paper-soft);
   letter-spacing: -0.005em;
 }
 
 .hero .actions {
-  margin-top: clamp(2.5rem, 5vw, 4rem);
+  margin-top: clamp(1.5rem, 2.5vw, 2.25rem);
   display: flex;
   gap: 2.5rem;
   align-items: baseline;
@@ -423,6 +423,79 @@ body {
   color: var(--paper-faint);
   font-size: 0.7em;
   margin-inline: 0.4rem;
+}
+
+/* Hero terminal demo — a real VHS recording of mxr against the
+   seeded demo inbox. Framed like the code blocks elsewhere: a thin
+   title bar with traffic-light dots, then the video edge to edge. */
+.hero-cast {
+  max-width: 72rem;
+  margin: clamp(1.5rem, 3vw, 2.5rem) auto 0;
+  padding: 0 clamp(1.25rem, 4vw, 4rem);
+}
+
+.hero-cast-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  background: var(--ink-soft);
+  border: 1px solid var(--rule);
+  border-bottom: 0;
+  border-radius: 7px 7px 0 0;
+  padding: 0.5rem 0.9rem;
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  color: var(--paper-mute);
+}
+
+.hero-cast-dots { display: inline-flex; gap: 0.4rem; }
+.hero-cast-dots i {
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 50%;
+  background: var(--rule);
+}
+.hero-cast-dots i:first-child { background: var(--signal); }
+.hero-cast-dots i:nth-child(2) { background: var(--signal-deep); }
+.hero-cast-dots i:nth-child(3) { background: var(--quiet); }
+
+.hero-cast-title {
+  color: var(--paper);
+  font-variation-settings: var(--rec-mono-em);
+  text-transform: lowercase;
+}
+.hero-cast-meta { margin-left: auto; color: var(--paper-faint); }
+
+.hero-cast-video,
+.hero-cast img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  border-radius: 0 0 7px 7px;
+  background: var(--ink);
+}
+
+.hero-cast-cap {
+  margin-top: 0.7rem;
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  color: var(--paper-mute);
+}
+.hero-cast-cap a {
+  color: var(--signal);
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 3px;
+}
+.hero-cast-cap a:hover { text-decoration-color: var(--signal); }
+
+@media (max-width: 600px) {
+  .hero-cast-meta { display: none; }
 }
 
 /* ---- Sections ---- */

@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.6.2](https://github.com/planetaryescape/mxr/compare/v0.6.1...v0.6.2) (2026-06-25)
+
+
+### Bug Fixes
+
+* align imap push capability reporting ([4608e61](https://github.com/planetaryescape/mxr/commit/4608e6169f477431426d991a936f7e6f1f840fea))
+* harden attachment cache filenames ([c078037](https://github.com/planetaryescape/mxr/commit/c0780377b4142fddddd8fd91b50aad028c8d9e6c))
+* limit bridge query token auth ([404d48c](https://github.com/planetaryescape/mxr/commit/404d48ca9be253bde00d2e84a5da1c9639df51c3))
+* prevent sync loop deadlock when a detached sync wedges ([a57a53f](https://github.com/planetaryescape/mxr/commit/a57a53f5dae90c942717131c00e2d63576544654))
+* redact inline secrets in bug reports ([60f1bad](https://github.com/planetaryescape/mxr/commit/60f1bad00111da79bc0638631429d33d09bfc133))
+* serialize snooze provider mutations ([1a27e17](https://github.com/planetaryescape/mxr/commit/1a27e1757fccb5e8194512027e5b9fcd2a62ffda))
+* validate gmail token refs ([e1daaaa](https://github.com/planetaryescape/mxr/commit/e1daaaa301bbebb54f4e363f164c63a7f3088be6))
+
+
+### Refactoring
+
+* remove dead daemon export module ([a3eca9f](https://github.com/planetaryescape/mxr/commit/a3eca9f7ef2442ded052fad3931e50d6ce221726))
+* remove dead web state module ([cdac1a3](https://github.com/planetaryescape/mxr/commit/cdac1a3332cfff9406a9be08a40a97df3ed697f3))
+
+
+### Documentation
+
+* clarify deferred provider and bridge work ([b7ccdb1](https://github.com/planetaryescape/mxr/commit/b7ccdb143a1f5580e0126960c13e29df716a0d07))
+* clarify reserved semantic config fields ([344edd7](https://github.com/planetaryescape/mxr/commit/344edd74903ea3f6ca0708e1025ef0cc37064471))
+* clarify roadmap status ([5d10fed](https://github.com/planetaryescape/mxr/commit/5d10fed503c706ad6fc7199af494a01015611f29))
+* clarify subscription replied counts ([4cf3e0e](https://github.com/planetaryescape/mxr/commit/4cf3e0e0e6d95d3a6e6b909e6c2f6665b4c9231f))
+* reconcile triage gap tracker ([aedbcf2](https://github.com/planetaryescape/mxr/commit/aedbcf2241e7f32a203e8eb27b3fa0c4b67b4dee))
+* remove stale web action comments ([359a659](https://github.com/planetaryescape/mxr/commit/359a659fabc2ecf0c429df117cc3e5cbc12326f1))
+* **site:** surface examples on the landing and point the site at mxr.sh ([#93](https://github.com/planetaryescape/mxr/issues/93)) ([477ad84](https://github.com/planetaryescape/mxr/commit/477ad8465a2e9039b001e0d50003f3d945f63a00))
+* triage root todo backlog ([4f048f9](https://github.com/planetaryescape/mxr/commit/4f048f9f1ba8405254ff61a100910787efc096d2))
+* verify all install channels in release flow ([7f24d99](https://github.com/planetaryescape/mxr/commit/7f24d99c002cd3fe70032100f8a49e6bd23a88cb))
+
 ## [0.6.1](https://github.com/planetaryescape/mxr/compare/v0.6.0...v0.6.1) (2026-06-12)
 
 

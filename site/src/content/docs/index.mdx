@@ -35,14 +35,16 @@ hero:
   <span class="hero-badge">open source</span>
 </div>
 
-<div class="hero-cast" aria-label="Terminal demos of mxr: the CLI and the TUI">
+<div class="hero-cast" aria-label="Terminal demos of mxr: CLI, TUI, and an AI agent">
   <input type="radio" name="hero-cast-tab" id="cast-cli" class="hero-cast-radio" checked />
   <input type="radio" name="hero-cast-tab" id="cast-tui" class="hero-cast-radio" />
+  <input type="radio" name="hero-cast-tab" id="cast-agent" class="hero-cast-radio" />
   <div class="hero-cast-bar">
     <span class="hero-cast-dots"><i></i><i></i><i></i></span>
     <span class="hero-cast-tabs" role="tablist">
       <label for="cast-cli" class="hero-cast-tab tab-cli">cli</label>
       <label for="cast-tui" class="hero-cast-tab tab-tui">tui</label>
+      <label for="cast-agent" class="hero-cast-tab tab-agent">agent</label>
     </span>
     <span class="hero-cast-meta">real commands · seeded demo inbox</span>
   </div>
@@ -50,17 +52,23 @@ hero:
     <div class="hero-cast-pane pane-cli">
       <video class="hero-cast-video" autoplay loop muted playsinline preload="auto" poster="/mxr-demo-poster.jpg">
         <source src="/mxr-demo.webm" type="video/webm" />
-        <img src="/mxr-demo.gif" alt="mxr CLI: instant full-text search across thousands of messages, piping JSON output to jq/sort/uniq to rank senders, and subscriptions by open rate" />
+        <img src="/mxr-demo-poster.jpg" alt="mxr CLI: instant full-text search across thousands of messages, piping JSON output to jq/sort/uniq to rank senders, and subscriptions by open rate" />
       </video>
     </div>
     <div class="hero-cast-pane pane-tui">
-      <video class="hero-cast-video" autoplay loop muted playsinline preload="metadata" poster="/mxr-tui-poster.jpg">
+      <video class="hero-cast-video" autoplay loop muted playsinline preload="none" poster="/mxr-tui-poster.jpg">
         <source src="/mxr-tui.webm" type="video/webm" />
-        <img src="/mxr-tui.gif" alt="mxr TUI: keyboard-driven inbox with sidebar, full-index search, and the rules and accounts screens" />
+        <img src="/mxr-tui-poster.jpg" alt="mxr TUI: keyboard-driven inbox with sidebar, full-index search, and the rules and accounts screens" />
+      </video>
+    </div>
+    <div class="hero-cast-pane pane-agent">
+      <video class="hero-cast-video" autoplay loop muted playsinline preload="none" poster="/mxr-agent-poster.jpg">
+        <source src="/mxr-agent.webm" type="video/webm" />
+        <img src="/mxr-agent-poster.jpg" alt="An AI agent driving mxr: composing mxr search and jq pipelines to find phishing senders in the inbox and reporting which to be careful with" />
       </video>
     </div>
   </div>
-  <div class="hero-cast-cap">instant search, Unix pipes, triage — from your shell or the keyboard-driven TUI. <a href="/examples/">see every command →</a></div>
+  <div class="hero-cast-cap">search, pipe, triage — by hand in the shell, in the keyboard-driven TUI, or by an agent that writes the <code>mxr</code> commands for you. <a href="/examples/">see every command →</a></div>
 </div>
 
 <div class="hero-pronounce" aria-label="Pronunciation">

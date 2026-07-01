@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/planetaryescape/mxr/compare/v0.6.2...v0.6.3) (2026-07-01)
+
+
+### Documentation
+
+* **site:** lead the hero with a terminal demo and a smaller headline ([#97](https://github.com/planetaryescape/mxr/issues/97)) ([321c72f](https://github.com/planetaryescape/mxr/commit/321c72f5e6d3d08a52abc2bbad19db2423e62783))
+
 ## [0.6.2](https://github.com/planetaryescape/mxr/compare/v0.6.1...v0.6.2) (2026-06-25)
 
 

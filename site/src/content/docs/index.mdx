@@ -36,12 +36,12 @@ hero:
 </div>
 
 <div class="hero-cast" aria-label="Terminal demos of mxr: CLI, TUI, and an AI agent">
-  <input type="radio" name="hero-cast-tab" id="cast-cli" class="hero-cast-radio" checked />
-  <input type="radio" name="hero-cast-tab" id="cast-tui" class="hero-cast-radio" />
-  <input type="radio" name="hero-cast-tab" id="cast-agent" class="hero-cast-radio" />
+  <input type="radio" name="hero-cast-tab" id="cast-cli" class="hero-cast-radio" aria-label="CLI demo" checked />
+  <input type="radio" name="hero-cast-tab" id="cast-tui" class="hero-cast-radio" aria-label="TUI demo" />
+  <input type="radio" name="hero-cast-tab" id="cast-agent" class="hero-cast-radio" aria-label="AI agent demo" />
   <div class="hero-cast-bar">
-    <span class="hero-cast-dots"><i></i><i></i><i></i></span>
-    <span class="hero-cast-tabs" role="tablist">
+    <span class="hero-cast-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="hero-cast-tabs">
       <label for="cast-cli" class="hero-cast-tab tab-cli">cli</label>
       <label for="cast-tui" class="hero-cast-tab tab-tui">tui</label>
       <label for="cast-agent" class="hero-cast-tab tab-agent">agent</label>

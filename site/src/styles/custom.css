@@ -512,11 +512,19 @@ body {
   color: var(--ink);
   background: var(--signal);
 }
-#cast-cli:focus-visible ~ .hero-cast-bar .tab-cli,
-#cast-tui:focus-visible ~ .hero-cast-bar .tab-tui,
-#cast-agent:focus-visible ~ .hero-cast-bar .tab-agent {
+/* keyboard focus ring — :focus is the fallback for browsers without
+   :focus-visible; the :not(:focus-visible) rule suppresses it for
+   pointer focus where :focus-visible is supported. */
+#cast-cli:focus ~ .hero-cast-bar .tab-cli,
+#cast-tui:focus ~ .hero-cast-bar .tab-tui,
+#cast-agent:focus ~ .hero-cast-bar .tab-agent {
   outline: 2px solid var(--signal-deep);
   outline-offset: -2px;
+}
+#cast-cli:focus:not(:focus-visible) ~ .hero-cast-bar .tab-cli,
+#cast-tui:focus:not(:focus-visible) ~ .hero-cast-bar .tab-tui,
+#cast-agent:focus:not(:focus-visible) ~ .hero-cast-bar .tab-agent {
+  outline: none;
 }
 
 .hero-cast-pane { display: none; }

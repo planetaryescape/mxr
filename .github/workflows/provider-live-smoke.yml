@@ -9,7 +9,7 @@ jobs:
   provider-offline-smoke:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
@@ -35,7 +35,7 @@ jobs:
       MXR_GMAIL_TEST_CLIENT_SECRET: ${{ secrets.MXR_GMAIL_TEST_CLIENT_SECRET }}
       MXR_GMAIL_TEST_REFRESH_TOKEN: ${{ secrets.MXR_GMAIL_TEST_REFRESH_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config

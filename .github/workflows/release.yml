@@ -27,7 +27,7 @@ jobs:
       has_artifacts: ${{ steps.scope.outputs.has_artifacts }}
       build_matrix: ${{ steps.matrix.outputs.build_matrix }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Verify release tag matches Cargo version
@@ -65,7 +65,7 @@ jobs:
       MXR_GMAIL_TEST_CLIENT_SECRET: ${{ secrets.MXR_GMAIL_TEST_CLIENT_SECRET }}
       MXR_GMAIL_TEST_REFRESH_TOKEN: ${{ secrets.MXR_GMAIL_TEST_REFRESH_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: mozilla-actions/sccache-action@v0.0.10
       - uses: Swatinem/rust-cache@v2
@@ -110,7 +110,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.build_matrix) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -295,7 +295,7 @@ jobs:
       && (needs.build-binaries.result == 'success'
         || (needs.plan.outputs.has_artifacts != 'true' && needs.build-binaries.result == 'skipped'))
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: taiki-e/install-action@v2
@@ -339,7 +339,7 @@ jobs:
     needs: [plan, github-release]
     if: needs.plan.outputs.cli_changed == 'true' && needs.github-release.result == 'success'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           path: artifacts

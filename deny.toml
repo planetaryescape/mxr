@@ -12,6 +12,8 @@ ignore = [
     # Transitive dependencies with no safe upgrade available.
     # These are pulled in by upstream crates we don't control.
     { id = "RUSTSEC-2025-0052", reason = "async-std remains through mxr-async-imap/provider-imap; no async-imap-compatible upgrade path yet" },
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml DoS (quadratic duplicate-attribute check); transitive via calamine 0.35/undoc 0.5 for office-attachment parsing, both on their newest releases which pin pre-0.41; worst case is a slow parse of an attachment; upgrade when upstream bumps to quick-xml >= 0.41" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml NsReader memory-exhaustion DoS; same transitive path via calamine/undoc with no patched-compatible upstream release; upgrade when upstream bumps to quick-xml >= 0.41" },
 ]
 
 [licenses]

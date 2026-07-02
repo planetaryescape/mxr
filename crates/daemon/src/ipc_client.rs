@@ -38,7 +38,7 @@ impl IpcClient {
             .await
     }
 
-    /// Like [`request`], but invokes `on_event` for every
+    /// Like [`Self::request`], but invokes `on_event` for every
     /// `DaemonEvent` frame that arrives on the connection while
     /// waiting for the response. Use for long-running operations
     /// (sync, rebuild-analytics, reindex) where the daemon emits

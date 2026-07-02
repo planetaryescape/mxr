@@ -17,6 +17,10 @@ const banned = [
   { re: /tomorrow_morning/, message: 'snooze config uses `morning_hour`' },
   { re: /--view\s+body/, message: '`mxr cat --view` accepts reader|raw|html|headers' },
   { re: /\|\s*xargs\s+-r/, message: 'GNU-only `xargs -r`; prefer mxr stdin or portable while-read' },
+  {
+    re: /mxr search [^|\n]*--format json[^|\n]*\|\s*jq\s+(-r\s+)?'\s*(\.\[|group_by)/,
+    message: '`mxr search --format json` emits an envelope; jq must read `.results` (e.g. `.results[0]`, `.results[].from`)',
+  },
 ];
 
 function* walk(dir) {

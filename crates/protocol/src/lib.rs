@@ -1,9 +1,37 @@
+//! Wire types for daemon IPC.
+//!
+//! `mxr-protocol` is the contract between the mxr daemon and its clients
+//! (CLI, TUI, web bridge, MCP server). It depends only on `mxr-core`;
+//! provider-specific adaptation happens below this layer and client-specific
+//! shaping happens above it, so nothing here should describe a screen or a
+//! provider.
+//!
+//! # Framing
+//!
+//! Messages travel over the daemon's Unix socket as length-delimited JSON:
+//! a 4-byte length prefix followed by one serialized [`IpcMessage`], encoded
+//! and decoded by [`IpcCodec`] (frames are capped at 16 MiB). Each
+//! [`IpcMessage`] carries a client-chosen correlation `id`, the originating
+//! [`ClientKind`], and an [`IpcPayload`] — a [`Request`] going in, and a
+//! [`Response`] or an unsolicited [`DaemonEvent`] coming back.
+//!
+//! # Compatibility
+//!
+//! [`IPC_PROTOCOL_VERSION`] identifies the wire revision. The daemon
+//! advertises it on status surfaces (for example the web bridge's status
+//! endpoint) so clients can detect a mismatched daemon. Field additions use
+//! `#[serde(default)]` / `skip_serializing_if` so older peers keep decoding;
+//! the version only moves for breaking shape changes.
+
 mod codec;
 mod types;
 
 pub use codec::IpcCodec;
 pub use types::*;
 
+/// Wire revision of the IPC protocol. Bumped only for breaking changes to
+/// the message shapes; additive fields stay decodable across versions via
+/// serde defaults.
 pub const IPC_PROTOCOL_VERSION: u32 = 4;
 
 #[cfg(test)]

@@ -1895,7 +1895,7 @@ pub struct LabelChange {
 
 /// Adapter-facing mutation request. The daemon constructs one of
 /// these per envelope from a higher-level `MutationCommand` and
-/// passes it to [`MailSyncProvider::apply_mutation`] together with
+/// passes it to [`crate::provider::MailSyncProvider::apply_mutation`] together with
 /// a client-supplied `mutation_id` for idempotent retry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

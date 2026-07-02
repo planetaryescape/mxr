@@ -176,7 +176,7 @@ The CLI, MCP server, and HTTP bridge all call the same daemon — JSON in, JSON 
 
 ```bash
 mxr mcp serve                                              # typed tools over stdio
-mxr search "from:sarah after:2026-04-23" --format json | jq '.[0]'
+mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
 mxr archive --search "from:newsletter@example.com" --dry-run
 mxr history --category mutation --limit 3 --format json   # audit trail
 ```

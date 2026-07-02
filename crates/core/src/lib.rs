@@ -1,3 +1,31 @@
+//! Foundation types for the mxr workspace.
+//!
+//! `mxr-core` sits at the bottom of the crate graph and depends on no other
+//! workspace crate. Every other layer — `protocol`, `store`, `search`,
+//! `sync`, the provider adapters, and the daemon — builds on the vocabulary
+//! defined here, so anything in this crate must stay provider-agnostic and
+//! client-agnostic.
+//!
+//! What lives here:
+//!
+//! - [`id`] — typed UUID newtypes ([`MessageId`], [`ThreadId`],
+//!   [`AccountId`], [`DraftId`], …) so ids of different entities cannot be
+//!   confused at compile time, plus deterministic UUIDv5 derivation from
+//!   provider-native ids.
+//! - [`types`] — the provider-agnostic mail model: [`Account`], [`Label`],
+//!   message envelopes, and the enums describing sync, screening, and
+//!   analytics state. Gmail/IMAP/SMTP/Outlook behavior is normalised into
+//!   this model by the adapter crates.
+//! - [`provider`] — the traits adapters implement and the daemon consumes:
+//!   [`MailSyncProvider`] (pull mail, push flag changes), [`MailSendProvider`]
+//!   (submission), and [`IdleWatcher`] (push notifications). Daemon code
+//!   talks to providers only through these seams.
+//! - [`error`] — [`MxrError`], the shared error type.
+//! - [`time_parse`] — human time expressions ("tomorrow 9am", "in 2h") for
+//!   snooze/remind/send-later, via [`parse_relative_time`].
+//! - [`text`] and [`i18n`] — small text-normalisation and localisation
+//!   helpers shared across crates.
+
 #![cfg_attr(
     test,
     expect(

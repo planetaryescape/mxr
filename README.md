@@ -269,7 +269,14 @@ For mxr-on-mxr chaining, prefer `--search` directly — daemon-native, snapshot-
 mxr cat --search 'from:alice' --first              # body of the latest match
 mxr summarize --search 'is:unread' --first         # LLM summary of the most recent unread thread
 mxr archive --search 'from:no-reply older_than:30d' --yes
-mxr search "is:unread from:buildkite" --format json | jq -r '.[].message_id'
+```
+
+`mxr search --format json` emits an envelope — matches under `.results`, page info under `.paging` — so jq pipelines read `.results`:
+
+```bash
+mxr search "is:unread from:buildkite" --format json | jq -r '.results[].message_id'
+mxr search "is:unread" --format json --limit 200 \
+  | jq -r '.results[].from' | sort | uniq -c | sort -rn | head   # noisiest unread senders
 ```
 
 `--search` is on every read command that takes an ID (`cat`, `thread`, `headers`, `summarize`, `draft-assist`, `open`, `attachments list`) and on every mutation. See [`docs/recipes`](https://mxr-mail.vercel.app/guides/recipes/) for the full cookbook (fzf / jq / xargs / cron / agent prompts).

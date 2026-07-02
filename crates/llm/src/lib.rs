@@ -264,7 +264,7 @@ impl FeatureLlmRuntime {
             .await
     }
 
-    /// Like [`complete`], but bounded by the runtime's background
+    /// Like [`Self::complete`], but bounded by the runtime's background
     /// timeout. Background workers (relationship summary, commitment
     /// extraction) MUST use this so a slow/dead endpoint can't pin the
     /// worker — and its reserved background-DB slot — for the full

@@ -64,7 +64,7 @@ impl MutationIdGenerator {
 
 /// A mutation queued for the daemon, carrying enough context to apply it
 /// (request + completion effect) and to roll back its optimistic effect on
-/// failure (snapshot ID, looked up in [`App::mutation_snapshots`]).
+/// failure (snapshot ID, looked up in [`crate::app::App::mutation_snapshots`]).
 #[derive(Debug, Clone)]
 pub struct QueuedMutation {
     pub id: MutationId,

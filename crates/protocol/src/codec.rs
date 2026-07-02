@@ -2,6 +2,10 @@ use crate::types::IpcMessage;
 use bytes::BytesMut;
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 
+/// Tokio codec that frames [`IpcMessage`]s on the daemon socket:
+/// length-delimited JSON with a 4-byte length prefix and a 16 MiB frame cap.
+/// Malformed JSON surfaces as `io::ErrorKind::InvalidData` rather than
+/// tearing down the connection silently.
 pub struct IpcCodec {
     inner: LengthDelimitedCodec,
 }

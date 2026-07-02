@@ -416,6 +416,11 @@ impl Default for ClientKind {
     }
 }
 
+/// One IPC frame: the unit [`crate::IpcCodec`] reads and writes on the
+/// daemon socket. `id` is a client-chosen correlation number — the daemon
+/// echoes it on the matching [`Response`] so clients can multiplex requests
+/// over one connection (events carry the id of the subscription that caused
+/// them, or 0 when unsolicited).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct IpcMessage {
@@ -435,12 +440,22 @@ pub struct IpcMessage {
     clippy::large_enum_variant,
     reason = "IPC envelope keeps request/response/event payloads transparent on the wire"
 )]
+/// Direction-tagged body of an [`IpcMessage`]: clients send [`Request`]s;
+/// the daemon replies with [`Response`]s and pushes [`DaemonEvent`]s.
 pub enum IpcPayload {
     Request(Request),
     Response(Response),
     Event(DaemonEvent),
 }
 
+/// Every command a client can ask the daemon to perform.
+///
+/// Tagged `cmd` on the wire. One flat enum is the whole client-facing
+/// surface: the CLI, TUI, web bridge, and MCP server all speak these same
+/// requests, which is what keeps daemon capabilities client-agnostic (see
+/// [`IpcCategory`] for the conceptual grouping). Mutations are expressed as
+/// explicit commands with dry-run/preview options rather than free-form
+/// state writes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "cmd")]
@@ -1784,6 +1799,11 @@ pub struct UnsubscribePurgeResultData {
     clippy::large_enum_variant,
     reason = "IPC response shape is serialized directly; boxing would not change the wire shape but would add client-side allocation churn"
 )]
+/// The daemon's reply to a [`Request`], correlated by [`IpcMessage::id`].
+///
+/// Either `Ok` wrapping a [`ResponseData`] payload, or `Error` with a
+/// human-readable message plus a machine-readable [`IpcErrorKind`] so
+/// clients can branch on failure class instead of parsing strings.
 pub enum Response {
     Ok {
         data: ResponseData,

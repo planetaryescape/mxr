@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.4](https://github.com/planetaryescape/mxr/compare/v0.6.3...v0.6.4) (2026-07-02)
+
+
+### Documentation
+
+* close out the issue backlog — crate docs, protocol docs, verified jq examples ([#101](https://github.com/planetaryescape/mxr/issues/101)) ([9ecaefa](https://github.com/planetaryescape/mxr/commit/9ecaefaaee73c579e6839b454eda0fabae545d9d)), closes [#9](https://github.com/planetaryescape/mxr/issues/9)
+
 ## [0.6.3](https://github.com/planetaryescape/mxr/compare/v0.6.2...v0.6.3) (2026-07-01)
 
 

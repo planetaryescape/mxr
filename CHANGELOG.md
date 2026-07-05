@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.5](https://github.com/planetaryescape/mxr/compare/v0.6.4...v0.6.5) (2026-07-05)
+
+
+### Bug Fixes
+
+* harden TUI event delivery, rendering, and draft hygiene ([#105](https://github.com/planetaryescape/mxr/issues/105)) ([2b1a93c](https://github.com/planetaryescape/mxr/commit/2b1a93cc8820de80940086bfd2f78e44930a62b6))
+
 ## [0.6.4](https://github.com/planetaryescape/mxr/compare/v0.6.3...v0.6.4) (2026-07-03)
 
 

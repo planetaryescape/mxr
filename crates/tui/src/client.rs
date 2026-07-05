@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::net::UnixStream;
 use tokio::sync::mpsc;
 use tokio_util::codec::Framed;
+use tracing::warn;
 
 pub struct Client {
     framed: Framed<UnixStream, IpcCodec>,
@@ -222,6 +223,30 @@ impl Client {
             } => Ok(subscriptions),
             Response::Error { message, .. } => Err(MxrError::Ipc(message)),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
+        }
+    }
+
+    /// Read one frame while no request is in flight, forwarding events.
+    /// Returns `Err` when the connection is closed or broken so the caller can
+    /// trigger its reconnect path. Cancel-safe: dropping the future leaves
+    /// any partial frame buffered inside `framed`.
+    pub(crate) async fn read_idle_frame(&mut self) -> Result<(), MxrError> {
+        match self.framed.next().await {
+            Some(Ok(msg)) => {
+                match msg.payload {
+                    IpcPayload::Event(event) => {
+                        if let Some(ref tx) = self.event_tx {
+                            let _ = tx.send(event);
+                        }
+                    }
+                    other => {
+                        warn!(?other, "unexpected idle IPC frame; dropping");
+                    }
+                }
+                Ok(())
+            }
+            Some(Err(e)) => Err(MxrError::Ipc(describe_ipc_failure(&e.to_string()))),
+            None => Err(MxrError::Ipc("connection closed".into())),
         }
     }
 

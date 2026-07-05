@@ -145,6 +145,26 @@ pub(crate) fn spawn_ipc_worker(
                         let _ = result_tx.send(AsyncResult::DaemonEvent(event));
                     }
                 }
+                idle = client.read_idle_frame() => {
+                    if let Err(error) = idle {
+                        let _ = result_tx.send(AsyncResult::ConnectionState(
+                            ConnectionState::Reconnecting {
+                                since: std::time::Instant::now(),
+                                reason: error.to_string(),
+                            },
+                        ));
+                        match connect_ipc_client(&socket_path, event_tx.clone()).await {
+                            Ok(fresh) => {
+                                client = fresh;
+                                let _ = result_tx
+                                    .send(AsyncResult::ConnectionState(ConnectionState::Connected));
+                            }
+                            Err(_) => {
+                                sleep(Duration::from_secs(2)).await;
+                            }
+                        }
+                    }
+                }
             }
         }
     });
@@ -312,7 +332,11 @@ pub(crate) async fn ipc_call_dedicated(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::SinkExt;
+    use mxr_core::id::AccountId;
+    use mxr_protocol::{IpcCodec, IpcMessage, IpcPayload};
     use tokio::io::AsyncReadExt;
+    use tokio_util::codec::Framed;
 
     /// A daemon that accepts the connection but never replies must produce
     /// a timeout error, not park the worker (and the UI status) forever.
@@ -344,6 +368,105 @@ mod tests {
         assert!(
             error.to_string().contains("did not respond"),
             "unexpected error: {error}"
+        );
+    }
+
+    /// Daemon events pushed while the TUI is idle (no request in flight)
+    /// must be forwarded to the result channel without any request trigger.
+    /// This is a RED test — it fails against current code because the worker
+    /// only reads events inside request(), not while idle.
+    #[tokio::test]
+    async fn idle_daemon_events_are_delivered_without_a_request() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let sock = dir.path().join("mxr_idle_events.sock");
+        let listener = tokio::net::UnixListener::bind(&sock).expect("bind");
+
+        // Fake daemon: accept, immediately push one SyncCompleted event,
+        // then hold the connection open.
+        tokio::spawn(async move {
+            let Ok((stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut framed = Framed::new(stream, IpcCodec::new());
+            let event_msg = IpcMessage {
+                id: 0,
+                source: mxr_protocol::ClientKind::Daemon,
+                payload: IpcPayload::Event(DaemonEvent::SyncCompleted {
+                    account_id: AccountId::new(),
+                    messages_synced: 3,
+                }),
+            };
+            let _ = framed.send(event_msg).await;
+            // Hold the connection open so the worker doesn't see EOF.
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+        });
+
+        let (result_tx, mut result_rx) = mpsc::unbounded_channel();
+        let _worker = spawn_ipc_worker(sock, result_tx);
+
+        // The worker should deliver the event without us sending any request.
+        let received = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            async {
+                loop {
+                    let msg = result_rx.recv().await?;
+                    if let AsyncResult::DaemonEvent(_) = msg {
+                        return Some(msg);
+                    }
+                }
+            },
+        )
+        .await;
+        assert!(
+            received.is_ok(),
+            "timed out waiting for idle daemon event — worker does not read events while idle"
+        );
+        assert!(
+            matches!(received.unwrap(), Some(AsyncResult::DaemonEvent(_))),
+            "unexpected result"
+        );
+    }
+
+    /// When the daemon closes the connection while the worker is idle,
+    /// the worker must emit ConnectionState::Reconnecting and not hang.
+    #[tokio::test(start_paused = true)]
+    async fn idle_connection_close_triggers_reconnect_state() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let sock = dir.path().join("mxr_idle_close.sock");
+        let listener = tokio::net::UnixListener::bind(&sock).expect("bind");
+
+        // Fake daemon: accept the first connection then immediately drop it.
+        // Also accept a second connection (from reconnect attempt) and hold it.
+        tokio::spawn(async move {
+            // First connection: accept and drop immediately.
+            if let Ok((stream, _)) = listener.accept().await {
+                drop(stream);
+            }
+            // Second connection (reconnect): accept and hold open.
+            if let Ok((_stream, _)) = listener.accept().await {
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            }
+        });
+
+        let (result_tx, mut result_rx) = mpsc::unbounded_channel();
+        let _worker = spawn_ipc_worker(sock, result_tx);
+
+        // Drain until we see a Reconnecting state.
+        let saw_reconnecting = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            async {
+                loop {
+                    let msg = result_rx.recv().await?;
+                    if let AsyncResult::ConnectionState(ConnectionState::Reconnecting { .. }) = msg {
+                        return Some(());
+                    }
+                }
+            },
+        )
+        .await;
+        assert!(
+            saw_reconnecting.is_ok(),
+            "timed out — worker did not emit Reconnecting after idle connection close"
         );
     }
 }

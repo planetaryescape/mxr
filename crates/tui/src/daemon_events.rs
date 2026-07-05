@@ -124,12 +124,29 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             client_correlation_id,
             error_summary,
         } => {
-            if let Ok(raw) = client_correlation_id.parse::<u64>() {
-                let mid = MutationId::from_raw(raw);
-                app.handle_mutation_reconciliation_failed(mid);
-                app.pending_optimistic.clear(mid);
-                app.refresh_mailbox_after_mutation_failure();
-                app.push_toast(Toast::error(format!("Mutation failed: {error_summary}")));
+            match client_correlation_id.parse::<u64>() {
+                Ok(raw) => {
+                    let mid = MutationId::from_raw(raw);
+                    app.handle_mutation_reconciliation_failed(mid);
+                    app.pending_optimistic.clear(mid);
+                    app.refresh_mailbox_after_mutation_failure();
+                    app.push_toast(Toast::error(format!("Mutation failed: {error_summary}")));
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        client_correlation_id,
+                        "unparseable correlation id on reconciliation failure; forcing refresh"
+                    );
+                    app.push_toast(Toast::error(format!("Mutation failed: {error_summary}")));
+                    // Same full-resync idiom as the EventsLagged arm below: we can't
+                    // roll back a specific optimistic change, so refetch everything.
+                    app.mailbox.pending_labels_refresh = true;
+                    app.mailbox.pending_all_envelopes_refresh = true;
+                    app.mailbox.pending_subscriptions_refresh = true;
+                    if let Some(label_id) = app.mailbox.active_label.clone() {
+                        app.mailbox.pending_label_fetch = Some(label_id);
+                    }
+                }
             }
         }
         DaemonEvent::EventsLagged { skipped } => {
@@ -297,5 +314,36 @@ pub(super) fn restore_mail_list_selection(app: &mut App, selected_id: Option<mxr
         app.mailbox.scroll_offset = app.mailbox.selected_index;
     } else if app.mailbox.selected_index >= app.mailbox.scroll_offset + visible_height {
         app.mailbox.scroll_offset = app.mailbox.selected_index + 1 - visible_height;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::App;
+    use mxr_protocol::DaemonEvent;
+
+    #[test]
+    fn unparseable_correlation_id_triggers_refresh_and_toast() {
+        let mut app = App::new();
+        assert!(!app.mailbox.pending_all_envelopes_refresh);
+        assert!(app.toasts.is_empty());
+
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::MutationReconciliationFailed {
+                client_correlation_id: "not-a-number".into(),
+                error_summary: "server error".into(),
+            },
+        );
+
+        assert!(
+            app.mailbox.pending_all_envelopes_refresh,
+            "unparseable correlation id must trigger a full resync"
+        );
+        assert!(
+            !app.toasts.is_empty(),
+            "unparseable correlation id must still push an error toast"
+        );
     }
 }

@@ -1410,3 +1410,144 @@ fn deliveries_esc_closes_inline_preview() {
     assert!(!app.deliveries.preview_active);
     assert!(app.mailbox.viewing_envelope.is_none());
 }
+
+// ── auth-session poller resilience ──────────────────────────────────────────
+
+/// Helper to build a minimal AuthSessionData for poll testing.
+fn pending_session() -> mxr_protocol::AuthSessionData {
+    mxr_protocol::AuthSessionData {
+        session_id: mxr_protocol::AuthSessionId("test-session".into()),
+        state: mxr_protocol::AuthSessionStateData::WaitingForUser,
+        flow: mxr_protocol::AuthFlowData::Device,
+        account_key: "test-key".into(),
+        auth_url: None,
+        user_code: Some("ABC-DEF".into()),
+        verification_uri: None,
+        expires_at_unix: None,
+        poll_interval_secs: Some(1),
+        message: None,
+        error: None,
+    }
+}
+
+fn authorized_session() -> mxr_protocol::AuthSessionData {
+    mxr_protocol::AuthSessionData {
+        session_id: mxr_protocol::AuthSessionId("test-session".into()),
+        state: mxr_protocol::AuthSessionStateData::Authorized,
+        flow: mxr_protocol::AuthFlowData::Device,
+        account_key: "test-key".into(),
+        auth_url: None,
+        user_code: None,
+        verification_uri: None,
+        expires_at_unix: None,
+        poll_interval_secs: None,
+        message: None,
+        error: None,
+    }
+}
+
+fn session_response(session: mxr_protocol::AuthSessionData) -> mxr_protocol::Response {
+    mxr_protocol::Response::Ok {
+        data: mxr_protocol::ResponseData::AuthSession { session },
+    }
+}
+
+fn fake_ipc_channel() -> (
+    tokio::sync::mpsc::UnboundedSender<crate::ipc::IpcRequest>,
+    tokio::sync::mpsc::UnboundedReceiver<crate::ipc::IpcRequest>,
+) {
+    tokio::sync::mpsc::unbounded_channel()
+}
+
+/// Poller receives Err then Ok(terminal): AuthSession result still delivered.
+#[tokio::test(start_paused = true)]
+async fn auth_session_poller_retries_after_transient_error() {
+    use crate::async_result::AsyncResult;
+    use tokio::sync::mpsc;
+
+    let (ipc_tx, mut ipc_rx) = fake_ipc_channel();
+    let (result_tx, mut result_rx) = mpsc::unbounded_channel::<AsyncResult>();
+
+    // Fake account config.
+    let account = mxr_protocol::AccountConfigData {
+        key: "test".into(),
+        name: "Test".into(),
+        email: "test@example.com".into(),
+        enabled: true,
+        sync: None,
+        send: None,
+        is_default: false,
+    };
+
+    // Respond to StartAuthSession with a pending session.
+    let start_resp = session_response(pending_session());
+    tokio::spawn(async move {
+        // StartAuthSession
+        let req = ipc_rx.recv().await.unwrap();
+        let _ = req.reply.send(Ok(start_resp));
+        tokio::time::advance(std::time::Duration::from_secs(2)).await;
+
+        // First GetAuthSession: transient error
+        let req = ipc_rx.recv().await.unwrap();
+        let _ = req.reply.send(Err(mxr_core::MxrError::Ipc("transient".into())));
+        tokio::time::advance(std::time::Duration::from_secs(2)).await;
+
+        // Second GetAuthSession: success with terminal state
+        let req = ipc_rx.recv().await.unwrap();
+        let _ = req.reply.send(Ok(session_response(authorized_session())));
+    });
+
+    super::super::spawn_outlook_auth_session(&ipc_tx, result_tx, account, false).await;
+
+    // Collect results: should contain an AuthSession (not just an AccountOperation error).
+    let mut got_auth_session = false;
+    while let Ok(result) = result_rx.try_recv() {
+        if matches!(result, AsyncResult::AuthSession(_)) {
+            got_auth_session = true;
+        }
+    }
+    assert!(got_auth_session, "poller must deliver AuthSession after recovering from one error");
+}
+
+/// Poller receives 5 consecutive errors: AccountOperation(Err) is delivered.
+#[tokio::test(start_paused = true)]
+async fn auth_session_poller_aborts_after_max_consecutive_failures() {
+    use crate::async_result::AsyncResult;
+    use tokio::sync::mpsc;
+
+    let (ipc_tx, mut ipc_rx) = fake_ipc_channel();
+    let (result_tx, mut result_rx) = mpsc::unbounded_channel::<AsyncResult>();
+
+    let account = mxr_protocol::AccountConfigData {
+        key: "test".into(),
+        name: "Test".into(),
+        email: "test@example.com".into(),
+        enabled: true,
+        sync: None,
+        send: None,
+        is_default: false,
+    };
+
+    tokio::spawn(async move {
+        // StartAuthSession
+        let req = ipc_rx.recv().await.unwrap();
+        let _ = req.reply.send(Ok(session_response(pending_session())));
+
+        // 5 consecutive GetAuthSession errors
+        for _ in 0..5u32 {
+            tokio::time::advance(std::time::Duration::from_secs(2)).await;
+            let req = ipc_rx.recv().await.unwrap();
+            let _ = req.reply.send(Err(mxr_core::MxrError::Ipc("persistent".into())));
+        }
+    });
+
+    super::super::spawn_outlook_auth_session(&ipc_tx, result_tx, account, false).await;
+
+    let mut got_account_op_err = false;
+    while let Ok(result) = result_rx.try_recv() {
+        if matches!(result, AsyncResult::AccountOperation(Err(_))) {
+            got_account_op_err = true;
+        }
+    }
+    assert!(got_account_op_err, "poller must deliver AccountOperation(Err) after 5 consecutive failures");
+}

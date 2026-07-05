@@ -99,8 +99,11 @@ pub fn draw(
 }
 
 fn short_id(id: &str) -> String {
-    if id.len() > 12 {
-        format!("{}…{}", &id[..4], &id[id.len() - 4..])
+    let chars: Vec<char> = id.chars().collect();
+    if chars.len() > 12 {
+        let head: String = chars[..4].iter().collect();
+        let tail: String = chars[chars.len() - 4..].iter().collect();
+        format!("{head}…{tail}")
     } else {
         id.to_string()
     }
@@ -215,5 +218,35 @@ mod tests {
             !rendered.contains("Briefing"),
             "invisible state must not render the modal frame"
         );
+    }
+
+    #[test]
+    fn short_id_ascii_long_truncates() {
+        let id = "abcde12345xyz";
+        let result = short_id(id);
+        assert_eq!(result, "abcd…5xyz");
+    }
+
+    #[test]
+    fn short_id_ascii_short_unchanged() {
+        let id = "abc123";
+        assert_eq!(short_id(id), "abc123");
+    }
+
+    #[test]
+    fn short_id_multibyte_does_not_panic() {
+        // Each '日' is 3 bytes; 13 chars total — must not panic
+        let id = "日本語テスト日本語テスト日";
+        let result = short_id(id);
+        let chars: Vec<char> = result.chars().collect();
+        // head (4 chars) + ellipsis + tail (4 chars)
+        assert!(chars.len() <= 9, "result should be 4 + ellipsis + 4");
+        assert!(result.contains('…'));
+    }
+
+    #[test]
+    fn short_id_exact_12_unchanged() {
+        let id = "abcdefghijkl"; // exactly 12 chars
+        assert_eq!(short_id(id), "abcdefghijkl");
     }
 }

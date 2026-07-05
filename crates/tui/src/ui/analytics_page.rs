@@ -662,7 +662,7 @@ fn draw_response_time(
         state.response_time_since_days,
     ) {
         (Some(cp), Some(d)) => format!("{}, {d}d", short_email(cp)),
-        (Some(cp), None) => short_email(cp).to_string(),
+        (Some(cp), None) => short_email(cp),
         (None, Some(d)) => format!("{d}d"),
         (None, None) => "all-time".to_string(),
     };
@@ -734,18 +734,16 @@ fn histogram_bucket_index(seconds: u32) -> usize {
 
 /// Truncate an email for display in tight spaces (stat cards, badges).
 /// Keeps the local-part if possible, otherwise truncates with ellipsis.
-fn short_email(email: &str) -> &str {
-    if email.len() <= 18 {
-        email
-    } else {
-        // Find first '@' and keep that bit if short.
-        if let Some(at) = email.find('@') {
-            if at <= 14 {
-                return &email[..at];
-            }
-        }
-        &email[..18]
+fn short_email(email: &str) -> String {
+    if email.chars().count() <= 18 {
+        return email.to_string();
     }
+    if let Some(at) = email.find('@') {
+        if email[..at].chars().count() <= 14 {
+            return email[..at].to_string();
+        }
+    }
+    email.chars().take(18).collect()
 }
 
 struct TableRender<'a> {
@@ -1657,7 +1655,6 @@ fn render_split_bar(
         b_w = 1;
         a_w = a_w.saturating_sub(1);
     }
-    let bar = format!("{}{}", "█".repeat(a_w as usize), "█".repeat(b_w as usize));
     let line = Line::from(vec![
         Span::styled(
             "█".repeat(a_w as usize),
@@ -1668,7 +1665,6 @@ fn render_split_bar(
             ratatui::style::Style::default().fg(color_b),
         ),
     ]);
-    let _ = bar;
     frame.render_widget(Paragraph::new(line), area);
 }
 
@@ -1846,7 +1842,7 @@ fn draw_wrapped_contacts(
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(Span::styled(
-                short_email(&c.email).to_string(),
+                short_email(&c.email),
                 theme.primary_style().add_modifier(Modifier::BOLD),
             )),
             Line::from(Span::styled(
@@ -1888,7 +1884,7 @@ fn draw_wrapped_contacts(
                     theme.muted_style(),
                 )),
                 Line::from(Span::styled(
-                    short_email(&g.email).to_string(),
+                    short_email(&g.email),
                     theme.secondary_style(),
                 )),
             ];
@@ -1984,7 +1980,7 @@ fn draw_wrapped_reply(
             ),
             Span::raw(" · "),
             Span::styled(
-                short_email(&f.counterparty_email).to_string(),
+                short_email(&f.counterparty_email),
                 theme.primary_style(),
             ),
         ]));
@@ -1998,7 +1994,7 @@ fn draw_wrapped_reply(
             ),
             Span::raw(" · "),
             Span::styled(
-                short_email(&s.counterparty_email).to_string(),
+                short_email(&s.counterparty_email),
                 theme.primary_style(),
             ),
         ]));
@@ -2543,6 +2539,51 @@ mod tests {
             rendered.contains("Computing analytics"),
             "cold-load block should render when no cached data exists: {rendered}"
         );
+    }
+
+    #[test]
+    fn short_email_short_address_unchanged() {
+        assert_eq!(short_email("me@x.com"), "me@x.com");
+    }
+
+    #[test]
+    fn short_email_long_ascii_truncates_to_18_chars() {
+        let addr = "abcdefghijklmnopqrs@example.com"; // local part > 14, total > 18
+        let result = short_email(addr);
+        assert_eq!(result.chars().count(), 18);
+    }
+
+    #[test]
+    fn short_email_long_local_part_uses_18_char_limit() {
+        // local part is 20 chars, > 14 → falls through to 18-char truncation
+        let addr = "abcdefghijklmnopqrst@x.com";
+        let result = short_email(addr);
+        assert_eq!(result.chars().count(), 18);
+    }
+
+    #[test]
+    fn short_email_short_local_part_strips_domain() {
+        // local part ≤ 14 chars → return only local part
+        let addr = "alice@verylongdomainname.example.com";
+        let result = short_email(addr);
+        assert_eq!(result, "alice");
+    }
+
+    #[test]
+    fn short_email_multibyte_does_not_panic() {
+        // 'é' is 2 bytes; 20 of them = 20 chars but 40 bytes.
+        // Byte-slicing at 18 would land mid-char; char-slicing must not panic.
+        let addr = "éééééééééééééééééééé"; // 20 × 'é'
+        let result = short_email(addr);
+        assert_eq!(result.chars().count(), 18);
+    }
+
+    #[test]
+    fn short_email_cjk_does_not_panic() {
+        // Each CJK char is 3 bytes; 20 of them → total > 18 chars, > 54 bytes.
+        let addr = "日日日日日日日日日日日日日日日日日日日日"; // 20 × '日'
+        let result = short_email(addr);
+        assert_eq!(result.chars().count(), 18);
     }
 }
 

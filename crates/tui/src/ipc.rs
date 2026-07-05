@@ -405,17 +405,14 @@ mod tests {
         let _worker = spawn_ipc_worker(sock, result_tx);
 
         // The worker should deliver the event without us sending any request.
-        let received = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            async {
-                loop {
-                    let msg = result_rx.recv().await?;
-                    if let AsyncResult::DaemonEvent(_) = msg {
-                        return Some(msg);
-                    }
+        let received = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let msg = result_rx.recv().await?;
+                if let AsyncResult::DaemonEvent(_) = msg {
+                    return Some(msg);
                 }
-            },
-        )
+            }
+        })
         .await;
         assert!(
             received.is_ok(),
@@ -452,17 +449,14 @@ mod tests {
         let _worker = spawn_ipc_worker(sock, result_tx);
 
         // Drain until we see a Reconnecting state.
-        let saw_reconnecting = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            async {
-                loop {
-                    let msg = result_rx.recv().await?;
-                    if let AsyncResult::ConnectionState(ConnectionState::Reconnecting { .. }) = msg {
-                        return Some(());
-                    }
+        let saw_reconnecting = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                let msg = result_rx.recv().await?;
+                if let AsyncResult::ConnectionState(ConnectionState::Reconnecting { .. }) = msg {
+                    return Some(());
                 }
-            },
-        )
+            }
+        })
         .await;
         assert!(
             saw_reconnecting.is_ok(),

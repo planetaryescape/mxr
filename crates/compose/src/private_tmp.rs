@@ -218,9 +218,14 @@ mod tests {
     async fn write_private_async_creates_0600_file() {
         use std::os::unix::fs::PermissionsExt;
         let dir = private_scratch_dir().expect("scratch dir");
-        let path = dir.join(format!("test-write-private-async-{}.txt", std::process::id()));
+        let path = dir.join(format!(
+            "test-write-private-async-{}.txt",
+            std::process::id()
+        ));
         let _ = std::fs::remove_file(&path);
-        write_private_async(&path, b"async hello").await.expect("write_private_async");
+        write_private_async(&path, b"async hello")
+            .await
+            .expect("write_private_async");
         let meta = std::fs::metadata(&path).expect("metadata");
         let mode = meta.permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "file mode should be 0600, got {mode:04o}");

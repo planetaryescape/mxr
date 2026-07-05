@@ -1344,8 +1344,14 @@ fn apply_removed_message_ids_clears_visual_anchor() {
     let id1 = app.mailbox.envelopes[1].id.clone();
     app.apply_removed_message_ids(&[id0, id1]);
 
-    assert!(!app.mailbox.visual_mode, "visual mode must be exited after list mutation");
-    assert!(app.mailbox.visual_anchor.is_none(), "stale anchor must be dropped after list mutation");
+    assert!(
+        !app.mailbox.visual_mode,
+        "visual mode must be exited after list mutation"
+    );
+    assert!(
+        app.mailbox.visual_anchor.is_none(),
+        "stale anchor must be dropped after list mutation"
+    );
 }
 
 #[test]
@@ -1369,6 +1375,12 @@ fn restore_removed_from_lists_clears_visual_anchor() {
     // Trigger rollback via reconciliation failure — calls restore_removed_from_lists.
     app.handle_mutation_reconciliation_failed(mid);
 
-    assert!(!app.mailbox.visual_mode, "visual mode must be exited after rollback");
-    assert!(app.mailbox.visual_anchor.is_none(), "stale anchor must be dropped after rollback");
+    assert!(
+        !app.mailbox.visual_mode,
+        "visual mode must be exited after rollback"
+    );
+    assert!(
+        app.mailbox.visual_anchor.is_none(),
+        "stale anchor must be dropped after rollback"
+    );
 }

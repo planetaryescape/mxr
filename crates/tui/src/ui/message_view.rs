@@ -1594,7 +1594,13 @@ mod tests {
             &rendered[..rendered.len().min(200)]
         );
         // Sanity check: the surrounding plain text is visible.
-        assert!(rendered.contains("before"), "expected 'before' in rendered output");
-        assert!(rendered.contains("after"), "expected 'after' in rendered output");
+        assert!(
+            rendered.contains("before"),
+            "expected 'before' in rendered output"
+        );
+        assert!(
+            rendered.contains("after"),
+            "expected 'after' in rendered output"
+        );
     }
 }

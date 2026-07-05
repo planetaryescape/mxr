@@ -710,7 +710,10 @@ mod tests {
         // File should have 0600 permissions.
         let meta = std::fs::metadata(&path).expect("metadata");
         let mode = meta.permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "draft file mode should be 0600, got {mode:04o}");
+        assert_eq!(
+            mode, 0o600,
+            "draft file mode should be 0600, got {mode:04o}"
+        );
 
         std::fs::remove_file(path).ok();
     }

@@ -199,17 +199,14 @@ pub(crate) fn submit_bug_report_write(
             chrono::Utc::now().format("%Y%m%d-%H%M%S")
         );
         let result = (|| -> Result<std::path::PathBuf, String> {
-            let dir = mxr_compose::private_tmp::private_scratch_dir()
-                .map_err(|e| e.to_string())?;
+            let dir = mxr_compose::private_tmp::private_scratch_dir().map_err(|e| e.to_string())?;
             Ok(dir.join(filename))
         })();
         let result = match result {
-            Ok(path) => {
-                mxr_compose::private_tmp::write_private_async(&path, content.as_bytes())
-                    .await
-                    .map(|_| path)
-                    .map_err(|error| error.to_string())
-            }
+            Ok(path) => mxr_compose::private_tmp::write_private_async(&path, content.as_bytes())
+                .await
+                .map(|_| path)
+                .map_err(|error| error.to_string()),
             Err(e) => Err(e),
         };
         AsyncResult::BugReportSaved(result)

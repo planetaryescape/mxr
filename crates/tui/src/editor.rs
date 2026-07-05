@@ -117,8 +117,7 @@ mod tests {
         });
 
         // Verify no leftover file in the scratch dir.
-        let scratch = mxr_compose::private_tmp::private_scratch_dir()
-            .expect("private scratch dir");
+        let scratch = mxr_compose::private_tmp::private_scratch_dir().expect("private scratch dir");
         let leftover: Vec<_> = std::fs::read_dir(&scratch)
             .into_iter()
             .flatten()

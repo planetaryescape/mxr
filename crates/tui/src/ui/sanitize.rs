@@ -34,10 +34,10 @@ pub(crate) fn strip_control_chars(input: &str) -> Cow<'_, str> {
     for c in input.chars() {
         let cp = c as u32;
         let keep = match cp {
-            0x09 | 0x0A => true,         // tab, newline — always keep
-            0x00..=0x1F => false,        // C0 controls (excl. tab/LF above)
-            0x7F => false,               // DEL
-            0x80..=0x9F => false,        // C1 controls
+            0x09 | 0x0A => true,  // tab, newline — always keep
+            0x00..=0x1F => false, // C0 controls (excl. tab/LF above)
+            0x7F => false,        // DEL
+            0x80..=0x9F => false, // C1 controls
             _ => true,
         };
         if keep {
@@ -119,7 +119,10 @@ mod tests {
     fn tabs_and_newlines_preserved() {
         let s = "col1\tcol2\nline2";
         let result = strip_control_chars(s);
-        assert!(matches!(result, Cow::Borrowed(_)), "tab+newline text is Cow::Borrowed");
+        assert!(
+            matches!(result, Cow::Borrowed(_)),
+            "tab+newline text is Cow::Borrowed"
+        );
         assert_eq!(result.as_ref(), s);
     }
 
@@ -127,7 +130,10 @@ mod tests {
     fn wide_chars_emoji_combining_preserved() {
         let s = "CJK: 你好世界 emoji: 🎉🦀 combining: café naïve";
         let result = strip_control_chars(s);
-        assert!(matches!(result, Cow::Borrowed(_)), "rich unicode should be Cow::Borrowed");
+        assert!(
+            matches!(result, Cow::Borrowed(_)),
+            "rich unicode should be Cow::Borrowed"
+        );
         assert_eq!(result.as_ref(), s);
     }
 }

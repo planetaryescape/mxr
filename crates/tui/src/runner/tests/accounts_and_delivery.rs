@@ -1487,7 +1487,9 @@ async fn auth_session_poller_retries_after_transient_error() {
 
         // First GetAuthSession: transient error
         let req = ipc_rx.recv().await.unwrap();
-        let _ = req.reply.send(Err(mxr_core::MxrError::Ipc("transient".into())));
+        let _ = req
+            .reply
+            .send(Err(mxr_core::MxrError::Ipc("transient".into())));
         tokio::time::advance(std::time::Duration::from_secs(2)).await;
 
         // Second GetAuthSession: success with terminal state
@@ -1504,7 +1506,10 @@ async fn auth_session_poller_retries_after_transient_error() {
             got_auth_session = true;
         }
     }
-    assert!(got_auth_session, "poller must deliver AuthSession after recovering from one error");
+    assert!(
+        got_auth_session,
+        "poller must deliver AuthSession after recovering from one error"
+    );
 }
 
 /// Poller receives 5 consecutive errors: AccountOperation(Err) is delivered.
@@ -1535,7 +1540,9 @@ async fn auth_session_poller_aborts_after_max_consecutive_failures() {
         for _ in 0..5u32 {
             tokio::time::advance(std::time::Duration::from_secs(2)).await;
             let req = ipc_rx.recv().await.unwrap();
-            let _ = req.reply.send(Err(mxr_core::MxrError::Ipc("persistent".into())));
+            let _ = req
+                .reply
+                .send(Err(mxr_core::MxrError::Ipc("persistent".into())));
         }
     });
 
@@ -1547,5 +1554,8 @@ async fn auth_session_poller_aborts_after_max_consecutive_failures() {
             got_account_op_err = true;
         }
     }
-    assert!(got_account_op_err, "poller must deliver AccountOperation(Err) after 5 consecutive failures");
+    assert!(
+        got_account_op_err,
+        "poller must deliver AccountOperation(Err) after 5 consecutive failures"
+    );
 }

@@ -1883,10 +1883,7 @@ fn draw_wrapped_contacts(
                     format!("most ghosted · {} unanswered", g.inbound_count),
                     theme.muted_style(),
                 )),
-                Line::from(Span::styled(
-                    short_email(&g.email),
-                    theme.secondary_style(),
-                )),
+                Line::from(Span::styled(short_email(&g.email), theme.secondary_style())),
             ];
             frame.render_widget(Paragraph::new(footer), chunks[4]);
         }
@@ -1979,10 +1976,7 @@ fn draw_wrapped_reply(
                 theme.success_style().add_modifier(Modifier::BOLD),
             ),
             Span::raw(" · "),
-            Span::styled(
-                short_email(&f.counterparty_email),
-                theme.primary_style(),
-            ),
+            Span::styled(short_email(&f.counterparty_email), theme.primary_style()),
         ]));
     }
     if let Some(s) = reply.slowest.as_ref() {
@@ -1993,10 +1987,7 @@ fn draw_wrapped_reply(
                 theme.error_style().add_modifier(Modifier::BOLD),
             ),
             Span::raw(" · "),
-            Span::styled(
-                short_email(&s.counterparty_email),
-                theme.primary_style(),
-            ),
+            Span::styled(short_email(&s.counterparty_email), theme.primary_style()),
         ]));
     }
     if extremes.is_empty() {

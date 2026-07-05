@@ -4,6 +4,7 @@ use crate::app::{
 };
 use crate::terminal_images::{HtmlImageEntry, HtmlImageRenderState};
 use crate::theme::Theme;
+use crate::ui::sanitize::strip_control_chars;
 use html2text::render::RichAnnotation;
 use mxr_core::id::MessageId;
 use mxr_core::types::{CalendarMetadata, Envelope, HtmlImageAssetStatus, HtmlImageSourceKind};
@@ -574,6 +575,10 @@ fn process_body_lines(
     signature_expanded: bool,
     reader_applied: bool,
 ) -> Vec<Line<'static>> {
+    // Sanitize at the render boundary: strip C0/DEL/C1 control characters
+    // before any line is turned into a ratatui Span. Keeps \n and \t.
+    let raw = strip_control_chars(raw);
+    let raw = raw.as_ref();
     if !reader_applied {
         return raw
             .lines()
@@ -1534,5 +1539,62 @@ mod tests {
         assert!(rendered.contains("requested"));
         assert!(rendered.contains("Warn:"));
         assert!(rendered.contains("organizer changed"));
+    }
+
+    /// Step 1: verify ratatui neutralizes raw ESC bytes from mail content.
+    ///
+    /// Renders a body containing ANSI CSI, OSC-BEL, and OSC-ST sequences.
+    /// The rendered buffer must contain no ESC (\x1b) byte — either because
+    /// ratatui strips it (fast path) or because our sanitizer does (after
+    /// Steps 2-3).
+    #[test]
+    fn body_escape_sequences_do_not_survive_render() {
+        let poisoned_body =
+            "before \x1b[31mred\x1b[0m \x1b]0;title\x07 \x1b]8;;http://x\x1b\\ after";
+        let block = ThreadMessageBlock {
+            envelope: envelope(),
+            body_state: BodyViewState::ready(
+                poisoned_body.into(),
+                poisoned_body.into(),
+                BodySource::Plain,
+                BodyViewMetadata {
+                    mode: BodyViewMode::Text,
+                    ..BodyViewMetadata::default()
+                },
+            ),
+            labels: vec![],
+            attachments: vec![],
+            selected: true,
+            bulk_selected: false,
+            has_unsubscribe: false,
+            signature_expanded: false,
+            assets_loading: false,
+        };
+
+        let rendered = render_to_string(80, 10, |frame| {
+            let mut html_images = HashMap::new();
+            draw(
+                frame,
+                Rect::new(0, 0, 80, 10),
+                &[block],
+                DrawOptions {
+                    summary: None,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
+            );
+        });
+
+        // No raw ESC byte must appear in the rendered buffer.
+        assert!(
+            !rendered.contains('\x1b'),
+            "ESC byte survived render — terminal injection possible. Buffer: {:?}",
+            &rendered[..rendered.len().min(200)]
+        );
+        // Sanity check: the surrounding plain text is visible.
+        assert!(rendered.contains("before"), "expected 'before' in rendered output");
+        assert!(rendered.contains("after"), "expected 'after' in rendered output");
     }
 }

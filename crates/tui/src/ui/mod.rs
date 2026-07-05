@@ -24,6 +24,7 @@ pub mod owed_lens;
 pub mod platform_modal;
 pub mod reply_queue_modal;
 pub mod rules_page;
+pub mod sanitize;
 pub mod save_attachment_modal;
 pub mod saved_search_form;
 pub mod saved_search_tabs;

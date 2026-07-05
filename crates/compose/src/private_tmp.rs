@@ -50,10 +50,10 @@ fn private_scratch_dir_unix() -> std::io::Result<PathBuf> {
     // pre-place paths under a directory our mail-content files use).
     let meta = std::fs::metadata(&dir)?;
     if !meta.is_dir() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("{} exists but is not a directory", dir.display()),
-        ));
+        return Err(std::io::Error::other(format!(
+            "{} exists but is not a directory",
+            dir.display()
+        )));
     }
     use std::os::unix::fs::MetadataExt;
     if meta.uid() != uid {

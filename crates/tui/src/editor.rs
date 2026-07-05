@@ -85,10 +85,31 @@ pub(crate) fn open_temp_text_buffer(name: &str, content: &str) -> Result<String,
 
     let status = status?;
     if !status.success() {
-        return Ok(format!("Diagnostics detail open cancelled"));
+        return Ok("Diagnostics detail open cancelled".into());
     }
 
-    Ok(format!("Opened diagnostics details"))
+    Ok("Opened diagnostics details".into())
+}
+
+pub(crate) fn open_diagnostics_pane_details(
+    state: &app::DiagnosticsPageState,
+    pane: app::DiagnosticsPaneKind,
+) -> Result<String, MxrError> {
+    if pane == app::DiagnosticsPaneKind::Logs {
+        return open_tui_log_file();
+    }
+
+    let name = match pane {
+        app::DiagnosticsPaneKind::Status => "doctor",
+        app::DiagnosticsPaneKind::Data => "storage",
+        app::DiagnosticsPaneKind::Sync => "sync-health",
+        app::DiagnosticsPaneKind::Events => "events",
+        app::DiagnosticsPaneKind::Logs => "logs",
+        app::DiagnosticsPaneKind::Jobs => "jobs",
+        app::DiagnosticsPaneKind::Activity => "activity",
+    };
+    let content = crate::ui::diagnostics_page::pane_details_text(state, pane);
+    open_temp_text_buffer(name, &content)
 }
 
 #[cfg(test)]
@@ -133,25 +154,4 @@ mod tests {
             "expected no leftover test-diag files, found: {leftover:?}"
         );
     }
-}
-
-pub(crate) fn open_diagnostics_pane_details(
-    state: &app::DiagnosticsPageState,
-    pane: app::DiagnosticsPaneKind,
-) -> Result<String, MxrError> {
-    if pane == app::DiagnosticsPaneKind::Logs {
-        return open_tui_log_file();
-    }
-
-    let name = match pane {
-        app::DiagnosticsPaneKind::Status => "doctor",
-        app::DiagnosticsPaneKind::Data => "storage",
-        app::DiagnosticsPaneKind::Sync => "sync-health",
-        app::DiagnosticsPaneKind::Events => "events",
-        app::DiagnosticsPaneKind::Logs => "logs",
-        app::DiagnosticsPaneKind::Jobs => "jobs",
-        app::DiagnosticsPaneKind::Activity => "activity",
-    };
-    let content = crate::ui::diagnostics_page::pane_details_text(state, pane);
-    open_temp_text_buffer(name, &content)
 }

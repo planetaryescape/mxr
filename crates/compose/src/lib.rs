@@ -11,6 +11,7 @@ pub mod editor;
 pub mod email;
 pub mod frontmatter;
 pub mod parse;
+pub mod private_tmp;
 pub mod render;
 
 use crate::frontmatter::{ComposeError, ComposeFrontmatter};
@@ -59,7 +60,7 @@ pub fn create_draft_file_with_signature(
     signature: Option<&ComposeSignature>,
 ) -> Result<(PathBuf, usize), ComposeError> {
     let (path, cursor_line, content) = build_draft_file(kind, from, signature)?;
-    std::fs::write(&path, &content)?;
+    private_tmp::write_private(&path, content.as_bytes())?;
     Ok((path, cursor_line))
 }
 
@@ -92,7 +93,7 @@ pub async fn create_draft_file_async_with_signature(
     signature: Option<&ComposeSignature>,
 ) -> Result<(PathBuf, usize), ComposeError> {
     let (path, cursor_line, content) = build_draft_file(kind, from, signature)?;
-    tokio::fs::write(&path, &content).await?;
+    private_tmp::write_private_async(&path, content.as_bytes()).await?;
     Ok((path, cursor_line))
 }
 
@@ -134,7 +135,7 @@ fn build_draft_file(
     signature: Option<&ComposeSignature>,
 ) -> Result<(PathBuf, usize, String), ComposeError> {
     let draft_id = Uuid::now_v7();
-    let path = std::env::temp_dir().join(format!("mxr-draft-{draft_id}.md"));
+    let path = private_tmp::private_scratch_dir()?.join(format!("mxr-draft-{draft_id}.md"));
 
     let (mut fm, mut body, context) = match kind {
         ComposeKind::New { to, subject } => {
@@ -681,5 +682,36 @@ mod tests {
 
         delete_draft_file_async(&path).await.unwrap();
         assert!(!path.exists());
+    }
+
+    /// Plan 005: draft files land in the private scratch dir with 0600 perms.
+    #[cfg(unix)]
+    #[test]
+    fn create_draft_file_with_signature_uses_private_dir_and_0600_perms() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let scratch = private_tmp::private_scratch_dir().expect("private scratch dir");
+        let (path, _cursor) = create_draft_file_with_signature(
+            ComposeKind::New {
+                to: "alice@example.com".into(),
+                subject: "Test".into(),
+            },
+            "me@example.com",
+            None,
+        )
+        .unwrap();
+
+        // File should be inside the private scratch dir.
+        assert!(
+            path.starts_with(&scratch),
+            "draft path {path:?} should be inside private scratch dir {scratch:?}"
+        );
+
+        // File should have 0600 permissions.
+        let meta = std::fs::metadata(&path).expect("metadata");
+        let mode = meta.permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "draft file mode should be 0600, got {mode:04o}");
+
+        std::fs::remove_file(path).ok();
     }
 }

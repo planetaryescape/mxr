@@ -46,5 +46,6 @@ unicode-width = { workspace = true }
 insta = { workspace = true }
 mxr-test-support = { workspace = true }
 pretty_assertions = { workspace = true }
+temp-env = "0.3"
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }

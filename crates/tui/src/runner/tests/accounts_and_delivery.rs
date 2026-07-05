@@ -399,8 +399,7 @@ async fn unchanged_editor_result_disables_send_actions() {
         invite_reply: None,
     })
     .await
-    .unwrap()
-    .expect("pending send should exist");
+    .unwrap();
 
     assert_eq!(pending.mode, PendingSendMode::Unchanged);
 
@@ -782,8 +781,7 @@ async fn blank_recipient_draft_opens_draft_only_confirmation() {
         invite_reply: None,
     })
     .await
-    .unwrap()
-    .expect("pending send should exist");
+    .unwrap();
 
     assert_eq!(pending.mode, PendingSendMode::DraftOnlyNoRecipients);
 

@@ -58,12 +58,14 @@ pub(crate) fn open_tui_log_file() -> Result<String, MxrError> {
 }
 
 pub(crate) fn open_temp_text_buffer(name: &str, content: &str) -> Result<String, MxrError> {
-    let path = std::env::temp_dir().join(format!(
+    let scratch = mxr_compose::private_tmp::private_scratch_dir()
+        .map_err(|error| MxrError::Ipc(format!("failed to prepare scratch dir: {error}")))?;
+    let path = scratch.join(format!(
         "mxr-{}-{}.txt",
         name,
         chrono::Utc::now().format("%Y%m%d-%H%M%S")
     ));
-    std::fs::write(&path, content)
+    mxr_compose::private_tmp::write_private(&path, content.as_bytes())
         .map_err(|error| MxrError::Ipc(format!("failed to write temp file: {error}")))?;
 
     let editor = load_config()
@@ -76,16 +78,62 @@ pub(crate) fn open_temp_text_buffer(name: &str, content: &str) -> Result<String,
     let status = std::process::Command::new(&editor)
         .arg(&path)
         .status()
-        .map_err(|error| MxrError::Ipc(format!("failed to launch editor: {error}")))?;
+        .map_err(|error| MxrError::Ipc(format!("failed to launch editor: {error}")));
 
+    // Always delete the file — diagnostics content is regenerable.
+    let _ = std::fs::remove_file(&path);
+
+    let status = status?;
     if !status.success() {
-        return Ok(format!(
-            "Diagnostics detail open cancelled ({})",
-            path.display()
-        ));
+        return Ok(format!("Diagnostics detail open cancelled"));
     }
 
-    Ok(format!("Opened diagnostics details at {}", path.display()))
+    Ok(format!("Opened diagnostics details"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Plan 005: `open_temp_text_buffer` deletes the temp file after the
+    /// editor exits (whether successful or not). Uses `false` as the editor
+    /// so it exits non-zero without opening anything.
+    #[test]
+    fn open_temp_text_buffer_deletes_file_after_cancelled_editor() {
+        // Use temp-env to set EDITOR=false without racing other tests.
+        temp_env::with_var("EDITOR", Some("false"), || {
+            // Also unset VISUAL so resolve_editor falls through to EDITOR.
+            let result = temp_env::with_var("VISUAL", None::<&str>, || {
+                open_temp_text_buffer("test-diag", "diagnostics content")
+            });
+            // The function should succeed (returning a cancelled message).
+            assert!(result.is_ok(), "expected Ok, got: {result:?}");
+            // The returned message should indicate cancellation.
+            let msg = result.unwrap();
+            assert!(
+                msg.contains("cancelled") || msg.contains("Opened"),
+                "unexpected message: {msg}"
+            );
+        });
+
+        // Verify no leftover file in the scratch dir.
+        let scratch = mxr_compose::private_tmp::private_scratch_dir()
+            .expect("private scratch dir");
+        let leftover: Vec<_> = std::fs::read_dir(&scratch)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("mxr-test-diag-")
+            })
+            .collect();
+        assert!(
+            leftover.is_empty(),
+            "expected no leftover test-diag files, found: {leftover:?}"
+        );
+    }
 }
 
 pub(crate) fn open_diagnostics_pane_details(

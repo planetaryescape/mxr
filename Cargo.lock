@@ -4743,6 +4743,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shellexpand",
+ "temp-env",
  "tempfile",
  "throbber-widgets-tui",
  "tokio",

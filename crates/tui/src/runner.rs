@@ -114,11 +114,15 @@ async fn spawn_outlook_auth_session(
     let session_id = session.session_id.clone();
     let poll_interval = std::time::Duration::from_secs(session.poll_interval_secs.unwrap_or(5));
 
+    const MAX_CONSECUTIVE_POLL_FAILURES: u32 = 5;
+    let mut consecutive_failures = 0u32;
+
     loop {
         tokio::time::sleep(poll_interval).await;
 
         match ipc_get_auth_session(bg, session_id.clone()).await {
             Ok(updated) => {
+                consecutive_failures = 0;
                 let done = is_terminal(&updated.state);
                 let _ = result_tx.send(AsyncResult::AuthSession(updated));
                 if done {
@@ -126,8 +130,12 @@ async fn spawn_outlook_auth_session(
                 }
             }
             Err(e) => {
-                let _ = result_tx.send(AsyncResult::AccountOperation(Err(e)));
-                break;
+                consecutive_failures += 1;
+                if consecutive_failures >= MAX_CONSECUTIVE_POLL_FAILURES {
+                    let _ = result_tx.send(AsyncResult::AccountOperation(Err(e)));
+                    break;
+                }
+                tracing::debug!(error = %e, consecutive_failures, "auth session poll failed; retrying");
             }
         }
     }

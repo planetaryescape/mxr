@@ -1,5 +1,6 @@
 use crate::app::{ActivePane, MailListMode, MailListRow};
 use crate::theme::Theme;
+use crate::ui::sanitize::strip_control_chars;
 use chrono::{Datelike, Local, Utc};
 use mxr_core::id::MessageId;
 use mxr_core::types::MessageFlags;
@@ -228,8 +229,13 @@ fn build_row<'a>(
         triage_style(row.triage_verdict.as_deref(), row_fg, theme),
     ));
 
+    // Sanitize mail-controlled display fields at the render boundary.
+    let safe_subject = strip_control_chars(&env.subject);
+    let safe_snippet = strip_control_chars(&env.snippet);
+
     // Sender (with thread count badge)
-    let (sender_text, thread_count) = sender_parts(row, view.mode);
+    let (sender_text_raw, thread_count) = sender_parts(row, view.mode);
+    let sender_text = strip_control_chars(&sender_text_raw).into_owned();
     let sender_spans: Vec<Span> = if let Some(count) = thread_count {
         vec![
             Span::styled(sender_text, Style::default().fg(row_secondary_fg)),
@@ -254,8 +260,8 @@ fn build_row<'a>(
     // Remaining width goes to trailing snippet after " · "; format_subject_line
     // allocates subject first, then snippet when there's room.
     let (subject_text, snippet_preview) = format_subject_line(
-        &env.subject,
-        &env.snippet,
+        safe_subject.as_ref(),
+        safe_snippet.as_ref(),
         subject_max_width.saturating_sub(chip_budget),
     );
     let mut subject_chunks: Vec<Span> = vec![Span::styled(
@@ -1057,5 +1063,52 @@ mod tests {
         });
 
         assert!(rendered.contains("Loading selected account..."));
+    }
+
+    /// Subject containing an ANSI erase-display sequence must be stripped
+    /// before rendering. The literal printable text of the subject must still
+    /// appear in the output; no ESC byte may survive.
+    #[test]
+    fn subject_escape_sequence_stripped_in_row() {
+        use mxr_test_support::render_to_string;
+        use std::collections::HashSet;
+
+        let mut row = row(1, false);
+        // ANSI erase-display (CSI 2J) embedded in the subject
+        row.representative.subject = "Meeting\x1b[2J notes".into();
+        row.representative.snippet = String::new();
+        let rows = vec![row];
+
+        let rendered = render_to_string(120, 6, |frame| {
+            draw_view(
+                frame,
+                Rect::new(0, 0, 120, 6),
+                &MailListView {
+                    rows: &rows,
+                    selected_index: 0,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MailList,
+                    title: "Inbox",
+                    selected_set: &HashSet::new(),
+                    mode: MailListMode::Threads,
+                    loading_message: None,
+                    loading_throbber: None,
+                },
+                &Theme::default(),
+            );
+        });
+
+        assert!(
+            !rendered.contains('\x1b'),
+            "ESC byte must not survive to the rendered row; got:\n{rendered:?}"
+        );
+        assert!(
+            rendered.contains("Meeting"),
+            "printable subject text must still appear; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("notes"),
+            "text after the sequence must still appear; got:\n{rendered}"
+        );
     }
 }

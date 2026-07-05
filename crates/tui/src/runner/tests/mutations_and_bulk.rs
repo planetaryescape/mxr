@@ -1327,3 +1327,60 @@ fn attachment_list_opens_modal_for_current_message() {
         "report.pdf"
     );
 }
+
+#[test]
+fn apply_removed_message_ids_clears_visual_anchor() {
+    let mut app = App::new();
+    app.mailbox.envelopes = make_test_envelopes(5);
+    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+
+    // Enter visual mode with an anchor at index 2.
+    app.mailbox.visual_mode = true;
+    app.mailbox.visual_anchor = Some(2);
+    app.mailbox.selected_index = 4;
+
+    // Remove the first two rows — indices shift, anchor is now stale.
+    let id0 = app.mailbox.envelopes[0].id.clone();
+    let id1 = app.mailbox.envelopes[1].id.clone();
+    app.apply_removed_message_ids(&[id0, id1]);
+
+    assert!(
+        !app.mailbox.visual_mode,
+        "visual mode must be exited after list mutation"
+    );
+    assert!(
+        app.mailbox.visual_anchor.is_none(),
+        "stale anchor must be dropped after list mutation"
+    );
+}
+
+#[test]
+fn restore_removed_from_lists_clears_visual_anchor() {
+    let mut app = App::new();
+    let envelopes = make_test_envelopes(3);
+    app.mailbox.envelopes = envelopes.clone();
+    app.mailbox.all_envelopes = envelopes.clone();
+
+    // Simulate a snapshot for the rollback path.
+    let mid = app.mutation_id_generator.next_id();
+    app.mutation_snapshots.insert(
+        mid,
+        crate::app::MutationSnapshot::RemovedFromLists(envelopes.clone()),
+    );
+
+    // Enter visual mode.
+    app.mailbox.visual_mode = true;
+    app.mailbox.visual_anchor = Some(1);
+
+    // Trigger rollback via reconciliation failure — calls restore_removed_from_lists.
+    app.handle_mutation_reconciliation_failed(mid);
+
+    assert!(
+        !app.mailbox.visual_mode,
+        "visual mode must be exited after rollback"
+    );
+    assert!(
+        app.mailbox.visual_anchor.is_none(),
+        "stale anchor must be dropped after rollback"
+    );
+}

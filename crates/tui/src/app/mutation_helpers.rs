@@ -655,6 +655,12 @@ impl App {
                 self.ensure_search_visible();
             }
         }
+
+        // Visual-mode anchor is index-based; list mutations shift indices so
+        // the anchor is now stale. Exit visual mode and drop the anchor while
+        // keeping selected_set (MessageId-keyed, still valid).
+        self.mailbox.visual_mode = false;
+        self.mailbox.visual_anchor = None;
     }
 
     /// Full envelope clone for optimistic list-removal rollback (same lookup
@@ -714,6 +720,12 @@ impl App {
         } else if self.screen == Screen::Search && self.search_row_count() > 0 {
             self.ensure_search_visible();
         }
+
+        // Visual-mode anchor is index-based; restored/re-sorted rows shift
+        // indices so the anchor is now stale. Exit visual mode and drop the
+        // anchor while keeping selected_set (MessageId-keyed, still valid).
+        self.mailbox.visual_mode = false;
+        self.mailbox.visual_anchor = None;
     }
 
     pub(super) fn message_flags(&self, message_id: &MessageId) -> Option<MessageFlags> {

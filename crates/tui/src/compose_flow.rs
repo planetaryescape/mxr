@@ -212,14 +212,19 @@ pub(crate) async fn handle_compose_action(
             .await
             .map_err(|e| MxrError::Ipc(e.to_string()))?;
 
+    let initial_content = match mxr_compose::read_draft_file_async(&path).await {
+        Ok(content) => content,
+        Err(e) => {
+            let _ = mxr_compose::delete_draft_file_async(&path).await;
+            return Err(MxrError::Ipc(e.to_string()));
+        }
+    };
     Ok(ComposeReadyData {
         account_id,
         intent,
-        draft_path: path.clone(),
+        draft_path: path,
         cursor_line,
-        initial_content: mxr_compose::read_draft_file_async(&path)
-            .await
-            .map_err(|e| MxrError::Ipc(e.to_string()))?,
+        initial_content,
         invite_reply,
     })
 }
@@ -365,7 +370,7 @@ impl ComposeValidationError {
 
 pub(crate) async fn pending_send_from_edited_draft(
     data: &ComposeReadyData,
-) -> Result<Option<PendingSend>, ComposeValidationError> {
+) -> Result<PendingSend, ComposeValidationError> {
     let content = mxr_compose::read_draft_file_async(&data.draft_path)
         .await
         .map_err(|e| ComposeValidationError {
@@ -414,7 +419,7 @@ pub(crate) async fn pending_send_from_edited_draft(
         });
     };
 
-    Ok(Some(PendingSend {
+    Ok(PendingSend {
         account_id: data.account_id.clone(),
         intent: if fm.intent == mxr_core::DraftIntent::New {
             data.intent
@@ -430,7 +435,7 @@ pub(crate) async fn pending_send_from_edited_draft(
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: data.invite_reply.clone(),
-    }))
+    })
 }
 
 pub(crate) async fn handle_compose_editor_status(
@@ -441,7 +446,7 @@ pub(crate) async fn handle_compose_editor_status(
 ) {
     match status {
         Ok(s) if s.success() => match pending_send_from_edited_draft(data).await {
-            Ok(Some(mut pending)) => {
+            Ok(mut pending) => {
                 // Run the pre-send safety check before showing the
                 // modal. A failed IPC (daemon down, worker dropped)
                 // is non-fatal: the modal still opens with
@@ -451,7 +456,6 @@ pub(crate) async fn handle_compose_editor_status(
                 stamp_suggestions(&mut pending, bg).await;
                 app.compose.pending_send_confirm = Some(pending);
             }
-            Ok(None) => {}
             Err(error) => {
                 app.report_error(error.modal_title(), error.modal_detail());
             }
@@ -461,6 +465,7 @@ pub(crate) async fn handle_compose_editor_status(
             let _ = mxr_compose::delete_draft_file_async(&data.draft_path).await;
         }
         Err(error) => {
+            app.schedule_draft_cleanup(data.draft_path.clone());
             app.report_error(
                 "Compose Failed",
                 format!("Failed to launch editor: {error}"),
@@ -689,5 +694,79 @@ mod tests {
         assert!(ready.initial_content.contains("subject: Lunch"));
 
         let _ = std::fs::remove_file(ready.draft_path);
+    }
+
+    /// Plan 004 / Step 4a: editor-launch failure schedules the draft
+    /// file for cleanup so the file is not stranded on disk.
+    #[tokio::test]
+    async fn editor_launch_failure_schedules_draft_cleanup() {
+        use crate::app::App;
+        use crate::async_result::ComposeReadyData;
+
+        let temp = std::env::temp_dir().join(format!(
+            "mxr-compose-cleanup-test-{}.md",
+            std::process::id()
+        ));
+        std::fs::write(&temp, "---\n").unwrap();
+
+        let data = ComposeReadyData {
+            account_id: mxr_core::AccountId::new(),
+            intent: mxr_core::DraftIntent::New,
+            draft_path: temp.clone(),
+            cursor_line: 1,
+            initial_content: String::new(),
+            invite_reply: None,
+        };
+        let mut app = App::new();
+        let (bg, _bg_rx) = mpsc::unbounded_channel::<IpcRequest>();
+
+        super::handle_compose_editor_status(
+            &mut app,
+            &data,
+            Err(std::io::Error::other("boom")),
+            &bg,
+        )
+        .await;
+
+        let cleanup_paths = app.take_pending_draft_cleanup();
+        assert!(
+            cleanup_paths.contains(&temp),
+            "expected {temp:?} in cleanup queue, got: {cleanup_paths:?}"
+        );
+
+        let _ = std::fs::remove_file(&temp);
+    }
+
+    /// Plan 004 / Step 4b: editor non-zero exit (discard) deletes the
+    /// draft file immediately.
+    #[tokio::test]
+    async fn editor_discard_deletes_draft_file() {
+        use crate::app::App;
+        use crate::async_result::ComposeReadyData;
+        use std::os::unix::process::ExitStatusExt;
+
+        let temp = std::env::temp_dir().join(format!(
+            "mxr-compose-discard-test-{}.md",
+            std::process::id()
+        ));
+        std::fs::write(&temp, "---\n").unwrap();
+        assert!(temp.exists(), "test setup: file must exist before discard");
+
+        let data = ComposeReadyData {
+            account_id: mxr_core::AccountId::new(),
+            intent: mxr_core::DraftIntent::New,
+            draft_path: temp.clone(),
+            cursor_line: 1,
+            initial_content: String::new(),
+            invite_reply: None,
+        };
+        let mut app = App::new();
+        let (bg, _bg_rx) = mpsc::unbounded_channel::<IpcRequest>();
+
+        // non-zero exit status = discard
+        let discard_status = std::process::ExitStatus::from_raw(1 << 8);
+        super::handle_compose_editor_status(&mut app, &data, Ok(discard_status), &bg).await;
+
+        assert!(!temp.exists(), "draft file should be deleted after discard");
     }
 }

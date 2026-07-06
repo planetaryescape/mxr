@@ -666,8 +666,13 @@ pub async fn drafts_edit(draft_id: String, account: Option<String>) -> anyhow::R
     let from = resolve_account_email(&mut client, &draft.account_id).await?;
 
     let content = mxr_compose::draft_codec::draft_to_compose_file(&draft, &from)?;
-    let path = std::env::temp_dir().join(format!("mxr-draft-edit-{}.md", draft.id));
-    std::fs::write(&path, &content)?;
+    // A draft is unsent mail content; write it to the per-user private 0700
+    // scratch dir with 0600 perms rather than the world-readable temp root.
+    let path = mxr_compose::private_tmp::private_scratch_dir()?
+        .join(format!("mxr-draft-edit-{}.md", draft.id));
+    // Clear any leftover from a prior aborted edit so the O_EXCL write succeeds.
+    let _ = std::fs::remove_file(&path);
+    mxr_compose::private_tmp::write_private(&path, content.as_bytes())?;
 
     let editor = mxr_compose::editor::resolve_editor(None);
     mxr_compose::editor::spawn_editor(&editor, &path, None).await?;

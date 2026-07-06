@@ -203,6 +203,11 @@ impl App {
             | Action::CloseSnippetsModal
             | Action::SnippetsModalNext
             | Action::SnippetsModalPrev
+            | Action::OpenStoredDrafts
+            | Action::CloseStoredDraftsModal
+            | Action::StoredDraftsModalNext
+            | Action::StoredDraftsModalPrev
+            | Action::StoredDraftsModalEdit
             | Action::ClearFilter
             | Action::OpenMessageView
             | Action::CloseMessageView

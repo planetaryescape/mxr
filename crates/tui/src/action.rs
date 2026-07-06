@@ -176,6 +176,19 @@ pub enum Action {
     SnippetsModalNext,
     /// Move cursor to the previous snippet in the modal list.
     SnippetsModalPrev,
+    /// Open the stored-drafts browser modal (locally-saved drafts,
+    /// across all accounts, edit-in-place via `$EDITOR`).
+    OpenStoredDrafts,
+    /// Close the stored-drafts modal (Esc).
+    CloseStoredDraftsModal,
+    /// Move cursor to the next draft in the modal list.
+    StoredDraftsModalNext,
+    /// Move cursor to the previous draft in the modal list.
+    StoredDraftsModalPrev,
+    /// Edit the selected stored draft in place via `$EDITOR`. The result
+    /// round-trips through `Request::UpdateDraft`, preserving the
+    /// draft's id instead of minting a new one.
+    StoredDraftsModalEdit,
     ClearFilter,
     RefreshRules,
     ToggleRuleEnabled,

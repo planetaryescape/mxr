@@ -171,6 +171,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "rebuild_user_voice" => Some(Action::RebuildUserVoice),
         "open_commitments" | "commitments" => Some(Action::OpenCommitments),
         "open_activity" | "activity" | "open_activity_screen" => Some(Action::OpenActivityScreen),
+        "open_stored_drafts" => Some(Action::OpenStoredDrafts),
         "close_activity_modal" => Some(Action::CloseActivityModal),
         "activity_next" => Some(Action::ActivityModalNext),
         "activity_prev" => Some(Action::ActivityModalPrev),
@@ -491,6 +492,7 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("gD", "draft_new_for_sender"),
     ("gC", "open_commitments"),
     ("gV", "open_voice_profile"),
+    ("gE", "open_stored_drafts"),
 ];
 
 // Message view defaults

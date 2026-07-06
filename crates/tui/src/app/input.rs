@@ -415,6 +415,16 @@ impl App {
             };
         }
 
+        if self.modals.drafts.visible {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseStoredDraftsModal),
+                (KeyCode::Down | KeyCode::Char('j'), _) => Some(Action::StoredDraftsModalNext),
+                (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::StoredDraftsModalPrev),
+                (KeyCode::Enter | KeyCode::Char('e'), _) => Some(Action::StoredDraftsModalEdit),
+                _ => None,
+            };
+        }
+
         if self.modals.screener.visible {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc, _) => Some(Action::CloseScreenerModal),

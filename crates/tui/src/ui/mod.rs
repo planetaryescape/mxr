@@ -12,6 +12,7 @@ pub mod compose_picker;
 pub mod deliveries_page;
 pub mod diagnostics_page;
 pub mod draft_options_modal;
+pub mod drafts_modal;
 pub mod error_modal;
 pub mod expert_modal;
 pub mod help_modal;

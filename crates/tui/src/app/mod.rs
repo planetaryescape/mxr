@@ -244,6 +244,15 @@ pub struct App {
     /// Set when the reply-later queue modal opens; the runtime drains
     /// this flag and dispatches a `Request::ListReplyQueue`.
     pub pending_reply_queue_refresh: bool,
+    /// Set when the stored-drafts modal opens; the runtime drains this
+    /// flag and dispatches a `Request::ListDrafts`.
+    pub pending_drafts_refresh: bool,
+    /// Set when the user presses edit on a selected stored draft. The
+    /// runtime resolves the sending account's email, renders the draft
+    /// to an editor-ready compose file in the private scratch dir, and
+    /// reports back via `AsyncResult::DraftEditReady` so `$EDITOR` can
+    /// be opened on it.
+    pub pending_draft_edit_request: Option<mxr_core::Draft>,
     /// Set when the Deliveries screen opens or its filter changes; the
     /// runtime drains this and dispatches a `Request::ListDeliveries`.
     pub pending_deliveries_refresh: bool,
@@ -387,6 +396,8 @@ impl App {
             pending_connection_retry: false,
             pending_snippets_refresh: false,
             pending_reply_queue_refresh: false,
+            pending_drafts_refresh: false,
+            pending_draft_edit_request: None,
             pending_deliveries_refresh: false,
             pending_delivery_resolve: None,
             pending_delivery_dismiss: None,

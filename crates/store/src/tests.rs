@@ -960,6 +960,64 @@ async fn draft_crud() {
 }
 
 #[tokio::test]
+async fn update_draft_edits_in_place_and_preserves_created_at() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    let created = chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+    let draft = Draft {
+        id: DraftId::new(),
+        account_id: account.id.clone(),
+        reply_headers: None,
+        intent: DraftIntent::New,
+        to: vec![Address {
+            name: None,
+            email: "bob@example.com".to_string(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Original".to_string(),
+        body_markdown: "first".to_string(),
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: created,
+        updated_at: created,
+    };
+    store.insert_draft(&draft).await.unwrap();
+
+    // Edit in place: same id, new content, later updated_at.
+    let later = chrono::DateTime::from_timestamp(1_700_000_500, 0).unwrap();
+    let edited = Draft {
+        subject: "Edited".to_string(),
+        body_markdown: "second".to_string(),
+        updated_at: later,
+        ..draft.clone()
+    };
+    let updated = store.update_draft(&edited).await.unwrap();
+    assert!(updated, "an editable draft should report a row updated");
+
+    // Same id still there (no new row), content changed, created_at preserved.
+    let drafts = store.list_drafts(&account.id).await.unwrap();
+    assert_eq!(drafts.len(), 1);
+    let stored = store.get_draft(&draft.id).await.unwrap().unwrap();
+    assert_eq!(stored.subject, "Edited");
+    assert_eq!(stored.body_markdown, "second");
+    assert_eq!(
+        stored.created_at, created,
+        "created_at must survive the edit"
+    );
+    assert_eq!(stored.updated_at, later);
+
+    // Updating a non-existent draft reports no row touched.
+    let ghost = Draft {
+        id: DraftId::new(),
+        ..edited
+    };
+    assert!(!store.update_draft(&ghost).await.unwrap());
+}
+
+#[tokio::test]
 async fn snooze_lifecycle() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();

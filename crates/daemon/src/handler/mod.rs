@@ -1257,6 +1257,8 @@ async fn dispatch(state: &Arc<AppState>, source: ClientKind, req: &Request) -> R
             commitments_extract::extract_request(state, draft).await
         }
         Request::DeleteDraft { draft_id } => mutations::delete_draft(state, draft_id).await,
+        Request::GetDraft { draft_id } => mutations::get_draft(state, draft_id).await,
+        Request::UpdateDraft { draft } => mutations::update_draft(state, draft).await,
         Request::SaveDraftToServer { draft } => mutations::save_draft_to_server(state, draft).await,
         Request::Unsubscribe { message_id } => mutations::unsubscribe(state, message_id).await,
         Request::UnsubscribePurge {
@@ -1594,6 +1596,7 @@ async fn request_account_scope(
         } => envelope_account_scope(state, std::slice::from_ref(message_id)).await,
         Request::SendStoredDraft { draft_id, .. }
         | Request::DeleteDraft { draft_id }
+        | Request::GetDraft { draft_id }
         | Request::ScheduleSend { draft_id, .. }
         | Request::CancelScheduledSend { draft_id } => draft_account_scope(state, draft_id).await,
         Request::DraftRefine { draft_id, .. } => draft_account_scope(state, draft_id).await,
@@ -1815,6 +1818,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListCadenceDrift { .. }
         | Request::ListDrafts
         | Request::ListOrphanedDrafts
+        | Request::GetDraft { .. }
         | Request::ExportThread { .. }
         | Request::ExportSearch { .. }
         | Request::GetStatus
@@ -1828,8 +1832,10 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListSavedActivityFilters
         | Request::GetSavedActivityFilter { .. } => Read,
 
-        // --- DraftOnly: local draft create/delete ---
-        Request::SaveDraft { .. } | Request::DeleteDraft { .. } => DraftOnly,
+        // --- DraftOnly: local draft create/update/delete ---
+        Request::SaveDraft { .. } | Request::UpdateDraft { .. } | Request::DeleteDraft { .. } => {
+            DraftOnly
+        }
 
         // --- Send: transmits mail to a provider ---
         Request::SendDraft { .. }
@@ -2112,6 +2118,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListCadenceWatch { .. } => "list_cadence_watch",
         Request::ListCadenceDrift { .. } => "list_cadence_drift",
         Request::DeleteDraft { .. } => "delete_draft",
+        Request::GetDraft { .. } => "get_draft",
+        Request::UpdateDraft { .. } => "update_draft",
         Request::SaveDraftToServer { .. } => "save_draft_to_server",
         Request::ListDrafts => "list_drafts",
         Request::ListOrphanedDrafts => "list_orphaned_drafts",
@@ -2204,6 +2212,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         Request::GetSyncStatus { account_id } => Some(account_id),
         Request::SendDraft { draft, .. }
         | Request::SaveDraft { draft }
+        | Request::UpdateDraft { draft }
         | Request::SaveDraftToServer { draft }
         | Request::CheckDraftSafety { draft, .. }
         | Request::ExtractDraftCommitments { draft }

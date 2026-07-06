@@ -1316,6 +1316,17 @@ pub enum Request {
     DeleteDraft {
         draft_id: DraftId,
     },
+    /// Fetch a single locally-stored draft by id (for editing in place).
+    /// Returns `ResponseData::Draft`; errors when no such draft exists.
+    GetDraft {
+        draft_id: DraftId,
+    },
+    /// Update a locally-stored draft in place, keyed by `draft.id`. Preserves
+    /// the draft's `created_at`; only drafts still in `'draft'` status are
+    /// editable. Errors when the draft is missing or already sending/sent.
+    UpdateDraft {
+        draft: Draft,
+    },
     /// Save draft to the mail server (e.g. Gmail Drafts folder).
     SaveDraftToServer {
         draft: Draft,
@@ -1533,6 +1544,8 @@ impl Request {
             | Self::FindExpert { .. }
             | Self::ExplainEntity { .. }
             | Self::DeleteDraft { .. }
+            | Self::GetDraft { .. }
+            | Self::UpdateDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
             | Self::ListOrphanedDrafts
@@ -2022,6 +2035,10 @@ pub enum ResponseData {
     Drafts {
         drafts: Vec<Draft>,
     },
+    /// A single locally-stored draft, returned by `Request::GetDraft`.
+    Draft {
+        draft: Draft,
+    },
     SnoozedMessages {
         snoozed: Vec<Snoozed>,
     },
@@ -2418,6 +2435,7 @@ impl ResponseData {
             | Self::ReplyContext { .. }
             | Self::ForwardContext { .. }
             | Self::Drafts { .. }
+            | Self::Draft { .. }
             | Self::SnoozedMessages { .. }
             | Self::ReplyQueue { .. }
             | Self::Snippets { .. }

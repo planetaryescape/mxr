@@ -11,6 +11,7 @@ Commands:
   recover  Show drafts that look orphaned mid-send (status `'sending'`, stale heartbeat). The startup loop already auto-resets these after 1h; this surfaces them earlier so you can act now
   resume   Force-reset an orphaned draft to `'draft'` status so it can be re-sent via the normal pipeline. No-op if the draft is already in `'draft'`
   discard  Permanently delete a draft. Use this when a recovered draft is no longer wanted instead of leaving it in the drafts list
+  edit     Open an existing draft in `$EDITOR` and re-save it in place under the same draft id. No new draft is created and nothing is discarded
   help     Print this message or the help of the given subcommand(s)
 
 Options:

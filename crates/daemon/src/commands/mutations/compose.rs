@@ -638,6 +638,81 @@ pub async fn drafts_discard(draft_id: String, account: Option<String>) -> anyhow
     }
 }
 
+/// CLI surface for `mxr drafts edit <id>`. Opens an existing stored draft
+/// in `$EDITOR` and re-saves it in place under the same `DraftId` — no
+/// new draft is created and nothing is discarded.
+pub async fn drafts_edit(draft_id: String, account: Option<String>) -> anyhow::Result<()> {
+    let parsed = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
+    let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+
+    let draft = crate::commands::expect_response(
+        client
+            .request(Request::GetDraft {
+                draft_id: parsed.clone(),
+            })
+            .await?,
+        |response| match response {
+            Response::Ok {
+                data: ResponseData::Draft { draft },
+            } => Some(draft),
+            _ => None,
+        },
+    )?;
+    if account_id.is_some_and(|account_id| draft.account_id != account_id) {
+        anyhow::bail!("Draft {parsed} belongs to a different account");
+    }
+
+    let from = resolve_account_email(&mut client, &draft.account_id).await?;
+
+    let content = mxr_compose::draft_codec::draft_to_compose_file(&draft, &from)?;
+    let path = std::env::temp_dir().join(format!("mxr-draft-edit-{}.md", draft.id));
+    std::fs::write(&path, &content)?;
+
+    let editor = mxr_compose::editor::resolve_editor(None);
+    mxr_compose::editor::spawn_editor(&editor, &path, None).await?;
+
+    let edited = std::fs::read_to_string(&path)?;
+    let (frontmatter, body) = mxr_compose::frontmatter::parse_compose_file(&edited)?;
+    validate_compose_draft(&frontmatter, &body, false)?;
+
+    let updated =
+        mxr_compose::draft_codec::apply_edited_compose_file(&draft, &edited, chrono::Utc::now())?;
+
+    expect_ack(
+        client
+            .request(Request::UpdateDraft {
+                draft: updated.clone(),
+            })
+            .await?,
+    )?;
+
+    let _ = std::fs::remove_file(&path);
+    println!("Draft updated: {}", updated.id);
+    Ok(())
+}
+
+/// Resolve the sending address for an account by id. Used when editing a
+/// stored draft, where we have `draft.account_id` but not the CLI's
+/// `--from`/`--account` selector string that `resolve_compose_account` expects.
+async fn resolve_account_email(
+    client: &mut IpcClient,
+    account_id: &AccountId,
+) -> anyhow::Result<String> {
+    let resp = client.request(Request::ListAccounts).await?;
+    let accounts = crate::commands::expect_response(resp, |response| match response {
+        Response::Ok {
+            data: ResponseData::Accounts { accounts },
+        } => Some(accounts),
+        _ => None,
+    })?;
+    accounts
+        .into_iter()
+        .find(|account| &account.account_id == account_id)
+        .map(|account| account.email)
+        .ok_or_else(|| anyhow::anyhow!("Account {account_id} not found"))
+}
+
 pub async fn send_draft(
     draft_id: String,
     account: Option<String>,

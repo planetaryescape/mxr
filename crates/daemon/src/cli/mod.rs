@@ -1689,6 +1689,13 @@ pub enum DraftsAction {
         /// Draft ID to delete.
         draft_id: String,
     },
+    /// Open an existing draft in `$EDITOR` and re-save it in place under
+    /// the same draft id. No new draft is created and nothing is
+    /// discarded.
+    Edit {
+        /// Draft ID to edit.
+        draft_id: String,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]

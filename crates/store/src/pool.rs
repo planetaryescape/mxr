@@ -800,6 +800,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "scheduled_send_attempts",
         kind: MigrationKind::Sql(include_str!("../migrations/046_scheduled_send_attempts.sql")),
     },
+    Migration {
+        version: 47,
+        name: "message_id_header_index",
+        kind: MigrationKind::Sql(include_str!("../migrations/047_message_id_header_index.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

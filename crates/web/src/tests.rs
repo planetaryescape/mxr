@@ -915,7 +915,7 @@ async fn swagger_ui_is_served_at_api_v1_docs() {
     assert!(
         body.contains("swagger-ui"),
         "Swagger UI HTML must mention swagger-ui assets; got first 200: {}",
-        &body.chars().take(200).collect::<String>()
+        body.chars().take(200).collect::<String>()
     );
 }
 

@@ -173,6 +173,28 @@ async fn print_one_message_attachments(
     Ok(())
 }
 
+/// Reduce a mail-controlled attachment filename to a single, safe path
+/// component so a `--dir` download can never escape the chosen directory.
+///
+/// `attachment.filename` comes from provider/email metadata and is therefore
+/// attacker-controlled. `Path::join` discards the base when the joined value is
+/// absolute, and `../` segments walk upward, so a hostile filename such as
+/// `../../../.ssh/authorized_keys` or `/etc/crontab` would otherwise let a
+/// sender write outside the user's `--dir` (an arbitrary-file-overwrite /
+/// code-exec vector). Taking only the final path component — and falling back
+/// to a stable per-attachment default when there isn't a usable one (`..`, `.`,
+/// empty, or non-UTF-8) — guarantees `target_dir.join(name)` stays a direct
+/// child of `target_dir`. Normal filenames pass through unchanged.
+fn safe_download_name(raw: &str, attachment_id: &mxr_core::AttachmentId) -> String {
+    std::path::Path::new(raw)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map_or_else(
+            || format!("attachment-{}", attachment_id.as_str()),
+            str::to_owned,
+        )
+}
+
 pub async fn attachments_download(
     message_id: String,
     account: Option<String>,
@@ -206,7 +228,7 @@ pub async fn attachments_download(
         .await?;
         let final_path = if let Some(target_dir) = dir.as_ref() {
             std::fs::create_dir_all(target_dir)?;
-            let target = target_dir.join(&attachment.filename);
+            let target = target_dir.join(safe_download_name(&attachment.filename, &attachment.id));
             std::fs::copy(&path, &target)?;
             target
         } else {
@@ -245,4 +267,40 @@ pub async fn attachments_open(
     .await?;
     println!("Opened {} ({})", attachment.filename, path.display());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::safe_download_name;
+    use mxr_core::AttachmentId;
+    use std::path::Path;
+
+    #[test]
+    fn hostile_filenames_stay_inside_target_dir() {
+        let target_dir = Path::new("/tmp/mxr-downloads");
+        let id = AttachmentId::default();
+
+        // Absolute paths, `../` traversal, `..`, and empty names must all
+        // collapse to a single component whose parent is exactly `target_dir`,
+        // so the CLI copy can never write outside the user's chosen `--dir`.
+        for hostile in ["../../evil", "/etc/evil", "..", ""] {
+            let name = safe_download_name(hostile, &id);
+            let target = target_dir.join(&name);
+            assert_eq!(
+                target.parent(),
+                Some(target_dir),
+                "{hostile:?} escaped target_dir as {target:?} (name {name:?})",
+            );
+        }
+    }
+
+    #[test]
+    fn normal_filename_is_preserved() {
+        let target_dir = Path::new("/tmp/mxr-downloads");
+        let id = AttachmentId::default();
+
+        assert_eq!(safe_download_name("report.pdf", &id), "report.pdf");
+        let target = target_dir.join(safe_download_name("report.pdf", &id));
+        assert_eq!(target.parent(), Some(target_dir));
+    }
 }

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.6.6](https://github.com/planetaryescape/mxr/compare/v0.6.5...v0.6.6) (2026-07-11)
+
+
+### Features
+
+* edit stored drafts in place across CLI, TUI, and web ([#110](https://github.com/planetaryescape/mxr/issues/110)) ([6101d95](https://github.com/planetaryescape/mxr/commit/6101d950d85bab29eb5c375a6979d0b565bb491d))
+* **imap:** file sent mail into the server Sent folder via APPEND (multi-account parity with Gmail) ([#127](https://github.com/planetaryescape/mxr/issues/127)) ([1ccc379](https://github.com/planetaryescape/mxr/commit/1ccc3794ba8920139fbda97cb89ec152295e0303))
+
+
+### Bug Fixes
+
+* **cli:** confine attachment downloads to --dir and sanitize mail filename ([#113](https://github.com/planetaryescape/mxr/issues/113)) ([b37ed29](https://github.com/planetaryescape/mxr/commit/b37ed2964c1edec0be27af4f87cc97fab5aa9964))
+* **gmail:** decode message bodies by declared charset instead of dropping non-UTF-8 (P1 data loss) ([#114](https://github.com/planetaryescape/mxr/issues/114)) ([b60033c](https://github.com/planetaryescape/mxr/commit/b60033ce06901c7d8c4f0a4cbc4675d433549dcd))
+* **imap:** harden sync, dates, labels, snippets, and command safety (13 fixes) ([#125](https://github.com/planetaryescape/mxr/issues/125)) ([467ca99](https://github.com/planetaryescape/mxr/commit/467ca9990c63d4c7b7acc8aa54c8ce854b3a5d27))
+* make reader quote and activity/history truncation char-boundary safe ([#115](https://github.com/planetaryescape/mxr/issues/115)) ([c6e96f0](https://github.com/planetaryescape/mxr/commit/c6e96f0ffa35e59020265cd866a14a4a4c9542d3))
+* **smtp:** guard cleartext auth, validate config, classify transient send errors ([#123](https://github.com/planetaryescape/mxr/issues/123)) ([f0777f6](https://github.com/planetaryescape/mxr/commit/f0777f6f8832b4d5f499eb78fbe89ffd7dcbd802))
+* **store:** index messages(account_id, message_id_header) to kill dedup full-scans ([#109](https://github.com/planetaryescape/mxr/issues/109)) ([ca2b24b](https://github.com/planetaryescape/mxr/commit/ca2b24b8d12a382e08d575fe6b5719bdc04dba54)), closes [#107](https://github.com/planetaryescape/mxr/issues/107)
+* **sync:** scope message-direction classification to the receiving account ([#126](https://github.com/planetaryescape/mxr/issues/126)) ([4bb1e7e](https://github.com/planetaryescape/mxr/commit/4bb1e7e78535060e0d4c8c43888cf3b608b8684d))
+* **tui:** expand visual-line selection to thread rows, not flat envelope indices ([#112](https://github.com/planetaryescape/mxr/issues/112)) ([dabe2a8](https://github.com/planetaryescape/mxr/commit/dabe2a81a46506fc947ed02a232180bceafce2a7))
+* unblock CI (crossbeam-epoch RUSTSEC-2026-0204 + clippy question_mark) ([#111](https://github.com/planetaryescape/mxr/issues/111)) ([c9b2f59](https://github.com/planetaryescape/mxr/commit/c9b2f59059fb490deefabe80dd2fa672cea3c70a))
+
 ## [0.6.5](https://github.com/planetaryescape/mxr/compare/v0.6.4...v0.6.5) (2026-07-05)
 
 

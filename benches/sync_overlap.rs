@@ -136,6 +136,7 @@ fn bench_folder_messages(mailbox: &str, count: u32) -> Vec<FetchedMessage> {
                 body: Some(raw.into_bytes()),
                 header: None,
                 size: Some(1024),
+                internal_date: None,
                 gmail_labels: vec![],
                 gmail_msg_id: None,
                 gmail_thread_id: None,

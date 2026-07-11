@@ -165,6 +165,7 @@ fn imap_fetch_to_synced_message_end_to_end() {
         body: Some(raw.as_bytes().to_vec()),
         header: None,
         size: Some(4096),
+        internal_date: None,
         gmail_labels: vec![],
         gmail_msg_id: None,
         gmail_thread_id: None,

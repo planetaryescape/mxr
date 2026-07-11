@@ -31,6 +31,10 @@ pub struct FetchedMessage {
     pub body: Option<Vec<u8>>,
     pub header: Option<Vec<u8>>,
     pub size: Option<u32>,
+    /// IMAP INTERNALDATE (true server receive time). Used as the date
+    /// fallback when a message has no parseable `Date:` header, so such
+    /// messages get a stable time instead of the sync wall-clock.
+    pub internal_date: Option<chrono::DateTime<chrono::Utc>>,
     pub gmail_labels: Vec<String>,
     pub gmail_msg_id: Option<u64>,
     pub gmail_thread_id: Option<u64>,
@@ -125,6 +129,7 @@ mod tests {
             body: None,
             header: None,
             size: Some(1024),
+            internal_date: None,
             gmail_labels: vec![],
             gmail_msg_id: None,
             gmail_thread_id: None,

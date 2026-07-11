@@ -2303,43 +2303,46 @@ async fn ingest_sent_message(
     // SMTP transport does NOT file Sent, so best-effort APPEND a copy to the
     // server Sent folder (parity with Gmail). A failed APPEND must never turn
     // into a send failure — the mail already went out on the wire.
-    let (provider_namespace, provider_id_value, sent_label_provider_ids): (&str, String, Vec<String>) =
-        if let Some(gmail_id) = receipt.provider_message_id.as_deref() {
-            ("gmail", gmail_id.to_string(), vec!["SENT".to_string()])
-        } else {
-            match append_sent_to_server(state, draft, from, receipt).await {
-                Ok(Some(mailbox_uid)) => {
-                    // Landed on the server under UIDPLUS. Use the real
-                    // "mailbox:uid" id and label with the actual Sent folder
-                    // name so the local copy reconciles with the next sync
-                    // (same Message-ID) and is mutatable via parse_provider_id.
-                    let sent_folder = mailbox_uid
-                        .rsplit_once(':')
-                        .map_or_else(|| "SENT".to_string(), |(mailbox, _)| mailbox.to_string());
-                    ("imap", mailbox_uid, vec![sent_folder])
-                }
-                // APPEND unsupported / no Sent folder / no UIDPLUS uid: keep the
-                // smtp-local fallback, but still tag the message SENT so it
-                // surfaces in the local SENT view. Local-only until a real
-                // APPEND + resync lands.
-                Ok(None) => (
+    let (provider_namespace, provider_id_value, sent_label_provider_ids): (
+        &str,
+        String,
+        Vec<String>,
+    ) = if let Some(gmail_id) = receipt.provider_message_id.as_deref() {
+        ("gmail", gmail_id.to_string(), vec!["SENT".to_string()])
+    } else {
+        match append_sent_to_server(state, draft, from, receipt).await {
+            Ok(Some(mailbox_uid)) => {
+                // Landed on the server under UIDPLUS. Use the real
+                // "mailbox:uid" id and label with the actual Sent folder
+                // name so the local copy reconciles with the next sync
+                // (same Message-ID) and is mutatable via parse_provider_id.
+                let sent_folder = mailbox_uid
+                    .rsplit_once(':')
+                    .map_or_else(|| "SENT".to_string(), |(mailbox, _)| mailbox.to_string());
+                ("imap", mailbox_uid, vec![sent_folder])
+            }
+            // APPEND unsupported / no Sent folder / no UIDPLUS uid: keep the
+            // smtp-local fallback, but still tag the message SENT so it
+            // surfaces in the local SENT view. Local-only until a real
+            // APPEND + resync lands.
+            Ok(None) => (
+                "smtp-local",
+                receipt.rfc2822_message_id.clone(),
+                vec!["SENT".to_string()],
+            ),
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    "failed to APPEND sent message to the server Sent folder; keeping a local-only copy"
+                );
+                (
                     "smtp-local",
                     receipt.rfc2822_message_id.clone(),
                     vec!["SENT".to_string()],
-                ),
-                Err(error) => {
-                    tracing::warn!(
-                        %error,
-                        "failed to APPEND sent message to the server Sent folder; keeping a local-only copy"
-                    );
-                    (
-                        "smtp-local",
-                        receipt.rfc2822_message_id.clone(),
-                        vec!["SENT".to_string()],
-                    )
-                }
+                )
             }
-        };
+        }
+    };
     let message_id = mxr_core::MessageId::from_scoped_provider_id(
         &draft.account_id,
         provider_namespace,

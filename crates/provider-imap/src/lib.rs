@@ -3423,7 +3423,10 @@ mod tests {
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         let result = provider
-            .append_sent(b"From: me@test.com\r\nSubject: hi\r\n\r\nbody", chrono::Utc::now())
+            .append_sent(
+                b"From: me@test.com\r\nSubject: hi\r\n\r\nbody",
+                chrono::Utc::now(),
+            )
             .await
             .unwrap();
 

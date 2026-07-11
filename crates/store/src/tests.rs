@@ -3544,3 +3544,54 @@ async fn message_keywords_persist_and_replace() {
     let after = store.get_message_keywords(&message_id).await.unwrap();
     assert_eq!(after, replacement, "set must replace, not merge");
 }
+
+/// Regression for issue #107: the per-message dedup/existence lookup
+/// (`WHERE account_id = ? AND message_id_header = ?`) must resolve through the
+/// composite index `idx_messages_account_msgidhdr` instead of scanning every
+/// row of the account. Migration 047 adds that index.
+#[tokio::test]
+async fn dedup_lookup_uses_message_id_header_index() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    let mut env = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    env.message_id_header = Some("<dedup@example.com>".to_string());
+    store.upsert_envelope(&env).await.unwrap();
+
+    // Sanity: the lookup path itself still returns the inserted row.
+    let hits = store
+        .list_envelopes_by_message_id_header(&account.id, "<dedup@example.com>")
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+
+    // EXPLAIN QUERY PLAN must show an index search on the new composite index,
+    // never a full scan of the messages table.
+    let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(
+        "EXPLAIN QUERY PLAN \
+         SELECT id FROM messages \
+         WHERE account_id = ? AND message_id_header = ? LIMIT 1",
+    )
+    .bind(account.id.as_str())
+    .bind("<dedup@example.com>")
+    .fetch_all(store.reader())
+    .await
+    .unwrap();
+
+    let detail = plan
+        .iter()
+        .map(|(_, _, _, d)| d.as_str())
+        .collect::<Vec<_>>()
+        .join(" | ");
+    assert!(
+        detail.contains("idx_messages_account_msgidhdr"),
+        "dedup lookup should use idx_messages_account_msgidhdr, got plan: {detail}"
+    );
+    assert!(
+        !detail.contains("SCAN messages"),
+        "dedup lookup should not full-scan messages, got plan: {detail}"
+    );
+}

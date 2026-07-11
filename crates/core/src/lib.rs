@@ -96,29 +96,40 @@ mod tests {
 
     #[test]
     fn in_memory_account_address_lookup_classifies_correctly() {
+        let account_a = AccountId::new();
+        let account_b = AccountId::new();
         let lookup = InMemoryAccountAddressLookup::new();
         // Empty cache: not loaded; everything reads as not-account.
         assert!(!lookup.is_loaded());
-        assert!(!lookup.is_account_address("anyone@example.com"));
+        assert!(!lookup.is_account_address(&account_a, "anyone@example.com"));
 
         lookup.replace([
-            "Me@Example.com".to_string(),
-            "alias@example.com".to_string(),
+            (account_a.clone(), "A@Example.com".to_string()),
+            (account_a.clone(), "alias@example.com".to_string()),
+            (account_b.clone(), "b@other.com".to_string()),
         ]);
         assert!(lookup.is_loaded());
 
-        // Case-insensitive match.
-        assert!(lookup.is_account_address("me@example.com"));
-        assert!(lookup.is_account_address("ME@EXAMPLE.COM"));
-        assert!(lookup.is_account_address("alias@example.com"));
-        // Outside the set.
-        assert!(!lookup.is_account_address("other@example.com"));
+        // Case-insensitive match against the receiving account's own set.
+        assert!(lookup.is_account_address(&account_a, "a@example.com"));
+        assert!(lookup.is_account_address(&account_a, "A@EXAMPLE.COM"));
+        assert!(lookup.is_account_address(&account_a, "alias@example.com"));
+        assert!(lookup.is_account_address(&account_b, "b@other.com"));
+
+        // The fix: account B's address is NOT an owned address of account A,
+        // so a message received in A from B's address stays inbound.
+        assert!(!lookup.is_account_address(&account_a, "b@other.com"));
+        assert!(!lookup.is_account_address(&account_b, "a@example.com"));
+        // Outside every set.
+        assert!(!lookup.is_account_address(&account_a, "other@example.com"));
+        // Unknown account id never matches.
+        assert!(!lookup.is_account_address(&AccountId::new(), "a@example.com"));
 
         // Replacing with a different set discards the previous one.
-        lookup.replace(["fresh@example.com".to_string()]);
+        lookup.replace([(account_a.clone(), "fresh@example.com".to_string())]);
         assert!(lookup.is_loaded());
-        assert!(lookup.is_account_address("fresh@example.com"));
-        assert!(!lookup.is_account_address("me@example.com"));
+        assert!(lookup.is_account_address(&account_a, "fresh@example.com"));
+        assert!(!lookup.is_account_address(&account_a, "a@example.com"));
     }
 
     #[test]

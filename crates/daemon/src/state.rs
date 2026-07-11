@@ -504,7 +504,7 @@ impl AppState {
         // first refresh after an account is configured.
         match store.list_all_account_addresses().await {
             Ok(addresses) if !addresses.is_empty() => {
-                account_addresses.replace(addresses.into_iter().map(|a| a.email));
+                account_addresses.replace(addresses.into_iter().map(|a| (a.account_id, a.email)));
             }
             Ok(_) => {}
             Err(err) => {
@@ -567,7 +567,7 @@ impl AppState {
         match self.store.list_all_account_addresses().await {
             Ok(addresses) => {
                 self.account_addresses
-                    .replace(addresses.into_iter().map(|a| a.email));
+                    .replace(addresses.into_iter().map(|a| (a.account_id, a.email)));
             }
             Err(err) => {
                 tracing::warn!(error = %err, "failed to refresh account_addresses cache");

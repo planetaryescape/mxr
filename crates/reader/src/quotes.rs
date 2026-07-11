@@ -98,8 +98,18 @@ pub fn collapse(text: &str) -> (String, Vec<QuotedBlock>) {
 }
 
 fn extract_from_on_wrote(header: &str) -> Option<String> {
-    let lower = header.to_lowercase();
-    if let Some(wrote_pos) = lower.rfind("wrote:") {
+    // "wrote:" is ASCII, so locate it as a byte offset into the ORIGINAL
+    // header. `to_lowercase()` can change byte length (e.g. `İ` U+0130 grows
+    // when lowercased), so an offset taken from a lowercased copy is not a
+    // valid index into `header` and slicing there can panic. ASCII byte
+    // positions are always char boundaries, so slicing at the match start is
+    // safe and preserves the name's original case.
+    const NEEDLE: &[u8] = b"wrote:";
+    if let Some(wrote_pos) = header
+        .as_bytes()
+        .windows(NEEDLE.len())
+        .rposition(|w| w.eq_ignore_ascii_case(NEEDLE))
+    {
         let before = header[..wrote_pos].trim();
         if let Some(last_comma) = before.rfind(',') {
             let candidate = before[last_comma + 1..].trim();
@@ -138,5 +148,30 @@ mod tests {
         let (cleaned, quotes) = collapse(text);
         assert_eq!(cleaned, text);
         assert!(quotes.is_empty());
+    }
+
+    #[test]
+    fn extract_from_on_wrote_ascii_unchanged() {
+        let name = extract_from_on_wrote("On Mon, Mar 15, alice@example.com wrote:");
+        assert_eq!(name.as_deref(), Some("alice@example.com"));
+    }
+
+    #[test]
+    fn extract_from_on_wrote_multibyte_does_not_panic() {
+        // `İ` (U+0130) lowercases to two chars, growing the byte length. A byte
+        // offset taken from a lowercased copy is not a valid index into the
+        // original header, so the old code panicked here. Must not panic and
+        // must return the name in its original case.
+        let header = format!("On Mon, {} wrote:", "İ".repeat(7));
+        let name = extract_from_on_wrote(&header);
+        assert_eq!(name.as_deref(), Some("İİİİİİİ"));
+    }
+
+    #[test]
+    fn collapse_handles_multibyte_on_wrote_header() {
+        let text = format!("Reply.\n\nOn Mon, {} wrote:\n> quoted line", "İ".repeat(7));
+        let (cleaned, quotes) = collapse(&text);
+        assert!(cleaned.contains("[previous message from"));
+        assert_eq!(quotes.len(), 1);
     }
 }

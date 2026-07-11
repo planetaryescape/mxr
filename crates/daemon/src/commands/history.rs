@@ -119,14 +119,19 @@ fn parse_duration_secs(s: &str) -> Option<i64> {
     if s.is_empty() {
         return None;
     }
-    let (num_part, unit) = s.split_at(s.len() - 1);
+    // Peel the unit off the last *character*, not the last byte: a multibyte
+    // trailing char (e.g. `3日`, Cyrillic `5м`) would make `split_at(len - 1)`
+    // land off a char boundary and panic. Units are ASCII, so any non-ASCII
+    // trailing char simply fails to match and returns `None`.
+    let unit = s.chars().last()?;
+    let num_part = &s[..s.len() - unit.len_utf8()];
     let n: i64 = num_part.parse().ok()?;
     match unit {
-        "s" => Some(n),
-        "m" => Some(n * 60),
-        "h" => Some(n * 3_600),
-        "d" => Some(n * 86_400),
-        "w" => Some(n * 7 * 86_400),
+        's' => Some(n),
+        'm' => Some(n * 60),
+        'h' => Some(n * 3_600),
+        'd' => Some(n * 86_400),
+        'w' => Some(n * 7 * 86_400),
         _ => None,
     }
 }
@@ -159,5 +164,13 @@ mod tests {
         let rendered = serde_json::to_string(&vec![sample_entry("Archived message")]).unwrap();
         assert!(rendered.contains("Archived message"));
         assert!(rendered.contains("mutation"));
+    }
+
+    #[test]
+    fn parse_duration_secs_rejects_multibyte_unit_without_panic() {
+        // A multibyte trailing char used to panic `split_at(len - 1)` on the
+        // byte boundary; now it is simply an unrecognized unit.
+        assert!(parse_duration_secs("3日").is_none());
+        assert!(parse_duration_secs("5м").is_none()); // Cyrillic `м`
     }
 }

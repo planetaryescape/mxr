@@ -70,7 +70,10 @@ impl SyncEngine {
         if !self.address_lookup.is_loaded() {
             return MessageDirection::Unknown;
         }
-        if self.address_lookup.is_account_address(account_id, from_email) {
+        if self
+            .address_lookup
+            .is_account_address(account_id, from_email)
+        {
             MessageDirection::Outbound
         } else {
             MessageDirection::Inbound

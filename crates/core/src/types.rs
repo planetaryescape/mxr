@@ -138,7 +138,8 @@ pub trait AccountAddressLookup: Send + Sync {
 /// and passes a clone into `SyncEngine`.
 #[derive(Default)]
 pub struct InMemoryAccountAddressLookup {
-    inner: std::sync::RwLock<std::collections::HashMap<AccountId, std::collections::HashSet<String>>>,
+    inner:
+        std::sync::RwLock<std::collections::HashMap<AccountId, std::collections::HashSet<String>>>,
     loaded: std::sync::atomic::AtomicBool,
 }
 
@@ -152,8 +153,10 @@ impl InMemoryAccountAddressLookup {
     /// allocation on the hot path. Addresses are keyed by `account_id` so a
     /// lookup only ever matches the receiving account's own addresses.
     pub fn replace(&self, addresses: impl IntoIterator<Item = (AccountId, String)>) {
-        let mut normalized: std::collections::HashMap<AccountId, std::collections::HashSet<String>> =
-            std::collections::HashMap::new();
+        let mut normalized: std::collections::HashMap<
+            AccountId,
+            std::collections::HashSet<String>,
+        > = std::collections::HashMap::new();
         for (account_id, email) in addresses {
             let email = email.trim().to_lowercase();
             if email.is_empty() {

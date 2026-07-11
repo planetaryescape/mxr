@@ -45,9 +45,7 @@ mod tests {
         }
 
         /// Multi-account lookup: each account owns its own address set.
-        fn multi(
-            entries: impl IntoIterator<Item = (AccountId, Vec<&'static str>)>,
-        ) -> Self {
+        fn multi(entries: impl IntoIterator<Item = (AccountId, Vec<&'static str>)>) -> Self {
             Self {
                 by_account: entries
                     .into_iter()
@@ -641,12 +639,8 @@ mod tests {
         let mut own = make_test_envelope(&account_a, "own-msg", vec!["INBOX".to_string()]);
         own.from.email = "a@x.com".to_string();
 
-        let provider = DeltaLabelProvider::new(
-            account_a.clone(),
-            vec![cross, own],
-            vec![inbox],
-            vec![],
-        );
+        let provider =
+            DeltaLabelProvider::new(account_a.clone(), vec![cross, own], vec![inbox], vec![]);
         engine.sync_account(&provider).await.unwrap();
 
         let cross_id = store

@@ -252,10 +252,8 @@ fn domain_root(domain: &str) -> Option<String> {
         return None;
     }
     let mut chars = label.chars();
-    Some(match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        None => return None,
-    })
+    let first = chars.next()?;
+    Some(first.to_uppercase().collect::<String>() + chars.as_str())
 }
 
 fn parse_iso_eod(s: &str) -> Option<DateTime<Utc>> {

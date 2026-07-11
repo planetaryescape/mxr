@@ -21,6 +21,7 @@ async-trait = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }
+encoding_rs = { workspace = true }
 futures = { workspace = true }
 keyring = { workspace = true }
 mail-builder = { workspace = true }

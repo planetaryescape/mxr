@@ -174,11 +174,49 @@ pub fn parse_address_list(raw: &str) -> Vec<Address> {
     parse_rfc_address_list(raw)
 }
 
-pub fn base64_decode_url(data: &str) -> Result<String, anyhow::Error> {
-    let bytes = URL_SAFE_NO_PAD
+/// Decode Gmail's URL-safe base64 (padded or not) into raw bytes.
+///
+/// Gmail returns each part's ORIGINAL bytes and does not transcode to UTF-8,
+/// so the caller must charset-decode before treating the result as text.
+fn base64_decode_url_bytes(data: &str) -> Result<Vec<u8>, anyhow::Error> {
+    Ok(URL_SAFE_NO_PAD
         .decode(data)
-        .or_else(|_| URL_SAFE.decode(data))?;
+        .or_else(|_| URL_SAFE.decode(data))?)
+}
+
+pub fn base64_decode_url(data: &str) -> Result<String, anyhow::Error> {
+    let bytes = base64_decode_url_bytes(data)?;
     Ok(String::from_utf8(bytes)?)
+}
+
+/// Extract the `charset=` parameter from a Content-Type header value.
+///
+/// Case-insensitive on both the parameter name and matching; surrounding
+/// quotes and whitespace are stripped. Returns `None` when absent or empty so
+/// the decoder can fall back to UTF-8.
+fn charset_from_content_type(content_type: Option<&str>) -> Option<String> {
+    content_type?
+        .split(';')
+        .skip(1)
+        .filter_map(|param| param.split_once('='))
+        .find(|(key, _)| key.trim().eq_ignore_ascii_case("charset"))
+        .map(|(_, value)| value.trim().trim_matches('"').trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+/// Decode a base64 body part into text using its declared charset.
+///
+/// Gmail hands back the part's original bytes (windows-1252, iso-8859-1,
+/// shift_jis, …), so a strict UTF-8 decode would drop non-UTF-8 bodies
+/// entirely. Unknown/absent charset labels fall back to UTF-8, and malformed
+/// sequences decode lossily — content is NEVER dropped. Returns `None` only
+/// when the base64 itself is invalid.
+fn decode_body_part(data: &str, charset: Option<&str>) -> Option<String> {
+    let bytes = base64_decode_url_bytes(data).ok()?;
+    let encoding = charset
+        .and_then(|label| encoding_rs::Encoding::for_label(label.as_bytes()))
+        .unwrap_or(encoding_rs::UTF_8);
+    Some(encoding.decode(&bytes).0.into_owned())
 }
 
 fn check_has_attachments(payload: Option<&GmailPayload>) -> bool {
@@ -256,11 +294,18 @@ fn walk_parts(
         normalize_content_id(find_header_value(payload.headers.as_deref(), "Content-ID"));
     let content_location =
         find_header_value(payload.headers.as_deref(), "Content-Location").map(str::to_string);
+    // Gmail returns the part's original bytes untranscoded, so decode using the
+    // charset declared in this part's Content-Type header (defaulting to UTF-8)
+    // rather than assuming UTF-8 and dropping non-UTF-8 bodies.
+    let charset = charset_from_content_type(find_header_value(
+        payload.headers.as_deref(),
+        "Content-Type",
+    ));
     let decoded_text = payload
         .body
         .as_ref()
         .and_then(|body| body.data.as_deref())
-        .and_then(|data| base64_decode_url(data).ok());
+        .and_then(|data| decode_body_part(data, charset.as_deref()));
 
     if is_attachment_part(payload, mime, disposition) {
         body_data.attachments.push(AttachmentMeta {
@@ -1271,5 +1316,119 @@ mod tests {
         assert_eq!(body.text_html.as_deref(), Some(html));
         assert_eq!(body.metadata.text_plain_source, Some(BodyPartSource::Exact));
         assert_eq!(body.metadata.text_html_source, Some(BodyPartSource::Exact));
+    }
+
+    #[test]
+    fn extract_body_decodes_windows_1252_instead_of_dropping() {
+        // Regression: Gmail hands back the part's ORIGINAL bytes untranscoded.
+        // A `charset=windows-1252` body with an accented byte (0xE9 = `é`) and
+        // a smart-quote byte (0x92 = `’`) is not valid UTF-8. The old strict
+        // `from_utf8` turned the whole body into `None`, silently losing it.
+        let raw: &[u8] = b"Caf\xe9 co\x92ee"; // windows-1252: "Café co’ee"
+        let msg = GmailMessage {
+            id: "msg-win1252".to_string(),
+            thread_id: "thread-win1252".to_string(),
+            label_ids: Some(vec!["INBOX".to_string()]),
+            snippet: Some("Café".to_string()),
+            history_id: None,
+            internal_date: Some("1700000000000".to_string()),
+            size_estimate: Some(raw.len() as u64),
+            payload: Some(GmailPayload {
+                mime_type: Some("text/plain".to_string()),
+                headers: Some(make_headers(&[
+                    ("From", "Alice <alice@example.com>"),
+                    ("To", "Bob <bob@example.com>"),
+                    ("Subject", "Windows-1252 body"),
+                    ("Content-Type", "text/plain; charset=windows-1252"),
+                ])),
+                body: Some(GmailBody {
+                    attachment_id: None,
+                    size: Some(raw.len() as u64),
+                    data: Some(URL_SAFE_NO_PAD.encode(raw)),
+                }),
+                parts: None,
+                filename: None,
+            }),
+        };
+
+        let (text_plain, _, _) = extract_body(&msg);
+        let text = text_plain.expect("windows-1252 body must decode, not drop to None");
+        assert!(text.contains('é'), "expected decoded é, got {text:?}");
+        assert!(
+            text.contains('\u{2019}'),
+            "expected decoded right single quote, got {text:?}"
+        );
+        assert_eq!(text, "Café co\u{2019}ee");
+    }
+
+    #[test]
+    fn extract_body_decodes_quoted_charset_label() {
+        // The charset parameter may be quoted; quotes must be stripped so the
+        // label resolves. iso-8859-1 0xE9 also decodes to `é`.
+        let raw: &[u8] = b"r\xe9sum\xe9"; // iso-8859-1: "résumé"
+        let msg = GmailMessage {
+            id: "msg-latin1".to_string(),
+            thread_id: "thread-latin1".to_string(),
+            label_ids: Some(vec!["INBOX".to_string()]),
+            snippet: Some("resume".to_string()),
+            history_id: None,
+            internal_date: Some("1700000000000".to_string()),
+            size_estimate: Some(raw.len() as u64),
+            payload: Some(GmailPayload {
+                mime_type: Some("text/plain".to_string()),
+                headers: Some(make_headers(&[
+                    ("From", "Alice <alice@example.com>"),
+                    ("To", "Bob <bob@example.com>"),
+                    ("Subject", "Latin-1 body"),
+                    ("Content-Type", "text/plain; charset=\"ISO-8859-1\""),
+                ])),
+                body: Some(GmailBody {
+                    attachment_id: None,
+                    size: Some(raw.len() as u64),
+                    data: Some(URL_SAFE_NO_PAD.encode(raw)),
+                }),
+                parts: None,
+                filename: None,
+            }),
+        };
+
+        let (text_plain, _, _) = extract_body(&msg);
+        assert_eq!(text_plain.as_deref(), Some("résumé"));
+    }
+
+    #[test]
+    fn extract_body_decodes_declared_utf8_multibyte_unchanged() {
+        // UTF-8 / ASCII path must stay byte-identical: a declared UTF-8 body
+        // with multibyte characters decodes to exactly the same text (no
+        // double-decode, no mangling).
+        let text = "Café déjà vu — 日本語";
+        let msg = GmailMessage {
+            id: "msg-utf8".to_string(),
+            thread_id: "thread-utf8".to_string(),
+            label_ids: Some(vec!["INBOX".to_string()]),
+            snippet: Some("Café".to_string()),
+            history_id: None,
+            internal_date: Some("1700000000000".to_string()),
+            size_estimate: Some(text.len() as u64),
+            payload: Some(GmailPayload {
+                mime_type: Some("text/plain".to_string()),
+                headers: Some(make_headers(&[
+                    ("From", "Alice <alice@example.com>"),
+                    ("To", "Bob <bob@example.com>"),
+                    ("Subject", "UTF-8 body"),
+                    ("Content-Type", "text/plain; charset=UTF-8"),
+                ])),
+                body: Some(GmailBody {
+                    attachment_id: None,
+                    size: Some(text.len() as u64),
+                    data: Some(URL_SAFE_NO_PAD.encode(text.as_bytes())),
+                }),
+                parts: None,
+                filename: None,
+            }),
+        };
+
+        let (text_plain, _, _) = extract_body(&msg);
+        assert_eq!(text_plain.as_deref(), Some(text));
     }
 }

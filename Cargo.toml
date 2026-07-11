@@ -273,6 +273,9 @@ security-framework = { version = "3", features = ["OSX_10_15"] }
 security-framework-sys = "2"
 base64 = "0.22"
 mail-parser = "0.11"
+# Charset decoding for provider body parts that arrive in their original
+# (non-UTF-8) encoding. Same crate mail-parser already pulls in transitively.
+encoding_rs = "0.8"
 icalendar = { version = "0.17.10", default-features = true }
 url = "2"
 scraper = "0.27"

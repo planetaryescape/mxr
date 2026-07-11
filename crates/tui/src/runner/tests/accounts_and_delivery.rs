@@ -695,6 +695,76 @@ fn reply_queue_enter_starts_reply_compose_for_selected_message() {
     );
 }
 
+fn test_draft(subject: &str) -> Draft {
+    let now = chrono::Utc::now();
+    Draft {
+        id: DraftId::new(),
+        account_id: AccountId::new(),
+        reply_headers: None,
+        intent: DraftIntent::New,
+        to: vec![Address {
+            name: None,
+            email: "alice@example.com".into(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: subject.into(),
+        body_markdown: "Body.".into(),
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+#[test]
+fn open_stored_drafts_opens_modal_and_flags_refresh() {
+    let mut app = App::new();
+
+    app.apply(Action::OpenStoredDrafts);
+
+    assert!(app.modals.drafts.visible);
+    assert!(app.modals.drafts.loading);
+    assert!(
+        app.pending_drafts_refresh,
+        "opening the drafts modal should schedule a Request::ListDrafts refresh"
+    );
+
+    let subjects = ["Q4 plan", "Follow up"];
+    let drafts: Vec<Draft> = subjects.iter().map(|s| test_draft(s)).collect();
+    app.modals.drafts.set_drafts(drafts);
+    assert!(!app.modals.drafts.loading);
+    assert_eq!(
+        app.modals
+            .drafts
+            .drafts
+            .iter()
+            .map(|d| d.subject.as_str())
+            .collect::<Vec<_>>(),
+        subjects
+    );
+}
+
+#[test]
+fn stored_drafts_edit_key_queues_pending_edit_for_selected_draft() {
+    let mut app = App::new();
+    let drafts = vec![test_draft("First"), test_draft("Second")];
+    let selected_id = drafts[1].id.clone();
+    app.modals.drafts.open_loading();
+    app.modals.drafts.set_drafts(drafts);
+    app.modals.drafts.select_next();
+
+    let action = app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+    assert_eq!(action, Some(Action::StoredDraftsModalEdit));
+    app.apply(action.unwrap());
+
+    assert!(!app.modals.drafts.visible);
+    assert_eq!(
+        app.pending_draft_edit_request.as_ref().map(|d| &d.id),
+        Some(&selected_id)
+    );
+}
+
 #[test]
 fn compose_blank_recipient_advances_to_subject_modal() {
     let mut app = App::new();

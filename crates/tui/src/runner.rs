@@ -18,6 +18,7 @@ use crate::accounts_helpers::load_accounts_page_accounts;
 use crate::async_result::{AsyncResult, UnsubscribeResultData};
 use crate::compose_flow::{
     fetch_reply_context_dedicated, handle_compose_action, handle_compose_editor_status,
+    handle_draft_edit_status, prepare_draft_edit,
 };
 use crate::daemon_events::{
     apply_all_envelopes_refresh, apply_labels_refresh, apply_thread_summary_loaded,
@@ -588,6 +589,30 @@ pub async fn run() -> anyhow::Result<()> {
                     )),
                 };
                 AsyncResult::ReplyQueueList(result)
+            });
+        }
+
+        if app.pending_drafts_refresh {
+            app.pending_drafts_refresh = false;
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, Request::ListDrafts).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Drafts { drafts },
+                    }) => Ok(drafts),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response to ListDrafts".into())),
+                };
+                AsyncResult::StoredDraftsLoaded(result)
+            });
+        }
+
+        if let Some(draft) = app.pending_draft_edit_request.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                AsyncResult::DraftEditReady(prepare_draft_edit(&bg, draft).await)
             });
         }
 
@@ -2040,6 +2065,19 @@ pub async fn run() -> anyhow::Result<()> {
                             app.modals.reply_queue.set_error(e.to_string());
                             app.status_message = Some(format!("Reply queue load failed: {e}"));
                         }
+                        AsyncResult::StoredDraftsLoaded(Ok(drafts)) => {
+                            let count = drafts.len();
+                            app.modals.drafts.set_drafts(drafts);
+                            app.status_message = Some(if count == 0 {
+                                "No saved drafts".into()
+                            } else {
+                                format!("{count} draft(s)")
+                            });
+                        }
+                        AsyncResult::StoredDraftsLoaded(Err(e)) => {
+                            app.modals.drafts.set_error(e.to_string());
+                            app.status_message = Some(format!("Drafts load failed: {e}"));
+                        }
                         AsyncResult::DeliveriesList(Ok(rows)) => {
                             let count = rows.len();
                             app.deliveries.set_rows(rows);
@@ -2603,6 +2641,18 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::ComposeReady(Err(e)) => {
                             app.status_message = Some(format!("Compose error: {e}"));
+                        }
+                        AsyncResult::DraftEditReady(Ok(data)) => {
+                            let status = run_with_terminal_suspended(&mut terminal, &mut events, || {
+                                let editor = mxr_compose::editor::resolve_editor(None);
+                                std::process::Command::new(&editor)
+                                    .arg(&data.path)
+                                    .status()
+                            });
+                            handle_draft_edit_status(&mut app, &data, status, &bg).await;
+                        }
+                        AsyncResult::DraftEditReady(Err(e)) => {
+                            app.status_message = Some(format!("Edit draft error: {e}"));
                         }
                         AsyncResult::ReplyContextWarmed {
                             message_id,

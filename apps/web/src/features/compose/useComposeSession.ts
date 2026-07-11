@@ -316,7 +316,10 @@ export function useComposeSession(
       const current = draftRef.current;
       if (!current) throw new Error("No draft is open");
       const now = new Date().toISOString();
-      const draftId = crypto.randomUUID();
+      // Editing an existing stored draft must save it in place; only mint a
+      // fresh id for a genuinely new compose session (save-local is an
+      // upsert-by-id, so reusing the id updates rather than duplicates it).
+      const draftId = intent.draftId ?? crypto.randomUUID();
       await saveLocalDraft({
         id: draftId,
         account_id: current.accountId,

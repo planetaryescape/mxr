@@ -33,8 +33,8 @@ pub use mailbox::{
 };
 pub use modals::{
     ActivityModalState, AnalyticsFilterField, AnalyticsFilterModalState, BriefingModalState,
-    BriefingModalSubject, DraftOptionsField, DraftOptionsModalState, ErrorModalState,
-    ExpertModalState, FeatureOnboardingState, ModalsState, PendingBulkConfirm,
+    BriefingModalSubject, DraftOptionsField, DraftOptionsModalState, DraftsModalState,
+    ErrorModalState, ExpertModalState, FeatureOnboardingState, ModalsState, PendingBulkConfirm,
     PendingPlatformDispatch, PendingUnsubscribeAction, PendingUnsubscribeConfirm,
     PlatformModalState, ReplyQueueModalState, SaveAttachmentModalState, SavedSearchFormField,
     SavedSearchFormState, ScreenerModalState, SenderProfileModalState, SenderProfileTab,

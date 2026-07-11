@@ -899,6 +899,9 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 Some(crate::cli::DraftsAction::Discard { draft_id }) => {
                     commands::mutations::drafts_discard(draft_id, account).await?;
                 }
+                Some(crate::cli::DraftsAction::Edit { draft_id }) => {
+                    commands::mutations::drafts_edit(draft_id, account).await?;
+                }
             }
         }
         Some(Command::Send {

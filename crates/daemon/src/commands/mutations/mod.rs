@@ -4,7 +4,7 @@ mod helpers;
 
 pub use attachments::{attachments_download, attachments_list, attachments_open};
 pub use compose::{
-    cancel_scheduled_send, check_send, compose, compose_check, drafts, drafts_discard,
+    cancel_scheduled_send, check_send, compose, compose_check, drafts, drafts_discard, drafts_edit,
     drafts_recover, drafts_resume, forward, reply, reply_all, schedule_send, send_draft,
     ComposeOptions, ForwardCommand, ReplyCommand,
 };

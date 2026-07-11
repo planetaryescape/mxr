@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Open an existing draft in `$EDITOR` and re-save it in place under the same draft id. No new draft is created and nothing is discarded
+
+Usage: mxr drafts edit <DRAFT_ID>
+
+Arguments:
+  <DRAFT_ID>  Draft ID to edit
+
+Options:
+  -h, --help  Print help

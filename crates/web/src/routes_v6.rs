@@ -1942,20 +1942,39 @@ async fn send_stored_draft(
     passthrough(response)
 }
 
+/// Upsert-by-id: editing an existing stored draft (loaded via `GetDraft`)
+/// must save in place rather than mint a duplicate row, so this tries
+/// `UpdateDraft` first and falls back to `SaveDraft` (insert) only when the
+/// daemon reports the id doesn't exist yet — i.e. a genuinely new draft.
 async fn save_draft_local(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
     Json(draft): Json<Draft>,
 ) -> Result<Json<Value>, BridgeError> {
-    let response = dispatch(
+    match dispatch(
         &state,
         &headers,
         auth.token.as_deref(),
-        Request::SaveDraft { draft },
+        Request::UpdateDraft {
+            draft: draft.clone(),
+        },
     )
-    .await?;
-    passthrough(response)
+    .await
+    {
+        Ok(response) => passthrough(response),
+        Err(BridgeError::Ipc(message)) if message.to_lowercase().contains("not found") => {
+            let response = dispatch(
+                &state,
+                &headers,
+                auth.token.as_deref(),
+                Request::SaveDraft { draft },
+            )
+            .await?;
+            passthrough(response)
+        }
+        Err(err) => Err(err),
+    }
 }
 
 async fn delete_draft_stored(

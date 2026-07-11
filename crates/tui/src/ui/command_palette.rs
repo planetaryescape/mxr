@@ -434,6 +434,12 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Compose".into(),
         },
         PaletteCommand {
+            label: "Drafts".into(),
+            shortcut: "gE".into(),
+            action: Action::OpenStoredDrafts,
+            category: "Compose".into(),
+        },
+        PaletteCommand {
             label: "Unsubscribe".into(),
             shortcut: "D".into(),
             action: Action::Unsubscribe,

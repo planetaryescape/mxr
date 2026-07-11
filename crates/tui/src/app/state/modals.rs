@@ -1,7 +1,7 @@
 use super::super::MutationEffect;
 use crate::ui::label_picker::{LabelPicker, LabelPickerMode};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::Envelope;
+use mxr_core::{Draft, Envelope};
 use mxr_protocol::{
     DraftLengthHintData, Request, ScreenerQueueEntryData, SenderProfileData, SnippetData,
     VoiceRegisterData,
@@ -126,6 +126,11 @@ pub struct ModalsState {
     /// can walk them. Read-only: actually replying still uses the
     /// regular reply flow once the user opens the focused message.
     pub reply_queue: ReplyQueueModalState,
+    /// Stored-drafts browser modal listing locally-saved drafts across
+    /// all accounts. `e`/Enter opens the selected draft for
+    /// edit-in-place; the edit round-trips through `Request::UpdateDraft`
+    /// so the same `DraftId` is preserved instead of minting a new draft.
+    pub drafts: DraftsModalState,
     /// Activity-log modal (Phase 5). Read-only browser of recent
     /// `user_activity` rows fetched via IPC.
     pub activity: ActivityModalState,
@@ -679,6 +684,68 @@ impl ReplyQueueModalState {
 
     pub fn selected(&self) -> Option<&Envelope> {
         self.messages.get(self.selected_index)
+    }
+}
+
+/// Read-only state for the stored-drafts browser modal: locally-saved
+/// drafts across all accounts, most recently updated first. `visible`
+/// tracks whether the modal is open; `loading` gates the spinner
+/// between dispatch and the `Request::ListDrafts` response.
+#[derive(Debug, Clone, Default)]
+pub struct DraftsModalState {
+    pub visible: bool,
+    pub loading: bool,
+    pub drafts: Vec<Draft>,
+    pub selected_index: usize,
+    pub error: Option<String>,
+}
+
+impl DraftsModalState {
+    pub fn open_loading(&mut self) {
+        self.visible = true;
+        self.loading = true;
+        self.drafts.clear();
+        self.selected_index = 0;
+        self.error = None;
+    }
+
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.loading = false;
+        self.error = None;
+    }
+
+    pub fn set_drafts(&mut self, drafts: Vec<Draft>) {
+        self.loading = false;
+        self.error = None;
+        self.drafts = drafts;
+        self.selected_index = 0;
+    }
+
+    pub fn set_error(&mut self, message: String) {
+        self.loading = false;
+        self.error = Some(message);
+    }
+
+    pub fn select_next(&mut self) {
+        if self.drafts.is_empty() {
+            return;
+        }
+        self.selected_index = (self.selected_index + 1) % self.drafts.len();
+    }
+
+    pub fn select_prev(&mut self) {
+        if self.drafts.is_empty() {
+            return;
+        }
+        self.selected_index = self
+            .selected_index
+            .checked_sub(1)
+            .unwrap_or(self.drafts.len() - 1);
+    }
+
+    pub fn selected(&self) -> Option<&Draft> {
+        self.drafts.get(self.selected_index)
     }
 }
 

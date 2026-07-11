@@ -674,6 +674,29 @@ impl App {
             Action::SnippetsModalPrev => {
                 self.modals.snippets.select_prev();
             }
+            Action::OpenStoredDrafts => {
+                self.modals.drafts.open_loading();
+                self.pending_drafts_refresh = true;
+                self.status_message = Some("Loading drafts...".into());
+            }
+            Action::CloseStoredDraftsModal => {
+                self.modals.drafts.close();
+            }
+            Action::StoredDraftsModalNext => {
+                self.modals.drafts.select_next();
+            }
+            Action::StoredDraftsModalPrev => {
+                self.modals.drafts.select_prev();
+            }
+            Action::StoredDraftsModalEdit => {
+                let Some(draft) = self.modals.drafts.selected().cloned() else {
+                    self.status_message = Some("No draft selected".into());
+                    return;
+                };
+                self.modals.drafts.close();
+                self.pending_draft_edit_request = Some(draft);
+                self.status_message = Some("Opening draft in editor...".into());
+            }
             Action::SelectSavedSearch(query, mode) => {
                 self.mailbox.mailbox_view = MailboxView::Messages;
                 if self.screen == Screen::Search {

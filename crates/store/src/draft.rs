@@ -133,6 +133,56 @@ impl super::Store {
         .transpose()
     }
 
+    /// Update an existing draft in place, preserving `created_at`. Only rows
+    /// still in `'draft'` status are editable — a draft mid-send (`'sending'`)
+    /// or already `'sent'` is left untouched. Returns `true` when a row was
+    /// updated, `false` when no editable draft with this id exists (caller
+    /// distinguishes "not found" from "not editable" via `get_draft`).
+    pub async fn update_draft(&self, draft: &Draft) -> Result<bool, sqlx::Error> {
+        let id = draft.id.as_str();
+        let account_id = draft.account_id.as_str();
+        let to_addrs = encode_json(&draft.to)?;
+        let cc_addrs = encode_json(&draft.cc)?;
+        let bcc_addrs = encode_json(&draft.bcc)?;
+        let attachments = encode_json(&draft.attachments)?;
+        let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
+        let intent = draft.intent.as_db_str();
+        let inline_calendar_reply_json = draft
+            .inline_calendar_reply
+            .as_ref()
+            .map(encode_json)
+            .transpose()?;
+        let updated_at = draft.updated_at.timestamp();
+
+        // `created_at` is intentionally absent from SET so the original
+        // creation time survives the edit. Plain UPDATE (not INSERT OR
+        // REPLACE) so the account_id FK's ON DELETE CASCADE is never armed.
+        let result = sqlx::query(
+            "UPDATE drafts
+                SET account_id = ?, in_reply_to = ?, intent = ?,
+                    to_addrs = ?, cc_addrs = ?, bcc_addrs = ?, subject = ?,
+                    body_markdown = ?, attachments = ?, inline_calendar_reply_json = ?,
+                    updated_at = ?
+              WHERE id = ? AND status = 'draft'",
+        )
+        .bind(account_id)
+        .bind(in_reply_to)
+        .bind(intent)
+        .bind(to_addrs)
+        .bind(cc_addrs)
+        .bind(bcc_addrs)
+        .bind(&draft.subject)
+        .bind(&draft.body_markdown)
+        .bind(attachments)
+        .bind(inline_calendar_reply_json)
+        .bind(updated_at)
+        .bind(id)
+        .execute(self.writer())
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn list_drafts(&self, account_id: &AccountId) -> Result<Vec<Draft>, sqlx::Error> {
         let aid = account_id.as_str();
         let started_at = std::time::Instant::now();

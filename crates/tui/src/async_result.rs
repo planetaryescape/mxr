@@ -2,7 +2,7 @@ use crate::app::{self, AttachmentOperation};
 use crate::terminal_images::HtmlImageKey;
 use image::DynamicImage;
 use mxr_core::types::SubscriptionSummary;
-use mxr_core::{Envelope, Label, MessageBody, MessageId, MxrError, Thread, ThreadId};
+use mxr_core::{Draft, Envelope, Label, MessageBody, MessageId, MxrError, Thread, ThreadId};
 use mxr_protocol::{
     AccountOperationResult, AccountSummaryData, AccountSyncStatus, AttachmentFile, AuthSessionData,
     BodyFailure, DaemonEvent, DeliveryData, ReplyContext, Response, RuleFormData,
@@ -197,6 +197,14 @@ pub(crate) enum AsyncResult {
         thread_id: mxr_core::ThreadId,
         result: Result<(String, String), MxrError>,
     },
+    /// Snapshot of the user's locally-stored drafts (all accounts, most
+    /// recently updated first), surfaced by the stored-drafts modal.
+    StoredDraftsLoaded(Result<Vec<Draft>, MxrError>),
+    /// Editor-ready payload for editing a stored draft in place. Mirrors
+    /// `ComposeReady`, but carries the *existing* `Draft` so the
+    /// post-edit update preserves its id/account_id/created_at instead
+    /// of minting a new draft.
+    DraftEditReady(Result<DraftEditReadyData, MxrError>),
 }
 
 #[derive(Debug, Clone)]
@@ -244,4 +252,12 @@ pub(crate) struct StatusSnapshot {
 pub(crate) struct UnsubscribeResultData {
     pub(crate) archived_ids: Vec<MessageId>,
     pub(crate) message: String,
+}
+
+/// Payload for [`AsyncResult::DraftEditReady`]: the stored draft being
+/// edited plus the path of the editor-ready compose file rendered from
+/// it. `existing` is boxed to keep the `AsyncResult` enum lean.
+pub(crate) struct DraftEditReadyData {
+    pub(crate) existing: Box<Draft>,
+    pub(crate) path: std::path::PathBuf,
 }

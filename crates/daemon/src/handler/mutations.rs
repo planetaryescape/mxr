@@ -1866,6 +1866,42 @@ pub(super) async fn save_draft(state: &AppState, draft: &Draft) -> HandlerResult
     Ok(ResponseData::Ack)
 }
 
+/// Fetch a single stored draft by id so a client can load it into `$EDITOR`.
+pub(super) async fn get_draft(state: &AppState, draft_id: &mxr_core::DraftId) -> HandlerResult {
+    let draft = state
+        .store
+        .get_draft(draft_id)
+        .await?
+        .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
+    Ok(ResponseData::Draft { draft })
+}
+
+/// Update a stored draft in place (same `DraftId`). The store only touches
+/// rows still in `'draft'` status; when nothing is updated we inspect the
+/// current status to return a precise reason.
+pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResult {
+    if state.store.update_draft(draft).await? {
+        return Ok(ResponseData::Ack);
+    }
+    match state.store.get_draft_status(&draft.id).await? {
+        None => Err(crate::handler::HandlerError::Message(format!(
+            "Draft not found: {}",
+            draft.id
+        ))),
+        // Row is editable yet UPDATE matched nothing — a concurrent status
+        // transition slipped between the update and this read; ask for a retry.
+        Some(DraftStatus::Draft) => Err(crate::handler::HandlerError::Message(
+            "draft state changed during edit; retry".to_string(),
+        )),
+        Some(DraftStatus::Sending) => Err(crate::handler::HandlerError::Message(
+            "draft is sending and cannot be edited".to_string(),
+        )),
+        Some(DraftStatus::Sent) => Err(crate::handler::HandlerError::Message(
+            "draft has been sent and cannot be edited".to_string(),
+        )),
+    }
+}
+
 pub(super) async fn delete_draft(state: &AppState, draft_id: &mxr_core::DraftId) -> HandlerResult {
     state.store.delete_draft(draft_id).await?;
     Ok(ResponseData::Ack)

@@ -188,6 +188,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_drafts_recover", &["drafts", "recover", "--help"]),
         ("cli_help_drafts_resume", &["drafts", "resume", "--help"]),
         ("cli_help_drafts_discard", &["drafts", "discard", "--help"]),
+        ("cli_help_drafts_edit", &["drafts", "edit", "--help"]),
         ("cli_help_send", &["send", "--help"]),
         ("cli_help_unsubscribe", &["unsubscribe", "--help"]),
         ("cli_help_attachments", &["attachments", "--help"]),
@@ -338,7 +339,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ),
     ];
 
-    assert_eq!(cases.len(), 186);
+    assert_eq!(cases.len(), 187);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

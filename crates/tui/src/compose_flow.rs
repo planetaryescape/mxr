@@ -1,7 +1,8 @@
 use crate::app::{App, ComposeAction, PendingSend, PendingSendMode};
-use crate::async_result::ComposeReadyData;
+use crate::async_result::{ComposeReadyData, DraftEditReadyData};
 use crate::ipc::{ipc_call, ipc_call_dedicated, IpcRequest};
 use mxr_core::AccountId;
+use mxr_core::Draft;
 use mxr_core::MessageId;
 use mxr_core::MxrError;
 use mxr_protocol::{
@@ -227,6 +228,124 @@ pub(crate) async fn handle_compose_action(
         initial_content,
         invite_reply,
     })
+}
+
+/// Render a locally-stored draft to an editor-ready compose file and
+/// write it to the private scratch dir, ready for `$EDITOR`. Sibling of
+/// `handle_compose_action`: unlike the regular compose flow, the result
+/// carries the *existing* `Draft` so the post-edit save round-trips
+/// through `Request::UpdateDraft` and keeps the same `DraftId` instead
+/// of minting a new one.
+pub(crate) async fn prepare_draft_edit(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    draft: Draft,
+) -> Result<DraftEditReadyData, MxrError> {
+    let account = resolve_compose_account(bg, Some(&draft.account_id)).await?;
+    let content = mxr_compose::draft_codec::draft_to_compose_file(&draft, &account.email)
+        .map_err(|e| MxrError::Ipc(e.to_string()))?;
+
+    let dir = mxr_compose::private_tmp::private_scratch_dir()
+        .map_err(|e| MxrError::Ipc(e.to_string()))?;
+    let path = dir.join(format!("mxr-draft-edit-{}.md", draft.id));
+    // Best-effort: clear a stale file left behind by a previous
+    // cancelled/failed edit of this same draft — `write_private` uses
+    // O_EXCL and would otherwise refuse to write.
+    let _ = tokio::fs::remove_file(&path).await;
+    mxr_compose::private_tmp::write_private_async(&path, content.as_bytes())
+        .await
+        .map_err(|e| MxrError::Ipc(e.to_string()))?;
+
+    Ok(DraftEditReadyData {
+        existing: Box::new(draft),
+        path,
+    })
+}
+
+/// Handle the `$EDITOR` exit status for an in-place draft edit. Mirrors
+/// `handle_compose_editor_status`, but the edited content is applied
+/// onto the existing draft (preserving id/account_id/created_at) and
+/// saved via `Request::UpdateDraft` rather than entering the
+/// send/save-as-new-draft confirmation flow.
+pub(crate) async fn handle_draft_edit_status(
+    app: &mut App,
+    data: &DraftEditReadyData,
+    status: std::io::Result<std::process::ExitStatus>,
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+) {
+    match status {
+        Ok(s) if s.success() => {
+            let content = match mxr_compose::read_draft_file_async(&data.path).await {
+                Ok(content) => content,
+                Err(error) => {
+                    app.report_error(
+                        "Edit Draft Failed",
+                        format!("Failed to read draft: {error}"),
+                    );
+                    return;
+                }
+            };
+            let updated = match mxr_compose::draft_codec::apply_edited_compose_file(
+                &data.existing,
+                &content,
+                chrono::Utc::now(),
+            ) {
+                Ok(updated) => updated,
+                Err(error) => {
+                    // Keep the temp file so the user's edits aren't lost —
+                    // there's no in-app retry for this path, so surfacing
+                    // the path lets them recover the content by hand.
+                    app.report_error(
+                        "Edit Draft Failed",
+                        format!(
+                            "Could not parse the edited draft: {error}\n\nYour edits are still at {}",
+                            data.path.display()
+                        ),
+                    );
+                    return;
+                }
+            };
+
+            match ipc_call(bg, Request::UpdateDraft { draft: updated }).await {
+                Ok(Response::Ok {
+                    data: ResponseData::Ack,
+                }) => {
+                    app.status_message = Some("Draft updated".into());
+                    app.schedule_draft_cleanup(data.path.clone());
+                }
+                Ok(Response::Error { message, .. }) => {
+                    app.report_error(
+                        "Update Draft Failed",
+                        format!(
+                            "{message}\n\nYour edits are still at {}",
+                            data.path.display()
+                        ),
+                    );
+                }
+                Ok(_) => {
+                    app.report_error(
+                        "Update Draft Failed",
+                        "Unexpected daemon response to UpdateDraft".to_string(),
+                    );
+                }
+                Err(error) => {
+                    app.report_error(
+                        "Update Draft Failed",
+                        format!("{error}\n\nYour edits are still at {}", data.path.display()),
+                    );
+                }
+            }
+        }
+        Ok(_) => {
+            app.status_message = Some("Edit cancelled".into());
+            app.schedule_draft_cleanup(data.path.clone());
+        }
+        Err(error) => {
+            app.report_error(
+                "Edit Draft Failed",
+                format!("Failed to launch editor: {error}"),
+            );
+        }
+    }
 }
 
 fn invite_action_to_partstat(

@@ -269,6 +269,12 @@ pub fn map_request(
             Some(draft.id.as_str().clone()),
             None,
         ),
+        Request::UpdateDraft { draft } => (
+            "draft.update",
+            Some("draft"),
+            Some(draft.id.as_str().clone()),
+            None,
+        ),
         Request::DeleteDraft { draft_id } => (
             "draft.discard",
             Some("draft"),
@@ -611,7 +617,8 @@ pub fn map_request(
         | Request::GetDecision { .. }
         | Request::ListOwedReplies { .. }
         | Request::ListDrafts
-        | Request::ListOrphanedDrafts => {
+        | Request::ListOrphanedDrafts
+        | Request::GetDraft { .. } => {
             skip_activity!(
                 "read_list_status",
                 "read/list/status requests are not activity entries"

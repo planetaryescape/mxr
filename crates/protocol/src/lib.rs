@@ -615,6 +615,18 @@ mod tests {
                 IpcCategory::CoreMail,
             ),
             (
+                Request::GetDraft {
+                    draft_id: DraftId::new(),
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
+                Request::UpdateDraft {
+                    draft: sample_draft(),
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
                 Request::SaveDraftToServer {
                     draft: sample_draft(),
                 },

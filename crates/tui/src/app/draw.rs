@@ -528,6 +528,9 @@ impl App {
         // Reply-later queue modal.
         ui::reply_queue_modal::draw(frame, area, &self.modals.reply_queue, theme);
 
+        // Stored-drafts modal — local drafts, edit-in-place.
+        ui::drafts_modal::draw(frame, area, &self.modals.drafts, theme);
+
         // Activity log modal (Phase 5).
         ui::activity_modal::draw(frame, area, &self.modals.activity, theme);
 

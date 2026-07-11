@@ -851,20 +851,60 @@ impl App {
     }
 
     pub(super) fn update_visual_selection(&mut self) {
-        if self.mailbox.visual_mode {
-            if let Some(anchor) = self.mailbox.visual_anchor {
-                let (cursor, source) = if self.screen == Screen::Search {
-                    (self.search.page.selected_index, &self.search.page.results)
-                } else {
-                    (self.mailbox.selected_index, &self.mailbox.envelopes)
-                };
-                let start = anchor.min(cursor);
-                let end = anchor.max(cursor);
-                self.mailbox.selected_set.clear();
-                for env in source.iter().skip(start).take(end - start + 1) {
-                    self.mailbox.selected_set.insert(env.id.clone());
-                }
-            }
+        if !self.mailbox.visual_mode {
+            return;
         }
+        let Some(anchor) = self.mailbox.visual_anchor else {
+            return;
+        };
+
+        // `visual_anchor` and the live cursor are ROW indices into the
+        // thread-collapsed list the cursor actually navigates (`mail_list_rows`
+        // / `search_mail_list_rows`), NOT indices into the flat envelope list.
+        // In `MailListMode::Threads` one row can cover several envelopes, so a
+        // row range must be expanded to its member message ids — mirroring the
+        // thread expansion in `mutation_target_ids`. Slicing the flat envelope
+        // list by these indices silently mis-targets messages the user never
+        // highlighted, which a subsequent bulk archive/trash then acts on.
+        let (cursor, rows) = if self.screen == Screen::Search {
+            (
+                self.search.page.selected_index,
+                self.search_mail_list_rows(),
+            )
+        } else {
+            (self.mailbox.selected_index, self.mail_list_rows())
+        };
+        if rows.is_empty() {
+            return;
+        }
+        let last = rows.len() - 1;
+        let start = anchor.min(cursor).min(last);
+        let end = anchor.max(cursor).min(last);
+
+        // Source slice must match the list the rows were built from so
+        // `thread_id` lookups resolve against the right envelopes.
+        let source: &[Envelope] = if self.screen == Screen::Search {
+            &self.search.page.results
+        } else {
+            &self.mailbox.envelopes
+        };
+        let ids: Vec<MessageId> = match self.mailbox.mail_list_mode {
+            MailListMode::Threads => rows[start..=end]
+                .iter()
+                .flat_map(|row| {
+                    source
+                        .iter()
+                        .filter(move |env| env.thread_id == row.thread_id)
+                        .map(|env| env.id.clone())
+                })
+                .collect(),
+            MailListMode::Messages => rows[start..=end]
+                .iter()
+                .map(|row| row.representative.id.clone())
+                .collect(),
+        };
+
+        self.mailbox.selected_set.clear();
+        self.mailbox.selected_set.extend(ids);
     }
 }

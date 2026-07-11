@@ -1384,3 +1384,51 @@ fn restore_removed_from_lists_clears_visual_anchor() {
         "stale anchor must be dropped after rollback"
     );
 }
+
+#[test]
+fn visual_line_selection_expands_thread_rows_not_flat_envelope_indices() {
+    let mut app = App::new();
+
+    // Threads mode is the default. Build a mailbox where row 0 (thread 0)
+    // collapses two messages and row 1 (thread 1) holds one — so a row index
+    // is NOT the same as an envelope index.
+    let mut envelopes = make_test_envelopes(3);
+    let thread0 = ThreadId::new();
+    let thread1 = ThreadId::new();
+    envelopes[0].thread_id = thread0.clone();
+    envelopes[1].thread_id = thread0;
+    envelopes[2].thread_id = thread1;
+    app.mailbox.envelopes = envelopes.clone();
+    app.mailbox.all_envelopes = envelopes.clone();
+
+    assert_eq!(app.mailbox.mail_list_mode, MailListMode::Threads);
+    assert_eq!(
+        app.mail_list_rows().len(),
+        2,
+        "two threads collapse to two rows"
+    );
+
+    // Enter visual mode (anchor on row 0), then extend the cursor to row 1 —
+    // the navigation path that invokes `update_visual_selection`.
+    app.apply(Action::VisualLineMode);
+    assert_eq!(app.mailbox.visual_anchor, Some(0));
+    app.apply(Action::MoveDown);
+    assert_eq!(app.mailbox.selected_index, 1);
+
+    // Selection must be every message id in threads 0 and 1 (each row expanded
+    // to its members), NOT the flat `envelopes[0..2]` slice the buggy
+    // row-index-as-envelope-index code produced.
+    let expected: std::collections::HashSet<MessageId> =
+        envelopes.iter().map(|env| env.id.clone()).collect();
+    assert_eq!(
+        app.mailbox.selected_set, expected,
+        "visual-line selection must expand each row to all its thread member ids"
+    );
+
+    let flat_slice: std::collections::HashSet<MessageId> =
+        envelopes[0..2].iter().map(|env| env.id.clone()).collect();
+    assert_ne!(
+        app.mailbox.selected_set, flat_slice,
+        "must not select the flat envelope slice — in Threads mode row index is not envelope index"
+    );
+}

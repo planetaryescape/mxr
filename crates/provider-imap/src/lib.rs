@@ -52,6 +52,10 @@ struct CollectSyncedMessages<'a> {
     seen_uids: &'a mut HashSet<u32>,
     account_id: &'a AccountId,
     synced: &'a mut Vec<SyncedMessage>,
+    /// Lowest UID in the batch that failed to parse. The caller floors the
+    /// persisted `uid_next` to this so the next delta re-fetches it, instead
+    /// of the cursor silently advancing past a message that never persisted.
+    min_failed_uid: &'a mut Option<u32>,
 }
 
 pub struct ImapProvider {
@@ -136,11 +140,11 @@ impl ImapProvider {
     }
 
     fn gmail_fetch_query() -> &'static str {
-        "(FLAGS X-GM-LABELS X-GM-MSGID X-GM-THRID BODY.PEEK[] RFC822.SIZE)"
+        "(FLAGS INTERNALDATE X-GM-LABELS X-GM-MSGID X-GM-THRID BODY.PEEK[] RFC822.SIZE)"
     }
 
     fn imap_fetch_query() -> &'static str {
-        "(FLAGS BODY.PEEK[] RFC822.SIZE)"
+        "(FLAGS INTERNALDATE BODY.PEEK[] RFC822.SIZE)"
     }
 
     fn capability_state(capabilities: &ImapCapabilities) -> ImapCapabilityState {
@@ -225,8 +229,18 @@ impl ImapProvider {
         (mailbox.uid_next > 1).then(|| format!("1:{}", mailbox.uid_next - 1))
     }
 
+    /// Floor a mailbox cursor's `uid_next` to the lowest UID that failed to
+    /// parse this run. Delta only fetches `uid >= uid_next`, so if the cursor
+    /// advanced past a message we dropped on a parse error, that message would
+    /// never be re-fetched. Flooring makes the next sync retry from there.
+    fn floor_uid_next_to_failed(mailbox: &mut ImapMailboxCursor, min_failed_uid: Option<u32>) {
+        if let Some(min_failed) = min_failed_uid {
+            mailbox.uid_next = mailbox.uid_next.min(min_failed);
+        }
+    }
+
     fn fetch_query_for_changed_since(modseq: u64) -> String {
-        format!("(FLAGS BODY.PEEK[] RFC822.SIZE) (CHANGEDSINCE {modseq})")
+        format!("(FLAGS INTERNALDATE BODY.PEEK[] RFC822.SIZE) (CHANGEDSINCE {modseq})")
     }
 
     async fn collect_synced_messages(
@@ -241,6 +255,7 @@ impl ImapProvider {
             seen_uids,
             account_id,
             synced,
+            min_failed_uid,
         } = request;
 
         let fetched = session
@@ -254,12 +269,15 @@ impl ImapProvider {
             }
             match parse::imap_fetch_to_synced_message(msg, mailbox, account_id) {
                 Ok(sm) => synced.push(sm),
-                Err(e) => warn!(
-                    mailbox = %mailbox,
-                    uid = msg.uid,
-                    error = %e,
-                    "Failed to parse IMAP message"
-                ),
+                Err(e) => {
+                    warn!(
+                        mailbox = %mailbox,
+                        uid = msg.uid,
+                        error = %e,
+                        "Failed to parse IMAP message"
+                    );
+                    *min_failed_uid = Some(min_failed_uid.map_or(msg.uid, |u| u.min(msg.uid)));
+                }
             }
         }
 
@@ -309,6 +327,20 @@ impl ImapProvider {
                 .await
                 .map_err(mxr_core::error::MxrError::from)?;
         } else {
+            // Without MOVE we emulate it as COPY + delete. But the delete needs
+            // UIDPLUS to target a single UID; without it, delete would fail
+            // AFTER the COPY already landed, leaving a duplicate in the target
+            // that piles up on every daemon retry. Refuse up front, before any
+            // COPY, so no partial move is left behind.
+            if !capabilities.uidplus {
+                return Err(mxr_core::error::MxrError::Provider(
+                    "IMAP move refused: server advertises neither MOVE (RFC 6851) nor \
+                     UIDPLUS (RFC 4315). A COPY without a UID-targeted expunge would \
+                     duplicate the message on retry. Use a server that supports MOVE or \
+                     UIDPLUS."
+                        .into(),
+                ));
+            }
             session
                 .uid_copy(uid, target_folder)
                 .await
@@ -433,7 +465,7 @@ impl ImapProvider {
             .select(&folder.name)
             .await
             .map_err(mxr_core::error::MxrError::from)?;
-        let mailbox = ImapMailboxCursor {
+        let mut mailbox = ImapMailboxCursor {
             mailbox: folder.name.clone(),
             uid_validity: mailbox_info.uid_validity,
             uid_next: mailbox_info.uid_next,
@@ -441,6 +473,7 @@ impl ImapProvider {
         };
 
         let mut synced = Vec::new();
+        let mut min_failed_uid = None;
         if mailbox_info.exists > 0 {
             let fetched = session
                 .uid_fetch("1:*", Self::imap_fetch_query())
@@ -450,15 +483,20 @@ impl ImapProvider {
             for msg in &fetched {
                 match parse::imap_fetch_to_synced_message(msg, &folder.name, &self.account_id) {
                     Ok(sm) => synced.push(sm),
-                    Err(e) => warn!(
-                        mailbox = %folder.name,
-                        uid = msg.uid,
-                        error = %e,
-                        "Failed to parse IMAP message"
-                    ),
+                    Err(e) => {
+                        warn!(
+                            mailbox = %folder.name,
+                            uid = msg.uid,
+                            error = %e,
+                            "Failed to parse IMAP message"
+                        );
+                        min_failed_uid =
+                            Some(min_failed_uid.map_or(msg.uid, |u: u32| u.min(msg.uid)));
+                    }
                 }
             }
         }
+        Self::floor_uid_next_to_failed(&mut mailbox, min_failed_uid);
 
         let _ = session.logout().await;
         Ok(InitialFolderSyncResult {
@@ -725,7 +763,7 @@ impl ImapProvider {
             .select(&all_mail.name)
             .await
             .map_err(mxr_core::error::MxrError::from)?;
-        let mailbox = ImapMailboxCursor {
+        let mut mailbox = ImapMailboxCursor {
             mailbox: all_mail.name.clone(),
             uid_validity: mailbox_info.uid_validity,
             uid_next: mailbox_info.uid_next,
@@ -747,6 +785,7 @@ impl ImapProvider {
         };
 
         let mut synced = Vec::new();
+        let mut min_failed_uid = None;
         if let Some(uid_set) = query {
             let min_uid = if mailbox_info.uid_validity == old_mailbox.uid_validity {
                 old_mailbox.uid_next
@@ -764,10 +803,12 @@ impl ImapProvider {
                     seen_uids: &mut seen_uids,
                     account_id: &self.account_id,
                     synced: &mut synced,
+                    min_failed_uid: &mut min_failed_uid,
                 },
             )
             .await?;
         }
+        Self::floor_uid_next_to_failed(&mut mailbox, min_failed_uid);
 
         let _ = session.logout().await;
         Ok(SyncBatch {
@@ -798,6 +839,7 @@ impl ImapProvider {
         let mut seen_uids = HashSet::new();
         let mut synced = Vec::new();
         let mut deleted_provider_ids = Vec::new();
+        let mut min_failed_uid = None;
 
         let mailbox_info = if capabilities.qresync {
             match old_mailbox
@@ -841,6 +883,7 @@ impl ImapProvider {
                                         seen_uids: &mut seen_uids,
                                         account_id: &self.account_id,
                                         synced: &mut synced,
+                                        min_failed_uid: &mut min_failed_uid,
                                     },
                                 )
                                 .await?;
@@ -872,7 +915,7 @@ impl ImapProvider {
                 .map_err(mxr_core::error::MxrError::from)?
         };
 
-        let mailbox = ImapMailboxCursor {
+        let mut mailbox = ImapMailboxCursor {
             mailbox: folder.name.clone(),
             uid_validity: mailbox_info.uid_validity,
             uid_next: mailbox_info.uid_next,
@@ -902,6 +945,7 @@ impl ImapProvider {
                             seen_uids: &mut seen_uids,
                             account_id: &self.account_id,
                             synced: &mut synced,
+                            min_failed_uid: &mut min_failed_uid,
                         },
                     )
                     .await?;
@@ -909,12 +953,14 @@ impl ImapProvider {
             }
         }
 
-        // UID-diff fallback: when the server advertises neither QRESYNC nor
-        // CONDSTORE we cannot rely on VANISHED or CHANGEDSINCE to detect
-        // deletions. Issue `UID SEARCH ALL` and diff against the UIDs we
-        // believed lived in this mailbox last sync (1..old.uid_next-1).
+        // UID-diff fallback for deletion detection. Only QRESYNC's VANISHED
+        // reports expunges; CONDSTORE's CHANGEDSINCE returns changed/new
+        // messages but NOT deletions. So every non-QRESYNC path (including
+        // CONDSTORE-only servers like Dovecot, and the first delta after a
+        // legacy cursor) must issue `UID SEARCH ALL` and diff against the UIDs
+        // we believed lived in this mailbox last sync (1..old.uid_next-1). The
+        // extra search is cheap and dedup-safe.
         if !qresync_used
-            && !condstore_used
             && mailbox_info.uid_validity
                 == old_mailbox
                     .as_ref()
@@ -938,31 +984,44 @@ impl ImapProvider {
             }
         }
 
-        let query = match old_mailbox.as_ref() {
-            Some(old_mailbox) if mailbox_info.uid_validity != old_mailbox.uid_validity => {
-                warn!(
-                    mailbox = %folder.name,
-                    old = old_mailbox.uid_validity,
-                    new = mailbox_info.uid_validity,
-                    "UIDVALIDITY changed, resyncing mailbox from scratch"
-                );
-                if mailbox_info.exists == 0 {
-                    None
-                } else {
-                    Some("1:*".to_string())
+        let query = if mailbox_info.uid_next == 0 {
+            // UIDNEXT unknown (server omitted it on SELECT). A stored/observed
+            // 0 can never satisfy `new > old`, so trusting it wedges the folder
+            // (it would never fetch new mail). Rescan `1:*` instead; seen_uids
+            // plus the store's upsert keep it dedup-safe.
+            (mailbox_info.exists > 0).then(|| "1:*".to_string())
+        } else {
+            match old_mailbox.as_ref() {
+                Some(old_mailbox) if mailbox_info.uid_validity != old_mailbox.uid_validity => {
+                    warn!(
+                        mailbox = %folder.name,
+                        old = old_mailbox.uid_validity,
+                        new = mailbox_info.uid_validity,
+                        "UIDVALIDITY changed, resyncing mailbox from scratch"
+                    );
+                    if mailbox_info.exists == 0 {
+                        None
+                    } else {
+                        Some("1:*".to_string())
+                    }
                 }
+                Some(old_mailbox) if mailbox_info.uid_next > old_mailbox.uid_next => {
+                    Some(format!("{}:*", old_mailbox.uid_next))
+                }
+                Some(_) => None,
+                None if mailbox_info.exists == 0 => None,
+                None => Some("1:*".to_string()),
             }
-            Some(old_mailbox) if mailbox_info.uid_next > old_mailbox.uid_next => {
-                Some(format!("{}:*", old_mailbox.uid_next))
-            }
-            Some(_) => None,
-            None if mailbox_info.exists == 0 => None,
-            None => Some("1:*".to_string()),
         };
 
         if let Some(query) = query {
             let min_uid = match old_mailbox.as_ref() {
-                Some(old_mailbox) if mailbox_info.uid_validity == old_mailbox.uid_validity => {
+                // With an unknown UIDNEXT we cannot trust the old cursor to gate
+                // by UID, so fetch from the start and let seen_uids/upsert dedup.
+                Some(old_mailbox)
+                    if mailbox_info.uid_next != 0
+                        && mailbox_info.uid_validity == old_mailbox.uid_validity =>
+                {
                     old_mailbox.uid_next
                 }
                 _ => 1,
@@ -978,10 +1037,12 @@ impl ImapProvider {
                     seen_uids: &mut seen_uids,
                     account_id: &self.account_id,
                     synced: &mut synced,
+                    min_failed_uid: &mut min_failed_uid,
                 },
             )
             .await?;
         }
+        Self::floor_uid_next_to_failed(&mut mailbox, min_failed_uid);
 
         let _ = session.logout().await;
         Ok(DeltaFolderSyncResult {
@@ -1171,8 +1232,10 @@ impl MailSyncProvider for ImapProvider {
             .await
             .map_err(mxr_core::error::MxrError::from)?;
 
+        // BODY.PEEK[] (not BODY[]) so downloading an attachment does not
+        // implicitly set \Seen and silently mark an unread message read.
         let fetched = session
-            .uid_fetch(&uid.to_string(), "BODY[]")
+            .uid_fetch(&uid.to_string(), "BODY.PEEK[]")
             .await
             .map_err(mxr_core::error::MxrError::from)?;
 
@@ -1521,6 +1584,21 @@ impl ImapProvider {
         add: &[String],
         remove: &[String],
     ) -> mxr_core::provider::Result<()> {
+        // Keyword atoms are interpolated verbatim into `+FLAGS (...)` /
+        // `-FLAGS (...)` and handed to `uid_store`, which does NOT validate
+        // them. A crafted keyword (e.g. `x) (\Deleted` or one containing CRLF)
+        // would inject extra IMAP command tokens — silently flagging \Deleted
+        // or worse. Reject the whole mutation before touching the server if any
+        // atom is not a safe RFC 3501 flag atom.
+        for keyword in add.iter().chain(remove.iter()) {
+            if !is_valid_imap_keyword(keyword) {
+                return Err(mxr_core::error::MxrError::Provider(format!(
+                    "Refusing unsafe IMAP keyword {keyword:?}: keyword atoms must not contain \
+                     whitespace, control characters, or any of ()%*\\{{\""
+                )));
+            }
+        }
+
         let (mailbox, uid) = folders::parse_provider_id(provider_message_id)
             .map_err(mxr_core::error::MxrError::from)?;
 
@@ -1557,6 +1635,11 @@ impl ImapProvider {
 }
 
 /// Map known label names to IMAP flags. Returns None for folder-based labels.
+///
+/// Every value returned here is a fixed, known-safe system-flag constant, so
+/// the `+FLAGS`/`-FLAGS` builders in `apply_modify_labels` that consume it are
+/// injection-safe. Only free-form custom keywords (`apply_set_keywords`) need
+/// the `is_valid_imap_keyword` guard.
 fn label_to_flag(label: &str) -> Option<&'static str> {
     match label.to_uppercase().as_str() {
         "READ" | "SEEN" => Some("\\Seen"),
@@ -1566,6 +1649,20 @@ fn label_to_flag(label: &str) -> Option<&'static str> {
         "DELETED" | "TRASH" => Some("\\Deleted"),
         _ => None,
     }
+}
+
+/// Whether a string is a safe RFC 3501 flag-keyword atom to interpolate into a
+/// `UID STORE +FLAGS (...)` argument. Rejects empty atoms and anything with
+/// whitespace, control characters, or the IMAP atom-special / quoting chars
+/// `()%*\{"` — the vectors a crafted keyword would use to inject extra command
+/// tokens or CRLF into the store command.
+fn is_valid_imap_keyword(atom: &str) -> bool {
+    !atom.is_empty()
+        && !atom.chars().any(|c| {
+            c.is_whitespace()
+                || c.is_control()
+                || matches!(c, '(' | ')' | '%' | '*' | '\\' | '{' | '"')
+        })
 }
 
 #[cfg(test)]
@@ -1607,6 +1704,7 @@ mod tests {
             body: Some(raw.into_bytes()),
             header: None,
             size: Some(1024),
+            internal_date: None,
             gmail_labels: vec![],
             gmail_msg_id: None,
             gmail_thread_id: None,
@@ -2313,6 +2411,7 @@ mod tests {
             body: Some(b"From: alice@example.com\r\nSubject: Old message\r\nDate: Mon, 1 Jan 2024 12:00:00 +0000\r\nContent-Type: text/plain\r\n\r\nOld body".to_vec()),
             header: None,
             size: None,
+            internal_date: None,
             gmail_labels: vec![],
             gmail_msg_id: None,
             gmail_thread_id: None,
@@ -2773,6 +2872,7 @@ mod tests {
                 body: Some(raw.as_bytes().to_vec()),
                 header: None,
                 size: None,
+                internal_date: None,
                 gmail_labels: vec![],
                 gmail_msg_id: None,
                 gmail_thread_id: None,
@@ -2947,5 +3047,287 @@ mod tests {
             .expect("event must arrive within 2s")
             .expect("watcher task must not panic");
         assert!(result.is_ok(), "next_event must return Ok on trigger");
+    }
+
+    // -- audit-finding regressions --------------------------------------------
+
+    #[tokio::test]
+    async fn delta_sync_detects_deletes_on_condstore_only_server() {
+        // Regression (fix 1): CONDSTORE's CHANGEDSINCE never reports expunges,
+        // so a CONDSTORE-only server (no QRESYNC) must still run UID SEARCH ALL
+        // to detect deletions. UID 2 was expunged; the server now has 1, 3, 4.
+        let factory = MockImapSessionFactory::new(
+            MailboxInfo {
+                uid_validity: 1,
+                uid_next: 5,
+                exists: 3,
+                highest_modseq: Some(10),
+            },
+            vec![],
+            vec![],
+        )
+        .with_capabilities(ImapCapabilities {
+            condstore: true,
+            ..Default::default()
+        })
+        .with_uid_search("INBOX", vec![1, 3, 4]);
+        let log = factory.log.clone();
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        // Same highest_modseq as the server → no CHANGEDSINCE fetch, which
+        // isolates the deletion-detection path under test.
+        let cursor = imap_cursor_mailboxes(vec![ImapMailboxCursor {
+            mailbox: "INBOX".into(),
+            uid_validity: 1,
+            uid_next: 5,
+            highest_modseq: Some(10),
+        }]);
+
+        let batch = provider.sync_messages(&cursor).await.unwrap();
+
+        assert_eq!(batch.deleted_provider_ids, vec!["INBOX:2"]);
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(
+            commands.iter().any(|cmd| cmd == "UID SEARCH ALL"),
+            "CONDSTORE-only server must still UID SEARCH ALL; commands={commands:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_attachment_uses_peek_to_avoid_marking_seen() {
+        // Regression (fix 2): attachment download must use BODY.PEEK[] so it
+        // does not implicitly set \Seen on an unread message.
+        let raw = concat!(
+            "From: alice@example.com\r\n",
+            "To: bob@example.com\r\n",
+            "Subject: Test\r\n",
+            "MIME-Version: 1.0\r\n",
+            "Content-Type: multipart/mixed; boundary=\"b\"\r\n",
+            "\r\n",
+            "--b\r\nContent-Type: text/plain\r\n\r\nSee attached.\r\n",
+            "--b\r\nContent-Type: application/pdf; name=\"r.pdf\"\r\n",
+            "Content-Disposition: attachment; filename=\"r.pdf\"\r\n",
+            "Content-Transfer-Encoding: base64\r\n\r\nSGk=\r\n--b--\r\n",
+        );
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 2, 1),
+            vec![vec![FetchedMessage {
+                uid: 10,
+                flags: vec![],
+                envelope: None,
+                body: Some(raw.as_bytes().to_vec()),
+                header: None,
+                size: None,
+                internal_date: None,
+                gmail_labels: vec![],
+                gmail_msg_id: None,
+                gmail_thread_id: None,
+            }]],
+            vec![],
+        );
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        provider.fetch_attachment("INBOX:10", "2").await.unwrap();
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(
+            commands.iter().any(|c| c == "UID FETCH 10 BODY.PEEK[]"),
+            "attachment fetch must use BODY.PEEK[]; commands={commands:?}"
+        );
+        assert!(
+            !commands.iter().any(|c| c == "UID FETCH 10 BODY[]"),
+            "must not use non-peek BODY[] which marks \\Seen; commands={commands:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_keywords_rejects_injection_atoms() {
+        // Regression (fix 3): a keyword with command-injection characters or
+        // CRLF must be refused before any UID STORE reaches the server.
+        for bad in ["x) (\\Deleted", "safe\r\n() (\\Deleted)"] {
+            let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
+            let log = factory.log.clone();
+            let provider = ImapProvider::with_session_factory(
+                AccountId::new(),
+                test_config(),
+                Box::new(factory),
+            );
+
+            let err = provider
+                .apply_mutation(
+                    "mut-1",
+                    &mxr_core::Mutation::SetKeywords {
+                        provider_message_id: "INBOX:42".to_string(),
+                        add: vec![bad.to_string()],
+                        remove: vec![],
+                    },
+                )
+                .await
+                .expect_err("unsafe keyword must be rejected");
+            assert!(
+                err.to_string().contains("unsafe IMAP keyword"),
+                "unexpected error: {err}"
+            );
+
+            let commands = log.lock().unwrap().commands.clone();
+            assert!(
+                !commands.iter().any(|c| c.contains("UID STORE")),
+                "no UID STORE may be issued for a rejected keyword; commands={commands:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn set_keywords_applies_valid_atoms() {
+        // Guards the happy path: legitimate custom keywords still round-trip.
+        let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        provider
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::SetKeywords {
+                    provider_message_id: "INBOX:42".to_string(),
+                    add: vec!["$Work".to_string()],
+                    remove: vec!["$Old".to_string()],
+                },
+            )
+            .await
+            .unwrap();
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands.contains(&"UID STORE 42 +FLAGS ($Work)".to_string()));
+        assert!(commands.contains(&"UID STORE 42 -FLAGS ($Old)".to_string()));
+    }
+
+    #[tokio::test]
+    async fn delta_sync_fetches_when_uidnext_unknown() {
+        // Regression (fix 5): a SELECT that omits UIDNEXT maps to uid_next=0.
+        // The folder must fall back to a 1:* rescan instead of wedging forever.
+        let factory = MockImapSessionFactory::new(
+            MailboxInfo {
+                uid_validity: 1,
+                uid_next: 0,
+                exists: 2,
+                highest_modseq: None,
+            },
+            vec![vec![
+                make_fetched_message(5, "Fresh mail", "alice@example.com"),
+                make_fetched_message(6, "More mail", "bob@example.com"),
+            ]],
+            vec![],
+        )
+        .with_uid_search("INBOX", vec![1, 2, 3, 4, 5, 6]);
+        let log = factory.log.clone();
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let cursor = imap_cursor(1, 5);
+        let batch = provider.sync_messages(&cursor).await.unwrap();
+
+        assert_eq!(
+            batch.upserted.len(),
+            2,
+            "delta must still fetch when UIDNEXT is unknown"
+        );
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(
+            commands.iter().any(|c| c.contains("UID FETCH 1:*")),
+            "unknown UIDNEXT must trigger a 1:* rescan; commands={commands:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn move_refuses_before_copy_without_move_or_uidplus() {
+        // Regression (fix 6): a move with neither MOVE nor UIDPLUS must error
+        // BEFORE issuing COPY, so no orphaned copy is left to duplicate on the
+        // daemon's retry.
+        let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let err = provider
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::Trash {
+                    provider_message_id: "INBOX:42".to_string(),
+                },
+            )
+            .await
+            .expect_err("move without MOVE or UIDPLUS must fail");
+        let message = err.to_string();
+        assert!(
+            message.contains("MOVE") && message.contains("UIDPLUS"),
+            "error should cite MOVE and UIDPLUS: {message}"
+        );
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(
+            !commands.iter().any(|c| c.starts_with("UID COPY")),
+            "must not COPY before refusing; commands={commands:?}"
+        );
+        assert!(
+            !commands
+                .iter()
+                .any(|c| c.starts_with("UID EXPUNGE") || c == "EXPUNGE"),
+            "must not expunge; commands={commands:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn delta_sync_floors_cursor_to_unparsed_uid() {
+        // Regression (fix 7): when a message fails to parse, the persisted
+        // uid_next must not advance past it, so the next delta re-fetches it.
+        let good_a = make_fetched_message(4, "Parses A", "a@example.com");
+        let unparseable = FetchedMessage {
+            uid: 5,
+            flags: vec![],
+            envelope: None,
+            body: None,
+            header: None,
+            size: None,
+            internal_date: None,
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
+        };
+        let good_b = make_fetched_message(6, "Parses B", "b@example.com");
+
+        let factory = MockImapSessionFactory::new(
+            MailboxInfo {
+                uid_validity: 1,
+                uid_next: 7,
+                exists: 6,
+                highest_modseq: None,
+            },
+            vec![vec![good_a, unparseable, good_b]],
+            vec![],
+        )
+        .with_uid_search("INBOX", vec![1, 2, 3, 4, 5, 6]);
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let cursor = imap_cursor(1, 4);
+        let batch = provider.sync_messages(&cursor).await.unwrap();
+
+        assert_eq!(
+            batch.upserted.len(),
+            2,
+            "the two parseable messages must still persist"
+        );
+        assert_eq!(
+            decoded_imap_inbox(&batch.next_cursor).uid_next,
+            5,
+            "cursor uid_next must floor to the failed UID (5), not advance to 7"
+        );
     }
 }

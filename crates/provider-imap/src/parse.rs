@@ -121,7 +121,11 @@ pub fn imap_fetch_to_synced_message(
     })?;
     let raw_headers = extract_raw_header_block(raw)
         .ok_or_else(|| ImapProviderError::Parse("Missing RFC822 header block".into()))?;
-    let parsed_headers = parse_headers_from_raw(&raw_headers, None)
+    // Fall back to the server's INTERNALDATE (true receive time) when the
+    // message has no parseable `Date:` header, so spam/bounces/drafts get a
+    // stable time instead of a non-deterministic `Utc::now()` that re-sorts
+    // to the top and changes on every re-sync.
+    let parsed_headers = parse_headers_from_raw(&raw_headers, msg.internal_date)
         .map_err(|err| ImapProviderError::Parse(err.to_string()))?;
 
     let has_attachments = parsed_msg.attachments().next().is_some();
@@ -134,14 +138,22 @@ pub fn imap_fetch_to_synced_message(
             .unwrap_or(UnsubscribeMethod::None),
         unsubscribe => unsubscribe,
     };
-    let snippet = body
-        .text_plain
-        .as_deref()
-        .or(body.text_html.as_deref())
-        .map_or_else(
-            || parsed_headers.subject.chars().take(100).collect(),
-            |text| text.chars().take(200).collect::<String>(),
-        );
+    let snippet = match body.text_plain.as_deref() {
+        Some(text) => text.chars().take(200).collect::<String>(),
+        // HTML-only mail has no plain part, so strip tags to readable text
+        // rather than surfacing raw `<!DOCTYPE html>...` markup in the snippet.
+        None => match body.text_html.as_deref() {
+            Some(html) => {
+                let stripped = strip_html_to_text(html);
+                if stripped.is_empty() {
+                    parsed_headers.subject.chars().take(100).collect()
+                } else {
+                    stripped.chars().take(200).collect::<String>()
+                }
+            }
+            None => parsed_headers.subject.chars().take(100).collect(),
+        },
+    };
 
     let (mut flags, keywords) = flags_and_keywords_from_imap(&msg.flags);
     let mut label_provider_ids = if msg.gmail_labels.is_empty() {
@@ -180,16 +192,7 @@ pub fn imap_fetch_to_synced_message(
         flags |= MessageFlags::SPAM;
     }
 
-    let mailbox_lower = mailbox.to_lowercase();
-    if mailbox_lower.contains("sent") {
-        flags |= MessageFlags::SENT;
-    }
-    if mailbox_lower.contains("trash") {
-        flags |= MessageFlags::TRASH;
-    }
-    if mailbox_lower.contains("spam") || mailbox_lower.contains("junk") {
-        flags |= MessageFlags::SPAM;
-    }
+    flags |= mailbox_leaf_flags(mailbox);
 
     // A message with no parseable From header is rare but real (drafts,
     // malformed senders). We still surface it rather than dropping it, but
@@ -286,6 +289,11 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
                 }
 
                 match &part.body {
+                    // mail_parser reports `text/calendar` as `PartType::Text`. A
+                    // bare calendar part (no filename/disposition) would otherwise
+                    // land its raw `BEGIN:VCALENDAR...` in `text_plain`. It is
+                    // already captured into `metadata.calendar` above, so skip it.
+                    PartType::Text(_) if is_calendar_part(part) => {}
                     PartType::Text(text) if text_plain.is_none() => {
                         text_plain = Some(text.to_string());
                         metadata.text_plain_source = Some(BodyPartSource::Exact);
@@ -320,6 +328,78 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
             metadata: Default::default(),
         },
     }
+}
+
+/// Derive SENT/TRASH/SPAM flags from a mailbox name by matching its LEAF
+/// segment (last component after `/` or `.`) against curated folder names.
+///
+/// The previous `mailbox_lower.contains(...)` substring test over-flagged
+/// "Unsent Messages"→SENT, "Presentations"→SENT, and "Junk Drawer"→SPAM,
+/// while a curated leaf match still catches the real "Sent Items" /
+/// "Deleted Items" that the exact special-use block misses.
+fn mailbox_leaf_flags(mailbox: &str) -> MessageFlags {
+    let lower = mailbox.to_lowercase();
+    let leaf = lower
+        .rsplit(['/', '.'])
+        .next()
+        .unwrap_or(lower.as_str())
+        .trim();
+
+    let mut flags = MessageFlags::empty();
+    if matches!(leaf, "sent" | "sent items" | "sent mail" | "sent messages") {
+        flags |= MessageFlags::SENT;
+    }
+    if matches!(
+        leaf,
+        "trash" | "deleted" | "deleted items" | "deleted messages" | "bin"
+    ) {
+        flags |= MessageFlags::TRASH;
+    }
+    if matches!(
+        leaf,
+        "spam" | "junk" | "junk e-mail" | "junk email" | "bulk mail"
+    ) {
+        flags |= MessageFlags::SPAM;
+    }
+    flags
+}
+
+/// Whether a part's declared content-type is `text/calendar`.
+fn is_calendar_part(part: &mail_parser::MessagePart<'_>) -> bool {
+    part.content_type().is_some_and(|content_type| {
+        content_type.ctype().eq_ignore_ascii_case("text")
+            && content_type
+                .subtype()
+                .is_some_and(|subtype| subtype.eq_ignore_ascii_case("calendar"))
+    })
+}
+
+/// Minimal HTML-to-text reducer for snippet fallback on HTML-only mail.
+/// Drops `<...>` tag runs, decodes a handful of common entities, and
+/// collapses runs of whitespace. Deliberately tiny and self-contained —
+/// this is a preview string, not a full HTML renderer.
+fn strip_html_to_text(html: &str) -> String {
+    let mut text = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => text.push(ch),
+            _ => {}
+        }
+    }
+
+    let decoded = text
+        .replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        // Decode &amp; last so it can't manufacture another entity.
+        .replace("&amp;", "&");
+
+    decoded.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn parse_text_plain_format_from_content_type(
@@ -445,6 +525,7 @@ mod tests {
             body: Some(raw.clone()),
             header: None,
             size: Some(raw.len() as u32),
+            internal_date: None,
             gmail_labels: vec![],
             gmail_msg_id: None,
             gmail_thread_id: None,
@@ -480,6 +561,7 @@ mod tests {
                 body: Some(raw.clone()),
                 header: None,
                 size: Some(raw.len() as u32),
+                internal_date: None,
                 gmail_labels: vec![],
                 gmail_msg_id: None,
                 gmail_thread_id: None,
@@ -518,6 +600,7 @@ mod tests {
             body: Some(raw.clone()),
             header: None,
             size: Some(raw.len() as u32),
+            internal_date: None,
             gmail_labels: vec![],
             gmail_msg_id: None,
             gmail_thread_id: None,
@@ -558,6 +641,7 @@ mod tests {
             body: Some(raw.clone()),
             header: None,
             size: Some(raw.len() as u32),
+            internal_date: None,
             gmail_labels: vec![],
             gmail_msg_id: None,
             gmail_thread_id: None,
@@ -590,6 +674,7 @@ mod tests {
             body: Some(raw.clone()),
             header: None,
             size: Some(raw.len() as u32),
+            internal_date: None,
             gmail_labels: vec![],
             gmail_msg_id: None,
             gmail_thread_id: None,
@@ -642,6 +727,17 @@ mod tests {
     }
 
     #[test]
+    fn parse_imap_date_internaldate_single_digit_day() {
+        // RFC 3501 INTERNALDATE space-pads single-digit days (" 1-Jul-1996");
+        // session capture trims the leading space, so the trimmed form must
+        // still parse for the fix-8 fallback to work on real servers.
+        let dt = parse_imap_date("1-Jul-1996 02:44:25 -0700").unwrap();
+        assert_eq!(dt.year(), 1996);
+        assert_eq!(dt.month(), 7);
+        assert_eq!(dt.day(), 1);
+    }
+
+    #[test]
     fn flags_and_keywords_split_system_from_custom() {
         // Phase E: system flags (`\Foo`) land in the bitfield; everything
         // without a `\` prefix is preserved as a custom keyword.
@@ -681,6 +777,7 @@ mod tests {
             body: Some(raw.to_vec()),
             header: None,
             size: Some(2048),
+            internal_date: None,
             gmail_labels: vec![],
             gmail_msg_id: None,
             gmail_thread_id: None,
@@ -709,6 +806,7 @@ mod tests {
             body: Some(raw.to_vec()),
             header: None,
             size: None,
+            internal_date: None,
             gmail_labels: vec![],
             gmail_msg_id: None,
             gmail_thread_id: None,
@@ -733,6 +831,7 @@ mod tests {
             body: Some(raw.to_vec()),
             header: None,
             size: None,
+            internal_date: None,
             gmail_labels: vec![],
             gmail_msg_id: None,
             gmail_thread_id: None,
@@ -752,6 +851,7 @@ mod tests {
             body: None,
             header: None,
             size: None,
+            internal_date: None,
             gmail_labels: vec![],
             gmail_msg_id: None,
             gmail_thread_id: None,
@@ -837,6 +937,112 @@ mod tests {
         let body = parse_message_body(raw, &msg_id);
         // Should not panic, returns empty body
         assert_eq!(body.message_id, msg_id);
+    }
+
+    #[test]
+    fn absent_date_header_falls_back_to_internal_date() {
+        // Regression (fix 8): a message with no parseable Date header must use
+        // the server INTERNALDATE (deterministic) instead of Utc::now().
+        let account_id = AccountId::new();
+        let internal = Utc.with_ymd_and_hms(2021, 6, 15, 8, 30, 0).unwrap();
+        let raw = b"From: spam@example.com\r\nTo: me@test.com\r\nSubject: No date\r\nContent-Type: text/plain\r\n\r\nBody";
+        let msg = FetchedMessage {
+            uid: 7,
+            flags: vec![],
+            envelope: None,
+            body: Some(raw.to_vec()),
+            header: None,
+            size: None,
+            internal_date: Some(internal),
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
+        };
+
+        let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
+        assert_eq!(synced.envelope.date, internal);
+    }
+
+    #[test]
+    fn html_only_message_snippet_strips_tags() {
+        // Regression (fix 10): HTML-only mail must not surface raw markup in
+        // the snippet.
+        let account_id = AccountId::new();
+        let raw = concat!(
+            "From: alice@example.com\r\n",
+            "To: bob@example.com\r\n",
+            "Subject: HTML only\r\n",
+            "Date: Mon, 1 Jan 2024 12:00:00 +0000\r\n",
+            "MIME-Version: 1.0\r\n",
+            "Content-Type: text/html\r\n",
+            "\r\n",
+            "<!DOCTYPE html><html><body><p>Hello &amp; welcome to the show</p></body></html>",
+        );
+        let msg = FetchedMessage {
+            uid: 1,
+            flags: vec![],
+            envelope: None,
+            body: Some(raw.as_bytes().to_vec()),
+            header: None,
+            size: None,
+            internal_date: None,
+            gmail_labels: vec![],
+            gmail_msg_id: None,
+            gmail_thread_id: None,
+        };
+
+        let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
+        assert!(synced.body.text_plain.is_none());
+        assert!(
+            synced.envelope.snippet.contains("Hello & welcome"),
+            "snippet should hold decoded visible text: {:?}",
+            synced.envelope.snippet
+        );
+        assert!(
+            !synced.envelope.snippet.contains('<'),
+            "snippet must not contain raw tag markup: {:?}",
+            synced.envelope.snippet
+        );
+    }
+
+    #[test]
+    fn calendar_only_message_does_not_leak_into_text_plain() {
+        // Regression (fix 11): a bare text/calendar part must not become
+        // text_plain; the calendar is captured into metadata separately.
+        let msg_id = MessageId::new();
+        let raw = concat!(
+            "From: organizer@example.com\r\n",
+            "To: me@test.com\r\n",
+            "Subject: Invite\r\n",
+            "Content-Type: text/calendar; method=REQUEST\r\n",
+            "\r\n",
+            "BEGIN:VCALENDAR\r\n",
+            "VERSION:2.0\r\n",
+            "BEGIN:VEVENT\r\n",
+            "SUMMARY:Sync\r\n",
+            "END:VEVENT\r\n",
+            "END:VCALENDAR\r\n",
+        );
+
+        let body = parse_message_body(raw.as_bytes(), &msg_id);
+        assert!(
+            body.text_plain.is_none(),
+            "VCALENDAR text must not leak into text_plain: {:?}",
+            body.text_plain
+        );
+    }
+
+    #[test]
+    fn mailbox_leaf_flags_curated_match_avoids_substring_false_positives() {
+        // Regression (fix 12): substring matching over-flagged these.
+        assert!(!mailbox_leaf_flags("Unsent Messages").contains(MessageFlags::SENT));
+        assert!(!mailbox_leaf_flags("Presentations").contains(MessageFlags::SENT));
+        assert!(!mailbox_leaf_flags("Junk Drawer").contains(MessageFlags::SPAM));
+        // True positives the exact special-use block misses must still work.
+        assert!(mailbox_leaf_flags("Sent Items").contains(MessageFlags::SENT));
+        assert!(mailbox_leaf_flags("Deleted Items").contains(MessageFlags::TRASH));
+        assert!(mailbox_leaf_flags("[Gmail]/Sent Mail").contains(MessageFlags::SENT));
+        assert!(mailbox_leaf_flags("INBOX.Junk").contains(MessageFlags::SPAM));
     }
 
     use chrono::Datelike;

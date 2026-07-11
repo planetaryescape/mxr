@@ -513,6 +513,60 @@ fn special_use_from_attributes(
     })
 }
 
+/// Per-folder counts captured from an IMAP `STATUS` response, decoupled
+/// from `async_imap::types::Mailbox` so `folder_info_from_status` stays
+/// unit-testable without a live server.
+struct MailboxStatus {
+    exists: u32,
+    unseen: Option<u32>,
+    uid_validity: Option<u32>,
+    uid_next: Option<u32>,
+    highest_modseq: Option<u64>,
+}
+
+/// Build a `FolderInfo` from a folder's `STATUS` result. A `STATUS` error
+/// for one mailbox (shared namespace, missing perms, deleted between LIST
+/// and STATUS) must not abort discovery of every other folder, so on error
+/// we `warn!` and emit the folder with unknown counts rather than aborting.
+fn folder_info_from_status(
+    name: String,
+    special_use: Option<String>,
+    delimiter: Option<String>,
+    status: Result<MailboxStatus>,
+) -> FolderInfo {
+    match status {
+        Ok(status) => FolderInfo {
+            name,
+            special_use,
+            delimiter,
+            unread_count: status.unseen,
+            total_count: Some(status.exists),
+            uid_validity: status.uid_validity,
+            uid_next: status.uid_next,
+            highest_modseq: status.highest_modseq,
+            namespace_prefix: None,
+        },
+        Err(error) => {
+            tracing::warn!(
+                folder = %name,
+                %error,
+                "IMAP STATUS failed; emitting folder with unknown counts instead of aborting sync"
+            );
+            FolderInfo {
+                name,
+                special_use,
+                delimiter,
+                unread_count: None,
+                total_count: None,
+                uid_validity: None,
+                uid_next: None,
+                highest_modseq: None,
+                namespace_prefix: None,
+            }
+        }
+    }
+}
+
 fn fetched_message_from_attrs(
     attrs: &[async_imap::imap_proto::types::AttributeValue<'_>],
 ) -> Option<FetchedMessage> {
@@ -524,6 +578,7 @@ fn fetched_message_from_attrs(
     let mut body = None;
     let mut header = None;
     let mut size = None;
+    let mut internal_date = None;
     let mut gmail_labels = Vec::new();
     let mut gmail_msg_id = None;
     let mut gmail_thread_id = None;
@@ -531,6 +586,12 @@ fn fetched_message_from_attrs(
     for attr in attrs {
         match attr {
             AttributeValue::Uid(value) => uid = Some(*value),
+            // imap-proto exposes INTERNALDATE as the raw RFC 3501 date string
+            // (e.g. "17-Jul-1996 02:44:25 -0700"); parse it into UTC so it can
+            // back-stop a missing/unparseable `Date:` header downstream.
+            AttributeValue::InternalDate(value) => {
+                internal_date = crate::parse::parse_imap_date(value.trim()).ok();
+            }
             AttributeValue::Flags(values) => {
                 flags = values
                     .iter()
@@ -570,6 +631,7 @@ fn fetched_message_from_attrs(
         body,
         header,
         size,
+        internal_date,
         gmail_labels,
         gmail_msg_id,
         gmail_thread_id,
@@ -871,16 +933,26 @@ impl ImapSession for RealImapSession {
                 continue;
             }
 
-            let mailbox = self
+            // A STATUS failure for one mailbox must not abort the whole LIST
+            // (and therefore the whole sync). Map any error into the helper,
+            // which warns and emits the folder with unknown counts.
+            let status = self
                 .session
                 .status(name.name(), "(MESSAGES UNSEEN UIDNEXT UIDVALIDITY)")
                 .await
+                .map(|mailbox| MailboxStatus {
+                    exists: mailbox.exists,
+                    unseen: mailbox.unseen,
+                    uid_validity: mailbox.uid_validity,
+                    uid_next: mailbox.uid_next,
+                    highest_modseq: mailbox.highest_modseq,
+                })
                 .map_err(|e| {
                     ImapProviderError::protocol_detail(format!(
                         "STATUS {} failed: {e}",
                         name.name()
                     ))
-                })?;
+                });
 
             let special_use = special_use_from_attributes(name.attributes());
 
@@ -891,20 +963,15 @@ impl ImapSession for RealImapSession {
                 special_use
             };
 
-            folders.push(FolderInfo {
-                name: name.name().to_string(),
+            // Namespace discovery is optional, and some servers answer it in a
+            // format the upstream parser rejects. Avoid issuing NAMESPACE here
+            // so folder discovery remains usable for account setup and sync.
+            folders.push(folder_info_from_status(
+                name.name().to_string(),
                 special_use,
-                delimiter: name.delimiter().map(ToString::to_string),
-                unread_count: mailbox.unseen,
-                total_count: Some(mailbox.exists),
-                uid_validity: mailbox.uid_validity,
-                uid_next: mailbox.uid_next,
-                highest_modseq: mailbox.highest_modseq,
-                // Namespace discovery is optional, and some servers answer it in a
-                // format the upstream parser rejects. Avoid issuing NAMESPACE here
-                // so folder discovery remains usable for account setup and sync.
-                namespace_prefix: None,
-            });
+                name.delimiter().map(ToString::to_string),
+                status,
+            ));
         }
 
         Ok(folders)
@@ -1384,6 +1451,46 @@ mod tests {
     }
 
     #[test]
+    fn folder_info_from_status_ok_populates_counts() {
+        let info = folder_info_from_status(
+            "Archive".to_string(),
+            Some("\\Archive".to_string()),
+            Some("/".to_string()),
+            Ok(MailboxStatus {
+                exists: 12,
+                unseen: Some(3),
+                uid_validity: Some(1),
+                uid_next: Some(20),
+                highest_modseq: Some(99),
+            }),
+        );
+        assert_eq!(info.name, "Archive");
+        assert_eq!(info.total_count, Some(12));
+        assert_eq!(info.unread_count, Some(3));
+        assert_eq!(info.uid_next, Some(20));
+    }
+
+    #[test]
+    fn folder_info_from_status_error_emits_folder_without_counts() {
+        // Regression: one folder's STATUS failure must not abort discovery of
+        // the others. The un-STATUS-able folder is still emitted, just with
+        // unknown counts, so `list_folders` returns the remaining folders.
+        let info = folder_info_from_status(
+            "Shared/Team".to_string(),
+            None,
+            Some("/".to_string()),
+            Err(ImapProviderError::protocol_detail(
+                "STATUS Shared/Team failed: permission denied".to_string(),
+            )),
+        );
+        assert_eq!(info.name, "Shared/Team");
+        assert_eq!(info.total_count, None);
+        assert_eq!(info.unread_count, None);
+        assert_eq!(info.uid_next, None);
+        assert_eq!(info.uid_validity, None);
+    }
+
+    #[test]
     fn special_use_attributes_are_mapped_by_variant() {
         assert_eq!(
             special_use_from_attributes(&[NameAttribute::Sent]),
@@ -1430,6 +1537,7 @@ mod tests {
             body: None,
             header: None,
             size: Some(512),
+            internal_date: None,
             gmail_labels: vec![],
             gmail_msg_id: None,
             gmail_thread_id: None,

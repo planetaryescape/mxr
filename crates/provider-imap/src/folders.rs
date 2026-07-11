@@ -76,14 +76,19 @@ pub fn format_provider_id(mailbox: &str, uid: u32) -> String {
 /// such as `INBOX`, `SENT`, `STARRED`, or the user label name.
 pub fn normalize_gmail_label_provider_id(label: &str) -> Option<String> {
     let trimmed = label.trim().trim_matches('"');
+    // Gmail returns SYSTEM labels as backslash atoms (`\Sent`) and USER labels
+    // as their plain display names. Only match the backslash forms so a user
+    // label named "Junk"/"All"/"Flagged" falls through unchanged instead of
+    // collapsing onto a system label (which would, e.g., hide mail as SPAM).
+    // Bare "inbox" is handled by `map_gmail_folder_to_label`.
     let normalized = match trimmed.to_ascii_lowercase().as_str() {
-        "\\inbox" | "inbox" => "INBOX".to_string(),
-        "\\sent" | "sent" => "SENT".to_string(),
-        "\\draft" | "\\drafts" | "draft" | "drafts" => "DRAFT".to_string(),
-        "\\trash" | "trash" => "TRASH".to_string(),
-        "\\spam" | "\\junk" | "spam" | "junk" => "SPAM".to_string(),
-        "\\flagged" | "\\starred" | "flagged" | "starred" => "STARRED".to_string(),
-        "\\all" | "\\allmail" | "all" | "all mail" => "ALL".to_string(),
+        "\\inbox" => "INBOX".to_string(),
+        "\\sent" => "SENT".to_string(),
+        "\\draft" | "\\drafts" => "DRAFT".to_string(),
+        "\\trash" => "TRASH".to_string(),
+        "\\spam" | "\\junk" => "SPAM".to_string(),
+        "\\flagged" | "\\starred" => "STARRED".to_string(),
+        "\\all" | "\\allmail" => "ALL".to_string(),
         "" => return None,
         _ => trimmed.to_string(),
     };
@@ -143,6 +148,33 @@ mod tests {
         assert_eq!(first.provider_id, second.provider_id);
         assert_ne!(first.account_id, second.account_id);
         assert_ne!(first.id, second.id);
+    }
+
+    #[test]
+    fn normalize_gmail_label_keeps_user_labels_that_look_like_system_words() {
+        // Regression (fix 9): a Gmail USER label named like a system word must
+        // pass through unchanged; only backslash atoms map to system labels.
+        assert_eq!(
+            normalize_gmail_label_provider_id("Junk"),
+            Some("Junk".to_string())
+        );
+        assert_eq!(
+            normalize_gmail_label_provider_id("All"),
+            Some("All".to_string())
+        );
+        assert_eq!(
+            normalize_gmail_label_provider_id("Flagged"),
+            Some("Flagged".to_string())
+        );
+        // Backslash system atoms still normalize.
+        assert_eq!(
+            normalize_gmail_label_provider_id("\\Junk"),
+            Some("SPAM".to_string())
+        );
+        assert_eq!(
+            normalize_gmail_label_provider_id("\\Sent"),
+            Some("SENT".to_string())
+        );
     }
 
     #[test]

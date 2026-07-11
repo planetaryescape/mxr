@@ -97,6 +97,19 @@ pub trait MailSyncProvider: Send + Sync {
     async fn idle_watch(&self) -> Result<Option<Box<dyn IdleWatcher>>> {
         Ok(None)
     }
+
+    /// Append an already-rendered RFC822 message to the account's Sent folder.
+    /// The send transport (SMTP) does not file Sent, so the daemon calls this
+    /// after a successful send. Returns the new provider message id
+    /// ("mailbox:uid") when the server reports it (UIDPLUS APPENDUID), else Ok(None).
+    /// Default Ok(None): providers whose send already files Sent (Gmail) don't implement it.
+    async fn append_sent(
+        &self,
+        _rfc822: &[u8],
+        _internal_date: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
 }
 
 /// Phase 3.1: a long-lived watcher returned by

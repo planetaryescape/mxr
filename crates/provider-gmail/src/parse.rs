@@ -297,8 +297,10 @@ fn walk_parts(
     // Gmail returns the part's original bytes untranscoded, so decode using the
     // charset declared in this part's Content-Type header (defaulting to UTF-8)
     // rather than assuming UTF-8 and dropping non-UTF-8 bodies.
-    let charset =
-        charset_from_content_type(find_header_value(payload.headers.as_deref(), "Content-Type"));
+    let charset = charset_from_content_type(find_header_value(
+        payload.headers.as_deref(),
+        "Content-Type",
+    ));
     let decoded_text = payload
         .body
         .as_ref()

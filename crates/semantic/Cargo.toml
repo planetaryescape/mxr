@@ -31,7 +31,7 @@ mxr-core = { workspace = true }
 mxr-reader = { workspace = true }
 mxr-store = { workspace = true }
 anyhow = { workspace = true }
-calamine = { version = "0.35", optional = true }
+calamine = { version = "0.36", optional = true }
 chrono = { workspace = true }
 # <5.16: fastembed 5.16 pulls hf-hub 0.5, which fails to retrieve
 # onnx/model.onnx for the bge/e5 profiles (semantic tests time out).

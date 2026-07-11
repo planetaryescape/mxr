@@ -658,7 +658,9 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
     );
     let directions_reclassified = match state
         .store
-        .reclassify_unknown_directions(|email| lookup.is_account_address(email))
+        .reclassify_unknown_directions(|account_id, email| {
+            lookup.is_account_address(account_id, email)
+        })
         .await
     {
         Ok(n) => n,
@@ -1528,7 +1530,9 @@ pub(crate) async fn incremental_analytics_backfill(state: &AppState) -> Analytic
     let lookup = state.account_addresses.clone();
     match state
         .store
-        .reclassify_unknown_directions(|email| lookup.is_account_address(email))
+        .reclassify_unknown_directions(|account_id, email| {
+            lookup.is_account_address(account_id, email)
+        })
         .await
     {
         Ok(n) => report.directions_reclassified = n,

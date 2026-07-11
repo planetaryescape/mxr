@@ -120,9 +120,12 @@ impl MessageDirection {
 /// impl lives in the daemon (cache backed by `account_addresses`); test
 /// code uses a stub.
 pub trait AccountAddressLookup: Send + Sync {
-    /// Returns true when `email` (case-insensitive) belongs to one of the
-    /// account_addresses rows known to this lookup.
-    fn is_account_address(&self, email: &str) -> bool;
+    /// Returns true when `email` (case-insensitive) is an owned address of
+    /// `account_id`. Scoped per account: an address owned by a *different*
+    /// account must not match, otherwise a genuine inbound message whose
+    /// sender happens to be another account's own address is misclassified
+    /// outbound.
+    fn is_account_address(&self, account_id: &AccountId, email: &str) -> bool;
 
     /// Returns false until `replace` has been called at least once with a
     /// non-empty set. While this returns false, sync writes `Direction::Unknown`
@@ -135,7 +138,8 @@ pub trait AccountAddressLookup: Send + Sync {
 /// and passes a clone into `SyncEngine`.
 #[derive(Default)]
 pub struct InMemoryAccountAddressLookup {
-    inner: std::sync::RwLock<std::collections::HashSet<String>>,
+    inner:
+        std::sync::RwLock<std::collections::HashMap<AccountId, std::collections::HashSet<String>>>,
     loaded: std::sync::atomic::AtomicBool,
 }
 
@@ -144,14 +148,22 @@ impl InMemoryAccountAddressLookup {
         Self::default()
     }
 
-    /// Replace the entire address set. Lower-cases on insert so lookups are
-    /// case-insensitive without per-call allocation on the hot path.
-    pub fn replace(&self, addresses: impl IntoIterator<Item = String>) {
-        let normalized: std::collections::HashSet<String> = addresses
-            .into_iter()
-            .map(|s| s.to_lowercase())
-            .filter(|s| !s.is_empty())
-            .collect();
+    /// Replace the entire per-account address map. Trims and lower-cases each
+    /// email on insert so lookups are case-insensitive without per-call
+    /// allocation on the hot path. Addresses are keyed by `account_id` so a
+    /// lookup only ever matches the receiving account's own addresses.
+    pub fn replace(&self, addresses: impl IntoIterator<Item = (AccountId, String)>) {
+        let mut normalized: std::collections::HashMap<
+            AccountId,
+            std::collections::HashSet<String>,
+        > = std::collections::HashMap::new();
+        for (account_id, email) in addresses {
+            let email = email.trim().to_lowercase();
+            if email.is_empty() {
+                continue;
+            }
+            normalized.entry(account_id).or_default().insert(email);
+        }
         let mut guard = self
             .inner
             .write()
@@ -162,15 +174,18 @@ impl InMemoryAccountAddressLookup {
 }
 
 impl AccountAddressLookup for InMemoryAccountAddressLookup {
-    fn is_account_address(&self, email: &str) -> bool {
+    fn is_account_address(&self, account_id: &AccountId, email: &str) -> bool {
         if !self.is_loaded() {
             return false;
         }
+        let needle = email.trim().to_lowercase();
         let guard = self
             .inner
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        guard.contains(&email.to_lowercase())
+        guard
+            .get(account_id)
+            .is_some_and(|set| set.contains(&needle))
     }
 
     fn is_loaded(&self) -> bool {

@@ -26,23 +26,45 @@ mod tests {
     }
 
     struct LoadedAddressLookup {
-        emails: HashSet<String>,
+        by_account: std::collections::HashMap<AccountId, HashSet<String>>,
     }
 
     impl LoadedAddressLookup {
-        fn new(emails: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        /// Single-account lookup: `emails` are owned by `account_id` only.
+        fn for_account(
+            account_id: AccountId,
+            emails: impl IntoIterator<Item = impl Into<String>>,
+        ) -> Self {
+            let set = emails
+                .into_iter()
+                .map(|email| email.into().to_lowercase())
+                .collect();
             Self {
-                emails: emails
+                by_account: std::collections::HashMap::from([(account_id, set)]),
+            }
+        }
+
+        /// Multi-account lookup: each account owns its own address set.
+        fn multi(entries: impl IntoIterator<Item = (AccountId, Vec<&'static str>)>) -> Self {
+            Self {
+                by_account: entries
                     .into_iter()
-                    .map(|email| email.into().to_lowercase())
+                    .map(|(account_id, emails)| {
+                        (
+                            account_id,
+                            emails.into_iter().map(str::to_lowercase).collect(),
+                        )
+                    })
                     .collect(),
             }
         }
     }
 
     impl AccountAddressLookup for LoadedAddressLookup {
-        fn is_account_address(&self, email: &str) -> bool {
-            self.emails.contains(&email.to_lowercase())
+        fn is_account_address(&self, account_id: &AccountId, email: &str) -> bool {
+            self.by_account
+                .get(account_id)
+                .is_some_and(|set| set.contains(&email.to_lowercase()))
         }
 
         fn is_loaded(&self) -> bool {
@@ -491,13 +513,16 @@ mod tests {
     async fn sync_ingest_applies_deny_screener_decision() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();
+        let account_id = AccountId::new();
         let engine = SyncEngine::with_address_lookup(
             store.clone(),
             search,
-            Arc::new(LoadedAddressLookup::new(["user@example.com"])),
+            Arc::new(LoadedAddressLookup::for_account(
+                account_id.clone(),
+                ["user@example.com"],
+            )),
         );
 
-        let account_id = AccountId::new();
         store
             .insert_account(&test_account(account_id.clone()))
             .await
@@ -538,13 +563,16 @@ mod tests {
     async fn sync_ingest_routes_feed_screener_decision() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();
+        let account_id = AccountId::new();
         let engine = SyncEngine::with_address_lookup(
             store.clone(),
             search,
-            Arc::new(LoadedAddressLookup::new(["user@example.com"])),
+            Arc::new(LoadedAddressLookup::for_account(
+                account_id.clone(),
+                ["user@example.com"],
+            )),
         );
 
-        let account_id = AccountId::new();
         store
             .insert_account(&test_account(account_id.clone()))
             .await
@@ -576,6 +604,70 @@ mod tests {
         let label_ids = store.get_message_label_ids(&msg_id).await.unwrap();
         assert!(!label_ids.contains(&inbox.id));
         assert!(label_ids.contains(&feed.id));
+    }
+
+    #[tokio::test]
+    async fn inbound_message_from_other_accounts_address_stays_inbound() {
+        // Regression: with a global (account-flat) address set, a message
+        // received in account A whose sender is account B's *own* address was
+        // stamped Outbound and skipped the inbound screener. Direction must be
+        // scoped to the receiving account.
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+
+        let account_a = AccountId::new();
+        let account_b = AccountId::new();
+        let engine = SyncEngine::with_address_lookup(
+            store.clone(),
+            search,
+            Arc::new(LoadedAddressLookup::multi([
+                (account_a.clone(), vec!["a@x.com"]),
+                (account_b.clone(), vec!["b@y.com"]),
+            ])),
+        );
+
+        store
+            .insert_account(&test_account(account_a.clone()))
+            .await
+            .unwrap();
+        let inbox = make_test_label(&account_a, "Inbox", "INBOX");
+
+        // Received in A, but sent from B's owned address.
+        let mut cross = make_test_envelope(&account_a, "cross-acct", vec!["INBOX".to_string()]);
+        cross.from.email = "b@y.com".to_string();
+        // Sent from A's own address -> genuinely outbound.
+        let mut own = make_test_envelope(&account_a, "own-msg", vec!["INBOX".to_string()]);
+        own.from.email = "a@x.com".to_string();
+
+        let provider =
+            DeltaLabelProvider::new(account_a.clone(), vec![cross, own], vec![inbox], vec![]);
+        engine.sync_account(&provider).await.unwrap();
+
+        let cross_id = store
+            .get_message_id_by_provider_id(&account_a, "cross-acct")
+            .await
+            .unwrap()
+            .unwrap();
+        let own_id = store
+            .get_message_id_by_provider_id(&account_a, "own-msg")
+            .await
+            .unwrap()
+            .unwrap();
+        let directions = store
+            .list_message_directions_by_ids(&[cross_id.clone(), own_id.clone()])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            directions.get(&cross_id),
+            Some(&MessageDirection::Inbound),
+            "sender is another account's address, not the receiving account's"
+        );
+        assert_eq!(
+            directions.get(&own_id),
+            Some(&MessageDirection::Outbound),
+            "sender is the receiving account's own address"
+        );
     }
 
     #[tokio::test]

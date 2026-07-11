@@ -16,19 +16,20 @@ const EARLIEST_PLAUSIBLE_TS: i64 = 946_684_800;
 impl super::Store {
     pub async fn reclassify_unknown_directions(
         &self,
-        is_account_address: impl Fn(&str) -> bool,
+        is_account_address: impl Fn(&AccountId, &str) -> bool,
     ) -> Result<u32, sqlx::Error> {
         let started_at = Instant::now();
-        let rows: Vec<(String, String)> = sqlx::query_as(
-            r#"SELECT id, from_email
+        let rows: Vec<(String, String, String)> = sqlx::query_as(
+            r#"SELECT id, account_id, from_email
                FROM messages
                WHERE direction = 'unknown'"#,
         )
         .fetch_all(self.reader())
         .await?;
         let mut updated = 0u32;
-        for (id, from_email) in rows {
-            let new_direction = if is_account_address(&from_email) {
+        for (id, account_id, from_email) in rows {
+            let account_id: AccountId = decode_id(&account_id)?;
+            let new_direction = if is_account_address(&account_id, &from_email) {
                 "outbound"
             } else {
                 "inbound"

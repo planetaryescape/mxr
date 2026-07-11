@@ -2111,7 +2111,9 @@ async fn reclassify_unknown_directions_uses_lookup_closure() {
         .unwrap();
 
     let updated = store
-        .reclassify_unknown_directions(|email| email.eq_ignore_ascii_case("me@example.com"))
+        .reclassify_unknown_directions(|acct, email| {
+            acct == &account.id && email.eq_ignore_ascii_case("me@example.com")
+        })
         .await
         .unwrap();
     assert_eq!(updated, 2);

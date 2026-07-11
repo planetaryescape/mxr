@@ -1075,7 +1075,12 @@ impl MailSyncProvider for ImapProvider {
                 batch_operations: false,
                 custom_keywords: true,
             },
-            search: SearchCaps { server_side: true },
+            // No `search_remote` is implemented for IMAP (all search goes
+            // through the local index), so advertising server-side search
+            // would be a lie: the core default `search_remote` errors. Report
+            // false so the daemon never routes a remote search here and the
+            // capability matches Gmail's honest reporting.
+            search: SearchCaps { server_side: false },
             // IMAP has an IDLE watcher. Per-server availability is
             // checked when `idle_watch()` opens the dedicated session;
             // non-IDLE servers return `Ok(None)` and stay on polling.

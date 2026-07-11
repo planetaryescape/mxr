@@ -76,6 +76,26 @@ impl SmtpConfig {
         self
     }
 
+    /// Reject unusable configs at load time instead of at first send.
+    ///
+    /// Refusing `auth_required && !use_tls` here is the primary guard against
+    /// leaking credentials over cleartext (`build_transport` repeats it as
+    /// defense-in-depth).
+    pub fn validate(&self) -> Result<(), SmtpError> {
+        if self.host.trim().is_empty() {
+            return Err(SmtpError::Transport("SMTP host must not be empty".into()));
+        }
+        if self.port == 0 {
+            return Err(SmtpError::Transport("SMTP port must not be 0".into()));
+        }
+        if self.auth_required && !self.use_tls {
+            return Err(SmtpError::Transport(
+                "refusing to send SMTP credentials over an unencrypted connection (auth_required with use_tls=false)".into(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Retrieve the SMTP password through the daemon-provided credential resolver.
     pub fn resolve_password(&self) -> Result<String, SmtpError> {
         self.password_cache
@@ -121,6 +141,61 @@ mod tests {
         let config: SmtpConfig = serde_json::from_str(json).unwrap();
         assert!(config.auth_required);
         assert!(config.use_tls);
+    }
+
+    #[test]
+    fn validate_accepts_good_config() {
+        let config = SmtpConfig::new(
+            "smtp.example.com".into(),
+            587,
+            "user".into(),
+            "mxr/test".into(),
+            true,
+            true,
+        );
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_empty_host() {
+        let config = SmtpConfig::new(
+            "   ".into(),
+            587,
+            "user".into(),
+            "mxr/test".into(),
+            true,
+            true,
+        );
+        assert!(matches!(config.validate(), Err(SmtpError::Transport(_))));
+    }
+
+    #[test]
+    fn validate_rejects_zero_port() {
+        let config = SmtpConfig::new(
+            "smtp.example.com".into(),
+            0,
+            "user".into(),
+            "mxr/test".into(),
+            true,
+            true,
+        );
+        assert!(matches!(config.validate(), Err(SmtpError::Transport(_))));
+    }
+
+    #[test]
+    fn validate_rejects_cleartext_auth() {
+        let config = SmtpConfig::new(
+            "smtp.example.com".into(),
+            587,
+            "user".into(),
+            "mxr/test".into(),
+            true,
+            false,
+        );
+        assert!(matches!(
+            config.validate(),
+            Err(SmtpError::Transport(msg)) if msg.contains("unencrypted")
+        ));
     }
 
     #[test]

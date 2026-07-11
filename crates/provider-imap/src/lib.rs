@@ -200,6 +200,32 @@ impl ImapProvider {
             })
     }
 
+    /// Resolve the account's Sent folder for APPEND, returning `None` when the
+    /// server exposes no Sent folder. Unlike `resolve_folder_for_label("SENT")`,
+    /// this never falls back to a synthetic "SENT" mailbox name: an absent Sent
+    /// folder must skip the APPEND (best-effort), not target a mailbox that
+    /// doesn't exist. Prefers the RFC 6154 `\Sent` special-use, then common
+    /// Sent folder names.
+    fn resolve_sent_folder(folders: &[FolderInfo]) -> Option<String> {
+        folders
+            .iter()
+            .find(|folder| {
+                folder
+                    .special_use
+                    .as_deref()
+                    .is_some_and(|value| value.eq_ignore_ascii_case("\\Sent"))
+            })
+            .or_else(|| {
+                folders.iter().find(|folder| {
+                    matches!(
+                        folder.name.to_ascii_lowercase().as_str(),
+                        "sent" | "sent mail" | "sent messages" | "sent items"
+                    )
+                })
+            })
+            .map(|folder| folder.name.clone())
+    }
+
     fn enableable_capabilities(capabilities: &ImapCapabilities) -> Vec<&'static str> {
         let mut enabled = Vec::new();
         if capabilities.qresync {
@@ -1370,6 +1396,38 @@ impl MailSyncProvider for ImapProvider {
         let _ = session.logout().await;
         Ok(())
     }
+
+    async fn append_sent(
+        &self,
+        rfc822: &[u8],
+        _internal_date: chrono::DateTime<chrono::Utc>,
+    ) -> mxr_core::provider::Result<Option<String>> {
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        let folders = session
+            .list_folders()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        let Some(sent_mailbox) = Self::resolve_sent_folder(&folders) else {
+            warn!("no Sent folder on IMAP server; skipping APPEND of sent message");
+            let _ = session.logout().await;
+            return Ok(None);
+        };
+
+        // Mark the copy \Seen — a message you sent is already read.
+        let uid = session
+            .uid_append(&sent_mailbox, &["\\Seen"], rfc822)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let _ = session.logout().await;
+
+        Ok(uid.map(|uid| folders::format_provider_id(&sent_mailbox, uid)))
+    }
 }
 
 impl ImapProvider {
@@ -1835,6 +1893,15 @@ mod tests {
 
         async fn uid_move(&mut self, _uid_set: &str, _mailbox: &str) -> crate::session::Result<()> {
             Ok(())
+        }
+
+        async fn uid_append(
+            &mut self,
+            _mailbox: &str,
+            _flags: &[&str],
+            _body: &[u8],
+        ) -> crate::session::Result<Option<u32>> {
+            Ok(None)
         }
 
         async fn uid_expunge(&mut self, _uid_set: &str) -> crate::session::Result<()> {
@@ -3333,6 +3400,110 @@ mod tests {
             decoded_imap_inbox(&batch.next_cursor).uid_next,
             5,
             "cursor uid_next must floor to the failed UID (5), not advance to 7"
+        );
+    }
+
+    // -- append_sent ----------------------------------------------------------
+
+    #[tokio::test]
+    async fn append_sent_returns_mailbox_uid_when_server_reports_appenduid() {
+        // A UIDPLUS server (simulated via with_append_uid) reports UID 42 for
+        // the APPEND, so append_sent returns the "mailbox:uid" provider id.
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 1, 0),
+            vec![],
+            vec![
+                folder_info("INBOX", Some("\\Inbox")),
+                folder_info("Sent", Some("\\Sent")),
+            ],
+        )
+        .with_append_uid(42);
+        let commands = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let result = provider
+            .append_sent(
+                b"From: me@test.com\r\nSubject: hi\r\n\r\nbody",
+                chrono::Utc::now(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result, Some("Sent:42".to_string()));
+        assert!(
+            commands
+                .lock()
+                .unwrap()
+                .commands
+                .iter()
+                .any(|c| c.starts_with("APPEND Sent (\\Seen)")),
+            "APPEND must target the Sent folder with the \\Seen flag"
+        );
+    }
+
+    #[tokio::test]
+    async fn append_sent_without_appenduid_returns_none_but_still_appends() {
+        // A server that does not report the UID (default append_uid = None)
+        // still files the message; append_sent returns Ok(None) so the daemon
+        // falls back to the local-only SENT copy.
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 1, 0),
+            vec![],
+            vec![
+                folder_info("INBOX", Some("\\Inbox")),
+                folder_info("Sent Messages", Some("\\Sent")),
+            ],
+        );
+        let commands = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let result = provider
+            .append_sent(b"From: me@test.com\r\n\r\nbody", chrono::Utc::now())
+            .await
+            .unwrap();
+
+        assert_eq!(result, None);
+        assert!(
+            commands
+                .lock()
+                .unwrap()
+                .commands
+                .iter()
+                .any(|c| c.starts_with("APPEND Sent Messages")),
+            "the message must still be appended to the resolved Sent folder"
+        );
+    }
+
+    #[tokio::test]
+    async fn append_sent_returns_none_when_no_sent_folder() {
+        // No Sent folder on the server: append_sent must skip (Ok(None)), not
+        // error and not target a synthetic "SENT" mailbox.
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 1, 0),
+            vec![],
+            vec![folder_info("INBOX", Some("\\Inbox"))],
+        )
+        .with_append_uid(42);
+        let commands = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let result = provider
+            .append_sent(b"From: me@test.com\r\n\r\nbody", chrono::Utc::now())
+            .await
+            .unwrap();
+
+        assert_eq!(result, None);
+        assert!(
+            !commands
+                .lock()
+                .unwrap()
+                .commands
+                .iter()
+                .any(|c| c.starts_with("APPEND")),
+            "no APPEND must be issued when the server has no Sent folder"
         );
     }
 }

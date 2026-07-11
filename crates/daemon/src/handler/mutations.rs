@@ -2261,18 +2261,88 @@ async fn clear_reply_later_for_reply_parent(state: &AppState, draft: &Draft) {
 /// waiting for the next sync. Keyed by `provider_message_id` (Gmail) or the
 /// rendered Message-ID header (SMTP) so the next sync's `upsert_envelope` is
 /// idempotent for Gmail (same UUID v5) — see `MessageId::from_scoped_provider_id`.
+/// Best-effort APPEND of a just-sent message into the account's server Sent
+/// folder. SMTP relays the mail but does not file Sent, so we mirror Gmail's
+/// auto-file behavior: render the exact RFC822 bytes the SMTP path produced and
+/// hand them to the sync provider's `append_sent`. Returns the new "mailbox:uid"
+/// id when the server surfaced it (UIDPLUS), else `Ok(None)`. Providers whose
+/// send already files Sent (Gmail) use the default `Ok(None)` and never reach
+/// here. This must never fail the send — the mail already went out on the wire;
+/// callers treat any `Err` as "keep the local-only copy".
+async fn append_sent_to_server(
+    state: &AppState,
+    draft: &Draft,
+    from: &Address,
+    receipt: &SendReceipt,
+) -> Result<Option<String>, String> {
+    let provider = state.get_provider(Some(&draft.account_id))?;
+    let attachments = mxr_outbound::attachments::load_attachment_paths_async(&draft.attachments)
+        .await
+        .map_err(|error| format!("failed to load attachments for Sent APPEND: {error}"))?;
+    let message = mxr_outbound::email::build_message_with_id(
+        draft,
+        from,
+        false,
+        &attachments,
+        &receipt.rfc2822_message_id,
+    )
+    .map_err(|error| format!("failed to render message for Sent APPEND: {error}"))?;
+    provider
+        .append_sent(&message.formatted(), receipt.sent_at)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 async fn ingest_sent_message(
     state: &AppState,
     draft: &Draft,
     from: &Address,
     receipt: &SendReceipt,
 ) -> Result<mxr_core::MessageId, String> {
-    let (provider_namespace, provider_id_value) =
-        if let Some(gmail_id) = receipt.provider_message_id.as_deref() {
-            ("gmail", gmail_id.to_string())
-        } else {
-            ("smtp-local", receipt.rfc2822_message_id.clone())
-        };
+    // Gmail's send already files Sent and returns a real id. For IMAP/SMTP the
+    // SMTP transport does NOT file Sent, so best-effort APPEND a copy to the
+    // server Sent folder (parity with Gmail). A failed APPEND must never turn
+    // into a send failure — the mail already went out on the wire.
+    let (provider_namespace, provider_id_value, sent_label_provider_ids): (
+        &str,
+        String,
+        Vec<String>,
+    ) = if let Some(gmail_id) = receipt.provider_message_id.as_deref() {
+        ("gmail", gmail_id.to_string(), vec!["SENT".to_string()])
+    } else {
+        match append_sent_to_server(state, draft, from, receipt).await {
+            Ok(Some(mailbox_uid)) => {
+                // Landed on the server under UIDPLUS. Use the real
+                // "mailbox:uid" id and label with the actual Sent folder
+                // name so the local copy reconciles with the next sync
+                // (same Message-ID) and is mutatable via parse_provider_id.
+                let sent_folder = mailbox_uid
+                    .rsplit_once(':')
+                    .map_or_else(|| "SENT".to_string(), |(mailbox, _)| mailbox.to_string());
+                ("imap", mailbox_uid, vec![sent_folder])
+            }
+            // APPEND unsupported / no Sent folder / no UIDPLUS uid: keep the
+            // smtp-local fallback, but still tag the message SENT so it
+            // surfaces in the local SENT view. Local-only until a real
+            // APPEND + resync lands.
+            Ok(None) => (
+                "smtp-local",
+                receipt.rfc2822_message_id.clone(),
+                vec!["SENT".to_string()],
+            ),
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    "failed to APPEND sent message to the server Sent folder; keeping a local-only copy"
+                );
+                (
+                    "smtp-local",
+                    receipt.rfc2822_message_id.clone(),
+                    vec!["SENT".to_string()],
+                )
+            }
+        }
+    };
     let message_id = mxr_core::MessageId::from_scoped_provider_id(
         &draft.account_id,
         provider_namespace,
@@ -2311,11 +2381,7 @@ async fn ingest_sent_message(
         unsubscribe: UnsubscribeMethod::None,
         link_count: 0,
         body_word_count: 0,
-        label_provider_ids: if provider_namespace == "gmail" {
-            vec!["SENT".to_string()]
-        } else {
-            Vec::new()
-        },
+        label_provider_ids: sent_label_provider_ids,
         keywords: std::collections::BTreeSet::new(),
     };
     let thread_id = envelope.thread_id.clone();
@@ -2340,24 +2406,27 @@ async fn ingest_sent_message(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Apply Gmail SENT label if the account already knows about it (it will,
-    // post-first-sync). Missing label is non-fatal: `is:sent` queries match on
-    // MessageFlags::SENT regardless of the labels junction.
-    if provider_namespace == "gmail" {
-        if let Ok(Some(sent_label)) = state
+    // Link the sent copy to its Sent label if the account already knows it (it
+    // will, post-first-sync). Gmail uses "SENT"; an IMAP APPEND uses the real
+    // Sent folder name (e.g. "Sent"). `label_provider_ids` on the envelope is a
+    // read-only projection of the labels junction, so the label must be linked
+    // explicitly here. Missing label is non-fatal: `is:sent` queries match on
+    // MessageFlags::SENT regardless of the junction.
+    let mut sent_label_ids = Vec::new();
+    for label_provider_id in &envelope.label_provider_ids {
+        if let Ok(Some(label)) = state
             .store
-            .find_label_by_provider_id(&draft.account_id, "SENT")
+            .find_label_by_provider_id(&draft.account_id, label_provider_id)
             .await
         {
-            let _ = state
-                .store
-                .set_message_labels(
-                    &message_id,
-                    std::slice::from_ref(&sent_label.id),
-                    mxr_core::EventSource::User,
-                )
-                .await;
+            sent_label_ids.push(label.id);
         }
+    }
+    if !sent_label_ids.is_empty() {
+        let _ = state
+            .store
+            .set_message_labels(&message_id, &sent_label_ids, mxr_core::EventSource::User)
+            .await;
     }
 
     state
@@ -3470,5 +3539,208 @@ mod safety_context_wiring_tests {
             "expected ToneMismatch warning, got issues: {:?}",
             r.issues
         );
+    }
+}
+
+#[cfg(test)]
+mod sent_append_tests {
+    //! `ingest_sent_message` files a copy of an IMAP/SMTP-sent message into the
+    //! server Sent folder via `MailSyncProvider::append_sent`. These tests use a
+    //! fake sync provider with a configurable `append_sent` result to assert
+    //! both branches: a UIDPLUS success (real "mailbox:uid" id + Sent-folder
+    //! label) and the best-effort fallback (smtp-local + SENT label, no error).
+    use super::*;
+    use crate::state::AppState;
+    use chrono::Utc;
+    use mxr_core::types::{Address, DraftIntent};
+    use mxr_core::{
+        AccountId, DraftId, Label, MessageId, MxrError, SendReceipt, SyncBatch, SyncCapabilities,
+        SyncCursor,
+    };
+    use std::sync::Arc;
+
+    /// Fake sync provider whose `append_sent` returns a configured result,
+    /// standing in for an IMAP account. `append_result` is the `Ok` value the
+    /// provider yields: `Some("mailbox:uid")` for a UIDPLUS server, `None` for a
+    /// server that filed the message but reported no UID (or has no Sent folder).
+    struct AppendSentProvider {
+        account_id: AccountId,
+        append_result: Option<String>,
+    }
+
+    #[async_trait::async_trait]
+    impl mxr_core::MailSyncProvider for AppendSentProvider {
+        fn name(&self) -> &str {
+            "append-sent-fake"
+        }
+
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities::default()
+        }
+
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(Vec::new())
+        }
+
+        async fn sync_messages(&self, _cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            Ok(SyncBatch {
+                upserted: Vec::new(),
+                deleted_provider_ids: Vec::new(),
+                label_changes: Vec::new(),
+                next_cursor: SyncCursor::empty(),
+                has_more: false,
+                threads_changed: Vec::new(),
+            })
+        }
+
+        async fn fetch_attachment(
+            &self,
+            _provider_message_id: &str,
+            _provider_attachment_id: &str,
+        ) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+
+        async fn apply_mutation(
+            &self,
+            _mutation_id: &str,
+            _mutation: &mxr_core::Mutation,
+        ) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn append_sent(
+            &self,
+            _rfc822: &[u8],
+            _internal_date: chrono::DateTime<chrono::Utc>,
+        ) -> Result<Option<String>, MxrError> {
+            Ok(self.append_result.clone())
+        }
+    }
+
+    fn sent_draft(account_id: &AccountId) -> Draft {
+        Draft {
+            id: DraftId::new(),
+            account_id: account_id.clone(),
+            reply_headers: None,
+            intent: DraftIntent::New,
+            to: vec![Address {
+                email: "dest@example.com".into(),
+                name: None,
+            }],
+            cc: Vec::new(),
+            bcc: Vec::new(),
+            subject: "hello".into(),
+            body_markdown: "body".into(),
+            attachments: Vec::new(),
+            inline_calendar_reply: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    fn from_addr() -> Address {
+        Address {
+            email: "user@example.com".into(),
+            name: None,
+        }
+    }
+
+    async fn state_with_append_result(
+        account_id: &AccountId,
+        append_result: Option<String>,
+    ) -> AppState {
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let provider = Arc::new(AppendSentProvider {
+            account_id: account_id.clone(),
+            append_result,
+        });
+        AppState::in_memory_with_sync_provider(account, provider, None)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn append_success_stores_imap_provider_id_and_sent_folder_label() {
+        let account_id = AccountId::new();
+        let state = state_with_append_result(&account_id, Some("Sent:42".to_string())).await;
+        // IMAP's SENT system label carries the real folder name as its
+        // provider_id; seed it so the sent copy links to it.
+        let sent_label = crate::test_fixtures::test_label(&account_id, "SENT", "Sent");
+        state.store.upsert_label(&sent_label).await.unwrap();
+        let draft = sent_draft(&account_id);
+        let receipt = SendReceipt {
+            provider_message_id: None,
+            sent_at: Utc::now(),
+            rfc2822_message_id: "<append-ok@example.com>".to_string(),
+        };
+
+        let message_id = ingest_sent_message(&state, &draft, &from_addr(), &receipt)
+            .await
+            .expect("ingest must succeed");
+
+        // The message id is scoped under the imap namespace + real "mailbox:uid",
+        // so the next sync (same Message-ID → same UUID v5) reconciles it.
+        assert_eq!(
+            message_id,
+            MessageId::from_scoped_provider_id(&account_id, "imap", "Sent:42"),
+        );
+        let envelope = state
+            .store
+            .get_envelope(&message_id)
+            .await
+            .unwrap()
+            .expect("stored envelope");
+        assert_eq!(envelope.provider_id, "Sent:42");
+        assert_eq!(envelope.label_provider_ids, vec!["Sent".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn append_none_falls_back_to_smtp_local_with_sent_label() {
+        let account_id = AccountId::new();
+        let state = state_with_append_result(&account_id, None).await;
+        let sent_label = crate::test_fixtures::test_label(&account_id, "SENT", "SENT");
+        state.store.upsert_label(&sent_label).await.unwrap();
+        let draft = sent_draft(&account_id);
+        let receipt = SendReceipt {
+            provider_message_id: None,
+            sent_at: Utc::now(),
+            rfc2822_message_id: "<append-none@example.com>".to_string(),
+        };
+
+        let message_id = ingest_sent_message(&state, &draft, &from_addr(), &receipt)
+            .await
+            .expect("fallback ingest must not error");
+
+        assert_eq!(
+            message_id,
+            MessageId::from_scoped_provider_id(
+                &account_id,
+                "smtp-local",
+                "<append-none@example.com>"
+            ),
+        );
+        let envelope = state
+            .store
+            .get_envelope(&message_id)
+            .await
+            .unwrap()
+            .expect("stored envelope");
+        assert_eq!(envelope.provider_id, "<append-none@example.com>");
+        // Still tagged SENT so the local SENT view shows it (local-only until a
+        // real APPEND + resync lands).
+        assert_eq!(envelope.label_provider_ids, vec!["SENT".to_string()]);
     }
 }

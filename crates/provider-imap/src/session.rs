@@ -40,6 +40,15 @@ pub trait ImapSession: Send {
     async fn uid_store(&mut self, uid_set: &str, flags: &str) -> Result<()>;
     async fn uid_copy(&mut self, uid_set: &str, mailbox: &str) -> Result<()>;
     async fn uid_move(&mut self, uid_set: &str, mailbox: &str) -> Result<()>;
+    /// `APPEND <mailbox> (<flags>) {len}` — file a rendered RFC822 message into
+    /// `mailbox`. Returns the APPENDUID UID when the server surfaces it under
+    /// UIDPLUS, else `Ok(None)`.
+    async fn uid_append(
+        &mut self,
+        mailbox: &str,
+        flags: &[&str],
+        body: &[u8],
+    ) -> Result<Option<u32>>;
     async fn uid_expunge(&mut self, uid_set: &str) -> Result<()>;
     async fn expunge(&mut self) -> Result<()>;
     async fn list_folders(&mut self) -> Result<Vec<FolderInfo>>;
@@ -877,6 +886,26 @@ impl ImapSession for RealImapSession {
         Ok(())
     }
 
+    async fn uid_append(
+        &mut self,
+        mailbox: &str,
+        flags: &[&str],
+        body: &[u8],
+    ) -> Result<Option<u32>> {
+        // The vendored `mxr-async-imap` `append` returns `Result<()>`: it
+        // consumes the tagged OK line without surfacing the APPENDUID, so the
+        // new UID is not available here even on a UIDPLUS server. File the
+        // message and report `None`; the daemon's fallback still records the
+        // sent copy locally and the next sync reconciles the real UID by
+        // Message-ID. (Confirmed against mxr-async-imap 0.10.6 `Session::append`.)
+        let flags = (!flags.is_empty()).then(|| format!("({})", flags.join(" ")));
+        self.session
+            .append(mailbox, flags.as_deref(), None, body)
+            .await
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        Ok(None)
+    }
+
     async fn uid_expunge(&mut self, uid_set: &str) -> Result<()> {
         use futures::TryStreamExt;
         let stream = self
@@ -1028,6 +1057,9 @@ pub mod mock {
         /// Per-mailbox UID set returned by `UID SEARCH ALL`. None means an empty
         /// set; tests opt in by inserting via `MockImapSessionFactory`.
         pub(crate) uid_search_results: HashMap<String, Vec<u32>>,
+        /// UID returned by `uid_append` (simulating a UIDPLUS server's
+        /// APPENDUID). `None` mimics a server that does not report the UID.
+        pub(crate) append_uid: Option<u32>,
     }
 
     pub struct MockImapSession {
@@ -1193,6 +1225,20 @@ pub mod mock {
             Ok(())
         }
 
+        async fn uid_append(
+            &mut self,
+            mailbox: &str,
+            flags: &[&str],
+            body: &[u8],
+        ) -> Result<Option<u32>> {
+            self.log.lock().unwrap().commands.push(format!(
+                "APPEND {mailbox} ({}) {{{}}}",
+                flags.join(" "),
+                body.len()
+            ));
+            Ok(self.state.lock().unwrap().append_uid)
+        }
+
         async fn uid_expunge(&mut self, uid_set: &str) -> Result<()> {
             self.log
                 .lock()
@@ -1280,6 +1326,7 @@ pub mod mock {
                 state: Arc::new(Mutex::new(MockSessionState {
                     fetch_queues_by_mailbox,
                     uid_search_results: HashMap::new(),
+                    append_uid: None,
                 })),
                 idle_trigger: None,
             }
@@ -1316,6 +1363,13 @@ pub mod mock {
                 .unwrap()
                 .uid_search_results
                 .insert(mailbox.to_string(), uids);
+            self
+        }
+
+        /// Simulate a UIDPLUS server that reports `uid` as the APPENDUID for
+        /// the next `uid_append`. Used by the Sent-APPEND tests.
+        pub fn with_append_uid(self, uid: u32) -> Self {
+            self.state.lock().unwrap().append_uid = Some(uid);
             self
         }
 
@@ -1441,6 +1495,7 @@ mod tests {
         Arc::new(Mutex::new(MockSessionState {
             fetch_queues_by_mailbox: build_fetch_queues(&fetch_responses, &folders),
             uid_search_results: HashMap::new(),
+            append_uid: None,
         }))
     }
 

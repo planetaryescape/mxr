@@ -250,6 +250,15 @@ impl ImapSession for BenchImapSession {
         Ok(())
     }
 
+    async fn uid_append(
+        &mut self,
+        _mailbox: &str,
+        _flags: &[&str],
+        _body: &[u8],
+    ) -> mxr_provider_imap::session::Result<Option<u32>> {
+        Ok(None)
+    }
+
     async fn uid_expunge(&mut self, _uid_set: &str) -> mxr_provider_imap::session::Result<()> {
         Ok(())
     }

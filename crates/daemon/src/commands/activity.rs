@@ -182,14 +182,19 @@ fn parse_duration_ms(s: &str) -> Option<i64> {
     if s.is_empty() {
         return None;
     }
-    let (num_part, unit) = s.split_at(s.len() - 1);
+    // Peel the unit off the last *character*, not the last byte: a multibyte
+    // trailing char (e.g. `3日`, Cyrillic `5м`) would make `split_at(len - 1)`
+    // land off a char boundary and panic. Units are ASCII, so any non-ASCII
+    // trailing char simply fails to match and returns `None`.
+    let unit = s.chars().last()?;
+    let num_part = &s[..s.len() - unit.len_utf8()];
     let n: i64 = num_part.parse().ok()?;
     let ms = match unit {
-        "s" => n * 1_000,
-        "m" => n * 60_000,
-        "h" => n * 3_600_000,
-        "d" => n * 86_400_000,
-        "w" => n * 7 * 86_400_000,
+        's' => n * 1_000,
+        'm' => n * 60_000,
+        'h' => n * 3_600_000,
+        'd' => n * 86_400_000,
+        'w' => n * 7 * 86_400_000,
         _ => return None,
     };
     Some(ms)
@@ -269,7 +274,7 @@ fn render_list_table(entries: &[ActivityEntry], next_cursor: Option<ActivityCurs
             e.target_kind.as_deref().unwrap_or("-"),
             e.target_id
                 .as_ref()
-                .map(|t| format!(":{}", &t[..t.len().min(12)]))
+                .map(|t| format!(":{}", t.chars().take(12).collect::<String>()))
                 .unwrap_or_default()
         );
         let target: String = target.chars().take(24).collect();
@@ -1201,6 +1206,34 @@ mod tests {
         assert!(parse_duration_ms("3y").is_none()); // unsupported unit
         assert!(parse_duration_ms("foo").is_none());
         assert!(parse_duration_ms("").is_none());
+    }
+
+    #[test]
+    fn parse_duration_rejects_multibyte_unit_without_panic() {
+        // A multibyte trailing char used to panic `split_at(len - 1)` on the
+        // byte boundary; now it is simply an unrecognized unit.
+        assert!(parse_duration_ms("3日").is_none());
+        assert!(parse_duration_ms("5м").is_none()); // Cyrillic `м`
+    }
+
+    #[test]
+    fn render_list_table_handles_multibyte_target_id() {
+        use mxr_protocol::{ActivityEntry, ActivityTier, ClientKind};
+        // An IDN address is multibyte at byte 12; byte-slicing the target id
+        // there used to panic. Rendering must truncate on a char boundary.
+        let entries = vec![ActivityEntry {
+            id: 1,
+            ts: 0,
+            account_id: None,
+            source: ClientKind::Tui,
+            action: "mail.read".into(),
+            target_kind: Some("thread".into()),
+            target_id: Some("管理者@例え.co.jp-longer".into()),
+            tier: ActivityTier::Important,
+            context: None,
+            redacted: false,
+        }];
+        render_list_table(&entries, None);
     }
 
     #[test]

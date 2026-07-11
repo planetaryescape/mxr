@@ -73,6 +73,16 @@ impl SmtpSendProvider {
     }
 
     async fn build_transport(&self) -> Result<AsyncSmtpTransport<Tokio1Executor>, SmtpError> {
+        // Defense-in-depth: lettre does not gate AUTH on encryption, so a
+        // plaintext transport would happily send AUTH PLAIN/LOGIN in the clear.
+        // Refuse before we ever attach credentials. `validate()` also enforces
+        // this at config-load time.
+        if self.config.auth_required && !self.config.use_tls {
+            return Err(SmtpError::Transport(
+                "refusing to send SMTP credentials over an unencrypted connection (auth_required with use_tls=false)".into(),
+            ));
+        }
+
         let builder = if self.config.use_tls {
             if self.config.port == 465 {
                 AsyncSmtpTransport::<Tokio1Executor>::relay(&self.config.host)
@@ -142,7 +152,7 @@ impl MailSendProvider for SmtpSendProvider {
             transport
                 .send(message)
                 .await
-                .map_err(|e| MxrError::Provider(format!("SMTP send failed: {e}")))?;
+                .map_err(|e| classify_smtp_send_error(&e))?;
         }
 
         Ok(SendReceipt {
@@ -182,7 +192,7 @@ impl MailSendProvider for SmtpSendProvider {
             transport
                 .send(message)
                 .await
-                .map_err(|e| MxrError::Provider(format!("SMTP send failed: {e}")))?;
+                .map_err(|e| classify_smtp_send_error(&e))?;
         }
 
         Ok(SendReceipt {
@@ -191,6 +201,34 @@ impl MailSendProvider for SmtpSendProvider {
             rfc2822_message_id: rfc2822_message_id.to_string(),
         })
     }
+}
+
+/// Transient (4xx) responses and timeouts are worth retrying; permanent (5xx)
+/// responses and everything else are hard failures.
+fn is_retryable(is_transient: bool, is_timeout: bool) -> bool {
+    is_transient || is_timeout
+}
+
+/// Map a send failure onto the core error taxonomy. Split out from
+/// `classify_smtp_send_error` so the decision and message can be unit-tested
+/// without a `lettre` error (which has no public constructor).
+fn map_send_error(retryable: bool, error: impl std::fmt::Display) -> MxrError {
+    if retryable {
+        // SMTP carries no Retry-After hint; 60s is a sane default backoff so the
+        // daemon can reschedule the send instead of hard-failing it.
+        MxrError::RateLimited {
+            retry_after_secs: 60,
+        }
+    } else {
+        MxrError::Provider(format!("SMTP send failed: {error}"))
+    }
+}
+
+/// Classify a lettre SMTP send error so the daemon backs off on transient
+/// failures (4xx / timeout) and hard-fails on permanent ones (5xx).
+#[cfg(not(test))]
+fn classify_smtp_send_error(e: &lettre::transport::smtp::Error) -> MxrError {
+    map_send_error(is_retryable(e.is_transient(), e.is_timeout()), e)
 }
 
 async fn load_attachments(paths: &[PathBuf]) -> Result<Vec<LoadedAttachment>, MxrError> {
@@ -300,6 +338,43 @@ mod tests {
             .resolve_credentials()
             .unwrap()
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn build_transport_refuses_cleartext_auth() {
+        let config = SmtpConfig::new(
+            "smtp.example.com".into(),
+            587,
+            "user".into(),
+            "mxr/test".into(),
+            true,
+            false,
+        );
+        let provider = SmtpSendProvider::new(config);
+        let err = provider.build_transport().await.unwrap_err();
+        assert!(matches!(err, SmtpError::Transport(msg) if msg.contains("unencrypted")));
+    }
+
+    #[test]
+    fn is_retryable_covers_transient_timeout_and_permanent() {
+        assert!(is_retryable(true, false));
+        assert!(is_retryable(false, true));
+        assert!(is_retryable(true, true));
+        assert!(!is_retryable(false, false));
+    }
+
+    #[test]
+    fn map_send_error_maps_transient_to_rate_limited_and_permanent_to_provider() {
+        assert!(matches!(
+            map_send_error(true, "transient boom"),
+            MxrError::RateLimited {
+                retry_after_secs: 60
+            }
+        ));
+        assert!(matches!(
+            map_send_error(false, "permanent boom"),
+            MxrError::Provider(msg) if msg == "SMTP send failed: permanent boom"
+        ));
     }
 
     #[test]

@@ -38,6 +38,7 @@ pub(crate) fn smtp_config_with_credentials(
         auth_required,
         use_tls,
     );
+    config.validate()?;
     if !auth_required {
         return Ok(config);
     }

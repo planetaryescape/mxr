@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.7](https://github.com/planetaryescape/mxr/compare/v0.6.6...v0.6.7) (2026-07-14)
+
+
+### Bug Fixes
+
+* **sync:** bound provider network ops; show freshness in TUI sync status ([#128](https://github.com/planetaryescape/mxr/issues/128)) ([4e1e919](https://github.com/planetaryescape/mxr/commit/4e1e9197bd3922696d724f615bc03a4d144bcf6d))
+
 ## [0.6.6](https://github.com/planetaryescape/mxr/compare/v0.6.5...v0.6.6) (2026-07-11)
 
 

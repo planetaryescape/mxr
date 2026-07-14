@@ -1,5 +1,6 @@
 use thiserror::Error;
 use yup_oauth2::authenticator_delegate::{DeviceFlowDelegate, InstalledFlowDelegate};
+use yup_oauth2::client::DefaultHyperClientBuilder;
 use yup_oauth2::DeviceFlowAuthenticator;
 use yup_oauth2::InstalledFlowAuthenticator;
 use yup_oauth2::InstalledFlowReturnMethod;
@@ -14,6 +15,18 @@ const UNSAFE_TOKEN_REF_CHARS: &[char] = &['\\', ':', '*', '?', '"', '<', '>', '|
 /// left behind by a network blip — would otherwise hang the caller, and
 /// any sync holding the provider lock, indefinitely.
 const TOKEN_REFRESH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Per-request bound applied inside yup-oauth2's HTTP client. Keeps each
+/// token-endpoint call from wedging on a dead connection well below the
+/// outer `TOKEN_REFRESH_TIMEOUT`. The interactive browser wait is not an
+/// HTTP client request, so slow first-time authorizations are unaffected.
+const TOKEN_HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// yup-oauth2 client builder with `TOKEN_HTTP_TIMEOUT` applied — used for
+/// every authenticator this module constructs.
+fn oauth_hyper_client_builder() -> DefaultHyperClientBuilder {
+    DefaultHyperClientBuilder::default().with_timeout(TOKEN_HTTP_TIMEOUT)
+}
 
 #[derive(Debug, Error)]
 pub enum AuthError {
@@ -212,7 +225,15 @@ impl GmailAuth {
             let client_secret = token_client_secret.clone();
             let refresh_token = refresh_token.clone();
             Box::pin(async move {
-                let response = reqwest::Client::new()
+                // A short connect timeout so dead/half-open networks fail in
+                // seconds; `access_token()`'s TOKEN_REFRESH_TIMEOUT stays the
+                // outer bound. Builder only fails on TLS misconfiguration.
+                let client = reqwest::Client::builder()
+                    .timeout(TOKEN_REFRESH_TIMEOUT)
+                    .connect_timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new());
+                let response = client
                     .post("https://oauth2.googleapis.com/token")
                     .form(&[
                         ("client_id", client_id.as_str()),
@@ -322,9 +343,10 @@ impl GmailAuth {
                     token_path.clone(),
                     self.keychain_service.clone(),
                 );
-                let mut builder = InstalledFlowAuthenticator::builder(
+                let mut builder = InstalledFlowAuthenticator::with_client(
                     secret,
                     InstalledFlowReturnMethod::HTTPRedirect,
+                    oauth_hyper_client_builder(),
                 )
                 .with_storage(Box::new(storage));
                 if let Some(delegate) = installed_delegate {
@@ -361,7 +383,8 @@ impl GmailAuth {
                     self.keychain_service.clone(),
                 );
                 let mut builder =
-                    DeviceFlowAuthenticator::builder(secret).with_storage(Box::new(storage));
+                    DeviceFlowAuthenticator::with_client(secret, oauth_hyper_client_builder())
+                        .with_storage(Box::new(storage));
                 if let Some(delegate) = device_delegate {
                     builder = builder.flow_delegate(delegate);
                 }
@@ -410,12 +433,15 @@ impl GmailAuth {
             self.keychain_service.clone(),
         );
         let secret = self.make_secret();
-        let auth =
-            InstalledFlowAuthenticator::builder(secret, InstalledFlowReturnMethod::HTTPRedirect)
-                .with_storage(Box::new(storage))
-                .build()
-                .await
-                .map_err(|e| AuthError::OAuth2(e.to_string()))?;
+        let auth = InstalledFlowAuthenticator::with_client(
+            secret,
+            InstalledFlowReturnMethod::HTTPRedirect,
+            oauth_hyper_client_builder(),
+        )
+        .with_storage(Box::new(storage))
+        .build()
+        .await
+        .map_err(|e| AuthError::OAuth2(e.to_string()))?;
 
         let auth = std::sync::Arc::new(auth);
         self.token_fn = Some(Box::new(move || {

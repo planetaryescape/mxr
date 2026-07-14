@@ -74,16 +74,16 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
 
     // Split area: hints on left, sync status on right
     let sync_text = state.sync_status.as_deref().unwrap_or("not synced");
-    let sync_color = if sync_text == "syncing" {
+    let sync_color = if sync_text.starts_with("syncing") {
         theme.accent
     } else if sync_text.starts_with("synced") {
         theme.success
-    } else if sync_text == "degraded" {
+    } else if sync_text.starts_with("degraded") {
         theme.warning
     } else {
         theme.error
     };
-    let sync_width = (sync_text.len() + 4) as u16; // "● " + text + padding
+    let sync_width = (sync_text.chars().count() + 4) as u16; // "● " + text + padding
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)

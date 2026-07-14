@@ -16,6 +16,11 @@ use tracing::{debug, warn};
 
 const GMAIL_API_BASE: &str = "https://gmail.googleapis.com/gmail/v1/users/me";
 const GMAIL_HTTP_TIMEOUT: Duration = Duration::from_secs(60);
+/// Connection establishment (TCP + TLS) should never take long even on a
+/// slow link — only data transfer needs the 60s ceiling. A short connect
+/// timeout makes dead/half-open networks fail the sync attempt in seconds
+/// instead of holding `sync_in_progress` for the full request timeout.
+const GMAIL_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy)]
 pub enum MessageFormat {
@@ -88,6 +93,7 @@ impl GmailClient {
     pub fn new(auth: GmailAuth) -> Self {
         let http = reqwest::Client::builder()
             .timeout(GMAIL_HTTP_TIMEOUT)
+            .connect_timeout(GMAIL_CONNECT_TIMEOUT)
             .build()
             .unwrap_or_else(|error| {
                 warn!(%error, "failed to configure Gmail HTTP timeout; using default client");

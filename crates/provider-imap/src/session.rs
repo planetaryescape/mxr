@@ -79,6 +79,65 @@ pub trait ImapSessionFactory: Send + Sync {
 /// Type alias for the TLS stream used by async-imap (futures-based async IO).
 type ImapTlsStream = async_native_tls::TlsStream<async_std::net::TcpStream>;
 
+/// Upper bound on establishing an authenticated IMAP session (TCP connect +
+/// TLS handshake + greeting + auth). None of those reads has an inherent
+/// timeout, so a dead or half-open network would otherwise hang session
+/// setup indefinitely — wedging whichever sync currently holds the
+/// per-account provider lock.
+const SESSION_SETUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Deadline for a single IMAP round trip — and, on streaming commands, an
+/// *inactivity* bound on the next response item (each arriving item resets
+/// it), so large-but-progressing transfers are never cut off while a dead
+/// connection mid-sync fails fast instead of wedging the sync that holds
+/// the per-account provider lock.
+const COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Deadline for APPEND, which uploads an entire message (attachments
+/// included) in one command — sized for large mail on slow uplinks.
+const APPEND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+fn command_timeout_error(what: &str, limit: std::time::Duration) -> ImapProviderError {
+    ImapProviderError::Connection(format!("IMAP {what} timed out after {limit:?}"))
+}
+
+/// Bound a whole command future. A timeout leaves the connection in an
+/// unknown protocol state; callers must not keep using the session after
+/// an error (all call sites open a session per operation and drop it on
+/// failure, which closes the socket).
+async fn bounded<T>(
+    what: &str,
+    limit: std::time::Duration,
+    fut: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    tokio::time::timeout(limit, fut)
+        .await
+        .map_err(|_| command_timeout_error(what, limit))?
+}
+
+/// Collect a response stream with `limit` applied per item rather than in
+/// total: progress resets the clock, stalls fail fast.
+async fn collect_bounded<S, T, E>(
+    what: &str,
+    limit: std::time::Duration,
+    stream: S,
+) -> Result<Vec<T>>
+where
+    S: futures::Stream<Item = std::result::Result<T, E>>,
+    E: std::fmt::Display,
+{
+    let mut stream = std::pin::pin!(stream);
+    let mut items = Vec::new();
+    loop {
+        match tokio::time::timeout(limit, stream.try_next()).await {
+            Err(_) => return Err(command_timeout_error(what, limit)),
+            Ok(Ok(Some(item))) => items.push(item),
+            Ok(Ok(None)) => return Ok(items),
+            Ok(Err(e)) => return Err(ImapProviderError::protocol_detail(e.to_string())),
+        }
+    }
+}
+
 struct AnonymousAuthenticator;
 
 impl async_imap::Authenticator for AnonymousAuthenticator {
@@ -136,12 +195,9 @@ impl XOAuth2ImapSessionFactory {
 #[async_trait]
 impl ImapSessionFactory for XOAuth2ImapSessionFactory {
     async fn create_session(&self) -> Result<Box<dyn ImapSession>> {
-        tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            self.create_session_inner(),
-        )
-        .await
-        .map_err(|_| ImapProviderError::Connection("XOAUTH2 session setup timed out".into()))?
+        tokio::time::timeout(SESSION_SETUP_TIMEOUT, self.create_session_inner())
+            .await
+            .map_err(|_| ImapProviderError::Connection("XOAUTH2 session setup timed out".into()))?
     }
 }
 
@@ -209,6 +265,15 @@ impl RealImapSessionFactory {
     /// Centralised so the IDLE path doesn't drift from the sync path
     /// auth-wise (TLS, PREAUTH, ANONYMOUS, fallback LOGIN).
     async fn open_authenticated_session(&self) -> Result<async_imap::Session<ImapTlsStream>> {
+        tokio::time::timeout(
+            SESSION_SETUP_TIMEOUT,
+            self.open_authenticated_session_inner(),
+        )
+        .await
+        .map_err(|_| ImapProviderError::Connection("IMAP session setup timed out".into()))?
+    }
+
+    async fn open_authenticated_session_inner(&self) -> Result<async_imap::Session<ImapTlsStream>> {
         let tcp = async_std::net::TcpStream::connect((&*self.config.host, self.config.port))
             .await
             .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
@@ -280,11 +345,7 @@ impl RealImapSessionFactory {
         };
         Ok(session)
     }
-}
-
-#[async_trait]
-impl ImapSessionFactory for RealImapSessionFactory {
-    async fn create_session(&self) -> Result<Box<dyn ImapSession>> {
+    async fn create_session_inner(&self) -> Result<Box<dyn ImapSession>> {
         let tcp = async_std::net::TcpStream::connect((&*self.config.host, self.config.port))
             .await
             .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
@@ -376,6 +437,15 @@ impl ImapSessionFactory for RealImapSessionFactory {
         };
 
         Ok(Box::new(RealImapSession { session }))
+    }
+}
+
+#[async_trait]
+impl ImapSessionFactory for RealImapSessionFactory {
+    async fn create_session(&self) -> Result<Box<dyn ImapSession>> {
+        tokio::time::timeout(SESSION_SETUP_TIMEOUT, self.create_session_inner())
+            .await
+            .map_err(|_| ImapProviderError::Connection("IMAP session setup timed out".into()))?
     }
 
     async fn create_idle_watcher(&self) -> Result<Option<Box<dyn mxr_core::IdleWatcher>>> {
@@ -704,11 +774,13 @@ fn imap_envelope_from_proto(env: &async_imap::imap_proto::Envelope<'_>) -> ImapE
 #[async_trait]
 impl ImapSession for RealImapSession {
     async fn capabilities(&mut self) -> Result<ImapCapabilities> {
-        let capabilities = self
-            .session
-            .capabilities()
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        let capabilities = bounded("CAPABILITY", COMMAND_TIMEOUT, async {
+            self.session
+                .capabilities()
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         Ok(ImapCapabilities {
             move_ext: capabilities.has_str("MOVE"),
             uidplus: capabilities.has_str("UIDPLUS"),
@@ -724,11 +796,13 @@ impl ImapSession for RealImapSession {
     }
 
     async fn select(&mut self, mailbox: &str) -> Result<MailboxInfo> {
-        let mb = self
-            .session
-            .select(mailbox)
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        let mb = bounded("SELECT", COMMAND_TIMEOUT, async {
+            self.session
+                .select(mailbox)
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
 
         Ok(MailboxInfo {
             uid_validity: mb.uid_validity.unwrap_or(0),
@@ -743,19 +817,24 @@ impl ImapSession for RealImapSession {
             return Ok(());
         }
 
-        self.session
-            .enable(capabilities)
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        bounded("ENABLE", COMMAND_TIMEOUT, async {
+            self.session
+                .enable(capabilities)
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         Ok(())
     }
 
     async fn namespace(&mut self) -> Result<Option<NamespaceInfo>> {
-        let namespace = self
-            .session
-            .namespace()
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        let namespace = bounded("NAMESPACE", COMMAND_TIMEOUT, async {
+            self.session
+                .namespace()
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         Ok(Some(NamespaceInfo {
             personal_prefix: namespace.personal.first().map(|entry| entry.prefix.clone()),
             delimiter: namespace
@@ -772,14 +851,16 @@ impl ImapSession for RealImapSession {
         highest_modseq: u64,
         known_uids: &str,
     ) -> Result<QresyncInfo> {
-        let response = self
-            .session
-            .select_qresync(
-                mailbox,
-                format!("{uid_validity} {highest_modseq} {known_uids}"),
-            )
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        let response = bounded("SELECT (QRESYNC)", COMMAND_TIMEOUT, async {
+            self.session
+                .select_qresync(
+                    mailbox,
+                    format!("{uid_validity} {highest_modseq} {known_uids}"),
+                )
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
 
         Ok(QresyncInfo {
             mailbox: MailboxInfo {
@@ -802,15 +883,26 @@ impl ImapSession for RealImapSession {
     }
 
     async fn uid_fetch(&mut self, uid_set: &str, query: &str) -> Result<Vec<FetchedMessage>> {
-        let id = self
-            .session
-            .run_command(format!("UID FETCH {uid_set} {query}"))
-            .await
-            .map_err(|e| ImapProviderError::fetch_detail(e.to_string()))?;
+        let id = tokio::time::timeout(
+            COMMAND_TIMEOUT,
+            self.session
+                .run_command(format!("UID FETCH {uid_set} {query}")),
+        )
+        .await
+        .map_err(|_| command_timeout_error("UID FETCH dispatch", COMMAND_TIMEOUT))?
+        .map_err(|e| ImapProviderError::fetch_detail(e.to_string()))?;
 
         let mut messages = Vec::new();
         let mut saw_done = false;
-        while let Some(response) = self.session.read_response().await {
+        // Inactivity bound per response: an initial sync fetches whole
+        // mailboxes in one `UID FETCH 1:*`, so a total deadline would break
+        // large-but-healthy transfers. Each arriving response resets the
+        // clock; only a stalled connection times out.
+        while let Some(response) =
+            tokio::time::timeout(COMMAND_TIMEOUT, self.session.read_response())
+                .await
+                .map_err(|_| command_timeout_error("UID FETCH read", COMMAND_TIMEOUT))?
+        {
             let response = response.map_err(|e| ImapProviderError::fetch_detail(e.to_string()))?;
             match response.parsed() {
                 async_imap::imap_proto::Response::Done {
@@ -847,42 +939,45 @@ impl ImapSession for RealImapSession {
     }
 
     async fn uid_search(&mut self, query: &str) -> Result<Vec<u32>> {
-        let uids = self
-            .session
-            .uid_search(query)
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        let uids = bounded("UID SEARCH", COMMAND_TIMEOUT, async {
+            self.session
+                .uid_search(query)
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         Ok(uids.into_iter().collect())
     }
 
     async fn uid_store(&mut self, uid_set: &str, flags: &str) -> Result<()> {
-        use futures::TryStreamExt;
-        let stream = self
-            .session
-            .uid_store(uid_set, flags)
+        let stream = tokio::time::timeout(COMMAND_TIMEOUT, self.session.uid_store(uid_set, flags))
             .await
+            .map_err(|_| command_timeout_error("UID STORE dispatch", COMMAND_TIMEOUT))?
             .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         // Consume the stream to apply the store
-        let _: Vec<_> = stream
-            .try_collect()
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        let _ = collect_bounded("UID STORE", COMMAND_TIMEOUT, stream).await?;
         Ok(())
     }
 
     async fn uid_copy(&mut self, uid_set: &str, mailbox: &str) -> Result<()> {
-        self.session
-            .uid_copy(uid_set, mailbox)
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        bounded("UID COPY", COMMAND_TIMEOUT, async {
+            self.session
+                .uid_copy(uid_set, mailbox)
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         Ok(())
     }
 
     async fn uid_move(&mut self, uid_set: &str, mailbox: &str) -> Result<()> {
-        self.session
-            .uid_mv(uid_set, mailbox)
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        bounded("UID MOVE", COMMAND_TIMEOUT, async {
+            self.session
+                .uid_mv(uid_set, mailbox)
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         Ok(())
     }
 
@@ -899,38 +994,31 @@ impl ImapSession for RealImapSession {
         // sent copy locally and the next sync reconciles the real UID by
         // Message-ID. (Confirmed against mxr-async-imap 0.10.6 `Session::append`.)
         let flags = (!flags.is_empty()).then(|| format!("({})", flags.join(" ")));
-        self.session
-            .append(mailbox, flags.as_deref(), None, body)
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        bounded("APPEND", APPEND_TIMEOUT, async {
+            self.session
+                .append(mailbox, flags.as_deref(), None, body)
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         Ok(None)
     }
 
     async fn uid_expunge(&mut self, uid_set: &str) -> Result<()> {
-        use futures::TryStreamExt;
-        let stream = self
-            .session
-            .uid_expunge(uid_set)
+        let stream = tokio::time::timeout(COMMAND_TIMEOUT, self.session.uid_expunge(uid_set))
             .await
+            .map_err(|_| command_timeout_error("UID EXPUNGE dispatch", COMMAND_TIMEOUT))?
             .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
-        let _: Vec<_> = stream
-            .try_collect()
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        let _ = collect_bounded("UID EXPUNGE", COMMAND_TIMEOUT, stream).await?;
         Ok(())
     }
 
     async fn expunge(&mut self) -> Result<()> {
-        use futures::TryStreamExt;
-        let stream = self
-            .session
-            .expunge()
+        let stream = tokio::time::timeout(COMMAND_TIMEOUT, self.session.expunge())
             .await
+            .map_err(|_| command_timeout_error("EXPUNGE dispatch", COMMAND_TIMEOUT))?
             .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
-        let _: Vec<_> = stream
-            .try_collect()
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        let _ = collect_bounded("EXPUNGE", COMMAND_TIMEOUT, stream).await?;
         Ok(())
     }
 
@@ -942,16 +1030,13 @@ impl ImapSession for RealImapSession {
         // parsed result drops the \Noselect attribute, letting "[Gmail]" slip
         // through and abort the whole sync on SELECT.
         let names = {
-            let stream = self
-                .session
-                .list(Some(""), Some("*"))
-                .await
-                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+            let stream =
+                tokio::time::timeout(COMMAND_TIMEOUT, self.session.list(Some(""), Some("*")))
+                    .await
+                    .map_err(|_| command_timeout_error("LIST dispatch", COMMAND_TIMEOUT))?
+                    .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
 
-            stream
-                .try_collect::<Vec<_>>()
-                .await
-                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?
+            collect_bounded("LIST", COMMAND_TIMEOUT, stream).await?
         };
 
         let mut folders = Vec::with_capacity(names.len());
@@ -964,24 +1049,27 @@ impl ImapSession for RealImapSession {
 
             // A STATUS failure for one mailbox must not abort the whole LIST
             // (and therefore the whole sync). Map any error into the helper,
-            // which warns and emits the folder with unknown counts.
-            let status = self
-                .session
-                .status(name.name(), "(MESSAGES UNSEEN UIDNEXT UIDVALIDITY)")
-                .await
-                .map(|mailbox| MailboxStatus {
-                    exists: mailbox.exists,
-                    unseen: mailbox.unseen,
-                    uid_validity: mailbox.uid_validity,
-                    uid_next: mailbox.uid_next,
-                    highest_modseq: mailbox.highest_modseq,
-                })
-                .map_err(|e| {
-                    ImapProviderError::protocol_detail(format!(
-                        "STATUS {} failed: {e}",
-                        name.name()
-                    ))
-                });
+            // which warns and emits the folder with unknown counts. A
+            // *timeout* is different: the connection is dead or desynced, so
+            // continuing to issue commands on this session would misattribute
+            // later responses — abort the whole call instead.
+            let status = tokio::time::timeout(
+                COMMAND_TIMEOUT,
+                self.session
+                    .status(name.name(), "(MESSAGES UNSEEN UIDNEXT UIDVALIDITY)"),
+            )
+            .await
+            .map_err(|_| command_timeout_error("STATUS", COMMAND_TIMEOUT))?
+            .map(|mailbox| MailboxStatus {
+                exists: mailbox.exists,
+                unseen: mailbox.unseen,
+                uid_validity: mailbox.uid_validity,
+                uid_next: mailbox.uid_next,
+                highest_modseq: mailbox.highest_modseq,
+            })
+            .map_err(|e| {
+                ImapProviderError::protocol_detail(format!("STATUS {} failed: {e}", name.name()))
+            });
 
             let special_use = special_use_from_attributes(name.attributes());
 
@@ -1007,34 +1095,46 @@ impl ImapSession for RealImapSession {
     }
 
     async fn create_mailbox(&mut self, mailbox: &str) -> Result<()> {
-        self.session
-            .create(mailbox)
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        bounded("CREATE", COMMAND_TIMEOUT, async {
+            self.session
+                .create(mailbox)
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         Ok(())
     }
 
     async fn rename_mailbox(&mut self, old_mailbox: &str, new_mailbox: &str) -> Result<()> {
-        self.session
-            .rename(old_mailbox, new_mailbox)
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        bounded("RENAME", COMMAND_TIMEOUT, async {
+            self.session
+                .rename(old_mailbox, new_mailbox)
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         Ok(())
     }
 
     async fn delete_mailbox(&mut self, mailbox: &str) -> Result<()> {
-        self.session
-            .delete(mailbox)
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        bounded("DELETE", COMMAND_TIMEOUT, async {
+            self.session
+                .delete(mailbox)
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         Ok(())
     }
 
     async fn logout(&mut self) -> Result<()> {
-        self.session
-            .logout()
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        bounded("LOGOUT", COMMAND_TIMEOUT, async {
+            self.session
+                .logout()
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         Ok(())
     }
 }
@@ -1497,6 +1597,52 @@ mod tests {
             uid_search_results: HashMap::new(),
             append_uid: None,
         }))
+    }
+
+    /// A command future that never resolves (dead connection) must fail
+    /// with a timeout error instead of hanging the sync.
+    #[tokio::test]
+    async fn bounded_times_out_hung_command() {
+        let result: Result<()> = bounded(
+            "SELECT",
+            std::time::Duration::from_millis(10),
+            std::future::pending(),
+        )
+        .await;
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("timed out"), "unexpected error: {err}");
+    }
+
+    /// The stream bound is per item, not total: a transfer that keeps
+    /// making progress may exceed the limit overall and still succeed.
+    #[tokio::test]
+    async fn collect_bounded_allows_slow_but_progressing_stream() {
+        let limit = std::time::Duration::from_millis(50);
+        let stream = futures::stream::unfold(0u32, |n| async move {
+            if n >= 5 {
+                return None;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            Some((Ok::<u32, ImapProviderError>(n), n + 1))
+        });
+        // 5 items × 30ms = 150ms total, well past the 50ms per-item limit.
+        let items = collect_bounded("FETCH", limit, stream).await.unwrap();
+        assert_eq!(items, vec![0, 1, 2, 3, 4]);
+    }
+
+    /// A stream that stops producing items (stalled connection) fails
+    /// once the inactivity limit elapses.
+    #[tokio::test]
+    async fn collect_bounded_times_out_stalled_stream() {
+        use futures::StreamExt;
+        let limit = std::time::Duration::from_millis(10);
+        let first = futures::stream::iter(vec![Ok::<u32, ImapProviderError>(1)]);
+        let stalled = first.chain(futures::stream::pending());
+        let err = collect_bounded("FETCH", limit, stalled)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("timed out"), "unexpected error: {err}");
     }
 
     #[test]

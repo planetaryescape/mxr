@@ -170,24 +170,31 @@ impl App {
         if sync_statuses.is_empty() {
             return "not synced".into();
         }
+        let last_synced_age = sync_statuses
+            .iter()
+            .filter_map(|sync| sync.last_success_at.as_deref())
+            .filter_map(Self::format_sync_age)
+            .max_by_key(|(_, sort_key)| *sort_key)
+            .map(|(display, _)| display);
+        // Local mail is served from the store regardless of sync state, so
+        // an in-flight delta or a failing provider must not read as "wait
+        // for me" — always surface how fresh the store actually is.
         if sync_statuses.iter().any(|sync| sync.sync_in_progress) {
-            return "syncing".into();
+            return match last_synced_age {
+                Some(age) => format!("syncing · synced {age}"),
+                None => "syncing".into(),
+            };
         }
         if sync_statuses
             .iter()
             .any(|sync| !sync.healthy || sync.last_error.is_some())
         {
-            return "degraded".into();
+            return match last_synced_age {
+                Some(age) => format!("degraded · synced {age}"),
+                None => "degraded".into(),
+            };
         }
-        sync_statuses
-            .iter()
-            .filter_map(|sync| sync.last_success_at.as_deref())
-            .filter_map(Self::format_sync_age)
-            .max_by_key(|(_, sort_key)| *sort_key)
-            .map_or_else(
-                || "not synced".into(),
-                |(display, _)| format!("synced {display}"),
-            )
+        last_synced_age.map_or_else(|| "not synced".into(), |age| format!("synced {age}"))
     }
 
     pub(super) fn format_sync_age(timestamp: &str) -> Option<(String, i64)> {
@@ -640,5 +647,85 @@ impl App {
             .viewing_envelope
             .as_ref()
             .and_then(|env| self.mailbox.body_cache.get(&env.id))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn status(
+        sync_in_progress: bool,
+        healthy: bool,
+        last_success_at: Option<String>,
+    ) -> mxr_protocol::AccountSyncStatus {
+        mxr_protocol::AccountSyncStatus {
+            account_id: mxr_core::AccountId::new(),
+            account_name: "test".into(),
+            last_attempt_at: None,
+            last_success_at,
+            last_error: if healthy { None } else { Some("boom".into()) },
+            failure_class: None,
+            consecutive_failures: 0,
+            backoff_until: None,
+            sync_in_progress,
+            current_cursor_summary: None,
+            last_synced_count: 0,
+            healthy,
+        }
+    }
+
+    fn recent_success() -> Option<String> {
+        Some(chrono::Utc::now().to_rfc3339())
+    }
+
+    /// The store serves mail regardless of sync state, so an in-flight
+    /// background delta must still tell the user how fresh their mail
+    /// already is — a bare "syncing" reads as "wait for me".
+    #[test]
+    fn syncing_with_prior_success_shows_freshness() {
+        let statuses = vec![status(true, true, recent_success())];
+        assert_eq!(
+            App::summarize_sync_status(&statuses),
+            "syncing · synced just now"
+        );
+    }
+
+    /// Only a genuinely never-synced account (cold start) may show the
+    /// bare "syncing" state.
+    #[test]
+    fn syncing_without_any_success_stays_bare() {
+        let statuses = vec![status(true, true, None)];
+        assert_eq!(App::summarize_sync_status(&statuses), "syncing");
+    }
+
+    #[test]
+    fn degraded_with_prior_success_shows_freshness() {
+        let statuses = vec![status(false, false, recent_success())];
+        assert_eq!(
+            App::summarize_sync_status(&statuses),
+            "degraded · synced just now"
+        );
+    }
+
+    #[test]
+    fn healthy_idle_shows_synced_age() {
+        let statuses = vec![status(false, true, recent_success())];
+        assert_eq!(App::summarize_sync_status(&statuses), "synced just now");
+    }
+
+    /// Freshness comes from the most recent success across accounts even
+    /// while another account is mid-sync.
+    #[test]
+    fn multi_account_uses_newest_success_while_syncing() {
+        let old = Some((chrono::Utc::now() - chrono::Duration::hours(3)).to_rfc3339());
+        let statuses = vec![
+            status(true, true, old),
+            status(false, true, recent_success()),
+        ];
+        assert_eq!(
+            App::summarize_sync_status(&statuses),
+            "syncing · synced just now"
+        );
     }
 }

@@ -93,12 +93,24 @@ const SESSION_SETUP_TIMEOUT: std::time::Duration = std::time::Duration::from_sec
 /// the per-account provider lock.
 const COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// Deadline for APPEND, which uploads an entire message (attachments
-/// included) in one command — sized for large mail on slow uplinks.
-const APPEND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+/// Deadline for commands that can legitimately run long on big mailboxes
+/// or slow servers without exposing per-item progress we could reset on:
+/// `SELECT (QRESYNC)` streams one line per changed/vanished message since
+/// the stored MODSEQ, and `STATUS` may force the server to recompute
+/// UNSEEN over a large mailbox. Still bounded so a dead connection cannot
+/// wedge the sync indefinitely.
+const SLOW_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Deadline for APPEND, which uploads an entire message in one command.
+/// Scaled by size so a large-but-progressing upload on a slow uplink is
+/// not cut off (base 300s + 1s per 64 KiB ≈ tolerates ~0.5 Mbps), while
+/// remaining a hard bound for dead connections.
+fn append_timeout(body_len: usize) -> std::time::Duration {
+    std::time::Duration::from_secs(300 + (body_len / 65_536) as u64)
+}
 
 fn command_timeout_error(what: &str, limit: std::time::Duration) -> ImapProviderError {
-    ImapProviderError::Connection(format!("IMAP {what} timed out after {limit:?}"))
+    ImapProviderError::Timeout(format!("IMAP {what} timed out after {limit:?}"))
 }
 
 /// Bound a whole command future. A timeout leaves the connection in an
@@ -195,9 +207,12 @@ impl XOAuth2ImapSessionFactory {
 #[async_trait]
 impl ImapSessionFactory for XOAuth2ImapSessionFactory {
     async fn create_session(&self) -> Result<Box<dyn ImapSession>> {
-        tokio::time::timeout(SESSION_SETUP_TIMEOUT, self.create_session_inner())
-            .await
-            .map_err(|_| ImapProviderError::Connection("XOAUTH2 session setup timed out".into()))?
+        bounded(
+            "XOAUTH2 session setup",
+            SESSION_SETUP_TIMEOUT,
+            self.create_session_inner(),
+        )
+        .await
     }
 }
 
@@ -265,12 +280,12 @@ impl RealImapSessionFactory {
     /// Centralised so the IDLE path doesn't drift from the sync path
     /// auth-wise (TLS, PREAUTH, ANONYMOUS, fallback LOGIN).
     async fn open_authenticated_session(&self) -> Result<async_imap::Session<ImapTlsStream>> {
-        tokio::time::timeout(
+        bounded(
+            "session setup",
             SESSION_SETUP_TIMEOUT,
             self.open_authenticated_session_inner(),
         )
         .await
-        .map_err(|_| ImapProviderError::Connection("IMAP session setup timed out".into()))?
     }
 
     async fn open_authenticated_session_inner(&self) -> Result<async_imap::Session<ImapTlsStream>> {
@@ -443,28 +458,47 @@ impl RealImapSessionFactory {
 #[async_trait]
 impl ImapSessionFactory for RealImapSessionFactory {
     async fn create_session(&self) -> Result<Box<dyn ImapSession>> {
-        tokio::time::timeout(SESSION_SETUP_TIMEOUT, self.create_session_inner())
-            .await
-            .map_err(|_| ImapProviderError::Connection("IMAP session setup timed out".into()))?
+        bounded(
+            "session setup",
+            SESSION_SETUP_TIMEOUT,
+            self.create_session_inner(),
+        )
+        .await
     }
 
     async fn create_idle_watcher(&self) -> Result<Option<Box<dyn mxr_core::IdleWatcher>>> {
         let mut session = self.open_authenticated_session().await?;
 
-        // No IDLE capability → fall back to poll-only.
-        let caps = session
-            .capabilities()
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        // No IDLE capability → fall back to poll-only. These run on the raw
+        // async-imap session (not the wrapped trait), so they need their own
+        // bounds — a half-open connection here would otherwise wedge the
+        // account's idle task forever (the daemon awaits idle_watch without
+        // a shutdown select).
+        let caps = bounded("CAPABILITY (idle setup)", COMMAND_TIMEOUT, async {
+            session
+                .capabilities()
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         if !caps.has_str("IDLE") {
-            let _ = session.logout().await;
+            let _ = bounded("LOGOUT (idle setup)", COMMAND_TIMEOUT, async {
+                session
+                    .logout()
+                    .await
+                    .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+            })
+            .await;
             return Ok(None);
         }
 
-        session
-            .select("INBOX")
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        bounded("SELECT (idle setup)", COMMAND_TIMEOUT, async {
+            session
+                .select("INBOX")
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
 
         Ok(Some(Box::new(RealImapIdleWatcher::new(session))))
     }
@@ -510,10 +544,17 @@ impl RealImapIdleWatcher {
             ImapProviderError::protocol_detail("idle watcher in invalid state".to_string())
         })?;
         let mut handle = session.idle();
-        handle
-            .init()
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        // Bounded: a half-open connection would otherwise hang the IDLE
+        // handshake forever. On timeout the handle is dropped (socket
+        // closed) and both state slots stay empty, so the next call errors
+        // and the daemon's idle loop reconnects with backoff.
+        bounded("IDLE init", COMMAND_TIMEOUT, async {
+            handle
+                .init()
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         self.handle = Some(handle);
         Ok(())
     }
@@ -525,10 +566,16 @@ impl RealImapIdleWatcher {
         let Some(handle) = self.handle.take() else {
             return Ok(());
         };
-        let session = handle
-            .done()
-            .await
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        // Bounded like `init`: DONE sends a line and reads the tagged
+        // response; a dead connection would otherwise wedge the watcher
+        // silently — no events, no error, no reconnect.
+        let session = bounded("IDLE done", COMMAND_TIMEOUT, async {
+            handle
+                .done()
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         self.session = Some(session);
         Ok(())
     }
@@ -851,7 +898,10 @@ impl ImapSession for RealImapSession {
         highest_modseq: u64,
         known_uids: &str,
     ) -> Result<QresyncInfo> {
-        let response = bounded("SELECT (QRESYNC)", COMMAND_TIMEOUT, async {
+        // QRESYNC streams one untagged line per changed/vanished message
+        // since the stored MODSEQ inside a single command — after days
+        // offline that is legitimately large, so it gets the slow bound.
+        let response = bounded("SELECT (QRESYNC)", SLOW_COMMAND_TIMEOUT, async {
             self.session
                 .select_qresync(
                     mailbox,
@@ -883,14 +933,13 @@ impl ImapSession for RealImapSession {
     }
 
     async fn uid_fetch(&mut self, uid_set: &str, query: &str) -> Result<Vec<FetchedMessage>> {
-        let id = tokio::time::timeout(
-            COMMAND_TIMEOUT,
+        let id = bounded("UID FETCH dispatch", COMMAND_TIMEOUT, async {
             self.session
-                .run_command(format!("UID FETCH {uid_set} {query}")),
-        )
-        .await
-        .map_err(|_| command_timeout_error("UID FETCH dispatch", COMMAND_TIMEOUT))?
-        .map_err(|e| ImapProviderError::fetch_detail(e.to_string()))?;
+                .run_command(format!("UID FETCH {uid_set} {query}"))
+                .await
+                .map_err(|e| ImapProviderError::fetch_detail(e.to_string()))
+        })
+        .await?;
 
         let mut messages = Vec::new();
         let mut saw_done = false;
@@ -950,10 +999,13 @@ impl ImapSession for RealImapSession {
     }
 
     async fn uid_store(&mut self, uid_set: &str, flags: &str) -> Result<()> {
-        let stream = tokio::time::timeout(COMMAND_TIMEOUT, self.session.uid_store(uid_set, flags))
-            .await
-            .map_err(|_| command_timeout_error("UID STORE dispatch", COMMAND_TIMEOUT))?
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        let stream = bounded("UID STORE dispatch", COMMAND_TIMEOUT, async {
+            self.session
+                .uid_store(uid_set, flags)
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         // Consume the stream to apply the store
         let _ = collect_bounded("UID STORE", COMMAND_TIMEOUT, stream).await?;
         Ok(())
@@ -994,7 +1046,7 @@ impl ImapSession for RealImapSession {
         // sent copy locally and the next sync reconciles the real UID by
         // Message-ID. (Confirmed against mxr-async-imap 0.10.6 `Session::append`.)
         let flags = (!flags.is_empty()).then(|| format!("({})", flags.join(" ")));
-        bounded("APPEND", APPEND_TIMEOUT, async {
+        bounded("APPEND", append_timeout(body.len()), async {
             self.session
                 .append(mailbox, flags.as_deref(), None, body)
                 .await
@@ -1005,19 +1057,25 @@ impl ImapSession for RealImapSession {
     }
 
     async fn uid_expunge(&mut self, uid_set: &str) -> Result<()> {
-        let stream = tokio::time::timeout(COMMAND_TIMEOUT, self.session.uid_expunge(uid_set))
-            .await
-            .map_err(|_| command_timeout_error("UID EXPUNGE dispatch", COMMAND_TIMEOUT))?
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        let stream = bounded("UID EXPUNGE dispatch", COMMAND_TIMEOUT, async {
+            self.session
+                .uid_expunge(uid_set)
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         let _ = collect_bounded("UID EXPUNGE", COMMAND_TIMEOUT, stream).await?;
         Ok(())
     }
 
     async fn expunge(&mut self) -> Result<()> {
-        let stream = tokio::time::timeout(COMMAND_TIMEOUT, self.session.expunge())
-            .await
-            .map_err(|_| command_timeout_error("EXPUNGE dispatch", COMMAND_TIMEOUT))?
-            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        let stream = bounded("EXPUNGE dispatch", COMMAND_TIMEOUT, async {
+            self.session
+                .expunge()
+                .await
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+        })
+        .await?;
         let _ = collect_bounded("EXPUNGE", COMMAND_TIMEOUT, stream).await?;
         Ok(())
     }
@@ -1030,11 +1088,13 @@ impl ImapSession for RealImapSession {
         // parsed result drops the \Noselect attribute, letting "[Gmail]" slip
         // through and abort the whole sync on SELECT.
         let names = {
-            let stream =
-                tokio::time::timeout(COMMAND_TIMEOUT, self.session.list(Some(""), Some("*")))
+            let stream = bounded("LIST dispatch", COMMAND_TIMEOUT, async {
+                self.session
+                    .list(Some(""), Some("*"))
                     .await
-                    .map_err(|_| command_timeout_error("LIST dispatch", COMMAND_TIMEOUT))?
-                    .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+                    .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
+            })
+            .await?;
 
             collect_bounded("LIST", COMMAND_TIMEOUT, stream).await?
         };
@@ -1054,12 +1114,16 @@ impl ImapSession for RealImapSession {
             // continuing to issue commands on this session would misattribute
             // later responses — abort the whole call instead.
             let status = tokio::time::timeout(
-                COMMAND_TIMEOUT,
+                // Slow bound: STATUS may force the server to recompute
+                // UNSEEN over a large mailbox and legitimately take a
+                // while; a total sync outage from an aggressive deadline
+                // is worse than a slow listing.
+                SLOW_COMMAND_TIMEOUT,
                 self.session
                     .status(name.name(), "(MESSAGES UNSEEN UIDNEXT UIDVALIDITY)"),
             )
             .await
-            .map_err(|_| command_timeout_error("STATUS", COMMAND_TIMEOUT))?
+            .map_err(|_| command_timeout_error("STATUS", SLOW_COMMAND_TIMEOUT))?
             .map(|mailbox| MailboxStatus {
                 exists: mailbox.exists,
                 unseen: mailbox.unseen,
@@ -1167,6 +1231,8 @@ pub mod mock {
         pub capabilities: ImapCapabilities,
         pub namespace: Option<NamespaceInfo>,
         pub qresync_response: Option<QresyncInfo>,
+        /// Simulate `SELECT (QRESYNC)` hitting its command deadline.
+        pub qresync_times_out: bool,
         pub folders: Vec<FolderInfo>,
         pub log: Arc<Mutex<CommandLog>>,
         state: Arc<Mutex<MockSessionState>>,
@@ -1188,6 +1254,7 @@ pub mod mock {
                 capabilities,
                 namespace,
                 qresync_response,
+                qresync_times_out: false,
                 folders,
                 log,
                 state,
@@ -1250,6 +1317,12 @@ pub mod mock {
                 .unwrap()
                 .commands
                 .push(format!("SELECT {mailbox} QRESYNC"));
+            if self.qresync_times_out {
+                return Err(command_timeout_error(
+                    "SELECT (QRESYNC)",
+                    SLOW_COMMAND_TIMEOUT,
+                ));
+            }
             Ok(self
                 .qresync_response
                 .clone()
@@ -1400,6 +1473,8 @@ pub mod mock {
         pub capabilities: ImapCapabilities,
         pub namespace: Option<NamespaceInfo>,
         pub qresync_response: Option<QresyncInfo>,
+        /// Simulate `SELECT (QRESYNC)` hitting its command deadline.
+        pub qresync_times_out: bool,
         pub folders: Vec<FolderInfo>,
         pub log: Arc<Mutex<CommandLog>>,
         state: Arc<Mutex<MockSessionState>>,
@@ -1421,6 +1496,7 @@ pub mod mock {
                 capabilities: ImapCapabilities::default(),
                 namespace: None,
                 qresync_response: None,
+                qresync_times_out: false,
                 folders,
                 log: Arc::new(Mutex::new(CommandLog::default())),
                 state: Arc::new(Mutex::new(MockSessionState {
@@ -1452,6 +1528,13 @@ pub mod mock {
 
         pub fn with_qresync(mut self, response: QresyncInfo) -> Self {
             self.qresync_response = Some(response);
+            self
+        }
+
+        /// Make `SELECT (QRESYNC)` fail with a command timeout, for tests
+        /// asserting the caller does NOT reuse the session afterwards.
+        pub fn with_qresync_timeout(mut self) -> Self {
+            self.qresync_times_out = true;
             self
         }
 
@@ -1494,7 +1577,7 @@ pub mod mock {
     #[async_trait]
     impl ImapSessionFactory for MockImapSessionFactory {
         async fn create_session(&self) -> Result<Box<dyn ImapSession>> {
-            Ok(Box::new(MockImapSession::new(
+            let mut session = MockImapSession::new(
                 self.mailbox_info.clone(),
                 self.capabilities.clone(),
                 self.namespace.clone(),
@@ -1502,7 +1585,9 @@ pub mod mock {
                 self.folders.clone(),
                 self.log.clone(),
                 self.state.clone(),
-            )))
+            );
+            session.qresync_times_out = self.qresync_times_out;
+            Ok(Box::new(session))
         }
 
         async fn create_idle_watcher(&self) -> Result<Option<Box<dyn mxr_core::IdleWatcher>>> {
@@ -1597,6 +1682,25 @@ mod tests {
             uid_search_results: HashMap::new(),
             append_uid: None,
         }))
+    }
+
+    /// Timeouts must be distinguishable from other connection errors:
+    /// the QRESYNC→SELECT fallback reuses the session on NO/BAD but must
+    /// not after a timeout (response still mid-flight).
+    #[test]
+    fn command_timeouts_are_distinguishable() {
+        assert!(command_timeout_error("SELECT", COMMAND_TIMEOUT).is_timeout());
+        assert!(!ImapProviderError::Connection("refused".into()).is_timeout());
+        assert!(!ImapProviderError::protocol_detail("NO go away").is_timeout());
+    }
+
+    /// APPEND's deadline scales with upload size so large-but-progressing
+    /// uploads on slow uplinks are not cut off.
+    #[test]
+    fn append_timeout_scales_with_body_size() {
+        assert_eq!(append_timeout(0).as_secs(), 300);
+        // A 25 MiB message earns ~400 extra seconds (~0.5 Mbps floor).
+        assert_eq!(append_timeout(25 * 1024 * 1024).as_secs(), 700);
     }
 
     /// A command future that never resolves (dead connection) must fail

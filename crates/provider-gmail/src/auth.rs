@@ -220,19 +220,27 @@ impl GmailAuth {
     ) -> Self {
         let token_client_id = client_id.clone();
         let token_client_secret = client_secret.clone();
+        // Built once and moved into the closure: this token_fn runs on every
+        // Gmail API call (no token caching on the refresh-token path), and a
+        // reqwest client carries a connection pool worth keeping. Short
+        // connect timeout so dead/half-open networks fail in seconds; the
+        // 30s total stays strictly inside `access_token()`'s 60s outer bound
+        // so the timeout error is deterministic. Builder only fails on TLS
+        // misconfiguration — fall back loudly to the default client.
+        let token_client = reqwest::Client::builder()
+            .timeout(TOKEN_HTTP_TIMEOUT)
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "failed to configure token-refresh HTTP timeouts; using default client without timeouts");
+                reqwest::Client::new()
+            });
         let token_fn = Box::new(move || {
             let client_id = token_client_id.clone();
             let client_secret = token_client_secret.clone();
             let refresh_token = refresh_token.clone();
+            let client = token_client.clone();
             Box::pin(async move {
-                // A short connect timeout so dead/half-open networks fail in
-                // seconds; `access_token()`'s TOKEN_REFRESH_TIMEOUT stays the
-                // outer bound. Builder only fails on TLS misconfiguration.
-                let client = reqwest::Client::builder()
-                    .timeout(TOKEN_REFRESH_TIMEOUT)
-                    .connect_timeout(std::time::Duration::from_secs(10))
-                    .build()
-                    .unwrap_or_else(|_| reqwest::Client::new());
                 let response = client
                     .post("https://oauth2.googleapis.com/token")
                     .form(&[
@@ -382,9 +390,15 @@ impl GmailAuth {
                     token_path.clone(),
                     self.keychain_service.clone(),
                 );
-                let mut builder =
-                    DeviceFlowAuthenticator::with_client(secret, oauth_hyper_client_builder())
-                        .with_storage(Box::new(storage));
+                // Device-flow polls are flow-fatal in yup-oauth2 (a transport
+                // error aborts the whole authorization), so this path gets
+                // the full 60s per-request bound instead of the 30s used for
+                // refreshes — still hang-proof, but far less likely to
+                // abandon a device code over one slow poll.
+                let device_client =
+                    DefaultHyperClientBuilder::default().with_timeout(TOKEN_REFRESH_TIMEOUT);
+                let mut builder = DeviceFlowAuthenticator::with_client(secret, device_client)
+                    .with_storage(Box::new(storage));
                 if let Some(delegate) = device_delegate {
                     builder = builder.flow_delegate(delegate);
                 }

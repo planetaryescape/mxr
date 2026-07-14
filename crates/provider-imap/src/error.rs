@@ -14,6 +14,13 @@ pub enum ImapProviderError {
     Parse(String),
     #[error("Fetch error: {0}")]
     Fetch(String),
+    /// A command exceeded its deadline. Distinguished from `Connection`
+    /// because a timeout leaves the connection in an unknown protocol
+    /// state: callers that tolerate other errors by issuing further
+    /// commands on the same session (e.g. the QRESYNC→SELECT fallback)
+    /// must NOT do so after a timeout.
+    #[error("Timeout: {0}")]
+    Timeout(String),
     #[error("UIDVALIDITY changed (was {old}, now {new}) — requires full resync")]
     UidValidityChanged { old: u32, new: u32 },
     #[error("IO error: {0}")]
@@ -27,6 +34,12 @@ impl ImapProviderError {
 
     pub(crate) fn fetch_detail(detail: impl Into<String>) -> Self {
         Self::Fetch(sanitize_imap_detail(&detail.into()))
+    }
+
+    /// True when the underlying connection may be mid-response and must
+    /// not be reused for further commands.
+    pub fn is_timeout(&self) -> bool {
+        matches!(self, Self::Timeout(_))
     }
 }
 

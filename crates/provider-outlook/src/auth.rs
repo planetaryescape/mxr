@@ -46,15 +46,31 @@ const REFRESH_MARGIN_SECS: i64 = 300;
 /// this class of hang; see its `TOKEN_REFRESH_TIMEOUT`/`GMAIL_HTTP_TIMEOUT`.
 const OAUTH_HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Build the client for OAuth endpoints with the timeout applied. The
-/// builder only fails on TLS-backend misconfiguration; fall back to the
-/// default client rather than making auth impossible.
+/// Consecutive transport failures tolerated while polling the token
+/// endpoint during the device-code flow. RFC 8628 polling is designed to
+/// tolerate transient failures — a single timed-out poll must not abandon
+/// a device code the user is still typing in.
+const DEVICE_POLL_MAX_TRANSPORT_FAILURES: u32 = 6;
+
+/// Client for OAuth endpoints, with timeouts applied. Cached: reqwest
+/// clients hold a connection pool, and `refresh_access_token` runs
+/// roughly hourly per account during steady-state sync. The builder only
+/// fails on TLS-backend misconfiguration; fall back to the default client
+/// (loudly — it has no timeouts) rather than making auth impossible.
 fn oauth_http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(OAUTH_HTTP_TIMEOUT)
-        .connect_timeout(std::time::Duration::from_secs(10))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .timeout(OAUTH_HTTP_TIMEOUT)
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .build()
+                .unwrap_or_else(|error| {
+                    tracing::warn!(%error, "failed to configure OAuth HTTP timeouts; using default client without timeouts");
+                    reqwest::Client::new()
+                })
+        })
+        .clone()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,11 +203,12 @@ impl OutlookAuth {
     ) -> Result<OutlookTokens, OutlookError> {
         let client = oauth_http_client();
         let mut poll_interval = std::time::Duration::from_secs(interval.max(5));
+        let mut transport_failures = 0u32;
 
         loop {
             tokio::time::sleep(poll_interval).await;
 
-            let resp = client
+            let sent = client
                 .post(self.tenant.token_url())
                 .form(&[
                     ("client_id", self.client_id.as_str()),
@@ -199,9 +216,33 @@ impl OutlookAuth {
                     ("device_code", device_code),
                 ])
                 .send()
-                .await?
-                .json::<TokenResponse>()
-                .await?;
+                .await;
+            // Transient transport failures (incl. the request timeout added
+            // for hang-safety) must not abandon a device code the user is
+            // mid-way through approving — keep polling; the server tells us
+            // definitively when the code is dead (`expired_token`).
+            let resp = match sent {
+                Ok(response) => match response.json::<TokenResponse>().await {
+                    Ok(resp) => {
+                        transport_failures = 0;
+                        resp
+                    }
+                    Err(error) => {
+                        transport_failures += 1;
+                        if transport_failures >= DEVICE_POLL_MAX_TRANSPORT_FAILURES {
+                            return Err(error.into());
+                        }
+                        continue;
+                    }
+                },
+                Err(error) => {
+                    transport_failures += 1;
+                    if transport_failures >= DEVICE_POLL_MAX_TRANSPORT_FAILURES {
+                        return Err(error.into());
+                    }
+                    continue;
+                }
+            };
 
             match resp.error.as_deref() {
                 None => {

@@ -916,6 +916,17 @@ impl ImapProvider {
                             }
                             response.mailbox
                         }
+                        // A timeout leaves the QRESYNC response mid-flight on
+                        // the wire; issuing SELECT on the same session would
+                        // parse the late untagged responses as SELECT's reply
+                        // and corrupt the folder cursor. Fail the sync instead
+                        // — the next tick retries on a fresh session.
+                        Err(error) if error.is_timeout() => {
+                            return Err(mxr_core::error::MxrError::from(error));
+                        }
+                        // Tagged NO/BAD replies leave the connection in a
+                        // consistent state, so falling back to a plain SELECT
+                        // on the same session is safe.
                         Err(error) => {
                             warn!(
                                 mailbox = %folder.name,
@@ -2609,6 +2620,54 @@ mod tests {
         let commands = log.lock().unwrap().commands.clone();
         assert!(commands.contains(&"ENABLE QRESYNC UTF8=ACCEPT".to_string()));
         assert!(commands.contains(&"SELECT INBOX QRESYNC".to_string()));
+    }
+
+    /// A QRESYNC timeout leaves the response mid-flight on the wire, so the
+    /// NO/BAD fallback (plain SELECT on the same session) must NOT run —
+    /// the sync fails cleanly and retries on a fresh session instead of
+    /// parsing the late QRESYNC responses as SELECT's reply.
+    #[tokio::test]
+    async fn qresync_timeout_fails_sync_instead_of_reusing_the_session() {
+        let factory = MockImapSessionFactory::new(
+            MailboxInfo {
+                uid_validity: 1,
+                uid_next: 5,
+                exists: 4,
+                highest_modseq: Some(20),
+            },
+            vec![],
+            vec![],
+        )
+        .with_capabilities(ImapCapabilities {
+            condstore: true,
+            qresync: true,
+            ..Default::default()
+        })
+        .with_qresync_timeout();
+        let log = factory.log.clone();
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let cursor = imap_cursor_mailboxes(vec![ImapMailboxCursor {
+            mailbox: "INBOX".into(),
+            uid_validity: 1,
+            uid_next: 4,
+            highest_modseq: Some(10),
+        }]);
+
+        let error = provider.sync_messages(&cursor).await.unwrap_err();
+        assert!(
+            error.to_string().contains("timed out"),
+            "expected the timeout to surface, got: {error}"
+        );
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands.contains(&"SELECT INBOX QRESYNC".to_string()));
+        assert!(
+            !commands.contains(&"SELECT INBOX".to_string()),
+            "fallback SELECT must not run on a timed-out session; commands: {commands:?}"
+        );
     }
 
     #[tokio::test]

@@ -38,6 +38,41 @@ const SCOPES: &str =
 /// Seconds before expiry at which we proactively refresh the token.
 const REFRESH_MARGIN_SECS: i64 = 300;
 
+/// Upper bound on any single OAuth HTTP call (device-code start, token
+/// poll, refresh). reqwest has no default timeout, so a half-open socket
+/// would otherwise hang the caller indefinitely — for `refresh_access_token`
+/// that means wedging whichever sync or send currently holds the
+/// per-account provider lock. The Gmail provider was bitten by exactly
+/// this class of hang; see its `TOKEN_REFRESH_TIMEOUT`/`GMAIL_HTTP_TIMEOUT`.
+const OAUTH_HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Consecutive transport failures tolerated while polling the token
+/// endpoint during the device-code flow. RFC 8628 polling is designed to
+/// tolerate transient failures — a single timed-out poll must not abandon
+/// a device code the user is still typing in.
+const DEVICE_POLL_MAX_TRANSPORT_FAILURES: u32 = 6;
+
+/// Client for OAuth endpoints, with timeouts applied. Cached: reqwest
+/// clients hold a connection pool, and `refresh_access_token` runs
+/// roughly hourly per account during steady-state sync. The builder only
+/// fails on TLS-backend misconfiguration; fall back to the default client
+/// (loudly — it has no timeouts) rather than making auth impossible.
+fn oauth_http_client() -> reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .timeout(OAUTH_HTTP_TIMEOUT)
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .build()
+                .unwrap_or_else(|error| {
+                    tracing::warn!(%error, "failed to configure OAuth HTTP timeouts; using default client without timeouts");
+                    reqwest::Client::new()
+                })
+        })
+        .clone()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutlookTokens {
     pub access_token: String,
@@ -140,7 +175,7 @@ impl OutlookAuth {
     /// Initiate the device code flow. Returns the response with `user_code` and `verification_uri`
     /// for the user to complete in a browser.
     pub async fn start_device_flow(&self) -> Result<DeviceCodeResponse, OutlookError> {
-        let client = reqwest::Client::new();
+        let client = oauth_http_client();
         let response = client
             .post(self.tenant.device_code_url())
             .form(&[("client_id", self.client_id.as_str()), ("scope", SCOPES)])
@@ -166,13 +201,14 @@ impl OutlookAuth {
         device_code: &str,
         interval: u64,
     ) -> Result<OutlookTokens, OutlookError> {
-        let client = reqwest::Client::new();
+        let client = oauth_http_client();
         let mut poll_interval = std::time::Duration::from_secs(interval.max(5));
+        let mut transport_failures = 0u32;
 
         loop {
             tokio::time::sleep(poll_interval).await;
 
-            let resp = client
+            let sent = client
                 .post(self.tenant.token_url())
                 .form(&[
                     ("client_id", self.client_id.as_str()),
@@ -180,9 +216,33 @@ impl OutlookAuth {
                     ("device_code", device_code),
                 ])
                 .send()
-                .await?
-                .json::<TokenResponse>()
-                .await?;
+                .await;
+            // Transient transport failures (incl. the request timeout added
+            // for hang-safety) must not abandon a device code the user is
+            // mid-way through approving — keep polling; the server tells us
+            // definitively when the code is dead (`expired_token`).
+            let resp = match sent {
+                Ok(response) => match response.json::<TokenResponse>().await {
+                    Ok(resp) => {
+                        transport_failures = 0;
+                        resp
+                    }
+                    Err(error) => {
+                        transport_failures += 1;
+                        if transport_failures >= DEVICE_POLL_MAX_TRANSPORT_FAILURES {
+                            return Err(error.into());
+                        }
+                        continue;
+                    }
+                },
+                Err(error) => {
+                    transport_failures += 1;
+                    if transport_failures >= DEVICE_POLL_MAX_TRANSPORT_FAILURES {
+                        return Err(error.into());
+                    }
+                    continue;
+                }
+            };
 
             match resp.error.as_deref() {
                 None => {
@@ -228,7 +288,7 @@ impl OutlookAuth {
         &self,
         tokens: &OutlookTokens,
     ) -> Result<OutlookTokens, OutlookError> {
-        let client = reqwest::Client::new();
+        let client = oauth_http_client();
         let resp = client
             .post(self.tenant.token_url())
             .form(&[

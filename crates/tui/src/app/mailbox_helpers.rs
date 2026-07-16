@@ -527,22 +527,19 @@ impl App {
         }
     }
 
+    /// `j` / `k` scroll the thread body one line, in every thread. The
+    /// reader renders the whole thread as one stacked column, so line
+    /// scrolling is the only way to read a long message; message-to-message
+    /// focus lives on `J` / `K` (`move_thread_focus_down` / `_up`).
+    ///
+    /// Overscroll is corrected by the renderer, which is the only place that
+    /// knows the wrapped content height, and clamps this offset in place.
     pub(super) fn move_message_view_down(&mut self) {
-        if self.mailbox.viewed_thread_messages.len() > 1 {
-            self.move_thread_focus_down();
-        } else {
-            self.mailbox.message_scroll_offset =
-                self.mailbox.message_scroll_offset.saturating_add(1);
-        }
+        self.mailbox.message_scroll_offset = self.mailbox.message_scroll_offset.saturating_add(1);
     }
 
     pub(super) fn move_message_view_up(&mut self) {
-        if self.mailbox.viewed_thread_messages.len() > 1 {
-            self.move_thread_focus_up();
-        } else {
-            self.mailbox.message_scroll_offset =
-                self.mailbox.message_scroll_offset.saturating_sub(1);
-        }
+        self.mailbox.message_scroll_offset = self.mailbox.message_scroll_offset.saturating_sub(1);
     }
 
     pub(super) fn ensure_current_body_state(&mut self) {

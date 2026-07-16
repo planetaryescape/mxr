@@ -58,12 +58,15 @@ pub struct DrawOptions<'a> {
     pub html_images: &'a mut HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
 }
 
+/// Draws the thread/message reader. Returns the scroll offset actually used,
+/// clamped to the content height — store it so the next keypress starts from
+/// a real position rather than an unreachable one.
 pub fn draw(
     frame: &mut Frame,
     area: Rect,
     messages: &[ThreadMessageBlock],
     options: DrawOptions<'_>,
-) {
+) -> u16 {
     let DrawOptions {
         summary,
         scroll_offset,
@@ -290,7 +293,27 @@ pub fn draw(
         ))]));
     }
 
+    // Clamp to the real wrapped content height. Callers advance the offset
+    // blind (`j`, `Ctrl-d`, and `G` which asks for `u16::MAX`); only here do
+    // we know how tall the content actually is. Without this, an offset past
+    // the end makes `render_blocks` skip every block and the pane renders
+    // blank. The clamped value is returned so the caller can store it and
+    // scrolling back up responds on the first keypress.
+    let mut content_height: u16 = 0;
+    for block in &blocks {
+        content_height = content_height.saturating_add(render_block_height(
+            block,
+            inner.width,
+            inner.height,
+            html_images,
+        ));
+    }
+    let max_scroll = content_height.saturating_sub(inner.height);
+    let scroll_offset = scroll_offset.min(max_scroll);
+
     render_blocks(frame, inner, scroll_offset, blocks, theme, html_images);
+
+    scroll_offset
 }
 
 fn thread_summary_lines(summary: ThreadSummaryBlock, theme: &Theme) -> Vec<Line<'static>> {
@@ -1285,6 +1308,56 @@ mod tests {
         });
 
         assert!(snapshot.contains("Selected"));
+    }
+
+    /// Regression: scroll offsets were never clamped to the content height,
+    /// so `G` (which asks for u16::MAX) or enough Ctrl-d made render_blocks
+    /// skip every block and paint an empty pane. draw now clamps and hands
+    /// back the offset it used.
+    #[test]
+    fn overscroll_clamps_instead_of_blanking_the_pane() {
+        let block = ThreadMessageBlock {
+            envelope: envelope(),
+            body_state: BodyViewState::ready(
+                "hello".into(),
+                "hello".into(),
+                BodySource::Plain,
+                crate::app::BodyViewMetadata::default(),
+            ),
+            labels: vec![],
+            attachments: vec![],
+            selected: true,
+            bulk_selected: false,
+            has_unsubscribe: false,
+            signature_expanded: false,
+            assets_loading: false,
+        };
+
+        let mut used = u16::MAX;
+        let snapshot = render_to_string(70, 18, |frame| {
+            let mut html_images = HashMap::new();
+            used = draw(
+                frame,
+                Rect::new(0, 0, 70, 18),
+                std::slice::from_ref(&block),
+                DrawOptions {
+                    summary: None,
+                    scroll_offset: u16::MAX,
+                    active_pane: &ActivePane::MessageView,
+                    theme: &Theme::default(),
+                    html_images: &mut html_images,
+                },
+            );
+        });
+
+        assert!(
+            used < u16::MAX,
+            "draw must clamp the offset it uses, got {used}"
+        );
+        assert!(
+            snapshot.contains("hello") || snapshot.contains("From:"),
+            "content must stay on screen after an overscroll, got:\n{snapshot}"
+        );
     }
 
     #[test]

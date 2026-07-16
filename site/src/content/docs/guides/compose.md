@@ -125,6 +125,29 @@ CLI compose supports:
 mxr compose --attach ./invoice.pdf --attach ./notes.txt
 ```
 
+Every compose flow stores attachment paths in the draft's `attach:` frontmatter.
+That gives replies, reply-all drafts, and forwards the same editor escape hatch
+even when a client does not expose a dedicated attachment control:
+
+```md
+---
+to:
+  - team@example.com
+subject: Re: Investor letter
+attach:
+  - /Users/alice/Documents/investor-letter.docx
+---
+
+Please find my rewrite attached.
+```
+
+Add or remove those paths while the draft is open in `$EDITOR`, or reopen a
+saved draft first:
+
+```bash
+mxr drafts edit DRAFT_ID
+```
+
 TUI message viewing supports attachment open/download. Compose-side attachment management is through the editor and CLI.
 
 ## Snippets

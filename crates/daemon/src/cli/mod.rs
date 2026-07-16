@@ -1022,6 +1022,9 @@ pub enum Command {
         /// Read reply body from stdin
         #[arg(long)]
         body_stdin: bool,
+        /// File path to attach (repeatable)
+        #[arg(long, action = clap::ArgAction::Append)]
+        attach: Vec<PathBuf>,
         /// Insert this signature by name instead of the scoped default
         #[arg(long, conflicts_with = "no_signature")]
         signature: Option<String>,
@@ -1059,6 +1062,9 @@ pub enum Command {
         /// Read body from stdin
         #[arg(long)]
         body_stdin: bool,
+        /// File path to attach (repeatable)
+        #[arg(long, action = clap::ArgAction::Append)]
+        attach: Vec<PathBuf>,
         /// Insert this signature by name instead of the scoped default
         #[arg(long, conflicts_with = "no_signature")]
         signature: Option<String>,
@@ -1099,6 +1105,9 @@ pub enum Command {
         /// Read body from stdin
         #[arg(long)]
         body_stdin: bool,
+        /// File path to attach (repeatable)
+        #[arg(long, action = clap::ArgAction::Append)]
+        attach: Vec<PathBuf>,
         /// Insert this signature by name instead of the scoped default
         #[arg(long, conflicts_with = "no_signature")]
         signature: Option<String>,

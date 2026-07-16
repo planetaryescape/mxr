@@ -139,6 +139,29 @@ jobs:
       - uses: actions/checkout@v6
       - run: scripts/check_architecture_boundaries.sh
 
+  # examples/adapter-skeleton is excluded from the root workspace so it stays
+  # copyable as a standalone template — which also means `cargo check
+  # --workspace` never builds it, and a provider-trait refactor can rot it
+  # silently. Build it here so the adapter example fails loudly instead.
+  adapter-skeleton:
+    name: Adapter Skeleton Example
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
+    defaults:
+      run:
+        working-directory: examples/adapter-skeleton
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: examples/adapter-skeleton
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
   release-gates:
     name: Release Gate Scripts
     runs-on: blacksmith-4vcpu-ubuntu-2404

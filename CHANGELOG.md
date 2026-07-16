@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.9](https://github.com/planetaryescape/mxr/compare/v0.6.8...v0.6.9) (2026-07-16)
+
+
+### Bug Fixes
+
+* **tui:** make j/k scroll the thread reader and clamp overscroll ([#135](https://github.com/planetaryescape/mxr/issues/135)) ([3950d80](https://github.com/planetaryescape/mxr/commit/3950d80c09a1cb499cb61d97f02daa12353f2c81))
+
+
+### Documentation
+
+* update adapter skeleton and provider blueprint to post-refactor shapes ([#134](https://github.com/planetaryescape/mxr/issues/134)) ([2026ffc](https://github.com/planetaryescape/mxr/commit/2026ffcc1dd67ad7a43e7e0ac02d1065fd492f72))
+
 ## [0.6.8](https://github.com/planetaryescape/mxr/compare/v0.6.7...v0.6.8) (2026-07-16)
 
 

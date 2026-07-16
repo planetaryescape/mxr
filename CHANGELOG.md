@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.8](https://github.com/planetaryescape/mxr/compare/v0.6.7...v0.6.8) (2026-07-16)
+
+
+### Features
+
+* **compose:** add --attach to reply, reply-all, and forward ([#131](https://github.com/planetaryescape/mxr/issues/131)) ([f4ff9f3](https://github.com/planetaryescape/mxr/commit/f4ff9f3c66b83804c705422a8283e095d5c96428))
+
 ## [0.6.7](https://github.com/planetaryescape/mxr/compare/v0.6.6...v0.6.7) (2026-07-14)
 
 

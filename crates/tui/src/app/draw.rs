@@ -299,7 +299,7 @@ impl App {
                             );
                             let preview_blocks = self.thread_message_blocks();
                             let summary = self.thread_summary_block();
-                            ui::message_view::draw(
+                            let clamped_scroll = ui::message_view::draw(
                                 frame,
                                 inner[1],
                                 &preview_blocks,
@@ -311,6 +311,7 @@ impl App {
                                     html_images: &mut self.html_image_assets,
                                 },
                             );
+                            self.mailbox.message_scroll_offset = clamped_scroll;
                         }
                     }
                     LayoutMode::FullScreen => {
@@ -323,7 +324,7 @@ impl App {
 
                         let preview_blocks = self.thread_message_blocks();
                         let summary = self.thread_summary_block();
-                        ui::message_view::draw(
+                        let clamped_scroll = ui::message_view::draw(
                             frame,
                             chunks[1],
                             &preview_blocks,
@@ -335,6 +336,7 @@ impl App {
                                 html_images: &mut self.html_image_assets,
                             },
                         );
+                        self.mailbox.message_scroll_offset = clamped_scroll;
                     }
                 }
             }
@@ -392,7 +394,7 @@ impl App {
                     ui::deliveries_page::draw(frame, cols[0], &self.deliveries, theme);
                     let preview_blocks = self.thread_message_blocks();
                     let summary = self.thread_summary_block();
-                    ui::message_view::draw(
+                    let clamped_scroll = ui::message_view::draw(
                         frame,
                         cols[1],
                         &preview_blocks,
@@ -404,6 +406,7 @@ impl App {
                             html_images: &mut self.html_image_assets,
                         },
                     );
+                    self.mailbox.message_scroll_offset = clamped_scroll;
                 } else {
                     ui::deliveries_page::draw(frame, content_area, &self.deliveries, theme);
                 }

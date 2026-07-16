@@ -1116,6 +1116,17 @@ impl App {
                     self.move_message_view_up();
                     None
                 }
+                // J/K move focus between messages in a thread. This used to
+                // live on j/k, which left a long body unscrollable whenever
+                // the thread held more than one message.
+                (KeyCode::Char('J'), modifiers) if plain_or_shift(modifiers) => {
+                    self.move_thread_focus_down();
+                    None
+                }
+                (KeyCode::Char('K'), modifiers) if plain_or_shift(modifiers) => {
+                    self.move_thread_focus_up();
+                    None
+                }
                 (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
                     self.mailbox.message_scroll_offset =
                         self.mailbox.message_scroll_offset.saturating_add(20);

@@ -499,6 +499,8 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
 const MV_DEFAULTS: &[(&str, &str)] = &[
     ("j", "scroll_down"),
     ("k", "scroll_up"),
+    ("J", "next_message"),
+    ("K", "prev_message"),
     ("F", "toggle_fullscreen"),
     ("R", "toggle_reader_mode"),
     ("H", "toggle_html_view"),

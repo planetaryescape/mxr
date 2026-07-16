@@ -30,6 +30,54 @@ fn single_message_view_uses_jk_to_scroll() {
     assert_eq!(app.mailbox.message_scroll_offset, 0);
 }
 
+/// Regression: j/k used to scroll only when a thread held exactly one
+/// message. In a multi-message thread they moved thread focus instead, so a
+/// long body could not be scrolled — and with focus already on the last
+/// message (the default when it is the unread one) `j` did nothing at all.
+#[test]
+fn multi_message_thread_uses_jk_to_scroll_not_move_focus() {
+    let mut app = App::new();
+    app.mailbox.envelopes = make_test_envelopes(2);
+    let shared_thread = ThreadId::new();
+    app.mailbox.envelopes[0].thread_id = shared_thread.clone();
+    app.mailbox.envelopes[1].thread_id = shared_thread;
+    app.mailbox.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(5);
+    app.mailbox.envelopes[1].date = chrono::Utc::now();
+    app.mailbox.envelopes[0].flags = MessageFlags::READ;
+    app.mailbox.envelopes[1].flags = MessageFlags::empty();
+    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+
+    app.apply(Action::OpenSelected);
+    assert_eq!(app.mailbox.viewed_thread_messages.len(), 2);
+    // Focus defaults to the last unread message — the case where `j` was a
+    // no-op, because move_thread_focus_down had nowhere left to go.
+    assert_eq!(app.mailbox.thread_selected_index, 1);
+    assert_eq!(app.mailbox.message_scroll_offset, 0);
+
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+    assert_eq!(
+        app.mailbox.message_scroll_offset, 1,
+        "j must scroll the body"
+    );
+    assert_eq!(
+        app.mailbox.thread_selected_index, 1,
+        "j must not move thread focus"
+    );
+
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
+    assert_eq!(app.mailbox.message_scroll_offset, 0, "k must scroll back");
+    assert_eq!(app.mailbox.thread_selected_index, 1);
+
+    // k at the top stays put rather than stealing focus to the older message.
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
+    assert_eq!(app.mailbox.message_scroll_offset, 0);
+    assert_eq!(app.mailbox.thread_selected_index, 1);
+
+    // Message navigation still works, on J/K.
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('K'), KeyModifiers::SHIFT));
+    assert_eq!(app.mailbox.thread_selected_index, 0);
+}
+
 #[test]
 fn thread_move_down_changes_reply_target() {
     let mut app = App::new();
@@ -49,7 +97,7 @@ fn thread_move_down_changes_reply_target() {
         Some(app.mailbox.envelopes[0].id.clone())
     );
 
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('J'), KeyModifiers::SHIFT));
 
     assert_eq!(
         app.focused_thread_envelope().map(|env| env.id.clone()),
@@ -83,7 +131,7 @@ fn thread_focus_change_marks_newly_focused_unread_message_read_after_dwell() {
     assert_eq!(app.mailbox.thread_selected_index, 1);
     assert!(app.pending_mutation_queue.is_empty());
 
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('K'), KeyModifiers::SHIFT));
 
     assert_eq!(app.mailbox.thread_selected_index, 0);
     assert!(!app.mailbox.viewed_thread_messages[0]

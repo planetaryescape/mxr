@@ -1,7 +1,7 @@
 ---
 title: MSP ↔ mxr alignment audit
 status: discovery
-last_updated: 2026-05-17
+last_updated: 2026-07-16
 companion: spec.md
 ---
 
@@ -19,18 +19,26 @@ companion: spec.md
 
 mxr is **closer to MSP than expected**. The daemon already has the
 protocol's three-layer shape (client ↔ daemon ↔ provider adapter
-trait). The biggest gaps are:
+trait). Gaps 1, 2, and 4 have since been closed; 3 and 5-7 remain
+open. The gaps were:
 
-1. **`SyncCursor` is a tagged union over provider variants** rather
-   than opaque to the client (mxr's daemon switches on the variant).
-   Medium refactor.
-2. **`SyncCapabilities` is a flat boolean soup** (DAP-style) rather
-   than namespaced (MSP/LSP-style). Cheap rename.
+1. **[Resolved 2026-05-17]** ~~`SyncCursor` is a tagged union over
+   provider variants rather than opaque to the client (mxr's daemon
+   switches on the variant). Medium refactor.~~ `SyncCursor` is now
+   an opaque `SyncCursor(Vec<u8>)`; adapters summarise their own
+   private cursor via `describe_cursor`.
+2. **[Resolved 2026-05-17, `37b771f6`]** ~~`SyncCapabilities` is a
+   flat boolean soup (DAP-style) rather than namespaced (MSP/LSP-
+   style). Cheap rename.~~ Namespaced into `sync`/`mutate`/`search`/
+   `push` — see MSP §4 below.
 3. **`fetch_message` is optional** with a `None` default; MSP makes
    `fetch_body` foundational. Medium refactor — needs Gmail/IMAP/
-   Outlook adapters to implement it consistently.
-4. **No `mutation_id` for idempotent mutation replay.** Medium
-   addition.
+   Outlook adapters to implement it consistently. **(Still open.)**
+4. **[Resolved 2026-05-17, Phase D]** ~~No `mutation_id` for
+   idempotent mutation replay. Medium addition.~~
+   `apply_mutation(mutation_id, &Mutation)` plus the
+   `mutation_dedup_log` table (migration 040, 24h TTL) — see MSP
+   §2.7 above.
 5. **Push: mxr's `IdleWatcher` is provider-internal**; MSP's
    `subscribe_changes` returns an opaque subscription with a
    resume token. Medium refactor.
@@ -342,27 +350,32 @@ private. MSP only affects the adapter-facing edge.
 
 ### MSP §4 — Capabilities
 
-**mxr today:** `SyncCapabilities` struct
-(`crates/core/src/types.rs:1833-1843`):
+**mxr today** (post-refactor): namespaced `SyncCapabilities`
+(`crates/core/src/provider.rs`):
 
 ```rust
 pub struct SyncCapabilities {
-    pub labels: bool,
-    pub server_search: bool,
-    pub delta_sync: bool,
-    pub push: bool,
-    pub batch_operations: bool,
-    pub native_thread_ids: bool,
+    pub sync: SyncCaps,     // delta, native_threading
+    pub mutate: MutateCaps, // labels, batch_operations, custom_keywords
+    pub search: SearchCaps, // server_side
+    pub push: PushCaps,     // streaming
 }
 ```
 
-Flat boolean soup. Same shape DAP used; same problems.
+**Resolved 2026-05-17** (`37b771f6`, same day as Phase D):
 
-**Gap:** MSP wants namespaced capabilities (LSP-style):
-`{sync: {delta, native_threading, ...}, mutate: {labels,
+- The flat boolean soup (`labels`, `server_search`, `delta_sync`,
+  `push`, `batch_operations`, `native_thread_ids`) — the shape DAP
+  used, with the same problems — was namespaced into the LSP-style
+  grouping MSP wanted.
+- The landed shape refines the original sketch below: `search`
+  became its own group (`server_side`) instead of sitting under
+  sync, and `mutate` carries `batch_operations` + `custom_keywords`
+  rather than `atomic_move`.
+
+**Original gap (2026-05-17):** MSP wants namespaced capabilities
+(LSP-style): `{sync: {delta, native_threading, ...}, mutate: {labels,
 atomic_move, ...}, push: {streaming, ...}}`.
-
-**Refactor:** restructure `SyncCapabilities` into a nested struct.
 
 **Cost: cheap.** ~2-3 hours. Pure rename/restructure; same
 information, different shape.

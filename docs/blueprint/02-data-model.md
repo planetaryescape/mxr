@@ -119,7 +119,7 @@ Messages can expose multiple labels at the app layer. That is honest for Gmail. 
 
 The honesty seam is:
 - `LabelKind::Folder` for folder-backed placement
-- `SyncCapabilities.labels = false` for providers without stable multi-assign label semantics
+- `SyncCapabilities.mutate.labels = false` for providers without stable multi-assign label semantics
 - provider-scoped message identity (`provider_id`, deterministic `MessageId`) so moves/copies can stay provider-truthful
 
 This is the rule for contributors: unify the organizer surface, but do not paper over folder semantics into fake Gmail labels.

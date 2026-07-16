@@ -138,7 +138,7 @@ Every significant design decision, what alternatives were considered, and why we
 
 ## D008: Label model — Unified organizer surface, explicit folder seam
 
-**Chosen**: Labels as the unified organizer surface in the app model, with explicit honesty seams for folder-backed providers (`LabelKind::Folder`, provider IDs, `SyncCapabilities.labels == false`).
+**Chosen**: Labels as the unified organizer surface in the app model, with explicit honesty seams for folder-backed providers (`LabelKind::Folder`, provider IDs, `SyncCapabilities.mutate.labels == false`).
 
 **Considered**: Labels only (flatten everything), labels + separate mailbox_membership + flags, labels + ProviderMeta blob
 

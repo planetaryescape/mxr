@@ -17,18 +17,18 @@ The main pressure point is labels vs folders. The current abstraction is still a
 - One unified app/runtime mail model.
 - Provider truth preserved through `ProviderKind`, `provider_id`, `SyncCursor`, and `SyncCapabilities`.
 - `LabelKind::Folder` as the app-visible marker for folder-backed placement.
-- `native_thread_ids` + JWZ/subject fallback threading split.
+- `sync.native_threading` + JWZ/subject fallback threading split.
 - Local-first draft model. Server drafts stay optional provider capability.
 
 ## Tighten
 
 - Folder-backed mutations must not use Gmail-style optimistic local label union/removal.
-- For providers with `SyncCapabilities.labels == false`, folder-affecting mutations should reconcile through provider sync so store/search reflect provider truth.
+- For providers with `SyncCapabilities.mutate.labels == false`, folder-affecting mutations should reconcile through provider sync so store/search reflect provider truth.
 - Snooze on folder-backed providers must not assume the pre-move `MessageId` survived. This pass re-anchors snooze state to the reconciled post-sync message copy.
 
 ## Document
 
-- `server_search` is provider truth, not a promise that the app always routes search there.
+- `search.server_side` is provider truth, not a promise that the app always routes search there.
 - `ProviderMeta` is reserved/dormant in the current implementation, not live sync truth.
 - `Envelope.provider_id` is provider-instance identity, not a universal logical-message identity.
 - IMAP moves/copies may materialize as delete+create.
@@ -37,10 +37,10 @@ The main pressure point is labels vs folders. The current abstraction is still a
 
 | Area | Judgment | Notes |
 |---|---|---|
-| Labels vs folders | Tighten | Unified organizer surface is fine. Honesty seam is `LabelKind::Folder` + `SyncCapabilities.labels == false`. Do not pretend folder placement is stable multi-label state. |
+| Labels vs folders | Tighten | Unified organizer surface is fine. Honesty seam is `LabelKind::Folder` + `SyncCapabilities.mutate.labels == false`. Do not pretend folder placement is stable multi-label state. |
 | Threading | Keep | Current native-thread-or-JWZ split is strong. Do not collapse it into one fake thread story. |
 | Drafts and send semantics | Keep + document | `Draft` is local-first canonical compose state. `reply_headers` is the reply/threading surface. Server drafts are optional send-provider capability. |
-| Search capability differences | Document | Keep capability visibility. `server_search` is provider truth, not app-routing policy. |
+| Search capability differences | Document | Keep capability visibility. `search.server_side` is provider truth, not app-routing policy. |
 | Message identity / provider identity | Document | Gmail IDs are stable. IMAP identity is mailbox-instance-based today. Moves/copies may change `provider_id` and therefore `MessageId`. |
 | Mutation semantics | Tighten | Gmail-like optimistic local label persistence is valid only for providers with real multi-assign labels. Folder providers must reconcile via sync for placement changes. |
 | Sync cursor / sync capability representation | Keep | Rich provider-specific cursor/capability state is a feature, not abstraction failure. |

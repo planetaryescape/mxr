@@ -164,6 +164,7 @@ pub struct ReplyCommand {
     pub account: Option<String>,
     pub body: Option<String>,
     pub body_stdin: bool,
+    pub attach: Vec<PathBuf>,
     pub signature: Option<String>,
     pub no_signature: bool,
     pub yes: bool,
@@ -186,6 +187,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
         account,
         body,
         body_stdin,
+        attach,
         signature,
         no_signature,
         yes,
@@ -249,6 +251,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
         stdin_or_body,
         dry_run,
         signature.as_ref(),
+        attachment_strings(&attach),
     )
     .await?;
 
@@ -279,6 +282,7 @@ pub struct ForwardCommand {
     pub to: Option<String>,
     pub body: Option<String>,
     pub body_stdin: bool,
+    pub attach: Vec<PathBuf>,
     pub signature: Option<String>,
     pub no_signature: bool,
     pub yes: bool,
@@ -293,6 +297,7 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
         to,
         body,
         body_stdin,
+        attach,
         signature,
         no_signature,
         yes,
@@ -342,6 +347,7 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
         stdin_or_body,
         dry_run,
         signature.as_ref(),
+        attachment_strings(&attach),
     )
     .await?;
 
@@ -375,20 +381,27 @@ async fn build_compose_draft(
     stdin_or_body: Option<String>,
     dry_run: bool,
     signature: Option<&mxr_compose::ComposeSignature>,
+    attach: Vec<String>,
 ) -> anyhow::Result<(
     mxr_compose::frontmatter::ComposeFrontmatter,
     String,
     Option<PathBuf>,
 )> {
     if let Some(body) = stdin_or_body {
-        let frontmatter =
+        let mut frontmatter =
             mxr_compose::seed_frontmatter_with_signature(kind, from_email, signature)?;
+        if !attach.is_empty() {
+            frontmatter.attach = attach;
+        }
         return Ok((frontmatter, apply_signature_to_body(body, signature), None));
     }
 
     if dry_run {
-        let frontmatter =
+        let mut frontmatter =
             mxr_compose::seed_frontmatter_with_signature(kind, from_email, signature)?;
+        if !attach.is_empty() {
+            frontmatter.attach = attach;
+        }
         return Ok((
             frontmatter,
             apply_signature_to_body(String::new(), signature),
@@ -398,6 +411,9 @@ async fn build_compose_draft(
 
     let (path, cursor_line) =
         mxr_compose::create_draft_file_with_signature(kind, from_email, signature)?;
+    // Seed the `attach:` frontmatter before the editor opens so the user
+    // sees (and can edit) the attachments alongside the rest of the draft.
+    rewrite_compose_frontmatter(&path, None, None, attach)?;
     let editor = mxr_compose::editor::resolve_editor(None);
     mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
     let content = std::fs::read_to_string(&path)?;

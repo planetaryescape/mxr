@@ -13,6 +13,7 @@ Options:
       --account <ACCOUNT>
       --body <BODY>            Inline reply body
       --body-stdin             Read body from stdin
+      --attach <ATTACH>        File path to attach (repeatable)
       --signature <SIGNATURE>  Insert this signature by name instead of the scoped default
       --no-signature           Do not insert any signature
       --yes                    Skip confirmation

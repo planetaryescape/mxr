@@ -115,6 +115,7 @@ async fn walk_reply_queue(
                     message_id: env.id.to_string(),
                     body: None,
                     body_stdin: false,
+                    attach: Vec::new(),
                     signature: None,
                     no_signature: false,
                     yes: false,

@@ -9,17 +9,18 @@
 //! scenarios run unchanged against every transport carrier.
 //!
 //! Structural note: this lives in-crate as a `#[cfg(test)]` child module of
-//! `server` rather than in `crates/daemon/tests/` because the behavior under
+//! `serve` rather than in `crates/daemon/tests/` because the behavior under
 //! test is only reachable in-process — `serve_client_connection` is private
-//! and typed to `UnixStream`, the lane-limit constants are private, and the
+//! and generic over the byte stream, the lane-limit constants are private, and the
 //! state constructors (`AppState::in_memory`, `add_sync_provider_for_test`)
 //! are `#[cfg(test)]` and so are never compiled for a black-box integration
 //! test. The existing temp-socket tests in `server.rs` establish this pattern.
 //!
 //! Carrier seam: every scenario obtains its connection through [`spawn_server`]
-//! (framed) or its raw sibling, the *single* place `UnixStream::pair()` is
-//! named. A later phase swaps that carrier for an in-memory duplex / TCP pair
-//! without touching any scenario.
+//! (framed) or its raw sibling, both generic over a [`Carrier`]. Each scenario
+//! is written once and run over BOTH carriers — the UDS socketpair
+//! ([`UdsCarrier`]) and an in-memory `tokio::io::duplex` ([`DuplexCarrier`]) —
+//! via the `run_on_both_carriers!` invocation at the end of the file.
 //!
 //! Determinism: scenarios are driven by explicit synchronization — oneshots,
 //! `watch` channels, JoinSet completion — never wall-clock sleeps. The one
@@ -41,7 +42,7 @@ use mxr_protocol::{
 };
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream};
 use tokio::net::UnixStream;
 use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
@@ -226,8 +227,48 @@ impl MailSyncProvider for PanicOnCreateLabel {
 }
 
 // ---------------------------------------------------------------------------
-// Carrier factory + client helpers.
+// Carriers + client helpers.
 // ---------------------------------------------------------------------------
+
+/// A byte-stream carrier for the conformance corpus. Each carrier builds a
+/// connected pair whose server end feeds `serve_client_connection` and whose
+/// client end the scenario drives. The corpus runs every scenario over each
+/// carrier (see the `run_on_both_carriers!` invocation at the bottom), proving
+/// the serve core is carrier-independent — the whole phase-3 premise, checked
+/// cheaply before any transport trait exists.
+trait Carrier: 'static {
+    /// Both ends share one stream type per carrier (a UDS socketpair, an
+    /// in-memory duplex). Bounds mirror `serve_client_connection`'s.
+    type Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static;
+
+    /// Build a fresh, connected `(server, client)` pair.
+    fn pair() -> (Self::Stream, Self::Stream);
+}
+
+/// The production transport: a Unix `socketpair(2)` — the real fd / kernel path
+/// the daemon serves in production.
+struct UdsCarrier;
+
+impl Carrier for UdsCarrier {
+    type Stream = UnixStream;
+
+    fn pair() -> (UnixStream, UnixStream) {
+        UnixStream::pair().unwrap()
+    }
+}
+
+/// An in-memory `tokio::io::duplex` pipe: no socket file, no fd, no kernel
+/// round-trip — hermetic and fast. The buffer is sized past the 16 MiB frame
+/// cap so the near-limit-frame scenario transfers without backpressure churn.
+struct DuplexCarrier;
+
+impl Carrier for DuplexCarrier {
+    type Stream = DuplexStream;
+
+    fn pair() -> (DuplexStream, DuplexStream) {
+        tokio::io::duplex(MAX_FRAME_LEN + 1024)
+    }
+}
 
 /// Hot/Bulk lane semaphores at the daemon's real production sizes.
 fn lanes() -> (Arc<Semaphore>, Arc<Semaphore>) {
@@ -243,13 +284,13 @@ fn lanes() -> (Arc<Semaphore>, Arc<Semaphore>) {
 /// and hands back the raw client end plus the server task. `prep` runs after
 /// the event receiver has subscribed but before the serve loop starts draining
 /// it — the seam the lag scenario needs.
-async fn spawn_server(
+async fn spawn_server<C: Carrier>(
     state: Arc<AppState>,
     hot: Arc<Semaphore>,
     bulk: Arc<Semaphore>,
     prep: impl FnOnce(&Arc<AppState>),
-) -> (UnixStream, JoinHandle<()>) {
-    let (server_stream, client_stream) = UnixStream::pair().unwrap();
+) -> (C::Stream, JoinHandle<()>) {
+    let (server_stream, client_stream) = C::pair();
     let event_rx = state.event_tx.subscribe();
     prep(&state);
     let shutdown_rx = state.shutdown_receiver();
@@ -259,30 +300,34 @@ async fn spawn_server(
     (client_stream, server)
 }
 
-/// A framed client over a served connection.
-struct Served {
-    client: Framed<UnixStream, IpcCodec>,
+/// A framed client over a served connection, generic over the carrier's stream.
+struct Served<S> {
+    client: Framed<S, IpcCodec>,
     server: JoinHandle<()>,
 }
 
-async fn serve(state: Arc<AppState>, hot: Arc<Semaphore>, bulk: Arc<Semaphore>) -> Served {
-    serve_with_prep(state, hot, bulk, |_| {}).await
+async fn serve<C: Carrier>(
+    state: Arc<AppState>,
+    hot: Arc<Semaphore>,
+    bulk: Arc<Semaphore>,
+) -> Served<C::Stream> {
+    serve_with_prep::<C>(state, hot, bulk, |_| {}).await
 }
 
-async fn serve_with_prep(
+async fn serve_with_prep<C: Carrier>(
     state: Arc<AppState>,
     hot: Arc<Semaphore>,
     bulk: Arc<Semaphore>,
     prep: impl FnOnce(&Arc<AppState>),
-) -> Served {
-    let (client, server) = spawn_server(state, hot, bulk, prep).await;
+) -> Served<C::Stream> {
+    let (client, server) = spawn_server::<C>(state, hot, bulk, prep).await;
     Served {
         client: Framed::new(client, IpcCodec::new()),
         server,
     }
 }
 
-impl Served {
+impl<S: AsyncRead + AsyncWrite + Unpin> Served<S> {
     async fn send(&mut self, id: u64, req: Request) {
         self.client.send(request(id, req)).await.unwrap();
     }
@@ -380,7 +425,7 @@ fn pong(msg: &IpcMessage) -> bool {
 /// did not panic (no silently-detached tasks). Deliberately does NOT touch the
 /// shared shutdown signal, so a test can close one connection while others stay
 /// up.
-async fn close(served: Served) {
+async fn close<S>(served: Served<S>) {
     drop(served.client);
     join_server(served.server).await;
 }
@@ -396,14 +441,14 @@ async fn join_server(server: JoinHandle<()>) {
 
 /// Full single-connection teardown: close the connection, then drain the
 /// state's background workers.
-async fn finish(state: &Arc<AppState>, served: Served) {
+async fn finish<S>(state: &Arc<AppState>, served: Served<S>) {
     close(served).await;
     state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
 }
 
 /// Write a length-prefixed frame (4-byte big-endian length + payload), matching
 /// `IpcCodec`'s framing, straight onto a raw stream — for byte-level edge tests.
-async fn write_raw_frame(stream: &mut UnixStream, payload: &[u8]) {
+async fn write_raw_frame<S: AsyncWrite + Unpin>(stream: &mut S, payload: &[u8]) {
     let len = u32::try_from(payload.len()).unwrap();
     stream.write_all(&len.to_be_bytes()).await.unwrap();
     stream.write_all(payload).await.unwrap();
@@ -416,7 +461,7 @@ async fn write_raw_frame(stream: &mut UnixStream, payload: &[u8]) {
 /// the daemon aborts the connection — there, a clean EOF (`Ok(0)`) and a
 /// connection reset (`Err`) are genuinely equivalent "the daemon dropped us"
 /// outcomes. What must NOT happen is more frame bytes arriving.
-async fn expect_raw_closed(stream: &mut UnixStream) {
+async fn expect_raw_closed<S: AsyncRead + Unpin>(stream: &mut S) {
     let mut buf = [0u8; 64];
     let result = tokio::time::timeout(RECV_TIMEOUT, stream.read(&mut buf))
         .await
@@ -435,8 +480,12 @@ async fn expect_raw_closed(stream: &mut UnixStream) {
 /// A fresh framed connection that answers `Ping` — used to prove the daemon is
 /// still alive after another connection hit a framing/protocol edge. Leaves
 /// worker teardown to the caller.
-async fn assert_daemon_alive(state: &Arc<AppState>, hot: Arc<Semaphore>, bulk: Arc<Semaphore>) {
-    let mut probe = serve(state.clone(), hot, bulk).await;
+async fn assert_daemon_alive<C: Carrier>(
+    state: &Arc<AppState>,
+    hot: Arc<Semaphore>,
+    bulk: Arc<Semaphore>,
+) {
+    let mut probe = serve::<C>(state.clone(), hot, bulk).await;
     probe.send(1, Request::Ping).await;
     let response = probe.recv_response(1).await;
     assert!(pong(&response), "daemon should still answer Ping");
@@ -449,11 +498,10 @@ async fn assert_daemon_alive(state: &Arc<AppState>, hot: Arc<Semaphore>, bulk: A
 
 /// Scenario 1 — request/response id correlation. Client-chosen ids are echoed;
 /// several requests in flight on one connection each get their own response.
-#[tokio::test]
-async fn scenario_01_id_correlation_multiplexed() {
+async fn scenario_01_id_correlation_multiplexed<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
-    let mut served = serve(state.clone(), hot, bulk).await;
+    let mut served = serve::<C>(state.clone(), hot, bulk).await;
 
     let ids = [7u64, 42, 1000, 3];
     for id in ids {
@@ -478,12 +526,11 @@ async fn scenario_01_id_correlation_multiplexed() {
 /// Scenario 2 — out-of-order completion. A slow Bulk-lane request does not block
 /// a fast Hot-lane request on the same connection; responses arrive by
 /// completion order, matched by id.
-#[tokio::test]
-async fn scenario_02_out_of_order_completion() {
+async fn scenario_02_out_of_order_completion<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
     let gate = gate::install().await;
-    let mut served = serve(state.clone(), hot, bulk).await;
+    let mut served = serve::<C>(state.clone(), hot, bulk).await;
 
     // Bulk request (id 1) enters the gate and blocks there.
     served.send(1, Request::RebuildAnalytics).await;
@@ -517,12 +564,11 @@ async fn scenario_02_out_of_order_completion() {
 /// Scenario 3 — lane saturation. More concurrent Bulk requests than
 /// `BULK_CONCURRENCY_LIMIT` (8) queue rather than fail: exactly the limit run
 /// concurrently, the rest wait for a permit, and all complete once released.
-#[tokio::test]
-async fn scenario_03_lane_saturation_queues() {
+async fn scenario_03_lane_saturation_queues<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
     let gate = gate::install().await;
-    let mut served = serve(state.clone(), hot, bulk.clone()).await;
+    let mut served = serve::<C>(state.clone(), hot, bulk.clone()).await;
 
     let total = BULK_CONCURRENCY_LIMIT + 4;
     for id in 1..=total as u64 {
@@ -576,14 +622,13 @@ async fn scenario_03_lane_saturation_queues() {
 /// `Daemon`. Every production emitter (`chimes::emit_daemon_event`,
 /// `diagnostics::emit_operation_event`, the server's own `SyncCompleted`) sets
 /// `ClientKind::default()`. Pinned as-is; see the spec's "Pinned findings".
-#[tokio::test]
-async fn scenario_04_broadcast_reaches_every_client() {
+async fn scenario_04_broadcast_reaches_every_client<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
 
-    let mut a = serve(state.clone(), hot.clone(), bulk.clone()).await;
-    let mut b = serve(state.clone(), hot.clone(), bulk.clone()).await;
-    let mut c = serve(state.clone(), hot.clone(), bulk.clone()).await;
+    let mut a = serve::<C>(state.clone(), hot.clone(), bulk.clone()).await;
+    let mut b = serve::<C>(state.clone(), hot.clone(), bulk.clone()).await;
+    let mut c = serve::<C>(state.clone(), hot.clone(), bulk.clone()).await;
 
     // Real production emitter — the frame's `source` is whatever the daemon
     // actually stamps, so the assertions below pin production behavior.
@@ -616,12 +661,11 @@ async fn scenario_04_broadcast_reaches_every_client() {
 
 /// Scenario 5 — an event interleaves with an in-flight request on the same
 /// connection without corrupting correlation (the `request_with_events` path).
-#[tokio::test]
-async fn scenario_05_event_interleaves_with_inflight_request() {
+async fn scenario_05_event_interleaves_with_inflight_request<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
     let gate = gate::install().await;
-    let mut served = serve(state.clone(), hot, bulk).await;
+    let mut served = serve::<C>(state.clone(), hot, bulk).await;
 
     // Hold a request in flight.
     served.send(1, Request::RebuildAnalytics).await;
@@ -644,11 +688,10 @@ async fn scenario_05_event_interleaves_with_inflight_request() {
 
 /// Scenario 6 — an event-only connection (never sends a request) receives
 /// events: the `mxr events` / bridge `bridge_events` pattern.
-#[tokio::test]
-async fn scenario_06_event_only_connection() {
+async fn scenario_06_event_only_connection<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
-    let mut served = serve(state.clone(), hot, bulk).await;
+    let mut served = serve::<C>(state.clone(), hot, bulk).await;
 
     // No request is ever sent on this connection.
     emit(&state);
@@ -666,15 +709,14 @@ async fn scenario_06_event_only_connection() {
 /// Scenario 7 — `EventsLagged { skipped }` is delivered point-to-point to a slow
 /// consumer after the 256-slot broadcast channel overflows, and the connection
 /// survives (still serves a subsequent request).
-#[tokio::test]
-async fn scenario_07_events_lagged_resync_and_survive() {
+async fn scenario_07_events_lagged_resync_and_survive<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
 
     // Overflow the channel (cap 256) after the receiver subscribes but before
     // the serve loop drains it, so the first recv() lags. Synthetic filler is
     // fine here — the content is irrelevant; scenario 4 pins emitter output.
-    let mut served = serve_with_prep(state.clone(), hot, bulk, |s| {
+    let mut served = serve_with_prep::<C>(state.clone(), hot, bulk, |s| {
         for _ in 0..400u32 {
             let _ = s.event_tx.send(daemon_event(sample_event()));
         }
@@ -702,8 +744,7 @@ async fn scenario_07_events_lagged_resync_and_survive() {
 /// Scenario 8 — framing size edges. A frame near the 16 MiB cap round-trips
 /// (request decoded, response returned); an oversized frame errors and tears
 /// down only its own connection, leaving the daemon serving other connections.
-#[tokio::test]
-async fn scenario_08_frame_size_edges() {
+async fn scenario_08_frame_size_edges<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
 
@@ -724,7 +765,7 @@ async fn scenario_08_frame_size_edges() {
         "request frame should be near (just under) the 16 MiB cap: {encoded_len} bytes"
     );
 
-    let mut served = serve(state.clone(), hot.clone(), bulk.clone()).await;
+    let mut served = serve::<C>(state.clone(), hot.clone(), bulk.clone()).await;
     served.client.send(msg).await.unwrap();
     let response = served.recv_response_within(1, BIG_FRAME_RECV_TIMEOUT).await;
     assert_eq!(response.id, 1, "a near-limit frame round-trips its id");
@@ -732,7 +773,7 @@ async fn scenario_08_frame_size_edges() {
 
     // -- oversized frame errors without killing the daemon ------------------
     let (mut raw_client, server) =
-        spawn_server(state.clone(), hot.clone(), bulk.clone(), |_| {}).await;
+        spawn_server::<C>(state.clone(), hot.clone(), bulk.clone(), |_| {}).await;
     let oversized = u32::try_from(MAX_FRAME_LEN).unwrap() + 1; // one byte over the cap
     raw_client
         .write_all(&oversized.to_be_bytes())
@@ -746,7 +787,7 @@ async fn scenario_08_frame_size_edges() {
 
     // A separate connection still works: the oversized frame killed one
     // connection, not the daemon.
-    assert_daemon_alive(&state, hot, bulk).await;
+    assert_daemon_alive::<C>(&state, hot, bulk).await;
     state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
 }
 
@@ -754,13 +795,12 @@ async fn scenario_08_frame_size_edges() {
 /// BEHAVIOR: the decode fails (`InvalidData`), and the daemon closes the
 /// connection WITHOUT sending any error frame back — the client just sees EOF.
 /// A separate connection is unaffected.
-#[tokio::test]
-async fn scenario_09_malformed_json_closes_connection() {
+async fn scenario_09_malformed_json_closes_connection<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
 
     let (mut raw_client, server) =
-        spawn_server(state.clone(), hot.clone(), bulk.clone(), |_| {}).await;
+        spawn_server::<C>(state.clone(), hot.clone(), bulk.clone(), |_| {}).await;
     write_raw_frame(&mut raw_client, b"{ this is not valid json ]").await;
 
     // No response frame is returned; the connection is simply closed.
@@ -768,19 +808,18 @@ async fn scenario_09_malformed_json_closes_connection() {
     drop(raw_client);
     join_server(server).await;
 
-    assert_daemon_alive(&state, hot, bulk).await;
+    assert_daemon_alive::<C>(&state, hot, bulk).await;
     state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
 }
 
 /// Scenario 10 — a truncated / mid-frame disconnect. The client announces a
 /// frame length, sends a partial body, then disconnects. The server task cleans
 /// up (completes) rather than leaking or hanging.
-#[tokio::test]
-async fn scenario_10_truncated_frame_cleanup() {
+async fn scenario_10_truncated_frame_cleanup<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
 
-    let (mut raw_client, server) = spawn_server(state.clone(), hot, bulk, |_| {}).await;
+    let (mut raw_client, server) = spawn_server::<C>(state.clone(), hot, bulk, |_| {}).await;
     // Header claims 1000 bytes; send only 10, then disconnect mid-frame.
     raw_client.write_all(&1000u32.to_be_bytes()).await.unwrap();
     raw_client.write_all(&[0u8; 10]).await.unwrap();
@@ -799,12 +838,11 @@ async fn scenario_10_truncated_frame_cleanup() {
 /// Scenario 11 — client disconnect with a request in flight. The handler runs
 /// to completion (or the send fails harmlessly) and, critically, the lane
 /// permit is released — it is not wedged.
-#[tokio::test]
-async fn scenario_11_disconnect_with_inflight_request_frees_permit() {
+async fn scenario_11_disconnect_with_inflight_request_frees_permit<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
     let gate = gate::install().await;
-    let mut served = serve(state.clone(), hot, bulk.clone()).await;
+    let mut served = serve::<C>(state.clone(), hot, bulk.clone()).await;
 
     served.send(1, Request::RebuildAnalytics).await;
     gate.wait_until_entered(1).await;
@@ -837,14 +875,13 @@ async fn scenario_11_disconnect_with_inflight_request_frees_permit() {
 
 /// Scenario 12 — a handler panic becomes a kinded `Error` response (via
 /// `guard_ipc_response`) and the connection stays usable for the next request.
-#[tokio::test]
-async fn scenario_12_handler_panic_recovers() {
+async fn scenario_12_handler_panic_recovers<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let account_id = state.default_account_id();
     state.add_sync_provider_for_test(Arc::new(PanicOnCreateLabel { account_id }));
 
     let (hot, bulk) = lanes();
-    let mut served = serve(state.clone(), hot, bulk).await;
+    let mut served = serve::<C>(state.clone(), hot, bulk).await;
 
     // The panicking handler yields an Error response, correlated to its id.
     served
@@ -878,11 +915,10 @@ async fn scenario_12_handler_panic_recovers() {
 
 /// Scenario 13 — the daemon shutdown signal closes idle connections cleanly:
 /// the shutdown watch arm ends the serve loop and the client sees EOF, no frame.
-#[tokio::test]
-async fn scenario_13_shutdown_closes_connections() {
+async fn scenario_13_shutdown_closes_connections<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
-    let mut served = serve(state.clone(), hot, bulk).await;
+    let mut served = serve::<C>(state.clone(), hot, bulk).await;
 
     // Signal shutdown on an idle connection.
     state.request_shutdown();
@@ -898,11 +934,10 @@ async fn scenario_13_shutdown_closes_connections() {
 /// Scenario 14 — UDS auth posture (placeholder for the phase-5 auth matrix).
 /// Today any local connection is accepted with no handshake: a fresh connection
 /// answers `Ping` immediately, no `Authenticate` step required.
-#[tokio::test]
-async fn scenario_14_uds_accepts_any_local_connection() {
+async fn scenario_14_uds_accepts_any_local_connection<C: Carrier>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
-    let mut served = serve(state.clone(), hot, bulk).await;
+    let mut served = serve::<C>(state.clone(), hot, bulk).await;
 
     // No auth handshake — straight to a request.
     served.send(1, Request::Ping).await;
@@ -913,4 +948,51 @@ async fn scenario_14_uds_accepts_any_local_connection() {
     );
 
     finish(&state, served).await;
+}
+
+// ---------------------------------------------------------------------------
+// Carrier matrix: run every scenario over both carriers.
+// ---------------------------------------------------------------------------
+
+/// Instantiate each scenario as two `#[tokio::test]`s — one per carrier — so the
+/// corpus runs unchanged over the UDS socketpair and the in-memory duplex. The
+/// generated tests live at `carriers::<scenario>::{uds, duplex}`, keeping the
+/// per-carrier result visible in the test output. The scenario bodies — and
+/// every assertion in them — are shared and carrier-agnostic; only the byte
+/// stream underneath differs.
+macro_rules! run_on_both_carriers {
+    ($($scenario:ident),+ $(,)?) => {
+        mod carriers {
+            $(
+                mod $scenario {
+                    #[tokio::test]
+                    async fn uds() {
+                        super::super::$scenario::<super::super::UdsCarrier>().await;
+                    }
+
+                    #[tokio::test]
+                    async fn duplex() {
+                        super::super::$scenario::<super::super::DuplexCarrier>().await;
+                    }
+                }
+            )+
+        }
+    };
+}
+
+run_on_both_carriers! {
+    scenario_01_id_correlation_multiplexed,
+    scenario_02_out_of_order_completion,
+    scenario_03_lane_saturation_queues,
+    scenario_04_broadcast_reaches_every_client,
+    scenario_05_event_interleaves_with_inflight_request,
+    scenario_06_event_only_connection,
+    scenario_07_events_lagged_resync_and_survive,
+    scenario_08_frame_size_edges,
+    scenario_09_malformed_json_closes_connection,
+    scenario_10_truncated_frame_cleanup,
+    scenario_11_disconnect_with_inflight_request_frees_permit,
+    scenario_12_handler_panic_recovers,
+    scenario_13_shutdown_closes_connections,
+    scenario_14_uds_accepts_any_local_connection,
 }

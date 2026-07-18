@@ -1682,7 +1682,7 @@ async fn ipc_request_with_id(
     let mut framed = Framed::new(stream, IpcCodec::new());
     let message = IpcMessage {
         id: request_id,
-        source: ::mxr_protocol::ClientKind::default(),
+        source: ::mxr_protocol::ClientKind::Web,
         payload: IpcPayload::Request(request),
     };
     framed

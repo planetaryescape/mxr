@@ -495,10 +495,20 @@ mod tests {
             "system prompt must carry the shared injection guard"
         );
         let user = &msgs[1].content;
+        let begin = user
+            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = user
+            .find(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        // The mail-derived contact address in the baseline must sit inside
+        // the markers.
+        let addr = user
+            .find("alice@example.com")
+            .expect("contact address present in baseline");
         assert!(
-            user.contains(mxr_llm::UNTRUSTED_MAIL_BEGIN)
-                && user.contains(mxr_llm::UNTRUSTED_MAIL_END),
-            "recipient baseline must be wrapped in untrusted-content markers"
+            begin < addr && addr < end,
+            "recipient baseline must sit inside the untrusted-content markers"
         );
     }
 }

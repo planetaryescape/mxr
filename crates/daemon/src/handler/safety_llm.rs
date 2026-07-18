@@ -112,12 +112,15 @@ pub(crate) async fn check_answer_coverage(
 
     let cleaned_draft = clean(Some(&draft.body_markdown), None, &ReaderConfig::default()).content;
 
-    // The thread transcript is attacker-controllable inbound mail; wrap
-    // it in untrusted-content delimiters. The draft reply is the user's
-    // own outgoing text and stays outside. (Defense-in-depth; the
-    // citation validator that rejects unknown evidence ids is the
-    // boundary, and this check only ever emits an advisory warning.)
+    // Both the inbound thread and the draft reply are mail-derived: the
+    // thread is attacker-controlled, and the draft may quote or echo
+    // inbound text. Wrap each in its own untrusted-content block so nothing
+    // mail-derived sits outside the markers (which the guard marks
+    // authoritative). The citation validator that rejects unknown evidence
+    // ids is the boundary, and this check only ever emits an advisory
+    // warning.
     let wrapped_thread = wrap_untrusted_mail(&transcript);
+    let wrapped_draft = wrap_untrusted_mail(&cleaned_draft);
     let runtime = state.llm.for_feature(LlmFeature::AnswerCoverage);
     let req = CompletionRequest {
         max_tokens: Some(800),
@@ -133,7 +136,7 @@ pub(crate) async fn check_answer_coverage(
                  markers in the thread. If there are no asks, return {\"asks\": []}.",
             )),
             ChatMessage::user(format!(
-                "THREAD:\n{wrapped_thread}\n\nDRAFT REPLY:\n{cleaned_draft}\n\nReturn JSON only."
+                "THREAD:\n{wrapped_thread}\n\nDRAFT REPLY:\n{wrapped_draft}\n\nReturn JSON only."
             )),
         ],
     };
@@ -461,31 +464,44 @@ mod tests {
             "prompt missing msg_id markers, got:\n{user_text}"
         );
 
-        // Injection hardening: guard on the system message, inbound thread
-        // wrapped, and the user's own draft kept OUTSIDE the markers.
+        // Injection hardening: guard on the system message, and BOTH the
+        // inbound thread and the draft (which may quote inbound) each land
+        // inside their own untrusted-content wrapper.
         let request = stub.last_request.lock().unwrap().clone().unwrap();
         let system = &request.messages[0].content;
         assert!(
             system.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
             "system prompt must carry the shared injection guard"
         );
-        let begin = user_text
-            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
-            .expect("begin marker present");
-        let end = user_text
-            .find(mxr_llm::UNTRUSTED_MAIL_END)
-            .expect("end marker present");
         let msgid = user_text.find("[msg_id=").expect("thread msg id present");
+        let thread_begin = user_text[..msgid]
+            .rfind(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("thread begin marker");
+        let thread_end = msgid
+            + user_text[msgid..]
+                .find(mxr_llm::UNTRUSTED_MAIL_END)
+                .expect("thread end marker");
         assert!(
-            begin < msgid && msgid < end,
-            "inbound thread must sit between the untrusted-content markers"
+            thread_begin < msgid && msgid < thread_end,
+            "inbound thread must sit inside its untrusted-content wrapper"
         );
         let draft = user_text
             .find("UNIQUE-DRAFT-MARKER-XYZ")
             .expect("draft present");
+        let draft_begin = user_text[..draft]
+            .rfind(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("draft begin marker");
+        let draft_end = draft
+            + user_text[draft..]
+                .find(mxr_llm::UNTRUSTED_MAIL_END)
+                .expect("draft end marker");
         assert!(
-            draft > end,
-            "the user's own draft must stay outside the untrusted-content markers"
+            draft_begin < draft && draft < draft_end,
+            "draft must sit inside its own untrusted-content wrapper"
+        );
+        assert!(
+            draft_begin > thread_end,
+            "the draft wrapper is a separate block after the thread wrapper"
         );
     }
 }

@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId};
 use mxr_llm::{
     wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime,
-    UNTRUSTED_MAIL_GUARD,
+    UNTRUSTED_MAIL_BEGIN, UNTRUSTED_MAIL_END, UNTRUSTED_MAIL_GUARD,
 };
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord, Store};
@@ -13,7 +13,10 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 const MAX_EXCERPTS: usize = 12;
+/// Total prompt ceiling (guard + task + delimiters + excerpts).
 const MAX_PROMPT_CHARS: usize = 14_000;
+const COMMITMENTS_TASK: &str = "Extract only explicit open asks, promises, decisions, or follow-ups from these emails. Do not infer implied work. Return strict JSON: {\"commitments\":[{\"who_owes\":\"name/email\",\"what\":\"concrete obligation\",\"by_when\":\"RFC3339 or null\",\"evidence_msg_id\":\"message id from input\",\"direction\":\"yours|theirs\"}]}. Use direction=yours when the account owner owes the contact, theirs when the contact owes the account owner.";
+const TRUNCATION_NOTE: &str = "\n[...truncated...]\n";
 
 #[derive(Debug, Deserialize)]
 struct CommitmentResponse {
@@ -49,6 +52,16 @@ pub async fn extract_commitments(
         return Ok(0);
     }
     let reader_config = ReaderConfig::default();
+    // Reserve the fixed prompt overhead (guard + task + wrapper delimiters +
+    // separators + the truncation note) so the wrapped prompt stays within
+    // MAX_PROMPT_CHARS. Excerpts are capped to what remains.
+    let overhead = UNTRUSTED_MAIL_GUARD.len()
+        + COMMITMENTS_TASK.len()
+        + UNTRUSTED_MAIL_BEGIN.len()
+        + UNTRUSTED_MAIL_END.len()
+        + TRUNCATION_NOTE.len()
+        + "\n\n\n\n\n\n".len();
+    let excerpt_budget = MAX_PROMPT_CHARS.saturating_sub(overhead);
     let mut excerpts = String::new();
     for sample in samples
         .iter()
@@ -64,11 +77,11 @@ pub async fn extract_commitments(
             sample.thread_id,
             body.trim()
         ));
-        if excerpts.len() > MAX_PROMPT_CHARS {
+        if excerpts.len() > excerpt_budget {
             // Byte-budget cut over arbitrary email bodies: must be
             // boundary-safe or multi-byte content panics the worker.
-            mxr_core::text::truncate_to_char_boundary(&mut excerpts, MAX_PROMPT_CHARS);
-            excerpts.push_str("\n[...truncated...]\n");
+            mxr_core::text::truncate_to_char_boundary(&mut excerpts, excerpt_budget);
+            excerpts.push_str(TRUNCATION_NOTE);
             break;
         }
     }
@@ -76,12 +89,7 @@ pub async fn extract_commitments(
     // the mail excerpts wrapped as untrusted content. Strict-JSON parsing
     // plus the evidence_msg_id-must-match-a-sample check are the boundary.
     let prompt = format!(
-        "{UNTRUSTED_MAIL_GUARD}\n\nExtract only explicit open asks, promises, decisions, or \
-         follow-ups from these emails. Do not infer implied work. Return strict JSON: \
-         {{\"commitments\":[{{\"who_owes\":\"name/email\",\"what\":\"concrete obligation\",\
-         \"by_when\":\"RFC3339 or null\",\"evidence_msg_id\":\"message id from input\",\
-         \"direction\":\"yours|theirs\"}}]}}. Use direction=yours when the account owner owes \
-         the contact, theirs when the contact owes the account owner.\n\n{}",
+        "{UNTRUSTED_MAIL_GUARD}\n\n{COMMITMENTS_TASK}\n\n{}",
         wrap_untrusted_mail(&excerpts)
     );
 

@@ -21,7 +21,7 @@ use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Envelope, MessageDirection, SemanticChunkSourceKind};
 use mxr_humanizer::{score as humanizer_score, writing_constraints, HumanizerOpts};
-use mxr_llm::wrap_untrusted_mail;
+use mxr_llm::{wrap_untrusted_mail, UNTRUSTED_MAIL_BEGIN, UNTRUSTED_MAIL_END};
 use mxr_protocol::{
     ContactStyleData, DraftLengthHintData, HumanizerReportSummaryData, ResponseData,
     VoiceMatchConfidenceData, VoiceMatchData, VoiceRegisterData,
@@ -475,11 +475,20 @@ pub(crate) fn assemble_user_message_within_budget(
 ) -> String {
     let constraints = writing_constraints();
     let task = task_line.trim();
+    // Reserve the untrusted-content delimiters for every mail-derived block
+    // we will wrap (relationship, grounding, transcript). The markers are
+    // appended after truncation, so their overhead must be subtracted from
+    // the content budget up front for `budget_chars` to hold.
+    let wrap_overhead = UNTRUSTED_MAIL_BEGIN.len() + UNTRUSTED_MAIL_END.len() + "\n\n".len();
+    let wrapped_blocks = usize::from(!relationship.is_empty())
+        + usize::from(!grounding.is_empty())
+        + usize::from(!transcript.is_empty());
     let fixed_len = "[WRITING CONSTRAINTS]\n".len()
         + constraints.len()
         + "\n\n".len()
         + "\n[TASK]\n".len()
-        + task.len();
+        + task.len()
+        + wrapped_blocks * wrap_overhead;
     let remaining = budget_chars.saturating_sub(fixed_len);
 
     let transcript_floor = if transcript.is_empty() {
@@ -501,6 +510,14 @@ pub(crate) fn assemble_user_message_within_budget(
     let truncated_relationship =
         truncate_with_marker(relationship, relationship_budget, "relationship context");
 
+    // Every mail-derived block is wrapped in the untrusted-content markers
+    // the draft-compose system-prompt guard points at: relationship
+    // summaries/commitments (derived from mail), prior-sent exemplars (the
+    // user's own outbound, but they quote and echo inbound mail), and the
+    // thread transcript. Only the trusted scaffolding — the "write in my
+    // voice" instruction, the writing constraints, and the task — stays
+    // outside the markers. (Defense-in-depth: draft output is never
+    // auto-sent.)
     let mut message = String::with_capacity(budget_chars.min(8192));
     if !truncated_relationship.is_empty() {
         message.push_str("[VOICE CONTEXT]\n");
@@ -509,7 +526,7 @@ pub(crate) fn assemble_user_message_within_budget(
 with them. Ground every fact only in the thread and known topics below; never invent facts, \
 meetings, or familiarity that aren't shown here.\n\n",
         );
-        message.push_str(&truncated_relationship);
+        message.push_str(&wrap_untrusted_mail(&truncated_relationship));
         message.push_str("\n\n");
     }
     message.push_str("[WRITING CONSTRAINTS]\n");
@@ -517,14 +534,10 @@ meetings, or familiarity that aren't shown here.\n\n",
     message.push_str("\n\n");
     if !truncated_grounding.is_empty() {
         message.push_str("[PRIOR SENT MESSAGES TO MATCH MY VOICE]\n");
-        message.push_str(&truncated_grounding);
+        message.push_str(&wrap_untrusted_mail(&truncated_grounding));
         message.push_str("\n\n");
     }
     if !truncated_transcript.is_empty() {
-        // The thread being replied to is attacker-controllable mail;
-        // delimit it as untrusted content. The draft-compose system
-        // prompt carries the matching guard. (Defense-in-depth: draft
-        // output is never auto-sent.)
         message.push_str("[THREAD SO FAR]\n");
         message.push_str(&wrap_untrusted_mail(&truncated_transcript));
         message.push('\n');
@@ -775,7 +788,7 @@ mod tests {
     #[test]
     fn assemble_wraps_thread_in_untrusted_markers() {
         let message = assemble_user_message_within_budget(
-            "rel",
+            "",
             "",
             "INBOUND-BODY-MARKER",
             "Now draft my reply. Instruction: reply briefly",
@@ -796,6 +809,42 @@ mod tests {
         );
         // The trusted task line stays outside the markers.
         assert!(message.find("[TASK]").expect("task present") > end);
+    }
+
+    #[test]
+    fn assemble_wraps_every_mail_derived_section() {
+        // Relationship (mail-derived), grounding (user's outbound that
+        // quotes inbound), and the thread must each land inside their own
+        // untrusted-content wrapper; the task scaffolding stays outside.
+        let message = assemble_user_message_within_budget(
+            "REL-MARKER",
+            "GROUND-MARKER",
+            "THREAD-MARKER",
+            "Now draft my reply. Instruction: reply",
+            10_000,
+        );
+        for marker in ["REL-MARKER", "GROUND-MARKER", "THREAD-MARKER"] {
+            let pos = message.find(marker).expect("marker present");
+            let begin = message[..pos]
+                .rfind(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+                .expect("a begin marker precedes the content");
+            let end = pos
+                + message[pos..]
+                    .find(mxr_llm::UNTRUSTED_MAIL_END)
+                    .expect("an end marker follows the content");
+            assert!(
+                begin < pos && pos < end,
+                "{marker} must sit inside its untrusted-content wrapper"
+            );
+        }
+        // Task scaffolding sits after the last wrapper, outside the markers.
+        let last_end = message
+            .rfind(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        assert!(
+            message.find("[TASK]").expect("task present") > last_end,
+            "task scaffolding must stay outside the untrusted-content markers"
+        );
     }
 
     #[test]

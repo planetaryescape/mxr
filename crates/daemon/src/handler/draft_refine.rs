@@ -219,5 +219,13 @@ mod tests {
             begin < marker && marker < end,
             "voice context must sit between the untrusted-content markers"
         );
+        // The draft being refined is the user's own transform target and
+        // must stay OUTSIDE the markers (it appears in the [DRAFT] section
+        // after the wrapped voice context).
+        let draft_pos = user.find("draft body").expect("draft body present");
+        assert!(
+            draft_pos > end,
+            "the draft to refine must stay outside the untrusted-content markers"
+        );
     }
 }

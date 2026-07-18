@@ -2,7 +2,7 @@ use anyhow::Result;
 use mxr_core::id::AccountId;
 use mxr_llm::{
     wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime,
-    UNTRUSTED_MAIL_GUARD,
+    UNTRUSTED_MAIL_BEGIN, UNTRUSTED_MAIL_END, UNTRUSTED_MAIL_GUARD,
 };
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::{ContactRelationshipSummaryRecord, Store};
@@ -10,7 +10,10 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 const MAX_EXCERPTS: usize = 10;
+/// Total prompt ceiling (guard + task + delimiters + excerpts).
 const MAX_PROMPT_CHARS: usize = 12_000;
+const SUMMARY_TASK: &str = "Build an inspectable relationship profile from these email excerpts. Ground only in the excerpts. Do not infer facts, familiarity, meetings, or topics not present. Return strict JSON: {\"text\":\"<=200 token summary using tends-to phrasing\",\"known_topics\":[\"topic\"]}.";
+const TRUNCATION_NOTE: &str = "\n[...truncated...]\n";
 
 #[derive(Debug, Deserialize)]
 struct SummaryResponse {
@@ -46,6 +49,16 @@ pub async fn generate_relationship_summary(
     }
 
     let reader_config = ReaderConfig::default();
+    // Reserve the fixed prompt overhead (guard + task + wrapper delimiters +
+    // separators + the truncation note) so the wrapped prompt stays within
+    // MAX_PROMPT_CHARS. Excerpts are capped to what remains.
+    let overhead = UNTRUSTED_MAIL_GUARD.len()
+        + SUMMARY_TASK.len()
+        + UNTRUSTED_MAIL_BEGIN.len()
+        + UNTRUSTED_MAIL_END.len()
+        + TRUNCATION_NOTE.len()
+        + "\n\n\n\n\n\n".len();
+    let excerpt_budget = MAX_PROMPT_CHARS.saturating_sub(overhead);
     let mut excerpts = String::new();
     for sample in samples
         .iter()
@@ -64,11 +77,11 @@ pub async fn generate_relationship_summary(
             sample.date,
             body.trim()
         ));
-        if excerpts.len() > MAX_PROMPT_CHARS {
+        if excerpts.len() > excerpt_budget {
             // Byte-budget cut over arbitrary email bodies: must be
             // boundary-safe or multi-byte content panics the worker.
-            mxr_core::text::truncate_to_char_boundary(&mut excerpts, MAX_PROMPT_CHARS);
-            excerpts.push_str("\n[...truncated...]\n");
+            mxr_core::text::truncate_to_char_boundary(&mut excerpts, excerpt_budget);
+            excerpts.push_str(TRUNCATION_NOTE);
             break;
         }
     }
@@ -76,10 +89,7 @@ pub async fn generate_relationship_summary(
     // the mail excerpts wrapped as untrusted content. Strict-JSON parsing
     // is the boundary; the summary is stored, never actioned.
     let prompt = format!(
-        "{UNTRUSTED_MAIL_GUARD}\n\nBuild an inspectable relationship profile from these email \
-         excerpts. Ground only in the excerpts. Do not infer facts, familiarity, meetings, or \
-         topics not present. Return strict JSON: {{\"text\":\"<=200 token summary using tends-to \
-         phrasing\",\"known_topics\":[\"topic\"]}}.\n\n{}",
+        "{UNTRUSTED_MAIL_GUARD}\n\n{SUMMARY_TASK}\n\n{}",
         wrap_untrusted_mail(&excerpts)
     );
 

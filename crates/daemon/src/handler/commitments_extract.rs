@@ -61,10 +61,20 @@ pub(crate) async fn extract_and_store(
         return Ok(Vec::new());
     }
 
-    // The draft body is analyzed as data (it may quote inbound mail, or
-    // itself be AI-drafted from a poisoned thread); wrap it in
+    // The draft body is analyzed as data (it may quote inbound mail, or be
+    // AI-drafted from a poisoned thread), and the recipient addresses are
+    // mail-derived for replies. Wrap the whole FROM/TO/DRAFT block in
     // untrusted-content delimiters. Strict-JSON parsing is the boundary.
-    let wrapped_draft = wrap_untrusted_mail(&cleaned);
+    let mail_block = format!(
+        "FROM: {}\nTO: {}\n\nDRAFT:\n{cleaned}",
+        first_email(&draft.to),
+        draft
+            .to
+            .iter()
+            .map(|a| a.email.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     let runtime = state.llm.for_feature(LlmFeature::Commitments);
     let req = CompletionRequest {
         max_tokens: Some(600),
@@ -81,14 +91,8 @@ pub(crate) async fn extract_and_store(
                  If there are none, return {\"commitments\": []}.",
             )),
             ChatMessage::user(format!(
-                "FROM: {}\nTO: {}\n\nDRAFT:\n{wrapped_draft}\n\nReturn JSON only.",
-                first_email(&draft.to),
-                draft
-                    .to
-                    .iter()
-                    .map(|a| a.email.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                "{}\n\nReturn JSON only.",
+                wrap_untrusted_mail(&mail_block)
             )),
         ],
     };

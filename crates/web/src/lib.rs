@@ -37,7 +37,7 @@ use envelope_list::{
     list_envelopes_by_message_ids, mailbox_message_rows, mailbox_thread_rows,
     message_row_view_with_labels, reorder_envelopes, thread_reader_mode,
 };
-use futures::{SinkExt, StreamExt};
+use mxr_client::{ClientError, IpcConnection};
 use mxr_compose::{
     frontmatter::{parse_compose_file, render_compose_file, ComposeFrontmatter},
     render::render_markdown,
@@ -53,7 +53,7 @@ use mxr_core::{
     },
 };
 use mxr_mail_parse::parse_address_list;
-use mxr_protocol::{IpcCodec, IpcMessage, IpcPayload, Request, ResponseData};
+use mxr_protocol::{IpcPayload, Request, ResponseData};
 use request_types::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -63,8 +63,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::net::TcpListener;
-use tokio::net::UnixStream;
-use tokio_util::codec::Framed;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
@@ -1676,71 +1674,69 @@ async fn ipc_request_with_id(
     request_id: u64,
     request: Request,
 ) -> Result<ResponseData, BridgeError> {
-    let stream = UnixStream::connect(socket_path)
+    // The bridge stays connection-per-request (its isolation model) but now
+    // constructs the connection through `mxr-client`. `with_start_id` keeps the
+    // externally-chosen correlation id on the wire so daemon logs still line up
+    // with the bridge's `request_id`. The `ClientKind::Web` tag is preserved so
+    // daemon activity attributes web traffic correctly.
+    let mut connection = IpcConnection::connect(socket_path, mxr_protocol::ClientKind::Web)
         .await
-        .map_err(|error| BridgeError::Connect(error.to_string()))?;
-    let mut framed = Framed::new(stream, IpcCodec::new());
-    let message = IpcMessage {
-        id: request_id,
-        source: ::mxr_protocol::ClientKind::Web,
-        payload: IpcPayload::Request(request),
-    };
-    framed
-        .send(message)
-        .await
-        .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+        .map_err(map_bridge_error)?
+        .with_start_id(request_id);
+    connection.request(request).await.map_err(map_bridge_error)
+}
 
-    loop {
-        match framed.next().await {
-            Some(Ok(response)) => match response.payload {
-                IpcPayload::Response(mxr_protocol::Response::Ok { data }) => return Ok(data),
-                IpcPayload::Response(mxr_protocol::Response::Error { message, .. }) => {
-                    return Err(BridgeError::Ipc(message));
-                }
-                IpcPayload::Event(_) => continue,
-                _ => return Err(BridgeError::UnexpectedResponse),
-            },
-            Some(Err(error)) => return Err(BridgeError::Ipc(error.to_string())),
-            None => return Err(BridgeError::Ipc("connection closed".into())),
-        }
+/// Map a `mxr-client` failure onto the bridge's HTTP error vocabulary,
+/// preserving the exact strings the bridge produced before (connect failures
+/// carry the raw io-error text `bridge_error_is_missing_file` inspects; a clean
+/// close stays "connection closed").
+fn map_bridge_error(error: ClientError) -> BridgeError {
+    match error {
+        ClientError::Connect { source, .. } => BridgeError::Connect(source.to_string()),
+        ClientError::Daemon { message, .. } => BridgeError::Ipc(message),
+        ClientError::Closed => BridgeError::Ipc("connection closed".into()),
+        ClientError::Io(source) => BridgeError::Ipc(source.to_string()),
+        ClientError::Timeout(duration) => BridgeError::Ipc(format!(
+            "IPC request timed out after {} seconds",
+            duration.as_secs()
+        )),
     }
 }
 
 async fn bridge_events(mut socket: WebSocket, socket_path: PathBuf) {
-    let stream = match UnixStream::connect(&socket_path).await {
-        Ok(stream) => stream,
-        Err(error) => {
-            let _ = socket
-                .send(WebSocketMessage::Text(
-                    serde_json::json!({ "error": error.to_string() })
-                        .to_string()
-                        .into(),
-                ))
-                .await;
-            return;
-        }
-    };
-    let mut framed = Framed::new(stream, IpcCodec::new());
+    let mut connection =
+        match IpcConnection::connect(&socket_path, mxr_protocol::ClientKind::Web).await {
+            Ok(connection) => connection,
+            Err(error) => {
+                // Preserve the pre-refactor payload: the bare io-error string,
+                // not the wrapped `ClientError::Connect` display.
+                let detail = match error {
+                    ClientError::Connect { source, .. } => source.to_string(),
+                    other => other.to_string(),
+                };
+                let _ = socket
+                    .send(WebSocketMessage::Text(
+                        serde_json::json!({ "error": detail }).to_string().into(),
+                    ))
+                    .await;
+                return;
+            }
+        };
 
-    while let Some(message) = framed.next().await {
-        match message {
-            Ok(message) => match message.payload {
-                IpcPayload::Event(event) => {
-                    let payload = match serde_json::to_string(&event) {
-                        Ok(payload) => payload,
-                        Err(_) => break,
-                    };
-                    if socket
-                        .send(WebSocketMessage::Text(payload.into()))
-                        .await
-                        .is_err()
-                    {
-                        break;
-                    }
-                }
-                _ => continue,
-            },
+    while let Ok(message) = connection.next_event().await {
+        let IpcPayload::Event(event) = message.payload else {
+            continue;
+        };
+        let payload = match serde_json::to_string(&event) {
+            Ok(payload) => payload,
             Err(_) => break,
+        };
+        if socket
+            .send(WebSocketMessage::Text(payload.into()))
+            .await
+            .is_err()
+        {
+            break;
         }
     }
 }

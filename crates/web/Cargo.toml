@@ -20,6 +20,7 @@ default = []
 web-ui = ["dep:include_dir", "dep:mime_guess"]
 
 [dependencies]
+mxr-client = { workspace = true }
 mxr-compose = { workspace = true }
 mxr-config = { workspace = true }
 mxr-core = { workspace = true, features = ["openapi"] }

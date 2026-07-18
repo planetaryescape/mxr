@@ -19,7 +19,7 @@ Written as generic async functions over a connection factory (`Fn() -> Future<Ip
 
 1. Request/response id correlation — client-chosen ids echoed; multiple in-flight requests on one connection each get their own response.
 2. Out-of-order completion — a slow request (Bulk lane) does not block a fast one (Hot lane) on the same connection; responses arrive by completion order, matched by id. (Lane classification: `request_lane`, `crates/daemon/src/server.rs:348-375`.)
-3. Lane saturation — more concurrent requests than `REQUEST_CONCURRENCY_LIMIT`/`BULK_CONCURRENCY_LIMIT` (64/8) queue rather than fail.
+3. Lane saturation — more concurrent requests than a lane's limit queue rather than fail. Exercised on the **Bulk lane** (`BULK_CONCURRENCY_LIMIT` = 8): the corpus saturates it (asserts `available_permits() == 0`, which also catches sentinel misrouting to the Hot lane) and confirms the overflow drains without errors. Both lanes share the same `request_lane` → semaphore mechanism, so pinning one lane pins the semantics; a separate 64-request Hot-lane variant is deliberately omitted.
 
 **Eventing**
 

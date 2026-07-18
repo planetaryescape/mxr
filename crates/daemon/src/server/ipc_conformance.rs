@@ -50,6 +50,9 @@ use tokio_util::codec::Framed;
 /// Upper bound on any single "a frame should arrive" wait. Generous: the
 /// scenarios are synchronization-driven, so this only trips on a genuine hang.
 const RECV_TIMEOUT: Duration = Duration::from_secs(5);
+/// Longer bound for the multi-MiB frame round-trip: transferring ~15.5 MiB over
+/// the socket pair can be slow on a loaded CI box.
+const BIG_FRAME_RECV_TIMEOUT: Duration = Duration::from_secs(30);
 /// Upper bound on joining a serve task during teardown.
 const JOIN_TIMEOUT: Duration = Duration::from_secs(5);
 /// `IpcCodec`'s frame cap (`crates/protocol/src/codec.rs`): 16 MiB.
@@ -284,35 +287,46 @@ impl Served {
         self.client.send(request(id, req)).await.unwrap();
     }
 
-    /// Read the next frame, asserting one arrives and decodes.
-    async fn recv(&mut self) -> IpcMessage {
-        tokio::time::timeout(RECV_TIMEOUT, self.client.next())
+    /// Read the next frame within `timeout`, asserting one arrives and decodes.
+    async fn recv_within(&mut self, timeout: Duration) -> IpcMessage {
+        tokio::time::timeout(timeout, self.client.next())
             .await
             .expect("a frame should arrive before timeout")
             .expect("stream should not be closed")
             .expect("frame should decode")
     }
 
+    /// Read the next frame within the default timeout.
+    async fn recv(&mut self) -> IpcMessage {
+        self.recv_within(RECV_TIMEOUT).await
+    }
+
     /// Read frames, skipping unsolicited events, until the `Response` for `id`.
     async fn recv_response(&mut self, id: u64) -> IpcMessage {
+        self.recv_response_within(id, RECV_TIMEOUT).await
+    }
+
+    /// Like [`Self::recv_response`] but with a caller-chosen per-frame timeout —
+    /// for the multi-MiB frame scenario, where transfer can be slow on CI.
+    async fn recv_response_within(&mut self, id: u64, timeout: Duration) -> IpcMessage {
         loop {
-            let msg = self.recv().await;
+            let msg = self.recv_within(timeout).await;
             if msg.id == id && matches!(msg.payload, IpcPayload::Response(_)) {
                 return msg;
             }
         }
     }
 
-    /// Assert the next thing on the connection is a clean close (EOF).
-    async fn expect_closed(&mut self) {
+    /// Assert the connection closes with a strict, clean EOF (`None`) — a
+    /// graceful shutdown must NOT surface as an I/O error (reset/truncation).
+    async fn expect_eof(&mut self) {
         let next = tokio::time::timeout(RECV_TIMEOUT, self.client.next())
             .await
             .expect("close should be observed before timeout");
-        match next {
-            None => {}
-            Some(Err(_)) => {}
-            Some(Ok(msg)) => panic!("expected connection close, got frame {msg:?}"),
-        }
+        assert!(
+            next.is_none(),
+            "graceful shutdown must close with a clean EOF (None), got {next:?}"
+        );
     }
 }
 
@@ -324,9 +338,19 @@ fn request(id: u64, req: Request) -> IpcMessage {
     }
 }
 
-/// A daemon-originated event, constructed exactly as the canonical emitters
-/// (`chimes::emit_daemon_event`, `diagnostics::emit_operation_event`) do:
-/// `id: 0`, `source: ClientKind::default()`.
+/// Emit an event through the REAL production path — `chimes::emit_daemon_event`,
+/// one of the daemon's actual emitters (`diagnostics::emit_operation_event`
+/// constructs the frame identically). Scenarios that assert on the delivered
+/// frame use this so they pin the emitter's actual output (notably `source`),
+/// not a value the test wrote itself.
+fn emit(state: &Arc<AppState>) {
+    crate::chimes::emit_daemon_event(state, sample_event());
+}
+
+/// A synthetic event frame. Used ONLY as overflow filler for the `EventsLagged`
+/// scenario, where the content is irrelevant — it just fills the broadcast
+/// channel. Scenario 4 is the test that pins real emitter behavior (source,
+/// id); never use this helper to assert on emitter output.
 fn daemon_event(event: DaemonEvent) -> IpcMessage {
     IpcMessage {
         id: 0,
@@ -352,11 +376,22 @@ fn pong(msg: &IpcMessage) -> bool {
 }
 
 /// Close one connection: drop the framed client so the serve loop hits EOF and
-/// terminates, then join it. Deliberately does NOT touch the shared shutdown
-/// signal, so a test can close one connection while others stay up.
+/// terminates, then join it — asserting the serve task actually finished and
+/// did not panic (no silently-detached tasks). Deliberately does NOT touch the
+/// shared shutdown signal, so a test can close one connection while others stay
+/// up.
 async fn close(served: Served) {
     drop(served.client);
-    let _ = tokio::time::timeout(JOIN_TIMEOUT, served.server).await;
+    join_server(served.server).await;
+}
+
+/// Join a serve task, requiring it to terminate within the timeout and not
+/// panic. A hung or panicked serve task is a test failure, never swallowed.
+async fn join_server(server: JoinHandle<()>) {
+    tokio::time::timeout(JOIN_TIMEOUT, server)
+        .await
+        .expect("serve task should terminate within the timeout")
+        .expect("serve task should not panic");
 }
 
 /// Full single-connection teardown: close the connection, then drain the
@@ -375,16 +410,25 @@ async fn write_raw_frame(stream: &mut UnixStream, payload: &[u8]) {
     stream.flush().await.unwrap();
 }
 
-/// Assert a raw stream is at EOF (peer closed) within the timeout.
-async fn expect_raw_eof(stream: &mut UnixStream) {
+/// Assert a raw stream is closed by the peer within the timeout. Unlike the
+/// strict framed EOF in [`Served::expect_eof`] (graceful shutdown), this helper
+/// is used for the framing-error scenarios (oversized/malformed frames) where
+/// the daemon aborts the connection — there, a clean EOF (`Ok(0)`) and a
+/// connection reset (`Err`) are genuinely equivalent "the daemon dropped us"
+/// outcomes. What must NOT happen is more frame bytes arriving.
+async fn expect_raw_closed(stream: &mut UnixStream) {
     let mut buf = [0u8; 64];
     let result = tokio::time::timeout(RECV_TIMEOUT, stream.read(&mut buf))
         .await
         .expect("close should be observed before timeout");
     match result {
-        Ok(0) => {}
-        Ok(n) => panic!("expected EOF, got {n} bytes: {:?}", &buf[..n]),
-        Err(_) => {} // connection reset is equally a close
+        // A clean EOF (`Ok(0)`) and a connection reset (`Err`) are both "the
+        // daemon dropped us"; only more frame bytes would be wrong.
+        Ok(0) | Err(_) => {}
+        Ok(n) => panic!(
+            "expected the daemon to close, got {n} bytes: {:?}",
+            &buf[..n]
+        ),
     }
 }
 
@@ -465,6 +509,8 @@ async fn scenario_02_out_of_order_completion() {
         IpcPayload::Response(Response::Ok { .. })
     ));
 
+    // Release the serial gate lock before the (slower) teardown.
+    drop(gate);
     finish(&state, served).await;
 }
 
@@ -476,7 +522,7 @@ async fn scenario_03_lane_saturation_queues() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
     let gate = gate::install().await;
-    let mut served = serve(state.clone(), hot, bulk).await;
+    let mut served = serve(state.clone(), hot, bulk.clone()).await;
 
     let total = BULK_CONCURRENCY_LIMIT + 4;
     for id in 1..=total as u64 {
@@ -486,6 +532,14 @@ async fn scenario_03_lane_saturation_queues() {
     // The bulk lane admits exactly its limit; the remainder are blocked on a
     // permit (or unread) — the daemon caps concurrency, it does not reject.
     gate.wait_until_entered(BULK_CONCURRENCY_LIMIT).await;
+    // Permit exhaustion deterministically proves the Bulk lane is the limiter
+    // (and catches any misrouting of the sentinel to the Hot lane): all
+    // BULK_CONCURRENCY_LIMIT permits are held, so a further request cannot run.
+    assert_eq!(
+        bulk.available_permits(),
+        0,
+        "the bulk lane should be fully saturated (no free permits) while gated"
+    );
     assert_eq!(
         gate.entered(),
         BULK_CONCURRENCY_LIMIT,
@@ -509,16 +563,19 @@ async fn scenario_03_lane_saturation_queues() {
         "every queued request should eventually complete"
     );
 
+    drop(gate);
     finish(&state, served).await;
 }
 
 /// Scenario 4 — a broadcast event reaches every connected client, with `id: 0`.
+/// This is the test that PINS the emitter's output: it drives a real production
+/// emitter (`chimes::emit_daemon_event` via [`emit`]) and asserts on the frame
+/// that arrives at the client, not on a value the test wrote.
 ///
 /// PINNED SURPRISE: the source is `ClientKind::default()` (== `Cli`), NOT
-/// `Daemon`. The spec's scenario text says "source: Daemon", but every
-/// production emitter (`chimes::emit_daemon_event`, `diagnostics::
-/// emit_operation_event`, the server's own `SyncCompleted`) sets
-/// `ClientKind::default()`. Pinned as-is; see report finding.
+/// `Daemon`. Every production emitter (`chimes::emit_daemon_event`,
+/// `diagnostics::emit_operation_event`, the server's own `SyncCompleted`) sets
+/// `ClientKind::default()`. Pinned as-is; see the spec's "Pinned findings".
 #[tokio::test]
 async fn scenario_04_broadcast_reaches_every_client() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -528,7 +585,9 @@ async fn scenario_04_broadcast_reaches_every_client() {
     let mut b = serve(state.clone(), hot.clone(), bulk.clone()).await;
     let mut c = serve(state.clone(), hot.clone(), bulk.clone()).await;
 
-    let _ = state.event_tx.send(daemon_event(sample_event()));
+    // Real production emitter — the frame's `source` is whatever the daemon
+    // actually stamps, so the assertions below pin production behavior.
+    emit(&state);
 
     for client in [&mut a, &mut b, &mut c] {
         let frame = client.recv().await;
@@ -569,7 +628,7 @@ async fn scenario_05_event_interleaves_with_inflight_request() {
     gate.wait_until_entered(1).await;
 
     // An event pushed now must reach the client while the request is pending.
-    let _ = state.event_tx.send(daemon_event(sample_event()));
+    emit(&state);
     let event = served.recv().await;
     assert_eq!(event.id, 0, "the interleaved event keeps id 0");
     assert!(matches!(event.payload, IpcPayload::Event(_)));
@@ -579,6 +638,7 @@ async fn scenario_05_event_interleaves_with_inflight_request() {
     let response = served.recv_response(1).await;
     assert_eq!(response.id, 1);
 
+    drop(gate);
     finish(&state, served).await;
 }
 
@@ -591,7 +651,7 @@ async fn scenario_06_event_only_connection() {
     let mut served = serve(state.clone(), hot, bulk).await;
 
     // No request is ever sent on this connection.
-    let _ = state.event_tx.send(daemon_event(sample_event()));
+    emit(&state);
 
     let frame = served.recv().await;
     assert_eq!(frame.id, 0);
@@ -612,7 +672,8 @@ async fn scenario_07_events_lagged_resync_and_survive() {
     let (hot, bulk) = lanes();
 
     // Overflow the channel (cap 256) after the receiver subscribes but before
-    // the serve loop drains it, so the first recv() lags.
+    // the serve loop drains it, so the first recv() lags. Synthetic filler is
+    // fine here — the content is irrelevant; scenario 4 pins emitter output.
     let mut served = serve_with_prep(state.clone(), hot, bulk, |s| {
         for _ in 0..400u32 {
             let _ = s.event_tx.send(daemon_event(sample_event()));
@@ -657,16 +718,15 @@ async fn scenario_08_frame_size_edges() {
             account_id: None,
         },
     );
-    let encoded = serde_json::to_vec(&msg).unwrap();
+    let encoded_len = serde_json::to_vec(&msg).unwrap().len();
     assert!(
-        encoded.len() < MAX_FRAME_LEN && encoded.len() > 15 * 1024 * 1024,
-        "request frame should be near (just under) the 16 MiB cap: {} bytes",
-        encoded.len()
+        encoded_len < MAX_FRAME_LEN && encoded_len > 15 * 1024 * 1024,
+        "request frame should be near (just under) the 16 MiB cap: {encoded_len} bytes"
     );
 
     let mut served = serve(state.clone(), hot.clone(), bulk.clone()).await;
     served.client.send(msg).await.unwrap();
-    let response = served.recv_response(1).await;
+    let response = served.recv_response_within(1, BIG_FRAME_RECV_TIMEOUT).await;
     assert_eq!(response.id, 1, "a near-limit frame round-trips its id");
     close(served).await;
 
@@ -680,9 +740,9 @@ async fn scenario_08_frame_size_edges() {
         .unwrap();
     raw_client.flush().await.unwrap();
     // The daemon rejects the length prefix and closes this connection.
-    expect_raw_eof(&mut raw_client).await;
+    expect_raw_closed(&mut raw_client).await;
     drop(raw_client);
-    let _ = tokio::time::timeout(JOIN_TIMEOUT, server).await;
+    join_server(server).await;
 
     // A separate connection still works: the oversized frame killed one
     // connection, not the daemon.
@@ -704,9 +764,9 @@ async fn scenario_09_malformed_json_closes_connection() {
     write_raw_frame(&mut raw_client, b"{ this is not valid json ]").await;
 
     // No response frame is returned; the connection is simply closed.
-    expect_raw_eof(&mut raw_client).await;
+    expect_raw_closed(&mut raw_client).await;
     drop(raw_client);
-    let _ = tokio::time::timeout(JOIN_TIMEOUT, server).await;
+    join_server(server).await;
 
     assert_daemon_alive(&state, hot, bulk).await;
     state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
@@ -770,6 +830,7 @@ async fn scenario_11_disconnect_with_inflight_request_frees_permit() {
         "the lane permit must be released, not wedged"
     );
 
+    drop(gate);
     state.request_shutdown();
     state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
 }
@@ -826,12 +887,10 @@ async fn scenario_13_shutdown_closes_connections() {
     // Signal shutdown on an idle connection.
     state.request_shutdown();
 
-    // The connection closes cleanly — EOF, no dangling frame.
-    served.expect_closed().await;
-    tokio::time::timeout(JOIN_TIMEOUT, served.server)
-        .await
-        .expect("serve task should terminate on shutdown")
-        .expect("serve task should not panic");
+    // The connection closes cleanly — a strict EOF (`None`), no dangling frame
+    // and no I/O error masquerading as a graceful close.
+    served.expect_eof().await;
+    join_server(served.server).await;
 
     state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
 }

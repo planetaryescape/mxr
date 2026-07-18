@@ -44,6 +44,10 @@ name = "cli_help"
 path = "crates/daemon/tests/cli_help.rs"
 
 [[test]]
+name = "dial_stdio_cli"
+path = "crates/daemon/tests/dial_stdio_cli.rs"
+
+[[test]]
 name = "daemon_lifecycle"
 path = "crates/daemon/tests/daemon_lifecycle.rs"
 

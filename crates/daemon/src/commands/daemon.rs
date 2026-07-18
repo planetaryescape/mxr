@@ -4,10 +4,27 @@
 //! This is the Docker `connhelper` move (see
 //! `docs/transport-adapters/05-tcp-stdio-adapters.md` §5c): a byte pump that
 //! lets any transport which can exec a process and pipe stdio reach the daemon
-//! — `ssh host mxr daemon dial-stdio`,
+//! — `ssh -T host mxr daemon dial-stdio`,
 //! `docker exec -i <container> mxr daemon dial-stdio`, and any community bridge
 //! that can spawn a process. No new daemon trust surface: the caller still
 //! needs local Unix-socket access on the daemon's machine.
+//!
+//! ## Byte-stream lifetime
+//!
+//! The two directions are pumped independently and the socket -> stdout
+//! direction owns the exit (Docker `dial-stdio` semantics), because
+//! `copy_bidirectional` — which only returns once *both* directions EOF —
+//! deadlocks here: `tokio::io::stdin()` reads on a blocking thread that cannot
+//! be cancelled, so if the daemon closes first the stdin -> socket direction
+//! never finishes.
+//!
+//! - **stdin EOF first:** half-close the socket write side (SHUT_WR) so the
+//!   daemon sees end-of-input, keep draining socket -> stdout until the daemon
+//!   closes, then exit 0.
+//! - **daemon closes first:** socket -> stdout hits EOF; flush stdout and exit
+//!   promptly *without* waiting on the parked stdin read. [`run`] finishes with
+//!   `std::process::exit`, because returning normally would hang the runtime's
+//!   shutdown while it tries to join that uncancellable blocking read.
 //!
 //! ## stdout discipline
 //!
@@ -21,43 +38,84 @@
 
 use std::path::Path;
 
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
 
 /// Entry point for `mxr daemon dial-stdio`.
 ///
 /// Autostarts the local daemon per repo convention, then pipes this process's
-/// stdin/stdout to the daemon socket until either side closes.
+/// stdin/stdout to the daemon socket until the daemon closes its side.
 pub async fn run() -> anyhow::Result<()> {
     // Convention: CLI commands ensure the local daemon is up before talking to
     // it. Every progress message `ensure_daemon_running` emits goes to stderr,
     // so stdout stays byte-clean before the first piped socket byte.
     crate::server::ensure_daemon_running().await?;
     let socket_path = crate::state::AppState::socket_path();
-    pipe_stdio(&socket_path, tokio::io::stdin(), tokio::io::stdout()).await
+    pipe_stdio(&socket_path, tokio::io::stdin(), tokio::io::stdout()).await?;
+    // The socket -> stdout direction finished (the daemon closed) and stdout is
+    // flushed. The stdin -> socket direction may still be parked in tokio's
+    // uncancellable blocking stdin read; a normal return would hang runtime
+    // shutdown waiting to join that thread, so exit explicitly.
+    std::process::exit(0)
 }
 
-/// Connect to the daemon socket at `socket_path` and pump bytes bidirectionally
-/// between `(reader, writer)` and the socket until either side closes.
+/// Connect to the daemon socket at `socket_path` and pump bytes between
+/// `(reader, writer)` and the socket, driving the socket -> `writer` direction
+/// as the lifetime anchor (see the module docs for the EOF contract).
 ///
 /// Split out from [`run`] so tests can drive the real piping path over an
-/// in-memory reader/writer without touching the process's stdin/stdout.
+/// in-memory reader/writer without touching the process's stdin/stdout — and
+/// without the `std::process::exit` that `run` needs for real stdin.
 async fn pipe_stdio<R, W>(socket_path: &Path, reader: R, writer: W) -> anyhow::Result<()>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let mut stream = UnixStream::connect(socket_path).await.map_err(|source| {
+    let stream = UnixStream::connect(socket_path).await.map_err(|source| {
         anyhow::anyhow!(
             "Cannot connect to daemon socket at {}: {source}. Is the daemon running?",
             socket_path.display()
         )
     })?;
-    // `join` presents (reader, writer) as one `AsyncRead + AsyncWrite`, so
-    // `copy_bidirectional` pumps stdin -> socket and socket -> stdout at once.
-    let mut local = tokio::io::join(reader, writer);
-    tokio::io::copy_bidirectional(&mut local, &mut stream).await?;
-    Ok(())
+    let (mut sock_read, mut sock_write) = stream.into_split();
+    let mut reader = reader;
+    let mut writer = writer;
+
+    // Upstream: local input (stdin) -> socket. On input EOF, half-close the
+    // socket write side so the daemon sees end-of-input but can still reply.
+    // Errors here (e.g. a broken pipe once the daemon has gone) are expected;
+    // `downstream` owns the exit.
+    let upstream = async {
+        let _ = tokio::io::copy(&mut reader, &mut sock_write).await;
+        let _ = sock_write.shutdown().await;
+    };
+
+    // Downstream: socket -> local output (stdout). The lifetime anchor: it
+    // completes when the daemon closes its side, and its completion — not the
+    // upstream's — decides when the proxy exits.
+    let downstream = async {
+        tokio::io::copy(&mut sock_read, &mut writer).await?;
+        writer.flush().await?;
+        anyhow::Ok(())
+    };
+
+    tokio::pin!(upstream);
+    tokio::pin!(downstream);
+
+    let mut upstream_done = false;
+    loop {
+        tokio::select! {
+            biased;
+            // Daemon closed (or finished sending): stdout is flushed, so return
+            // WITHOUT waiting on `upstream`. With real stdin that direction is
+            // parked in an uncancellable blocking read — making it a join
+            // condition is exactly the hang this avoids.
+            result = &mut downstream => return result,
+            // stdin reached EOF and the socket write half is shut down; keep
+            // draining `downstream` until the daemon closes.
+            () = &mut upstream, if !upstream_done => upstream_done = true,
+        }
+    }
 }
 
 #[cfg(test)]

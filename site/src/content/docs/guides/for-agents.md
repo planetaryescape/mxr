@@ -198,12 +198,18 @@ transport that can exec a process and pipe stdio, and the full protocol flows
 over the pipe — requests, responses, and the event stream included:
 
 ```bash
-# Speak to a daemon on another host you can SSH into:
-ssh host mxr daemon dial-stdio
+# Speak to a daemon on another host you can SSH into (-T: no PTY):
+ssh -T host mxr daemon dial-stdio
 
 # Or a daemon inside a container:
 docker exec -i <container> mxr daemon dial-stdio
 ```
+
+Pass `ssh -T` (and never `-t`): a PTY echoes input and rewrites newlines, which
+corrupts the binary frame stream. For the same reason the remote shell's
+startup must be silent on stdout — a `.bashrc`/`.profile` that prints a banner
+or MOTD injects bytes ahead of the daemon's frames. Route any such output to
+stderr or guard it on an interactive shell.
 
 This is the Docker `connhelper` model: no new daemon trust surface, because the
 caller still needs local Unix-socket access on the daemon's machine. Once

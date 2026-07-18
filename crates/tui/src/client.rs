@@ -1,27 +1,29 @@
-use futures::{SinkExt, StreamExt};
+use mxr_client::{ClientError, IpcConnection};
 use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::MxrError;
 use mxr_protocol::*;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::net::UnixStream;
 use tokio::sync::mpsc;
-use tokio_util::codec::Framed;
 use tracing::warn;
 
 pub struct Client {
-    framed: Framed<UnixStream, IpcCodec>,
-    next_id: AtomicU64,
+    conn: IpcConnection,
     event_tx: Option<mpsc::UnboundedSender<DaemonEvent>>,
 }
 
 impl Client {
     pub async fn connect(socket_path: &Path) -> std::io::Result<Self> {
-        let stream = UnixStream::connect(socket_path).await?;
+        // Surface the raw `io::Error` so the worker's autostart classifier
+        // (`should_autostart_daemon`) can inspect its `ErrorKind`.
+        let conn = IpcConnection::connect(socket_path, ClientKind::Tui)
+            .await
+            .map_err(|error| match error {
+                ClientError::Connect { source, .. } => source,
+                other => std::io::Error::other(other.to_string()),
+            })?;
         Ok(Self {
-            framed: Framed::new(stream, IpcCodec::new()),
-            next_id: AtomicU64::new(1),
+            conn,
             event_tx: None,
         })
     }
@@ -36,37 +38,22 @@ impl Client {
     }
 
     async fn request(&mut self, req: Request) -> Result<Response, MxrError> {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let msg = IpcMessage {
-            id,
-            source: ::mxr_protocol::ClientKind::Tui,
-            payload: IpcPayload::Request(req),
-        };
-        self.framed
-            .send(msg)
-            .await
-            .map_err(|e| MxrError::Ipc(e.to_string()))?;
-
-        loop {
-            match self.framed.next().await {
-                Some(Ok(resp_msg)) => match resp_msg.payload {
-                    IpcPayload::Response(resp) if resp_msg.id == id => return Ok(resp),
-                    IpcPayload::Event(event) => {
-                        if let Some(ref tx) = self.event_tx {
-                            let _ = tx.send(event);
-                        }
-                        continue;
+        // No connection-level timeout: the IPC worker bounds every request
+        // (see `ipc::IPC_REQUEST_TIMEOUT`) and owns the reconnect-on-timeout
+        // policy, so the mechanism here stays a plain awaited exchange.
+        let event_tx = self.event_tx.clone();
+        self.conn
+            .request_response(
+                req,
+                |event| {
+                    if let Some(ref tx) = event_tx {
+                        let _ = tx.send(event);
                     }
-                    _ => continue,
                 },
-                Some(Err(e)) => return Err(MxrError::Ipc(describe_ipc_failure(&e.to_string()))),
-                None => {
-                    return Err(MxrError::Ipc(
-                        "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading.".into(),
-                    ))
-                }
-            }
-        }
+                None,
+            )
+            .await
+            .map_err(map_request_error)
     }
 
     pub async fn list_envelopes(
@@ -231,8 +218,8 @@ impl Client {
     /// trigger its reconnect path. Cancel-safe: dropping the future leaves
     /// any partial frame buffered inside `framed`.
     pub(crate) async fn read_idle_frame(&mut self) -> Result<(), MxrError> {
-        match self.framed.next().await {
-            Some(Ok(msg)) => {
+        match self.conn.next_event().await {
+            Ok(msg) => {
                 match msg.payload {
                     IpcPayload::Event(event) => {
                         if let Some(ref tx) = self.event_tx {
@@ -245,8 +232,11 @@ impl Client {
                 }
                 Ok(())
             }
-            Some(Err(e)) => Err(MxrError::Ipc(describe_ipc_failure(&e.to_string()))),
-            None => Err(MxrError::Ipc("connection closed".into())),
+            Err(ClientError::Closed) => Err(MxrError::Ipc("connection closed".into())),
+            Err(ClientError::Io(source)) => {
+                Err(MxrError::Ipc(describe_ipc_failure(&source.to_string())))
+            }
+            Err(other) => Err(map_request_error(other)),
         }
     }
 
@@ -258,6 +248,39 @@ impl Client {
             } => Ok(()),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
         }
+    }
+}
+
+/// Map a `mxr-client` failure onto the `MxrError::Ipc` strings the TUI worker
+/// classifies on (`should_reconnect_ipc` matches substrings such as
+/// "connection closed" / "broken pipe" / "connection reset"). The `Io` arm
+/// keeps the protocol-mismatch hint via [`describe_ipc_failure`], which is
+/// otherwise a pass-through so those substrings survive.
+fn map_request_error(error: ClientError) -> MxrError {
+    match error {
+        ClientError::Closed => MxrError::Ipc(
+            "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading.".into(),
+        ),
+        ClientError::Io(source) => MxrError::Ipc(describe_ipc_failure(&source.to_string())),
+        ClientError::Daemon { message, .. } => MxrError::Ipc(message),
+        // Intentional deviation: the old `request` loop silently skipped a
+        // rogue frame and kept reading; we now surface it as an error. A frame
+        // that does not correlate means the connection is out of step, and
+        // skipping risks parking the worker; it is also unreachable in practice
+        // (one in-flight request per connection, and the worker drops the
+        // connection on timeout — see ipc.rs). Not a reconnect trigger.
+        ClientError::UnexpectedFrame {
+            frame_id,
+            expected_id,
+            ..
+        } => MxrError::Ipc(format!(
+            "IPC protocol error: unexpected frame id {frame_id} while awaiting response {expected_id}"
+        )),
+        ClientError::Timeout(duration) => MxrError::Ipc(format!(
+            "IPC request timed out after {} seconds",
+            duration.as_secs()
+        )),
+        ClientError::Connect { source, .. } => MxrError::Ipc(source.to_string()),
     }
 }
 

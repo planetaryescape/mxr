@@ -89,6 +89,7 @@ web-ui = ["mxr-web/web-ui"]
 resolver = "2"
 members = [
     ".",
+    "crates/client",
     "crates/compose",
     "crates/config",
     "crates/core",
@@ -157,6 +158,7 @@ derive_partial_eq_without_eq = "warn"
 significant_drop_in_scrutinee = "warn"
 
 [workspace.dependencies]
+mxr-client = { path = "crates/client", version = "0.6.0" }
 mxr-compose = { path = "crates/compose", version = "0.6.0" }
 mxr-config = { path = "crates/config", version = "0.6.0" }
 mxr-core = { path = "crates/core", version = "0.6.0" }
@@ -317,6 +319,7 @@ utoipa-axum = "0.2"
 utoipa-swagger-ui = { version = "9", features = ["axum", "vendored"] }
 
 [dependencies]
+mxr-client = { workspace = true }
 mxr-compose = { workspace = true }
 mxr-config = { workspace = true }
 mxr-core = { workspace = true }

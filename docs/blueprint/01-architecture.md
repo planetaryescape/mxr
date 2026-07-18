@@ -168,18 +168,27 @@ mxr/
 │   │                             # Shared between daemon and all clients.
 │   │                             # Depends on: core
 │   │
+│   ├── client/                   # Shared daemon IPC connection: connect + frame +
+│   │                             # correlate + read events, kinded ClientError.
+│   │                             # Depends on: protocol
+│   │
 │   ├── daemon/                   # Background process: socket server, sync loop,
 │   │                             # snooze waker, rules executor, search indexer.
 │   │                             # Depends on: core, store, search, sync, compose,
-│   │                             #             rules, export, protocol, mail-parse, providers
+│   │                             #             rules, export, protocol, client,
+│   │                             #             mail-parse, providers
+│   │
+│   ├── mcp/                      # First-party MCP server; tools call the daemon
+│   │                             # over IPC (source=mcp) through client.
+│   │                             # Depends on: core, protocol, client, config
 │   │
 │   └── tui/                      # Ratatui frontend: panes, vim navigation,
 │   │                             # command palette, keybinding dispatch.
-│   │                             # Depends on: core, protocol, config,
+│   │                             # Depends on: core, protocol, client, config,
 │   │                             #             compose, reader, mail-parse
 │   │
 │   └── web/                      # HTTP/WebSocket bridge client over daemon IPC.
-│                                 # Depends on: core, protocol, config,
+│                                 # Depends on: core, protocol, client, config,
 │                                 #             compose, mail-parse
 │
 ├── migrations/                   # SQLite migrations (used by store crate)
@@ -202,7 +211,8 @@ These are strict. Violations should be caught in code review:
 
 1. **`core` depends on nothing internal.** It is the leaf node. All other crates depend on it.
 2. **`protocol` depends only on `core`.** It defines the IPC contract between daemon and clients.
-3. **Provider crates depend on `core` plus shared mail utility crates only.** Today that means `mail-parse` and `outbound`. Gmail, IMAP, SMTP, Outlook, and fake adapters do NOT depend on store, search, sync, daemon, TUI, or web.
+3. **`client` depends only on `protocol` at runtime.** It is the one shared IPC connection (connect + frame + correlate + read events, kinded `ClientError`). Test fixtures may dev-depend on `core` (as provider crates dev-depend on `provider-fake`), but no other runtime dependency is allowed. The daemon (for its CLI/internal client), `tui`, `web`, and `mcp` may depend on `client`; `client` must not depend on daemon, store, search, sync, semantic, or provider crates.
+4. **Provider crates depend on `core` plus shared mail utility crates only.** Today that means `mail-parse` and `outbound`. Gmail, IMAP, SMTP, Outlook, and fake adapters do NOT depend on store, search, sync, daemon, TUI, or web.
 4. **`store` depends only on `core`, and `search` depends only on `core`.** They are storage backends, not business logic.
 5. **`semantic` owns embeddings and dense retrieval.** It may depend on `core`, `config`, `reader`, and `store`. It must not depend on daemon, TUI, or provider crates.
 6. **`llm` owns LLM provider clients and prompt/result DTOs.** It deliberately depends on no internal crates; higher layers pass plain data into it.

@@ -369,6 +369,17 @@ async fn serve_client_connection(
                                 "ipc request permit acquired"
                             );
                             guard_ipc_response(ipc_msg.id, async {
+                                // Test-only hook: lets a conformance scenario
+                                // hold a Bulk-lane request in flight
+                                // deterministically. Compiled out of every
+                                // non-test build; only intercepts the gated
+                                // sentinel request when a test installs a gate.
+                                #[cfg(test)]
+                                if let Some(response) =
+                                    ipc_conformance::gate::maybe_intercept(&ipc_msg).await
+                                {
+                                    return response;
+                                }
                                 handle_request(&state, &ipc_msg).await
                             })
                             .await
@@ -1351,6 +1362,13 @@ fn detach_daemon_child(command: &mut std::process::Command) {
 
 #[cfg(not(unix))]
 fn detach_daemon_child(_command: &mut std::process::Command) {}
+
+/// IPC conformance corpus (Phase 2, transport-adapter initiative): an
+/// executable characterization of the serve loop's connection-level behavior.
+/// In-crate `#[cfg(test)]` module (not `tests/`) because it drives the private
+/// `serve_client_connection` directly. See the file's module docs.
+#[cfg(test)]
+mod ipc_conformance;
 
 #[cfg(test)]
 mod tests {

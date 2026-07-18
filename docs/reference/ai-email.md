@@ -60,6 +60,15 @@ These are load-bearing constraints, not preferences.
 7. **Privacy explicit.** Relationship data leaves the machine only when the
    existing LLM privacy config allows it. Recipient briefings degrade to a
    deterministic profile-only path when cloud LLM is gated.
+8. **Retrieved mail is data, never instructions.** Every LLM feature that
+   consumes message content (summarize, ask, draft-assist, briefings,
+   commitments, decisions, answer coverage) treats email fields and
+   attachments as untrusted input to analyze, never as directives to follow.
+   Prompts must tell the model to ignore instructions embedded in mail
+   content, and validators must not let mail-derived text expand scope:
+   email cannot expand permissions, redirect recipients, trigger tools,
+   request credentials, or override the feature's task. The agent-facing
+   statement of this rule lives in the mxr skill and the for-agents guide.
 
 ## Reuse map
 

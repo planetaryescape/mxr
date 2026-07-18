@@ -28,7 +28,7 @@ Before this cleanup, mxr had logical crate seams on disk but not honest Cargo se
 - `mxr-mail-parse` owns shared RFC 5322 / mail parsing helpers
 - `mxr-outbound` owns shared markdown-to-message rendering/building helpers used by compose and send adapters
 - `mxr-store` and `mxr-search` remain separate; `mxr-search` no longer owns store-backed saved-search service glue
-- `mxr-client` owns the one shared IPC connection (connect + frame + correlate + read events) that the daemon-internal CLI client, TUI worker, web bridge, and MCP server all build on; it is a leaf that depends only on `mxr-protocol`
+- `mxr-client` owns the one shared IPC connection (connect + frame + correlate + read events) that the daemon-internal CLI client, TUI worker, web bridge, and MCP server all build on; its runtime dependencies are `mxr-protocol` only (test fixtures may dev-depend on `mxr-core`, the same way provider crates dev-depend on `mxr-provider-fake`)
 - clients (`mxr-tui`, `mxr-web`) stay off daemon/store/search/sync/provider crates, while still being allowed to use client-local utility crates such as `client`, `config`, `compose`, `reader`, and `mail-parse`
 - the IMAP adapter uses the published `mxr-async-imap` fork as a normal registry dependency, so vendored source no longer distorts workspace membership
 
@@ -36,7 +36,7 @@ Before this cleanup, mxr had logical crate seams on disk but not honest Cargo se
 
 1. `mxr-core` is the leaf.
 2. `mxr-protocol` depends only on `mxr-core`.
-3. `mxr-client` depends only on `mxr-protocol` (same leaf discipline as provider crates); `mxr` (daemon), `mxr-tui`, `mxr-web`, and `mxr-mcp` may depend on `mxr-client` for their daemon IPC connection.
+3. `mxr-client`'s runtime dependencies are `mxr-protocol` only (same leaf discipline as provider crates; test fixtures may dev-depend on `mxr-core`, mirroring providers' dev-dependency on `mxr-provider-fake`); `mxr` (daemon), `mxr-tui`, `mxr-web`, and `mxr-mcp` may depend on `mxr-client` for their daemon IPC connection.
 4. `mxr-store` depends only on `mxr-core`.
 5. `mxr-search` depends only on `mxr-core`.
 6. `mxr-sync` depends on `mxr-core`, `mxr-store`, `mxr-search`.

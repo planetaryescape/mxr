@@ -211,7 +211,7 @@ These are strict. Violations should be caught in code review:
 
 1. **`core` depends on nothing internal.** It is the leaf node. All other crates depend on it.
 2. **`protocol` depends only on `core`.** It defines the IPC contract between daemon and clients.
-3. **`client` depends only on `protocol`.** It is the one shared IPC connection (connect + frame + correlate + read events, kinded `ClientError`). The daemon (for its CLI/internal client), `tui`, `web`, and `mcp` may depend on `client`; `client` must not depend on daemon, store, search, sync, semantic, or provider crates.
+3. **`client` depends only on `protocol` at runtime.** It is the one shared IPC connection (connect + frame + correlate + read events, kinded `ClientError`). Test fixtures may dev-depend on `core` (as provider crates dev-depend on `provider-fake`), but no other runtime dependency is allowed. The daemon (for its CLI/internal client), `tui`, `web`, and `mcp` may depend on `client`; `client` must not depend on daemon, store, search, sync, semantic, or provider crates.
 4. **Provider crates depend on `core` plus shared mail utility crates only.** Today that means `mail-parse` and `outbound`. Gmail, IMAP, SMTP, Outlook, and fake adapters do NOT depend on store, search, sync, daemon, TUI, or web.
 4. **`store` depends only on `core`, and `search` depends only on `core`.** They are storage backends, not business logic.
 5. **`semantic` owns embeddings and dense retrieval.** It may depend on `core`, `config`, `reader`, and `store`. It must not depend on daemon, TUI, or provider crates.

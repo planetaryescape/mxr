@@ -1,9 +1,7 @@
 use async_trait::async_trait;
-use futures::{SinkExt, StreamExt};
+use mxr_client::{ClientError, IpcConnection};
 use mxr_core::id::MessageId;
-use mxr_protocol::{
-    ClientKind, IpcCodec, IpcMessage, IpcPayload, MutationCommand, Request, Response,
-};
+use mxr_protocol::{ClientKind, MutationCommand, Request, Response};
 use rmcp::{
     handler::server::{
         router::tool::ToolRouter,
@@ -16,8 +14,6 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{path::Path, str::FromStr, sync::Arc};
-use tokio::net::UnixStream;
-use tokio_util::codec::Framed;
 
 #[async_trait]
 pub trait DaemonRequester: Send + Sync + std::fmt::Debug + 'static {
@@ -45,32 +41,25 @@ impl DaemonRequester for UnixDaemonRequester {
 }
 
 async fn request_over_ipc(socket_path: &Path, request: Request) -> anyhow::Result<Response> {
-    let stream = UnixStream::connect(socket_path).await.map_err(|error| {
-        anyhow::anyhow!(
-            "Cannot connect to mxr daemon at {}: {}. Start it with: mxr daemon",
-            socket_path.display(),
-            error
-        )
-    })?;
-    let mut framed = Framed::new(stream, IpcCodec::new());
-    framed
-        .send(IpcMessage {
-            id: 1,
-            source: ClientKind::Mcp,
-            payload: IpcPayload::Request(request),
+    let mut connection = IpcConnection::connect(socket_path, ClientKind::Mcp)
+        .await
+        .map_err(|error| match error {
+            ClientError::Connect { path, source } => anyhow::anyhow!(
+                "Cannot connect to mxr daemon at {}: {}. Start it with: mxr daemon",
+                path.display(),
+                source
+            ),
+            other => anyhow::Error::new(other),
+        })?;
+    connection
+        .request_response(request, |_event| {}, None)
+        .await
+        .map_err(|error| match error {
+            ClientError::Closed => {
+                anyhow::anyhow!("mxr daemon closed the IPC connection before responding")
+            }
+            other => anyhow::Error::new(other),
         })
-        .await?;
-
-    while let Some(frame) = framed.next().await {
-        let msg = frame?;
-        if msg.id != 1 {
-            continue;
-        }
-        if let IpcPayload::Response(response) = msg.payload {
-            return Ok(response);
-        }
-    }
-    anyhow::bail!("mxr daemon closed the IPC connection before responding")
 }
 
 #[derive(Debug, Clone)]

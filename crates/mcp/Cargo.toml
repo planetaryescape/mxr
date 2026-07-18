@@ -18,7 +18,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
-futures = { workspace = true }
+mxr-client = { workspace = true }
 mxr-config = { workspace = true }
 mxr-core = { workspace = true }
 mxr-protocol = { workspace = true }

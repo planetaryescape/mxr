@@ -1,17 +1,21 @@
 use crate::state::AppState;
-use futures::{SinkExt, StreamExt};
+use mxr_client::{ClientError, IpcConnection};
 use mxr_protocol::*;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::net::UnixStream;
-use tokio::time::{timeout, Duration};
-use tokio_util::codec::Framed;
+use tokio::time::Duration;
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// CLI / daemon-internal IPC client.
+///
+/// A thin facade over [`mxr_client::IpcConnection`] that preserves this crate's
+/// long-standing `IpcClient` surface — the shape ~58 command files call. The
+/// connection mechanism (connect, frame, correlate, event forwarding, timeout)
+/// lives in `mxr-client`; this type only maps that crate's [`ClientError`] onto
+/// the `anyhow` messages the CLI has always produced (including the
+/// protocol-mismatch guidance).
 pub struct IpcClient {
-    framed: Framed<UnixStream, IpcCodec>,
-    next_id: AtomicU64,
+    conn: IpcConnection,
 }
 
 impl IpcClient {
@@ -20,22 +24,24 @@ impl IpcClient {
     }
 
     pub async fn connect_to(socket_path: &Path) -> anyhow::Result<Self> {
-        let stream = UnixStream::connect(&socket_path).await.map_err(|e| {
-            anyhow::anyhow!(
-                "Cannot connect to daemon at {}: {}. Is the daemon running? Try: mxr daemon",
-                socket_path.display(),
-                e
-            )
-        })?;
-        Ok(Self {
-            framed: Framed::new(stream, IpcCodec::new()),
-            next_id: AtomicU64::new(1),
-        })
+        let conn = IpcConnection::connect(socket_path, ClientKind::Cli)
+            .await
+            .map_err(|error| match error {
+                ClientError::Connect { path, source } => anyhow::anyhow!(
+                    "Cannot connect to daemon at {}: {}. Is the daemon running? Try: mxr daemon",
+                    path.display(),
+                    source
+                ),
+                other => anyhow::Error::new(other),
+            })?;
+        Ok(Self { conn })
     }
 
     pub async fn request(&mut self, req: Request) -> anyhow::Result<Response> {
-        self.request_inner(req, |_| {}, Some(DEFAULT_REQUEST_TIMEOUT))
+        self.conn
+            .request_response(req, |_| {}, Some(DEFAULT_REQUEST_TIMEOUT))
             .await
+            .map_err(map_request_error)
     }
 
     /// Like [`Self::request`], but invokes `on_event` for every
@@ -50,87 +56,45 @@ impl IpcClient {
     pub async fn request_with_events<F>(
         &mut self,
         req: Request,
-        mut on_event: F,
+        on_event: F,
     ) -> anyhow::Result<Response>
     where
         F: FnMut(DaemonEvent),
     {
-        self.request_inner(req, &mut on_event, None).await
-    }
-
-    async fn request_inner<F>(
-        &mut self,
-        req: Request,
-        mut on_event: F,
-        request_timeout: Option<Duration>,
-    ) -> anyhow::Result<Response>
-    where
-        F: FnMut(DaemonEvent),
-    {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let msg = IpcMessage {
-            id,
-            source: ::mxr_protocol::ClientKind::Cli,
-            payload: IpcPayload::Request(req),
-        };
-        self.framed.send(msg).await?;
-
-        let wait_for_response = async {
-            loop {
-                match self.framed.next().await {
-                Some(Ok(resp_msg)) => match resp_msg.payload {
-                    IpcPayload::Response(resp) if resp_msg.id == id => return Ok(resp),
-                    IpcPayload::Event(event) => on_event(event),
-                    IpcPayload::Response(_) => anyhow::bail!(
-                        "IPC protocol error: received response id {} while waiting for {id}",
-                        resp_msg.id
-                    ),
-                    _ => anyhow::bail!(
-                        "IPC protocol error: received non-response frame while waiting for response {id}"
-                    ),
-                },
-                Some(Err(e)) => anyhow::bail!("{}", describe_ipc_failure(&e.to_string())),
-                None => anyhow::bail!(
-                    "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading."
-                ),
-            }
-            }
-        };
-
-        if let Some(duration) = request_timeout {
-            timeout(duration, wait_for_response).await.map_err(|_| {
-                anyhow::anyhow!("IPC request timed out after {} seconds", duration.as_secs())
-            })?
-        } else {
-            wait_for_response.await
-        }
+        self.conn
+            .request_response(req, on_event, None)
+            .await
+            .map_err(map_request_error)
     }
 
     pub async fn notify(&mut self, req: Request) -> anyhow::Result<()> {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let msg = IpcMessage {
-            id,
-            source: ::mxr_protocol::ClientKind::Cli,
-            payload: IpcPayload::Request(req),
-        };
-        self.framed.send(msg).await?;
-        Ok(())
+        self.conn.notify(req).await.map_err(map_request_error)
     }
 
     pub async fn next_event(&mut self) -> anyhow::Result<DaemonEvent> {
         loop {
-            match self.framed.next().await {
-                Some(Ok(msg)) => {
-                    if let IpcPayload::Event(event) = msg.payload {
-                        return Ok(event);
-                    }
-                }
-                Some(Err(e)) => anyhow::bail!("{}", describe_ipc_failure(&e.to_string())),
-                None => anyhow::bail!(
-                    "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading."
-                ),
+            let message = self.conn.next_event().await.map_err(map_request_error)?;
+            if let IpcPayload::Event(event) = message.payload {
+                return Ok(event);
             }
         }
+    }
+}
+
+/// Map a `mxr-client` failure onto the `anyhow` messages the CLI has always
+/// surfaced. Framing/decode errors keep the protocol-mismatch hint via
+/// [`describe_ipc_failure`]; a clean close keeps the upgrade-and-restart
+/// guidance.
+fn map_request_error(error: ClientError) -> anyhow::Error {
+    match error {
+        ClientError::Closed => anyhow::anyhow!(
+            "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading."
+        ),
+        ClientError::Timeout(duration) => {
+            anyhow::anyhow!("IPC request timed out after {} seconds", duration.as_secs())
+        }
+        ClientError::Io(source) => anyhow::anyhow!("{}", describe_ipc_failure(&source.to_string())),
+        other => anyhow::Error::new(other),
     }
 }
 

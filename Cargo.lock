@@ -4166,6 +4166,7 @@ dependencies = [
  "mail-parser",
  "mime_guess",
  "mxr-async-imap",
+ "mxr-client",
  "mxr-compose",
  "mxr-config",
  "mxr-core",
@@ -4258,6 +4259,19 @@ dependencies = [
  "self_cell",
  "stop-token",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "mxr-client"
+version = "0.6.9"
+dependencies = [
+ "futures",
+ "mxr-core",
+ "mxr-protocol",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -4408,7 +4422,7 @@ version = "0.6.9"
 dependencies = [
  "anyhow",
  "async-trait",
- "futures",
+ "mxr-client",
  "mxr-config",
  "mxr-core",
  "mxr-protocol",
@@ -4731,6 +4745,7 @@ dependencies = [
  "htmlescape",
  "image",
  "insta",
+ "mxr-client",
  "mxr-compose",
  "mxr-config",
  "mxr-core",
@@ -4769,6 +4784,7 @@ dependencies = [
  "include_dir",
  "insta",
  "mime_guess",
+ "mxr-client",
  "mxr-compose",
  "mxr-config",
  "mxr-core",

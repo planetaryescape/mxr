@@ -1,0 +1,24 @@
+[package]
+name = "mxr-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Internal: shared IPC client connection for talking to the mxr daemon"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+mxr-protocol = { workspace = true }
+futures = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+
+[dev-dependencies]
+mxr-core = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

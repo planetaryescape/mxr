@@ -1,6 +1,9 @@
 use anyhow::Result;
 use mxr_core::id::AccountId;
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime};
+use mxr_llm::{
+    wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime,
+    UNTRUSTED_MAIL_GUARD,
+};
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::{ContactRelationshipSummaryRecord, Store};
 use serde::Deserialize;
@@ -43,9 +46,7 @@ pub async fn generate_relationship_summary(
     }
 
     let reader_config = ReaderConfig::default();
-    let mut prompt = String::from(
-        "Build an inspectable relationship profile from these email excerpts. Ground only in the excerpts. Do not infer facts, familiarity, meetings, or topics not present. Return strict JSON: {\"text\":\"<=200 token summary using tends-to phrasing\",\"known_topics\":[\"topic\"]}.\n\n",
-    );
+    let mut excerpts = String::new();
     for sample in samples
         .iter()
         .filter(|sample| !sample.is_list_sender)
@@ -57,20 +58,30 @@ pub async fn generate_relationship_summary(
             "user_to_them"
         };
         let body = clean(Some(&sample.body), None, &reader_config).content;
-        prompt.push_str(&format!(
+        excerpts.push_str(&format!(
             "Message {} ({direction}, {}):\n{}\n\n",
             sample.message_id,
             sample.date,
             body.trim()
         ));
-        if prompt.len() > MAX_PROMPT_CHARS {
+        if excerpts.len() > MAX_PROMPT_CHARS {
             // Byte-budget cut over arbitrary email bodies: must be
             // boundary-safe or multi-byte content panics the worker.
-            mxr_core::text::truncate_to_char_boundary(&mut prompt, MAX_PROMPT_CHARS);
-            prompt.push_str("\n[...truncated...]\n");
+            mxr_core::text::truncate_to_char_boundary(&mut excerpts, MAX_PROMPT_CHARS);
+            excerpts.push_str("\n[...truncated...]\n");
             break;
         }
     }
+    // User-only prompt: lead with the injection guard, then the task, then
+    // the mail excerpts wrapped as untrusted content. Strict-JSON parsing
+    // is the boundary; the summary is stored, never actioned.
+    let prompt = format!(
+        "{UNTRUSTED_MAIL_GUARD}\n\nBuild an inspectable relationship profile from these email \
+         excerpts. Ground only in the excerpts. Do not infer facts, familiarity, meetings, or \
+         topics not present. Return strict JSON: {{\"text\":\"<=200 token summary using tends-to \
+         phrasing\",\"known_topics\":[\"topic\"]}}.\n\n{}",
+        wrap_untrusted_mail(&excerpts)
+    );
 
     let response = match llm
         .for_feature(LlmFeature::RelationshipSummary)
@@ -202,6 +213,99 @@ mod tests {
             .expect("load summary")
             .expect("summary exists");
         assert_eq!(summary.source_hash, "style-v1");
+    }
+
+    #[tokio::test]
+    async fn summary_prompt_guards_and_wraps_excerpts() {
+        use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmProvider};
+        use std::sync::Mutex;
+
+        #[derive(Default)]
+        struct Capture {
+            msgs: Mutex<Vec<mxr_llm::ChatMessage>>,
+        }
+        #[async_trait::async_trait]
+        impl LlmProvider for Capture {
+            async fn complete(
+                &self,
+                req: CompletionRequest,
+            ) -> std::result::Result<CompletionResponse, mxr_llm::LlmError> {
+                *self.msgs.lock().expect("msgs lock") = req.messages.clone();
+                Ok(CompletionResponse {
+                    content: r#"{"text":"tends to be terse","known_topics":[]}"#.into(),
+                    model: "stub".into(),
+                    finish_reason: Some("stop".into()),
+                })
+            }
+            fn capabilities(&self) -> LlmCapabilities {
+                LlmCapabilities {
+                    context_window: 8192,
+                    supports_streaming: false,
+                }
+            }
+            fn model_name(&self) -> &str {
+                "stub"
+            }
+        }
+
+        let store = Store::in_memory().await.expect("store");
+        let account = test_account();
+        store.insert_account(&account).await.expect("account");
+        let now = Utc::now();
+        store
+            .upsert_contact_style(&ContactStyleRecord {
+                account_id: account.id.clone(),
+                email: "alice@example.com".to_string(),
+                formality_score: 0.4,
+                formality_score_theirs: 0.5,
+                avg_sentence_len: 8.0,
+                avg_sentence_len_theirs: 10.0,
+                msg_count_used: 5,
+                msg_count_used_theirs: 2,
+                metrics_json: "{}".to_string(),
+                metrics_json_theirs: "{}".to_string(),
+                computed_at: now,
+                source_hash: "style-fresh".to_string(),
+                drift_detected: false,
+                drift_reason: None,
+                drift_detected_at: None,
+            })
+            .await
+            .expect("style");
+        // No existing summary + a real message => the LLM is invoked.
+        insert_message(&store, &account, "m1", now).await;
+
+        let cap = std::sync::Arc::new(Capture::default());
+        let llm = std::sync::Arc::new(LlmRuntime::new(
+            cap.clone() as std::sync::Arc<dyn LlmProvider>
+        ));
+        let generated =
+            generate_relationship_summary(&store, &llm, &account.id, "alice@example.com")
+                .await
+                .expect("generate");
+        assert!(generated, "summary should have been generated");
+
+        let msgs = cap.msgs.lock().expect("msgs lock");
+        let user = &msgs[0].content;
+        assert!(
+            user.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
+            "user-only prompt must lead with the injection guard"
+        );
+        // The guard text quotes the marker strings, so use rfind to locate
+        // the real wrapper (the last occurrence of each marker).
+        let begin = user
+            .rfind(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = user
+            .rfind(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let body = user
+            .find("Can you send the update?")
+            .expect("excerpt body present");
+        assert!(
+            begin < body && body < end,
+            "mail excerpts must sit between the untrusted-content markers"
+        );
     }
 
     fn test_account() -> Account {

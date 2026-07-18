@@ -12,7 +12,10 @@ use mxr_core::types::{
     CitationRef, Draft, DraftSafetyIssue, DraftSafetyIssueCode, DraftSafetySeverity,
     MessageDirection,
 };
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
+use mxr_llm::{
+    guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
+    LlmFeature,
+};
 use mxr_reader::{clean, ReaderConfig};
 use serde::Deserialize;
 
@@ -109,12 +112,18 @@ pub(crate) async fn check_answer_coverage(
 
     let cleaned_draft = clean(Some(&draft.body_markdown), None, &ReaderConfig::default()).content;
 
+    // The thread transcript is attacker-controllable inbound mail; wrap
+    // it in untrusted-content delimiters. The draft reply is the user's
+    // own outgoing text and stays outside. (Defense-in-depth; the
+    // citation validator that rejects unknown evidence ids is the
+    // boundary, and this check only ever emits an advisory warning.)
+    let wrapped_thread = wrap_untrusted_mail(&transcript);
     let runtime = state.llm.for_feature(LlmFeature::AnswerCoverage);
     let req = CompletionRequest {
         max_tokens: Some(800),
         temperature: Some(0.0),
         messages: vec![
-            ChatMessage::system(
+            ChatMessage::system(guarded_system_prompt(
                 "You extract explicit asks from an email thread and check whether the \
                  user's draft addresses each one. Output STRICT JSON with this schema and \
                  nothing else:\n\n\
@@ -122,9 +131,9 @@ pub(crate) async fn check_answer_coverage(
                  bool, \"draft_evidence\": str}]}\n\n\
                  Only cite evidence_msg_id values that appear in the [msg_id=...] \
                  markers in the thread. If there are no asks, return {\"asks\": []}.",
-            ),
+            )),
             ChatMessage::user(format!(
-                "THREAD:\n{transcript}\n\nDRAFT REPLY:\n{cleaned_draft}\n\nReturn JSON only."
+                "THREAD:\n{wrapped_thread}\n\nDRAFT REPLY:\n{cleaned_draft}\n\nReturn JSON only."
             )),
         ],
     };
@@ -450,6 +459,33 @@ mod tests {
         assert!(
             user_text.contains("[msg_id="),
             "prompt missing msg_id markers, got:\n{user_text}"
+        );
+
+        // Injection hardening: guard on the system message, inbound thread
+        // wrapped, and the user's own draft kept OUTSIDE the markers.
+        let request = stub.last_request.lock().unwrap().clone().unwrap();
+        let system = &request.messages[0].content;
+        assert!(
+            system.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
+            "system prompt must carry the shared injection guard"
+        );
+        let begin = user_text
+            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = user_text
+            .find(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let msgid = user_text.find("[msg_id=").expect("thread msg id present");
+        assert!(
+            begin < msgid && msgid < end,
+            "inbound thread must sit between the untrusted-content markers"
+        );
+        let draft = user_text
+            .find("UNIQUE-DRAFT-MARKER-XYZ")
+            .expect("draft present");
+        assert!(
+            draft > end,
+            "the user's own draft must stay outside the untrusted-content markers"
         );
     }
 }

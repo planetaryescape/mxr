@@ -9,7 +9,7 @@ use crate::state::AppState;
 use draft_context::DraftContext;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Address, Envelope};
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
+use mxr_llm::{guarded_system_prompt, ChatMessage, CompletionRequest, LlmError, LlmFeature};
 use mxr_protocol::{DraftLengthHintData, VoiceRegisterData};
 
 const SYSTEM_PROMPT_NEW: &str = "You write email for a busy professional in their own voice. \
@@ -203,7 +203,12 @@ async fn complete_and_finish(
         .for_feature(feature)
         .complete(CompletionRequest {
             messages: vec![
-                ChatMessage::system(system_prompt),
+                // The thread transcript inside `user_message` is wrapped in
+                // untrusted-content delimiters by `assemble_user_message_*`;
+                // the guard here tells the model they mark data, not
+                // instructions. Output is a DraftSuggestion — written to a
+                // draft/stdout, never auto-sent (see ai-email.md cut list).
+                ChatMessage::system(guarded_system_prompt(system_prompt)),
                 ChatMessage::user(user_message),
             ],
             max_tokens: Some(draft_context::max_tokens_for_length(
@@ -414,6 +419,55 @@ mod tests {
         assert!(matches!(response, ResponseData::DraftSuggestion { .. }));
         // The actual thread content reached the model (survives any draft_context rewrite).
         assert!(captured_prompt(&llm).contains(inbound_text));
+    }
+
+    // Injection hardening: reply prompt guards the system message and the
+    // thread being replied to lands inside the untrusted-content markers.
+    #[tokio::test]
+    async fn reply_prompt_guards_system_and_wraps_thread() {
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+        let account_id = state.default_account_id();
+        let (thread_id, _, inbound_text) = seed_inbound_thread(&state, &account_id).await;
+
+        draft_compose(
+            &state,
+            Some(&account_id),
+            None,
+            "reply briefly",
+            None,
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let req = llm
+            .last_request
+            .lock()
+            .expect("request lock")
+            .clone()
+            .expect("captured request");
+        assert!(
+            req.messages[0]
+                .content
+                .contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
+            "system prompt must carry the shared injection guard"
+        );
+        let user = &req.messages[1].content;
+        let begin = user
+            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = user
+            .find(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let body = user.find(inbound_text).expect("inbound thread present");
+        assert!(
+            begin < body && body < end,
+            "thread transcript must sit between the untrusted-content markers"
+        );
     }
 
     // Behavior 2: source_message_id resolves to its thread.

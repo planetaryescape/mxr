@@ -7,7 +7,10 @@
 use crate::state::AppState;
 use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::CitationRef;
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
+use mxr_llm::{
+    guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
+    LlmFeature,
+};
 use mxr_protocol::{ResponseData, ThreadBriefingData};
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::{new_briefing_id, BriefingKind, ContextBriefing};
@@ -86,15 +89,20 @@ pub(crate) async fn get_thread_briefing(
         max_tokens: Some(700),
         temperature: Some(0.1),
         messages: vec![
-            ChatMessage::system(
+            ChatMessage::system(guarded_system_prompt(
                 "Summarize what's currently true about this email thread for someone \
                  returning to it after a long gap. Output STRICT JSON: \
                  {\"summary\": str (markdown), \"citations\": [{\"msg_id\": str, \
                  \"quote\": str}]}\n\nCite ONLY msg_id values that appear in the \
                  [msg_id=...] markers. If you can't summarize meaningfully, return \
                  a one-line note and an empty citations array.",
-            ),
-            ChatMessage::user(format!("THREAD:\n{transcript}\n\nReturn JSON only.")),
+            )),
+            // Wrap the attacker-controllable thread transcript. The
+            // citation validator below is the boundary.
+            ChatMessage::user(format!(
+                "THREAD:\n{}\n\nReturn JSON only.",
+                wrap_untrusted_mail(&transcript)
+            )),
         ],
     };
 
@@ -247,13 +255,16 @@ pub(crate) async fn get_recipient_briefing(
         max_tokens: Some(500),
         temperature: Some(0.1),
         messages: vec![
-            ChatMessage::system(
+            ChatMessage::system(guarded_system_prompt(
                 "Briefly summarize the user's relationship with this contact for \
                  someone returning to it after a gap. Output STRICT JSON: \
                  {\"summary\": str (markdown)}\nIf no useful summary is possible, \
                  return an empty summary.",
-            ),
-            ChatMessage::user(baseline.clone()),
+            )),
+            // The baseline is deterministic contact stats plus the
+            // mail-derived address; wrap it as untrusted data all the
+            // same. `baseline` stays intact for the stored fallback below.
+            ChatMessage::user(wrap_untrusted_mail(&baseline)),
         ],
     };
 
@@ -389,5 +400,105 @@ fn to_recipient_briefing(b: &ContextBriefing, from_cache: bool) -> ThreadBriefin
         citations: vec![],
         generated_at: b.generated_at,
         from_cache,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::AppState;
+    use crate::test_fixtures::TestEnvelopeBuilder;
+    use mxr_llm::{CompletionResponse, LlmCapabilities, LlmProvider};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct CaptureLlm {
+        msgs: Mutex<Vec<ChatMessage>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmProvider for CaptureLlm {
+        async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+            *self.msgs.lock().unwrap() = req.messages.clone();
+            Ok(CompletionResponse {
+                content: r#"{"summary":"ok","citations":[]}"#.into(),
+                model: "stub".into(),
+                finish_reason: Some("stop".into()),
+            })
+        }
+        fn capabilities(&self) -> LlmCapabilities {
+            LlmCapabilities {
+                context_window: 8192,
+                supports_streaming: false,
+            }
+        }
+        fn model_name(&self) -> &str {
+            "stub"
+        }
+    }
+
+    #[tokio::test]
+    async fn thread_briefing_prompt_wraps_transcript_and_guards_system() {
+        let state = AppState::in_memory().await.unwrap();
+        let account_id = state.default_account_id();
+        let cap = Arc::new(CaptureLlm::default());
+        state.llm.replace(cap.clone());
+
+        let thread_id = mxr_core::ThreadId::new();
+        let env = TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .thread_id(thread_id.clone())
+            .provider_id("brief-1")
+            .sender_address("Alice", "alice@example.com")
+            .subject("Plan")
+            .snippet("BODY-INJECTION-MARKER")
+            .build();
+        state.store.upsert_envelope(&env).await.unwrap();
+
+        get_thread_briefing(&state, &thread_id, true).await.unwrap();
+
+        let msgs = cap.msgs.lock().unwrap();
+        assert!(
+            msgs[0].content.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
+            "system prompt must carry the shared injection guard"
+        );
+        let user = &msgs[1].content;
+        let begin = user
+            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = user
+            .find(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let body = user
+            .find("BODY-INJECTION-MARKER")
+            .expect("mail content present");
+        assert!(
+            begin < body && body < end,
+            "thread transcript must sit between the untrusted-content markers"
+        );
+    }
+
+    #[tokio::test]
+    async fn recipient_briefing_prompt_wraps_baseline_and_guards_system() {
+        let state = AppState::in_memory().await.unwrap();
+        let account_id = state.default_account_id();
+        let cap = Arc::new(CaptureLlm::default());
+        state.llm.replace(cap.clone());
+
+        get_recipient_briefing(&state, &account_id, "alice@example.com", true)
+            .await
+            .unwrap();
+
+        let msgs = cap.msgs.lock().unwrap();
+        assert!(
+            msgs[0].content.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
+            "system prompt must carry the shared injection guard"
+        );
+        let user = &msgs[1].content;
+        assert!(
+            user.contains(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+                && user.contains(mxr_llm::UNTRUSTED_MAIL_END),
+            "recipient baseline must be wrapped in untrusted-content markers"
+        );
     }
 }

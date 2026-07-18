@@ -14,7 +14,10 @@
 use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_core::SortOrder;
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
+use mxr_llm::{
+    guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
+    LlmFeature,
+};
 use mxr_protocol::{
     ArchiveAnswerData, ArchiveAskFiltersData, ArchiveAskMode, ArchiveCitationData,
     ArchiveRetrievalData, ResponseData,
@@ -126,12 +129,16 @@ pub(crate) async fn ask(
         allowed.push(msg_id);
     }
 
+    // The retrieved messages are attacker-controllable; wrap them in
+    // untrusted-content delimiters. The user's question stays outside.
+    // (Defense-in-depth; the citation validator below is the boundary.)
+    let wrapped_messages = wrap_untrusted_mail(&transcript);
     let runtime = state.llm.for_feature(LlmFeature::ArchiveAsk);
     let req = CompletionRequest {
         max_tokens: Some(900),
         temperature: Some(0.0),
         messages: vec![
-            ChatMessage::system(
+            ChatMessage::system(guarded_system_prompt(
                 "Answer the user's question using ONLY the provided messages. \
                  Output STRICT JSON with the schema and nothing else:\n\
                  {\"answer\": str, \"citations\": [{\"msg_id\": str, \"quote\": str}]}\n\n\
@@ -139,9 +146,9 @@ pub(crate) async fn ask(
                  If the messages do not contain enough evidence, set \"answer\" \
                  to a short note such as \"Not enough evidence in archive\" and \
                  return an empty citations array.",
-            ),
+            )),
             ChatMessage::user(format!(
-                "MESSAGES:\n{transcript}\n\nQUESTION: {question}\n\nReturn JSON only."
+                "MESSAGES:\n{wrapped_messages}\n\nQUESTION: {question}\n\nReturn JSON only."
             )),
         ],
     };
@@ -541,6 +548,78 @@ mod tests {
             .unwrap();
         state.search.commit().await.unwrap();
         (state, account_id, ids)
+    }
+
+    #[tokio::test]
+    async fn prompt_wraps_transcript_and_system_carries_guard() {
+        #[derive(Default)]
+        struct Capture {
+            msgs: Mutex<Vec<mxr_llm::ChatMessage>>,
+        }
+        #[async_trait::async_trait]
+        impl LlmProvider for Capture {
+            async fn complete(
+                &self,
+                req: CompletionRequest,
+            ) -> Result<CompletionResponse, LlmError> {
+                *self.msgs.lock().unwrap() = req.messages.clone();
+                Ok(CompletionResponse {
+                    content: r#"{"answer":"Not enough evidence in archive","citations":[]}"#.into(),
+                    model: "stub".into(),
+                    finish_reason: Some("stop".into()),
+                })
+            }
+            fn capabilities(&self) -> LlmCapabilities {
+                LlmCapabilities {
+                    context_window: 8192,
+                    supports_streaming: false,
+                }
+            }
+            fn model_name(&self) -> &str {
+                "stub"
+            }
+        }
+
+        let seed = Arc::new(CannedLlm {
+            body: String::new(),
+            last_user: Mutex::new(String::new()),
+        });
+        let (state, account_id, _ids) = fixture(seed).await;
+        let cap = Arc::new(Capture::default());
+        state.llm.replace(cap.clone());
+
+        let _ = ask(
+            &state,
+            "what was the status update?",
+            &ArchiveAskFiltersData {
+                account_id: Some(account_id),
+                ..Default::default()
+            },
+            5,
+        )
+        .await
+        .unwrap();
+
+        let msgs = cap.msgs.lock().unwrap();
+        let system = &msgs[0].content;
+        let user = &msgs[1].content;
+        assert!(
+            system.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
+            "system prompt must carry the shared injection guard"
+        );
+        let begin = user
+            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = user
+            .find(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let body = user
+            .find("status update content")
+            .expect("retrieved body present");
+        assert!(
+            begin < body && body < end,
+            "retrieved mail must sit between the untrusted-content markers"
+        );
     }
 
     #[tokio::test]

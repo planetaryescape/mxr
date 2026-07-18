@@ -21,6 +21,7 @@ use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Envelope, MessageDirection, SemanticChunkSourceKind};
 use mxr_humanizer::{score as humanizer_score, writing_constraints, HumanizerOpts};
+use mxr_llm::wrap_untrusted_mail;
 use mxr_protocol::{
     ContactStyleData, DraftLengthHintData, HumanizerReportSummaryData, ResponseData,
     VoiceMatchConfidenceData, VoiceMatchData, VoiceRegisterData,
@@ -520,8 +521,12 @@ meetings, or familiarity that aren't shown here.\n\n",
         message.push_str("\n\n");
     }
     if !truncated_transcript.is_empty() {
+        // The thread being replied to is attacker-controllable mail;
+        // delimit it as untrusted content. The draft-compose system
+        // prompt carries the matching guard. (Defense-in-depth: draft
+        // output is never auto-sent.)
         message.push_str("[THREAD SO FAR]\n");
-        message.push_str(&truncated_transcript);
+        message.push_str(&wrap_untrusted_mail(&truncated_transcript));
         message.push('\n');
     }
     message.push_str("[TASK]\n");
@@ -765,6 +770,32 @@ mod tests {
         );
         assert!(!message.contains("[THREAD SO FAR]"));
         assert!(message.contains("[TASK]"));
+    }
+
+    #[test]
+    fn assemble_wraps_thread_in_untrusted_markers() {
+        let message = assemble_user_message_within_budget(
+            "rel",
+            "",
+            "INBOUND-BODY-MARKER",
+            "Now draft my reply. Instruction: reply briefly",
+            10_000,
+        );
+        let begin = message
+            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = message
+            .find(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let body = message
+            .find("INBOUND-BODY-MARKER")
+            .expect("thread body present");
+        assert!(
+            begin < body && body < end,
+            "thread transcript must sit between the untrusted-content markers"
+        );
+        // The trusted task line stays outside the markers.
+        assert!(message.find("[TASK]").expect("task present") > end);
     }
 
     #[test]

@@ -1,7 +1,9 @@
 use super::HandlerResult;
 use crate::state::AppState;
 use mxr_humanizer::{score, HumanizerOpts};
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
+use mxr_llm::{
+    wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError, LlmFeature, UNTRUSTED_MAIL_GUARD,
+};
 use mxr_protocol::{HumanizerHitData, HumanizerReportSummaryData, ResponseData};
 use mxr_reader::{clean, ReaderConfig};
 
@@ -123,8 +125,16 @@ fn rewrite_prompt(
         ));
     }
     if let Some(voice_context) = voice_context.filter(|value| !value.trim().is_empty()) {
+        // Voice context is mail-derived (relationship summary/stylometry):
+        // delimit it as untrusted content and lead the prompt with the
+        // guard. The draft is the user's own text being rewritten, so it
+        // stays outside the markers. (The rewrite is accepted only if it
+        // improves the humanizer score, and its output is never auto-sent
+        // — that score gate and the no-auto-send invariant are the
+        // boundary; this preamble is defense-in-depth.)
+        prompt.insert_str(0, &format!("{UNTRUSTED_MAIL_GUARD}\n\n"));
         prompt.push_str("\n[ORIGINAL VOICE CONTEXT]\n");
-        prompt.push_str(voice_context.trim());
+        prompt.push_str(&wrap_untrusted_mail(voice_context.trim()));
         prompt.push('\n');
     }
     prompt.push_str("\n[DRAFT]\n");
@@ -145,5 +155,50 @@ pub(crate) fn report_summary(report: mxr_humanizer::HumanizerReport) -> Humanize
                 suggestion: hit.suggestion,
             })
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rewrite_prompt_wraps_mail_derived_voice_context_and_guards() {
+        let report = score("Some draft text.", &HumanizerOpts::default());
+        let prompt = rewrite_prompt("draft body here", &report, Some("VOICE-CTX-MARKER"));
+        assert!(
+            prompt.contains(UNTRUSTED_MAIL_GUARD),
+            "prompt must carry the injection guard when voice context is present"
+        );
+        // The guard text quotes the marker strings, so use rfind to locate
+        // the real wrapper (the last occurrence of each marker).
+        let begin = prompt
+            .rfind(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = prompt
+            .rfind(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let ctx = prompt
+            .find("VOICE-CTX-MARKER")
+            .expect("voice context present");
+        assert!(
+            begin < ctx && ctx < end,
+            "voice context must sit between the untrusted-content markers"
+        );
+        // The draft being rewritten stays outside the markers.
+        assert!(
+            prompt.find("draft body here").expect("draft present") > end,
+            "the draft to rewrite must not be wrapped as untrusted content"
+        );
+    }
+
+    #[test]
+    fn rewrite_prompt_without_voice_context_is_unwrapped() {
+        // The standalone humanize path has no mail-derived input, so it
+        // gets no guard/markers.
+        let report = score("Some draft text.", &HumanizerOpts::default());
+        let prompt = rewrite_prompt("draft body", &report, None);
+        assert!(!prompt.contains(mxr_llm::UNTRUSTED_MAIL_BEGIN));
+        assert!(!prompt.contains(UNTRUSTED_MAIL_GUARD));
     }
 }

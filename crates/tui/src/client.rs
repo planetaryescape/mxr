@@ -263,6 +263,19 @@ fn map_request_error(error: ClientError) -> MxrError {
         ),
         ClientError::Io(source) => MxrError::Ipc(describe_ipc_failure(&source.to_string())),
         ClientError::Daemon { message, .. } => MxrError::Ipc(message),
+        // Intentional deviation: the old `request` loop silently skipped a
+        // rogue frame and kept reading; we now surface it as an error. A frame
+        // that does not correlate means the connection is out of step, and
+        // skipping risks parking the worker; it is also unreachable in practice
+        // (one in-flight request per connection, and the worker drops the
+        // connection on timeout — see ipc.rs). Not a reconnect trigger.
+        ClientError::UnexpectedFrame {
+            frame_id,
+            expected_id,
+            ..
+        } => MxrError::Ipc(format!(
+            "IPC protocol error: unexpected frame id {frame_id} while awaiting response {expected_id}"
+        )),
         ClientError::Timeout(duration) => MxrError::Ipc(format!(
             "IPC request timed out after {} seconds",
             duration.as_secs()

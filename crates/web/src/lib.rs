@@ -1696,6 +1696,21 @@ fn map_bridge_error(error: ClientError) -> BridgeError {
         ClientError::Daemon { message, .. } => BridgeError::Ipc(message),
         ClientError::Closed => BridgeError::Ipc("connection closed".into()),
         ClientError::Io(source) => BridgeError::Ipc(source.to_string()),
+        // A non-response frame kept mapping to UnexpectedResponse before, so
+        // `bridge_error_kind` still reports "unexpected_response".
+        ClientError::UnexpectedFrame {
+            is_response: false, ..
+        } => BridgeError::UnexpectedResponse,
+        // A wrong-id response is unreachable now that `with_start_id` pins the
+        // wire id (and the old code accepted any response id regardless, so
+        // there is no prior behavior worth preserving here).
+        ClientError::UnexpectedFrame {
+            frame_id,
+            expected_id,
+            ..
+        } => BridgeError::Ipc(format!(
+            "unexpected response id {frame_id} while awaiting {expected_id}"
+        )),
         ClientError::Timeout(duration) => BridgeError::Ipc(format!(
             "IPC request timed out after {} seconds",
             duration.as_secs()

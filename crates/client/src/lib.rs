@@ -78,6 +78,24 @@ pub enum ClientError {
         retryable: bool,
     },
 
+    /// A frame arrived that does not correlate to the in-flight request: a
+    /// `Response` carrying a different id, or a non-response frame. This is
+    /// fail-fast — at this point the framed stream is out of step with the
+    /// request/response sequence, so the connection is unusable. Consumers that
+    /// historically skipped such frames now surface this (a documented, and in
+    /// practice unreachable, deviation); each maps it back onto its own error
+    /// surface via the `frame_id`/`expected_id`/`is_response` fields.
+    #[error("unexpected IPC frame (id {frame_id}) while awaiting response {expected_id}")]
+    UnexpectedFrame {
+        /// Id carried by the rogue frame.
+        frame_id: u64,
+        /// Id of the request still awaiting its response.
+        expected_id: u64,
+        /// True when the rogue frame was itself a `Response` (wrong id); false
+        /// for a non-response frame.
+        is_response: bool,
+    },
+
     /// The request exceeded its configured timeout without a response.
     #[error("IPC request timed out after {} seconds", .0.as_secs())]
     Timeout(Duration),
@@ -184,14 +202,19 @@ impl IpcConnection {
                     Some(Ok(frame)) => match frame.payload {
                         IpcPayload::Response(response) if frame.id == id => return Ok(response),
                         IpcPayload::Event(event) => on_event(event),
+                        IpcPayload::Response(_) => {
+                            return Err(ClientError::UnexpectedFrame {
+                                frame_id: frame.id,
+                                expected_id: id,
+                                is_response: true,
+                            })
+                        }
                         _ => {
-                            return Err(ClientError::Io(std::io::Error::new(
-                                std::io::ErrorKind::InvalidData,
-                                format!(
-                                    "unexpected IPC frame (id {}) while awaiting response {id}",
-                                    frame.id
-                                ),
-                            )))
+                            return Err(ClientError::UnexpectedFrame {
+                                frame_id: frame.id,
+                                expected_id: id,
+                                is_response: false,
+                            })
                         }
                     },
                     Some(Err(error)) => return Err(ClientError::Io(error)),
@@ -394,6 +417,73 @@ mod tests {
             .unwrap();
         conn.request(Request::Ping).await.unwrap();
         assert_eq!(seen.lock().unwrap().as_slice(), &[ClientKind::Web]);
+    }
+
+    #[tokio::test]
+    async fn with_start_id_puts_exact_id_on_the_wire() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mxr.sock");
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen_writer = seen.clone();
+        let _server = spawn_fake_daemon(&sock, Vec::new(), move |message| {
+            seen_writer.lock().unwrap().push(message.id);
+            Some(Response::Ok {
+                data: ResponseData::Pong,
+            })
+        })
+        .await;
+
+        // The web bridge's correlation seam: `with_start_id(N)` must put exactly
+        // `N` on the wire so daemon logs line up with the bridge's request id.
+        let mut conn = IpcConnection::connect(&sock, ClientKind::Web)
+            .await
+            .unwrap()
+            .with_start_id(4242);
+        conn.request(Request::Ping).await.unwrap();
+        assert_eq!(seen.lock().unwrap().as_slice(), &[4242]);
+    }
+
+    #[tokio::test]
+    async fn unexpected_response_id_is_a_typed_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mxr.sock");
+        // Reply with a mismatched correlation id (never happens against the real
+        // daemon, but pins the typed fail-fast disposition).
+        let listener = UnixListener::bind(&sock).unwrap();
+        let server = tokio::spawn(async move {
+            if let Ok((stream, _)) = listener.accept().await {
+                let mut framed = Framed::new(stream, IpcCodec::new());
+                if let Some(Ok(message)) = framed.next().await {
+                    let _ = framed
+                        .send(IpcMessage {
+                            id: message.id.wrapping_add(100),
+                            source: ClientKind::Daemon,
+                            payload: IpcPayload::Response(Response::Ok {
+                                data: ResponseData::Pong,
+                            }),
+                        })
+                        .await;
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        });
+
+        let mut conn = IpcConnection::connect(&sock, ClientKind::Cli)
+            .await
+            .unwrap();
+        match conn.request(Request::Ping).await {
+            Err(ClientError::UnexpectedFrame {
+                is_response,
+                expected_id,
+                frame_id,
+            }) => {
+                assert!(is_response);
+                assert_eq!(expected_id, 1);
+                assert_eq!(frame_id, 101);
+            }
+            other => panic!("expected UnexpectedFrame, got {other:?}"),
+        }
+        server.abort();
     }
 
     #[tokio::test(start_paused = true)]

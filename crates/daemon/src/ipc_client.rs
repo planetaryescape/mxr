@@ -94,6 +94,17 @@ fn map_request_error(error: ClientError) -> anyhow::Error {
             anyhow::anyhow!("IPC request timed out after {} seconds", duration.as_secs())
         }
         ClientError::Io(source) => anyhow::anyhow!("{}", describe_ipc_failure(&source.to_string())),
+        // Recreate the exact pre-refactor protocol-error strings.
+        ClientError::UnexpectedFrame {
+            frame_id,
+            expected_id,
+            is_response: true,
+        } => anyhow::anyhow!(
+            "IPC protocol error: received response id {frame_id} while waiting for {expected_id}"
+        ),
+        ClientError::UnexpectedFrame { expected_id, .. } => anyhow::anyhow!(
+            "IPC protocol error: received non-response frame while waiting for response {expected_id}"
+        ),
         other => anyhow::Error::new(other),
     }
 }

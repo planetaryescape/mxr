@@ -58,6 +58,11 @@ async fn request_over_ipc(socket_path: &Path, request: Request) -> anyhow::Resul
             ClientError::Closed => {
                 anyhow::anyhow!("mxr daemon closed the IPC connection before responding")
             }
+            // Intentional deviation: the old loop skipped frames whose id was
+            // not 1 and kept reading; we now fail fast. A non-correlating frame
+            // means the connection is out of step, and skipping risks hanging;
+            // it is also unreachable (one request per connection, id pinned).
+            error @ ClientError::UnexpectedFrame { .. } => anyhow::Error::new(error),
             other => anyhow::Error::new(other),
         })
 }

@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Pipe raw bytes between stdin/stdout and the local daemon's Unix socket (the Docker `connhelper` model). Lets any transport that can exec a process and pipe stdio reach the daemon — for example `ssh host mxr daemon dial-stdio` or `docker exec -i <container> mxr daemon dial-stdio`. The caller still needs local Unix-socket access on the daemon's machine, so this adds no new trust surface.
+
+Same-machine assumptions degrade over remote links: the `$EDITOR` compose flow, attachment paths, and daemon autostart all target the daemon's host, not your terminal. Intended for scripting and agent use.
+
+Usage: mxr daemon dial-stdio
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')

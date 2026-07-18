@@ -35,6 +35,10 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_search", &["search", "--help"]),
         ("cli_help_triage", &["triage", "--help"]),
         ("cli_help_daemon", &["daemon", "--help"]),
+        (
+            "cli_help_daemon_dial_stdio",
+            &["daemon", "dial-stdio", "--help"],
+        ),
         ("cli_help_restart", &["restart", "--help"]),
         ("cli_help_count", &["count", "--help"]),
         ("cli_help_cat", &["cat", "--help"]),
@@ -339,7 +343,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ),
     ];
 
-    assert_eq!(cases.len(), 187);
+    assert_eq!(cases.len(), 188);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

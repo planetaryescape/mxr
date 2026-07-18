@@ -32,6 +32,8 @@ The first transport with **no implicit peer identity** — it forces the `PeerAu
 
 ## 5c. `mxr daemon dial-stdio` (client-side proxy — the community unlock)
 
+> **Implemented early (2026-07-18):** shipped as an independent side-track ahead of phase 4. The subcommand, autostart, stdout discipline, docs, and integration tests are in place; the `cmd://` connector below stays deferred to the rest of phase 5.
+
 The Docker `connhelper` move: a subcommand that connects to the local daemon socket and pipes bytes stdin↔socket (`tokio::io::copy_bidirectional`). ~50 lines, no new trust surface — the remote user still needs local UDS access on the daemon machine.
 
 - Enables today, with zero further daemon work:

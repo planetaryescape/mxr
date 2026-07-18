@@ -44,3 +44,4 @@ Answer before (or during) the phase that needs them:
 
 - 2026-07-18 — discovery complete; plan drafted; pre-existing web-bridge issues fixed (`ClientKind::Web`, orphan `ipc.rs` deleted).
 - 2026-07-18 — Phase 2 corpus implemented (14/14 scenarios, double-run clean); two behaviors pinned: event source tag = Cli, silent close on malformed frames.
+- 2026-07-18 — Phase 5c (`mxr daemon dial-stdio`) pulled forward as an independent side-track: client-side byte-pipe proxy shipped ahead of the adapter commitment (phase 4). The `cmd://` connector and all server-side stdio/TCP work remain in phase 5.

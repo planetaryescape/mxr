@@ -11,6 +11,7 @@ pub mod completions;
 pub mod config;
 pub mod contacts;
 pub mod count;
+pub mod daemon;
 pub mod decisions;
 pub mod deliveries;
 pub mod demo;

@@ -656,8 +656,28 @@ mod tests {
             let requests = llm.requests.lock().expect("requests");
             assert_eq!(requests.len(), 1);
             let prompt = &requests[0].messages[1].content;
-            assert!(prompt.contains("Relationship context (weak background only"));
-            assert!(prompt.contains("Alice prefers launch context before asks."));
+            // The mail-derived relationship context must sit INSIDE the
+            // untrusted-content markers, not merely be present.
+            let begin = prompt
+                .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+                .expect("begin marker present");
+            let end = prompt
+                .find(mxr_llm::UNTRUSTED_MAIL_END)
+                .expect("end marker present");
+            let header = prompt
+                .find("Relationship context (weak background only")
+                .expect("relationship header present");
+            let summary_text = prompt
+                .find("Alice prefers launch context before asks.")
+                .expect("relationship summary present");
+            assert!(
+                begin < header && header < end,
+                "relationship context header must be inside the untrusted markers"
+            );
+            assert!(
+                begin < summary_text && summary_text < end,
+                "relationship summary text must be inside the untrusted markers"
+            );
         }
         let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
         assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)

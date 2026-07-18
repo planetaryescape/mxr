@@ -26,6 +26,13 @@
 //!   `std::process::exit`, because returning normally would hang the runtime's
 //!   shutdown while it tries to join that uncancellable blocking read.
 //!
+//! Because that read cannot be cancelled, *every* post-pump exit — clean or
+//! error — leaves via [`run`]'s `std::process::exit` (0 on clean close, 1 after
+//! writing the error to stderr); there is no `?` once piping has begun.
+//! Downstream (socket -> stdout) write failures propagate as errors; upstream
+//! (stdin -> socket) failures are normalized to clean only when they are the
+//! daemon's expected peer-close (`BrokenPipe`/`ConnectionReset`).
+//!
 //! ## stdout discipline
 //!
 //! Once piping begins, stdout carries only socket bytes. Nothing on this path
@@ -33,9 +40,10 @@
 //! - daemon autostart status (`ensure_daemon_running`) prints only to stderr;
 //! - tracing is file-only in this mode (`init_tracing(false)`, enforced by the
 //!   dispatcher in `lib.rs`), so no log line can reach stdout;
-//! - a connect failure returns an error that the process wrapper renders to
-//!   stderr and turns into a non-zero exit.
+//! - a connect (or pump) failure returns an error that [`run`] renders to
+//!   stderr and turns into a non-zero exit — never to stdout.
 
+use std::io::Write as _;
 use std::path::Path;
 
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
@@ -47,25 +55,35 @@ use tokio::net::UnixStream;
 /// stdin/stdout to the daemon socket until the daemon closes its side.
 pub async fn run() -> anyhow::Result<()> {
     // Convention: CLI commands ensure the local daemon is up before talking to
-    // it. Every progress message `ensure_daemon_running` emits goes to stderr,
-    // so stdout stays byte-clean before the first piped socket byte.
+    // it. This runs before any byte is piped and before stdin is ever read, so a
+    // normal `?` here is safe; its progress output goes to stderr, keeping
+    // stdout byte-clean.
     crate::server::ensure_daemon_running().await?;
     let socket_path = crate::state::AppState::socket_path();
-    pipe_stdio(&socket_path, tokio::io::stdin(), tokio::io::stdout()).await?;
-    // The socket -> stdout direction finished (the daemon closed) and stdout is
-    // flushed. The stdin -> socket direction may still be parked in tokio's
-    // uncancellable blocking stdin read; a normal return would hang runtime
-    // shutdown waiting to join that thread, so exit explicitly.
-    std::process::exit(0)
+
+    // Once piping begins, stdin may be parked in tokio's uncancellable blocking
+    // read, so EVERY exit path must terminate the process explicitly — a normal
+    // return (even on error) would hang runtime shutdown trying to join that
+    // read. No `?` past this point.
+    match pipe_stdio(&socket_path, tokio::io::stdin(), tokio::io::stdout()).await {
+        Ok(()) => std::process::exit(0),
+        Err(error) => {
+            let mut stderr = std::io::stderr();
+            let _ = writeln!(stderr, "Error: {error:#}");
+            let _ = stderr.flush();
+            std::process::exit(1);
+        }
+    }
 }
 
 /// Connect to the daemon socket at `socket_path` and pump bytes between
 /// `(reader, writer)` and the socket, driving the socket -> `writer` direction
 /// as the lifetime anchor (see the module docs for the EOF contract).
 ///
-/// Split out from [`run`] so tests can drive the real piping path over an
-/// in-memory reader/writer without touching the process's stdin/stdout — and
-/// without the `std::process::exit` that `run` needs for real stdin.
+/// Returns `Ok` on a clean close and `Err` on a genuine pump failure. Split out
+/// from [`run`] so tests can drive the real piping path over an in-memory
+/// reader/writer without touching the process's stdin/stdout — and without the
+/// `std::process::exit` that `run` needs for real stdin.
 async fn pipe_stdio<R, W>(socket_path: &Path, reader: R, writer: W) -> anyhow::Result<()>
 where
     R: AsyncRead + Unpin,
@@ -82,17 +100,33 @@ where
     let mut writer = writer;
 
     // Upstream: local input (stdin) -> socket. On input EOF, half-close the
-    // socket write side so the daemon sees end-of-input but can still reply.
-    // Errors here (e.g. a broken pipe once the daemon has gone) are expected;
-    // `downstream` owns the exit.
+    // socket write side (SHUT_WR) so the daemon sees end-of-input but can still
+    // finish replying. A write or shutdown failure *after the daemon closed its
+    // read side* surfaces as `BrokenPipe`/`ConnectionReset` — the normal end of
+    // a half-duplex exchange, normalized to clean because reporting the close is
+    // `downstream`'s job. Anything else is a genuine input or half-close failure
+    // (a failed SHUT_WR can leave the daemon waiting for EOF forever), so it is
+    // propagated.
     let upstream = async {
-        let _ = tokio::io::copy(&mut reader, &mut sock_write).await;
-        let _ = sock_write.shutdown().await;
+        if let Err(error) = tokio::io::copy(&mut reader, &mut sock_write).await {
+            if !is_expected_peer_close(&error) {
+                return Err(anyhow::Error::new(error).context("stdin -> socket pump failed"));
+            }
+        }
+        if let Err(error) = sock_write.shutdown().await {
+            if !is_expected_peer_close(&error) {
+                return Err(
+                    anyhow::Error::new(error).context("half-closing the socket write side failed")
+                );
+            }
+        }
+        anyhow::Ok(())
     };
 
     // Downstream: socket -> local output (stdout). The lifetime anchor: it
-    // completes when the daemon closes its side, and its completion — not the
-    // upstream's — decides when the proxy exits.
+    // completes when the daemon closes its side. Unlike upstream its errors are
+    // NOT normalized — a write failure here means the stdout consumer went away,
+    // which fails the session and must surface as a non-zero exit.
     let downstream = async {
         tokio::io::copy(&mut sock_read, &mut writer).await?;
         writer.flush().await?;
@@ -106,16 +140,30 @@ where
     loop {
         tokio::select! {
             biased;
-            // Daemon closed (or finished sending): stdout is flushed, so return
-            // WITHOUT waiting on `upstream`. With real stdin that direction is
-            // parked in an uncancellable blocking read — making it a join
-            // condition is exactly the hang this avoids.
+            // Daemon closed (or a stdout write failed): return the Result
+            // verbatim WITHOUT waiting on `upstream`, whose real-stdin read is
+            // parked in an uncancellable blocking read. This is the hang the
+            // two-direction split exists to avoid.
             result = &mut downstream => return result,
-            // stdin reached EOF and the socket write half is shut down; keep
+            // stdin drained and the socket write half is shut down. A genuine
+            // upstream failure aborts the proxy; a clean finish just means keep
             // draining `downstream` until the daemon closes.
-            () = &mut upstream, if !upstream_done => upstream_done = true,
+            result = &mut upstream, if !upstream_done => {
+                result?;
+                upstream_done = true;
+            }
         }
     }
+}
+
+/// A socket write after the daemon has closed its read side surfaces as
+/// `BrokenPipe`/`ConnectionReset` — the normal end of a half-duplex exchange,
+/// not a failure. Every other error kind is genuine.
+fn is_expected_peer_close(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
+    )
 }
 
 #[cfg(test)]

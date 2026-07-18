@@ -20,9 +20,7 @@ use std::time::Duration;
 
 use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
-use mxr_protocol::{
-    ClientKind, IpcCodec, IpcMessage, IpcPayload, Request, Response, ResponseData,
-};
+use mxr_protocol::{ClientKind, IpcCodec, IpcMessage, IpcPayload, Request, Response, ResponseData};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixListener;
 use tokio::process::{Child, Command};
@@ -161,7 +159,10 @@ async fn ping_pong_byte_identical_over_real_process() {
         .await
         .expect("child did not exit")
         .unwrap();
-    assert!(status.success(), "clean stdin EOF should exit 0, got {status:?}");
+    assert!(
+        status.success(),
+        "clean stdin EOF should exit 0, got {status:?}"
+    );
 }
 
 /// Daemon-closes-first path (the hang regression): with stdin still open, the
@@ -199,6 +200,35 @@ async fn daemon_closing_first_exits_without_waiting_on_stdin() {
     drop(stdin);
 }
 
+/// Downstream write-error path: the daemon answers, but the consumer has closed
+/// the child's stdout. With stdin still open, the forced stdout write failure
+/// must exit the process NONZERO within a bounded wait — not hang on the parked
+/// stdin read, and not dissolve into a clean exit 0.
+#[tokio::test]
+async fn downstream_write_error_exits_nonzero() {
+    let iso = isolated("we");
+    let _server = spawn_fake_daemon(&iso.sock, false);
+    let mut child = spawn_dial_stdio(&iso.envs);
+    let mut stdin = child.stdin.take().unwrap();
+    // Close our read end of the child's stdout so its Pong write hits EPIPE.
+    // Keep stdin OPEN: a clean stdin EOF must not be the reason it exits.
+    drop(child.stdout.take().unwrap());
+
+    stdin.write_all(&ping_frame()).await.unwrap();
+    stdin.flush().await.unwrap();
+
+    let status = tokio::time::timeout(BOUND, child.wait())
+        .await
+        .expect("child did not exit after stdout closed — HANG regression")
+        .unwrap();
+    assert!(
+        !status.success(),
+        "a downstream write error must exit nonzero, got {status:?}"
+    );
+
+    drop(stdin);
+}
+
 /// Failure path: an unstartable instance (config/data/socket under a regular
 /// file) makes the process exit nonzero, and stdout stays empty.
 #[tokio::test]
@@ -217,7 +247,10 @@ async fn unstartable_instance_exits_nonzero_with_empty_stdout() {
             blocker.join("config").display().to_string(),
         ),
         ("MXR_DATA_DIR", blocker.join("data").display().to_string()),
-        ("MXR_SOCKET_PATH", blocker.join("mxr.sock").display().to_string()),
+        (
+            "MXR_SOCKET_PATH",
+            blocker.join("mxr.sock").display().to_string(),
+        ),
         ("MXR_ACTIVITY", "off".to_string()),
     ];
 

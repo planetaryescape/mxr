@@ -38,7 +38,7 @@ pub enum DaemonAction {
     /// Pipe raw bytes between stdin/stdout and the local daemon's Unix
     /// socket (the Docker `connhelper` model). Lets any transport that can
     /// exec a process and pipe stdio reach the daemon — for example
-    /// `ssh host mxr daemon dial-stdio` or
+    /// `ssh -T host mxr daemon dial-stdio` or
     /// `docker exec -i <container> mxr daemon dial-stdio`. The caller still
     /// needs local Unix-socket access on the daemon's machine, so this adds
     /// no new trust surface.

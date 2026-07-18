@@ -43,3 +43,4 @@ Answer before (or during) the phase that needs them:
 ## Status log
 
 - 2026-07-18 — discovery complete; plan drafted; pre-existing web-bridge issues fixed (`ClientKind::Web`, orphan `ipc.rs` deleted).
+- 2026-07-18 — Phase 2 corpus implemented (14/14 scenarios, double-run clean); two behaviors pinned: event source tag = Cli, silent close on malformed frames.

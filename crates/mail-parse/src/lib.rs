@@ -49,7 +49,7 @@ pub enum ParseError {
 /// *unfolded* values, so a legitimate value contains no CR/LF; any embedded
 /// CR/LF here is anomalous and is collapsed to a single space. A pair whose
 /// NAME is not a valid RFC 5322 field name is dropped entirely (see
-/// [`is_valid_header_name`]). This is general hardening — every consumer of the
+/// `is_valid_header_name`). This is general hardening — every consumer of the
 /// produced block (the `mail_parser` display path, all provider parse callers,
 /// `delivered_to_addresses`) benefits.
 pub fn raw_headers_from_pairs(headers: &[(String, String)]) -> String {

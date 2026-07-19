@@ -34,6 +34,7 @@ ALLOW = {
     "mxr-provider-smtp": {"mxr-core", "mxr-outbound"},
     "mxr-test-support": set(),
     "mxr-tui": {
+        "mxr-client",
         "mxr-compose",
         "mxr-config",
         "mxr-core",
@@ -42,6 +43,7 @@ ALLOW = {
         "mxr-reader",
     },
     "mxr-web": {
+        "mxr-client",
         "mxr-compose",
         "mxr-config",
         "mxr-core",

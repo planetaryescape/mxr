@@ -7,6 +7,7 @@ fn invalid_draft() -> Draft {
     Draft {
         id: DraftId::new(),
         account_id: AccountId::new(),
+        from: None,
         intent: DraftIntent::New,
         reply_headers: None,
         to: vec![Address {

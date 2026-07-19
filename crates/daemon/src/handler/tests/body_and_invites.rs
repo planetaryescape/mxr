@@ -231,6 +231,10 @@ async fn dispatch_respond_invite_matches_account_alias_attendee() {
         })
     ));
     assert_eq!(fake.sent_drafts().len(), 1);
+    // The RSVP is sent From the matched owned alias, so From and ATTENDEE agree.
+    let froms = fake.sent_from_addresses();
+    assert_eq!(froms.len(), 1);
+    assert_eq!(froms[0].email, "alias@example.com");
     let stored = state
         .store
         .get_calendar_invite_for_message(&message_id)
@@ -1117,6 +1121,7 @@ async fn dispatch_schedule_send_persists_and_loop_flushes_when_due() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::id::DraftId::new(),
         account_id: account.id.clone(),
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -1220,6 +1225,7 @@ async fn dispatch_cancel_scheduled_send_prevents_flush() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::id::DraftId::new(),
         account_id: account.id.clone(),
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -1370,4 +1376,162 @@ async fn modify_labels_on_folder_provider_does_not_leave_one_message_in_two_fold
             .any(|envelope| envelope.label_provider_ids == vec!["Archive".to_string()]),
         "expected archive copy after folder add"
     );
+}
+
+/// Seed a METHOD:REQUEST calendar invite addressed to `attendee` on `account_id`,
+/// returning its message id. Mirrors the shape sync produces.
+async fn seed_request_invite(
+    state: &AppState,
+    account_id: &mxr_core::AccountId,
+    provider_id: &str,
+    attendee: &str,
+) -> mxr_core::MessageId {
+    let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .account_id(account_id.clone())
+        .provider_id(provider_id)
+        .subject("Team sync")
+        .sender_address("Organizer", "organizer@example.com")
+        .recipient_address(Some("Attendee"), attendee)
+        .has_attachments(true)
+        .build();
+    let message_id = envelope.id.clone();
+    state.store.upsert_envelope(&envelope).await.unwrap();
+    state
+        .store
+        .insert_body(&mxr_core::types::MessageBody {
+            message_id: message_id.clone(),
+            text_plain: Some("Team sync".into()),
+            text_html: None,
+            attachments: Vec::new(),
+            fetched_at: chrono::Utc::now(),
+            metadata: mxr_core::types::MessageMetadata {
+                calendar: Some(mxr_core::types::CalendarMetadata {
+                    method: Some("REQUEST".into()),
+                    summary: Some("Team sync".into()),
+                    uid: Some(format!("{provider_id}-uid@example.com")),
+                    organizer: Some(mxr_core::types::CalendarPerson {
+                        email: "organizer@example.com".into(),
+                        name: Some("Organizer".into()),
+                        uri: Some("mailto:organizer@example.com".into()),
+                    }),
+                    attendees: vec![mxr_core::types::CalendarAttendee {
+                        email: attendee.into(),
+                        name: Some("Attendee".into()),
+                        uri: Some(format!("mailto:{attendee}")),
+                        partstat: Some("NEEDS-ACTION".into()),
+                        role: Some("REQ-PARTICIPANT".into()),
+                        rsvp: Some(true),
+                    }],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+    message_id
+}
+
+fn invite_reply_draft(
+    account_id: mxr_core::AccountId,
+    from: &str,
+    reply: mxr_core::types::InlineCalendarReply,
+) -> mxr_core::types::Draft {
+    let now = chrono::Utc::now();
+    mxr_core::types::Draft {
+        id: mxr_core::DraftId::new(),
+        account_id,
+        from: Some(mxr_core::types::Address {
+            name: None,
+            email: from.to_string(),
+        }),
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::Reply,
+        to: vec![mxr_core::types::Address {
+            name: None,
+            email: "organizer@example.com".to_string(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Re: Team sync".to_string(),
+        body_markdown: "See you there.".to_string(),
+        attachments: vec![],
+        inline_calendar_reply: Some(reply),
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+fn send_invite_reply_msg(draft: mxr_core::types::Draft) -> IpcMessage {
+    IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::SendDraft {
+            draft,
+            override_safety_token: None,
+        }),
+    }
+}
+
+#[tokio::test]
+async fn send_rejects_inline_reply_whose_attendee_differs_from_the_send_from() {
+    // The invite is addressed to the alias, but the draft was tampered to send
+    // From the primary (a different owned address). ATTENDEE must equal From.
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    state
+        .store
+        .add_account_address(&account_id, "hello@example.com", false)
+        .await
+        .unwrap();
+    let source =
+        seed_request_invite(&state, &account_id, "tamper-attendee", "hello@example.com").await;
+    let state = Arc::new(state);
+
+    let draft = invite_reply_draft(
+        account_id,
+        "user@example.com", // send From the primary…
+        mxr_core::types::InlineCalendarReply {
+            source_message_id: source,
+            attendee_email: "user@example.com".into(), // …claiming to RSVP as primary
+            partstat: mxr_core::types::CalendarPartstat::Accepted,
+            ics_body: "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".into(),
+        },
+    );
+    let resp = handle_request(&state, &send_invite_reply_msg(draft)).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Error { message, .. }) => {
+            assert!(message.to_lowercase().contains("invalid"), "{message}");
+            assert!(message.contains("does not match"), "{message}");
+        }
+        other => panic!("expected an error, got {other:?}"),
+    }
+    assert!(fake.sent_drafts().is_empty());
+}
+
+#[tokio::test]
+async fn send_rejects_inline_reply_with_an_unknown_source_message() {
+    // A tampered/forged source that isn't a real invite for this account must
+    // never send (and never touch PARTSTAT).
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    let state = Arc::new(state);
+
+    let draft = invite_reply_draft(
+        account_id,
+        "user@example.com",
+        mxr_core::types::InlineCalendarReply {
+            source_message_id: mxr_core::MessageId::new(), // no such invite
+            attendee_email: "user@example.com".into(),
+            partstat: mxr_core::types::CalendarPartstat::Accepted,
+            ics_body: "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".into(),
+        },
+    );
+    let resp = handle_request(&state, &send_invite_reply_msg(draft)).await;
+    assert!(
+        matches!(resp.payload, IpcPayload::Response(Response::Error { .. })),
+        "unknown invite source must be rejected, got {:?}",
+        resp.payload
+    );
+    assert!(fake.sent_drafts().is_empty());
 }

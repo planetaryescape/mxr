@@ -1007,9 +1007,17 @@ pub enum Command {
         /// File path to attach (repeatable)
         #[arg(long, action = clap::ArgAction::Append)]
         attach: Vec<PathBuf>,
-        /// Account name to send from
+        /// Account to send from, or an owned address to send as. Accepts an
+        /// account name/key, the account's primary email, or any registered
+        /// alias (`mxr accounts addresses`); an alias sets both the account
+        /// and the From address. When one alias is registered on several
+        /// accounts, disambiguate with `--account`.
         #[arg(long)]
         from: Option<String>,
+        /// Disambiguate which account to send from when `--from` names an
+        /// address registered on more than one account.
+        #[arg(long)]
+        account: Option<String>,
         /// Insert this signature by name instead of the scoped default
         #[arg(long, conflicts_with = "no_signature")]
         signature: Option<String>,
@@ -1042,6 +1050,10 @@ pub enum Command {
         message_id: String,
         #[arg(long)]
         account: Option<String>,
+        /// Send from this owned address (the account primary or a registered
+        /// alias). Defaults to the address the original was delivered to.
+        #[arg(long)]
+        from: Option<String>,
         /// Inline reply body (skip $EDITOR)
         #[arg(long)]
         body: Option<String>,
@@ -1082,6 +1094,10 @@ pub enum Command {
         message_id: String,
         #[arg(long)]
         account: Option<String>,
+        /// Send from this owned address (the account primary or a registered
+        /// alias). Defaults to the address the original was delivered to.
+        #[arg(long)]
+        from: Option<String>,
         /// Inline reply body
         #[arg(long)]
         body: Option<String>,
@@ -1122,6 +1138,10 @@ pub enum Command {
         message_id: String,
         #[arg(long)]
         account: Option<String>,
+        /// Send from this owned address (the account primary or a registered
+        /// alias). Defaults to the address the original was delivered to.
+        #[arg(long)]
+        from: Option<String>,
         /// Forward to recipient(s)
         #[arg(long)]
         to: Option<String>,

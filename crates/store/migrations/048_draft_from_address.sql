@@ -1,0 +1,16 @@
+-- =========================================================================
+-- Per-message From override for drafts.
+--
+-- `from_addr` is a JSON-encoded `Address` (`{"name":…,"email":…}`) naming the
+-- owned address a draft should be sent from. NULL — the default and the value
+-- for every pre-existing draft — means "send from the account's primary
+-- address", preserving prior behaviour.
+--
+-- The daemon validates at send time that the chosen address is an owned
+-- address (primary or a registered alias) of the sending account; an
+-- unowned From is rejected before the provider is invoked.
+--
+-- Applied in code via `MigrationKind::AddColumn` (see `pool.rs`); this file is
+-- the canonical record of the schema change.
+-- =========================================================================
+ALTER TABLE drafts ADD COLUMN from_addr TEXT;

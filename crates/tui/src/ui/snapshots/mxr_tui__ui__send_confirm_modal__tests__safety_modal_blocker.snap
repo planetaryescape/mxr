@@ -1,6 +1,5 @@
 ---
 source: crates/tui/src/ui/send_confirm_modal.rs
-assertion_line: 340
 expression: rendered
 ---
 "                                                                                                                        "
@@ -10,6 +9,7 @@ expression: rendered
 "                                                                                                                        "
 "        ╭ Draft Ready ─────────────────────────────────────────────────────────────────────────────────────────╮        "
 "        │Send this draft?                                                                                      │        "
+"        │From: me@example.com                                                                                  │        "
 "        │Subject: Hello                                                                                        │        "
 "        │Voice match: not scored for manual edits                                                              │        "
 "        │Humanizer: scored on AI draft outputs                                                                 │        "
@@ -20,7 +20,6 @@ expression: rendered
 "        │Press Ctrl-O to override and send (single use).                                                       │        "
 "        │                                                                                                      │        "
 "        │[e] edit again   [^O] override + send   [Esc] discard                                                 │        "
-"        │                                                                                                      │        "
 "        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯        "
 "                                                                                                                        "
 "                                                                                                                        "

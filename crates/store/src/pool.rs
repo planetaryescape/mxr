@@ -805,6 +805,17 @@ const MIGRATIONS: &[Migration] = &[
         name: "message_id_header_index",
         kind: MigrationKind::Sql(include_str!("../migrations/047_message_id_header_index.sql")),
     },
+    Migration {
+        version: 48,
+        name: "draft_from_address",
+        kind: MigrationKind::AddColumn {
+            table: "drafts",
+            column: "from_addr",
+            // Per-message From override, JSON-encoded `Address`. NULL means
+            // "send from the account's primary address" (default behaviour).
+            sql: "ALTER TABLE drafts ADD COLUMN from_addr TEXT",
+        },
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

@@ -179,6 +179,23 @@ async fn compose_editor_finish_stamps_safety_report_onto_pending() {
     // exact shape the daemon mints for blocker verdicts.
     let (bg, mut bg_rx) = mpsc::unbounded_channel::<crate::ipc::IpcRequest>();
     let fake_daemon = tokio::spawn(async move {
+        // The editor-finished handler first validates the effective From via
+        // ResolveSendFrom (preview parity), then runs CheckDraftSafety.
+        let from_req = bg_rx.recv().await.expect("resolve-from IPC fired");
+        assert!(
+            matches!(from_req.request, Request::ResolveSendFrom { .. }),
+            "expected ResolveSendFrom first, got: {:?}",
+            from_req.request
+        );
+        let _ = from_req.reply.send(Ok(mxr_protocol::Response::Ok {
+            data: mxr_protocol::ResponseData::ResolvedSendFrom {
+                from: mxr_core::types::Address {
+                    name: None,
+                    email: "me@example.com".into(),
+                },
+            },
+        }));
+
         let req = bg_rx.recv().await.expect("safety check IPC fired");
         // Verify the wiring sent a CheckDraftSafety, not some other
         // request.
@@ -256,6 +273,7 @@ fn pressing_s_with_blocked_verdict_is_a_noop() {
         override_token: Some("tok-1".into()),
         suggested_collaborators: vec![],
         invite_reply: None,
+        resolved_from: None,
     });
     let mutations_before = app.pending_mutation_queue.len();
 
@@ -310,6 +328,7 @@ fn ctrl_o_dispatches_send_with_override_token() {
         override_token: Some("tok-override-9".into()),
         suggested_collaborators: vec![],
         invite_reply: None,
+        resolved_from: None,
     });
 
     let key = KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL);
@@ -470,6 +489,7 @@ fn ctrl_a_adds_top_suggestion_to_cc() {
         safety_check_failed: None,
         override_token: None,
         invite_reply: None,
+        resolved_from: None,
         suggested_collaborators: vec![mxr_protocol::SuggestedRecipientData {
             email: "bob@example.com".into(),
             display_name: None,

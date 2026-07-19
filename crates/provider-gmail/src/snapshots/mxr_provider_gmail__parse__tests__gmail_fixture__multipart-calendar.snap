@@ -11,10 +11,10 @@ from:
 in_reply_to: ~
 list_id: ~
 message_id: "<calendar@example.com>"
-plain_excerpt: ~
+plain_excerpt: Please join the planning meeting.
 references: []
 subject: Planning meeting
-text_plain_format: None
+text_plain_format: Some(Fixed)
 to:
   - email: bob@example.com
     name: Bob Example

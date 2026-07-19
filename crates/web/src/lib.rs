@@ -801,6 +801,7 @@ async fn send_compose_session(
     }
     remove_compose_file(Path::new(&request.draft_path)).await?;
     remove_compose_attachment_dir(Path::new(&request.draft_path)).await?;
+    remove_invite_reply_sidecar(Path::new(&request.draft_path)).await?;
     Ok(Json(json!({ "ok": true, "draft_id": draft_id })))
 }
 
@@ -947,6 +948,7 @@ async fn discard_compose_session(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     remove_compose_file(Path::new(&request.draft_path)).await?;
     remove_compose_attachment_dir(Path::new(&request.draft_path)).await?;
+    remove_invite_reply_sidecar(Path::new(&request.draft_path)).await?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -1808,7 +1810,17 @@ async fn create_compose_session(
     request: ComposeSessionStartRequest,
 ) -> Result<serde_json::Value, BridgeError> {
     let (account_id, from) = default_account(socket_path).await?;
-    let (kind, account_id, cursor_line) = match request.kind {
+    // Set by the invite-with-comment arm so the iTIP REPLY payload (ICS,
+    // PARTSTAT, source message) survives to send time; persisted alongside the
+    // draft file so the stateless send request can rebuild the Draft's
+    // `inline_calendar_reply` instead of sending a plain email with no ATTENDEE.
+    let mut invite_reply: Option<mxr_core::types::InlineCalendarReply> = None;
+    // Each arm yields the sender identity to seed: `New` uses the default
+    // account's address; reply/forward/invite use the daemon-computed default
+    // From *for the message's own account* (an owned address), never the
+    // global default account's — otherwise a reply on a non-default account
+    // would seed an address that account doesn't own and be rejected on send.
+    let (kind, account_id, cursor_line, from_seed) = match request.kind {
         ComposeSessionKindRequest::New => (
             ComposeKind::New {
                 to: request.to.unwrap_or_default(),
@@ -1816,6 +1828,7 @@ async fn create_compose_session(
             },
             account_id,
             None::<usize>,
+            from,
         ),
         ComposeSessionKindRequest::Reply | ComposeSessionKindRequest::ReplyAll => {
             let message_id = request
@@ -1835,6 +1848,7 @@ async fn create_compose_session(
                 ResponseData::ReplyContext { context } => context,
                 _ => return Err(BridgeError::UnexpectedResponse),
             };
+            let from_seed = context.from.clone();
             (
                 ComposeKind::Reply {
                     reply_all: matches!(request.kind, ComposeSessionKindRequest::ReplyAll),
@@ -1848,6 +1862,7 @@ async fn create_compose_session(
                 },
                 envelope.account_id,
                 None,
+                from_seed,
             )
         }
         ComposeSessionKindRequest::Forward => {
@@ -1867,6 +1882,7 @@ async fn create_compose_session(
                 ResponseData::ForwardContext { context } => context,
                 _ => return Err(BridgeError::UnexpectedResponse),
             };
+            let from_seed = context.from.clone();
             (
                 ComposeKind::Forward {
                     subject: context.subject,
@@ -1874,6 +1890,7 @@ async fn create_compose_session(
                 },
                 envelope.account_id,
                 None,
+                from_seed,
             )
         }
         ComposeSessionKindRequest::InviteReply => {
@@ -1903,6 +1920,29 @@ async fn create_compose_session(
                 ResponseData::InviteResponsePreview { preview } => preview,
                 _ => return Err(BridgeError::UnexpectedResponse),
             };
+            // RSVP-with-comment sends From the matched ATTENDEE alias and must
+            // carry the iTIP REPLY payload so From/ATTENDEE agree and the
+            // PARTSTAT is updated after send (parity with the TUI path).
+            let from_seed = preview.attendee_email.clone();
+            invite_reply = Some(mxr_core::types::InlineCalendarReply {
+                source_message_id: envelope.id.clone(),
+                attendee_email: preview.attendee_email.clone(),
+                partstat: match action {
+                    mxr_protocol::CalendarInviteActionData::Accept => {
+                        mxr_core::types::CalendarPartstat::Accepted
+                    }
+                    mxr_protocol::CalendarInviteActionData::Tentative => {
+                        mxr_core::types::CalendarPartstat::Tentative
+                    }
+                    mxr_protocol::CalendarInviteActionData::Decline => {
+                        mxr_core::types::CalendarPartstat::Declined
+                    }
+                },
+                // Store only the trusted triple (source, attendee, partstat) —
+                // the ICS is rebuilt server-side at the send choke point, so no
+                // ICS bytes are persisted in (or trusted from) the sidecar.
+                ics_body: String::new(),
+            });
             (
                 ComposeKind::Reply {
                     reply_all: false,
@@ -1916,20 +1956,24 @@ async fn create_compose_session(
                 },
                 envelope.account_id,
                 None,
+                from_seed,
             )
         }
     };
 
     let account = account_summary(socket_path, &account_id).await?;
-    let compose_from = if from.trim().is_empty() {
+    let compose_from = if from_seed.trim().is_empty() {
         account.email.clone()
     } else {
-        from
+        from_seed
     };
     let (draft_path, resolved_cursor_line) =
         mxr_compose::create_draft_file_async(kind, &compose_from)
             .await
             .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    if let Some(reply) = &invite_reply {
+        write_invite_reply_sidecar(&draft_path, reply).await?;
+    }
     let mut session = load_compose_session(&draft_path).await?;
     if let Some(cursor_line) = cursor_line {
         session["cursorLine"] = json!(cursor_line);
@@ -2044,6 +2088,8 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
     Ok(Draft {
         id: DraftId::new(),
         account_id: parse_account_id(account_id)?,
+        from: mxr_compose::draft_codec::parse_from_field(&frontmatter.from)
+            .map_err(|error| BridgeError::Ipc(error.to_string()))?,
         reply_headers: frontmatter
             .in_reply_to
             .as_ref()
@@ -2059,7 +2105,10 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
         subject: frontmatter.subject,
         body_markdown: body,
         attachments: frontmatter.attach.into_iter().map(PathBuf::from).collect(),
-        inline_calendar_reply: None,
+        // Rebuild the iTIP REPLY payload for an invite-with-comment session so
+        // the outbound builder emits the ATTENDEE part and the daemon updates
+        // PARTSTAT after send (parity with the TUI path).
+        inline_calendar_reply: read_invite_reply_sidecar(Path::new(draft_path)).await?,
         created_at: now,
         updated_at: now,
     })
@@ -2204,6 +2253,46 @@ async fn remove_compose_file(path: &Path) -> Result<(), BridgeError> {
     mxr_compose::delete_draft_file_async(path)
         .await
         .map_err(|error| BridgeError::Ipc(error.to_string()))
+}
+
+/// Sidecar holding a compose session's iTIP REPLY payload, next to the draft
+/// file (`…/mxr-draft-<id>.md.invite.json`). The compose file format has no
+/// place for the ICS/PARTSTAT, so we persist it here and rebuild the Draft's
+/// `inline_calendar_reply` at send time.
+fn invite_reply_sidecar_path(draft_path: &Path) -> PathBuf {
+    let mut name = draft_path.as_os_str().to_os_string();
+    name.push(".invite.json");
+    PathBuf::from(name)
+}
+
+async fn write_invite_reply_sidecar(
+    draft_path: &Path,
+    reply: &mxr_core::types::InlineCalendarReply,
+) -> Result<(), BridgeError> {
+    let json = serde_json::to_vec(reply).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    tokio::fs::write(invite_reply_sidecar_path(draft_path), json)
+        .await
+        .map_err(|error| BridgeError::Ipc(error.to_string()))
+}
+
+async fn read_invite_reply_sidecar(
+    draft_path: &Path,
+) -> Result<Option<mxr_core::types::InlineCalendarReply>, BridgeError> {
+    match tokio::fs::read(invite_reply_sidecar_path(draft_path)).await {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|error| BridgeError::Ipc(error.to_string())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(BridgeError::Ipc(error.to_string())),
+    }
+}
+
+async fn remove_invite_reply_sidecar(draft_path: &Path) -> Result<(), BridgeError> {
+    match tokio::fs::remove_file(invite_reply_sidecar_path(draft_path)).await {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(BridgeError::Ipc(error.to_string())),
+    }
 }
 
 fn compose_attachment_dir(path: &Path) -> Result<PathBuf, BridgeError> {

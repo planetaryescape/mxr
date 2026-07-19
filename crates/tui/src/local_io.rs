@@ -285,6 +285,7 @@ mod tests {
             override_token: None,
             suggested_collaborators: vec![],
             invite_reply: None,
+            resolved_from: None,
         }
     }
 

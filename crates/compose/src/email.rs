@@ -19,6 +19,7 @@ mod tests {
         Draft {
             id: DraftId::new(),
             account_id: AccountId::new(),
+            from: None,
             reply_headers: Some(ReplyHeaders {
                 in_reply_to: "<parent@example.com>".into(),
                 references: vec!["<root@example.com>".into()],

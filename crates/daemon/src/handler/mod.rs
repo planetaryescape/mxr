@@ -1283,6 +1283,9 @@ async fn dispatch(
         Request::CheckDraftSafety { draft, context } => {
             mutations::check_draft_safety_request(state, draft, context).await
         }
+        Request::ResolveSendFrom { account_id, from } => {
+            mutations::resolve_send_from(state, account_id, from.as_ref()).await
+        }
         Request::ExtractDraftCommitments { draft } => {
             commitments_extract::extract_request(state, draft).await
         }
@@ -1835,6 +1838,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::DraftRefine { .. }
         | Request::PrepareReply { .. }
         | Request::PrepareForward { .. }
+        | Request::ResolveSendFrom { .. }
         | Request::ListOwedReplies { .. }
         | Request::ListDecisionLog { .. }
         | Request::GetDecision { .. }
@@ -2132,6 +2136,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SaveDraft { .. } => "save_draft",
         Request::SendStoredDraft { .. } => "send_stored_draft",
         Request::CheckDraftSafety { .. } => "check_draft_safety",
+        Request::ResolveSendFrom { .. } => "resolve_send_from",
         Request::ExtractDraftCommitments { .. } => "extract_draft_commitments",
         Request::ListOwedReplies { .. } => "list_owed_replies",
         Request::ArchiveAsk { .. } => "archive_ask",
@@ -2242,6 +2247,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ClearSignatureDefault { account_id, .. }
         | Request::ResolveSignature { account_id, .. } => account_id.as_ref(),
         Request::GetSyncStatus { account_id } => Some(account_id),
+        Request::ResolveSendFrom { account_id, .. } => Some(account_id),
         Request::SendDraft { draft, .. }
         | Request::SaveDraft { draft }
         | Request::UpdateDraft { draft }

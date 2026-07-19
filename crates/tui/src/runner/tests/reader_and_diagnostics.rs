@@ -1268,6 +1268,7 @@ fn refine_pending_draft_saves_then_queues_refine_request() {
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: None,
+        resolved_from: None,
     });
 
     app.apply(Action::RefinePendingDraft);

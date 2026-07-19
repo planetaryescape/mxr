@@ -11,10 +11,10 @@ from:
 in_reply_to: ~
 list_id: ~
 message_id: "<nested@example.com>"
-plain_excerpt: ~
+plain_excerpt: Nested plain body.
 references: []
 subject: Nested multipart
-text_plain_format: None
+text_plain_format: Some(Fixed)
 to:
   - email: bob@example.com
     name: Bob

@@ -433,6 +433,7 @@ fn send_key_is_ignored_for_unchanged_draft_confirmation() {
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: None,
+        resolved_from: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -478,6 +479,7 @@ fn send_key_uses_pending_compose_account() {
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: None,
+        resolved_from: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -522,6 +524,7 @@ fn send_at_prompt_saves_draft_then_schedules_send() {
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: None,
+        resolved_from: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
@@ -583,6 +586,7 @@ fn remind_prompt_sends_draft_with_pending_reminder_time() {
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: None,
+        resolved_from: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
@@ -700,6 +704,7 @@ fn test_draft(subject: &str) -> Draft {
     Draft {
         id: DraftId::new(),
         account_id: AccountId::new(),
+        from: None,
         reply_headers: None,
         intent: DraftIntent::New,
         to: vec![Address {
@@ -885,6 +890,7 @@ fn send_key_is_ignored_for_missing_recipient_draft_confirmation() {
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: None,
+        resolved_from: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -927,6 +933,7 @@ fn save_key_saves_missing_recipient_draft_to_server() {
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: None,
+        resolved_from: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
@@ -975,6 +982,7 @@ fn edit_key_reopens_missing_recipient_draft() {
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: None,
+        resolved_from: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
@@ -1025,6 +1033,7 @@ fn escape_discards_missing_recipient_draft_confirmation_and_queues_cleanup() {
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: None,
+        resolved_from: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));

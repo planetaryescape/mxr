@@ -27,6 +27,7 @@ pub struct ComposeOptions {
     pub body_stdin: bool,
     pub attach: Vec<PathBuf>,
     pub from: Option<String>,
+    pub account: Option<String>,
     pub signature: Option<String>,
     pub no_signature: bool,
     pub yes: bool,
@@ -55,12 +56,22 @@ pub(super) fn resolve_compose_from_address(explicit_from: Option<String>) -> Str
 
 pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let account = resolve_compose_account(&mut client, options.from.as_deref()).await?;
+    let (account, from_override) = resolve_compose_sender(
+        &mut client,
+        options.from.as_deref(),
+        options.account.as_deref(),
+    )
+    .await?;
+    // Seed the draft's From with the chosen identity (an owned alias) when one
+    // was named, else the account primary.
+    let from_seed = from_override.unwrap_or_else(|| account.email.clone());
     let stdin_or_body = read_body_input(options.body, options.body_stdin)?;
+    // Resolve the signature for the *chosen* identity (from_seed), not just the
+    // account primary, so an alias send picks up the alias's signature.
     let signature = resolve_compose_signature(
         &mut client,
         &account.account_id,
-        &account.email,
+        &from_seed,
         SignatureContextData::New,
         options.signature.as_deref(),
         options.no_signature,
@@ -72,7 +83,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         cc: options.cc.clone().unwrap_or_default(),
         bcc: options.bcc.clone().unwrap_or_default(),
         subject: options.subject.clone().unwrap_or_default(),
-        from: account.email.clone(),
+        from: from_seed.clone(),
         attach: attachment_strings(&options.attach),
         signature: signature.as_ref().map(|signature| signature.name.clone()),
         ..Default::default()
@@ -96,7 +107,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
                 to: options.to.unwrap_or_default(),
                 subject: options.subject.unwrap_or_default(),
             },
-            &account.email,
+            &from_seed,
             signature.as_ref(),
         )?;
         rewrite_compose_frontmatter(
@@ -122,7 +133,9 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     validate_compose_draft(&frontmatter, &draft.body_markdown, options.yes)?;
 
     if options.dry_run {
-        print_draft_preview(&draft, options.yes, options.format)?;
+        let effective_from =
+            resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
+        print_draft_preview(&draft, &effective_from, options.yes, options.format)?;
         return Ok(());
     }
 
@@ -162,6 +175,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
 pub struct ReplyCommand {
     pub message_id: String,
     pub account: Option<String>,
+    pub from: Option<String>,
     pub body: Option<String>,
     pub body_stdin: bool,
     pub attach: Vec<PathBuf>,
@@ -185,6 +199,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
     let ReplyCommand {
         message_id,
         account,
+        from,
         body,
         body_stdin,
         attach,
@@ -234,11 +249,15 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
         thread_context: ctx.thread_context.clone(),
     };
 
+    // The chosen identity: an explicit `--from` override, else the
+    // daemon-computed delivered-to default. Drives both the signature (Fix 7)
+    // and the seeded From, so they stay consistent.
+    let effective_from = from_override_or(from.as_deref(), &ctx.from);
     let stdin_or_body = read_body_input(body, body_stdin)?;
     let signature = resolve_compose_signature(
         &mut client,
         &ctx.account_id,
-        &ctx.from,
+        &effective_from,
         SignatureContextData::Reply,
         signature.as_deref(),
         no_signature,
@@ -247,7 +266,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
     let (frontmatter, body_text, draft_file) = build_compose_draft(
         &mut client,
         kind,
-        &ctx.from,
+        &effective_from,
         stdin_or_body,
         dry_run,
         signature.as_ref(),
@@ -279,6 +298,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
 pub struct ForwardCommand {
     pub message_id: String,
     pub account: Option<String>,
+    pub from: Option<String>,
     pub to: Option<String>,
     pub body: Option<String>,
     pub body_stdin: bool,
@@ -294,6 +314,7 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
     let ForwardCommand {
         message_id,
         account,
+        from,
         to,
         body,
         body_stdin,
@@ -330,11 +351,12 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
         original_context: ctx.forwarded_content.clone(),
     };
 
+    let effective_from = from_override_or(from.as_deref(), &ctx.from);
     let stdin_or_body = read_body_input(body, body_stdin)?;
     let signature = resolve_compose_signature(
         &mut client,
         &ctx.account_id,
-        &ctx.from,
+        &effective_from,
         SignatureContextData::Reply,
         signature.as_deref(),
         no_signature,
@@ -343,7 +365,7 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
     let (mut frontmatter, body_text, draft_file) = build_compose_draft(
         &mut client,
         kind,
-        &ctx.from,
+        &effective_from,
         stdin_or_body,
         dry_run,
         signature.as_ref(),
@@ -454,7 +476,9 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     validate_compose_draft(&frontmatter, &draft.body_markdown, yes)?;
 
     if dry_run {
-        print_draft_preview(&draft, yes, format)?;
+        let effective_from =
+            resolve_effective_from(client, &draft.account_id, draft.from.as_ref()).await?;
+        print_draft_preview(&draft, &effective_from, yes, format)?;
         return Ok(());
     }
 
@@ -760,7 +784,9 @@ pub async fn send_draft(
         if recipients.is_empty() {
             anyhow::bail!("Draft has no recipients; aborting before send");
         }
-        print_draft_preview(&draft, true, format)?;
+        let effective_from =
+            resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
+        print_draft_preview(&draft, &effective_from, true, format)?;
         return Ok(());
     }
 
@@ -820,6 +846,11 @@ pub async fn check_send(
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
 
+    // Validate the effective From at preview time (same choke point as send):
+    // an unowned stored From must fail here, not silently pass the safety
+    // check and only be rejected at send.
+    resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
+
     let context = build_check_context(&draft, no_llm, chrono::Utc::now());
     let resp = client
         .request(Request::CheckDraftSafety {
@@ -859,7 +890,13 @@ pub async fn check_send(
 /// compose path used by ad-hoc scripts and pipelines.
 pub async fn compose_check(options: ComposeOptions, no_llm: bool) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let account = resolve_compose_account(&mut client, options.from.as_deref()).await?;
+    let (account, from_override) = resolve_compose_sender(
+        &mut client,
+        options.from.as_deref(),
+        options.account.as_deref(),
+    )
+    .await?;
+    let from_seed = from_override.unwrap_or_else(|| account.email.clone());
     let body_text = read_body_input(options.body, options.body_stdin)?.unwrap_or_default();
 
     let frontmatter = mxr_compose::frontmatter::ComposeFrontmatter {
@@ -867,7 +904,7 @@ pub async fn compose_check(options: ComposeOptions, no_llm: bool) -> anyhow::Res
         cc: options.cc.clone().unwrap_or_default(),
         bcc: options.bcc.clone().unwrap_or_default(),
         subject: options.subject.clone().unwrap_or_default(),
-        from: account.email.clone(),
+        from: from_seed,
         attach: attachment_strings(&options.attach),
         signature: None,
         ..Default::default()
@@ -881,6 +918,9 @@ pub async fn compose_check(options: ComposeOptions, no_llm: bool) -> anyhow::Res
         &frontmatter,
         body,
     )?;
+
+    // Validate the effective From at preview, mirroring the real send path.
+    resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
 
     let context = build_check_context(&draft, no_llm, chrono::Utc::now());
     let resp = client
@@ -998,10 +1038,20 @@ pub async fn cancel_scheduled_send(
     }
 }
 
-async fn resolve_compose_account(
+/// Resolve which account a compose sends from and its optional owned-address
+/// From override, from `--from` plus an optional `--account` disambiguator.
+///
+/// `--from` may name an account (key/name/id/primary email) or an owned
+/// address (primary or a registered alias). Only an *exact owned-address*
+/// match becomes a From override (and also fixes the account); a bare account
+/// selector — even one that merely contains `@` but isn't an owned address —
+/// leaves the From at the account primary. An address registered on several
+/// accounts is ambiguous and requires `--account`.
+async fn resolve_compose_sender(
     client: &mut IpcClient,
     explicit_from: Option<&str>,
-) -> anyhow::Result<AccountSummaryData> {
+    explicit_account: Option<&str>,
+) -> anyhow::Result<(AccountSummaryData, Option<String>)> {
     let resp = client.request(Request::ListAccounts).await?;
     let accounts = crate::commands::expect_response(resp, |response| match response {
         Response::Ok {
@@ -1009,7 +1059,111 @@ async fn resolve_compose_account(
         } => Some(accounts),
         _ => None,
     })?;
-    select_compose_account(&accounts, explicit_from)
+    let from = explicit_from
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    // With an explicit account, `--from` (if present) must be an owned address
+    // of *that* account to become the From override.
+    if let Some(account_sel) = explicit_account
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let account = select_compose_account(&accounts, Some(account_sel))?;
+        let override_addr = match from.filter(|value| value.contains('@')) {
+            Some(value) if account_owns_address(client, &account, value).await? => {
+                Some(value.to_string())
+            }
+            Some(value) => anyhow::bail!(
+                "`{value}` is not an owned address of account `{}`. \
+                 Register it with `mxr accounts addresses add {} {value}`.",
+                account.email,
+                account.key.as_deref().unwrap_or(account.email.as_str()),
+            ),
+            None => None,
+        };
+        return Ok((account, override_addr));
+    }
+
+    // No explicit account: an exact owned-address match sets both the account
+    // and the From override. Ambiguity across accounts must be disambiguated.
+    if let Some(value) = from.filter(|value| value.contains('@')) {
+        let owners = accounts_owning_address(client, &accounts, value).await?;
+        match owners.as_slice() {
+            [account] => return Ok((account.clone(), Some(value.to_string()))),
+            [_, _, ..] => {
+                let candidates = owners
+                    .iter()
+                    .map(|account| account.key.clone().unwrap_or_else(|| account.email.clone()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                anyhow::bail!(
+                    "`{value}` is registered on multiple accounts ({candidates}); \
+                     pass --account <account> to choose which to send from."
+                );
+            }
+            [] => {} // fall through: treat `--from` as a legacy account selector
+        }
+    }
+
+    let account = select_compose_account(&accounts, from)?;
+    Ok((account, None))
+}
+
+/// True when `email` is the account's primary or one of its registered aliases
+/// (case-insensitive). Costs one `ListAccountAddresses` round-trip only when
+/// the primary doesn't already match.
+async fn account_owns_address(
+    client: &mut IpcClient,
+    account: &AccountSummaryData,
+    email: &str,
+) -> anyhow::Result<bool> {
+    if account.email.eq_ignore_ascii_case(email) {
+        return Ok(true);
+    }
+    let resp = client
+        .request(Request::ListAccountAddresses {
+            account_id: account.account_id.clone(),
+        })
+        .await?;
+    let addresses = crate::commands::expect_response(resp, |response| match response {
+        Response::Ok {
+            data: ResponseData::AccountAddresses { addresses },
+        } => Some(addresses),
+        _ => None,
+    })?;
+    Ok(addresses
+        .iter()
+        .any(|address| address.email.eq_ignore_ascii_case(email)))
+}
+
+/// Every send-capable account that owns `email` (primary or alias). Used to
+/// detect alias ambiguity across accounts.
+async fn accounts_owning_address(
+    client: &mut IpcClient,
+    accounts: &[AccountSummaryData],
+    email: &str,
+) -> anyhow::Result<Vec<AccountSummaryData>> {
+    let mut owners = Vec::new();
+    for account in accounts
+        .iter()
+        .filter(|account| account.enabled && account.send_kind.is_some())
+    {
+        if account_owns_address(client, account, email).await? {
+            owners.push(account.clone());
+        }
+    }
+    Ok(owners)
+}
+
+/// The chosen From for a reply/forward: an explicit `--from` override when
+/// present and non-empty, otherwise the daemon-computed `default` (the
+/// delivered-to owned address).
+fn from_override_or(explicit_from: Option<&str>, default: &str) -> String {
+    explicit_from
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map_or_else(|| default.to_string(), str::to_string)
 }
 
 fn select_compose_account(
@@ -1389,6 +1543,7 @@ fn draft_from_frontmatter(
     Ok(Draft {
         id: DraftId::new(),
         account_id,
+        from: mxr_compose::draft_codec::parse_from_field(&frontmatter.from)?,
         reply_headers,
         intent: if frontmatter.intent == mxr_core::DraftIntent::New {
             fallback_intent
@@ -1529,15 +1684,42 @@ async fn set_auto_reminder_after_send(
     }
 }
 
+/// Resolve (and ownership-validate) the effective From a draft would send
+/// from, via the daemon — the same choke point the real send uses, so a
+/// preview shows exactly the From a send would use and fails identically on
+/// an unowned override.
+async fn resolve_effective_from(
+    client: &mut IpcClient,
+    account_id: &AccountId,
+    from: Option<&Address>,
+) -> anyhow::Result<Address> {
+    let resp = client
+        .request(Request::ResolveSendFrom {
+            account_id: account_id.clone(),
+            from: from.cloned(),
+        })
+        .await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::ResolvedSendFrom { from },
+        } => Ok(from),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response from ResolveSendFrom"),
+    }
+}
+
 #[derive(serde::Serialize)]
 struct DraftPreviewOutput<'a> {
     action: &'static str,
     dry_run: bool,
+    /// Effective From the send would use (primary or the validated override).
+    from: &'a Address,
     draft: &'a Draft,
 }
 
 fn print_draft_preview(
     draft: &Draft,
+    effective_from: &Address,
     sending: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
@@ -1548,6 +1730,7 @@ fn print_draft_preview(
             serde_json::to_string_pretty(&DraftPreviewOutput {
                 action,
                 dry_run: true,
+                from: effective_from,
                 draft,
             })?
         ),
@@ -1556,6 +1739,7 @@ fn print_draft_preview(
             serde_json::to_string(&DraftPreviewOutput {
                 action,
                 dry_run: true,
+                from: effective_from,
                 draft,
             })?
         ),
@@ -1566,6 +1750,7 @@ fn print_draft_preview(
                 "dry_run",
                 "draft_id",
                 "account_id",
+                "from",
                 "to",
                 "cc",
                 "bcc",
@@ -1578,6 +1763,7 @@ fn print_draft_preview(
                 "true".to_string(),
                 draft.id.as_str(),
                 draft.account_id.as_str(),
+                format_addresses(std::slice::from_ref(effective_from)),
                 format_addresses(&draft.to),
                 format_addresses(&draft.cc),
                 format_addresses(&draft.bcc),
@@ -1591,6 +1777,10 @@ fn print_draft_preview(
         OutputFormat::Table => {
             println!("Would {action}:");
             println!("  id: {}", draft.id);
+            println!(
+                "  from: {}",
+                format_addresses(std::slice::from_ref(effective_from))
+            );
             println!("  to: {}", format_addresses(&draft.to));
             println!("  cc: {}", format_addresses(&draft.cc));
             println!("  bcc: {}", format_addresses(&draft.bcc));
@@ -1937,6 +2127,7 @@ mod tests {
             Draft {
                 id: DraftId::new(),
                 account_id: AccountId::new(),
+                from: None,
                 reply_headers,
                 intent,
                 to: vec![],

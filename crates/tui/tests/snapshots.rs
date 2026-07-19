@@ -265,6 +265,7 @@ fn send_confirm_snapshot() {
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: None,
+        resolved_from: None,
     };
 
     let snapshot = render_to_string(70, 20, |frame| {

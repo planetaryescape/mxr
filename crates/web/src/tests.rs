@@ -1813,6 +1813,7 @@ fn draft_summary_includes_updated_time_labels() {
     let draft = Draft {
         id: DraftId::new(),
         account_id: AccountId::new(),
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![Address {
@@ -3034,6 +3035,56 @@ async fn read_and_archive_endpoint_proxies_mutation() {
         .await
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn invite_reply_sidecar_round_trips_into_compose_draft() {
+    let account_id = AccountId::new();
+    let (draft_path, _cursor) = mxr_compose::create_draft_file_async(
+        mxr_compose::ComposeKind::New {
+            to: "organizer@example.com".into(),
+            subject: "Re: Sync".into(),
+        },
+        "me@example.com",
+    )
+    .await
+    .unwrap();
+    let path_str = draft_path.to_str().unwrap().to_string();
+
+    // No sidecar → a plain draft with no iTIP payload.
+    let plain = compose_draft_from_file(&path_str, &account_id.to_string())
+        .await
+        .unwrap();
+    assert!(plain.inline_calendar_reply.is_none());
+
+    // With a sidecar → the built draft carries the REPLY payload so the
+    // outbound builder emits the ATTENDEE part and PARTSTAT is updated.
+    let reply = mxr_core::types::InlineCalendarReply {
+        source_message_id: MessageId::new(),
+        attendee_email: "hello@planetaryescape.xyz".into(),
+        partstat: mxr_core::types::CalendarPartstat::Accepted,
+        ics_body: "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".into(),
+    };
+    write_invite_reply_sidecar(&draft_path, &reply)
+        .await
+        .unwrap();
+    let with_invite = compose_draft_from_file(&path_str, &account_id.to_string())
+        .await
+        .unwrap();
+    let got = with_invite
+        .inline_calendar_reply
+        .expect("draft must carry the inline calendar reply");
+    assert_eq!(got.attendee_email, "hello@planetaryescape.xyz");
+    assert_eq!(got.partstat, mxr_core::types::CalendarPartstat::Accepted);
+    assert!(got.ics_body.contains("METHOD:REPLY"));
+
+    // Send/discard cleanup removes the sidecar.
+    remove_invite_reply_sidecar(&draft_path).await.unwrap();
+    assert!(read_invite_reply_sidecar(&draft_path)
+        .await
+        .unwrap()
+        .is_none());
+    mxr_compose::delete_draft_file_async(&draft_path).await.ok();
 }
 
 /// The bridge's constant-time token comparator: a right token matches, a wrong

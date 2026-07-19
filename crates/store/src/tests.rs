@@ -933,6 +933,7 @@ async fn draft_crud() {
     let draft = Draft {
         id: DraftId::new(),
         account_id: account.id.clone(),
+        from: None,
         reply_headers: None,
         intent: DraftIntent::ReplyAll,
         to: vec![Address {
@@ -960,6 +961,52 @@ async fn draft_crud() {
 }
 
 #[tokio::test]
+async fn draft_from_override_round_trips_through_get_list_and_update() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    let mut draft = Draft {
+        id: DraftId::new(),
+        account_id: account.id.clone(),
+        from: Some(Address {
+            name: Some("Support".to_string()),
+            email: "hello@example.com".to_string(),
+        }),
+        reply_headers: None,
+        intent: DraftIntent::New,
+        to: vec![Address {
+            name: None,
+            email: "client@example.com".to_string(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Alias draft".to_string(),
+        body_markdown: "body".to_string(),
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+    store.insert_draft(&draft).await.unwrap();
+
+    // Survives get_draft...
+    let fetched = store.get_draft(&draft.id).await.unwrap().unwrap();
+    assert_eq!(fetched.from.as_ref().unwrap().email, "hello@example.com");
+    assert_eq!(fetched.from.as_ref().unwrap().name.as_deref(), Some("Support"));
+    // ...and list_drafts.
+    let listed = store.list_drafts(&account.id).await.unwrap();
+    assert_eq!(listed[0].from.as_ref().unwrap().email, "hello@example.com");
+
+    // Clearing the override persists as NULL / None.
+    draft.from = None;
+    draft.updated_at = chrono::Utc::now();
+    assert!(store.update_draft(&draft).await.unwrap());
+    let after = store.get_draft(&draft.id).await.unwrap().unwrap();
+    assert!(after.from.is_none());
+}
+
+#[tokio::test]
 async fn update_draft_edits_in_place_and_preserves_created_at() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
@@ -969,6 +1016,7 @@ async fn update_draft_edits_in_place_and_preserves_created_at() {
     let draft = Draft {
         id: DraftId::new(),
         account_id: account.id.clone(),
+        from: None,
         reply_headers: None,
         intent: DraftIntent::New,
         to: vec![Address {

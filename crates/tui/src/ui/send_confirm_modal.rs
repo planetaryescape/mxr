@@ -1,8 +1,10 @@
-use super::centered_rect;
+use super::centered_rect_fixed_height;
 use crate::app::{PendingSend, PendingSendMode};
 use mxr_core::{DraftSafetyReport, DraftSafetySeverity, DraftSafetyVerdict};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
+
+const MODAL_WIDTH_PCT: u16 = 86;
 
 pub fn draw(
     frame: &mut Frame,
@@ -16,12 +18,20 @@ pub fn draw(
         return;
     };
 
-    let popup_height_pct = if pending.safety_report.is_some() {
-        60
-    } else {
-        50
-    };
-    let popup = centered_rect(86, popup_height_pct, area);
+    let lines = modal_lines(pending, send_at_input, remind_at_input);
+    // Size the popup to its content (accounting for wrapping at the inner
+    // width) plus the 1-row top+bottom border, capped at the available height —
+    // so the trailing action row is never clipped, whatever the content grows
+    // to (From line, safety issues, send-at / remind prompts).
+    let inner_width = (u32::from(area.width) * u32::from(MODAL_WIDTH_PCT) / 100)
+        .saturating_sub(2)
+        .max(1) as usize;
+    let content_rows: u16 = lines
+        .iter()
+        .map(|line| wrapped_row_count(line, inner_width))
+        .sum();
+    let popup_height = content_rows.saturating_add(2).min(area.height);
+    let popup = centered_rect_fixed_height(MODAL_WIDTH_PCT, popup_height, area);
     frame.render_widget(Clear, popup);
 
     let border_color = match pending.safety_report.as_ref().map(|r| r.verdict) {
@@ -38,11 +48,39 @@ pub fn draw(
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 
-    let lines = modal_lines(pending, send_at_input, remind_at_input)
-        .into_iter()
-        .map(Line::from)
-        .collect::<Vec<_>>();
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    let paragraph_lines = lines.into_iter().map(Line::from).collect::<Vec<_>>();
+    frame.render_widget(
+        Paragraph::new(paragraph_lines).wrap(Wrap { trim: false }),
+        inner,
+    );
+}
+
+/// Rows a single content line occupies once word-wrapped at `width`. Splits on
+/// whitespace like ratatui's `Wrap`, so multi-word lines that break onto extra
+/// rows are counted, keeping the modal tall enough for every line.
+fn wrapped_row_count(line: &str, width: usize) -> u16 {
+    if width == 0 {
+        return 1;
+    }
+    let mut rows: u16 = 1;
+    let mut col = 0usize;
+    for word in line.split_whitespace() {
+        let word_len = word.chars().count();
+        if col == 0 {
+            col = word_len;
+        } else if col + 1 + word_len <= width {
+            col += 1 + word_len;
+        } else {
+            rows = rows.saturating_add(1);
+            col = word_len;
+        }
+        // A single word longer than the width wraps across several rows.
+        while col > width {
+            rows = rows.saturating_add(1);
+            col -= width;
+        }
+    }
+    rows.max(1)
 }
 
 fn modal_lines(
@@ -56,6 +94,19 @@ fn modal_lines(
         PendingSendMode::Unchanged => "Draft unchanged. Discard or keep editing?".to_string(),
     }];
 
+    // Prefer the daemon-resolved effective From (the owned override, or the
+    // account primary when `from:` was cleared) so the user sees the exact
+    // identity that will send; fall back to the raw `from:` only when the
+    // resolve couldn't run (daemon unreachable).
+    if let Some(address) = pending.resolved_from.as_ref() {
+        let rendered = match address.name.as_deref() {
+            Some(name) if !name.trim().is_empty() => format!("{name} <{}>", address.email),
+            _ => address.email.clone(),
+        };
+        lines.push(format!("From: {rendered}"));
+    } else if !pending.fm.from.trim().is_empty() {
+        lines.push(format!("From: {}", pending.fm.from));
+    }
     lines.push(format!("Subject: {}", pending.fm.subject));
     lines.push("Voice match: not scored for manual edits".to_string());
     lines.push("Humanizer: scored on AI draft outputs".to_string());
@@ -185,6 +236,7 @@ mod tests {
             override_token: None,
             suggested_collaborators: vec![],
             invite_reply: None,
+            resolved_from: None,
         }
     }
 
@@ -230,6 +282,60 @@ mod tests {
         });
         assert!(!rendered.contains("Safety check unavailable"));
         assert!(rendered.contains("Safety: SAFE"));
+    }
+
+    /// The modal shows the daemon-resolved effective From — including the
+    /// primary-fallback identity when the user cleared the `from:` field — so
+    /// the sender always sees the exact address the message will send from.
+    #[test]
+    fn modal_shows_resolved_effective_from_when_frontmatter_cleared() {
+        let mut p = pending(PendingSendMode::SendOrSave);
+        p.fm.from = String::new(); // user cleared `from:`
+        p.resolved_from = Some(mxr_core::types::Address {
+            name: Some("Demo".into()),
+            email: "primary@example.com".into(),
+        });
+        let rendered = render_to_string(120, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 120, 24),
+                Some(&p),
+                None,
+                None,
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(
+            rendered.contains("From: Demo <primary@example.com>"),
+            "modal must show the resolved effective From; got:\n{rendered}"
+        );
+    }
+
+    /// Regression: the modal sizes to its content, so even a taller safe
+    /// verdict (From + safety lines) keeps the trailing action row visible at a
+    /// modest 120x20 terminal instead of clipping it below a fixed-percent box.
+    #[test]
+    fn safe_modal_action_row_stays_visible_at_small_height() {
+        let report = mxr_core::DraftSafetyReport::safe();
+        let rendered = render_to_string(120, 20, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 120, 20),
+                Some(&pending_with_report(
+                    PendingSendMode::SendOrSave,
+                    report,
+                    None,
+                )),
+                None,
+                None,
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(rendered.contains("Safety: SAFE"), "got:\n{rendered}");
+        assert!(
+            rendered.contains("[r] refine") && rendered.contains("[Esc] discard"),
+            "the action row must stay visible at 120x20; got:\n{rendered}"
+        );
     }
 
     #[test]

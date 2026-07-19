@@ -1358,6 +1358,13 @@ impl DraftIntent {
 pub struct Draft {
     pub id: DraftId,
     pub account_id: AccountId,
+    /// Per-message From override. `None` sends from the account's primary
+    /// address (default). `Some(addr)` sends from a specific owned address
+    /// (the primary or a registered alias); the daemon validates ownership at
+    /// send time and rejects a `from` the account does not own. The name falls
+    /// back to the account's display name when the override carries none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<Address>,
     pub reply_headers: Option<ReplyHeaders>,
     #[serde(default)]
     pub intent: DraftIntent,

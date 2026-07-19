@@ -25,6 +25,10 @@ pub struct FakeProvider {
     bodies: HashMap<String, MessageBody>,
     labels: Mutex<Vec<Label>>,
     sent: Mutex<Vec<Draft>>,
+    /// The resolved From `Address` handed to each `send`, in order — lets
+    /// tests assert the daemon selected and forwarded the right sender
+    /// (primary vs a per-message alias override).
+    sent_from: Mutex<Vec<Address>>,
     mutations: Mutex<Vec<RecordedMutation>>,
     /// Phase 3.1: when set, `idle_watch` returns a watcher that emits a
     /// notification each time `idle_trigger.notify_one()` is called.
@@ -85,6 +89,7 @@ impl FakeProvider {
             bodies,
             labels: Mutex::new(labels),
             sent: Mutex::new(Vec::new()),
+            sent_from: Mutex::new(Vec::new()),
             mutations: Mutex::new(Vec::new()),
             idle_trigger: None,
         }
@@ -100,6 +105,14 @@ impl FakeProvider {
 
     pub fn sent_drafts(&self) -> Vec<Draft> {
         self.sent_guard().clone()
+    }
+
+    /// The resolved From `Address` passed to each `send`, in call order.
+    pub fn sent_from_addresses(&self) -> Vec<Address> {
+        self.sent_from
+            .lock()
+            .expect("fake provider sent_from mutex should not be poisoned")
+            .clone()
     }
 
     pub fn mutations(&self) -> Vec<RecordedMutation> {
@@ -348,10 +361,14 @@ impl MailSendProvider for FakeProvider {
     async fn send(
         &self,
         draft: &Draft,
-        _from: &Address,
+        from: &Address,
         rfc2822_message_id: &str,
     ) -> Result<SendReceipt, MxrError> {
         self.sent_guard().push(draft.clone());
+        self.sent_from
+            .lock()
+            .expect("fake provider sent_from mutex should not be poisoned")
+            .push(from.clone());
         Ok(SendReceipt {
             provider_message_id: Some(format!("fake-sent-{}", uuid::Uuid::now_v7())),
             sent_at: chrono::Utc::now(),
@@ -376,6 +393,7 @@ impl MailSendProvider for FakeProvider {
         self.sent_guard().push(Draft {
             id: mxr_core::DraftId::new(),
             account_id: self.account_id.clone(),
+            from: None,
             reply_headers: None,
             intent: mxr_core::DraftIntent::Reply,
             to: vec![reply.to.clone()],
@@ -388,7 +406,10 @@ impl MailSendProvider for FakeProvider {
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         });
-        let _ = from;
+        self.sent_from
+            .lock()
+            .expect("fake provider sent_from mutex should not be poisoned")
+            .push(from.clone());
         Ok(SendReceipt {
             provider_message_id: Some(format!("fake-calendar-sent-{}", uuid::Uuid::now_v7())),
             sent_at: chrono::Utc::now(),
@@ -593,6 +614,7 @@ mod tests {
         let draft = Draft {
             id: DraftId::new(),
             account_id: provider.account_id().clone(),
+            from: None,
             intent: DraftIntent::New,
             reply_headers: None,
             to: vec![Address {

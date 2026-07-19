@@ -21,6 +21,7 @@ impl super::Store {
         let cc_addrs = encode_json(&draft.cc)?;
         let bcc_addrs = encode_json(&draft.bcc)?;
         let attachments = encode_json(&draft.attachments)?;
+        let from_addr = draft.from.as_ref().map(encode_json).transpose()?;
         let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
         let intent = draft.intent.as_db_str();
         let inline_calendar_reply_json = draft
@@ -32,11 +33,12 @@ impl super::Store {
         let updated_at = draft.updated_at.timestamp();
 
         sqlx::query(
-            "INSERT INTO drafts (id, account_id, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, attachments, inline_calendar_reply_json, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO drafts (id, account_id, from_addr, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, attachments, inline_calendar_reply_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(account_id)
+        .bind(from_addr)
         .bind(in_reply_to)
         .bind(intent)
         .bind(to_addrs)
@@ -61,6 +63,7 @@ impl super::Store {
         let cc_addrs = encode_json(&draft.cc)?;
         let bcc_addrs = encode_json(&draft.bcc)?;
         let attachments = encode_json(&draft.attachments)?;
+        let from_addr = draft.from.as_ref().map(encode_json).transpose()?;
         let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
         let intent = draft.intent.as_db_str();
         let inline_calendar_reply_json = draft
@@ -72,11 +75,12 @@ impl super::Store {
         let updated_at = draft.updated_at.timestamp();
 
         sqlx::query(
-            "INSERT OR IGNORE INTO drafts (id, account_id, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, attachments, inline_calendar_reply_json, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO drafts (id, account_id, from_addr, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, attachments, inline_calendar_reply_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(account_id)
+        .bind(from_addr)
         .bind(in_reply_to)
         .bind(intent)
         .bind(to_addrs)
@@ -98,7 +102,7 @@ impl super::Store {
         let id_str = id.as_str();
         let started_at = std::time::Instant::now();
         let row = sqlx::query(
-            r#"SELECT id, account_id, in_reply_to, intent,
+            r#"SELECT id, account_id, from_addr, in_reply_to, intent,
                       to_addrs, cc_addrs, bcc_addrs, subject, body_markdown,
                       attachments, inline_calendar_reply_json,
                       created_at, updated_at
@@ -113,6 +117,11 @@ impl super::Store {
             Ok(Draft {
                 id: decode_id(&r.get::<String, _>("id"))?,
                 account_id: decode_id(&r.get::<String, _>("account_id"))?,
+                from: r
+                    .get::<Option<String>, _>("from_addr")
+                    .as_deref()
+                    .map(decode_json)
+                    .transpose()?,
                 reply_headers: parse_reply_headers(r.get::<Option<String>, _>("in_reply_to")),
                 intent: DraftIntent::from_db_str(&r.get::<String, _>("intent")),
                 to: decode_json(&r.get::<String, _>("to_addrs"))?,
@@ -145,6 +154,7 @@ impl super::Store {
         let cc_addrs = encode_json(&draft.cc)?;
         let bcc_addrs = encode_json(&draft.bcc)?;
         let attachments = encode_json(&draft.attachments)?;
+        let from_addr = draft.from.as_ref().map(encode_json).transpose()?;
         let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
         let intent = draft.intent.as_db_str();
         let inline_calendar_reply_json = draft
@@ -159,13 +169,14 @@ impl super::Store {
         // REPLACE) so the account_id FK's ON DELETE CASCADE is never armed.
         let result = sqlx::query(
             "UPDATE drafts
-                SET account_id = ?, in_reply_to = ?, intent = ?,
+                SET account_id = ?, from_addr = ?, in_reply_to = ?, intent = ?,
                     to_addrs = ?, cc_addrs = ?, bcc_addrs = ?, subject = ?,
                     body_markdown = ?, attachments = ?, inline_calendar_reply_json = ?,
                     updated_at = ?
               WHERE id = ? AND status = 'draft'",
         )
         .bind(account_id)
+        .bind(from_addr)
         .bind(in_reply_to)
         .bind(intent)
         .bind(to_addrs)
@@ -187,7 +198,7 @@ impl super::Store {
         let aid = account_id.as_str();
         let started_at = std::time::Instant::now();
         let rows = sqlx::query(
-            r#"SELECT id, account_id, in_reply_to, intent,
+            r#"SELECT id, account_id, from_addr, in_reply_to, intent,
                       to_addrs, cc_addrs, bcc_addrs, subject, body_markdown,
                       attachments, inline_calendar_reply_json,
                       created_at, updated_at
@@ -203,6 +214,11 @@ impl super::Store {
                 Ok(Draft {
                     id: decode_id(&r.get::<String, _>("id"))?,
                     account_id: decode_id(&r.get::<String, _>("account_id"))?,
+                    from: r
+                        .get::<Option<String>, _>("from_addr")
+                        .as_deref()
+                        .map(decode_json)
+                        .transpose()?,
                     reply_headers: parse_reply_headers(r.get::<Option<String>, _>("in_reply_to")),
                     intent: DraftIntent::from_db_str(&r.get::<String, _>("intent")),
                     to: decode_json(&r.get::<String, _>("to_addrs"))?,

@@ -39,11 +39,45 @@ pub enum ParseError {
     InvalidMessage,
 }
 
+/// Serialize `(name, value)` header pairs into an RFC 5322 header block.
+///
+/// This is the serialization *choke point*, so it is where we neutralize
+/// header injection: a header VALUE that embeds a CR/LF (whether from a hostile
+/// sender whose value a provider cloned verbatim, or any other source) would
+/// otherwise `format!` straight into a new column-0 line — forging an arbitrary
+/// header (`Delivered-To:`, `Bcc:`, anything). Provider APIs return already
+/// *unfolded* values, so a legitimate value contains no CR/LF; any embedded
+/// CR/LF here is anomalous and is collapsed to a single space. A pair whose
+/// NAME is not a valid RFC 5322 field name is dropped entirely (see
+/// [`is_valid_header_name`]). This is general hardening — every consumer of the
+/// produced block (the `mail_parser` display path, all provider parse callers,
+/// `delivered_to_addresses`) benefits.
 pub fn raw_headers_from_pairs(headers: &[(String, String)]) -> String {
     headers
         .iter()
-        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .filter(|(name, _)| is_valid_header_name(name))
+        .map(|(name, value)| format!("{name}: {}\r\n", sanitize_header_value(value)))
         .collect()
+}
+
+/// Collapse any CR/LF in a header value to a single space so it can never
+/// introduce a new header line or a fake folded continuation. `\r\n` becomes
+/// one space; bare `\r` / `\n` each become one space. (Safe because it can
+/// never introduce a `:` and thus can't synthesize a header field.)
+fn sanitize_header_value(value: &str) -> String {
+    value.replace("\r\n", " ").replace(['\r', '\n'], " ")
+}
+
+/// A valid RFC 5322 field name: non-empty and every byte a printable ASCII
+/// char (0x21–0x7E) other than `:`, which excludes leading/trailing/embedded
+/// whitespace, CR/LF, and the field separator.
+///
+/// We REJECT an invalid name (the caller drops the whole pair) rather than
+/// rewrite it: *stripping* CR/LF or `:` from a name could SYNTHESIZE a valid
+/// header — `":Delivered-To"` → `"Delivered-To"`, `"\r\nDelivered-To"` →
+/// `"Delivered-To"` — which is itself a fresh injection vector.
+fn is_valid_header_name(name: &str) -> bool {
+    !name.is_empty() && name.bytes().all(|b| matches!(b, 0x21..=0x7E) && b != b':')
 }
 
 pub fn parse_headers_from_pairs(
@@ -531,21 +565,99 @@ fn to_address(addr: &mail_parser::Addr<'_>) -> Address {
     }
 }
 
+/// Normalize every line ending — CRLF, bare CR, and LF — to CRLF so downstream
+/// RFC 5322 parsing sees consistent line boundaries whatever the source used.
+/// `str::lines()` does not treat a bare `\r` as a break, which is exactly the
+/// gap a header-injection attack exploits, so we walk the bytes ourselves.
 fn normalize_header_block(raw_headers: &str) -> String {
-    raw_headers
-        .lines()
-        .map(|line| line.trim_end_matches('\r'))
-        .collect::<Vec<_>>()
-        .join("\r\n")
+    let mut out = String::with_capacity(raw_headers.len() + 8);
+    let mut chars = raw_headers.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                out.push_str("\r\n");
+            }
+            '\n' => out.push_str("\r\n"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Ordered `Delivered-To:` addresses from a raw header block, topmost first.
+///
+/// Uses the RFC-aware parser after normalizing line endings, so header/body
+/// splitting, folding, and every line-ending form (CRLF, LF, bare CR) are
+/// handled by battle-tested code rather than ad-hoc line scanning. Each
+/// header's value is reduced to its *first* address, so content a sender
+/// smuggles after the real address (e.g. via injected `\r`) can never be the
+/// one returned. Callers pick the topmost owned address, so a genuine
+/// MTA-stamped `Delivered-To:` — always above any attacker-added one — wins.
+pub fn delivered_to_addresses(raw_headers: &str) -> Vec<String> {
+    // Conservative by construction: `Delivered-To:` counts only when the raw
+    // message is well-formed enough to trust which lines are headers. A
+    // permissive parser strips leading CRLF/WSP and recovers from a missing
+    // header/body separator, which is exactly what lets a sender-controlled
+    // body line get promoted — so we do the delimiting ourselves and bail to
+    // empty on anything ambiguous.
+    //
+    // Bound on the residual risk (why "wrong but owned" is acceptable): the
+    // caller only ever picks among the account's OWNED addresses, so the worst
+    // case of any missed steering is defaulting to a different alias the user
+    // owns — never an unowned sender, never a data leak — and the effective
+    // From is always shown at dry-run / send-confirm.
+    let normalized = normalize_header_block(raw_headers);
+
+    // 1. Determine the header region. The stored `raw_headers` is headers-only
+    //    (no blank-line separator), which is the normal case — the whole input
+    //    is headers. If a separator *is* present (a full raw message was
+    //    passed), scan only the part before it so a body `Delivered-To:` in
+    //    that shape is excluded. The separator is not the defense; the
+    //    column-0 + folding scan below is.
+    let header_block = normalized
+        .split_once("\r\n\r\n")
+        .map_or(normalized.as_str(), |(head, _body)| head);
+
+    // 2. Scan the header region for column-0 Delivered-To fields.
+    header_block
+        .split("\r\n")
+        .filter_map(|line| {
+            // A line starting with whitespace is a folded continuation of the
+            // previous field's value, never a new header.
+            if line.starts_with([' ', '\t']) {
+                return None;
+            }
+            let (name, value) = line.split_once(':')?;
+            if !name.trim_end().eq_ignore_ascii_case("delivered-to") {
+                return None;
+            }
+            // 3. First physical line only: a `Delivered-To:` whose value is
+            //    empty on its own line (the folded `Delivered-To:\r\n <addr>`
+            //    bypass) does not count.
+            let value = value.trim();
+            if value.is_empty() {
+                return None;
+            }
+            parse_address_list(value)
+                .into_iter()
+                .next()
+                .map(|address| address.email)
+        })
+        .filter(|email| !email.is_empty())
+        .collect()
 }
 
 pub fn extract_raw_header_block(raw_message: &[u8]) -> Option<String> {
-    let raw = String::from_utf8_lossy(raw_message);
-    let header_block = raw
-        .split("\r\n\r\n")
-        .next()
-        .or_else(|| raw.split("\n\n").next())?;
-    Some(normalize_header_block(header_block))
+    // Normalize endings first, then split at the first blank line. The previous
+    // `split("\r\n\r\n").next()` always yielded the whole string (its `.next()`
+    // never fails), so the `\n\n` fallback was unreachable and LF-only / bare-CR
+    // messages had their entire body treated as headers.
+    let normalized = normalize_header_block(&String::from_utf8_lossy(raw_message));
+    let header_block = normalized.split("\r\n\r\n").next()?;
+    Some(header_block.to_string())
 }
 
 fn flush_paragraph(out: &mut String, current: &mut String) {
@@ -574,6 +686,166 @@ mod tests {
     )]
 
     use super::*;
+
+    /// Exhaustive over line-ending forms so a fourth variant can't reopen the
+    /// header-injection seam: {CRLF, LF, bare CR} × {header vs body
+    /// Delivered-To} × {separator present vs absent}.
+    #[test]
+    fn delivered_to_addresses_is_robust_across_all_line_endings() {
+        for eol in ["\r\n", "\n", "\r"] {
+            let label = format!("eol={eol:?}");
+
+            // Headers-only block (the real stored shape — no blank-line
+            // separator): a genuine top-level Delivered-To resolves.
+            let raw = format!(
+                "Received: from mx{eol}Delivered-To: real@primary.example{eol}Subject: hi{eol}"
+            );
+            assert_eq!(
+                delivered_to_addresses(&raw),
+                vec!["real@primary.example"],
+                "headers-only positive, {label}"
+            );
+
+            // Full message (a separator IS present): a Delivered-To in the body
+            // — which the sender controls — is excluded.
+            let raw = format!(
+                "Delivered-To: real@primary.example{eol}Subject: hi{eol}{eol}\
+                 Delivered-To: alias@evil.example{eol}reply from my alias{eol}"
+            );
+            assert_eq!(
+                delivered_to_addresses(&raw),
+                vec!["real@primary.example"],
+                "full-message body excluded, {label}"
+            );
+        }
+    }
+
+    #[test]
+    fn raw_headers_from_pairs_neutralizes_value_injected_headers() {
+        // The root-cause boundary test: a header VALUE that embeds CR/LF (a
+        // provider cloning a hostile value verbatim) must not serialize into a
+        // new column-0 header line. Covers CRLF, bare CR, and bare LF.
+        for injected in ["\r\n", "\r", "\n"] {
+            let value = format!("legit{injected}Delivered-To: attacker@evil.example");
+            let block = raw_headers_from_pairs(&[("Subject".to_string(), value.clone())]);
+            assert!(
+                !block.contains("\r\nDelivered-To:"),
+                "no forged header line, injected={injected:?}: {block:?}"
+            );
+            assert_eq!(
+                block.matches("\r\n").count(),
+                1,
+                "exactly one header line, injected={injected:?}: {block:?}"
+            );
+            // Downstream parsing sees no injected header.
+            assert!(
+                delivered_to_addresses(&block).is_empty(),
+                "injected={injected:?}: {block:?}"
+            );
+            let parsed =
+                parse_headers_from_pairs(&[("Subject".to_string(), value)], Some(Utc::now()))
+                    .unwrap();
+            assert!(
+                parsed.subject.contains("legit"),
+                "subject retains its flattened value: {:?}",
+                parsed.subject
+            );
+        }
+    }
+
+    #[test]
+    fn raw_headers_from_pairs_drops_pairs_with_invalid_names() {
+        // Rejecting (not rewriting) an invalid name is essential: stripping
+        // would SYNTHESIZE a real header. Each of these must drop the pair so
+        // no usable Delivered-To is produced.
+        for bad_name in [
+            "\r\nDelivered-To", // CR/LF prefix
+            ":Delivered-To",    // leading colon
+            " Delivered-To",    // leading whitespace
+            "Delivered-To ",    // trailing whitespace
+            "Deliv ered-To",    // embedded whitespace
+            "",                 // empty
+        ] {
+            let block = raw_headers_from_pairs(&[(
+                bad_name.to_string(),
+                "alias@owned.example".to_string(),
+            )]);
+            assert!(
+                block.is_empty(),
+                "invalid name {bad_name:?} must drop: {block:?}"
+            );
+            assert!(
+                delivered_to_addresses(&block).is_empty(),
+                "name {bad_name:?}: {block:?}"
+            );
+        }
+
+        // A genuine name in the same batch still serializes.
+        let block = raw_headers_from_pairs(&[
+            (
+                ":Delivered-To".to_string(),
+                "attacker@evil.example".to_string(),
+            ),
+            ("Delivered-To".to_string(), "real@owned.example".to_string()),
+        ]);
+        assert_eq!(delivered_to_addresses(&block), vec!["real@owned.example"]);
+    }
+
+    #[test]
+    fn delivered_to_addresses_resolves_from_the_real_producer_shape() {
+        // The store builds `raw_headers` as header pairs, one `Name: value\r\n`
+        // per header and no blank-line separator. The feature MUST work on that
+        // exact shape — this is the test that catches "separator required".
+        let raw = raw_headers_from_pairs(&[
+            ("Received".to_string(), "from mx.example".to_string()),
+            (
+                "Delivered-To".to_string(),
+                "alias@owned.example".to_string(),
+            ),
+            ("Subject".to_string(), "hi".to_string()),
+        ]);
+        assert!(
+            !raw.contains("\r\n\r\n"),
+            "producer emits headers-only, no separator: {raw:?}"
+        );
+        assert_eq!(delivered_to_addresses(&raw), vec!["alias@owned.example"]);
+    }
+
+    #[test]
+    fn delivered_to_addresses_defeats_bare_cr_injection() {
+        // A fake Delivered-To smuggled after a bare-CR "blank line" that
+        // `str::lines()` would never split on: normalization turns `\r\r` into
+        // a real separator, so the fake lands in the body and is excluded.
+        let raw = "Delivered-To: external@evil.example\r\rDelivered-To: alias@owned.example";
+        assert_eq!(delivered_to_addresses(raw), vec!["external@evil.example"]);
+    }
+
+    #[test]
+    fn delivered_to_addresses_ignores_a_folded_fake_in_a_headers_only_block() {
+        // Headers-only (no separator): a fake folded (leading WSP) under a real
+        // Delivered-To is a continuation of that header's value, not a new
+        // header — skipped. The column-0 scan is the defense, not a separator.
+        let raw = "Delivered-To: real@primary.example\r\n Delivered-To: alias@owned.example\r\n";
+        assert_eq!(delivered_to_addresses(raw), vec!["real@primary.example"]);
+    }
+
+    #[test]
+    fn delivered_to_addresses_rejects_empty_first_line_folded_value() {
+        // `Delivered-To:\r\n <alias>` in a headers-only block — the header's own
+        // line has an empty value and the address hides in a folded
+        // continuation. It must not count.
+        let raw = "Delivered-To:\r\n <alias@owned.example>\r\nSubject: hi\r\n";
+        assert!(delivered_to_addresses(raw).is_empty());
+    }
+
+    #[test]
+    fn delivered_to_addresses_strips_display_name_and_is_name_case_insensitive() {
+        let raw = "Received: from x\r\ndelivered-to: Team <hello@planetaryescape.xyz>\r\n";
+        assert_eq!(
+            delivered_to_addresses(raw),
+            vec!["hello@planetaryescape.xyz"]
+        );
+    }
     use mxr_test_support::{fixture_stem, standards_fixture_bytes, standards_fixture_names};
     use serde_json::json;
 

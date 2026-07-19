@@ -8,7 +8,7 @@ use mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
 use mxr_core::types::{
     Account, Address, BodyPartSource, CalendarAttendee, CalendarMetadata, CalendarPartstat,
     CalendarReplyMessage, Envelope, HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind,
-    MessageBody,
+    InlineCalendarReply, MessageBody,
 };
 use mxr_protocol::{
     BodyFailure, CalendarInviteActionData, CalendarInviteData, CalendarInviteResponsePreview,
@@ -346,15 +346,20 @@ pub(super) async fn respond_invite(
     }
 
     let account_id = preview_account_id(state, message_id).await?;
-    let account = state
-        .store
-        .get_account(&account_id)
-        .await?
-        .ok_or_else(|| "Account not found for calendar invite".to_string())?;
-    let from = Address {
-        name: Some(account.name),
-        email: account.email,
-    };
+    // The reply's From must be the same identity as the ATTENDEE we RSVP as:
+    // when the invite was addressed to an owned alias, respond from that alias
+    // (RFC 6047 — ATTENDEE and From should agree). Route through the shared
+    // choke point so the address is validated as owned before it reaches the
+    // provider, and named with the account's display name.
+    let from = crate::handler::mutations::resolve_from_address(
+        state,
+        &account_id,
+        Some(&Address {
+            name: None,
+            email: preview.attendee_email.clone(),
+        }),
+    )
+    .await?;
     let sender = state.send_provider_for_account(&account_id)?;
     let rfc2822_message_id = mxr_outbound::email::generate_message_id(&from);
     let reply = CalendarReplyMessage {
@@ -404,6 +409,65 @@ pub(super) async fn mark_invite_answered(
         .update_calendar_invite_partstat(message_id, attendee_email, partstat.as_ical())
         .await?;
     Ok(ResponseData::Acknowledged)
+}
+
+/// Validate a draft's inline iCal REPLY at the send choke point and rebuild
+/// its ICS server-side from the trusted `(source message, action)` — never
+/// from client-supplied bytes (sidecar or IPC), which a tampered compose
+/// session could forge.
+///
+/// Rejects, with an `invalid`-kinded error, when: the source message isn't a
+/// real invite owned by the sending account; the RSVP PARTSTAT isn't a
+/// sendable response; or the invite's matched ATTENDEE (an owned address of
+/// this account) doesn't equal the effective `from` the send resolved to
+/// (e.g. the user edited `from:` to a different owned alias after the session
+/// started). On success returns a reply whose ATTENDEE and ICS are the
+/// canonical, server-derived values.
+pub(super) async fn validate_and_rebuild_inline_reply(
+    state: &AppState,
+    account_id: &AccountId,
+    from: &Address,
+    reply: &InlineCalendarReply,
+) -> Result<InlineCalendarReply, String> {
+    let action = match reply.partstat {
+        CalendarPartstat::Accepted => CalendarInviteActionData::Accept,
+        CalendarPartstat::Tentative => CalendarInviteActionData::Tentative,
+        CalendarPartstat::Declined => CalendarInviteActionData::Decline,
+        other => {
+            return Err(format!(
+                "invalid invite reply: {other:?} is not a sendable RSVP response"
+            ))
+        }
+    };
+
+    // The source must be a real invite that belongs to the sending account.
+    let source_account = preview_account_id(state, &reply.source_message_id).await?;
+    if &source_account != account_id {
+        return Err(format!(
+            "invalid invite reply: source message {} does not belong to the sending account",
+            reply.source_message_id
+        ));
+    }
+
+    // Rebuild the canonical preview (re-validates the invite and matches the
+    // ATTENDEE against this account's owned addresses); the ICS it returns is
+    // the only ICS we trust.
+    let preview = build_invite_response_preview(state, &reply.source_message_id, action).await?;
+
+    // The identity we RSVP as must be the identity we send from.
+    if !preview.attendee_email.eq_ignore_ascii_case(&from.email) {
+        return Err(format!(
+            "invalid invite reply: ATTENDEE {} does not match the send From {}",
+            preview.attendee_email, from.email
+        ));
+    }
+
+    Ok(InlineCalendarReply {
+        source_message_id: reply.source_message_id.clone(),
+        attendee_email: preview.attendee_email,
+        partstat: reply.partstat,
+        ics_body: preview.ics,
+    })
 }
 
 async fn preview_account_id(state: &AppState, message_id: &MessageId) -> Result<AccountId, String> {

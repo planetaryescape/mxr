@@ -372,6 +372,7 @@ mod tests {
         Draft {
             id: mxr_core::DraftId::new(),
             account_id,
+            from: None,
             reply_headers: None,
             intent: DraftIntent::Reply,
             to: vec![Address {

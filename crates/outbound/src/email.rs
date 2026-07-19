@@ -268,6 +268,7 @@ mod tests {
         let draft = Draft {
             id: mxr_core::id::DraftId::new(),
             account_id: mxr_core::id::AccountId::new(),
+            from: None,
             reply_headers: None,
             intent: DraftIntent::Reply,
             to: vec![Address {
@@ -320,6 +321,7 @@ mod tests {
         Draft {
             id: mxr_core::id::DraftId::new(),
             account_id: mxr_core::id::AccountId::new(),
+            from: None,
             reply_headers: None,
             intent: mxr_core::types::DraftIntent::New,
             to: vec![Address {

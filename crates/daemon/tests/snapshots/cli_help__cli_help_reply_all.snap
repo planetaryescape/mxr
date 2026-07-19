@@ -11,6 +11,7 @@ Arguments:
 
 Options:
       --account <ACCOUNT>
+      --from <FROM>            Send from this owned address (the account primary or a registered alias). Defaults to the address the original was delivered to
       --body <BODY>            Inline reply body
       --body-stdin             Read body from stdin
       --attach <ATTACH>        File path to attach (repeatable)

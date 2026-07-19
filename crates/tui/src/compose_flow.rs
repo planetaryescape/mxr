@@ -561,6 +561,7 @@ pub(crate) async fn pending_send_from_edited_draft(
         override_token: None,
         suggested_collaborators: vec![],
         invite_reply: data.invite_reply.clone(),
+        resolved_from: None,
     })
 }
 
@@ -576,11 +577,16 @@ pub(crate) async fn handle_compose_editor_status(
                 // Validate the effective From through the same daemon choke
                 // point the real send uses, so an unowned From is rejected at
                 // the confirm step, not only when the user hits send. A daemon
-                // *rejection* blocks; an IPC failure (daemon down) is
-                // non-fatal, mirroring the safety-check policy below.
-                if let Err(message) = resolve_pending_from(&pending, bg).await {
-                    app.report_error("From address rejected", message);
-                    return;
+                // *rejection* (or an invalid `from:`) blocks and surfaces; an
+                // IPC failure (daemon down) is non-fatal, mirroring the
+                // safety-check policy below. The resolved address is stashed for
+                // the modal to display the exact identity that will send.
+                match resolve_pending_from(&pending, bg).await {
+                    Ok(resolved) => pending.resolved_from = resolved,
+                    Err(message) => {
+                        app.report_error("From address rejected", message);
+                        return;
+                    }
                 }
                 // Run the pre-send safety check before showing the
                 // modal. A failed IPC (daemon down, worker dropped)
@@ -610,17 +616,18 @@ pub(crate) async fn handle_compose_editor_status(
 }
 
 /// Resolve (and ownership-validate) the effective From for a pending send via
-/// `Request::ResolveSendFrom`. `Ok` when the daemon accepts the From (owned or
-/// primary); `Err(message)` on a daemon rejection (unowned override). An IPC
-/// failure resolves to `Ok` — like the safety check, daemon-down must not
-/// block the user from their own draft.
+/// `Request::ResolveSendFrom`. Returns `Ok(Some(addr))` with the resolved
+/// effective address (the owned override, or the primary when `from:` was
+/// cleared) for the modal to display; `Err(message)` on a *rejection* — an
+/// unowned override or an unparseable `from:` — which must surface, not vanish;
+/// `Ok(None)` only when the resolve couldn't run (daemon unreachable), which is
+/// non-fatal so the user still sees their draft.
 async fn resolve_pending_from(
     pending: &PendingSend,
     bg: &mpsc::UnboundedSender<IpcRequest>,
-) -> Result<(), String> {
+) -> Result<Option<mxr_core::types::Address>, String> {
     let from = mxr_compose::draft_codec::parse_from_field(&pending.fm.from)
-        .ok()
-        .flatten();
+        .map_err(|error| error.to_string())?;
     match ipc_call(
         bg,
         Request::ResolveSendFrom {
@@ -630,8 +637,11 @@ async fn resolve_pending_from(
     )
     .await
     {
+        Ok(Response::Ok {
+            data: ResponseData::ResolvedSendFrom { from },
+        }) => Ok(Some(from)),
         Ok(Response::Error { message, .. }) => Err(message),
-        _ => Ok(()),
+        _ => Ok(None),
     }
 }
 

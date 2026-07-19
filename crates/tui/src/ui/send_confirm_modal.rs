@@ -56,7 +56,17 @@ fn modal_lines(
         PendingSendMode::Unchanged => "Draft unchanged. Discard or keep editing?".to_string(),
     }];
 
-    if !pending.fm.from.trim().is_empty() {
+    // Prefer the daemon-resolved effective From (the owned override, or the
+    // account primary when `from:` was cleared) so the user sees the exact
+    // identity that will send; fall back to the raw `from:` only when the
+    // resolve couldn't run (daemon unreachable).
+    if let Some(address) = pending.resolved_from.as_ref() {
+        let rendered = match address.name.as_deref() {
+            Some(name) if !name.trim().is_empty() => format!("{name} <{}>", address.email),
+            _ => address.email.clone(),
+        };
+        lines.push(format!("From: {rendered}"));
+    } else if !pending.fm.from.trim().is_empty() {
         lines.push(format!("From: {}", pending.fm.from));
     }
     lines.push(format!("Subject: {}", pending.fm.subject));
@@ -188,6 +198,7 @@ mod tests {
             override_token: None,
             suggested_collaborators: vec![],
             invite_reply: None,
+            resolved_from: None,
         }
     }
 
@@ -233,6 +244,33 @@ mod tests {
         });
         assert!(!rendered.contains("Safety check unavailable"));
         assert!(rendered.contains("Safety: SAFE"));
+    }
+
+    /// The modal shows the daemon-resolved effective From — including the
+    /// primary-fallback identity when the user cleared the `from:` field — so
+    /// the sender always sees the exact address the message will send from.
+    #[test]
+    fn modal_shows_resolved_effective_from_when_frontmatter_cleared() {
+        let mut p = pending(PendingSendMode::SendOrSave);
+        p.fm.from = String::new(); // user cleared `from:`
+        p.resolved_from = Some(mxr_core::types::Address {
+            name: Some("Demo".into()),
+            email: "primary@example.com".into(),
+        });
+        let rendered = render_to_string(120, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 120, 24),
+                Some(&p),
+                None,
+                None,
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(
+            rendered.contains("From: Demo <primary@example.com>"),
+            "modal must show the resolved effective From; got:\n{rendered}"
+        );
     }
 
     #[test]

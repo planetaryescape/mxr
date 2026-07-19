@@ -2229,15 +2229,31 @@ async fn account_owned_addresses(
     (primary, owned)
 }
 
-/// Extract the address(es) from `Delivered-To:` header lines in a raw header
-/// block. Case-insensitive on the header name; strips display names and angle
-/// brackets so `Delivered-To: Team <hello@x.com>` yields `hello@x.com`.
+/// Extract the address(es) from genuine top-level `Delivered-To:` header lines
+/// in a raw header block. Case-insensitive on the header name; strips display
+/// names and angle brackets so `Delivered-To: Team <hello@x.com>` yields
+/// `hello@x.com`.
+///
+/// Only lines that begin a header field at column 0 count. Per RFC 5322 a line
+/// starting with whitespace is a *folded continuation* of the previous field's
+/// value — never a new header. Enforcing that closes a From-steering injection:
+/// a sender who smuggles `"…\r\n Delivered-To: <owned-alias>"` into a header
+/// value they control (or the body echoed into a header) must not have it
+/// promoted to a real, highest-precedence Delivered-To.
 fn extract_delivered_to(raw_headers: &str) -> Vec<String> {
     raw_headers
         .lines()
         .filter_map(|line| {
+            // Reject folded continuation lines (leading SP/HTAB): they belong
+            // to the previous header, not a new Delivered-To.
+            if line.starts_with([' ', '\t']) {
+                return None;
+            }
             let (name, value) = line.split_once(':')?;
-            if !name.trim().eq_ignore_ascii_case("delivered-to") {
+            // A header field name has no internal spaces; a stray one (only a
+            // trailing space before the colon, since the line isn't folded) is
+            // tolerated but nothing embeds a colon-bearing token here.
+            if !name.trim_end().eq_ignore_ascii_case("delivered-to") {
                 return None;
             }
             let value = value.trim();
@@ -4117,5 +4133,39 @@ mod from_selection_tests {
             extract_delivered_to(raw),
             vec!["accounts@planetaryescape.xyz"]
         );
+    }
+
+    #[test]
+    fn extract_delivered_to_ignores_folded_continuation_injection() {
+        // Only the genuine top-level Delivered-To is extracted. Fakes smuggled
+        // as folded continuation lines (leading space / tab) of another header
+        // — the From-steering vector — must be ignored.
+        let raw = concat!(
+            "Delivered-To: real@primary.example\r\n",
+            "Subject: hi there\r\n",
+            " Delivered-To: hello@planetaryescape.xyz\r\n",
+            "\tDelivered-To: accounts@planetaryescape.xyz\r\n",
+        );
+        assert_eq!(extract_delivered_to(raw), vec!["real@primary.example"]);
+    }
+
+    #[test]
+    fn reply_default_not_steered_by_a_folded_delivered_to() {
+        // A message whose only "Delivered-To" is a folded fake naming an owned
+        // alias must not steer: with no genuine Delivered-To and no owned To/Cc
+        // address, the default is the account primary.
+        let raw = concat!(
+            "Subject: please reply from my alias\r\n",
+            " Delivered-To: hello@planetaryescape.xyz\r\n",
+        );
+        let delivered = extract_delivered_to(raw);
+        assert!(delivered.is_empty());
+        let got = default_reply_from(
+            &owned(),
+            PRIMARY,
+            delivered.iter().map(String::as_str),
+            std::iter::empty(),
+        );
+        assert_eq!(got, PRIMARY);
     }
 }

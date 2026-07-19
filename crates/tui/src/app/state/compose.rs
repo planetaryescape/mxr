@@ -33,6 +33,13 @@ pub struct PendingSend {
     /// outbound builder emits the proper `multipart/alternative` MIME layout
     /// and the daemon's post-send hook updates the local PARTSTAT.
     pub invite_reply: Option<InlineCalendarReply>,
+    /// The effective From resolved by the daemon (`Request::ResolveSendFrom`)
+    /// before the modal opens: the owned override, or the account primary when
+    /// `from:` was cleared. Shown in the confirm modal so the user sees exactly
+    /// which identity the message will send from. `None` only when the resolve
+    /// couldn't run (daemon unreachable), in which case the modal falls back to
+    /// the raw `from:` text.
+    pub resolved_from: Option<mxr_core::types::Address>,
 }
 
 impl PendingSend {

@@ -1715,6 +1715,10 @@ fn map_bridge_error(error: ClientError) -> BridgeError {
             "IPC request timed out after {} seconds",
             duration.as_secs()
         )),
+        // Transport-level connect failure (generic-connector path). The bridge
+        // dials via the path constructor, so this is unreachable here; the arm
+        // keeps the match exhaustive.
+        ClientError::Transport(error) => BridgeError::Connect(error.to_string()),
     }
 }
 

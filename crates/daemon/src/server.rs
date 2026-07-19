@@ -17,13 +17,16 @@ use crate::state::AppState;
 use mxr_protocol::{
     AccountSyncStatus, DaemonHealthClass, Request, Response, ResponseData, IPC_PROTOCOL_VERSION,
 };
+use mxr_transport::{
+    BoxedIo, Connector, PeerInfo, ServerTransport, TransportError, TransportListener,
+    UdsServerTransport, UnixConnector,
+};
 use nix::errno::Errno;
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
-use tokio::net::UnixListener;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -87,18 +90,20 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         Err(error) => return Err(error),
     });
 
-    // We hold the exclusive lock, so we are the sole daemon. Any socket file
-    // present now is genuinely stale (left by a fully-exited daemon); clear
-    // it and bind ours.
-    let _ = std::fs::remove_file(&sock_path);
-    let listener = UnixListener::bind(&sock_path)?;
-    set_socket_permissions(&sock_path)?;
-    // Remember which socket file is OURS. During an upgrade restart a
-    // successor daemon can re-bind this path while we are still draining;
-    // the exit cleanup below must not delete the successor's socket.
-    let socket_identity = socket_file_identity(&sock_path);
+    // We hold the exclusive lock, so we are the sole daemon. Build the
+    // configured transports (factory match over config — one UDS arm today)
+    // and bind each. `UdsServerTransport::bind` owns the socket lifecycle that
+    // used to live inline here: clear a genuinely-stale socket, bind, chmod
+    // 0600, and remember our socket identity for successor-safe cleanup. The
+    // pid file and index-lock singleton stay daemon-level.
+    let transports = build_transports(&sock_path);
+    let mut listeners: Vec<Box<dyn TransportListener>> = Vec::with_capacity(transports.len());
+    for transport in &transports {
+        let listener = transport.bind().await?;
+        tracing::info!("Daemon listening on {}", listener.endpoint());
+        listeners.push(listener);
+    }
     write_daemon_pid_file()?;
-    tracing::info!("Daemon listening on {}", sock_path.display());
     let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
     let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
 
@@ -206,7 +211,7 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     let mut shutdown_rx = state.shutdown_receiver();
     let mut connections = JoinSet::new();
 
-    // Accept connections
+    // Accept connections from every bound transport.
     loop {
         tokio::select! {
             joined = connections.join_next(), if !connections.is_empty() => {
@@ -224,8 +229,8 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                     break;
                 }
             }
-            accepted = listener.accept() => {
-                let (stream, _addr) = accepted?;
+            accepted = accept_any(&mut listeners), if !listeners.is_empty() => {
+                let (stream, peer) = accepted?;
                 let state = state.clone();
                 let request_semaphore = request_semaphore.clone();
                 let bulk_semaphore = bulk_semaphore.clone();
@@ -238,6 +243,7 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                         state,
                         request_semaphore,
                         bulk_semaphore,
+                        peer,
                         event_rx,
                         connection_shutdown_rx,
                     )
@@ -247,30 +253,38 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         }
     }
 
-    drop(listener);
     drain_connection_tasks(&mut connections, CONNECTION_DRAIN_TIMEOUT).await;
     state.shutdown_runtime_tasks(Duration::from_secs(5)).await;
-    // Only remove the socket / pid file if they are still ours. The accept
-    // loop stops several seconds before this line runs (connection +
-    // runtime-task drain), and a successor daemon spawned during that
-    // window may have already re-bound the socket path and written its own
-    // pid. Deleting them here would orphan that successor: alive and
-    // syncing, but unreachable by every client.
-    remove_socket_if_owned(&sock_path, socket_identity);
+    // Release each transport's resources LAST — after the connection and
+    // runtime-task drains. `UdsListener::cleanup` removes the socket file only
+    // if it is still ours: a successor daemon spawned during the drain window
+    // may have already re-bound the socket path, and deleting it here would
+    // orphan that successor (alive and syncing, but unreachable by every
+    // client). The pid file cleanup stays daemon-level for the same reason.
+    for listener in &mut listeners {
+        let _ = listener.cleanup().await;
+    }
+    drop(listeners);
     clear_daemon_pid_file_if_owned();
     Ok(())
 }
 
-#[cfg(unix)]
-fn set_socket_permissions(sock_path: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    std::fs::set_permissions(sock_path, std::fs::Permissions::from_mode(0o600))
+/// Accept from whichever bound transport is ready first. `select_all` over the
+/// listeners' accept futures; the loser futures are dropped (accept is
+/// cancel-safe). Multi-transport support is structural even though one UDS
+/// listener is configured this phase.
+async fn accept_any(
+    listeners: &mut [Box<dyn TransportListener>],
+) -> Result<(BoxedIo, PeerInfo), TransportError> {
+    let futures = listeners.iter_mut().map(|listener| listener.accept());
+    let (result, _index, _remaining) = futures::future::select_all(futures).await;
+    result
 }
 
-#[cfg(not(unix))]
-fn set_socket_permissions(_sock_path: &Path) -> std::io::Result<()> {
-    Ok(())
+/// Build the configured server transports. Factory match over config (provider
+/// pattern) — one UDS arm today; TCP/stdio arms arrive in phase 5.
+fn build_transports(sock_path: &Path) -> Vec<Box<dyn ServerTransport>> {
+    vec![Box::new(UdsServerTransport::new(sock_path.to_path_buf()))]
 }
 
 pub async fn ensure_daemon_running() -> anyhow::Result<()> {
@@ -445,11 +459,15 @@ pub(crate) async fn inspect_socket_state(path: &std::path::Path) -> SocketState 
 }
 
 async fn socket_accepts_connections(path: &Path) -> bool {
+    let connector = UnixConnector::new(path.to_path_buf());
     for attempt in 0..SOCKET_PROBE_ATTEMPTS {
-        match tokio::net::UnixStream::connect(path).await {
-            Ok(_) => return true,
-            Err(error)
-                if should_retry_socket_probe(&error) && attempt + 1 < SOCKET_PROBE_ATTEMPTS =>
+        // Connect-and-drop liveness probe, dialed through the transport
+        // `Connector` (no raw `UnixStream` in daemon code outside the UDS
+        // transport). The connect error's `io::ErrorKind` still drives retry.
+        match connector.connect().await {
+            Ok(_io) => return true,
+            Err(TransportError::Connect { source, .. })
+                if should_retry_socket_probe(&source) && attempt + 1 < SOCKET_PROBE_ATTEMPTS =>
             {
                 tokio::time::sleep(SOCKET_PROBE_DELAY).await;
             }
@@ -472,44 +490,6 @@ fn should_retry_socket_probe(error: &std::io::Error) -> bool {
 
 fn daemon_pid_file_path() -> PathBuf {
     AppState::data_dir().join("daemon.pid")
-}
-
-/// Identity of the file currently at `path`, used to detect whether the
-/// socket we bound is still the one on disk. (dev, ino) alone is not
-/// enough: ext4 recycles inode numbers, so a successor daemon's freshly
-/// bound socket can land on the inode we just freed. The bind timestamp
-/// disambiguates a recycled inode. Caveat: Linux stamps files from the
-/// kernel's coarse clock (~ms ticks), so two binds inside one tick could
-/// collide — irrelevant here because successor binds are separated from
-/// ours by a full daemon startup.
-#[cfg(unix)]
-fn socket_file_identity(path: &Path) -> Option<(u64, u64, i64, i64)> {
-    use std::os::unix::fs::MetadataExt;
-
-    std::fs::metadata(path)
-        .ok()
-        .map(|m| (m.dev(), m.ino(), m.mtime(), m.mtime_nsec()))
-}
-
-#[cfg(not(unix))]
-fn socket_file_identity(_path: &Path) -> Option<(u64, u64, i64, i64)> {
-    None
-}
-
-/// Remove the socket file only if it is still the one this daemon bound.
-/// `owned` of `None` (identity capture failed at bind time) falls back to
-/// unconditional removal, matching the previous behavior.
-fn remove_socket_if_owned(path: &Path, owned: Option<(u64, u64, i64, i64)>) {
-    match (owned, socket_file_identity(path)) {
-        (Some(ours), Some(current)) if ours != current => {
-            tracing::info!(
-                "leaving IPC socket in place: the path was re-bound by a successor daemon"
-            );
-        }
-        _ => {
-            let _ = std::fs::remove_file(path);
-        }
-    }
 }
 
 /// Clear the pid file only if it still names this process. A successor
@@ -1159,38 +1139,6 @@ mod tests {
     use std::time::Duration;
     use tokio::net::UnixListener;
     use tokio_util::codec::Framed;
-
-    #[test]
-    fn socket_removal_skips_a_rebound_path() {
-        use super::{remove_socket_if_owned, socket_file_identity};
-
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("mxr.sock");
-
-        // Same inode → removed (normal shutdown).
-        std::fs::write(&path, b"ours").expect("write socket stand-in");
-        let ours = socket_file_identity(&path);
-        assert!(ours.is_some());
-        remove_socket_if_owned(&path, ours);
-        assert!(!path.exists(), "own socket should be removed");
-
-        // Path re-created by a successor → left alone. ext4 can recycle
-        // the freed inode AND Linux stamps files from the kernel's coarse
-        // clock (~ms ticks), so a same-tick re-create can be byte-identical
-        // to ours. Sleep past the tick — in production the two binds are
-        // separated by a full daemon startup.
-        std::fs::write(&path, b"ours").expect("write socket stand-in");
-        let ours = socket_file_identity(&path);
-        std::fs::remove_file(&path).expect("simulate successor re-bind");
-        std::thread::sleep(Duration::from_millis(20));
-        std::fs::write(&path, b"successor").expect("successor socket stand-in");
-        remove_socket_if_owned(&path, ours);
-        assert!(path.exists(), "successor's socket must survive our cleanup");
-
-        // Unknown identity (capture failed at bind) → fall back to removal.
-        remove_socket_if_owned(&path, None);
-        assert!(!path.exists(), "unknown ownership falls back to removal");
-    }
 
     #[tokio::test]
     async fn wait_for_process_exit_observes_an_unreaped_child() {

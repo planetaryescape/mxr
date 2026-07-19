@@ -1,33 +1,45 @@
-//! IPC conformance corpus (Phase 2, transport-adapter initiative).
+//! IPC conformance corpus (transport-adapter initiative).
 //!
 //! An executable specification of the daemon's *connection-level* behavior on
 //! protocol v4: id correlation, out-of-order completion, lane back-pressure,
 //! event fan-out, framing edges, disconnect handling, panic recovery, and the
 //! current (UDS) auth posture. It is characterization — every test PINS what
-//! the serve loop does today so the phase-3 "serve core generic over
-//! AsyncRead+AsyncWrite" refactor lands guarded, and (phases 3–6) the same
+//! the serve loop does today so transport refactors land guarded, and the same
 //! scenarios run unchanged against every transport carrier.
 //!
 //! Structural note: this lives in-crate as a `#[cfg(test)]` child module of
 //! `serve` rather than in `crates/daemon/tests/` because the behavior under
-//! test is only reachable in-process — `serve_client_connection` is private
-//! and generic over the byte stream, the lane-limit constants are private, and the
-//! state constructors (`AppState::in_memory`, `add_sync_provider_for_test`)
-//! are `#[cfg(test)]` and so are never compiled for a black-box integration
-//! test. The existing temp-socket tests in `server.rs` establish this pattern.
+//! test is only reachable in-process — `serve_client_connection` is private and
+//! generic over the byte stream, the lane-limit constants are private, and the
+//! state constructors (`AppState::in_memory`, `add_sync_provider_for_test`) are
+//! `#[cfg(test)]` and so are never compiled for a black-box integration test.
 //!
-//! Carrier seam: every scenario obtains its connection through [`spawn_server`]
-//! (framed) or its raw sibling, both generic over a [`Carrier`]. Each scenario
-//! is written once and run over BOTH carriers — the UDS socketpair
-//! ([`UdsCarrier`]) and an in-memory `tokio::io::duplex` ([`DuplexCarrier`]) —
-//! via the `run_on_both_carriers!` invocation at the end of the file.
+//! ## Harness seam (the phase-4 bridge)
+//!
+//! Every scenario obtains its connection through a [`Harness`]: a "give me a
+//! connected `(server end, client end, peer)`" seam the scenario is agnostic
+//! to. Four harnesses implement it, and the corpus runs every scenario over all
+//! four (see `run_on_all_transports!` at the bottom):
+//!
+//! - [`SocketpairHarness`] — `UnixStream::pair()`, the low-level UDS carrier
+//!   (no bind/accept); the previous corpus's `UdsCarrier`.
+//! - [`DuplexHarness`] — `tokio::io::duplex`, the in-memory carrier; the
+//!   previous corpus's `DuplexCarrier`.
+//! - [`UdsTransportHarness`] — the REAL [`UdsServerTransport`] bound to a temp
+//!   socket, dialed by a [`UnixConnector`], connections obtained through
+//!   `bind`/`accept`/`connect` — the production server path.
+//! - [`MemoryTransportHarness`] — the REAL [`MemoryTransport`] (the "fake
+//!   provider" analog), same `bind`/`accept`/`connect` path with no socket file.
+//!
+//! The first two exercise the serve core over a raw carrier; the last two run
+//! the identical scenarios through the production transport traits. A scenario
+//! that passes on all four is proven both carrier- and transport-independent.
 //!
 //! Determinism: scenarios are driven by explicit synchronization — oneshots,
 //! `watch` channels, JoinSet completion — never wall-clock sleeps. The one
 //! test-only production hook is a `#[cfg(test)]` request gate (see [`gate`]),
 //! used where a scenario needs a Bulk-lane request held in flight
-//! deterministically (out-of-order, saturation, event-interleave, in-flight
-//! disconnect). It gates only `Request::RebuildAnalytics`, which no other
+//! deterministically. It gates only `Request::RebuildAnalytics`, which no other
 //! scenario issues.
 
 use super::{serve_client_connection, BULK_CONCURRENCY_LIMIT, REQUEST_CONCURRENCY_LIMIT};
@@ -40,11 +52,15 @@ use mxr_core::{MailSyncProvider, MxrError, SyncCapabilities};
 use mxr_protocol::{
     ClientKind, DaemonEvent, IpcCodec, IpcMessage, IpcPayload, Request, Response, ResponseData,
 };
+use mxr_transport::{
+    BoxedIo, Connector, MemoryTransport, PeerInfo, ServerTransport, TransportListener,
+    UdsServerTransport, UnixConnector,
+};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex, Semaphore};
 use tokio::task::JoinHandle;
 use tokio_util::codec::Framed;
 
@@ -227,48 +243,117 @@ impl MailSyncProvider for PanicOnCreateLabel {
 }
 
 // ---------------------------------------------------------------------------
-// Carriers + client helpers.
+// Harnesses: the connection-acquisition seam every scenario runs over.
 // ---------------------------------------------------------------------------
 
-/// A byte-stream carrier for the conformance corpus. Each carrier builds a
-/// connected pair whose server end feeds `serve_client_connection` and whose
-/// client end the scenario drives. The corpus runs every scenario over each
-/// carrier (see the `run_on_both_carriers!` invocation at the bottom), proving
-/// the serve core is carrier-independent — the whole phase-3 premise, checked
-/// cheaply before any transport trait exists.
-trait Carrier: 'static {
-    /// Both ends share one stream type per carrier (a UDS socketpair, an
-    /// in-memory duplex). Bounds mirror `serve_client_connection`'s.
-    type Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static;
+/// A source of connected `(server end, client end, peer)` triples. The scenario
+/// drives the client end; the server end feeds `serve_client_connection`; the
+/// peer is threaded into the dispatch context. Carriers build a pair directly;
+/// transports go through the real `bind`/`accept`/`connect` path.
+#[async_trait]
+trait Harness: Send + Sync + Sized + 'static {
+    /// Set up the harness (bind the listener, for transport variants).
+    async fn start() -> Self;
 
-    /// Build a fresh, connected `(server, client)` pair.
-    fn pair() -> (Self::Stream, Self::Stream);
+    /// One connected connection: `(server end for serve, client end for the
+    /// scenario, peer identity)`.
+    async fn connect(&self) -> (BoxedIo, BoxedIo, PeerInfo);
 }
 
-/// The production transport: a Unix `socketpair(2)` — the real fd / kernel path
-/// the daemon serves in production.
-struct UdsCarrier;
+/// A Unix `socketpair(2)` — the real fd / kernel path, no bind/accept.
+struct SocketpairHarness;
 
-impl Carrier for UdsCarrier {
-    type Stream = UnixStream;
+#[async_trait]
+impl Harness for SocketpairHarness {
+    async fn start() -> Self {
+        Self
+    }
 
-    fn pair() -> (UnixStream, UnixStream) {
-        UnixStream::pair().unwrap()
+    async fn connect(&self) -> (BoxedIo, BoxedIo, PeerInfo) {
+        let (server, client) = UnixStream::pair().unwrap();
+        (Box::new(server), Box::new(client), PeerInfo::local())
     }
 }
 
-/// An in-memory `tokio::io::duplex` pipe: no socket file, no fd, no kernel
-/// round-trip — hermetic and fast. The buffer is sized past the 16 MiB frame
-/// cap so the near-limit-frame scenario transfers without backpressure churn.
-struct DuplexCarrier;
+/// An in-memory `tokio::io::duplex` pipe — no socket file, no fd. The buffer is
+/// sized past the 16 MiB frame cap so the near-limit-frame scenario transfers
+/// without backpressure churn.
+struct DuplexHarness;
 
-impl Carrier for DuplexCarrier {
-    type Stream = DuplexStream;
+#[async_trait]
+impl Harness for DuplexHarness {
+    async fn start() -> Self {
+        Self
+    }
 
-    fn pair() -> (DuplexStream, DuplexStream) {
-        tokio::io::duplex(MAX_FRAME_LEN + 1024)
+    async fn connect(&self) -> (BoxedIo, BoxedIo, PeerInfo) {
+        let (server, client) = tokio::io::duplex(MAX_FRAME_LEN + 1024);
+        (Box::new(server), Box::new(client), PeerInfo::local())
     }
 }
+
+/// The REAL Unix domain socket transport bound to a temp path, dialed by a
+/// `UnixConnector`. Every connection is obtained through
+/// `ServerTransport::bind` → `TransportListener::accept` / `Connector::connect`,
+/// so the corpus exercises the production server path (peer creds included).
+struct UdsTransportHarness {
+    _dir: tempfile::TempDir,
+    listener: Mutex<Box<dyn TransportListener>>,
+    connector: UnixConnector,
+}
+
+#[async_trait]
+impl Harness for UdsTransportHarness {
+    async fn start() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mxr.sock");
+        let transport = UdsServerTransport::new(path.clone());
+        let listener = transport.bind().await.unwrap();
+        Self {
+            _dir: dir,
+            listener: Mutex::new(listener),
+            connector: UnixConnector::new(path),
+        }
+    }
+
+    async fn connect(&self) -> (BoxedIo, BoxedIo, PeerInfo) {
+        // Dial first: the client connect completes into the kernel backlog, so
+        // the subsequent accept returns without a rendezvous deadlock.
+        let client = self.connector.connect().await.unwrap();
+        let (server, peer) = self.listener.lock().await.accept().await.unwrap();
+        (server, client, peer)
+    }
+}
+
+/// The REAL in-memory transport (the "fake provider" analog), same
+/// `bind`/`accept`/`connect` path as UDS but with no socket file.
+struct MemoryTransportHarness {
+    listener: Mutex<Box<dyn TransportListener>>,
+    connector: mxr_transport::MemoryConnector,
+}
+
+#[async_trait]
+impl Harness for MemoryTransportHarness {
+    async fn start() -> Self {
+        let transport = MemoryTransport::new();
+        let connector = transport.connector();
+        let listener = transport.bind().await.unwrap();
+        Self {
+            listener: Mutex::new(listener),
+            connector,
+        }
+    }
+
+    async fn connect(&self) -> (BoxedIo, BoxedIo, PeerInfo) {
+        let client = self.connector.connect().await.unwrap();
+        let (server, peer) = self.listener.lock().await.accept().await.unwrap();
+        (server, client, peer)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Client helpers.
+// ---------------------------------------------------------------------------
 
 /// Hot/Bulk lane semaphores at the daemon's real production sizes.
 fn lanes() -> (Arc<Semaphore>, Arc<Semaphore>) {
@@ -278,56 +363,59 @@ fn lanes() -> (Arc<Semaphore>, Arc<Semaphore>) {
     )
 }
 
-/// THE single carrier-construction point. Builds a connected stream pair, wires
-/// the server end into `serve_client_connection` exactly as the accept loop
-/// does (fresh event subscription, shared lane semaphores, shutdown receiver),
-/// and hands back the raw client end plus the server task. `prep` runs after
-/// the event receiver has subscribed but before the serve loop starts draining
-/// it — the seam the lag scenario needs.
-async fn spawn_server<C: Carrier>(
+/// THE single serve-wiring point. Obtains one connection from `harness`, wires
+/// the server end into `serve_client_connection` exactly as the accept loop does
+/// (fresh event subscription, shared lane semaphores, the accepted peer,
+/// shutdown receiver), and hands back the raw client end plus the server task.
+/// `prep` runs after the event receiver has subscribed but before the serve loop
+/// starts draining it — the seam the lag scenario needs.
+async fn spawn_server<H: Harness>(
+    harness: &H,
     state: Arc<AppState>,
     hot: Arc<Semaphore>,
     bulk: Arc<Semaphore>,
     prep: impl FnOnce(&Arc<AppState>),
-) -> (C::Stream, JoinHandle<()>) {
-    let (server_stream, client_stream) = C::pair();
+) -> (BoxedIo, JoinHandle<()>) {
+    let (server_io, client_io, peer) = harness.connect().await;
     let event_rx = state.event_tx.subscribe();
     prep(&state);
     let shutdown_rx = state.shutdown_receiver();
     let server = tokio::spawn(async move {
-        serve_client_connection(server_stream, state, hot, bulk, event_rx, shutdown_rx).await;
+        serve_client_connection(server_io, state, hot, bulk, peer, event_rx, shutdown_rx).await;
     });
-    (client_stream, server)
+    (client_io, server)
 }
 
-/// A framed client over a served connection, generic over the carrier's stream.
-struct Served<S> {
-    client: Framed<S, IpcCodec>,
+/// A framed client over a served connection.
+struct Served {
+    client: Framed<BoxedIo, IpcCodec>,
     server: JoinHandle<()>,
 }
 
-async fn serve<C: Carrier>(
+async fn serve<H: Harness>(
+    harness: &H,
     state: Arc<AppState>,
     hot: Arc<Semaphore>,
     bulk: Arc<Semaphore>,
-) -> Served<C::Stream> {
-    serve_with_prep::<C>(state, hot, bulk, |_| {}).await
+) -> Served {
+    serve_with_prep(harness, state, hot, bulk, |_| {}).await
 }
 
-async fn serve_with_prep<C: Carrier>(
+async fn serve_with_prep<H: Harness>(
+    harness: &H,
     state: Arc<AppState>,
     hot: Arc<Semaphore>,
     bulk: Arc<Semaphore>,
     prep: impl FnOnce(&Arc<AppState>),
-) -> Served<C::Stream> {
-    let (client, server) = spawn_server::<C>(state, hot, bulk, prep).await;
+) -> Served {
+    let (client, server) = spawn_server(harness, state, hot, bulk, prep).await;
     Served {
         client: Framed::new(client, IpcCodec::new()),
         server,
     }
 }
 
-impl<S: AsyncRead + AsyncWrite + Unpin> Served<S> {
+impl Served {
     async fn send(&mut self, id: u64, req: Request) {
         self.client.send(request(id, req)).await.unwrap();
     }
@@ -425,7 +513,7 @@ fn pong(msg: &IpcMessage) -> bool {
 /// did not panic (no silently-detached tasks). Deliberately does NOT touch the
 /// shared shutdown signal, so a test can close one connection while others stay
 /// up.
-async fn close<S>(served: Served<S>) {
+async fn close(served: Served) {
     drop(served.client);
     join_server(served.server).await;
 }
@@ -441,7 +529,7 @@ async fn join_server(server: JoinHandle<()>) {
 
 /// Full single-connection teardown: close the connection, then drain the
 /// state's background workers.
-async fn finish<S>(state: &Arc<AppState>, served: Served<S>) {
+async fn finish(state: &Arc<AppState>, served: Served) {
     close(served).await;
     state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
 }
@@ -480,12 +568,13 @@ async fn expect_raw_closed<S: AsyncRead + Unpin>(stream: &mut S) {
 /// A fresh framed connection that answers `Ping` — used to prove the daemon is
 /// still alive after another connection hit a framing/protocol edge. Leaves
 /// worker teardown to the caller.
-async fn assert_daemon_alive<C: Carrier>(
+async fn assert_daemon_alive<H: Harness>(
+    harness: &H,
     state: &Arc<AppState>,
     hot: Arc<Semaphore>,
     bulk: Arc<Semaphore>,
 ) {
-    let mut probe = serve::<C>(state.clone(), hot, bulk).await;
+    let mut probe = serve(harness, state.clone(), hot, bulk).await;
     probe.send(1, Request::Ping).await;
     let response = probe.recv_response(1).await;
     assert!(pong(&response), "daemon should still answer Ping");
@@ -498,10 +587,11 @@ async fn assert_daemon_alive<C: Carrier>(
 
 /// Scenario 1 — request/response id correlation. Client-chosen ids are echoed;
 /// several requests in flight on one connection each get their own response.
-async fn scenario_01_id_correlation_multiplexed<C: Carrier>() {
+async fn scenario_01_id_correlation_multiplexed<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
-    let mut served = serve::<C>(state.clone(), hot, bulk).await;
+    let h = H::start().await;
+    let mut served = serve(&h, state.clone(), hot, bulk).await;
 
     let ids = [7u64, 42, 1000, 3];
     for id in ids {
@@ -526,11 +616,12 @@ async fn scenario_01_id_correlation_multiplexed<C: Carrier>() {
 /// Scenario 2 — out-of-order completion. A slow Bulk-lane request does not block
 /// a fast Hot-lane request on the same connection; responses arrive by
 /// completion order, matched by id.
-async fn scenario_02_out_of_order_completion<C: Carrier>() {
+async fn scenario_02_out_of_order_completion<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
     let gate = gate::install().await;
-    let mut served = serve::<C>(state.clone(), hot, bulk).await;
+    let h = H::start().await;
+    let mut served = serve(&h, state.clone(), hot, bulk).await;
 
     // Bulk request (id 1) enters the gate and blocks there.
     served.send(1, Request::RebuildAnalytics).await;
@@ -564,11 +655,12 @@ async fn scenario_02_out_of_order_completion<C: Carrier>() {
 /// Scenario 3 — lane saturation. More concurrent Bulk requests than
 /// `BULK_CONCURRENCY_LIMIT` (8) queue rather than fail: exactly the limit run
 /// concurrently, the rest wait for a permit, and all complete once released.
-async fn scenario_03_lane_saturation_queues<C: Carrier>() {
+async fn scenario_03_lane_saturation_queues<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
     let gate = gate::install().await;
-    let mut served = serve::<C>(state.clone(), hot, bulk.clone()).await;
+    let h = H::start().await;
+    let mut served = serve(&h, state.clone(), hot, bulk.clone()).await;
 
     let total = BULK_CONCURRENCY_LIMIT + 4;
     for id in 1..=total as u64 {
@@ -622,13 +714,14 @@ async fn scenario_03_lane_saturation_queues<C: Carrier>() {
 /// `Daemon`. Every production emitter (`chimes::emit_daemon_event`,
 /// `diagnostics::emit_operation_event`, the server's own `SyncCompleted`) sets
 /// `ClientKind::default()`. Pinned as-is; see the spec's "Pinned findings".
-async fn scenario_04_broadcast_reaches_every_client<C: Carrier>() {
+async fn scenario_04_broadcast_reaches_every_client<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
+    let h = H::start().await;
 
-    let mut a = serve::<C>(state.clone(), hot.clone(), bulk.clone()).await;
-    let mut b = serve::<C>(state.clone(), hot.clone(), bulk.clone()).await;
-    let mut c = serve::<C>(state.clone(), hot.clone(), bulk.clone()).await;
+    let mut a = serve(&h, state.clone(), hot.clone(), bulk.clone()).await;
+    let mut b = serve(&h, state.clone(), hot.clone(), bulk.clone()).await;
+    let mut c = serve(&h, state.clone(), hot.clone(), bulk.clone()).await;
 
     // Real production emitter — the frame's `source` is whatever the daemon
     // actually stamps, so the assertions below pin production behavior.
@@ -661,11 +754,12 @@ async fn scenario_04_broadcast_reaches_every_client<C: Carrier>() {
 
 /// Scenario 5 — an event interleaves with an in-flight request on the same
 /// connection without corrupting correlation (the `request_with_events` path).
-async fn scenario_05_event_interleaves_with_inflight_request<C: Carrier>() {
+async fn scenario_05_event_interleaves_with_inflight_request<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
     let gate = gate::install().await;
-    let mut served = serve::<C>(state.clone(), hot, bulk).await;
+    let h = H::start().await;
+    let mut served = serve(&h, state.clone(), hot, bulk).await;
 
     // Hold a request in flight.
     served.send(1, Request::RebuildAnalytics).await;
@@ -688,10 +782,11 @@ async fn scenario_05_event_interleaves_with_inflight_request<C: Carrier>() {
 
 /// Scenario 6 — an event-only connection (never sends a request) receives
 /// events: the `mxr events` / bridge `bridge_events` pattern.
-async fn scenario_06_event_only_connection<C: Carrier>() {
+async fn scenario_06_event_only_connection<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
-    let mut served = serve::<C>(state.clone(), hot, bulk).await;
+    let h = H::start().await;
+    let mut served = serve(&h, state.clone(), hot, bulk).await;
 
     // No request is ever sent on this connection.
     emit(&state);
@@ -709,14 +804,15 @@ async fn scenario_06_event_only_connection<C: Carrier>() {
 /// Scenario 7 — `EventsLagged { skipped }` is delivered point-to-point to a slow
 /// consumer after the 256-slot broadcast channel overflows, and the connection
 /// survives (still serves a subsequent request).
-async fn scenario_07_events_lagged_resync_and_survive<C: Carrier>() {
+async fn scenario_07_events_lagged_resync_and_survive<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
+    let h = H::start().await;
 
     // Overflow the channel (cap 256) after the receiver subscribes but before
     // the serve loop drains it, so the first recv() lags. Synthetic filler is
     // fine here — the content is irrelevant; scenario 4 pins emitter output.
-    let mut served = serve_with_prep::<C>(state.clone(), hot, bulk, |s| {
+    let mut served = serve_with_prep(&h, state.clone(), hot, bulk, |s| {
         for _ in 0..400u32 {
             let _ = s.event_tx.send(daemon_event(sample_event()));
         }
@@ -744,9 +840,10 @@ async fn scenario_07_events_lagged_resync_and_survive<C: Carrier>() {
 /// Scenario 8 — framing size edges. A frame near the 16 MiB cap round-trips
 /// (request decoded, response returned); an oversized frame errors and tears
 /// down only its own connection, leaving the daemon serving other connections.
-async fn scenario_08_frame_size_edges<C: Carrier>() {
+async fn scenario_08_frame_size_edges<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
+    let h = H::start().await;
 
     // -- near the limit round-trips ----------------------------------------
     // A DeleteLabel with a ~15.5 MiB name: both the request frame and the
@@ -765,7 +862,7 @@ async fn scenario_08_frame_size_edges<C: Carrier>() {
         "request frame should be near (just under) the 16 MiB cap: {encoded_len} bytes"
     );
 
-    let mut served = serve::<C>(state.clone(), hot.clone(), bulk.clone()).await;
+    let mut served = serve(&h, state.clone(), hot.clone(), bulk.clone()).await;
     served.client.send(msg).await.unwrap();
     let response = served.recv_response_within(1, BIG_FRAME_RECV_TIMEOUT).await;
     assert_eq!(response.id, 1, "a near-limit frame round-trips its id");
@@ -773,7 +870,7 @@ async fn scenario_08_frame_size_edges<C: Carrier>() {
 
     // -- oversized frame errors without killing the daemon ------------------
     let (mut raw_client, server) =
-        spawn_server::<C>(state.clone(), hot.clone(), bulk.clone(), |_| {}).await;
+        spawn_server(&h, state.clone(), hot.clone(), bulk.clone(), |_| {}).await;
     let oversized = u32::try_from(MAX_FRAME_LEN).unwrap() + 1; // one byte over the cap
     raw_client
         .write_all(&oversized.to_be_bytes())
@@ -787,7 +884,7 @@ async fn scenario_08_frame_size_edges<C: Carrier>() {
 
     // A separate connection still works: the oversized frame killed one
     // connection, not the daemon.
-    assert_daemon_alive::<C>(&state, hot, bulk).await;
+    assert_daemon_alive(&h, &state, hot, bulk).await;
     state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
 }
 
@@ -795,12 +892,13 @@ async fn scenario_08_frame_size_edges<C: Carrier>() {
 /// BEHAVIOR: the decode fails (`InvalidData`), and the daemon closes the
 /// connection WITHOUT sending any error frame back — the client just sees EOF.
 /// A separate connection is unaffected.
-async fn scenario_09_malformed_json_closes_connection<C: Carrier>() {
+async fn scenario_09_malformed_json_closes_connection<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
+    let h = H::start().await;
 
     let (mut raw_client, server) =
-        spawn_server::<C>(state.clone(), hot.clone(), bulk.clone(), |_| {}).await;
+        spawn_server(&h, state.clone(), hot.clone(), bulk.clone(), |_| {}).await;
     write_raw_frame(&mut raw_client, b"{ this is not valid json ]").await;
 
     // No response frame is returned; the connection is simply closed.
@@ -808,18 +906,19 @@ async fn scenario_09_malformed_json_closes_connection<C: Carrier>() {
     drop(raw_client);
     join_server(server).await;
 
-    assert_daemon_alive::<C>(&state, hot, bulk).await;
+    assert_daemon_alive(&h, &state, hot, bulk).await;
     state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
 }
 
 /// Scenario 10 — a truncated / mid-frame disconnect. The client announces a
 /// frame length, sends a partial body, then disconnects. The server task cleans
 /// up (completes) rather than leaking or hanging.
-async fn scenario_10_truncated_frame_cleanup<C: Carrier>() {
+async fn scenario_10_truncated_frame_cleanup<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
+    let h = H::start().await;
 
-    let (mut raw_client, server) = spawn_server::<C>(state.clone(), hot, bulk, |_| {}).await;
+    let (mut raw_client, server) = spawn_server(&h, state.clone(), hot, bulk, |_| {}).await;
     // Header claims 1000 bytes; send only 10, then disconnect mid-frame.
     raw_client.write_all(&1000u32.to_be_bytes()).await.unwrap();
     raw_client.write_all(&[0u8; 10]).await.unwrap();
@@ -838,11 +937,12 @@ async fn scenario_10_truncated_frame_cleanup<C: Carrier>() {
 /// Scenario 11 — client disconnect with a request in flight. The handler runs
 /// to completion (or the send fails harmlessly) and, critically, the lane
 /// permit is released — it is not wedged.
-async fn scenario_11_disconnect_with_inflight_request_frees_permit<C: Carrier>() {
+async fn scenario_11_disconnect_with_inflight_request_frees_permit<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
     let gate = gate::install().await;
-    let mut served = serve::<C>(state.clone(), hot, bulk.clone()).await;
+    let h = H::start().await;
+    let mut served = serve(&h, state.clone(), hot, bulk.clone()).await;
 
     served.send(1, Request::RebuildAnalytics).await;
     gate.wait_until_entered(1).await;
@@ -875,13 +975,14 @@ async fn scenario_11_disconnect_with_inflight_request_frees_permit<C: Carrier>()
 
 /// Scenario 12 — a handler panic becomes a kinded `Error` response (via
 /// `guard_ipc_response`) and the connection stays usable for the next request.
-async fn scenario_12_handler_panic_recovers<C: Carrier>() {
+async fn scenario_12_handler_panic_recovers<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let account_id = state.default_account_id();
     state.add_sync_provider_for_test(Arc::new(PanicOnCreateLabel { account_id }));
 
     let (hot, bulk) = lanes();
-    let mut served = serve::<C>(state.clone(), hot, bulk).await;
+    let h = H::start().await;
+    let mut served = serve(&h, state.clone(), hot, bulk).await;
 
     // The panicking handler yields an Error response, correlated to its id.
     served
@@ -915,10 +1016,11 @@ async fn scenario_12_handler_panic_recovers<C: Carrier>() {
 
 /// Scenario 13 — the daemon shutdown signal closes idle connections cleanly:
 /// the shutdown watch arm ends the serve loop and the client sees EOF, no frame.
-async fn scenario_13_shutdown_closes_connections<C: Carrier>() {
+async fn scenario_13_shutdown_closes_connections<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
-    let mut served = serve::<C>(state.clone(), hot, bulk).await;
+    let h = H::start().await;
+    let mut served = serve(&h, state.clone(), hot, bulk).await;
 
     // Signal shutdown on an idle connection.
     state.request_shutdown();
@@ -934,10 +1036,11 @@ async fn scenario_13_shutdown_closes_connections<C: Carrier>() {
 /// Scenario 14 — UDS auth posture (placeholder for the phase-5 auth matrix).
 /// Today any local connection is accepted with no handshake: a fresh connection
 /// answers `Ping` immediately, no `Authenticate` step required.
-async fn scenario_14_uds_accepts_any_local_connection<C: Carrier>() {
+async fn scenario_14_uds_accepts_any_local_connection<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
-    let mut served = serve::<C>(state.clone(), hot, bulk).await;
+    let h = H::start().await;
+    let mut served = serve(&h, state.clone(), hot, bulk).await;
 
     // No auth handshake — straight to a request.
     served.send(1, Request::Ping).await;
@@ -951,28 +1054,41 @@ async fn scenario_14_uds_accepts_any_local_connection<C: Carrier>() {
 }
 
 // ---------------------------------------------------------------------------
-// Carrier matrix: run every scenario over both carriers.
+// Transport matrix: run every scenario over all four harnesses.
 // ---------------------------------------------------------------------------
 
-/// Instantiate each scenario as two `#[tokio::test]`s — one per carrier — so the
-/// corpus runs unchanged over the UDS socketpair and the in-memory duplex. The
-/// generated tests live at `carriers::<scenario>::{uds, duplex}`, keeping the
-/// per-carrier result visible in the test output. The scenario bodies — and
-/// every assertion in them — are shared and carrier-agnostic; only the byte
-/// stream underneath differs.
-macro_rules! run_on_both_carriers {
+/// Instantiate each scenario as four `#[tokio::test]`s — one per harness — so
+/// the corpus runs unchanged over the socketpair and duplex carriers AND over
+/// the real UDS and in-memory transports (through `bind`/`accept`/`connect`).
+/// The generated tests live at
+/// `carriers::<scenario>::{socketpair, duplex, uds_transport, memory_transport}`,
+/// keeping the per-variant result visible in the test output. The scenario
+/// bodies — and every assertion in them — are shared; only the byte stream (and,
+/// for the transport variants, whether it came through the production traits)
+/// differs.
+macro_rules! run_on_all_transports {
     ($($scenario:ident),+ $(,)?) => {
         mod carriers {
             $(
                 mod $scenario {
                     #[tokio::test]
-                    async fn uds() {
-                        super::super::$scenario::<super::super::UdsCarrier>().await;
+                    async fn socketpair() {
+                        super::super::$scenario::<super::super::SocketpairHarness>().await;
                     }
 
                     #[tokio::test]
                     async fn duplex() {
-                        super::super::$scenario::<super::super::DuplexCarrier>().await;
+                        super::super::$scenario::<super::super::DuplexHarness>().await;
+                    }
+
+                    #[tokio::test]
+                    async fn uds_transport() {
+                        super::super::$scenario::<super::super::UdsTransportHarness>().await;
+                    }
+
+                    #[tokio::test]
+                    async fn memory_transport() {
+                        super::super::$scenario::<super::super::MemoryTransportHarness>().await;
                     }
                 }
             )+
@@ -980,7 +1096,7 @@ macro_rules! run_on_both_carriers {
     };
 }
 
-run_on_both_carriers! {
+run_on_all_transports! {
     scenario_01_id_correlation_multiplexed,
     scenario_02_out_of_order_completion,
     scenario_03_lane_saturation_queues,

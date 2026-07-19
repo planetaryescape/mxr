@@ -53,7 +53,8 @@ pub async fn run_daemon() -> anyhow::Result<()> {
 }
 
 pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> anyhow::Result<()> {
-    let sock_path = AppState::socket_path();
+    // Bind where every CLI-side probe/request will look (honors MXR_DAEMON_ADDR).
+    let sock_path = resolve_daemon_socket()?;
     if let Some(parent) = sock_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -253,6 +254,13 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         }
     }
 
+    // Stop accepting FIRST — before the drains — so new clients get a prompt
+    // connection-refused during shutdown instead of hanging against a listening
+    // socket that no longer has an accept loop. The socket file is NOT unlinked
+    // yet: that is deferred to `cleanup` below.
+    for listener in &mut listeners {
+        listener.stop_accepting().await;
+    }
     drain_connection_tasks(&mut connections, CONNECTION_DRAIN_TIMEOUT).await;
     state.shutdown_runtime_tasks(Duration::from_secs(5)).await;
     // Release each transport's resources LAST — after the connection and
@@ -271,13 +279,19 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
 
 /// Accept from whichever bound transport is ready first. `select_all` over the
 /// listeners' accept futures; the loser futures are dropped (accept is
-/// cancel-safe). Multi-transport support is structural even though one UDS
-/// listener is configured this phase.
+/// cancel-safe per the `TransportListener::accept` contract). After each accept
+/// the slice is rotated by one so a continuously-ready earlier listener cannot
+/// starve later ones — round-robin fairness. No-op for the single UDS listener
+/// configured this phase, but keeps the multi-transport claim honest.
 async fn accept_any(
     listeners: &mut [Box<dyn TransportListener>],
 ) -> Result<(BoxedIo, PeerInfo), TransportError> {
-    let futures = listeners.iter_mut().map(|listener| listener.accept());
-    let (result, _index, _remaining) = futures::future::select_all(futures).await;
+    let result = {
+        let futures = listeners.iter_mut().map(|listener| listener.accept());
+        let (result, _index, _remaining) = futures::future::select_all(futures).await;
+        result
+    };
+    listeners.rotate_left(1);
     result
 }
 
@@ -287,8 +301,26 @@ fn build_transports(sock_path: &Path) -> Vec<Box<dyn ServerTransport>> {
     vec![Box::new(UdsServerTransport::new(sock_path.to_path_buf()))]
 }
 
+/// The daemon socket path every CLI-side operation agrees on. The daemon's
+/// bind, autostart, the liveness/stale probe, doctor's reachability check, and
+/// the request path (`IpcClient`) all resolve here, so start / probe / request
+/// can never disagree. `MXR_DAEMON_ADDR` (`unix://<path>`) takes precedence over
+/// `MXR_SOCKET_PATH` / the per-instance default; only `unix://` exists this
+/// phase.
+///
+/// The standalone `mxr-tui` / `mxr-web` / `mxr-mcp` clients still resolve their
+/// socket through `mxr_config::socket_path()` and do NOT yet honor
+/// `MXR_DAEMON_ADDR`; that adoption lands in phase 5 (see decision log D053).
+pub(crate) fn resolve_daemon_socket() -> anyhow::Result<PathBuf> {
+    match mxr_transport::TransportAddr::resolve(AppState::socket_path())
+        .map_err(|error| anyhow::anyhow!("invalid {}: {error}", mxr_transport::DAEMON_ADDR_ENV))?
+    {
+        mxr_transport::TransportAddr::Unix(path) => Ok(path),
+    }
+}
+
 pub async fn ensure_daemon_running() -> anyhow::Result<()> {
-    let sock_path = AppState::socket_path();
+    let sock_path = resolve_daemon_socket()?;
 
     match inspect_socket_state(&sock_path).await {
         SocketState::Reachable => {
@@ -323,7 +355,7 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
 }
 
 pub async fn restart_daemon() -> anyhow::Result<()> {
-    let sock_path = AppState::socket_path();
+    let sock_path = resolve_daemon_socket()?;
     restart_daemon_process(
         &sock_path,
         None,
@@ -333,7 +365,7 @@ pub async fn restart_daemon() -> anyhow::Result<()> {
 }
 
 pub async fn ensure_daemon_supports_tui() -> anyhow::Result<()> {
-    let sock_path = AppState::socket_path();
+    let sock_path = resolve_daemon_socket()?;
     let snapshot =
         match fetch_daemon_status_snapshot_from_path(&sock_path, STATUS_REQUEST_TIMEOUT).await {
             Ok(snapshot) => snapshot,
@@ -882,7 +914,7 @@ pub(crate) async fn shutdown_daemon_for_maintenance(
 }
 
 async fn request_shutdown() -> anyhow::Result<()> {
-    request_shutdown_to(&AppState::socket_path()).await
+    request_shutdown_to(&resolve_daemon_socket()?).await
 }
 
 async fn request_shutdown_to(sock_path: &std::path::Path) -> anyhow::Result<()> {

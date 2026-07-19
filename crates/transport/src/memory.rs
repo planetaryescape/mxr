@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use tokio::io::DuplexStream;
 use tokio::sync::Notify;
 
-use crate::error::Result;
+use crate::error::{Result, TransportError};
 use crate::peer::PeerInfo;
 use crate::{
     AuthCaps, BoxedIo, Connector, LifecycleCaps, LocalityCaps, ServerTransport,
@@ -115,6 +115,7 @@ impl ServerTransport for MemoryTransport {
     async fn bind(&self) -> Result<Box<dyn TransportListener>> {
         Ok(Box::new(MemoryListener {
             inner: self.inner.clone(),
+            accepting: true,
         }))
     }
 }
@@ -122,19 +123,30 @@ impl ServerTransport for MemoryTransport {
 /// The bound in-memory listener.
 struct MemoryListener {
     inner: Arc<Rendezvous>,
+    accepting: bool,
 }
 
 #[async_trait]
 impl TransportListener for MemoryListener {
     async fn accept(&mut self) -> Result<(BoxedIo, PeerInfo)> {
         loop {
+            if !self.accepting {
+                return Err(TransportError::Accept(std::io::Error::new(
+                    std::io::ErrorKind::NotConnected,
+                    "listener has stopped accepting",
+                )));
+            }
             if let Some(server_end) = self.inner.try_pop() {
-                // In-memory: the peer is this process. Report the in-process
-                // (unresolved) peer; never consulted for policy this phase.
+                // In-memory: the peer is this process — an explicit
+                // `LocalProcess`, never a fabricated `UnixPeer`.
                 return Ok((Box::new(server_end), PeerInfo::local()));
             }
             self.inner.ready.notified().await;
         }
+    }
+
+    async fn stop_accepting(&mut self) {
+        self.accepting = false;
     }
 
     async fn cleanup(&mut self) -> Result<()> {

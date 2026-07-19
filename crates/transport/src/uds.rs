@@ -74,17 +74,20 @@ impl ServerTransport for UdsServerTransport {
         let identity = socket_file_identity(&self.path);
         Ok(Box::new(UdsListener {
             path: self.path.clone(),
-            listener,
+            listener: Some(listener),
             identity,
             cleaned: false,
         }))
     }
 }
 
-/// A bound UDS listener. Owns the socket file it must remove on cleanup.
+/// A bound UDS listener. Owns the socket file it must remove on cleanup. The
+/// `UnixListener` lives in an `Option` so [`Self::stop_accepting`] can close the
+/// listening fd (refusing new clients) while the identity/path needed for the
+/// deferred, ownership-guarded unlink survive for [`Self::cleanup`].
 struct UdsListener {
     path: PathBuf,
-    listener: UnixListener,
+    listener: Option<UnixListener>,
     identity: Option<(u64, u64, i64, i64)>,
     cleaned: bool,
 }
@@ -92,13 +95,46 @@ struct UdsListener {
 #[async_trait]
 impl TransportListener for UdsListener {
     async fn accept(&mut self) -> Result<(BoxedIo, PeerInfo)> {
-        let (stream, _addr) = self
-            .listener
-            .accept()
-            .await
-            .map_err(TransportError::Accept)?;
-        let peer = peer_info(&stream);
-        Ok((Box::new(stream), peer))
+        let listener = self.listener.as_ref().ok_or_else(|| {
+            TransportError::Accept(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "listener has stopped accepting",
+            ))
+        })?;
+        // Fail closed on missing peer credentials: rather than fabricate an
+        // identity, drop the offending connection and keep serving others.
+        // tokio's `peer_cred` is cross-platform (`SO_PEERCRED` on Linux,
+        // `getpeereid` on macOS / the BSDs) and does not fail benignly on a
+        // connected AF_UNIX socket, so a failure signals a genuine anomaly —
+        // and phase-5 policy must never see a fake `UnixPeer`. Dropping one bad
+        // connection is safe; propagating the error would tear down the whole
+        // accept loop.
+        loop {
+            let (stream, _addr) = listener.accept().await.map_err(TransportError::Accept)?;
+            match stream.peer_cred() {
+                Ok(cred) => {
+                    let peer = PeerInfo {
+                        auth: PeerAuth::UnixPeer {
+                            uid: cred.uid(),
+                            gid: cred.gid(),
+                            pid: cred.pid(),
+                        },
+                    };
+                    return Ok((Box::new(stream), peer));
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "dropping UDS connection: peer credentials unavailable");
+                    drop(stream);
+                }
+            }
+        }
+    }
+
+    async fn stop_accepting(&mut self) {
+        // Close the listening fd so new connects are refused promptly. Does NOT
+        // release the socket file — `cleanup` does that, after in-flight
+        // connections drain, so a successor that re-bound the path is safe.
+        self.listener = None;
     }
 
     async fn cleanup(&mut self) -> Result<()> {
@@ -112,34 +148,6 @@ impl TransportListener for UdsListener {
 
     fn endpoint(&self) -> String {
         unix_endpoint(&self.path)
-    }
-}
-
-/// Read the peer's Unix credentials off a just-accepted stream. tokio's
-/// `peer_cred` is cross-platform (`SO_PEERCRED` on Linux, `getpeereid` on macOS
-/// / the BSDs). A `peer_cred` failure on a connected AF_UNIX socket is a rare
-/// I/O anomaly; it must not break serving (today no policy reads the creds), so
-/// we log and fall back to an *unresolved* `UnixPeer` sentinel
-/// (`uid`/`gid` == `u32::MAX`) rather than dropping the connection.
-fn peer_info(stream: &UnixStream) -> PeerInfo {
-    match stream.peer_cred() {
-        Ok(cred) => PeerInfo {
-            auth: PeerAuth::UnixPeer {
-                uid: cred.uid(),
-                gid: cred.gid(),
-                pid: cred.pid(),
-            },
-        },
-        Err(error) => {
-            tracing::warn!(%error, "could not read UDS peer credentials; using unresolved sentinel");
-            PeerInfo {
-                auth: PeerAuth::UnixPeer {
-                    uid: u32::MAX,
-                    gid: u32::MAX,
-                    pid: None,
-                },
-            }
-        }
     }
 }
 
@@ -229,7 +237,11 @@ fn remove_socket_if_owned(path: &Path, owned: Option<(u64, u64, i64, i64)>) {
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::unwrap_used, reason = "tests assert directly on fixtures")]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::panic,
+        reason = "tests assert directly on fixtures"
+    )]
 
     use super::{remove_socket_if_owned, socket_file_identity};
     use std::time::Duration;
@@ -262,5 +274,50 @@ mod tests {
         // Unknown identity (capture failed at bind) -> fall back to removal.
         remove_socket_if_owned(&path, None);
         assert!(!path.exists(), "unknown ownership falls back to removal");
+    }
+
+    /// Pins the shutdown ordering contract: `stop_accepting` refuses new
+    /// connections promptly (they must not hang) yet leaves the socket file in
+    /// place; `cleanup` is what unlinks it (deferred until in-flight
+    /// connections drain).
+    #[tokio::test]
+    async fn stop_accepting_refuses_new_connections_but_defers_unlink() {
+        use crate::{Connector, ServerTransport, TransportError, UnixConnector};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.sock");
+        let mut listener = super::UdsServerTransport::new(path.clone())
+            .bind()
+            .await
+            .unwrap();
+
+        let connector = UnixConnector::new(path.clone());
+        // `BoxedIo` isn't `Debug`, so assert on Ok-ness rather than unwrapping.
+        assert!(
+            connector.connect().await.is_ok(),
+            "reachable while accepting"
+        );
+
+        // Stop accepting: new connects are refused, socket file still present.
+        listener.stop_accepting().await;
+        assert!(
+            path.exists(),
+            "stop_accepting must not unlink the socket file"
+        );
+        match connector.connect().await {
+            Err(TransportError::Connect { source, .. }) => {
+                assert_eq!(
+                    source.kind(),
+                    std::io::ErrorKind::ConnectionRefused,
+                    "expected ConnectionRefused"
+                );
+            }
+            Ok(_) => panic!("connect must be refused once accepting stopped"),
+            Err(other) => panic!("expected a Connect error, got {other:?}"),
+        }
+
+        // cleanup performs the ownership-guarded unlink.
+        listener.cleanup().await.unwrap();
+        assert!(!path.exists(), "cleanup must unlink the socket file");
     }
 }

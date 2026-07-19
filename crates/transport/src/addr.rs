@@ -2,10 +2,26 @@
 //!
 //! Docker's precedent: a small scheme names an endpoint (`unix://<path>`). Only
 //! `unix://` exists this phase; `tcp://` and `cmd://` arrive in phase 5.
-//! Resolution order: explicit env (`MXR_DAEMON_ADDR`) → default per-instance
-//! socket path. (A config-file tier slots in between once a daemon-address
-//! config field exists.) When the env var is unset, resolution returns the
-//! caller's default path unchanged — today's behavior.
+//!
+//! ## `unix://` grammar
+//!
+//! Everything after the literal `unix://` prefix is the socket path, taken
+//! verbatim:
+//! - **Empty** (`unix://`) is rejected — a path is required.
+//! - **Absolute** (`unix:///run/mxr.sock` → `/run/mxr.sock`) and **relative**
+//!   (`unix://run/mxr.sock` → `run/mxr.sock`, resolved against the process CWD
+//!   by the OS at connect/bind time) are both accepted; relative paths are not
+//!   rewritten.
+//! - **Percent-escapes are literal**: `unix://a%20b` is the 4-char path `a%20b`,
+//!   not `a b`. This is a filesystem path, not a URL — no percent-decoding.
+//!
+//! ## Resolution precedence
+//!
+//! `MXR_DAEMON_ADDR` (if set and non-empty) **>** the caller's default socket
+//! path (which itself honors `MXR_SOCKET_PATH` **>** the per-instance default).
+//! When `MXR_DAEMON_ADDR` is unset, resolution returns the default unchanged —
+//! today's behavior. (A config-file tier slots in below the env var once a
+//! daemon-address config field exists.)
 
 use std::path::PathBuf;
 
@@ -64,6 +80,25 @@ mod tests {
     }
 
     #[test]
+    fn relative_unix_path_is_kept_verbatim() {
+        // Relative paths are accepted as-is (the OS resolves them against CWD
+        // at connect/bind time); they are not rewritten to absolute.
+        assert_eq!(
+            TransportAddr::parse("unix://run/mxr.sock").unwrap(),
+            TransportAddr::Unix(PathBuf::from("run/mxr.sock"))
+        );
+    }
+
+    #[test]
+    fn percent_escapes_are_literal_not_decoded() {
+        // A filesystem path, not a URL: `%20` stays four characters.
+        assert_eq!(
+            TransportAddr::parse("unix://a%20b.sock").unwrap(),
+            TransportAddr::Unix(PathBuf::from("a%20b.sock"))
+        );
+    }
+
+    #[test]
     fn rejects_empty_unix_path() {
         assert!(TransportAddr::parse("unix://").is_err());
     }
@@ -73,27 +108,39 @@ mod tests {
         assert!(TransportAddr::parse("tcp://127.0.0.1:9000").is_err());
     }
 
+    /// One serialized test owns the `MXR_DAEMON_ADDR` mutation window, so it
+    /// never races another test reading the global env. Covers both precedence
+    /// directions: env unset → default returned verbatim; env set → it wins over
+    /// the default.
     #[test]
-    fn resolve_falls_back_to_default_when_env_unset() {
-        // Uses a unique var name assumption: this test must not run with
-        // MXR_DAEMON_ADDR set. The default is returned verbatim.
-        temp_env_remove(|| {
-            let default = PathBuf::from("/run/mxr/mxr.sock");
-            assert_eq!(
-                TransportAddr::resolve(default.clone()).unwrap(),
-                TransportAddr::Unix(default)
-            );
-        });
-    }
-
-    // Minimal scoped env guard so the resolve test does not depend on ambient
-    // MXR_DAEMON_ADDR. Restores the previous value on drop.
-    fn temp_env_remove(body: impl FnOnce()) {
+    fn resolve_precedence_env_over_default() {
         let previous = std::env::var(DAEMON_ADDR_ENV).ok();
+        let default = PathBuf::from("/run/mxr/mxr.sock");
+
+        // Unset → default returned unchanged.
         std::env::remove_var(DAEMON_ADDR_ENV);
-        body();
-        if let Some(value) = previous {
-            std::env::set_var(DAEMON_ADDR_ENV, value);
+        assert_eq!(
+            TransportAddr::resolve(default.clone()).unwrap(),
+            TransportAddr::Unix(default.clone())
+        );
+
+        // Set → MXR_DAEMON_ADDR wins over the default.
+        std::env::set_var(DAEMON_ADDR_ENV, "unix:///tmp/override.sock");
+        assert_eq!(
+            TransportAddr::resolve(default.clone()).unwrap(),
+            TransportAddr::Unix(PathBuf::from("/tmp/override.sock"))
+        );
+
+        // Blank/whitespace → treated as unset.
+        std::env::set_var(DAEMON_ADDR_ENV, "   ");
+        assert_eq!(
+            TransportAddr::resolve(default.clone()).unwrap(),
+            TransportAddr::Unix(default)
+        );
+
+        match previous {
+            Some(value) => std::env::set_var(DAEMON_ADDR_ENV, value),
+            None => std::env::remove_var(DAEMON_ADDR_ENV),
         }
     }
 }

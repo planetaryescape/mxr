@@ -16,8 +16,10 @@
 //! - [`UdsServerTransport`] / [`UnixConnector`] — the Unix domain socket, the
 //!   default and only production transport (absorbs the socket lifecycle that
 //!   used to live inline in the daemon's `server.rs`).
-//! - [`MemoryTransport`] (behind the `test-util` feature) — an in-memory duplex
-//!   pair, the "fake provider" analog for the conformance corpus.
+//! - `MemoryTransport` (behind the `test-util` feature) — an in-memory duplex
+//!   pair, the "fake provider" analog for the conformance corpus. (Plain code
+//!   span, not an intra-doc link: the type is compiled out of the default
+//!   feature set, so a link would dangle when docs build without `test-util`.)
 //!
 //! See `docs/transport-adapters/04-transport-traits.md` for the design.
 
@@ -75,14 +77,39 @@ pub trait ServerTransport: Send + Sync {
 
 /// A bound listener: accepts connections and owns any transport-level resource
 /// (a socket file, an in-memory queue) that must be released on shutdown.
+///
+/// ## Shutdown ordering
+///
+/// Graceful shutdown is three ordered steps: [`stop_accepting`](Self::stop_accepting)
+/// (refuse new clients), drain in-flight connections, then [`cleanup`](Self::cleanup)
+/// (release the resource). Splitting the first and last steps is deliberate —
+/// see each method.
 #[async_trait]
 pub trait TransportListener: Send {
     /// Accept the next connection: a byte stream plus the peer's auth evidence.
+    ///
+    /// **Cancel-safety (required):** the returned future may be dropped before
+    /// completion — the daemon's accept loop polls several listeners with
+    /// `select!`/`select_all` and drops the losers each round. An
+    /// implementation MUST NOT lose or leak a connection when its `accept`
+    /// future is dropped before it resolves (a connection already peeled off
+    /// the OS backlog is fine; one that was never returned must remain
+    /// acceptable on the next call). `tokio`'s `UnixListener::accept` satisfies
+    /// this; custom transports must uphold it.
     async fn accept(&mut self) -> Result<(BoxedIo, PeerInfo)>;
 
-    /// Release transport-owned resources (socket file, …). Idempotent; the pid
-    /// file and daemon singleton guard are daemon lifecycle, not transport
-    /// lifecycle, and stay in the daemon.
+    /// Stop accepting new connections: close the listening endpoint so new
+    /// clients are refused promptly (they must NOT hang), WITHOUT releasing the
+    /// transport resource. Called before the connection drain; the resource
+    /// release is deferred to [`cleanup`](Self::cleanup) so a successor that
+    /// re-bound the endpoint during the drain window is not clobbered.
+    /// Idempotent; after it returns, `accept` must fail rather than block.
+    async fn stop_accepting(&mut self);
+
+    /// Release transport-owned resources (socket file, …). Idempotent; runs
+    /// LAST, after in-flight connections drain. The pid file and daemon
+    /// singleton guard are daemon lifecycle, not transport lifecycle, and stay
+    /// in the daemon.
     async fn cleanup(&mut self) -> Result<()>;
 
     /// Human-readable endpoint for logs/status (`"unix:/path"`).

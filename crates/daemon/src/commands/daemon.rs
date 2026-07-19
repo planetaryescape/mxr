@@ -62,7 +62,9 @@ pub async fn run() -> anyhow::Result<()> {
     // normal `?` here is safe; its progress output goes to stderr, keeping
     // stdout byte-clean.
     crate::server::ensure_daemon_running().await?;
-    let socket_path = crate::state::AppState::socket_path();
+    // Same resolution source as autostart/probe/request so the byte pipe always
+    // reaches the daemon we just ensured (honors MXR_DAEMON_ADDR).
+    let socket_path = crate::server::resolve_daemon_socket()?;
 
     // Once piping begins, stdin may be parked in tokio's uncancellable blocking
     // read, so EVERY exit path must terminate the process explicitly — a normal

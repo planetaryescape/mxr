@@ -1,4 +1,3 @@
-use crate::state::AppState;
 use mxr_client::{ClientError, IpcConnection};
 use mxr_protocol::*;
 use std::path::Path;
@@ -20,17 +19,10 @@ pub struct IpcClient {
 
 impl IpcClient {
     pub async fn connect() -> anyhow::Result<Self> {
-        // Resolve the daemon address: `MXR_DAEMON_ADDR` (`unix://<path>`) if
-        // set, otherwise the default per-instance socket path (behavior
-        // unchanged when the env var is unset). Only `unix://` exists this
-        // phase; `tcp://`/`cmd://` arrive in phase 5.
-        let addr =
-            mxr_transport::TransportAddr::resolve(AppState::socket_path()).map_err(|error| {
-                anyhow::anyhow!("invalid {}: {error}", mxr_transport::DAEMON_ADDR_ENV)
-            })?;
-        match addr {
-            mxr_transport::TransportAddr::Unix(path) => Self::connect_to(&path).await,
-        }
+        // Route through the daemon's single socket-resolution source so the
+        // request path agrees with autostart / the liveness probe / doctor
+        // (honors MXR_DAEMON_ADDR; behavior unchanged when unset).
+        Self::connect_to(&crate::server::resolve_daemon_socket()?).await
     }
 
     pub async fn connect_to(socket_path: &Path) -> anyhow::Result<Self> {

@@ -531,21 +531,70 @@ fn to_address(addr: &mail_parser::Addr<'_>) -> Address {
     }
 }
 
+/// Normalize every line ending — CRLF, bare CR, and LF — to CRLF so downstream
+/// RFC 5322 parsing sees consistent line boundaries whatever the source used.
+/// `str::lines()` does not treat a bare `\r` as a break, which is exactly the
+/// gap a header-injection attack exploits, so we walk the bytes ourselves.
 fn normalize_header_block(raw_headers: &str) -> String {
-    raw_headers
-        .lines()
-        .map(|line| line.trim_end_matches('\r'))
-        .collect::<Vec<_>>()
-        .join("\r\n")
+    let mut out = String::with_capacity(raw_headers.len() + 8);
+    let mut chars = raw_headers.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                out.push_str("\r\n");
+            }
+            '\n' => out.push_str("\r\n"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Ordered `Delivered-To:` addresses from a raw header block, topmost first.
+///
+/// Uses the RFC-aware parser after normalizing line endings, so header/body
+/// splitting, folding, and every line-ending form (CRLF, LF, bare CR) are
+/// handled by battle-tested code rather than ad-hoc line scanning. Each
+/// header's value is reduced to its *first* address, so content a sender
+/// smuggles after the real address (e.g. via injected `\r`) can never be the
+/// one returned. Callers pick the topmost owned address, so a genuine
+/// MTA-stamped `Delivered-To:` — always above any attacker-added one — wins.
+pub fn delivered_to_addresses(raw_headers: &str) -> Vec<String> {
+    let mut raw_message = normalize_header_block(raw_headers);
+    // Terminate the header block so the parser knows where headers end.
+    raw_message.push_str("\r\n\r\n");
+    let Some(message) = MessageParser::default().parse(raw_message.as_bytes()) else {
+        return Vec::new();
+    };
+    message
+        .header_values("Delivered-To")
+        .filter_map(mail_parser::HeaderValue::as_text)
+        .filter_map(|text| {
+            // A Delivered-To value is a single mailbox. Take only its first
+            // line: a folded continuation the parser preserves in the value
+            // (e.g. an injected "\r\n Delivered-To: <alias>") must not
+            // contribute the address we return.
+            let first_line = text.split(['\r', '\n']).next().unwrap_or(text);
+            parse_address_list(first_line)
+                .into_iter()
+                .next()
+                .map(|address| address.email)
+        })
+        .filter(|email| !email.is_empty())
+        .collect()
 }
 
 pub fn extract_raw_header_block(raw_message: &[u8]) -> Option<String> {
-    let raw = String::from_utf8_lossy(raw_message);
-    let header_block = raw
-        .split("\r\n\r\n")
-        .next()
-        .or_else(|| raw.split("\n\n").next())?;
-    Some(normalize_header_block(header_block))
+    // Normalize endings first, then split at the first blank line. The previous
+    // `split("\r\n\r\n").next()` always yielded the whole string (its `.next()`
+    // never fails), so the `\n\n` fallback was unreachable and LF-only / bare-CR
+    // messages had their entire body treated as headers.
+    let normalized = normalize_header_block(&String::from_utf8_lossy(raw_message));
+    let header_block = normalized.split("\r\n\r\n").next()?;
+    Some(header_block.to_string())
 }
 
 fn flush_paragraph(out: &mut String, current: &mut String) {
@@ -574,6 +623,73 @@ mod tests {
     )]
 
     use super::*;
+
+    /// Exhaustive over line-ending forms so a fourth variant can't reopen the
+    /// header-injection seam: {CRLF, LF, bare CR} × {header vs body
+    /// Delivered-To} × {blank line vs none}.
+    #[test]
+    fn delivered_to_addresses_is_robust_across_all_line_endings() {
+        for eol in ["\r\n", "\n", "\r"] {
+            let label = format!("eol={eol:?}");
+
+            // A genuine top-level Delivered-To header is read.
+            let raw = format!("Delivered-To: real@primary.example{eol}Subject: hi{eol}");
+            assert_eq!(
+                delivered_to_addresses(&raw),
+                vec!["real@primary.example"],
+                "header case, {label}"
+            );
+
+            // A Delivered-To in the *body* (after the blank line the sender
+            // controls) must never be read as a header.
+            let raw = format!(
+                "Delivered-To: real@primary.example{eol}Subject: hi{eol}{eol}\
+                 Delivered-To: alias@evil.example{eol}reply from my alias{eol}"
+            );
+            assert_eq!(
+                delivered_to_addresses(&raw),
+                vec!["real@primary.example"],
+                "body case, {label}"
+            );
+
+            // Two genuine headers with no trailing blank line keep document
+            // order (topmost first), so the caller's topmost-owned wins.
+            let raw = format!(
+                "Delivered-To: real@primary.example{eol}\
+                 Delivered-To: second@primary.example{eol}Subject: hi{eol}"
+            );
+            assert_eq!(
+                delivered_to_addresses(&raw),
+                vec!["real@primary.example", "second@primary.example"],
+                "two-header case, {label}"
+            );
+        }
+    }
+
+    #[test]
+    fn delivered_to_addresses_defeats_bare_cr_injection() {
+        // The reviewed vector: a fake Delivered-To smuggled after a bare-CR
+        // "blank line" that `str::lines()` would never split on.
+        let raw = "Delivered-To: external@evil.example\r\rDelivered-To: alias@owned.example";
+        assert_eq!(delivered_to_addresses(raw), vec!["external@evil.example"]);
+    }
+
+    #[test]
+    fn delivered_to_addresses_ignores_folded_fake_and_takes_first_address() {
+        // A fake folded into the previous header's value is unfolded into that
+        // value; taking the *first* address of each header yields the real one.
+        let raw = "Delivered-To: real@primary.example\r\n Delivered-To: alias@owned.example\r\n";
+        assert_eq!(delivered_to_addresses(raw), vec!["real@primary.example"]);
+    }
+
+    #[test]
+    fn delivered_to_addresses_strips_display_name_and_is_name_case_insensitive() {
+        let raw = "Received: from x\r\ndelivered-to: Team <hello@planetaryescape.xyz>\r\n";
+        assert_eq!(
+            delivered_to_addresses(raw),
+            vec!["hello@planetaryescape.xyz"]
+        );
+    }
     use mxr_test_support::{fixture_stem, standards_fixture_bytes, standards_fixture_names};
     use serde_json::json;
 

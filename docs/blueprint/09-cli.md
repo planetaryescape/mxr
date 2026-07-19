@@ -146,6 +146,8 @@ mxr move --search "label:triage" --to work/todo --dry-run
 mxr                         Open TUI
 mxr daemon                  Start daemon explicitly
 mxr daemon --foreground     Start daemon in foreground
+mxr daemon --stdio          Serve one connection over stdin/stdout (spawn-as-child)
+mxr daemon dial-stdio       Proxy this process's stdio to the running daemon (SSH/container bridge)
 mxr restart                 Restart daemon with current binary
 mxr sync                    Trigger sync for all accounts
 mxr sync --account work     Trigger sync for one account
@@ -160,6 +162,21 @@ mxr labels                  List labels with counts
 mxr config                  Show resolved configuration
 mxr version                 Version info
 ```
+
+## Daemon connection (`MXR_DAEMON_ADDR`)
+
+By default the CLI dials the per-instance Unix socket. `MXR_DAEMON_ADDR` overrides which daemon it talks to (precedence: `MXR_DAEMON_ADDR` > `MXR_SOCKET_PATH` > per-instance default). The CLI understands three schemes:
+
+```bash
+MXR_DAEMON_ADDR="unix:///run/mxr/mxr.sock"                 # explicit Unix socket
+MXR_DAEMON_ADDR="tcp://127.0.0.1:9000"                     # loopback TCP + token (see below)
+MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio"  # off-machine, via an SSH byte pipe
+```
+
+- **`tcp://`** dials a loopback daemon that binds `[transports.tcp]`; the CLI authenticates with the daemon's IPC token (`MXR_DAEMON_TOKEN` env, or `<config_dir>/daemon-token`). Non-loopback targets are refused (the token would be sent in plaintext).
+- **`cmd://`** spawns a command whose stdio *is* the byte stream (Docker's `connhelper` model). Paired with `mxr daemon dial-stdio` on the remote side, `ssh`/`docker exec`/tunnels become transports with no new daemon trust surface. Argv is whitespace-split — no shell quoting; wrap complex commands in a script.
+
+The TUI, web bridge, and MCP server honour `MXR_DAEMON_ADDR` too, but accept `unix://` only (a `tcp://`/`cmd://` value is rejected with a clear message — use the CLI for those). Full reference: `docs/blueprint/20-transports.md`.
 
 ## Output formats
 

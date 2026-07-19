@@ -36,7 +36,7 @@ Where transports are named in code: the daemon's `build_transports` factory (`cr
 
 ## 2. Trait reference (as built)
 
-All in `crates/transport` (`mxr-transport`), a pure byte-stream leaf crate depending on **no** internal `mxr-*` crate (only `tokio` / `async-trait` / `thiserror` / `tracing`). Object-safe `#[async_trait]` traits, consumed as `Box<dyn _>` — the provider-adapter shape (D053).
+All in `crates/transport` (`mxr-transport`), a pure byte-stream leaf crate depending on **no** internal `mxr-*` crate. Its default/runtime dependencies are only `tokio` / `async-trait` / `thiserror` / `tracing`; the `conformance` feature (§5) additionally pulls an optional `futures` (for `poll!` in the cancel-safety check). Object-safe `#[async_trait]` traits, consumed as `Box<dyn _>` — the provider-adapter shape (D053).
 
 ### `ServerTransport` (`src/lib.rs`)
 
@@ -159,7 +159,7 @@ If you do need a trait impl, the checklist:
    }
    ```
 
-   `run_transport_conformance` pins the transport contract — bind, accept yields a connected bidirectional stream plus `PeerInfo`, `accept` is cancel-safe, `stop_accepting` refuses further connections without hanging, `cleanup` is idempotent, and the accepted peer's evidence is coherent with the advertised capabilities. It is **protocol-free**: it never frames through `IpcCodec`, never sends a `Request`, never touches an `AppState`.
+   `run_transport_conformance` pins the transport contract — bind; accept yields a connected bidirectional stream plus `PeerInfo`; a payload at the protocol's **16 MiB max-frame size round-trips each way** (proving the transport carries the full byte envelope, so a transport capped below the cap fails here rather than silently in production); `accept` is **cancel-safe** across a parked-then-dropped future; `stop_accepting` refuses further connections without hanging; `cleanup` is idempotent; and `connector.auth_token()` ⟺ `capabilities.auth.token` ⟺ the accepted `PeerAuth::TokenRequired` are **tri-coherent**. It is **protocol-free**: it never frames through `IpcCodec`, never sends a `Request`, never touches an `AppState` — it uses a documented `MAX_PROTOCOL_FRAME_BYTES` const mirroring `crates/protocol/src/codec.rs`, so the leaf crate needs no `mxr-protocol` dependency.
 
 4. **Study the references.** `UdsServerTransport` (`src/uds.rs`, the production reference) and `MemoryTransport` (`src/memory.rs`, behind `test-util`, the in-memory reference). `examples/transport-skeleton/` is a compilable all-stub starting point (standalone `[workspace]`, `publish = false`, depends only on `mxr-transport`).
 5. **Package as a crate** depending on `mxr-transport` only.

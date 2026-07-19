@@ -45,6 +45,29 @@ use crate::{BoxedIo, Connector, PeerAuth, ServerTransport, TransportCapabilities
 /// rendezvous-driven, so this only trips on a genuine wedge, never on latency.
 const WAIT: Duration = Duration::from_secs(5);
 
+/// Longer bound for the multi-MiB frame round-trip — transferring ~16 MiB can be
+/// slow on a loaded CI box (the daemon corpus uses the same 30s allowance for
+/// its near-limit frame scenario).
+const LARGE_WAIT: Duration = Duration::from_secs(30);
+
+/// The maximum frame the wire protocol can put on a transport, in bytes.
+///
+/// This MUST match `IpcCodec`'s frame cap (`crates/protocol/src/codec.rs`: 16
+/// MiB). It is duplicated as a documented constant here — rather than depending
+/// on `mxr-protocol` — precisely to keep this crate a pure byte-stream leaf: a
+/// transport carries opaque bytes and never parses a frame, so it needs the
+/// *size* of the protocol's byte envelope, not the protocol types. A transport
+/// that cannot round-trip a payload this large would silently fail the daemon's
+/// near-limit-frame scenario in production, so the transport suite proves the
+/// envelope here (see [`run_transport_conformance`]).
+const MAX_PROTOCOL_FRAME_BYTES: usize = 16 * 1024 * 1024;
+
+/// Chunk size for streaming the large-frame round-trip. A single 16 MiB write
+/// would deadlock a socket transport (the kernel buffer is far smaller than the
+/// payload), so writer and reader run concurrently and move the payload in
+/// bounded chunks.
+const LARGE_CHUNK: usize = 64 * 1024;
+
 /// Run the transport-contract conformance suite against a `transport` and a
 /// `connector` pre-wired to the same endpoint.
 ///
@@ -103,38 +126,52 @@ where
     let (mut server, peer) = within(listener.accept())
         .await
         .expect("accept should succeed while accepting");
-    assert_peer_matches_caps(&peer.auth, caps);
+    assert_peer_matches_caps(&peer.auth, caps, connector.auth_token().is_some());
     round_trip(&mut client, &mut server).await;
+    // The transport must carry the protocol's full byte envelope — a payload at
+    // the 16 MiB frame cap round-trips intact each way. Without this, a transport
+    // capped below the cap would pass a tiny round-trip yet fail the daemon's
+    // near-limit-frame scenario in production; proving it here is what lets the
+    // protocol corpus stay out-of-tree (D057).
+    round_trip_large(&mut client, &mut server).await;
     drop(client);
     drop(server);
 
-    // --- cancel-safety: an `accept` future that is polled (registers interest)
-    //     then dropped before a client arrives must NOT wedge the listener --
+    // --- cancel-safety: an `accept` future that registered interest (polled to
+    //     Pending) and is then dropped must NOT lose a connection that arrives in
+    //     that window — the daemon's accept loop `select_all`s several listeners
+    //     and drops the losing branch each round. Ordering is load-bearing: poll
+    //     to Pending FIRST (empty backlog), THEN connect, THEN drop the parked
+    //     future WITHOUT polling it again, THEN a fresh accept must recover the
+    //     connection. (A connection already peeled off by a completed poll is
+    //     allowed to be lost per the trait doc; this tests the parked case.) -----
+    let mut client: BoxedIo;
     {
         let accept = listener.accept();
         tokio::pin!(accept);
-        let polled = futures::poll!(accept.as_mut());
         assert!(
-            polled.is_pending(),
-            "accept must be pending when no client is waiting (nothing to consume yet)"
+            futures::poll!(accept.as_mut()).is_pending(),
+            "accept must park (Pending) when no client is waiting yet"
         );
-        // `accept` is dropped here: the required cancel-safe drop.
+        // A client arrives while the accept is parked...
+        client = connector
+            .connect()
+            .await
+            .expect("connect should succeed while an accept is parked");
+        // ...and the parked accept is dropped here (end of scope) without being
+        // polled again — exactly how `select!` abandons the losing branch.
     }
-    // The listener must still accept a real connection after the cancelled poll.
-    let mut client = connector
-        .connect()
-        .await
-        .expect("connect should succeed after a cancelled accept");
+    // The connection must survive: a fresh accept still yields it (no loss).
     let (mut server, _peer) = within(listener.accept())
         .await
-        .expect("a cancelled accept must not lose the next connection");
+        .expect("a dropped parked accept must not lose the queued connection");
     round_trip(&mut client, &mut server).await;
     drop(client);
     drop(server);
 
     // --- stop_accepting: new connections are refused promptly (never hang),
     //     and accept fails rather than blocking forever ----------------------
-    listener.stop_accepting().await;
+    within(listener.stop_accepting()).await;
 
     let accept_after_stop = within(listener.accept()).await;
     assert!(
@@ -215,18 +252,33 @@ where
     let _ = listener.cleanup().await;
 }
 
-/// The accepted peer's evidence must be coherent with what the transport
-/// advertises: a `TokenRequired` peer requires the token capability and no
-/// implicit identity; a real `UnixPeer` requires the implicit-identity
-/// capability. `LocalProcess` (in-process) is trusted by construction and puts
-/// no requirement on the capability flags.
-fn assert_peer_matches_caps(auth: &PeerAuth, caps: TransportCapabilities) {
+/// The accepted peer's evidence, the advertised capabilities, and the
+/// connector's token must be **tri-coherent**:
+///
+/// > `connector.auth_token().is_some()`  ⟺  `capabilities.auth.token == true`
+/// > ⟺  the accepted `PeerAuth` is `TokenRequired`.
+///
+/// A mismatch is a real bug: e.g. a connector that advertises a token while the
+/// transport is not `TokenRequired` would make the shared IPC client send an
+/// unwanted `Authenticate` handshake a trusting daemon never asked for. A real
+/// `UnixPeer` additionally requires the implicit-identity capability;
+/// `LocalProcess` (in-process) is trusted by construction.
+fn assert_peer_matches_caps(
+    auth: &PeerAuth,
+    caps: TransportCapabilities,
+    connector_has_token: bool,
+) {
+    let peer_is_token_required = matches!(auth, PeerAuth::TokenRequired);
+    assert_eq!(
+        caps.auth.token, peer_is_token_required,
+        "auth.token capability must match whether the accepted peer is TokenRequired"
+    );
+    assert_eq!(
+        connector_has_token, peer_is_token_required,
+        "connector.auth_token().is_some() must match whether the accepted peer is TokenRequired"
+    );
     match auth {
         PeerAuth::TokenRequired => {
-            assert!(
-                caps.auth.token,
-                "a TokenRequired peer requires the auth.token capability"
-            );
             assert!(
                 !caps.auth.implicit_peer_identity,
                 "a TokenRequired peer must not also claim an implicit identity"
@@ -274,6 +326,60 @@ async fn round_trip(client: &mut BoxedIo, server: &mut BoxedIo) {
     );
 }
 
+/// Round-trip a payload at the protocol's maximum frame size
+/// ([`MAX_PROTOCOL_FRAME_BYTES`]) each way, proving the transport carries the
+/// full byte envelope the wire protocol can put on it. Writer and reader run
+/// concurrently — a 16 MiB payload dwarfs any socket buffer, so a sequential
+/// write-then-read would deadlock a socket transport.
+async fn round_trip_large(client: &mut BoxedIo, server: &mut BoxedIo) {
+    let len = MAX_PROTOCOL_FRAME_BYTES;
+    let both = async {
+        tokio::join!(write_filled(client, len), read_filled(server, len));
+    };
+    tokio::time::timeout(LARGE_WAIT, both)
+        .await
+        .expect("a max-size frame must round-trip client -> server without hanging");
+
+    let both = async {
+        tokio::join!(write_filled(server, len), read_filled(client, len));
+    };
+    tokio::time::timeout(LARGE_WAIT, both)
+        .await
+        .expect("a max-size frame must round-trip server -> client without hanging");
+}
+
+/// Stream `len` bytes of a fixed sentinel pattern onto `io` in bounded chunks.
+async fn write_filled(io: &mut BoxedIo, len: usize) {
+    let chunk = vec![0xA5u8; LARGE_CHUNK];
+    let mut remaining = len;
+    while remaining > 0 {
+        let n = remaining.min(LARGE_CHUNK);
+        io.write_all(&chunk[..n])
+            .await
+            .expect("large-frame write should succeed");
+        remaining -= n;
+    }
+    io.flush().await.expect("large-frame flush should succeed");
+}
+
+/// Read `len` bytes from `io` in bounded chunks, asserting every byte is the
+/// sentinel pattern — proof the whole payload arrived intact, not truncated.
+async fn read_filled(io: &mut BoxedIo, len: usize) {
+    let mut buf = vec![0u8; LARGE_CHUNK];
+    let mut remaining = len;
+    while remaining > 0 {
+        let n = remaining.min(LARGE_CHUNK);
+        io.read_exact(&mut buf[..n])
+            .await
+            .expect("large-frame read should succeed");
+        assert!(
+            buf[..n].iter().all(|&b| b == 0xA5),
+            "large-frame bytes must arrive intact"
+        );
+        remaining -= n;
+    }
+}
+
 /// Await `future` under [`WAIT`], failing the test loudly (via `expect`) if it
 /// does not resolve — a hung transport operation is a conformance failure, never
 /// a silent stall.
@@ -285,12 +391,19 @@ async fn within<F: std::future::Future>(future: F) -> F::Output {
 
 #[cfg(test)]
 mod tests {
-    //! Self-tests: the in-tree transports must pass their own conformance suite.
+    //! Self-tests: the in-tree transports must pass their own conformance suite,
+    //! one per `PeerAuth` variant.
+    //!
+    //! - `UdsServerTransport` covers `UnixPeer` (real OS peer creds).
+    //! - `MemoryTransport` covers `LocalProcess` (in-process).
+    //! - `TokenFixture` (below) covers `TokenRequired` — a deterministic,
+    //!   duplex-backed token transport, so the token path of the suite (and
+    //!   `run_token_auth_conformance`) is exercised without an ephemeral-port
+    //!   bind race. The real `TcpServerTransport`'s own behavior is covered by
+    //!   `tcp::tests` and the daemon's TCP corpus harness.
 
     use super::{run_token_auth_conformance, run_transport_conformance};
-    use crate::{
-        ServerTransport, TcpConnector, TcpServerTransport, UdsServerTransport, UnixConnector,
-    };
+    use crate::{UdsServerTransport, UnixConnector};
 
     #[tokio::test]
     async fn uds_transport_conforms() {
@@ -301,29 +414,6 @@ mod tests {
         run_transport_conformance(&transport, &connector).await;
     }
 
-    #[tokio::test]
-    async fn tcp_transport_conforms() {
-        // Discover a free loopback port (bind `:0`, read it, release it), then
-        // build the transport + connector on that concrete port so the suite's
-        // own bind and the connector agree on the address. tokio sets
-        // SO_REUSEADDR, so the just-freed port re-binds without a TIME_WAIT stall.
-        let probe = TcpServerTransport::new("127.0.0.1:0".parse().expect("addr"))
-            .bind()
-            .await
-            .expect("probe bind");
-        let addr = probe
-            .endpoint()
-            .strip_prefix("tcp://")
-            .and_then(|authority| authority.parse().ok())
-            .expect("tcp endpoint should be tcp://host:port");
-        drop(probe);
-
-        let transport = TcpServerTransport::new(addr);
-        let connector = TcpConnector::new(addr, Some("conformance-token".to_string()));
-        run_transport_conformance(&transport, &connector).await;
-        run_token_auth_conformance(&transport, &connector).await;
-    }
-
     #[cfg(feature = "test-util")]
     #[tokio::test]
     async fn memory_transport_conforms() {
@@ -331,5 +421,179 @@ mod tests {
         let transport = MemoryTransport::new();
         let connector = transport.connector();
         run_transport_conformance(&transport, &connector).await;
+    }
+
+    #[tokio::test]
+    async fn token_transport_conforms() {
+        // Fresh instance per suite call: like `MemoryTransport`, this duplex
+        // fixture shares one queue across binds and `stop_accepting` closes it
+        // for good, so each conformance run (which does one bind lifecycle) gets
+        // its own transport. Re-bindable transports (TCP/UDS) can reuse one.
+        let transport = token_fixture::TokenFixture::new();
+        let connector = transport.connector();
+        run_transport_conformance(&transport, &connector).await;
+
+        let transport = token_fixture::TokenFixture::new();
+        let connector = transport.connector();
+        run_token_auth_conformance(&transport, &connector).await;
+    }
+
+    /// A minimal duplex-backed transport that reports `TokenRequired` — the
+    /// `TokenRequired` reference for the suite's own tests. No sockets, no ports,
+    /// fully deterministic. (A trimmed sibling of `MemoryTransport` with token
+    /// capabilities instead of `LocalProcess`.)
+    mod token_fixture {
+        use std::collections::VecDeque;
+        use std::sync::{Arc, Mutex};
+
+        use async_trait::async_trait;
+        use tokio::io::DuplexStream;
+        use tokio::sync::Notify;
+
+        use crate::{
+            AuthCaps, BoxedIo, Connector, LifecycleCaps, LocalityCaps, PeerAuth, PeerInfo, Result,
+            ServerTransport, TransportCapabilities, TransportError, TransportListener,
+        };
+
+        const TOKEN: &str = "fixture-token";
+
+        struct Shared {
+            pending: Mutex<Option<VecDeque<DuplexStream>>>,
+            ready: Notify,
+        }
+
+        #[derive(Clone)]
+        pub(super) struct TokenFixture {
+            inner: Arc<Shared>,
+        }
+
+        impl TokenFixture {
+            pub(super) fn new() -> Self {
+                Self {
+                    inner: Arc::new(Shared {
+                        pending: Mutex::new(Some(VecDeque::new())),
+                        ready: Notify::new(),
+                    }),
+                }
+            }
+
+            pub(super) fn connector(&self) -> TokenConnector {
+                TokenConnector {
+                    inner: self.inner.clone(),
+                }
+            }
+        }
+
+        #[async_trait]
+        impl ServerTransport for TokenFixture {
+            fn name(&self) -> &str {
+                "token-fixture"
+            }
+
+            fn capabilities(&self) -> TransportCapabilities {
+                TransportCapabilities {
+                    locality: LocalityCaps { same_machine: true },
+                    auth: AuthCaps {
+                        implicit_peer_identity: false,
+                        token: true,
+                    },
+                    lifecycle: LifecycleCaps {
+                        client_autostart: false,
+                    },
+                }
+            }
+
+            async fn bind(&self) -> Result<Box<dyn TransportListener>> {
+                Ok(Box::new(TokenListener {
+                    inner: self.inner.clone(),
+                }))
+            }
+        }
+
+        struct TokenListener {
+            inner: Arc<Shared>,
+        }
+
+        #[async_trait]
+        impl TransportListener for TokenListener {
+            async fn accept(&mut self) -> Result<(BoxedIo, PeerInfo)> {
+                loop {
+                    let taken = {
+                        let mut guard = self.inner.pending.lock().expect("lock");
+                        match guard.as_mut() {
+                            None => {
+                                return Err(TransportError::Accept(std::io::Error::new(
+                                    std::io::ErrorKind::NotConnected,
+                                    "listener stopped accepting",
+                                )))
+                            }
+                            Some(queue) => queue.pop_front(),
+                        }
+                    };
+                    match taken {
+                        Some(server_end) => {
+                            return Ok((
+                                Box::new(server_end),
+                                PeerInfo {
+                                    auth: PeerAuth::TokenRequired,
+                                },
+                            ))
+                        }
+                        None => self.inner.ready.notified().await,
+                    }
+                }
+            }
+
+            async fn stop_accepting(&mut self) {
+                *self.inner.pending.lock().expect("lock") = None;
+                self.inner.ready.notify_waiters();
+            }
+
+            async fn cleanup(&mut self) -> Result<()> {
+                Ok(())
+            }
+
+            fn endpoint(&self) -> String {
+                "token-fixture:".to_string()
+            }
+        }
+
+        #[derive(Clone)]
+        pub(super) struct TokenConnector {
+            inner: Arc<Shared>,
+        }
+
+        #[async_trait]
+        impl Connector for TokenConnector {
+            async fn connect(&self) -> Result<BoxedIo> {
+                // A modest buffer: the large-frame check streams concurrently,
+                // so any size works; this keeps 16 MiB brisk.
+                let (server_end, client_end) = tokio::io::duplex(64 * 1024);
+                let mut guard = self.inner.pending.lock().expect("lock");
+                match guard.as_mut() {
+                    Some(queue) => queue.push_back(server_end),
+                    None => {
+                        return Err(TransportError::Connect {
+                            endpoint: "token-fixture:".to_string(),
+                            source: std::io::Error::new(
+                                std::io::ErrorKind::ConnectionRefused,
+                                "listener stopped accepting",
+                            ),
+                        })
+                    }
+                }
+                drop(guard);
+                self.inner.ready.notify_one();
+                Ok(Box::new(client_end))
+            }
+
+            fn describe(&self) -> String {
+                "token-fixture:".to_string()
+            }
+
+            fn auth_token(&self) -> Option<&str> {
+                Some(TOKEN)
+            }
+        }
     }
 }

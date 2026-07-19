@@ -26,6 +26,7 @@
 | 17 | [Release Pipeline](17-release-pipeline.md) | CI/CD pipeline: PR checks, release automation, scoped binaries, Homebrew, changelog, docs build checks, v1 unsigned macOS policy (D066-D071) |
 | 18a | [OAuth Addendum](18-addendum-oauth.md) | Gmail BYOC-first OAuth guidance, bundled fallback posture, credential storage, redirect flow, and provider scopes |
 | 18b | [Bug Reporting](18-bug-reporting.md) | `mxr bug-report` command, log sanitization, log retention, diagnostic capture workflow (D072-D074) |
+| 20 | [Transports](20-transports.md) | Transport-adapter system: frozen protocol + byte-stream adapters + HTTP gateway, trait reference, per-transport security policy, the token gate, the community adapter kit + conformance, and the backlog (D052-D057) |
 | — | [Internal Model Audit](internal-model-audit.md) | Keep/document/tighten/adjust judgment on the current provider-agnostic mail model |
 | — | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |
 | — | [Sync / Index Lifecycle Audit](sync-index-lifecycle-audit.md) | Code-truth audit of sync guarantees, lexical freshness, semantic chunk persistence, and repair behavior |

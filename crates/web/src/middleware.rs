@@ -111,7 +111,10 @@ pub async fn require_bridge_auth(
     request: Request,
     next: Next,
 ) -> Response {
-    if crate::auth::extract_token(request.headers()) == Some(state.config.auth_token.as_str()) {
+    if crate::auth::token_matches(
+        crate::auth::extract_token(request.headers()),
+        state.config.auth_token.as_str(),
+    ) {
         return next.run(request).await;
     }
     crate::auth::BridgeError::Unauthorized.into_response()

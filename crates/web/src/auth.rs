@@ -69,6 +69,18 @@ pub(crate) fn extract_token(headers: &HeaderMap) -> Option<&str> {
         .and_then(|value| value.to_str().ok())
 }
 
+/// Constant-time bearer-token check — the ONE place the bridge compares a
+/// presented token to the expected one. `presented == None` is a fast false (no
+/// secret is involved); a present token is compared to `expected` without an
+/// early return, so a same-length wrong guess can't be distinguished from a
+/// right one by timing (length, which is not secret here, is still revealed).
+/// Mirrors the daemon IPC gate's constant-time comparison.
+pub(crate) fn token_matches(presented: Option<&str>, expected: &str) -> bool {
+    presented.is_some_and(|token| {
+        constant_time_eq::constant_time_eq(token.as_bytes(), expected.as_bytes())
+    })
+}
+
 pub(super) fn ensure_authorized(
     headers: &HeaderMap,
     _query_token: Option<&str>,
@@ -76,7 +88,7 @@ pub(super) fn ensure_authorized(
 ) -> Result<(), BridgeError> {
     // Handlers still deserialize `token` for compatibility with older query
     // shapes, but regular HTTP routes must not authenticate from it.
-    if extract_token(headers) == Some(expected_token) {
+    if token_matches(extract_token(headers), expected_token) {
         return Ok(());
     }
     Err(BridgeError::Unauthorized)
@@ -87,7 +99,7 @@ pub(super) fn ensure_authorized_with_query_token(
     query_token: Option<&str>,
     expected_token: &str,
 ) -> Result<(), BridgeError> {
-    if extract_token(headers).or(query_token) == Some(expected_token) {
+    if token_matches(extract_token(headers).or(query_token), expected_token) {
         return Ok(());
     }
     Err(BridgeError::Unauthorized)

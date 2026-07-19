@@ -641,7 +641,11 @@ async fn resolve_pending_from(
             data: ResponseData::ResolvedSendFrom { from },
         }) => Ok(Some(from)),
         Ok(Response::Error { message, .. }) => Err(message),
-        _ => Ok(None),
+        // An unexpected *successful* response is a protocol mismatch, not a
+        // transient outage — surface it rather than silently proceeding.
+        Ok(Response::Ok { .. }) => Err("unexpected response to ResolveSendFrom".to_string()),
+        // Only a genuine IPC failure (daemon unreachable) is non-fatal.
+        Err(_) => Ok(None),
     }
 }
 

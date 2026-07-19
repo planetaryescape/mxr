@@ -2234,15 +2234,23 @@ async fn account_owned_addresses(
 /// names and angle brackets so `Delivered-To: Team <hello@x.com>` yields
 /// `hello@x.com`.
 ///
-/// Only lines that begin a header field at column 0 count. Per RFC 5322 a line
-/// starting with whitespace is a *folded continuation* of the previous field's
-/// value — never a new header. Enforcing that closes a From-steering injection:
-/// a sender who smuggles `"…\r\n Delivered-To: <owned-alias>"` into a header
-/// value they control (or the body echoed into a header) must not have it
-/// promoted to a real, highest-precedence Delivered-To.
+/// The scan stops at the header/body boundary (the first blank line) so a
+/// `Delivered-To:` sitting in the *body* — which the sender fully controls —
+/// can never be read as a header. `str::lines()` normalises both `\r\n` and
+/// bare `\n` line endings, so the blank-line stop is robust for LF-only
+/// messages too (not reliant on any CRLF-only boundary helper).
+///
+/// Within the header block, only lines that begin a field at column 0 count.
+/// Per RFC 5322 a line starting with whitespace is a *folded continuation* of
+/// the previous field's value — never a new header. Enforcing both closes a
+/// From-steering injection: a sender who smuggles `"…\r\n Delivered-To:
+/// <owned-alias>"` into a header value they control, or a plain
+/// `Delivered-To:` line in the body, must not have it promoted to a real,
+/// highest-precedence Delivered-To.
 fn extract_delivered_to(raw_headers: &str) -> Vec<String> {
     raw_headers
         .lines()
+        .take_while(|line| !line.is_empty())
         .filter_map(|line| {
             // Reject folded continuation lines (leading SP/HTAB): they belong
             // to the previous header, not a new Delivered-To.
@@ -2321,7 +2329,7 @@ pub(crate) async fn send_stored_draft(
         return Ok(sent_draft_receipt_response(receipt));
     }
 
-    let draft = state
+    let mut draft = state
         .store
         .get_draft(draft_id)
         .await?
@@ -2333,6 +2341,22 @@ pub(crate) async fn send_stored_draft(
     // status CAS: an unowned override must fail cleanly without wedging the
     // draft in `Sending`. Same choke point the dry-run/preview path uses.
     let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
+
+    // Re-validate and rebuild any inline iCal REPLY at the send choke point:
+    // the source invite must be owned by this account, the ATTENDEE must equal
+    // the effective From, and the ICS is rebuilt server-side — a tampered
+    // compose session (sidecar/IPC) can neither forge the ICS nor RSVP as an
+    // identity it isn't sending from.
+    if let Some(reply) = draft.inline_calendar_reply.as_ref() {
+        let rebuilt = super::mailbox::validate_and_rebuild_inline_reply(
+            state,
+            &draft.account_id,
+            &from,
+            reply,
+        )
+        .await?;
+        draft.inline_calendar_reply = Some(rebuilt);
+    }
 
     // Compare-and-set: only the unique `Draft` -> `Sending` transition is
     // allowed to invoke the provider. A draft already in `Sending` (likely a
@@ -4147,6 +4171,54 @@ mod from_selection_tests {
             "\tDelivered-To: accounts@planetaryescape.xyz\r\n",
         );
         assert_eq!(extract_delivered_to(raw), vec!["real@primary.example"]);
+    }
+
+    #[test]
+    fn extract_delivered_to_stops_at_header_body_boundary_crlf() {
+        // A body line "Delivered-To: <alias>" (after the blank separator) is
+        // sender-controlled and must not be read as a header.
+        let raw = concat!(
+            "Delivered-To: real@primary.example\r\n",
+            "Subject: hi\r\n",
+            "\r\n",
+            "Delivered-To: hello@planetaryescape.xyz\r\n",
+            "please reply from my alias\r\n",
+        );
+        assert_eq!(extract_delivered_to(raw), vec!["real@primary.example"]);
+    }
+
+    #[test]
+    fn extract_delivered_to_stops_at_header_body_boundary_lf_only() {
+        // Same, but LF-only line endings (no CRLF) — must still stop at the
+        // blank line, not fall through and scan the body.
+        let raw = concat!(
+            "Delivered-To: real@primary.example\n",
+            "Subject: hi\n",
+            "\n",
+            "Delivered-To: hello@planetaryescape.xyz\n",
+            "please reply from my alias\n",
+        );
+        assert_eq!(extract_delivered_to(raw), vec!["real@primary.example"]);
+    }
+
+    #[test]
+    fn reply_default_not_steered_by_a_body_delivered_to_lf_only() {
+        // A message with no genuine header Delivered-To, only a body one naming
+        // an owned alias (LF-only), must default to primary — not the alias.
+        let raw = concat!(
+            "Subject: hi\n",
+            "\n",
+            "Delivered-To: hello@planetaryescape.xyz\n",
+        );
+        let delivered = extract_delivered_to(raw);
+        assert!(delivered.is_empty());
+        let got = default_reply_from(
+            &owned(),
+            PRIMARY,
+            delivered.iter().map(String::as_str),
+            std::iter::empty(),
+        );
+        assert_eq!(got, PRIMARY);
     }
 
     #[test]

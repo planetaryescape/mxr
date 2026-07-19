@@ -1934,7 +1934,10 @@ async fn create_compose_session(
                         mxr_core::types::CalendarPartstat::Declined
                     }
                 },
-                ics_body: preview.ics.clone(),
+                // Store only the trusted triple (source, attendee, partstat) —
+                // the ICS is rebuilt server-side at the send choke point, so no
+                // ICS bytes are persisted in (or trusted from) the sidecar.
+                ics_body: String::new(),
             });
             (
                 ComposeKind::Reply {

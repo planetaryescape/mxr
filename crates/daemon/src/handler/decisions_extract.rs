@@ -13,7 +13,10 @@
 
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
+use mxr_llm::{
+    guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
+    LlmFeature,
+};
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::{decision_id, decision_source_hash, DecisionLogEntry};
 use once_cell::sync::Lazy;
@@ -108,7 +111,7 @@ pub(crate) async fn extract_thread(
         max_tokens: Some(900),
         temperature: Some(0.0),
         messages: vec![
-            ChatMessage::system(
+            ChatMessage::system(guarded_system_prompt(
                 "Extract decisions made in this email thread. Output STRICT JSON \
                  with the schema and nothing else:\n\n\
                  {\"decisions\": [{\"decision\": str, \"rationale\": str|null, \
@@ -119,8 +122,15 @@ pub(crate) async fn extract_thread(
                  actually agreed -- return an empty array in that case. \
                  \"decided_at\" is RFC 3339 if a date is named in the thread, \
                  else null.",
-            ),
-            ChatMessage::user(format!("THREAD:\n{transcript}\n\nReturn JSON only.")),
+            )),
+            // Wrap the thread transcript in untrusted-content delimiters.
+            // `transcript` stays raw for `decision_source_hash` below so
+            // the stable-id / cache behavior is unchanged. The citation
+            // validator is the boundary.
+            ChatMessage::user(format!(
+                "THREAD:\n{}\n\nReturn JSON only.",
+                wrap_untrusted_mail(&transcript)
+            )),
         ],
     };
 
@@ -349,6 +359,63 @@ mod tests {
             ids.push(env.id);
         }
         (state, account_id, thread_id, ids, stub)
+    }
+
+    #[tokio::test]
+    async fn prompt_wraps_thread_and_system_carries_guard() {
+        struct Capture {
+            msgs: Mutex<Vec<mxr_llm::ChatMessage>>,
+        }
+        #[async_trait::async_trait]
+        impl LlmProvider for Capture {
+            async fn complete(
+                &self,
+                req: CompletionRequest,
+            ) -> Result<CompletionResponse, LlmError> {
+                *self.msgs.lock().unwrap() = req.messages.clone();
+                Ok(CompletionResponse {
+                    content: r#"{"decisions":[]}"#.into(),
+                    model: "stub".into(),
+                    finish_reason: Some("stop".into()),
+                })
+            }
+            fn capabilities(&self) -> LlmCapabilities {
+                LlmCapabilities {
+                    context_window: 8192,
+                    supports_streaming: false,
+                }
+            }
+            fn model_name(&self) -> &str {
+                "stub"
+            }
+        }
+
+        // The fixture thread has 3 messages, so the prefilter passes and
+        // the LLM is actually invoked.
+        let (state, account, thread, _ids, _) = fixture("placeholder").await;
+        let cap = Arc::new(Capture {
+            msgs: Mutex::new(vec![]),
+        });
+        state.llm.replace(cap.clone());
+        extract_thread(&state, &account, &thread).await.unwrap();
+
+        let msgs = cap.msgs.lock().unwrap();
+        assert!(
+            msgs[0].content.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
+            "system prompt must carry the shared injection guard"
+        );
+        let user = &msgs[1].content;
+        let begin = user
+            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = user
+            .find(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let msgid = user.find("[msg_id=").expect("thread msg id present");
+        assert!(
+            begin < msgid && msgid < end,
+            "thread transcript must sit between the untrusted-content markers"
+        );
     }
 
     #[tokio::test]

@@ -2,7 +2,10 @@ use super::{runtime, summarize, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_core::types::{Address, Envelope, SearchMode, SortOrder};
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
+use mxr_llm::{
+    guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
+    LlmFeature,
+};
 use mxr_protocol::{ResponseData, SearchResultItem, TriageMessageData, TriageVerdictData};
 use mxr_store::TriageCacheRecord;
 use sha2::{Digest, Sha256};
@@ -86,7 +89,7 @@ async fn generate_triage(state: &AppState, miss: &TriageMiss) -> Result<TriageMe
     let prompt = build_triage_prompt(state, &miss.envelope, &miss.body_text).await;
     let request = CompletionRequest {
         messages: vec![
-            ChatMessage::system(summarize::SYSTEM_PROMPT),
+            ChatMessage::system(guarded_system_prompt(summarize::SYSTEM_PROMPT)),
             ChatMessage::user(prompt),
         ],
         max_tokens: Some(220),
@@ -162,8 +165,11 @@ async fn build_triage_prompt(state: &AppState, envelope: &Envelope, body_text: &
         .date
         .with_timezone(&chrono::Local)
         .format("%a %b %e %Y %H:%M %Z");
-    prompt.push_str(&format!(
-        "\nClassify this single search result. Return the strict first-line triage verdict, then a blank line, then at most one short summary sentence.\n\n--- Message 1 of 1 ---\nDate: {}\nFrom: {}\nTo: {}\nCc: {}\nBcc: {}\nSubject: {}\nBody:\n{}\n",
+    // The single-message block is attacker-controllable mail content;
+    // wrap it in untrusted-content delimiters. The trusted classification
+    // instruction stays outside the markers.
+    let message_block = format!(
+        "--- Message 1 of 1 ---\nDate: {}\nFrom: {}\nTo: {}\nCc: {}\nBcc: {}\nSubject: {}\nBody:\n{}\n",
         date,
         format_address(&envelope.from),
         format_addresses(&envelope.to),
@@ -171,7 +177,12 @@ async fn build_triage_prompt(state: &AppState, envelope: &Envelope, body_text: &
         format_addresses(&envelope.bcc),
         envelope.subject,
         body_text.trim(),
-    ));
+    );
+    prompt.push_str(
+        "\nClassify this single search result. Return the strict first-line triage verdict, then a blank line, then at most one short summary sentence.\n\n",
+    );
+    prompt.push_str(&wrap_untrusted_mail(&message_block));
+    prompt.push('\n');
     prompt
 }
 
@@ -304,6 +315,36 @@ fn format_address(address: &Address) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn triage_prompt_wraps_single_message_in_untrusted_markers() {
+        use crate::state::AppState;
+        use crate::test_fixtures::TestEnvelopeBuilder;
+        let state = AppState::in_memory().await.unwrap();
+        let account_id = state.default_account_id();
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .provider_id("triage-1")
+            .sender_address("Alice", "alice@example.com")
+            .subject("Status")
+            .snippet("BODY-INJECTION-MARKER")
+            .build();
+
+        let prompt = build_triage_prompt(&state, &envelope, "BODY-INJECTION-MARKER").await;
+        let begin = prompt
+            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = prompt
+            .find(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let body = prompt
+            .find("BODY-INJECTION-MARKER")
+            .expect("body present in prompt");
+        assert!(
+            begin < body && body < end,
+            "message body must sit between the untrusted-content markers"
+        );
+    }
 
     #[test]
     fn parses_strict_verdict_lines() {

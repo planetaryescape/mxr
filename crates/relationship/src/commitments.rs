@@ -1,7 +1,10 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId};
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime};
+use mxr_llm::{
+    wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime,
+    UNTRUSTED_MAIL_BEGIN, UNTRUSTED_MAIL_END, UNTRUSTED_MAIL_GUARD,
+};
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord, Store};
 use serde::Deserialize;
@@ -10,7 +13,10 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 const MAX_EXCERPTS: usize = 12;
+/// Total prompt ceiling (guard + task + delimiters + excerpts).
 const MAX_PROMPT_CHARS: usize = 14_000;
+const COMMITMENTS_TASK: &str = "Extract only explicit open asks, promises, decisions, or follow-ups from these emails. Do not infer implied work. Return strict JSON: {\"commitments\":[{\"who_owes\":\"name/email\",\"what\":\"concrete obligation\",\"by_when\":\"RFC3339 or null\",\"evidence_msg_id\":\"message id from input\",\"direction\":\"yours|theirs\"}]}. Use direction=yours when the account owner owes the contact, theirs when the contact owes the account owner.";
+const TRUNCATION_NOTE: &str = "\n[...truncated...]\n";
 
 #[derive(Debug, Deserialize)]
 struct CommitmentResponse {
@@ -46,16 +52,24 @@ pub async fn extract_commitments(
         return Ok(0);
     }
     let reader_config = ReaderConfig::default();
-    let mut prompt = String::from(
-        "Extract only explicit open asks, promises, decisions, or follow-ups from these emails. Do not infer implied work. Return strict JSON: {\"commitments\":[{\"who_owes\":\"name/email\",\"what\":\"concrete obligation\",\"by_when\":\"RFC3339 or null\",\"evidence_msg_id\":\"message id from input\",\"direction\":\"yours|theirs\"}]}. Use direction=yours when the account owner owes the contact, theirs when the contact owes the account owner.\n\n",
-    );
+    // Reserve the fixed prompt overhead (guard + task + wrapper delimiters +
+    // separators + the truncation note) so the wrapped prompt stays within
+    // MAX_PROMPT_CHARS. Excerpts are capped to what remains.
+    let overhead = UNTRUSTED_MAIL_GUARD.len()
+        + COMMITMENTS_TASK.len()
+        + UNTRUSTED_MAIL_BEGIN.len()
+        + UNTRUSTED_MAIL_END.len()
+        + TRUNCATION_NOTE.len()
+        + "\n\n\n\n\n\n".len();
+    let excerpt_budget = MAX_PROMPT_CHARS.saturating_sub(overhead);
+    let mut excerpts = String::new();
     for sample in samples
         .iter()
         .filter(|sample| !sample.is_list_sender)
         .take(MAX_EXCERPTS)
     {
         let body = clean(Some(&sample.body), None, &reader_config).content;
-        prompt.push_str(&format!(
+        excerpts.push_str(&format!(
             "Message {} from {} at {} in thread {}:\n{}\n\n",
             sample.message_id,
             sample.from_email,
@@ -63,14 +77,21 @@ pub async fn extract_commitments(
             sample.thread_id,
             body.trim()
         ));
-        if prompt.len() > MAX_PROMPT_CHARS {
+        if excerpts.len() > excerpt_budget {
             // Byte-budget cut over arbitrary email bodies: must be
             // boundary-safe or multi-byte content panics the worker.
-            mxr_core::text::truncate_to_char_boundary(&mut prompt, MAX_PROMPT_CHARS);
-            prompt.push_str("\n[...truncated...]\n");
+            mxr_core::text::truncate_to_char_boundary(&mut excerpts, excerpt_budget);
+            excerpts.push_str(TRUNCATION_NOTE);
             break;
         }
     }
+    // User-only prompt: lead with the injection guard, then the task, then
+    // the mail excerpts wrapped as untrusted content. Strict-JSON parsing
+    // plus the evidence_msg_id-must-match-a-sample check are the boundary.
+    let prompt = format!(
+        "{UNTRUSTED_MAIL_GUARD}\n\n{COMMITMENTS_TASK}\n\n{}",
+        wrap_untrusted_mail(&excerpts)
+    );
 
     let response = match llm
         .for_feature(LlmFeature::Commitments)
@@ -268,6 +289,71 @@ mod tests {
             .expect("commitments");
         assert_eq!(commitments.len(), 1);
         assert_eq!(commitments[0].what, "Send launch date");
+    }
+
+    #[tokio::test]
+    async fn commitments_prompt_guards_and_wraps_excerpts() {
+        #[derive(Default)]
+        struct Capture {
+            msgs: Mutex<Vec<mxr_llm::ChatMessage>>,
+        }
+        #[async_trait::async_trait]
+        impl LlmProvider for Capture {
+            async fn complete(
+                &self,
+                req: CompletionRequest,
+            ) -> std::result::Result<CompletionResponse, LlmError> {
+                *self.msgs.lock().expect("msgs lock") = req.messages.clone();
+                Ok(CompletionResponse {
+                    content: r#"{"commitments":[]}"#.into(),
+                    model: "stub".into(),
+                    finish_reason: Some("stop".into()),
+                })
+            }
+            fn capabilities(&self) -> LlmCapabilities {
+                LlmCapabilities {
+                    context_window: 8192,
+                    supports_streaming: false,
+                }
+            }
+            fn model_name(&self) -> &str {
+                "stub"
+            }
+        }
+
+        let store = Store::in_memory().await.expect("store");
+        let account = test_account();
+        store.insert_account(&account).await.expect("account");
+        let thread_id = ThreadId::new();
+        insert_message(&store, &account, &thread_id, "m1", 0).await;
+
+        let cap = Arc::new(Capture::default());
+        let llm = Arc::new(LlmRuntime::new(cap.clone() as Arc<dyn LlmProvider>));
+        extract_commitments(&store, &llm, &account.id, "alice@example.com")
+            .await
+            .expect("extract");
+
+        let msgs = cap.msgs.lock().expect("msgs lock");
+        let user = &msgs[0].content;
+        assert!(
+            user.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
+            "user-only prompt must lead with the injection guard"
+        );
+        // The guard text quotes the marker strings, so use rfind to locate
+        // the real wrapper (the last occurrence of each marker).
+        let begin = user
+            .rfind(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = user
+            .rfind(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let body = user
+            .find("I will send the launch date.")
+            .expect("excerpt body present");
+        assert!(
+            begin < body && body < end,
+            "mail excerpts must sit between the untrusted-content markers"
+        );
     }
 
     fn test_account() -> Account {

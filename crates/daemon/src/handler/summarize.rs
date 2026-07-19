@@ -6,7 +6,10 @@ use super::{relationship_profile, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::ThreadId;
 use mxr_core::types::{AccountAddress, Address, Envelope};
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime};
+use mxr_llm::{
+    guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
+    LlmFeature, LlmRuntime,
+};
 use mxr_protocol::{ResponseData, ThreadSummaryData};
 use mxr_store::{thread_summary_content_hash, Store, ThreadSummaryRecord};
 use std::collections::BTreeSet;
@@ -137,7 +140,7 @@ pub(crate) async fn summarize_thread_cached(
     let max_tokens = summary_token_budget(context.message_count);
     let request = CompletionRequest {
         messages: vec![
-            ChatMessage::system(SYSTEM_PROMPT),
+            ChatMessage::system(guarded_system_prompt(SYSTEM_PROMPT)),
             ChatMessage::user(context.prompt),
         ],
         max_tokens: Some(max_tokens),
@@ -219,23 +222,31 @@ async fn load_summary_context(
             prompt.push_str(&format!("- {}{}\n", address.email, primary));
         }
     }
+    // Thread id and message count are internal metadata (trusted); the
+    // subject is attacker-controlled and goes inside the untrusted block.
     prompt.push_str(&format!(
-        "\nThread subject: {}\nThread id: {}\nMessage count: {}\n\n",
-        thread.subject,
+        "\nThread id: {}\nMessage count: {}\n\n",
         thread.id,
         envelopes.len()
     ));
     let (relationship_prompt, relationship_hash) =
         relationship_context_for_summary(store, &thread.account_id, &owned_addresses, &envelopes)
             .await;
-    if !relationship_prompt.is_empty() {
-        prompt
-            .push_str("Relationship context (weak background only; message content is primary):\n");
-        prompt.push_str(&relationship_prompt);
-        prompt.push('\n');
-    }
-    prompt.push_str("Messages, oldest to newest:\n");
 
+    // Everything derived from mail — the subject, the relationship context
+    // (itself summarized from prior mail), and the message transcript — is
+    // attacker-controllable. Assemble it into one untrusted block wrapped in
+    // the delimiters the system-prompt guard points at. Only the trusted
+    // owner addresses and thread metadata above stay outside the markers.
+    let mut untrusted = String::new();
+    untrusted.push_str(&format!("Thread subject: {}\n\n", thread.subject));
+    if !relationship_prompt.is_empty() {
+        untrusted
+            .push_str("Relationship context (weak background only; message content is primary):\n");
+        untrusted.push_str(&relationship_prompt);
+        untrusted.push('\n');
+    }
+    untrusted.push_str("Messages, oldest to newest:\n");
     for (index, envelope) in envelopes.iter().enumerate() {
         let date = envelope
             .date
@@ -248,7 +259,7 @@ async fn load_summary_context(
                 .unwrap_or_else(|| envelope.snippet.clone()),
             _ => envelope.snippet.clone(),
         };
-        prompt.push_str(&format!(
+        untrusted.push_str(&format!(
             "\n--- Message {} of {} ---\nDate: {}\nFrom: {}\nTo: {}\nCc: {}\nBcc: {}\nSubject: {}\nBody:\n{}\n",
             index + 1,
             envelopes.len(),
@@ -261,6 +272,8 @@ async fn load_summary_context(
             body.trim(),
         ));
     }
+    prompt.push_str(&wrap_untrusted_mail(&untrusted));
+    prompt.push('\n');
 
     Ok(SummaryContext {
         account_id: thread.account_id,
@@ -524,6 +537,42 @@ mod tests {
         assert!(prompt.contains("Cc: Me <alias@example.com>"));
         assert!(prompt.contains("Message 2 of 2"));
         assert!(prompt.contains("Approved."));
+
+        // Injection hardening: the guard rides on the system message and
+        // the mail transcript lands INSIDE the untrusted-content markers.
+        let system = &requests[0].messages[0].content;
+        assert!(
+            system.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
+            "system prompt must carry the shared injection guard"
+        );
+        let begin = prompt
+            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = prompt
+            .find(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let from_pos = prompt
+            .find("From: Alice <alice@example.com>")
+            .expect("sender line present");
+        let subject_pos = prompt
+            .find("Thread subject:")
+            .expect("thread subject present");
+        assert!(
+            begin < from_pos && from_pos < end,
+            "mail content must sit between the untrusted-content markers"
+        );
+        assert!(
+            begin < subject_pos && subject_pos < end,
+            "attacker-controlled subject must sit inside the untrusted-content markers"
+        );
+        // Trusted owner addresses stay outside the markers.
+        let owner_pos = prompt
+            .find("Account owner addresses:")
+            .expect("owner header present");
+        assert!(
+            owner_pos < begin,
+            "trusted owner addresses must stay outside the untrusted-content markers"
+        );
     }
 
     #[tokio::test]
@@ -607,8 +656,28 @@ mod tests {
             let requests = llm.requests.lock().expect("requests");
             assert_eq!(requests.len(), 1);
             let prompt = &requests[0].messages[1].content;
-            assert!(prompt.contains("Relationship context (weak background only"));
-            assert!(prompt.contains("Alice prefers launch context before asks."));
+            // The mail-derived relationship context must sit INSIDE the
+            // untrusted-content markers, not merely be present.
+            let begin = prompt
+                .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+                .expect("begin marker present");
+            let end = prompt
+                .find(mxr_llm::UNTRUSTED_MAIL_END)
+                .expect("end marker present");
+            let header = prompt
+                .find("Relationship context (weak background only")
+                .expect("relationship header present");
+            let summary_text = prompt
+                .find("Alice prefers launch context before asks.")
+                .expect("relationship summary present");
+            assert!(
+                begin < header && header < end,
+                "relationship context header must be inside the untrusted markers"
+            );
+            assert!(
+                begin < summary_text && summary_text < end,
+                "relationship summary text must be inside the untrusted markers"
+            );
         }
         let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
         assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)

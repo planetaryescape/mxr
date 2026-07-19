@@ -21,6 +21,7 @@ use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Envelope, MessageDirection, SemanticChunkSourceKind};
 use mxr_humanizer::{score as humanizer_score, writing_constraints, HumanizerOpts};
+use mxr_llm::{wrap_untrusted_mail, UNTRUSTED_MAIL_BEGIN, UNTRUSTED_MAIL_END};
 use mxr_protocol::{
     ContactStyleData, DraftLengthHintData, HumanizerReportSummaryData, ResponseData,
     VoiceMatchConfidenceData, VoiceMatchData, VoiceRegisterData,
@@ -38,6 +39,43 @@ pub(crate) const RELATIONSHIP_BUDGET_CHARS: usize = 2_000;
 /// message plus the fixed system prompt and writing constraints fit an 8k
 /// context window with headroom for the model's response.
 pub(crate) const ASSEMBLED_MESSAGE_BUDGET_CHARS: usize = 28_000;
+
+// Fixed scaffolding literals for the assembled user message. Kept as consts so
+// the byte accounting in `assemble_user_message_within_budget` counts the exact
+// same bytes it emits — no literal is written in more than one place.
+const VOICE_CONTEXT_HEADER: &str = "[VOICE CONTEXT]\n";
+const VOICE_CONTEXT_INSTRUCTION: &str = "Write in my voice to this person — match the tone, formality, and length I use with them. Ground every fact only in the thread and known topics below; never invent facts, meetings, or familiarity that aren't shown here.\n\n";
+const WRITING_CONSTRAINTS_HEADER: &str = "[WRITING CONSTRAINTS]\n";
+const GROUNDING_HEADER: &str = "[PRIOR SENT MESSAGES TO MATCH MY VOICE]\n";
+const THREAD_HEADER: &str = "[THREAD SO FAR]\n";
+const TASK_HEADER: &str = "[TASK]\n";
+const SECTION_SEP: &str = "\n\n";
+
+/// Maximum byte length of the assembled task LINE (prefix + recipient label +
+/// instruction). The task line is never truncated (it must reach the model
+/// intact), so it must be bounded up front or it would break the
+/// assembled-message ceiling; the daemon rejects anything longer. Derived from
+/// the ceiling minus the worst-case fixed scaffolding — all three wrapped
+/// blocks present, plus the `[TASK]` header — so the postcondition
+/// `assembled message <= ASSEMBLED_MESSAGE_BUDGET_CHARS` holds for any content.
+pub(crate) fn max_task_line_bytes() -> usize {
+    let wrap_overhead = UNTRUSTED_MAIL_BEGIN.len() + UNTRUSTED_MAIL_END.len() + "\n\n".len();
+    let scaffolding = WRITING_CONSTRAINTS_HEADER.len()
+        + writing_constraints().len()
+        + SECTION_SEP.len()
+        + TASK_HEADER.len()
+        + VOICE_CONTEXT_HEADER.len()
+        + VOICE_CONTEXT_INSTRUCTION.len()
+        + wrap_overhead
+        + SECTION_SEP.len()
+        + GROUNDING_HEADER.len()
+        + wrap_overhead
+        + SECTION_SEP.len()
+        + THREAD_HEADER.len()
+        + wrap_overhead
+        + "\n".len();
+    ASSEMBLED_MESSAGE_BUDGET_CHARS.saturating_sub(scaffolding)
+}
 
 /// The relationship/voice context plus the inferred tone/length for a draft.
 pub(crate) struct DraftContext {
@@ -474,11 +512,30 @@ pub(crate) fn assemble_user_message_within_budget(
 ) -> String {
     let constraints = writing_constraints();
     let task = task_line.trim();
-    let fixed_len = "[WRITING CONSTRAINTS]\n".len()
+    // Byte-exact fixed-overhead accounting: reserve every non-content byte we
+    // will emit — section headers, the voice instruction, separators, and the
+    // untrusted-content delimiters around each wrapped block — before the
+    // remaining budget is split across the (truncatable) mail-derived content.
+    // Blocks are only reserved when their input is present, matching the emit
+    // guards below, so the assembled message never exceeds `budget_chars`.
+    let wrap_overhead = UNTRUSTED_MAIL_BEGIN.len() + UNTRUSTED_MAIL_END.len() + "\n\n".len();
+    let mut fixed_len = WRITING_CONSTRAINTS_HEADER.len()
         + constraints.len()
-        + "\n\n".len()
-        + "\n[TASK]\n".len()
+        + SECTION_SEP.len()
+        + TASK_HEADER.len()
         + task.len();
+    if !relationship.is_empty() {
+        fixed_len += VOICE_CONTEXT_HEADER.len()
+            + VOICE_CONTEXT_INSTRUCTION.len()
+            + wrap_overhead
+            + SECTION_SEP.len();
+    }
+    if !grounding.is_empty() {
+        fixed_len += GROUNDING_HEADER.len() + wrap_overhead + SECTION_SEP.len();
+    }
+    if !transcript.is_empty() {
+        fixed_len += THREAD_HEADER.len() + wrap_overhead + "\n".len();
+    }
     let remaining = budget_chars.saturating_sub(fixed_len);
 
     let transcript_floor = if transcript.is_empty() {
@@ -500,31 +557,35 @@ pub(crate) fn assemble_user_message_within_budget(
     let truncated_relationship =
         truncate_with_marker(relationship, relationship_budget, "relationship context");
 
+    // Every mail-derived block is wrapped in the untrusted-content markers
+    // the draft-compose system-prompt guard points at: relationship
+    // summaries/commitments (derived from mail), prior-sent exemplars (the
+    // user's own outbound, but they quote and echo inbound mail), and the
+    // thread transcript. Only the trusted scaffolding — the "write in my
+    // voice" instruction, the writing constraints, and the task — stays
+    // outside the markers. (Defense-in-depth: draft output is never
+    // auto-sent.)
     let mut message = String::with_capacity(budget_chars.min(8192));
     if !truncated_relationship.is_empty() {
-        message.push_str("[VOICE CONTEXT]\n");
-        message.push_str(
-            "Write in my voice to this person — match the tone, formality, and length I use \
-with them. Ground every fact only in the thread and known topics below; never invent facts, \
-meetings, or familiarity that aren't shown here.\n\n",
-        );
-        message.push_str(&truncated_relationship);
-        message.push_str("\n\n");
+        message.push_str(VOICE_CONTEXT_HEADER);
+        message.push_str(VOICE_CONTEXT_INSTRUCTION);
+        message.push_str(&wrap_untrusted_mail(&truncated_relationship));
+        message.push_str(SECTION_SEP);
     }
-    message.push_str("[WRITING CONSTRAINTS]\n");
+    message.push_str(WRITING_CONSTRAINTS_HEADER);
     message.push_str(constraints);
-    message.push_str("\n\n");
+    message.push_str(SECTION_SEP);
     if !truncated_grounding.is_empty() {
-        message.push_str("[PRIOR SENT MESSAGES TO MATCH MY VOICE]\n");
-        message.push_str(&truncated_grounding);
-        message.push_str("\n\n");
+        message.push_str(GROUNDING_HEADER);
+        message.push_str(&wrap_untrusted_mail(&truncated_grounding));
+        message.push_str(SECTION_SEP);
     }
     if !truncated_transcript.is_empty() {
-        message.push_str("[THREAD SO FAR]\n");
-        message.push_str(&truncated_transcript);
+        message.push_str(THREAD_HEADER);
+        message.push_str(&wrap_untrusted_mail(&truncated_transcript));
         message.push('\n');
     }
-    message.push_str("[TASK]\n");
+    message.push_str(TASK_HEADER);
     message.push_str(task);
     message
 }
@@ -538,7 +599,13 @@ fn truncate_with_marker(text: &str, max_chars: usize, label: &str) -> String {
     }
     let marker = format!("\n[...{label} truncated...]\n");
     if marker.len() >= max_chars {
-        return marker;
+        // Not even the marker fits: return a boundary-safe prefix of it so the
+        // result never exceeds `max_chars` (the caller reserves this budget).
+        let mut cut = max_chars;
+        while cut > 0 && !marker.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        return marker[..cut].to_string();
     }
     let body_chars = max_chars - marker.len();
     let mut cut = body_chars.min(text.len());
@@ -765,6 +832,158 @@ mod tests {
         );
         assert!(!message.contains("[THREAD SO FAR]"));
         assert!(message.contains("[TASK]"));
+    }
+
+    #[test]
+    fn assemble_wraps_thread_in_untrusted_markers() {
+        let message = assemble_user_message_within_budget(
+            "",
+            "",
+            "INBOUND-BODY-MARKER",
+            "Now draft my reply. Instruction: reply briefly",
+            10_000,
+        );
+        let begin = message
+            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = message
+            .find(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let body = message
+            .find("INBOUND-BODY-MARKER")
+            .expect("thread body present");
+        assert!(
+            begin < body && body < end,
+            "thread transcript must sit between the untrusted-content markers"
+        );
+        // The trusted task line stays outside the markers.
+        assert!(message.find("[TASK]").expect("task present") > end);
+    }
+
+    #[test]
+    fn assemble_wraps_every_mail_derived_section() {
+        // Relationship (mail-derived), grounding (user's outbound that
+        // quotes inbound), and the thread must each land inside their OWN
+        // untrusted-content wrapper — three independent pairs, not one shared
+        // block — and the task scaffolding stays outside.
+        let message = assemble_user_message_within_budget(
+            "REL-MARKER",
+            "GROUND-MARKER",
+            "THREAD-MARKER",
+            "Now draft my reply. Instruction: reply",
+            10_000,
+        );
+        // The assembled user message carries no guard (that rides on the
+        // system prompt), so every marker here is a real wrapper.
+        let begins: Vec<usize> = message
+            .match_indices(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .map(|(i, _)| i)
+            .collect();
+        let ends: Vec<usize> = message
+            .match_indices(mxr_llm::UNTRUSTED_MAIL_END)
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(begins.len(), 3, "exactly three wrapped blocks");
+        assert_eq!(ends.len(), 3, "exactly three wrapped blocks");
+        for i in 0..3 {
+            assert!(begins[i] < ends[i], "wrapper pair {i} is well-formed");
+            if i + 1 < 3 {
+                assert!(
+                    ends[i] < begins[i + 1],
+                    "wrapper {i} closes before wrapper {} opens (blocks are independent)",
+                    i + 1
+                );
+            }
+        }
+        // Each payload sits inside its own pair (emit order: relationship,
+        // grounding, thread).
+        let rel = message.find("REL-MARKER").expect("relationship present");
+        let ground = message.find("GROUND-MARKER").expect("grounding present");
+        let thread = message.find("THREAD-MARKER").expect("thread present");
+        assert!(
+            begins[0] < rel && rel < ends[0],
+            "relationship in its own block"
+        );
+        assert!(
+            begins[1] < ground && ground < ends[1],
+            "grounding in its own block"
+        );
+        assert!(
+            begins[2] < thread && thread < ends[2],
+            "thread in its own block"
+        );
+        // Task scaffolding sits after the last wrapper, outside the markers.
+        assert!(
+            message.find("[TASK]").expect("task present") > ends[2],
+            "task scaffolding must stay outside the untrusted-content markers"
+        );
+    }
+
+    #[test]
+    fn assemble_never_exceeds_the_budget_ceiling() {
+        // Maximal inputs: each mail-derived section dwarfs the budget and the
+        // task line is long. With the fixed overhead (headers, instruction,
+        // separators, delimiters) fully reserved, the assembled prompt must
+        // stay within the documented ceiling.
+        let big = "x".repeat(100_000);
+        let task = "y".repeat(500);
+        let message = assemble_user_message_within_budget(
+            &big,
+            &big,
+            &big,
+            &task,
+            ASSEMBLED_MESSAGE_BUDGET_CHARS,
+        );
+        assert!(
+            message.len() <= ASSEMBLED_MESSAGE_BUDGET_CHARS,
+            "assembled prompt is {} bytes, over the {} ceiling",
+            message.len(),
+            ASSEMBLED_MESSAGE_BUDGET_CHARS
+        );
+    }
+
+    #[test]
+    fn assemble_hits_ceiling_with_all_three_blocks_nonempty() {
+        // Worst case for the byte accounting: all three wrapped blocks are
+        // emitted (so all their scaffolding counts). Small transcript/grounding
+        // pass through in full; a huge relationship is the filler that the
+        // budget split truncates to consume the remainder — landing the
+        // assembled prompt exactly on the ceiling.
+        let relationship = "R".repeat(100_000);
+        let grounding = "G".repeat(100);
+        let transcript = "T".repeat(100);
+        let message = assemble_user_message_within_budget(
+            &relationship,
+            &grounding,
+            &transcript,
+            "task",
+            ASSEMBLED_MESSAGE_BUDGET_CHARS,
+        );
+        // All three blocks are present and independently wrapped.
+        assert_eq!(
+            message.match_indices(mxr_llm::UNTRUSTED_MAIL_BEGIN).count(),
+            3,
+            "all three blocks must be emitted and wrapped"
+        );
+        assert!(message.contains(&"T".repeat(100)), "transcript in full");
+        assert!(message.contains(&"G".repeat(100)), "grounding in full");
+        assert!(
+            message.contains("[...relationship context truncated...]"),
+            "relationship is the truncated filler"
+        );
+        assert_eq!(
+            message.len(),
+            ASSEMBLED_MESSAGE_BUDGET_CHARS,
+            "assembled prompt should fill the ceiling exactly"
+        );
+    }
+
+    #[test]
+    fn truncate_with_marker_never_exceeds_max_when_marker_too_big() {
+        // When the truncation marker is larger than the budget, the result
+        // must still be at most `max_chars` (a boundary-safe marker prefix).
+        let out = truncate_with_marker("some long text to trim", 5, "thread");
+        assert!(out.len() <= 5, "got {out:?} ({} bytes)", out.len());
     }
 
     #[test]

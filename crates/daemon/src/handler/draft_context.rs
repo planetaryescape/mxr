@@ -50,19 +50,15 @@ const GROUNDING_HEADER: &str = "[PRIOR SENT MESSAGES TO MATCH MY VOICE]\n";
 const THREAD_HEADER: &str = "[THREAD SO FAR]\n";
 const TASK_HEADER: &str = "[TASK]\n";
 const SECTION_SEP: &str = "\n\n";
-/// Bytes reserved for the task-line prefix when bounding an instruction —
-/// covers "Now draft my reply. Length: medium. Instruction: " /
-/// "Write a new email to <recipient>. Length: medium. Purpose: " plus a
-/// bounded recipient label.
-const TASK_PREFIX_RESERVE: usize = 512;
 
-/// Maximum byte length of a draft instruction/purpose. The task line is never
-/// truncated (it must reach the model intact), so an unbounded instruction
-/// would break the assembled-message ceiling; the daemon rejects anything
-/// longer. Derived from the ceiling minus the worst-case fixed scaffolding
-/// (all three wrapped blocks present) and the reserved task-line prefix, so the
-/// postcondition `assembled message <= ASSEMBLED_MESSAGE_BUDGET_CHARS` holds.
-pub(crate) fn max_instruction_chars() -> usize {
+/// Maximum byte length of the assembled task LINE (prefix + recipient label +
+/// instruction). The task line is never truncated (it must reach the model
+/// intact), so it must be bounded up front or it would break the
+/// assembled-message ceiling; the daemon rejects anything longer. Derived from
+/// the ceiling minus the worst-case fixed scaffolding — all three wrapped
+/// blocks present, plus the `[TASK]` header — so the postcondition
+/// `assembled message <= ASSEMBLED_MESSAGE_BUDGET_CHARS` holds for any content.
+pub(crate) fn max_task_line_bytes() -> usize {
     let wrap_overhead = UNTRUSTED_MAIL_BEGIN.len() + UNTRUSTED_MAIL_END.len() + "\n\n".len();
     let scaffolding = WRITING_CONSTRAINTS_HEADER.len()
         + writing_constraints().len()
@@ -78,7 +74,7 @@ pub(crate) fn max_instruction_chars() -> usize {
         + THREAD_HEADER.len()
         + wrap_overhead
         + "\n".len();
-    ASSEMBLED_MESSAGE_BUDGET_CHARS.saturating_sub(scaffolding + TASK_PREFIX_RESERVE)
+    ASSEMBLED_MESSAGE_BUDGET_CHARS.saturating_sub(scaffolding)
 }
 
 /// The relationship/voice context plus the inferred tone/length for a draft.

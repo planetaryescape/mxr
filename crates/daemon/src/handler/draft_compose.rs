@@ -23,6 +23,20 @@ line if the thread is mid-conversation, no signature, no subject line. Match the
 length the user uses with this person. Never add commentary about what you're doing, and never \
 invent facts or familiarity that aren't in the thread.";
 
+/// Longest fixed (non-instruction, non-recipient) bytes of a task line, across
+/// the reply and new-message templates, rendered with the longest length label
+/// ("medium"). Kept in sync with the `format!` templates in `draft_reply` and
+/// `draft_brand_new`.
+const TASK_TEMPLATE_FIXED_BYTES: usize = {
+    let reply = "Now draft my reply. Length: medium. Instruction: ".len();
+    let new_msg = "Write a new email to . Length: medium. Purpose: ".len();
+    if reply > new_msg {
+        reply
+    } else {
+        new_msg
+    }
+};
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn draft_compose(
     state: &AppState,
@@ -34,14 +48,21 @@ pub(super) async fn draft_compose(
     register: Option<VoiceRegisterData>,
     length_hint: Option<DraftLengthHintData>,
 ) -> HandlerResult {
-    // The task line is never truncated, so an unbounded instruction would break
-    // the assembled-prompt ceiling. Reject it here at the validation layer.
-    let max_instruction = draft_context::max_instruction_chars();
-    if instruction.len() > max_instruction {
-        return Err(crate::handler::HandlerError::Message(format!(
-            "draft instruction is too long: {} bytes exceeds the {max_instruction} byte limit \
-             (assembled-prompt ceiling minus fixed scaffolding)",
-            instruction.len()
+    // The task line (prefix + recipient label + instruction) is never
+    // truncated, so it must be bounded up front or it would break the
+    // assembled-prompt ceiling. Count the recipient label with its real bytes
+    // (a long display name/email is unbounded too) and reject an oversized
+    // task line with an explicit InvalidRequest kind.
+    let recipient_bytes = to
+        .as_ref()
+        .map_or(0, |address| recipient_label(address).len());
+    let task_line_bytes = TASK_TEMPLATE_FIXED_BYTES + recipient_bytes + instruction.len();
+    let limit = draft_context::max_task_line_bytes();
+    if task_line_bytes > limit {
+        return Err(crate::handler::HandlerError::InvalidRequest(format!(
+            "draft is too long: the task line would be {task_line_bytes} bytes, over the {limit} \
+             byte limit (assembled-prompt ceiling minus fixed scaffolding); shorten the \
+             instruction or recipient"
         )));
     }
 
@@ -596,12 +617,13 @@ mod tests {
     }
 
     // An oversized instruction is rejected at the validation layer so the
-    // never-truncated task line can't break the assembled-prompt ceiling.
+    // never-truncated task line can't break the assembled-prompt ceiling. The
+    // rejection carries an explicit InvalidRequest wire kind.
     #[tokio::test]
-    async fn oversized_instruction_is_rejected() {
+    async fn oversized_instruction_is_rejected_as_invalid_request() {
         let state = AppState::in_memory().await.unwrap();
         let account_id = state.default_account_id();
-        let limit = draft_context::max_instruction_chars();
+        let limit = draft_context::max_task_line_bytes();
         let huge = "x".repeat(limit + 1);
         let err = draft_compose(
             &state,
@@ -618,11 +640,51 @@ mod tests {
         )
         .await
         .expect_err("oversized instruction must be rejected");
-        let msg = err.to_string();
-        assert!(
-            msg.contains("too long") && msg.contains(&limit.to_string()),
-            "error must state the limit: {msg}"
-        );
+        // Assert the WIRE kind, not just the message text.
+        match err.into_response() {
+            mxr_protocol::Response::Error { kind, message, .. } => {
+                assert_eq!(kind, mxr_protocol::IpcErrorKind::InvalidRequest);
+                assert!(message.contains("too long"), "message: {message}");
+            }
+            other => panic!("expected an error response, got {other:?}"),
+        }
+    }
+
+    // A long recipient label plus a maximal instruction still can't exceed the
+    // ceiling: the recipient's real bytes are counted, and the total is
+    // rejected even though the instruction alone would fit.
+    #[tokio::test]
+    async fn long_recipient_plus_maximal_instruction_is_rejected() {
+        let state = AppState::in_memory().await.unwrap();
+        let account_id = state.default_account_id();
+        let limit = draft_context::max_task_line_bytes();
+        // An instruction that exactly fills the limit alongside a tiny
+        // recipient ("a@b.com").
+        let tiny_recipient = "a@b.com".len();
+        let instruction = "x".repeat(limit - TASK_TEMPLATE_FIXED_BYTES - tiny_recipient);
+        // Same instruction, but a long display name pushes the task line over.
+        let to = Address {
+            name: Some("N".repeat(300)),
+            email: "a@b.com".to_string(),
+        };
+        let err = draft_compose(
+            &state,
+            Some(&account_id),
+            Some(to),
+            &instruction,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("long recipient must push the task line over the limit");
+        match err.into_response() {
+            mxr_protocol::Response::Error { kind, .. } => {
+                assert_eq!(kind, mxr_protocol::IpcErrorKind::InvalidRequest);
+            }
+            other => panic!("expected an error response, got {other:?}"),
+        }
     }
 
     // Behavior 6: a manual register overrides the inferred tone.

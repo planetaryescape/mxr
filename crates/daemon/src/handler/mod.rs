@@ -1293,16 +1293,16 @@ async fn dispatch(state: &Arc<AppState>, source: ClientKind, req: &Request) -> R
             );
             Response::Ok { data }
         }
-        Err(message) => {
+        Err(error) => {
             tracing::warn!(
                 request,
                 account_id,
                 account_key,
                 elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
-                error = %message,
+                error = %error,
                 "request failed"
             );
-            Response::error(message)
+            error.into_response()
         }
     }
 }

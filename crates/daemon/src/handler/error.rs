@@ -12,12 +12,18 @@
 //! back into a `String` via `From<HandlerError>` for `Response::error`.
 
 use mxr_core::error::MxrError;
+use mxr_protocol::{IpcErrorKind, Response};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum HandlerError {
     /// An explicit, handler-authored message (validation, "not found", etc.).
     #[error("{0}")]
     Message(String),
+    /// An explicit invalid-request validation failure. Carries the wire kind
+    /// so it is classified as `IpcErrorKind::InvalidRequest` instead of being
+    /// string-sniffed into `Internal`.
+    #[error("{0}")]
+    InvalidRequest(String),
     /// A storage-layer failure. `sqlx::Error` is what the store returns today.
     #[error(transparent)]
     Store(#[from] sqlx::Error),
@@ -27,6 +33,20 @@ pub(crate) enum HandlerError {
     /// JSON (de)serialisation failure from a handler that builds/parses JSON.
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
+}
+
+impl HandlerError {
+    /// Convert to a wire `Response`, preserving the explicit `IpcErrorKind` for
+    /// variants that carry one so kinded errors don't fall back to the
+    /// substring classifier in `Response::error`.
+    pub(crate) fn into_response(self) -> Response {
+        match self {
+            Self::InvalidRequest(message) => {
+                Response::error_kinded(message, IpcErrorKind::InvalidRequest)
+            }
+            other => Response::error(other),
+        }
+    }
 }
 
 impl From<String> for HandlerError {

@@ -17,9 +17,15 @@ workspace = true
 # as a dev-dependency feature so the corpus can exercise a real
 # `ServerTransport::bind`/`accept` path with no socket file.
 test-util = []
+# Reusable transport-contract conformance functions (`conformance` module). An
+# out-of-tree transport crate enables this on its `mxr-transport` dev-dependency
+# and calls `run_transport_conformance` from a `#[tokio::test]` — the provider
+# kit's `run_sync_conformance` analog, for transports.
+conformance = ["dep:futures"]
 
 [dependencies]
 async-trait = { workspace = true }
+futures = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

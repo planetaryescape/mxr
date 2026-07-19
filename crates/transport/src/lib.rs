@@ -37,6 +37,15 @@ mod uds;
 #[cfg(feature = "test-util")]
 mod memory;
 
+/// Reusable transport-contract conformance checks (behind the `conformance`
+/// feature). An out-of-tree transport crate dev-depends on `mxr-transport` with
+/// this feature and calls [`conformance::run_transport_conformance`] to prove
+/// its adapter upholds the [`ServerTransport`] / [`Connector`] contract without
+/// depending on the daemon. See the module docs for the transport-vs-protocol
+/// split.
+#[cfg(feature = "conformance")]
+pub mod conformance;
+
 pub use addr::{TransportAddr, DAEMON_ADDR_ENV};
 pub use caps::{AuthCaps, LifecycleCaps, LocalityCaps, TransportCapabilities};
 pub use cmd::CmdConnector;

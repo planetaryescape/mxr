@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.6.10](https://github.com/planetaryescape/mxr/compare/v0.6.9...v0.6.10) (2026-07-19)
+
+
+### Features
+
+* **cli:** add mxr daemon dial-stdio ([#146](https://github.com/planetaryescape/mxr/issues/146)) ([8f23b21](https://github.com/planetaryescape/mxr/commit/8f23b21cee409b838b6ebea792d6327dd12a59af))
+* **compose:** per-message From-address selection (send-as aliases) ([#151](https://github.com/planetaryescape/mxr/issues/151)) ([c481a15](https://github.com/planetaryescape/mxr/commit/c481a153b87cd505f0c4ac7d341347e125f553fe))
+* **llm:** harden mail-consuming prompts against injection ([#148](https://github.com/planetaryescape/mxr/issues/148)) ([569fbaa](https://github.com/planetaryescape/mxr/commit/569fbaa28dbdd899f71e4178131850273c7822f3))
+* **transport:** community adapter kit — conformance suite, skeleton, blueprint ([#153](https://github.com/planetaryescape/mxr/issues/153)) ([17a4cf8](https://github.com/planetaryescape/mxr/commit/17a4cf88aeb92014f947ba9fc3b0516f37cd73ff))
+* **transport:** TCP+token and stdio server transports, cmd:// connector ([#150](https://github.com/planetaryescape/mxr/issues/150)) ([3c158c7](https://github.com/planetaryescape/mxr/commit/3c158c7e4a3f787adacb64d44b1dbff225484d90))
+* **transport:** transport traits with UDS as first adapter ([#149](https://github.com/planetaryescape/mxr/issues/149)) ([22d4cb3](https://github.com/planetaryescape/mxr/commit/22d4cb3551bb76197541509b3d1ce1faed55d6a8))
+
+
+### Bug Fixes
+
+* **ci:** resolve fmt, rustdoc, and architecture-boundary failures on main ([#154](https://github.com/planetaryescape/mxr/issues/154)) ([c4bd70f](https://github.com/planetaryescape/mxr/commit/c4bd70fc6adb1cc63d89028daed4f2aa3f6f66d8))
+* **web:** attribute bridge IPC requests as web client ([#138](https://github.com/planetaryescape/mxr/issues/138)) ([3153127](https://github.com/planetaryescape/mxr/commit/31531275a41bf659ab12dff3634c4e7a91b94eaa))
+
+
+### Refactoring
+
+* **client:** introduce shared mxr-client IPC connection crate ([#143](https://github.com/planetaryescape/mxr/issues/143)) ([a2928e1](https://github.com/planetaryescape/mxr/commit/a2928e158e55492cfb8972a9ff371459d8473c00))
+* **daemon:** extract generic serve core over AsyncRead+AsyncWrite ([#145](https://github.com/planetaryescape/mxr/issues/145)) ([11be5d3](https://github.com/planetaryescape/mxr/commit/11be5d36f60408aad4acc4d7e38478863ae6ac5c))
+
+
+### Documentation
+
+* `ssh -T localhost` in the phase-5 verification line. ([8f23b21](https://github.com/planetaryescape/mxr/commit/8f23b21cee409b838b6ebea792d6327dd12a59af))
+* add transport adapter discovery and phased implementation plan ([#139](https://github.com/planetaryescape/mxr/issues/139)) ([d33c437](https://github.com/planetaryescape/mxr/commit/d33c4376364f512df2df62774dba4e1be7c0f6f4))
+* email content is data, never instructions ([#141](https://github.com/planetaryescape/mxr/issues/141)) ([c0e8c2e](https://github.com/planetaryescape/mxr/commit/c0e8c2e81fea74719a2cd3b76b23e600f48500f4))
+* retrieved mail is data, never instructions (AI layer principle 8) ([#142](https://github.com/planetaryescape/mxr/issues/142)) ([59f972c](https://github.com/planetaryescape/mxr/commit/59f972c2cfa887d56107b979c158ad2d1b2b5275))
+
 ## [0.6.9](https://github.com/planetaryescape/mxr/compare/v0.6.8...v0.6.9) (2026-07-16)
 
 

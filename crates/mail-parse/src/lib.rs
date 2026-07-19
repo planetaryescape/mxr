@@ -577,14 +577,17 @@ pub fn delivered_to_addresses(raw_headers: &str) -> Vec<String> {
     // From is always shown at dry-run / send-confirm.
     let normalized = normalize_header_block(raw_headers);
 
-    // 1. Require a genuine header/body separator (a blank line). Without one we
-    //    cannot tell headers from body, so nothing is trusted — the caller
-    //    falls back to To/Cc-or-primary, the safe default.
-    let Some((header_block, _body)) = normalized.split_once("\r\n\r\n") else {
-        return Vec::new();
-    };
+    // 1. Determine the header region. The stored `raw_headers` is headers-only
+    //    (no blank-line separator), which is the normal case — the whole input
+    //    is headers. If a separator *is* present (a full raw message was
+    //    passed), scan only the part before it so a body `Delivered-To:` in
+    //    that shape is excluded. The separator is not the defense; the
+    //    column-0 + folding scan below is.
+    let header_block = normalized
+        .split_once("\r\n\r\n")
+        .map_or(normalized.as_str(), |(head, _body)| head);
 
-    // 2. Scan only the delimited header block for column-0 Delivered-To fields.
+    // 2. Scan the header region for column-0 Delivered-To fields.
     header_block
         .split("\r\n")
         .filter_map(|line| {
@@ -658,18 +661,19 @@ mod tests {
         for eol in ["\r\n", "\n", "\r"] {
             let label = format!("eol={eol:?}");
 
-            // A genuine header Delivered-To, with a real header/body separator,
-            // is read.
-            let raw =
-                format!("Delivered-To: real@primary.example{eol}Subject: hi{eol}{eol}body{eol}");
+            // Headers-only block (the real stored shape — no blank-line
+            // separator): a genuine top-level Delivered-To resolves.
+            let raw = format!(
+                "Received: from mx{eol}Delivered-To: real@primary.example{eol}Subject: hi{eol}"
+            );
             assert_eq!(
                 delivered_to_addresses(&raw),
                 vec!["real@primary.example"],
-                "header case, {label}"
+                "headers-only positive, {label}"
             );
 
-            // A Delivered-To in the *body* (after the separator the sender
-            // controls) must never be read as a header.
+            // Full message (a separator IS present): a Delivered-To in the body
+            // — which the sender controls — is excluded.
             let raw = format!(
                 "Delivered-To: real@primary.example{eol}Subject: hi{eol}{eol}\
                  Delivered-To: alias@evil.example{eol}reply from my alias{eol}"
@@ -677,19 +681,29 @@ mod tests {
             assert_eq!(
                 delivered_to_addresses(&raw),
                 vec!["real@primary.example"],
-                "body-after-separator case, {label}"
-            );
-
-            // No header/body separator at all: we cannot tell headers from
-            // body, so nothing is trusted — a Delivered-To here can't steer.
-            let raw = format!(
-                "Subject: hi{eol}Delivered-To: alias@evil.example{eol}reply from my alias{eol}"
-            );
-            assert!(
-                delivered_to_addresses(&raw).is_empty(),
-                "no-separator case, {label}"
+                "full-message body excluded, {label}"
             );
         }
+    }
+
+    #[test]
+    fn delivered_to_addresses_resolves_from_the_real_producer_shape() {
+        // The store builds `raw_headers` as header pairs, one `Name: value\r\n`
+        // per header and no blank-line separator. The feature MUST work on that
+        // exact shape — this is the test that catches "separator required".
+        let raw = raw_headers_from_pairs(&[
+            ("Received".to_string(), "from mx.example".to_string()),
+            (
+                "Delivered-To".to_string(),
+                "alias@owned.example".to_string(),
+            ),
+            ("Subject".to_string(), "hi".to_string()),
+        ]);
+        assert!(
+            !raw.contains("\r\n\r\n"),
+            "producer emits headers-only, no separator: {raw:?}"
+        );
+        assert_eq!(delivered_to_addresses(&raw), vec!["alias@owned.example"]);
     }
 
     #[test]
@@ -702,26 +716,26 @@ mod tests {
     }
 
     #[test]
-    fn delivered_to_addresses_ignores_a_folded_fake_next_to_a_real_header() {
-        // A fake folded (leading WSP) under a real Delivered-To is a
-        // continuation of that header's value, not a new header — skipped.
-        let raw = "Delivered-To: real@primary.example\r\n Delivered-To: alias@owned.example\r\n\r\nbody\r\n";
+    fn delivered_to_addresses_ignores_a_folded_fake_in_a_headers_only_block() {
+        // Headers-only (no separator): a fake folded (leading WSP) under a real
+        // Delivered-To is a continuation of that header's value, not a new
+        // header — skipped. The column-0 scan is the defense, not a separator.
+        let raw = "Delivered-To: real@primary.example\r\n Delivered-To: alias@owned.example\r\n";
         assert_eq!(delivered_to_addresses(raw), vec!["real@primary.example"]);
     }
 
     #[test]
     fn delivered_to_addresses_rejects_empty_first_line_folded_value() {
-        // `Delivered-To:\r\n <alias>` — the header's own line has an empty
-        // value and the address hides in a folded continuation. It must not
-        // count (this is the leading-CRLF/WSP-stripping bypass).
-        let raw = "Delivered-To:\r\n <alias@owned.example>\r\nSubject: hi\r\n\r\nbody\r\n";
+        // `Delivered-To:\r\n <alias>` in a headers-only block — the header's own
+        // line has an empty value and the address hides in a folded
+        // continuation. It must not count.
+        let raw = "Delivered-To:\r\n <alias@owned.example>\r\nSubject: hi\r\n";
         assert!(delivered_to_addresses(raw).is_empty());
     }
 
     #[test]
     fn delivered_to_addresses_strips_display_name_and_is_name_case_insensitive() {
-        let raw =
-            "Received: from x\r\ndelivered-to: Team <hello@planetaryescape.xyz>\r\n\r\nbody\r\n";
+        let raw = "Received: from x\r\ndelivered-to: Team <hello@planetaryescape.xyz>\r\n";
         assert_eq!(
             delivered_to_addresses(raw),
             vec!["hello@planetaryescape.xyz"]

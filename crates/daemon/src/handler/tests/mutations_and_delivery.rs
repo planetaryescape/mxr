@@ -2495,29 +2495,30 @@ async fn prepare_reply_defaults_from_to_delivered_alias() {
     }
 }
 
-#[tokio::test]
-async fn prepare_reply_ignores_a_body_delivered_to_fake_and_defaults_to_primary() {
-    // End-to-end raw-header path: the original was delivered to an external To
-    // (no owned To/Cc), and its stored raw headers carry a smuggled
-    // Delivered-To in the *body* naming an owned alias. The reply must default
-    // to the account primary, never the body-controlled alias.
-    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
-    let account_id = state.default_account_id_opt().unwrap();
-    state
-        .store
-        .add_account_address(&account_id, "hello@example.com", false)
-        .await
-        .unwrap();
-
+/// Insert a message delivered to an external To (no owned To/Cc, so the From
+/// default falls to the `Delivered-To:` header) with `raw_headers` built the
+/// way the store actually builds them — header pairs, headers-only, no
+/// blank-line separator — and return its id.
+async fn seed_reply_source_with_raw_headers(
+    state: &AppState,
+    account_id: &mxr_core::AccountId,
+    provider_id: &str,
+    header_pairs: &[(String, String)],
+) -> mxr_core::MessageId {
     let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
         .account_id(account_id.clone())
-        .provider_id("body-delivered-to-fake")
+        .provider_id(provider_id)
         .subject("Steer me")
         .sender_address("Sender", "sender@example.com")
         .recipient_address(Some("External"), "external@example.com")
         .build();
     let message_id = envelope.id.clone();
     state.store.upsert_envelope(&envelope).await.unwrap();
+    let raw_headers = mxr_mail_parse::raw_headers_from_pairs(header_pairs);
+    assert!(
+        !raw_headers.contains("\r\n\r\n"),
+        "producer is headers-only"
+    );
     state
         .store
         .insert_body(&mxr_core::types::MessageBody {
@@ -2527,21 +2528,18 @@ async fn prepare_reply_ignores_a_body_delivered_to_fake_and_defaults_to_primary(
             attachments: Vec::new(),
             fetched_at: chrono::Utc::now(),
             metadata: mxr_core::types::MessageMetadata {
-                // Header block (before the blank line) has no Delivered-To; the
-                // fake lives in the body and must never be promoted.
-                raw_headers: Some(
-                    "Subject: Steer me\r\n\r\nDelivered-To: hello@example.com\r\nreply from my alias\r\n"
-                        .to_string(),
-                ),
+                raw_headers: Some(raw_headers),
                 ..Default::default()
             },
         })
         .await
         .unwrap();
-    let state = Arc::new(state);
+    message_id
+}
 
+async fn reply_context_from(state: &Arc<AppState>, message_id: mxr_core::MessageId) -> String {
     let resp = handle_request(
-        &state,
+        state,
         &from_request(Request::PrepareReply {
             message_id,
             reply_all: false,
@@ -2551,10 +2549,69 @@ async fn prepare_reply_ignores_a_body_delivered_to_fake_and_defaults_to_primary(
     match resp.payload {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::ReplyContext { context },
-        }) => assert_eq!(
-            context.from, "user@example.com",
-            "must default to primary, not the body-smuggled alias"
-        ),
+        }) => context.from,
         other => panic!("expected ReplyContext, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn prepare_reply_selects_owned_alias_from_a_genuine_delivered_to() {
+    // POSITIVE end-to-end: a real top-level `Delivered-To: <owned alias>` in the
+    // store's actual headers-only `raw_headers` shape makes the reply default
+    // to that alias. This is the case a "separator required" gate would break.
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    state
+        .store
+        .add_account_address(&account_id, "hello@example.com", false)
+        .await
+        .unwrap();
+    let message_id = seed_reply_source_with_raw_headers(
+        &state,
+        &account_id,
+        "genuine-delivered-to",
+        &[
+            ("Received".to_string(), "from mx.example".to_string()),
+            ("Delivered-To".to_string(), "hello@example.com".to_string()),
+        ],
+    )
+    .await;
+    let state = Arc::new(state);
+    assert_eq!(
+        reply_context_from(&state, message_id).await,
+        "hello@example.com",
+        "reply must default to the owned alias named in Delivered-To"
+    );
+}
+
+#[tokio::test]
+async fn prepare_reply_ignores_a_folded_delivered_to_fake_and_defaults_to_primary() {
+    // NEGATIVE end-to-end: a fake `Delivered-To` folded under another header
+    // (leading whitespace) in the same headers-only shape is a continuation,
+    // not a header — the reply must default to the primary, not the alias.
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    state
+        .store
+        .add_account_address(&account_id, "hello@example.com", false)
+        .await
+        .unwrap();
+    // A Subject value carrying a folded "Delivered-To:" line: the producer
+    // emits it as `Subject: steer\r\n Delivered-To: hello@example.com\r\n`.
+    let message_id = seed_reply_source_with_raw_headers(
+        &state,
+        &account_id,
+        "folded-delivered-to-fake",
+        &[(
+            "Subject".to_string(),
+            "steer\r\n Delivered-To: hello@example.com".to_string(),
+        )],
+    )
+    .await;
+    let state = Arc::new(state);
+    assert_eq!(
+        reply_context_from(&state, message_id).await,
+        "user@example.com",
+        "a folded fake Delivered-To must not steer the From"
+    );
 }

@@ -64,7 +64,7 @@ With `MemoryTransport` real (phase 4), `spawn_bridge_loop` (`bridge.rs:40`) hand
 - Corpus × 4 transports green; `scripts/cargo-test` per touched crate; full suite before PR.
 - Live TCP: enable `[transports.tcp]`, `MXR_DAEMON_ADDR=tcp://127.0.0.1:<port> MXR_DAEMON_TOKEN=… mxr status --format json`; then without token → clean auth error; `mxr events` over TCP (event stream over the authenticated connection).
 - Live stdio: `mxr daemon --stdio` driven by a scripted client (or `IpcConnection::from_stream` harness) — request/response + event.
-- Live dial-stdio: `ssh localhost mxr daemon dial-stdio` round-trip via `cmd://` connector; `mxr activity` attribution intact.
+- Live dial-stdio: `ssh -T localhost mxr daemon dial-stdio` round-trip via `cmd://` connector; `mxr activity` attribution intact.
 
 ## Risks
 

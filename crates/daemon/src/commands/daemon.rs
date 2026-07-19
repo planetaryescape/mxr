@@ -29,9 +29,12 @@
 //! Because that read cannot be cancelled, *every* post-pump exit — clean or
 //! error — leaves via [`run`]'s `std::process::exit` (0 on clean close, 1 after
 //! writing the error to stderr); there is no `?` once piping has begun.
-//! Downstream (socket -> stdout) write failures propagate as errors; upstream
-//! (stdin -> socket) failures are normalized to clean only when they are the
-//! daemon's expected peer-close (`BrokenPipe`/`ConnectionReset`).
+//! Downstream (socket -> stdout) failures always propagate. Upstream
+//! distinguishes error sources: a stdin READ failure always propagates (even a
+//! `ConnectionReset` from a dying transport — it is not the daemon's close),
+//! while a socket WRITE or SHUT_WR failure is normalized to clean only when it
+//! is the daemon's expected peer-close (`BrokenPipe`/`ConnectionReset`, plus
+//! `NotConnected` for SHUT_WR on macOS AF_UNIX).
 //!
 //! ## stdout discipline
 //!
@@ -46,7 +49,7 @@
 use std::io::Write as _;
 use std::path::Path;
 
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
 
 /// Entry point for `mxr daemon dial-stdio`.
@@ -99,29 +102,12 @@ where
     let mut reader = reader;
     let mut writer = writer;
 
-    // Upstream: local input (stdin) -> socket. On input EOF, half-close the
-    // socket write side (SHUT_WR) so the daemon sees end-of-input but can still
-    // finish replying. A write or shutdown failure *after the daemon closed its
-    // read side* surfaces as `BrokenPipe`/`ConnectionReset` — the normal end of
-    // a half-duplex exchange, normalized to clean because reporting the close is
-    // `downstream`'s job. Anything else is a genuine input or half-close failure
-    // (a failed SHUT_WR can leave the daemon waiting for EOF forever), so it is
-    // propagated.
-    let upstream = async {
-        if let Err(error) = tokio::io::copy(&mut reader, &mut sock_write).await {
-            if !is_expected_peer_close(&error) {
-                return Err(anyhow::Error::new(error).context("stdin -> socket pump failed"));
-            }
-        }
-        if let Err(error) = sock_write.shutdown().await {
-            if !is_expected_peer_close(&error) {
-                return Err(
-                    anyhow::Error::new(error).context("half-closing the socket write side failed")
-                );
-            }
-        }
-        anyhow::Ok(())
-    };
+    // Upstream: local input (stdin) -> socket, then half-close (SHUT_WR) so the
+    // daemon sees end-of-input. `pump_upstream` distinguishes error sources — a
+    // stdin read failure is always genuine, only socket write/shutdown failures
+    // after the daemon has gone are normalized to clean (reporting the close is
+    // `downstream`'s job).
+    let upstream = pump_upstream(&mut reader, &mut sock_write);
 
     // Downstream: socket -> local output (stdout). The lifetime anchor: it
     // completes when the daemon closes its side. Unlike upstream its errors are
@@ -156,14 +142,64 @@ where
     }
 }
 
-/// A socket write after the daemon has closed its read side surfaces as
+/// Pump `reader` (stdin) into `writer` (the socket write half), then half-close
+/// it (SHUT_WR) on EOF.
+///
+/// Unlike `tokio::io::copy` — which reports reader and writer failures
+/// indistinguishably — this distinguishes the error source, which the
+/// normalization depends on:
+/// - a **read** failure is always a genuine upstream (stdin) error and is
+///   propagated, even a `ConnectionReset` from a dying transport, which must not
+///   be mistaken for the daemon's peer-close;
+/// - a **write** or **shutdown** failure is normalized to clean only when it is
+///   the daemon's expected peer-close, so the daemon closing mid-exchange ends
+///   the pump quietly and lets `downstream` report the close.
+async fn pump_upstream<R, W>(reader: &mut R, writer: &mut W) -> anyhow::Result<()>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        match reader.read(&mut buf).await {
+            Ok(0) => break,
+            Ok(n) => {
+                if let Err(error) = writer.write_all(&buf[..n]).await {
+                    if is_expected_write_peer_close(&error) {
+                        return Ok(());
+                    }
+                    return Err(anyhow::Error::new(error).context("stdin -> socket write failed"));
+                }
+            }
+            Err(error) => return Err(anyhow::Error::new(error).context("reading stdin failed")),
+        }
+    }
+    if let Err(error) = writer.shutdown().await {
+        if !is_expected_shutdown_peer_close(&error) {
+            return Err(
+                anyhow::Error::new(error).context("half-closing the socket write side failed")
+            );
+        }
+    }
+    Ok(())
+}
+
+/// A socket write after the daemon closed its read side surfaces as
 /// `BrokenPipe`/`ConnectionReset` — the normal end of a half-duplex exchange,
-/// not a failure. Every other error kind is genuine.
-fn is_expected_peer_close(error: &std::io::Error) -> bool {
+/// not a failure. Every other kind is genuine.
+fn is_expected_write_peer_close(error: &std::io::Error) -> bool {
     matches!(
         error.kind(),
         std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
     )
+}
+
+/// `shutdown(SHUT_WR)` after the peer already closed additionally surfaces as
+/// `NotConnected` (ENOTCONN) on macOS AF_UNIX sockets — also expected. (Writes
+/// have not been observed to return ENOTCONN, so the write path keeps the
+/// narrower set.)
+fn is_expected_shutdown_peer_close(error: &std::io::Error) -> bool {
+    is_expected_write_peer_close(error) || error.kind() == std::io::ErrorKind::NotConnected
 }
 
 #[cfg(test)]
@@ -284,6 +320,144 @@ mod tests {
                 .to_string()
                 .contains("Cannot connect to daemon socket"),
             "error should name the connect failure, got: {error}"
+        );
+    }
+
+    // --- pump_upstream error-source classification ---
+
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+    use tokio::io::ReadBuf;
+
+    /// An `AsyncRead` that fails its first read with a chosen error kind.
+    struct FailingReader(std::io::ErrorKind);
+
+    impl AsyncRead for FailingReader {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &mut ReadBuf<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Poll::Ready(Err(std::io::Error::from(self.get_mut().0)))
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum FailOn {
+        Write,
+        Shutdown,
+    }
+
+    /// An `AsyncWrite` that fails at a chosen point (a write, or the shutdown)
+    /// with a chosen error kind; every other operation succeeds.
+    struct FailingWriter {
+        fail_on: FailOn,
+        kind: std::io::ErrorKind,
+    }
+
+    impl AsyncWrite for FailingWriter {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            let this = self.get_mut();
+            match this.fail_on {
+                FailOn::Write => Poll::Ready(Err(std::io::Error::from(this.kind))),
+                FailOn::Shutdown => Poll::Ready(Ok(buf.len())),
+            }
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            let this = self.get_mut();
+            match this.fail_on {
+                FailOn::Shutdown => Poll::Ready(Err(std::io::Error::from(this.kind))),
+                FailOn::Write => Poll::Ready(Ok(())),
+            }
+        }
+    }
+
+    /// A stdin read error is ALWAYS genuine — even a `ConnectionReset`, which on
+    /// the write side would be normalized. It must never be mistaken for the
+    /// daemon's peer-close.
+    #[tokio::test]
+    async fn pump_upstream_read_error_always_propagates() {
+        let mut reader = FailingReader(std::io::ErrorKind::ConnectionReset);
+        let mut sink = tokio::io::sink();
+        let error = pump_upstream(&mut reader, &mut sink)
+            .await
+            .expect_err("a stdin read error must propagate");
+        assert!(
+            error.to_string().contains("reading stdin failed"),
+            "got: {error}"
+        );
+    }
+
+    /// A socket write failing with `BrokenPipe` after the daemon closed its read
+    /// side is the expected end of a half-duplex exchange — normalized to clean.
+    #[tokio::test]
+    async fn pump_upstream_write_broken_pipe_is_normalized() {
+        let mut reader: &[u8] = b"frame-bytes";
+        let mut writer = FailingWriter {
+            fail_on: FailOn::Write,
+            kind: std::io::ErrorKind::BrokenPipe,
+        };
+        pump_upstream(&mut reader, &mut writer)
+            .await
+            .expect("a peer-close write error must be normalized to clean");
+    }
+
+    /// A genuine socket write error (not a peer-close) propagates.
+    #[tokio::test]
+    async fn pump_upstream_genuine_write_error_propagates() {
+        let mut reader: &[u8] = b"frame-bytes";
+        let mut writer = FailingWriter {
+            fail_on: FailOn::Write,
+            kind: std::io::ErrorKind::PermissionDenied,
+        };
+        let error = pump_upstream(&mut reader, &mut writer)
+            .await
+            .expect_err("a non-peer-close write error must propagate");
+        assert!(
+            error.to_string().contains("stdin -> socket write failed"),
+            "got: {error}"
+        );
+    }
+
+    /// On macOS AF_UNIX, `shutdown(SHUT_WR)` after the peer closed returns
+    /// `NotConnected` — expected, normalized to clean.
+    #[tokio::test]
+    async fn pump_upstream_shutdown_not_connected_is_normalized() {
+        let mut reader: &[u8] = &[];
+        let mut writer = FailingWriter {
+            fail_on: FailOn::Shutdown,
+            kind: std::io::ErrorKind::NotConnected,
+        };
+        pump_upstream(&mut reader, &mut writer)
+            .await
+            .expect("ENOTCONN on SHUT_WR must be normalized to clean");
+    }
+
+    /// A genuine shutdown error (not a peer-close) propagates.
+    #[tokio::test]
+    async fn pump_upstream_genuine_shutdown_error_propagates() {
+        let mut reader: &[u8] = &[];
+        let mut writer = FailingWriter {
+            fail_on: FailOn::Shutdown,
+            kind: std::io::ErrorKind::PermissionDenied,
+        };
+        let error = pump_upstream(&mut reader, &mut writer)
+            .await
+            .expect_err("a non-peer-close shutdown error must propagate");
+        assert!(
+            error
+                .to_string()
+                .contains("half-closing the socket write side failed"),
+            "got: {error}"
         );
     }
 }

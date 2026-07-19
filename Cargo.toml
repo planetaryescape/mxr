@@ -250,7 +250,7 @@ thiserror = "2"
 anyhow = "1"
 
 # Security
-constant_time_eq = "0.3"
+constant_time_eq = "0.4"
 
 # Logging
 tracing = "0.1"
@@ -313,7 +313,7 @@ rodio = { version = "0.22.2", default-features = false, features = ["playback"] 
 
 # Compose
 serde_yaml = "0.9"
-comrak = { version = "0.53", default-features = false, features = ["shortcodes"] }
+comrak = { version = "0.54", default-features = false, features = ["shortcodes"] }
 
 # SMTP
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "builder", "hostname", "pool", "smtp-transport"] }

@@ -70,8 +70,14 @@ impl ServerTransport for UdsServerTransport {
         })?;
         // Remember which socket file is OURS. During an upgrade restart a
         // successor daemon can re-bind this path while we are still draining;
-        // cleanup must not delete the successor's socket.
-        let identity = socket_file_identity(&self.path);
+        // cleanup must not delete the successor's socket. Capturing the
+        // identity is mandatory — we just created this socket, so a `stat`
+        // failing immediately after bind is exceptional; fail the bind rather
+        // than fall back to an unconditional (successor-clobbering) unlink.
+        let identity = socket_file_identity(&self.path).ok_or_else(|| TransportError::Bind {
+            endpoint,
+            source: std::io::Error::other("could not stat the socket immediately after bind"),
+        })?;
         Ok(Box::new(UdsListener {
             path: self.path.clone(),
             listener: Some(listener),
@@ -84,11 +90,13 @@ impl ServerTransport for UdsServerTransport {
 /// A bound UDS listener. Owns the socket file it must remove on cleanup. The
 /// `UnixListener` lives in an `Option` so [`Self::stop_accepting`] can close the
 /// listening fd (refusing new clients) while the identity/path needed for the
-/// deferred, ownership-guarded unlink survive for [`Self::cleanup`].
+/// deferred, ownership-guarded unlink survive for [`Self::cleanup`]. `identity`
+/// is always captured (bind fails otherwise), so cleanup can always require a
+/// match before unlinking.
 struct UdsListener {
     path: PathBuf,
     listener: Option<UnixListener>,
-    identity: Option<(u64, u64, i64, i64)>,
+    identity: (u64, u64, i64, i64),
     cleaned: bool,
 }
 
@@ -220,17 +228,22 @@ fn socket_file_identity(_path: &Path) -> Option<(u64, u64, i64, i64)> {
 }
 
 /// Remove the socket file only if it is still the one this listener bound.
-/// `owned` of `None` (identity capture failed at bind time) falls back to
-/// unconditional removal, matching the previous behavior.
-fn remove_socket_if_owned(path: &Path, owned: Option<(u64, u64, i64, i64)>) {
-    match (owned, socket_file_identity(path)) {
-        (Some(ours), Some(current)) if ours != current => {
+/// Never unlinks unconditionally: a mismatch (a successor daemon re-bound the
+/// path) is left in place, and a missing file is a no-op. `owned` is always a
+/// real identity — bind fails if it could not be captured.
+fn remove_socket_if_owned(path: &Path, owned: (u64, u64, i64, i64)) {
+    match socket_file_identity(path) {
+        Some(current) if current == owned => {
+            let _ = std::fs::remove_file(path);
+        }
+        Some(_) => {
             tracing::info!(
                 "leaving IPC socket in place: the path was re-bound by a successor daemon"
             );
         }
-        _ => {
-            let _ = std::fs::remove_file(path);
+        None => {
+            // Already gone (e.g. a successor's own cleanup removed it); nothing
+            // to do.
         }
     }
 }
@@ -253,8 +266,7 @@ mod tests {
 
         // Same inode -> removed (normal shutdown).
         std::fs::write(&path, b"ours").unwrap();
-        let ours = socket_file_identity(&path);
-        assert!(ours.is_some());
+        let ours = socket_file_identity(&path).expect("stat freshly-written file");
         remove_socket_if_owned(&path, ours);
         assert!(!path.exists(), "own socket should be removed");
 
@@ -264,16 +276,18 @@ mod tests {
         // Sleep past the tick — in production the two binds are separated by a
         // full daemon startup.
         std::fs::write(&path, b"ours").unwrap();
-        let ours = socket_file_identity(&path);
+        let ours = socket_file_identity(&path).expect("stat freshly-written file");
         std::fs::remove_file(&path).unwrap();
         std::thread::sleep(Duration::from_millis(20));
         std::fs::write(&path, b"successor").unwrap();
         remove_socket_if_owned(&path, ours);
         assert!(path.exists(), "successor's socket must survive our cleanup");
 
-        // Unknown identity (capture failed at bind) -> fall back to removal.
-        remove_socket_if_owned(&path, None);
-        assert!(!path.exists(), "unknown ownership falls back to removal");
+        // A missing file is a no-op (a successor's own cleanup may have removed
+        // it already); it must not error or resurrect anything.
+        std::fs::remove_file(&path).unwrap();
+        remove_socket_if_owned(&path, ours);
+        assert!(!path.exists(), "missing socket stays gone");
     }
 
     /// Pins the shutdown ordering contract: `stop_accepting` refuses new

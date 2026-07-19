@@ -11,6 +11,7 @@
 //! [`MemoryListener::accept`] pops the server end.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
@@ -33,6 +34,7 @@ const MEMORY_BUFFER: usize = 16 * 1024 * 1024 + 1024;
 struct Rendezvous {
     pending: Mutex<VecDeque<DuplexStream>>,
     ready: Notify,
+    closed: AtomicBool,
 }
 
 impl Rendezvous {
@@ -40,6 +42,7 @@ impl Rendezvous {
         Self {
             pending: Mutex::new(VecDeque::new()),
             ready: Notify::new(),
+            closed: AtomicBool::new(false),
         }
     }
 
@@ -56,6 +59,17 @@ impl Rendezvous {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .pop_front()
+    }
+
+    fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
+    }
+
+    /// Stop accepting: mark closed and wake any parked `accept` so it observes
+    /// the closure and returns.
+    fn close(&self) {
+        self.closed.store(true, Ordering::SeqCst);
+        self.ready.notify_waiters();
     }
 }
 
@@ -115,22 +129,21 @@ impl ServerTransport for MemoryTransport {
     async fn bind(&self) -> Result<Box<dyn TransportListener>> {
         Ok(Box::new(MemoryListener {
             inner: self.inner.clone(),
-            accepting: true,
         }))
     }
 }
 
-/// The bound in-memory listener.
+/// The bound in-memory listener. `stop_accepting`/`accept` and the connectors
+/// share one `closed` flag through the [`Rendezvous`].
 struct MemoryListener {
     inner: Arc<Rendezvous>,
-    accepting: bool,
 }
 
 #[async_trait]
 impl TransportListener for MemoryListener {
     async fn accept(&mut self) -> Result<(BoxedIo, PeerInfo)> {
         loop {
-            if !self.accepting {
+            if self.inner.is_closed() {
                 return Err(TransportError::Accept(std::io::Error::new(
                     std::io::ErrorKind::NotConnected,
                     "listener has stopped accepting",
@@ -146,7 +159,7 @@ impl TransportListener for MemoryListener {
     }
 
     async fn stop_accepting(&mut self) {
-        self.accepting = false;
+        self.inner.close();
     }
 
     async fn cleanup(&mut self) -> Result<()> {
@@ -168,6 +181,18 @@ pub struct MemoryConnector {
 #[async_trait]
 impl Connector for MemoryConnector {
     async fn connect(&self) -> Result<BoxedIo> {
+        // Once the listener has stopped accepting, a connect must fail (like a
+        // UDS connection-refused) rather than hand back a client whose server
+        // end will never be accepted.
+        if self.inner.is_closed() {
+            return Err(TransportError::Connect {
+                endpoint: "memory:".to_string(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::ConnectionRefused,
+                    "memory listener has stopped accepting",
+                ),
+            });
+        }
         let (server_end, client_end) = tokio::io::duplex(MEMORY_BUFFER);
         self.inner.push(server_end);
         Ok(Box::new(client_end))
@@ -175,5 +200,50 @@ impl Connector for MemoryConnector {
 
     fn describe(&self) -> String {
         "memory:".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::panic,
+        reason = "tests assert directly on fixtures"
+    )]
+
+    use super::*;
+
+    /// Mirror of the UDS `stop_accepting` contract test: after `stop_accepting`,
+    /// a connect fails (connection-refused-equivalent) rather than handing back
+    /// a client that would hang unaccepted, and `accept` returns an error.
+    #[tokio::test]
+    async fn stop_accepting_refuses_new_connections() {
+        let transport = MemoryTransport::new();
+        let connector = transport.connector();
+        let mut listener = transport.bind().await.unwrap();
+
+        // Reachable while accepting: connect then accept the pair.
+        assert!(
+            connector.connect().await.is_ok(),
+            "reachable while accepting"
+        );
+        listener
+            .accept()
+            .await
+            .expect("accept the queued connection");
+
+        // Stop accepting: further connects are refused, and accept errors.
+        listener.stop_accepting().await;
+        match connector.connect().await {
+            Err(TransportError::Connect { source, .. }) => {
+                assert_eq!(source.kind(), std::io::ErrorKind::ConnectionRefused);
+            }
+            Ok(_) => panic!("connect must be refused once accepting stopped"),
+            Err(other) => panic!("expected a Connect error, got {other:?}"),
+        }
+        assert!(
+            listener.accept().await.is_err(),
+            "accept must fail after stop_accepting"
+        );
     }
 }

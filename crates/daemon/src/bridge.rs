@@ -40,6 +40,7 @@ pub enum BridgeStartupError {
 pub async fn spawn_bridge_loop(
     state: Arc<AppState>,
     overrides: &BridgeOverrides,
+    socket_path: PathBuf,
 ) -> Result<Option<JoinHandle<()>>, BridgeStartupError> {
     let config = load_config().map_err(|e| BridgeStartupError::Config(e.to_string()))?;
     let mut bridge_cfg = config.bridge;
@@ -66,7 +67,8 @@ pub async fn spawn_bridge_loop(
     let addr = SocketAddr::new(bind, bridge_cfg.port);
 
     let token = load_or_create_token(&bridge_cfg)?;
-    let socket_path = AppState::socket_path();
+    // The daemon already resolved and bound at `socket_path` (single-source
+    // resolution, honors MXR_DAEMON_ADDR); the bridge reaches the daemon there.
     let web_config = WebServerConfig::new(socket_path, token)
         .with_cors_allowlist(bridge_cfg.cors_allowlist.clone())
         .with_host_allowlist(bridge_cfg.host_allowlist.clone())

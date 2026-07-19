@@ -100,160 +100,187 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     let transports = build_transports(&sock_path);
     let mut listeners: Vec<Box<dyn TransportListener>> = Vec::with_capacity(transports.len());
     for transport in &transports {
-        let listener = transport.bind().await?;
-        tracing::info!("Daemon listening on {}", listener.endpoint());
-        listeners.push(listener);
-    }
-    write_daemon_pid_file()?;
-    let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
-    let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
-
-    // All syncing happens in the background sync loops — no blocking initial sync.
-    // The daemon starts accepting clients immediately. The sync loops detect
-    // Initial/GmailBackfill cursors and handles them with no startup delay.
-
-    // A previous daemon that died mid-sync leaves sync_in_progress=true
-    // behind; clear it before any loop can read it as "already syncing".
-    loops::reconcile_interrupted_syncs(&state).await;
-
-    // Spawn background loops
-    loops::spawn_sync_loops(state.clone());
-    let startup_handle = spawn_startup_maintenance(state.clone());
-    state.register_startup_maintenance(startup_handle);
-
-    let snooze_state = state.clone();
-    let snooze_handle = tokio::spawn(async move {
-        let shutdown_rx = snooze_state.shutdown_receiver();
-        loops::snooze_loop(snooze_state, shutdown_rx).await;
-    });
-    state.register_snooze_loop(snooze_handle);
-
-    let reminders_state = state.clone();
-    let reminders_handle = tokio::spawn(async move {
-        let shutdown_rx = reminders_state.shutdown_receiver();
-        loops::auto_reminders_loop(reminders_state, shutdown_rx).await;
-    });
-    state.register_auto_reminders_loop(reminders_handle);
-
-    let sends_state = state.clone();
-    let sends_handle = tokio::spawn(async move {
-        let shutdown_rx = sends_state.shutdown_receiver();
-        loops::scheduled_sends_loop(sends_state, shutdown_rx).await;
-    });
-    state.register_scheduled_sends_loop(sends_handle);
-
-    let reconciler_state = state.clone();
-    let reconciler_handle = tokio::spawn(async move {
-        let shutdown_rx = reconciler_state.shutdown_receiver();
-        loops::reply_pair_reconciler_loop(reconciler_state, shutdown_rx).await;
-    });
-    state.register_reply_pair_reconciler(reconciler_handle);
-
-    let contacts_state = state.clone();
-    let contacts_handle = tokio::spawn(async move {
-        let shutdown_rx = contacts_state.shutdown_receiver();
-        loops::contacts_refresher_loop(contacts_state, shutdown_rx).await;
-    });
-    state.register_contacts_refresher(contacts_handle);
-
-    let wrapped_warmer_state = state.clone();
-    let wrapped_warmer_handle = tokio::spawn(async move {
-        let shutdown_rx = wrapped_warmer_state.shutdown_receiver();
-        loops::wrapped_warmer_loop(wrapped_warmer_state, shutdown_rx).await;
-    });
-    state.register_wrapped_warmer(wrapped_warmer_handle);
-
-    // Activity prune loop: enforces the tiered retention windows from
-    // config. Fire-and-forget; on shutdown the watch channel exits the
-    // loop. Not registered with `runtime_tasks` because we don't need to
-    // join on it during graceful shutdown — losing the last sweep is
-    // harmless.
-    let activity_prune_state = state.clone();
-    tokio::spawn(async move {
-        let shutdown_rx = activity_prune_state.shutdown_receiver();
-        loops::activity_prune_loop(activity_prune_state, shutdown_rx).await;
-    });
-
-    // Mutation dedup + undo prune. 24h dedup TTL means rows older
-    // than that are safe to drop; hourly cadence keeps the table
-    // bounded under heavy mutation traffic.
-    let mutation_dedup_state = state.clone();
-    tokio::spawn(async move {
-        let shutdown_rx = mutation_dedup_state.shutdown_receiver();
-        loops::mutation_dedup_prune_loop(mutation_dedup_state, shutdown_rx).await;
-    });
-
-    // Managed HTTP bridge. Reads [bridge] from config, applies CLI
-    // overrides, and keeps daemon-hosted serving loopback-only until remote
-    // bridge TLS is a validated product decision.
-    if !bridge_overrides.disabled {
-        match crate::bridge::spawn_bridge_loop(state.clone(), &bridge_overrides).await {
-            Ok(Some(handle)) => {
-                state.register_bridge_loop(handle);
-            }
-            Ok(None) => {
-                tracing::info!("bridge disabled by config");
-            }
-            Err(crate::bridge::BridgeStartupError::Bind { addr, error }) => {
-                tracing::warn!(
-                    %addr,
-                    %error,
-                    "HTTP bridge disabled because its port is unavailable"
-                );
+        match transport.bind().await {
+            Ok(listener) => {
+                tracing::info!("Daemon listening on {}", listener.endpoint());
+                listeners.push(listener);
             }
             Err(error) => {
-                anyhow::bail!("bridge startup failed: {error}");
+                // A partial bind must not leave earlier listeners' sockets
+                // behind: clean them up before failing.
+                for listener in &mut listeners {
+                    let _ = listener.cleanup().await;
+                }
+                return Err(error.into());
             }
         }
-    } else {
-        tracing::info!("bridge disabled by --no-bridge flag");
     }
 
-    let mut shutdown_rx = state.shutdown_receiver();
+    // Every post-bind exit — a clean shutdown OR any error (pid-file write,
+    // bridge startup, accept failure) — must funnel through the ordered
+    // teardown after this block, so no exit path leaves a stale socket. The
+    // serving body runs in a guarded scope; teardown then runs unconditionally.
     let mut connections = JoinSet::new();
+    let serve_result: anyhow::Result<()> = async {
+        write_daemon_pid_file()?;
+        let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
+        let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
 
-    // Accept connections from every bound transport.
-    loop {
-        tokio::select! {
-            joined = connections.join_next(), if !connections.is_empty() => {
-                match joined {
-                    Some(Ok(())) => {}
-                    Some(Err(error)) => {
-                        tracing::warn!("client connection task failed: {error}");
+        // All syncing happens in the background sync loops — no blocking initial sync.
+        // The daemon starts accepting clients immediately. The sync loops detect
+        // Initial/GmailBackfill cursors and handles them with no startup delay.
+
+        // A previous daemon that died mid-sync leaves sync_in_progress=true
+        // behind; clear it before any loop can read it as "already syncing".
+        loops::reconcile_interrupted_syncs(&state).await;
+
+        // Spawn background loops
+        loops::spawn_sync_loops(state.clone());
+        let startup_handle = spawn_startup_maintenance(state.clone());
+        state.register_startup_maintenance(startup_handle);
+
+        let snooze_state = state.clone();
+        let snooze_handle = tokio::spawn(async move {
+            let shutdown_rx = snooze_state.shutdown_receiver();
+            loops::snooze_loop(snooze_state, shutdown_rx).await;
+        });
+        state.register_snooze_loop(snooze_handle);
+
+        let reminders_state = state.clone();
+        let reminders_handle = tokio::spawn(async move {
+            let shutdown_rx = reminders_state.shutdown_receiver();
+            loops::auto_reminders_loop(reminders_state, shutdown_rx).await;
+        });
+        state.register_auto_reminders_loop(reminders_handle);
+
+        let sends_state = state.clone();
+        let sends_handle = tokio::spawn(async move {
+            let shutdown_rx = sends_state.shutdown_receiver();
+            loops::scheduled_sends_loop(sends_state, shutdown_rx).await;
+        });
+        state.register_scheduled_sends_loop(sends_handle);
+
+        let reconciler_state = state.clone();
+        let reconciler_handle = tokio::spawn(async move {
+            let shutdown_rx = reconciler_state.shutdown_receiver();
+            loops::reply_pair_reconciler_loop(reconciler_state, shutdown_rx).await;
+        });
+        state.register_reply_pair_reconciler(reconciler_handle);
+
+        let contacts_state = state.clone();
+        let contacts_handle = tokio::spawn(async move {
+            let shutdown_rx = contacts_state.shutdown_receiver();
+            loops::contacts_refresher_loop(contacts_state, shutdown_rx).await;
+        });
+        state.register_contacts_refresher(contacts_handle);
+
+        let wrapped_warmer_state = state.clone();
+        let wrapped_warmer_handle = tokio::spawn(async move {
+            let shutdown_rx = wrapped_warmer_state.shutdown_receiver();
+            loops::wrapped_warmer_loop(wrapped_warmer_state, shutdown_rx).await;
+        });
+        state.register_wrapped_warmer(wrapped_warmer_handle);
+
+        // Activity prune loop: enforces the tiered retention windows from
+        // config. Fire-and-forget; on shutdown the watch channel exits the
+        // loop. Not registered with `runtime_tasks` because we don't need to
+        // join on it during graceful shutdown — losing the last sweep is
+        // harmless.
+        let activity_prune_state = state.clone();
+        tokio::spawn(async move {
+            let shutdown_rx = activity_prune_state.shutdown_receiver();
+            loops::activity_prune_loop(activity_prune_state, shutdown_rx).await;
+        });
+
+        // Mutation dedup + undo prune. 24h dedup TTL means rows older
+        // than that are safe to drop; hourly cadence keeps the table
+        // bounded under heavy mutation traffic.
+        let mutation_dedup_state = state.clone();
+        tokio::spawn(async move {
+            let shutdown_rx = mutation_dedup_state.shutdown_receiver();
+            loops::mutation_dedup_prune_loop(mutation_dedup_state, shutdown_rx).await;
+        });
+
+        // Managed HTTP bridge. Reads [bridge] from config, applies CLI
+        // overrides, and keeps daemon-hosted serving loopback-only until remote
+        // bridge TLS is a validated product decision.
+        if !bridge_overrides.disabled {
+            match crate::bridge::spawn_bridge_loop(
+                state.clone(),
+                &bridge_overrides,
+                sock_path.clone(),
+            )
+            .await
+            {
+                Ok(Some(handle)) => {
+                    state.register_bridge_loop(handle);
+                }
+                Ok(None) => {
+                    tracing::info!("bridge disabled by config");
+                }
+                Err(crate::bridge::BridgeStartupError::Bind { addr, error }) => {
+                    tracing::warn!(
+                        %addr,
+                        %error,
+                        "HTTP bridge disabled because its port is unavailable"
+                    );
+                }
+                Err(error) => {
+                    anyhow::bail!("bridge startup failed: {error}");
+                }
+            }
+        } else {
+            tracing::info!("bridge disabled by --no-bridge flag");
+        }
+
+        let mut shutdown_rx = state.shutdown_receiver();
+
+        // Accept connections from every bound transport.
+        loop {
+            tokio::select! {
+                joined = connections.join_next(), if !connections.is_empty() => {
+                    match joined {
+                        Some(Ok(())) => {}
+                        Some(Err(error)) => {
+                            tracing::warn!("client connection task failed: {error}");
+                        }
+                        None => {}
                     }
-                    None => {}
                 }
-            }
-            changed = shutdown_rx.changed() => {
-                if changed.is_ok() && *shutdown_rx.borrow_and_update() {
-                    tracing::info!("Daemon shutdown requested; stopping IPC accept loop");
-                    break;
+                changed = shutdown_rx.changed() => {
+                    if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                        tracing::info!("Daemon shutdown requested; stopping IPC accept loop");
+                        break;
+                    }
                 }
-            }
-            accepted = accept_any(&mut listeners), if !listeners.is_empty() => {
-                let (stream, peer) = accepted?;
-                let state = state.clone();
-                let request_semaphore = request_semaphore.clone();
-                let bulk_semaphore = bulk_semaphore.clone();
-                let event_rx = state.event_tx.subscribe();
-                let connection_shutdown_rx = state.shutdown_receiver();
+                accepted = accept_any(&mut listeners), if !listeners.is_empty() => {
+                    let (stream, peer) = accepted?;
+                    let state = state.clone();
+                    let request_semaphore = request_semaphore.clone();
+                    let bulk_semaphore = bulk_semaphore.clone();
+                    let event_rx = state.event_tx.subscribe();
+                    let connection_shutdown_rx = state.shutdown_receiver();
 
-                connections.spawn(async move {
-                    serve_client_connection(
-                        stream,
-                        state,
-                        request_semaphore,
-                        bulk_semaphore,
-                        peer,
-                        event_rx,
-                        connection_shutdown_rx,
-                    )
-                    .await;
-                });
+                    connections.spawn(async move {
+                        serve_client_connection(
+                            stream,
+                            state,
+                            request_semaphore,
+                            bulk_semaphore,
+                            peer,
+                            event_rx,
+                            connection_shutdown_rx,
+                        )
+                        .await;
+                    });
+                }
             }
         }
+        Ok(())
     }
+    .await;
 
+    // ── Ordered teardown — runs on EVERY post-bind exit (clean or error) ──
     // Stop accepting FIRST — before the drains — so new clients get a prompt
     // connection-refused during shutdown instead of hanging against a listening
     // socket that no longer has an accept loop. The socket file is NOT unlinked
@@ -274,7 +301,7 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     }
     drop(listeners);
     clear_daemon_pid_file_if_owned();
-    Ok(())
+    serve_result
 }
 
 /// Accept from whichever bound transport is ready first. `select_all` over the

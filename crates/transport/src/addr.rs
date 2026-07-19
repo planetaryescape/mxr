@@ -12,8 +12,11 @@
 //!   (`unix://run/mxr.sock` → `run/mxr.sock`, resolved against the process CWD
 //!   by the OS at connect/bind time) are both accepted; relative paths are not
 //!   rewritten.
-//! - **Percent-escapes are literal**: `unix://a%20b` is the 4-char path `a%20b`,
-//!   not `a b`. This is a filesystem path, not a URL — no percent-decoding.
+//! - **Percent-escapes are literal**: `unix://a%20b` is the 5-byte path `a%20b`
+//!   (`a`, `%`, `2`, `0`, `b`), not `a b`. This is a filesystem path, not a URL
+//!   — no percent-decoding.
+//! - The path after `unix://` is taken **verbatim** — leading/trailing spaces
+//!   in a socket path are legal and preserved (`unix:// x ` is the path `" x "`).
 //!
 //! ## Resolution precedence
 //!
@@ -55,11 +58,14 @@ impl TransportAddr {
         }
     }
 
-    /// Resolve the daemon address: `MXR_DAEMON_ADDR` if set and non-empty, else
-    /// the supplied default socket path (current behavior when unset).
+    /// Resolve the daemon address: `MXR_DAEMON_ADDR` if set and not
+    /// whitespace-only, else the supplied default socket path (current behavior
+    /// when unset). The env value is parsed **verbatim** — only empty /
+    /// whitespace-only is rejected, so a socket path with leading/trailing
+    /// spaces survives.
     pub fn resolve(default_socket: PathBuf) -> Result<Self> {
         match std::env::var(DAEMON_ADDR_ENV) {
-            Ok(value) if !value.trim().is_empty() => Self::parse(value.trim()),
+            Ok(value) if !value.trim().is_empty() => Self::parse(&value),
             _ => Ok(Self::Unix(default_socket)),
         }
     }
@@ -91,10 +97,21 @@ mod tests {
 
     #[test]
     fn percent_escapes_are_literal_not_decoded() {
-        // A filesystem path, not a URL: `%20` stays four characters.
+        // A filesystem path, not a URL: `%20` stays three literal bytes, so
+        // `a%20b` is 5 bytes — never decoded to `a b`.
+        let parsed = TransportAddr::parse("unix://a%20b").unwrap();
+        assert_eq!(parsed, TransportAddr::Unix(PathBuf::from("a%20b")));
+        let TransportAddr::Unix(path) = parsed;
+        assert_eq!(path.as_os_str().len(), 5, "`a%20b` is 5 literal bytes");
+    }
+
+    #[test]
+    fn path_is_verbatim_including_surrounding_spaces() {
+        // Only whitespace-*only* values are rejected; a path that happens to
+        // contain spaces is legal and preserved byte-for-byte.
         assert_eq!(
-            TransportAddr::parse("unix://a%20b.sock").unwrap(),
-            TransportAddr::Unix(PathBuf::from("a%20b.sock"))
+            TransportAddr::parse("unix:// spaced path ").unwrap(),
+            TransportAddr::Unix(PathBuf::from(" spaced path "))
         );
     }
 

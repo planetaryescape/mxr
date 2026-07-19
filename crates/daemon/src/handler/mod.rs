@@ -64,6 +64,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use tracing::Instrument;
 
+pub(crate) use account_config::{list_account_configs, repair_account_config};
 pub(crate) use helpers::{
     dir_size_sync, file_size_sync, recent_log_lines_sync, should_fallback_to_tantivy,
 };

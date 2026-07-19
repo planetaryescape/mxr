@@ -68,7 +68,7 @@ pub async fn run(
         Some(AccountsAction::Show { name }) => show_account(&name).await?,
         Some(AccountsAction::Test { name }) => test_account(&name).await?,
         Some(AccountsAction::Reauth { name }) => reauth_account(&name).await?,
-        Some(AccountsAction::Repair { name }) => repair_account(&name).await?,
+        Some(AccountsAction::Repair { name }) => repair_account(&name)?,
         Some(AccountsAction::Disable { name }) => {
             run_account_operation(disable_account_request(&name)).await?;
         }
@@ -897,8 +897,12 @@ async fn reauth_account(name: &str) -> anyhow::Result<()> {
     authorize_and_save_account(find_account_config(name).await?, true).await
 }
 
-async fn repair_account(name: &str) -> anyhow::Result<()> {
-    let mut account = find_account_config(name).await?;
+fn repair_account(name: &str) -> anyhow::Result<()> {
+    let mut account = crate::handler::list_account_configs()
+        .map_err(anyhow::Error::msg)?
+        .into_iter()
+        .find(|account| account.key == name)
+        .ok_or_else(|| anyhow::anyhow!("Account '{name}' not found"))?;
 
     let mut repairable = false;
     if let Some(AccountSyncConfigData::Imap {
@@ -931,7 +935,7 @@ async fn repair_account(name: &str) -> anyhow::Result<()> {
         anyhow::bail!("Account '{name}' has no password-backed IMAP/SMTP credentials to repair");
     }
 
-    run_account_operation(Request::RepairAccountConfig { account }).await
+    render_account_operation(crate::handler::repair_account_config(account))
 }
 
 async fn ensure_account_available(name: &str) -> anyhow::Result<()> {

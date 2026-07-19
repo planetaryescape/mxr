@@ -60,6 +60,10 @@ name = "reset_cli"
 path = "crates/daemon/tests/reset_cli.rs"
 
 [[test]]
+name = "accounts_repair_cli"
+path = "crates/daemon/tests/accounts_repair_cli.rs"
+
+[[test]]
 name = "cli_journey"
 path = "crates/daemon/tests/cli_journey.rs"
 

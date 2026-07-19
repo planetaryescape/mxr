@@ -236,7 +236,9 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             .await?;
         }
         Some(Command::Accounts { action, format }) => {
-            crate::server::ensure_daemon_running().await?;
+            if !matches!(action, Some(cli::AccountsAction::Repair { .. })) {
+                crate::server::ensure_daemon_running().await?;
+            }
             commands::accounts::run(action, format).await?;
         }
 

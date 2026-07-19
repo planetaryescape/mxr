@@ -4149,6 +4149,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "comrak",
+ "constant_time_eq",
  "criterion",
  "crossterm",
  "csv",

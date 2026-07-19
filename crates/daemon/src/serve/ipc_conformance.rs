@@ -433,8 +433,23 @@ async fn spawn_server<H: Harness>(
     bulk: Arc<Semaphore>,
     prep: impl FnOnce(&Arc<AppState>),
 ) -> (BoxedIo, JoinHandle<()>) {
-    let (server_io, client_io, peer) = harness.connect().await;
     let auth_token = harness.expected_token();
+    spawn_server_with_auth(harness, state, hot, bulk, auth_token, prep).await
+}
+
+/// Like [`spawn_server`], but the daemon's expected token is supplied
+/// explicitly instead of taken from the harness — for the auth-matrix tests
+/// that need a mismatch between the connection's `TokenRequired` peer and the
+/// daemon's configured token (e.g. `expected = None`).
+async fn spawn_server_with_auth<H: Harness>(
+    harness: &H,
+    state: Arc<AppState>,
+    hot: Arc<Semaphore>,
+    bulk: Arc<Semaphore>,
+    auth_token: Option<Arc<str>>,
+    prep: impl FnOnce(&Arc<AppState>),
+) -> (BoxedIo, JoinHandle<()>) {
+    let (server_io, client_io, peer) = harness.connect().await;
     let event_rx = state.event_tx.subscribe();
     prep(&state);
     let shutdown_rx = state.shutdown_receiver();
@@ -1196,11 +1211,12 @@ mod no_auth_pins {
 /// client against the real TCP transport so the gate is exercised directly.
 mod auth_matrix {
     use super::{
-        request, spawn_server, AppState, Arc, Framed, Harness, IpcCodec, IpcErrorKind, IpcMessage,
-        IpcPayload, Request, Response, ResponseData, TcpTokenHarness, CORPUS_TOKEN, JOIN_TIMEOUT,
-        RECV_TIMEOUT,
+        daemon_event, request, sample_event, spawn_server, spawn_server_with_auth, AppState, Arc,
+        DaemonEvent, Framed, Harness, IpcCodec, IpcErrorKind, IpcMessage, IpcPayload, Request,
+        Response, ResponseData, TcpTokenHarness, CORPUS_TOKEN, JOIN_TIMEOUT, RECV_TIMEOUT,
     };
     use futures::{SinkExt, StreamExt};
+    use std::time::Duration;
 
     /// A `TokenRequired` connection that sends any request BEFORE authenticating
     /// gets an `Auth` error — not a dispatched response.
@@ -1315,6 +1331,235 @@ mod auth_matrix {
         assert!(
             super::pong(&pong),
             "post-auth request should dispatch, got {pong:?}"
+        );
+
+        drop(client);
+        tokio::time::timeout(JOIN_TIMEOUT, server)
+            .await
+            .expect("serve task terminates")
+            .expect("serve task does not panic");
+        state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
+    }
+
+    /// A `TokenRequired` connection when the daemon holds NO token
+    /// (`expected = None`) can never authenticate — even a plausible token is
+    /// rejected, and the connection stays gated. Fail-closed.
+    #[tokio::test]
+    async fn expected_none_can_never_authenticate() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let (hot, bulk) = super::lanes();
+        let h = TcpTokenHarness::start().await;
+        // Daemon-side token is None despite the peer being TokenRequired.
+        let (client, server) =
+            spawn_server_with_auth(&h, state.clone(), hot, bulk, None, |_| {}).await;
+        let mut client = Framed::new(client, IpcCodec::new());
+
+        client
+            .send(request(
+                1,
+                Request::Authenticate {
+                    token: CORPUS_TOKEN.to_string(),
+                },
+            ))
+            .await
+            .unwrap();
+        let rejected = tokio::time::timeout(RECV_TIMEOUT, client.next())
+            .await
+            .expect("a frame should arrive")
+            .expect("stream open")
+            .expect("frame decodes");
+        assert_auth_error(&rejected);
+
+        drop(client);
+        tokio::time::timeout(JOIN_TIMEOUT, server)
+            .await
+            .expect("serve task terminates")
+            .expect("serve task does not panic");
+        state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
+    }
+
+    /// Auth is per-connection: authenticating connection A does not authorize a
+    /// separate connection B. B's requests are still gated.
+    #[tokio::test]
+    async fn auth_is_isolated_per_connection() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let (hot, bulk) = super::lanes();
+        let token: Arc<str> = Arc::from(CORPUS_TOKEN);
+        let h = TcpTokenHarness::start().await;
+
+        // Connection A: authenticate successfully.
+        let (client_a, server_a) = spawn_server_with_auth(
+            &h,
+            state.clone(),
+            hot.clone(),
+            bulk.clone(),
+            Some(token.clone()),
+            |_| {},
+        )
+        .await;
+        let mut a = Framed::new(client_a, IpcCodec::new());
+        a.send(request(
+            1,
+            Request::Authenticate {
+                token: CORPUS_TOKEN.to_string(),
+            },
+        ))
+        .await
+        .unwrap();
+        let a_authed = tokio::time::timeout(RECV_TIMEOUT, a.next())
+            .await
+            .expect("frame")
+            .expect("open")
+            .expect("decode");
+        assert!(matches!(
+            a_authed.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Authenticated
+            })
+        ));
+
+        // Connection B: never authenticates. A being authed must not help it.
+        let (client_b, server_b) =
+            spawn_server_with_auth(&h, state.clone(), hot, bulk, Some(token), |_| {}).await;
+        let mut b = Framed::new(client_b, IpcCodec::new());
+        b.send(request(2, Request::Ping)).await.unwrap();
+        let b_response = tokio::time::timeout(RECV_TIMEOUT, b.next())
+            .await
+            .expect("frame")
+            .expect("open")
+            .expect("decode");
+        assert_auth_error(&b_response);
+
+        drop(a);
+        drop(b);
+        for server in [server_a, server_b] {
+            tokio::time::timeout(JOIN_TIMEOUT, server)
+                .await
+                .expect("serve task terminates")
+                .expect("serve task does not panic");
+        }
+        state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
+    }
+
+    /// A pre-auth `TokenRequired` connection receives NO events; once
+    /// authenticated, events flow. Guards the data-leak edge: a peer must not
+    /// observe daemon state before it proves itself.
+    #[tokio::test]
+    async fn events_are_withheld_until_authenticated() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let (hot, bulk) = super::lanes();
+        let token: Arc<str> = Arc::from(CORPUS_TOKEN);
+        let h = TcpTokenHarness::start().await;
+
+        // Emit an event BEFORE the client authenticates.
+        let (client, server) =
+            spawn_server_with_auth(&h, state.clone(), hot, bulk, Some(token), |s| {
+                super::emit(s);
+            })
+            .await;
+        let mut client = Framed::new(client, IpcCodec::new());
+
+        // No event may arrive while unauthenticated.
+        match tokio::time::timeout(Duration::from_millis(300), client.next()).await {
+            Err(_) => {} // timed out — correct, nothing delivered pre-auth
+            Ok(frame) => panic!("no frame may arrive before auth, got {frame:?}"),
+        }
+
+        // Authenticate, then the (still-buffered) event is delivered.
+        client
+            .send(request(
+                1,
+                Request::Authenticate {
+                    token: CORPUS_TOKEN.to_string(),
+                },
+            ))
+            .await
+            .unwrap();
+        let authed = tokio::time::timeout(RECV_TIMEOUT, client.next())
+            .await
+            .expect("frame")
+            .expect("open")
+            .expect("decode");
+        assert!(matches!(
+            authed.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Authenticated
+            })
+        ));
+        let event = tokio::time::timeout(RECV_TIMEOUT, client.next())
+            .await
+            .expect("frame")
+            .expect("open")
+            .expect("decode");
+        assert!(
+            matches!(event.payload, IpcPayload::Event(_)),
+            "the withheld event should arrive after auth, got {event:?}"
+        );
+
+        drop(client);
+        tokio::time::timeout(JOIN_TIMEOUT, server)
+            .await
+            .expect("serve task terminates")
+            .expect("serve task does not panic");
+        state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
+    }
+
+    /// The `Authenticated` ack must precede a pre-auth-buffered `EventsLagged`
+    /// (the inline-send ordering guarantee). Overflow the broadcast channel
+    /// pre-auth, then authenticate: the FIRST frame is `Authenticated`, the
+    /// SECOND is the `EventsLagged` resync — never reordered.
+    #[tokio::test]
+    async fn authenticated_precedes_events_lagged() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let (hot, bulk) = super::lanes();
+        let token: Arc<str> = Arc::from(CORPUS_TOKEN);
+        let h = TcpTokenHarness::start().await;
+
+        let (client, server) =
+            spawn_server_with_auth(&h, state.clone(), hot, bulk, Some(token), |s| {
+                for _ in 0..400u32 {
+                    let _ = s.event_tx.send(daemon_event(sample_event()));
+                }
+            })
+            .await;
+        let mut client = Framed::new(client, IpcCodec::new());
+
+        client
+            .send(request(
+                1,
+                Request::Authenticate {
+                    token: CORPUS_TOKEN.to_string(),
+                },
+            ))
+            .await
+            .unwrap();
+
+        let first = tokio::time::timeout(RECV_TIMEOUT, client.next())
+            .await
+            .expect("frame")
+            .expect("open")
+            .expect("decode");
+        assert!(
+            matches!(
+                first.payload,
+                IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Authenticated
+                })
+            ),
+            "Authenticated must be the FIRST frame, got {first:?}"
+        );
+
+        let second = tokio::time::timeout(RECV_TIMEOUT, client.next())
+            .await
+            .expect("frame")
+            .expect("open")
+            .expect("decode");
+        assert!(
+            matches!(
+                second.payload,
+                IpcPayload::Event(DaemonEvent::EventsLagged { .. })
+            ),
+            "EventsLagged must follow Authenticated, got {second:?}"
         );
 
         drop(client);

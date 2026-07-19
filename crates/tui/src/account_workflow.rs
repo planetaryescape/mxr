@@ -7,15 +7,14 @@ use mxr_protocol::{
 };
 use tokio::sync::mpsc;
 
-pub(crate) fn daemon_socket_path() -> std::path::PathBuf {
+pub(crate) fn daemon_socket_path() -> anyhow::Result<std::path::PathBuf> {
     // Route through the shared resolver so the TUI agrees with the CLI on the
     // socket (honors MXR_DAEMON_ADDR=unix://<path>). tcp:// / cmd:// are
-    // CLI-only today; fall back to the config default if one is set, warning so
-    // the mismatch is visible.
-    mxr_client::resolve_unix_socket(config_socket_path()).unwrap_or_else(|error| {
-        tracing::warn!(%error, "falling back to the default socket path");
-        config_socket_path()
-    })
+    // CLI-only today; REJECT them with a clear message rather than silently
+    // dialing the default socket (which would connect to a different daemon than
+    // the user asked for).
+    mxr_client::resolve_unix_socket(config_socket_path())
+        .map_err(|error| anyhow::anyhow!("{error}"))
 }
 
 pub(crate) async fn request_account_operation(

@@ -9,8 +9,10 @@
 //!
 //! The child's stdout feeds our reader, our writes feed its stdin, and its
 //! stderr passes through to our stderr (so `ssh` prompts / errors stay visible).
-//! The child is killed and reaped when the stream is dropped
-//! (`kill_on_drop`), so a client that finishes or errors never leaks a process.
+//! The child is signalled to die when the stream is dropped (`kill_on_drop`;
+//! the runtime driver reaps the zombie best-effort), so a client that finishes
+//! or errors tears the process down rather than leaking it. On the normal path
+//! the child exits on its own when its stdin hits EOF.
 //!
 //! ## argv & quoting
 //!
@@ -67,8 +69,12 @@ impl Connector for CmdConnector {
             // stderr passes through to ours: ssh host-key prompts, connection
             // errors, and the remote's own diagnostics stay visible to the user.
             .stderr(Stdio::inherit())
-            // Kill + reap the child when the stream drops, so a finished or
-            // aborted client never leaks the spawned process.
+            // Send a kill signal when the stream drops, so a finished or aborted
+            // client tears the child down instead of leaking it. Reaping is
+            // best-effort per tokio's docs (the runtime driver reaps the zombie
+            // asynchronously once the signal lands); this is acceptable for a
+            // short-lived per-request dialer, and normal completion — stdin EOF
+            // → the child exits on its own — never relies on it.
             .kill_on_drop(true)
             .spawn()
             .map_err(|source| TransportError::Connect {

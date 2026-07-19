@@ -167,6 +167,22 @@ impl TcpConnector {
 #[async_trait]
 impl Connector for TcpConnector {
     async fn connect(&self) -> Result<BoxedIo> {
+        // Refuse non-loopback BEFORE opening the socket: TCP carries the token
+        // in plaintext, so `MXR_DAEMON_ADDR=tcp://<remote-ip>` would leak the
+        // credential to an off-machine host. The target is a numeric address
+        // (parsed as a `SocketAddr`), so this is a direct check — no DNS. The
+        // server also refuses non-loopback binds; this closes the client half.
+        if !is_loopback_ip(self.addr.ip()) {
+            return Err(TransportError::Connect {
+                endpoint: tcp_endpoint(self.addr),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "refusing non-loopback tcp:// connect: the daemon token would be sent in \
+                     plaintext to a remote host (use `cmd://ssh … mxr daemon dial-stdio` for \
+                     off-machine access); target 127.0.0.1 or ::1",
+                ),
+            });
+        }
         let stream =
             TcpStream::connect(self.addr)
                 .await
@@ -183,7 +199,15 @@ impl Connector for TcpConnector {
     }
 
     fn auth_token(&self) -> Option<&str> {
-        self.token.as_deref()
+        // Defense in depth: never advertise the token for a non-loopback
+        // target. `connect` already refuses first, so the handshake is never
+        // reached — this guarantees the token isn't surfaced even to a caller
+        // that inspects the connector directly.
+        if is_loopback_ip(self.addr.ip()) {
+            self.token.as_deref()
+        } else {
+            None
+        }
     }
 }
 
@@ -234,5 +258,24 @@ mod tests {
     fn connector_without_token_advertises_none() {
         let connector = TcpConnector::new("127.0.0.1:9000".parse().unwrap(), None);
         assert_eq!(connector.auth_token(), None);
+    }
+
+    #[tokio::test]
+    async fn connector_refuses_non_loopback_before_sending_token() {
+        // A non-loopback target must be refused at connect time, and the token
+        // must never be advertised for it — no plaintext credential leak.
+        let connector = TcpConnector::new("93.184.216.34:9000".parse().unwrap(), Some("s".into()));
+        assert_eq!(
+            connector.auth_token(),
+            None,
+            "token must not be advertised for a non-loopback target"
+        );
+        match connector.connect().await {
+            Err(TransportError::Connect { source, .. }) => {
+                assert_eq!(source.kind(), std::io::ErrorKind::InvalidInput);
+            }
+            Ok(_) => panic!("a non-loopback connect must be refused before any token is sent"),
+            Err(other) => panic!("expected a Connect error, got {other:?}"),
+        }
     }
 }

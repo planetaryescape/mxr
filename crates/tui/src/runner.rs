@@ -285,7 +285,7 @@ fn format_platform_response(data: &ResponseData) -> String {
 }
 
 pub async fn run() -> anyhow::Result<()> {
-    let socket_path = daemon_socket_path();
+    let socket_path = daemon_socket_path()?;
     let mut client = Client::connect(&socket_path).await?;
     let config = load_config()?;
     let local_state = local_state::load();

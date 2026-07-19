@@ -469,6 +469,22 @@ pub(crate) fn resolve_daemon_addr() -> anyhow::Result<mxr_transport::TransportAd
         .map_err(|error| anyhow::anyhow!("invalid {}: {error}", mxr_transport::DAEMON_ADDR_ENV))
 }
 
+/// Resolve the daemon socket for a Unix-only client surface (the standalone
+/// `mxr web` bridge). Like the TUI and MCP, it rejects `tcp://` / `cmd://` with
+/// a clear message rather than silently dialing the default socket — support
+/// for those schemes can follow demand.
+pub(crate) fn resolve_daemon_socket_unix_only() -> anyhow::Result<PathBuf> {
+    match resolve_daemon_addr()? {
+        mxr_transport::TransportAddr::Unix(path) => Ok(path),
+        mxr_transport::TransportAddr::Tcp(_) | mxr_transport::TransportAddr::Cmd(_) => {
+            anyhow::bail!(
+                "`mxr web` supports only unix:// daemon addresses; {} is tcp:// or cmd:// — use the mxr CLI for those",
+                mxr_transport::DAEMON_ADDR_ENV
+            )
+        }
+    }
+}
+
 /// Build the CLI's daemon connector from `MXR_DAEMON_ADDR`. `unix://` keeps the
 /// path-based Unix connector (and the whole autostart/stale-socket story);
 /// `tcp://` dials loopback with the resolved bearer token (env

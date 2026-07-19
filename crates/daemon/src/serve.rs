@@ -117,12 +117,18 @@ impl ConnectionAuth {
     }
 }
 
-/// Compare the presented token against the expected one. `expected == None`
-/// (no token configured) can never match, so the connection stays closed.
-/// Plain equality: the token is a local loopback secret, so constant-time
-/// comparison buys nothing against a same-machine attacker.
+/// Compare the presented token against the expected one in constant time.
+/// `expected == None` (no token configured) can never match, so the connection
+/// stays closed. `constant_time_eq` compares the full byte range without an
+/// early return, so a same-length wrong guess cannot be distinguished from a
+/// right one by timing (it does reveal length, which is not secret here).
 fn token_matches(expected: Option<&str>, presented: &str) -> bool {
-    expected == Some(presented)
+    match expected {
+        Some(expected) => {
+            constant_time_eq::constant_time_eq(expected.as_bytes(), presented.as_bytes())
+        }
+        None => false,
+    }
 }
 
 fn response_frame(id: u64, response: Response) -> IpcMessage {

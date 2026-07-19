@@ -5,11 +5,11 @@ mod types;
 
 pub use resolve::{
     app_instance_name, bridge_port_path, bridge_token_path, clear_bridge_port, config_dir,
-    config_file_path, data_dir, gmail_oauth_keychain_service, is_demo_instance, load_config,
-    load_config_from_path, load_config_from_str, read_bridge_port, read_or_create_bridge_token,
-    remote_bridge_token_path, resolve_daemon_token, save_config, save_config_to_path,
-    scoped_credential_service, socket_path, token_dir, write_bridge_port, ConfigError,
-    DAEMON_TOKEN_ENV, DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME, PROD_INSTANCE_NAME,
+    config_file_path, daemon_token_path, data_dir, gmail_oauth_keychain_service, is_demo_instance,
+    load_config, load_config_from_path, load_config_from_str, read_bridge_port,
+    read_or_create_bridge_token, remote_bridge_token_path, resolve_daemon_token, save_config,
+    save_config_to_path, scoped_credential_service, socket_path, token_dir, write_bridge_port,
+    ConfigError, DAEMON_TOKEN_ENV, DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME, PROD_INSTANCE_NAME,
 };
 pub use types::*;
 
@@ -348,6 +348,108 @@ allowed_accounts = ["personal"]
         assert_eq!(config.general.sync_interval, 60);
         assert!(config.accounts.is_empty());
         assert!(config.render.reader_mode);
+    }
+
+    #[test]
+    fn daemon_token_is_separate_from_the_bridge_token() {
+        // The IPC token must never be the bridge token: the bridge hands its
+        // token to any loopback caller over HTTP.
+        temp_env::with_vars(
+            [
+                ("MXR_DAEMON_TOKEN_PATH", None::<&std::ffi::OsStr>),
+                ("MXR_BRIDGE_TOKEN_PATH", None),
+                ("MXR_DAEMON_TOKEN", None),
+            ],
+            || {
+                assert_ne!(daemon_token_path(), bridge_token_path());
+            },
+        );
+    }
+
+    #[test]
+    fn daemon_token_created_with_mode_600_and_env_wins() {
+        let tmp = TempDir::new().expect("create temp dir");
+        let token_path = tmp.path().join("daemon-token");
+
+        temp_env::with_vars(
+            [
+                (
+                    "MXR_DAEMON_TOKEN_PATH",
+                    Some(token_path.as_os_str().to_owned()),
+                ),
+                ("MXR_DAEMON_TOKEN", None),
+            ],
+            || {
+                // First resolve mints the file atomically at 0600.
+                let created = resolve_daemon_token(true)
+                    .expect("create token")
+                    .expect("some");
+                assert!(!created.is_empty());
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mode = std::fs::metadata(&token_path).unwrap().permissions().mode() & 0o777;
+                    assert_eq!(mode, 0o600, "daemon token file must be 0600");
+                }
+                // A read (create=false) returns the same value.
+                let read_back = resolve_daemon_token(false)
+                    .expect("read token")
+                    .expect("some");
+                assert_eq!(created, read_back);
+            },
+        );
+
+        // The env var overrides the file entirely.
+        temp_env::with_vars(
+            [
+                (
+                    "MXR_DAEMON_TOKEN_PATH",
+                    Some(token_path.as_os_str().to_owned()),
+                ),
+                (
+                    "MXR_DAEMON_TOKEN",
+                    Some(std::ffi::OsString::from("env-wins")),
+                ),
+            ],
+            || {
+                assert_eq!(
+                    resolve_daemon_token(false).unwrap().as_deref(),
+                    Some("env-wins")
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn daemon_token_read_tightens_too_open_permissions() {
+        let tmp = TempDir::new().expect("create temp dir");
+        let token_path = tmp.path().join("daemon-token");
+        std::fs::write(&token_path, "loose-token\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+
+        temp_env::with_vars(
+            [
+                (
+                    "MXR_DAEMON_TOKEN_PATH",
+                    Some(token_path.as_os_str().to_owned()),
+                ),
+                ("MXR_DAEMON_TOKEN", None),
+            ],
+            || {
+                let token = resolve_daemon_token(false).unwrap().expect("some");
+                assert_eq!(token, "loose-token");
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mode = std::fs::metadata(&token_path).unwrap().permissions().mode() & 0o777;
+                    assert_eq!(mode, 0o600, "a too-open token file is tightened on read");
+                }
+            },
+        );
     }
 
     #[test]

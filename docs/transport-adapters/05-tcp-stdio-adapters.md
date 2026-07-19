@@ -6,7 +6,9 @@ Adapter-specific: **yes**. Two real adapters with opposite auth models, plus the
 >
 > **Protocol-version ruling (the one additive change):** `Request::Authenticate { token }` + `ResponseData::Authenticated` were added **without** bumping `IPC_PROTOCOL_VERSION` (stays `4`). Rationale: the change is additive-only on `#[serde(tag)]` enums; an old client never emits the new request, and the only transport that requires it (TCP) is itself new, so no existing UDS exchange changes shape. `daemon_requires_restart` already forces a restart on any binary upgrade via the build-id handshake (`current_build_id` compares path+size+mtime), so a version bump would add nothing but spurious restart churn for same-build clients. The compatibility rule ("bump only if additive variants require it") is therefore satisfied by leaving it at 4.
 >
-> **Token precedence (documented once):** the daemon bearer token — shared by the HTTP bridge and the TCP transport, one file — resolves as `MXR_DAEMON_TOKEN` (env, non-empty) **>** the token file (`bridge_token_path()`, mode 0600). `mxr_config::resolve_daemon_token(create)` is the single resolver; the daemon creates on first run, clients read-only.
+> **Token precedence (documented once):** the daemon **IPC** bearer token (TCP transport) resolves as `MXR_DAEMON_TOKEN` (env, non-empty) **>** a dedicated token file `daemon_token_path()` = `<config_dir>/daemon-token` (mode 0600, `MXR_DAEMON_TOKEN_PATH` override). `mxr_config::resolve_daemon_token(create)` is the single resolver; the daemon creates it on first run (atomic `O_EXCL`, tightening a too-open file on read), clients read-only.
+>
+> **This is a DIFFERENT secret from the HTTP bridge token** (`bridge_token_path()` = `<config_dir>/bridge-token`). The bridge deliberately hands its token to any loopback caller via `GET /api/v1/auth/local-token` to bootstrap the web SPA; reusing it for raw-IPC auth would let any local process fetch it over HTTP and then reach the daemon over TCP. The IPC token is never exposed by any HTTP endpoint. The two are distinct trust surfaces.
 >
 > **`cmd://` arg parsing (documented limit):** the `cmd://` body is split on ASCII whitespace into argv — **no shell quoting, escapes, globbing, or variable expansion**. An argument that must contain whitespace can't be expressed; wrap it in a script and point `cmd://` at the script.
 
@@ -18,8 +20,8 @@ Demonstrate the trait carries transports with different security shapes without 
 
 The first transport with **no implicit peer identity** — it forces the `PeerAuth::TokenRequired` path and the per-transport policy table from discovery §7.
 
-- **Bind policy:** loopback only; refuse non-loopback outright. Reuse the posture (and ideally the code) of `enforce_non_loopback_safety` (`crates/daemon/src/bridge.rs:119-129`) — Q2 resolved as "no in-daemon remote."
-- **Token:** reuse the bridge's token infrastructure (`load_or_create_token`, `bridge_token_path()`, mode 0600, `bridge.rs:134`) — likely promoted to a shared location so bridge and TCP adapter use one token store.
+- **Bind policy:** loopback only; refuse non-loopback outright. The server refuses a non-loopback bind, AND the `TcpConnector` refuses a non-loopback *dial* (so the token is never sent in plaintext to a remote host) — Q2 resolved as "no in-daemon remote."
+- **Token:** a **dedicated IPC token** (`resolve_daemon_token`: `MXR_DAEMON_TOKEN` env > `<config_dir>/daemon-token`, 0600, atomic `O_EXCL` create). **Superseded the original "reuse the bridge token" note** — Codex review found that reuse is a privilege leak, because the bridge's `GET /api/v1/auth/local-token` hands its token to any loopback caller. The two tokens are distinct trust surfaces; the bridge token stays HTTP-only. The gate compares tokens in constant time (`constant_time_eq`).
 - **Auth handshake (the one protocol addition, additive only):** raw framed IPC has no headers, so token-bearing transports need an in-band handshake:
   - Add `Request::Authenticate { token: String }` → `ResponseData::Authenticated`.
   - Dispatch gate: when `PeerInfo.auth == TokenRequired`, every request before a successful `Authenticate` on that connection gets `IpcErrorKind::Auth`. Connection-scoped flag in the serve core's per-connection state.

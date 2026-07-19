@@ -48,6 +48,10 @@ name = "dial_stdio_cli"
 path = "crates/daemon/tests/dial_stdio_cli.rs"
 
 [[test]]
+name = "stdio_server_cli"
+path = "crates/daemon/tests/stdio_server_cli.rs"
+
+[[test]]
 name = "daemon_lifecycle"
 path = "crates/daemon/tests/daemon_lifecycle.rs"
 
@@ -244,6 +248,9 @@ base16ct = { version = "1.0", features = ["alloc"] }
 thiserror = "2"
 anyhow = "1"
 
+# Security
+constant_time_eq = "0.3"
+
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
@@ -366,6 +373,7 @@ bytes = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 clap_complete = { workspace = true }
+constant_time_eq = { workspace = true }
 comrak = { workspace = true, default-features = false, features = ["shortcodes"] }
 crossterm = { workspace = true, features = ["event-stream"] }
 csv = { workspace = true }

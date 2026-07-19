@@ -479,9 +479,14 @@ every request with an `auth` error and sends no events. Connect with:
 MXR_DAEMON_ADDR=tcp://127.0.0.1:42830 MXR_DAEMON_TOKEN=… mxr status
 ```
 
-The token is the **same secret** the HTTP bridge uses — one file, one
-precedence: `MXR_DAEMON_TOKEN` (env) beats the token file at
-`<config_dir>/bridge-token` (mode 0600, created on first daemon start).
+This IPC token is a **different secret** from the HTTP bridge token: the bridge
+hands its token to any loopback caller (`GET /api/v1/auth/local-token`) to
+bootstrap the web SPA, so it must not double as the raw-IPC credential.
+Precedence: `MXR_DAEMON_TOKEN` (env) beats the dedicated file at
+`<config_dir>/daemon-token` (mode 0600, created on first daemon start;
+`MXR_DAEMON_TOKEN_PATH` overrides). The client also refuses to dial a
+non-loopback `tcp://` address, so the token is never sent to a remote host in
+plaintext.
 
 For off-machine access there is no in-daemon remote transport by design; tunnel
 over SSH with `cmd://`:

@@ -291,12 +291,19 @@ and the daemon rejects everything (and withholds events) with an `auth` error
 until it succeeds. Connect with it via
 `MXR_DAEMON_ADDR=tcp://127.0.0.1:42830 MXR_DAEMON_TOKEN=… mxr status`.
 
-### Daemon token (one secret, one file)
+### Daemon IPC token (distinct from the bridge token)
 
-The bridge and the TCP transport share a single bearer token. Resolution
-precedence: `MXR_DAEMON_TOKEN` (env, non-empty) **>** the token file at
-`<config_dir>/bridge-token` (mode 0600, minted on first daemon start). Override
-the file path with `MXR_BRIDGE_TOKEN_PATH`.
+The TCP transport authenticates with the daemon **IPC** token, resolution
+precedence: `MXR_DAEMON_TOKEN` (env, non-empty) **>** a dedicated file at
+`<config_dir>/daemon-token` (mode 0600, minted atomically on first daemon
+start, `MXR_DAEMON_TOKEN_PATH` override).
+
+This is a **different secret** from the HTTP bridge token
+(`<config_dir>/bridge-token`). The bridge hands its token to any loopback
+caller via `GET /api/v1/auth/local-token` to bootstrap the web SPA, so reusing
+it for raw-IPC auth would let any local process fetch it over HTTP and then
+reach the daemon over TCP. The IPC token is never exposed by any HTTP endpoint.
+The token comparison in the auth gate is constant-time.
 
 ### Per-transport security policy
 

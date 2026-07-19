@@ -59,6 +59,7 @@ use mxr_protocol::*;
 use mxr_reader::ReaderConfig;
 use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, StringMatch};
 use mxr_search::parse_query;
+use mxr_transport::PeerInfo;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use tracing::Instrument;
@@ -413,7 +414,14 @@ pub fn request_lane(req: &Request) -> IpcLane {
     }
 }
 
-pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessage {
+/// Handle an IPC request with the connection's [`PeerInfo`] in scope. The real
+/// entry point for served connections; [`handle_request`] is the in-process
+/// convenience wrapper that supplies a local peer.
+pub async fn handle_request_with_peer(
+    state: &Arc<AppState>,
+    msg: &IpcMessage,
+    peer: PeerInfo,
+) -> IpcMessage {
     let response_data = match &msg.payload {
         IpcPayload::Request(req) => {
             let request = request_kind(req);
@@ -427,7 +435,9 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
                 account_id = account_id_str.as_str(),
                 account_key
             );
-            let response = dispatch(state, msg.source, req).instrument(span).await;
+            let response = dispatch(state, msg.source, &peer, req)
+                .instrument(span)
+                .await;
 
             // Activity capture seam. Fire-and-forget; never propagates errors.
             // See `docs/activity-log.md`.
@@ -455,13 +465,28 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
     }
 }
 
-async fn dispatch(state: &Arc<AppState>, source: ClientKind, req: &Request) -> Response {
+/// Handle an IPC request that originated in-process (daemon-internal
+/// re-dispatch, tests). Supplies a [`PeerInfo::local`] peer; served connections
+/// call [`handle_request_with_peer`] with the accepted peer instead.
+pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessage {
+    handle_request_with_peer(state, msg, PeerInfo::local()).await
+}
+
+async fn dispatch(
+    state: &Arc<AppState>,
+    source: ClientKind,
+    peer: &PeerInfo,
+    req: &Request,
+) -> Response {
     let started_at = std::time::Instant::now();
     let request = request_kind(req);
     let account_id =
         request_account_id(req).map_or_else(|| "-".to_string(), mxr_core::AccountId::as_str);
     let account_key = request_account_key(req).unwrap_or("-");
-    tracing::debug!(request, account_id, account_key, "handling request");
+    // `peer` is the connection's auth evidence; carried here as the plumbing
+    // point for phase 5's per-transport policy. No policy consults it this
+    // phase — logged for observability so the seam is visible in traces.
+    tracing::debug!(request, account_id, account_key, peer = ?peer.auth, "handling request");
 
     let config = state.config_snapshot();
     if let Err(message) = enforce_safety_policy(config.general.safety_policy, req) {
@@ -849,6 +874,11 @@ async fn dispatch(state: &Arc<AppState>, source: ClientKind, req: &Request) -> R
         Request::GetStatus => admin::get_status(state).await,
         Request::Ping => Ok(ResponseData::Pong),
         Request::Shutdown => admin::shutdown(state).await,
+        // Token transports authenticate in the serve core before dispatch; a
+        // request reaching here is on an already-trusted connection (UDS,
+        // in-process, stdio, or a redundant handshake after a valid one), so
+        // acknowledge it as a harmless no-op.
+        Request::Authenticate { .. } => Ok(ResponseData::Authenticated),
 
         // ----- activity log (Phase 3) -----
         Request::ListActivity {
@@ -1296,16 +1326,16 @@ async fn dispatch(state: &Arc<AppState>, source: ClientKind, req: &Request) -> R
             );
             Response::Ok { data }
         }
-        Err(message) => {
+        Err(error) => {
             tracing::warn!(
                 request,
                 account_id,
                 account_key,
                 elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
-                error = %message,
+                error = %error,
                 "request failed"
             );
-            Response::error(message)
+            error.into_response()
         }
     }
 }
@@ -1827,6 +1857,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ExportSearch { .. }
         | Request::GetStatus
         | Request::Ping
+        | Request::Authenticate { .. }
         | Request::ListEventCategories
         | Request::CountEvents { .. }
         | Request::ListActivity { .. }
@@ -2134,6 +2165,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetStatus => "get_status",
         Request::Ping => "ping",
         Request::Shutdown => "shutdown",
+        Request::Authenticate { .. } => "authenticate",
         Request::ListEventCategories => "list_event_categories",
         Request::CountEvents { .. } => "count_events",
         Request::ListActivity { .. } => "list_activity",

@@ -1,4 +1,3 @@
-use crate::state::AppState;
 use mxr_client::{ClientError, IpcConnection};
 use mxr_protocol::*;
 use std::path::Path;
@@ -20,7 +19,15 @@ pub struct IpcClient {
 
 impl IpcClient {
     pub async fn connect() -> anyhow::Result<Self> {
-        Self::connect_to(&AppState::socket_path()).await
+        // Build the connector from MXR_DAEMON_ADDR (unix:// default, tcp://
+        // loopback+token, or cmd:// spawn-and-pipe) so the request path agrees
+        // with autostart / the liveness probe / doctor. A tcp:// connector
+        // authenticates automatically inside `connect_with` when it has a token.
+        let connector = crate::server::build_cli_connector()?;
+        let conn = IpcConnection::connect_with(connector.as_ref(), ClientKind::Cli)
+            .await
+            .map_err(map_connect_error)?;
+        Ok(Self { conn })
     }
 
     pub async fn connect_to(socket_path: &Path) -> anyhow::Result<Self> {
@@ -78,6 +85,31 @@ impl IpcClient {
                 return Ok(event);
             }
         }
+    }
+}
+
+/// Map a connect-time failure (over any transport) onto CLI-friendly guidance.
+/// A `unix://` connect failure keeps the "Is the daemon running?" hint; a
+/// `tcp://` auth rejection points at the token; everything else falls back to
+/// the request-error mapper.
+fn map_connect_error(error: ClientError) -> anyhow::Error {
+    match error {
+        ClientError::Connect { path, source } => anyhow::anyhow!(
+            "Cannot connect to daemon at {}: {}. Is the daemon running? Try: mxr daemon",
+            path.display(),
+            source
+        ),
+        ClientError::Transport(source) => anyhow::anyhow!(
+            "{source}. Is the daemon running and reachable at MXR_DAEMON_ADDR?"
+        ),
+        ClientError::Daemon {
+            kind: IpcErrorKind::Auth,
+            message,
+            ..
+        } => anyhow::anyhow!(
+            "Daemon authentication failed: {message}. Set MXR_DAEMON_TOKEN (or check the daemon token file)."
+        ),
+        other => map_request_error(other),
     }
 }
 

@@ -8,7 +8,10 @@
 
 use crate::state::AppState;
 use mxr_core::types::Draft;
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
+use mxr_llm::{
+    guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
+    LlmFeature,
+};
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::{new_candidate_id, CommitmentDirection, DraftCommitmentCandidate};
 use once_cell::sync::Lazy;
@@ -58,12 +61,26 @@ pub(crate) async fn extract_and_store(
         return Ok(Vec::new());
     }
 
+    // The draft body is analyzed as data (it may quote inbound mail, or be
+    // AI-drafted from a poisoned thread), and the recipient addresses are
+    // mail-derived for replies. Wrap the whole FROM/TO/DRAFT block in
+    // untrusted-content delimiters. Strict-JSON parsing is the boundary.
+    let mail_block = format!(
+        "FROM: {}\nTO: {}\n\nDRAFT:\n{cleaned}",
+        first_email(&draft.to),
+        draft
+            .to
+            .iter()
+            .map(|a| a.email.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     let runtime = state.llm.for_feature(LlmFeature::Commitments);
     let req = CompletionRequest {
         max_tokens: Some(600),
         temperature: Some(0.0),
         messages: vec![
-            ChatMessage::system(
+            ChatMessage::system(guarded_system_prompt(
                 "You extract concrete future-tense commitments the SENDER is making. \
                  Output STRICT JSON with the schema: \
                  {\"commitments\": [{\"who_owes\": str, \"what\": str, \
@@ -72,16 +89,10 @@ pub(crate) async fn extract_and_store(
                  like \"think about it\"). \"who_owes\" is the sender's email. \
                  \"by_when\" is RFC 3339 if a date is named, else null. \
                  If there are none, return {\"commitments\": []}.",
-            ),
+            )),
             ChatMessage::user(format!(
-                "FROM: {}\nTO: {}\n\nDRAFT:\n{cleaned}\n\nReturn JSON only.",
-                first_email(&draft.to),
-                draft
-                    .to
-                    .iter()
-                    .map(|a| a.email.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                "{}\n\nReturn JSON only.",
+                wrap_untrusted_mail(&mail_block)
             )),
         ],
     };
@@ -306,6 +317,63 @@ mod tests {
             *stub.calls.lock().unwrap(),
             0,
             "LLM must not be called when prefilter fails"
+        );
+    }
+
+    #[tokio::test]
+    async fn prompt_wraps_draft_and_system_carries_guard() {
+        struct Capture {
+            msgs: Mutex<Vec<mxr_llm::ChatMessage>>,
+        }
+        #[async_trait::async_trait]
+        impl LlmProvider for Capture {
+            async fn complete(
+                &self,
+                req: CompletionRequest,
+            ) -> Result<CompletionResponse, LlmError> {
+                *self.msgs.lock().unwrap() = req.messages.clone();
+                Ok(CompletionResponse {
+                    content: r#"{"commitments":[]}"#.into(),
+                    model: "stub".into(),
+                    finish_reason: Some("stop".into()),
+                })
+            }
+            fn capabilities(&self) -> LlmCapabilities {
+                LlmCapabilities {
+                    context_window: 8192,
+                    supports_streaming: false,
+                }
+            }
+            fn model_name(&self) -> &str {
+                "stub"
+            }
+        }
+
+        let (state, account_id, _) = fixture(r#"{"commitments":[]}"#).await;
+        let cap = Arc::new(Capture {
+            msgs: Mutex::new(vec![]),
+        });
+        state.llm.replace(cap.clone());
+        // Prefilter must fire ("I'll send") so the LLM is actually called.
+        let draft = draft_with_body(&account_id, "I'll send the DRAFT-MARKER deck Friday.");
+        extract_and_store(&state, &draft).await.unwrap();
+
+        let msgs = cap.msgs.lock().unwrap();
+        assert!(
+            msgs[0].content.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
+            "system prompt must carry the shared injection guard"
+        );
+        let user = &msgs[1].content;
+        let begin = user
+            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = user
+            .find(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let body = user.find("DRAFT-MARKER").expect("draft body present");
+        assert!(
+            begin < body && body < end,
+            "draft body must sit between the untrusted-content markers"
         );
     }
 

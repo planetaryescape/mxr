@@ -44,6 +44,14 @@ name = "cli_help"
 path = "crates/daemon/tests/cli_help.rs"
 
 [[test]]
+name = "dial_stdio_cli"
+path = "crates/daemon/tests/dial_stdio_cli.rs"
+
+[[test]]
+name = "stdio_server_cli"
+path = "crates/daemon/tests/stdio_server_cli.rs"
+
+[[test]]
 name = "daemon_lifecycle"
 path = "crates/daemon/tests/daemon_lifecycle.rs"
 
@@ -116,6 +124,7 @@ members = [
     "crates/store",
     "crates/sync",
     "crates/test-support",
+    "crates/transport",
     "crates/tui",
     "crates/web",
 ]
@@ -189,6 +198,7 @@ mxr-semantic = { path = "crates/semantic", version = "0.6.0" }
 mxr-store = { path = "crates/store", version = "0.6.0" }
 mxr-sync = { path = "crates/sync", version = "0.6.0" }
 mxr-test-support = { path = "crates/test-support", version = "0.6.0" }
+mxr-transport = { path = "crates/transport", version = "0.6.0" }
 mxr-tui = { path = "crates/tui", version = "0.6.0" }
 mxr-web = { path = "crates/web", version = "0.6.0" }
 
@@ -237,6 +247,9 @@ base16ct = { version = "1.0", features = ["alloc"] }
 # Error handling
 thiserror = "2"
 anyhow = "1"
+
+# Security
+constant_time_eq = "0.3"
 
 # Logging
 tracing = "0.1"
@@ -345,6 +358,7 @@ mxr-search = { workspace = true }
 mxr-semantic = { workspace = true }
 mxr-store = { workspace = true }
 mxr-sync = { workspace = true }
+mxr-transport = { workspace = true }
 mxr-tui = { workspace = true }
 mxr-web = { workspace = true }
 
@@ -359,6 +373,7 @@ bytes = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 clap_complete = { workspace = true }
+constant_time_eq = { workspace = true }
 comrak = { workspace = true, default-features = false, features = ["shortcodes"] }
 crossterm = { workspace = true, features = ["event-stream"] }
 csv = { workspace = true }
@@ -414,6 +429,10 @@ assert_cmd = { workspace = true }
 criterion = "0.5"
 insta = { workspace = true }
 mxr-test-support = { workspace = true }
+# Enables the in-memory MemoryTransport for the IPC conformance corpus. The
+# runtime dependency above stays feature-light; this feature is on only for
+# test/dev builds (Cargo unions dev-dependency features).
+mxr-transport = { workspace = true, features = ["test-util"] }
 predicates = { workspace = true }
 pretty_assertions = { workspace = true }
 proptest = "1"

@@ -34,12 +34,38 @@ pub enum McpCommand {
 }
 
 #[derive(Subcommand)]
+pub enum DaemonAction {
+    /// Pipe raw bytes between stdin/stdout and the local daemon's Unix
+    /// socket (the Docker `connhelper` model). Lets any transport that can
+    /// exec a process and pipe stdio reach the daemon — for example
+    /// `ssh -T host mxr daemon dial-stdio` or
+    /// `docker exec -i <container> mxr daemon dial-stdio`. The caller still
+    /// needs local Unix-socket access on the daemon's machine, so this adds
+    /// no new trust surface.
+    ///
+    /// Same-machine assumptions degrade over remote links: the `$EDITOR`
+    /// compose flow, attachment paths, and daemon autostart all target the
+    /// daemon's host, not your terminal. Intended for scripting and agent use.
+    #[command(name = "dial-stdio")]
+    DialStdio,
+}
+
+#[derive(Subcommand)]
 pub enum Command {
     /// Start the daemon explicitly
     Daemon {
+        /// Daemon subcommand. Omit to start the daemon.
+        #[command(subcommand)]
+        action: Option<DaemonAction>,
         /// Run in foreground (for debugging / systemd)
         #[arg(long)]
         foreground: bool,
+        /// Serve exactly one connection over stdin/stdout (LSP/inetd model) and
+        /// exit when it closes. For agent embedding and socket-activation-style
+        /// supervision. Frames own stdout; logs go to file only. Cannot run
+        /// alongside a socket daemon.
+        #[arg(long, conflicts_with = "foreground")]
+        stdio: bool,
         /// Hidden instance marker used by daemon autostart to identify the child process.
         #[arg(long, hide = true)]
         instance: Option<String>,

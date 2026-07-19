@@ -283,7 +283,11 @@ pub async fn serve_stdio() -> anyhow::Result<()> {
 }
 
 fn default_socket_path() -> anyhow::Result<std::path::PathBuf> {
-    Ok(mxr_config::socket_path())
+    // Route through the shared resolver so the MCP server agrees with the CLI on
+    // the socket (honors MXR_DAEMON_ADDR=unix://<path>). tcp:// / cmd:// are
+    // CLI-only today and surface a clear error here.
+    mxr_client::resolve_unix_socket(mxr_config::socket_path())
+        .map_err(|error| anyhow::anyhow!("{error}"))
 }
 
 fn response_to_json(response: Response) -> Result<Value, ErrorData> {

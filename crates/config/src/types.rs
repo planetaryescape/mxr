@@ -25,6 +25,7 @@ pub struct MxrConfig {
     pub logging: LoggingConfig,
     pub appearance: AppearanceConfig,
     pub bridge: BridgeConfig,
+    pub transports: TransportsConfig,
     pub llm: LlmConfig,
     pub humanizer: HumanizerConfig,
     pub activity: ActivityConfig,
@@ -394,6 +395,43 @@ impl BridgeConfig {
             self.bind.as_str(),
             "127.0.0.1" | "::1" | "[::1]" | "localhost"
         )
+    }
+}
+
+/// Daemon client-transport configuration (phase 5, transport adapters). The
+/// Unix domain socket is always on and needs no config; additional transports
+/// are opt-in here.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TransportsConfig {
+    /// The TCP-loopback + token transport. Disabled by default.
+    pub tcp: TcpTransportConfig,
+}
+
+/// TCP-loopback transport settings. Off by default; when enabled the daemon
+/// binds a loopback TCP listener that requires a bearer token
+/// (`MXR_DAEMON_TOKEN` or the shared daemon token file) before serving any
+/// request. Non-loopback binds are refused.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TcpTransportConfig {
+    /// Opt-in switch. When false (default) no TCP listener is bound and UDS
+    /// remains the only transport.
+    pub enabled: bool,
+    /// Loopback bind address. Defaults to `127.0.0.1`; `::1` is also accepted.
+    /// A non-loopback address is refused at daemon startup.
+    pub bind: String,
+    /// TCP port. Defaults to `42830` (one above the bridge's `42829`).
+    pub port: u16,
+}
+
+impl Default for TcpTransportConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bind: "127.0.0.1".into(),
+            port: 42830,
+        }
     }
 }
 

@@ -20,14 +20,20 @@
 //! runtime cost and no client-visible change; adapters (phase 4) reuse it
 //! unchanged over other carriers.
 //!
-//! The conformance corpus ([`ipc_conformance`]) exercises this core over two
-//! carriers — the UDS socketpair and an in-memory `tokio::io::duplex` — proving
-//! the scenarios are carrier-independent, which is the phase-3 premise.
+//! The conformance corpus ([`ipc_conformance`]) exercises this core over four
+//! harnesses — the UDS socketpair and in-memory `tokio::io::duplex` carriers,
+//! plus the real `UdsServerTransport` and `MemoryTransport` through their
+//! production `bind`/`accept`/`connect` path — proving the scenarios are both
+//! carrier- and transport-independent.
 
-use crate::handler::{handle_request, request_lane, IpcLane};
+use crate::handler::{handle_request_with_peer, request_lane, IpcLane};
 use crate::state::AppState;
 use futures::{FutureExt, SinkExt, StreamExt};
-use mxr_protocol::{DaemonEvent, IpcCodec, IpcMessage, IpcPayload, Response};
+use mxr_protocol::{
+    ClientKind, DaemonEvent, IpcCodec, IpcErrorKind, IpcMessage, IpcPayload, Request, Response,
+    ResponseData,
+};
+use mxr_transport::{PeerAuth, PeerInfo};
 use std::any::Any;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -36,6 +42,102 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{broadcast, watch, Semaphore};
 use tokio::task::JoinSet;
 use tokio_util::codec::Framed;
+
+/// Connection-scoped authentication state for the serve core (phase 5, token
+/// transports). Transports with implicit trust (UDS peer creds, in-process,
+/// stdio) start authenticated and this is inert. A [`PeerAuth::TokenRequired`]
+/// transport (the TCP-loopback adapter) starts UNauthenticated: every request
+/// is gated behind a successful `Authenticate` handshake, and events are
+/// withheld until then so a pre-auth peer never observes daemon state.
+///
+/// The gate lives here — in the serve core's per-connection state, not in the
+/// transport (which stays protocol-free) and not in the stateless request
+/// dispatcher (which has no notion of a connection).
+pub(crate) struct ConnectionAuth {
+    /// Whether this connection is currently trusted. For non-token transports
+    /// this is `true` from the start and never changes.
+    authenticated: bool,
+    /// The daemon's expected bearer token, when a token transport is
+    /// configured. `None` while unauthenticated means "fail closed" — no token
+    /// can ever match, so every request is rejected.
+    expected: Option<Arc<str>>,
+}
+
+impl ConnectionAuth {
+    /// Build the auth state for one accepted connection from its peer evidence
+    /// and the daemon's expected token (if any).
+    pub(crate) fn new(peer: &PeerInfo, expected: Option<Arc<str>>) -> Self {
+        let authenticated = !matches!(peer.auth, PeerAuth::TokenRequired);
+        Self {
+            authenticated,
+            expected,
+        }
+    }
+
+    fn is_authenticated(&self) -> bool {
+        self.authenticated
+    }
+
+    /// Decide the fate of an incoming request. `None` means "dispatch normally"
+    /// (the connection is trusted). `Some(response)` short-circuits dispatch
+    /// with a canned frame — either the `Authenticated` ack for a valid
+    /// handshake (which also flips this connection to trusted) or an `Auth`
+    /// error for anything sent before a successful `Authenticate`.
+    fn gate(&mut self, msg: &IpcMessage) -> Option<IpcMessage> {
+        if self.authenticated {
+            // Trusted already: even a redundant `Authenticate` flows to the
+            // dispatcher, which answers it as a harmless no-op.
+            return None;
+        }
+        match &msg.payload {
+            IpcPayload::Request(Request::Authenticate { token }) => {
+                if token_matches(self.expected.as_deref(), token) {
+                    self.authenticated = true;
+                    Some(response_frame(
+                        msg.id,
+                        Response::Ok {
+                            data: ResponseData::Authenticated,
+                        },
+                    ))
+                } else {
+                    Some(response_frame(
+                        msg.id,
+                        Response::error_kinded("invalid daemon token", IpcErrorKind::Auth),
+                    ))
+                }
+            }
+            _ => Some(response_frame(
+                msg.id,
+                Response::error_kinded(
+                    "authentication required: send Authenticate before any other request",
+                    IpcErrorKind::Auth,
+                ),
+            )),
+        }
+    }
+}
+
+/// Compare the presented token against the expected one in constant time.
+/// `expected == None` (no token configured) can never match, so the connection
+/// stays closed. `constant_time_eq` compares the full byte range without an
+/// early return, so a same-length wrong guess cannot be distinguished from a
+/// right one by timing (it does reveal length, which is not secret here).
+fn token_matches(expected: Option<&str>, presented: &str) -> bool {
+    match expected {
+        Some(expected) => {
+            constant_time_eq::constant_time_eq(expected.as_bytes(), presented.as_bytes())
+        }
+        None => false,
+    }
+}
+
+fn response_frame(id: u64, response: Response) -> IpcMessage {
+    IpcMessage {
+        id,
+        source: ClientKind::Daemon,
+        payload: IpcPayload::Response(response),
+    }
+}
 
 /// Hot-lane concurrency: fast user-initiated commands (lists, gets,
 /// mutations, sync status). Sized large enough that realistic burst
@@ -54,11 +156,17 @@ pub(crate) const CONNECTION_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 /// monomorphizes to the previous concrete code), the conformance corpus also
 /// drives it over `tokio::io::duplex`, and phase-4 adapters feed it other
 /// carriers. Everything below the framing layer is transport-neutral.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each argument is a distinct per-connection input the accept loop already holds (stream, shared state, the two lane semaphores, peer evidence, the optional auth token, and the event + shutdown receivers); bundling them would only move the wiring, not remove it"
+)]
 pub(crate) async fn serve_client_connection<S>(
     stream: S,
     state: Arc<AppState>,
     request_semaphore: Arc<Semaphore>,
     bulk_semaphore: Arc<Semaphore>,
+    peer: PeerInfo,
+    auth_token: Option<Arc<str>>,
     mut event_rx: broadcast::Receiver<IpcMessage>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) where
@@ -69,6 +177,9 @@ pub(crate) async fn serve_client_connection<S>(
     let mut accept_requests = true;
     let mut can_send = true;
     let mut shutdown_requested = false;
+    // Connection-scoped auth state. Token transports start unauthenticated and
+    // gate every request; every other transport starts trusted.
+    let mut auth = ConnectionAuth::new(&peer, auth_token);
 
     loop {
         tokio::select! {
@@ -107,6 +218,24 @@ pub(crate) async fn serve_client_connection<S>(
             }
             msg = stream.next(), if accept_requests => {
                 match msg {
+                    // Token gate: on a `TokenRequired` transport before a
+                    // successful handshake, `gate` returns a canned frame (an
+                    // `Authenticated` ack that flips this connection to trusted,
+                    // or an `Auth` error). Sent INLINE on the sink — not via a
+                    // spawned task — so it is guaranteed to precede any event the
+                    // now-enabled event branch would deliver (a pre-auth
+                    // `EventsLagged` must never race ahead of `Authenticated`).
+                    // No lane permit or dispatch is involved. This arm only runs
+                    // while unauthenticated, so `gate` always returns `Some`;
+                    // UDS/memory/stdio start trusted and dispatch unchanged below.
+                    Some(Ok(ipc_msg)) if !auth.is_authenticated() => {
+                        if let Some(canned) = auth.gate(&ipc_msg) {
+                            if can_send && sink.send(canned).await.is_err() {
+                                can_send = false;
+                                accept_requests = false;
+                            }
+                        }
+                    }
                     Some(Ok(ipc_msg)) => {
                         let permit_wait_started = std::time::Instant::now();
                         // Route the request to its lane semaphore before
@@ -132,6 +261,11 @@ pub(crate) async fn serve_client_connection<S>(
                             }
                         };
                         let state = state.clone();
+                        // The connection's peer identity rides into every
+                        // request's dispatch context. No policy reads it this
+                        // phase (UDS keeps implicit trust); the plumbing point
+                        // exists for phase 5's token gate.
+                        let peer = peer.clone();
                         request_tasks.spawn(async move {
                             let _permit = permit;
                             tracing::trace!(
@@ -151,7 +285,7 @@ pub(crate) async fn serve_client_connection<S>(
                                 {
                                     return response;
                                 }
-                                handle_request(&state, &ipc_msg).await
+                                handle_request_with_peer(&state, &ipc_msg, peer).await
                             })
                             .await
                         });
@@ -165,7 +299,7 @@ pub(crate) async fn serve_client_connection<S>(
                     }
                 }
             }
-            event = event_rx.recv(), if accept_requests && can_send && !shutdown_requested => {
+            event = event_rx.recv(), if accept_requests && can_send && !shutdown_requested && auth.is_authenticated() => {
                 match event {
                     Ok(event_msg) => {
                         if sink.send(event_msg).await.is_err() {
@@ -335,6 +469,8 @@ mod tests {
                 state,
                 request_semaphore,
                 bulk_semaphore,
+                mxr_transport::PeerInfo::local(),
+                None,
                 event_rx,
                 shutdown_rx,
             )
@@ -408,6 +544,8 @@ mod tests {
                 state,
                 request_semaphore,
                 bulk_semaphore,
+                mxr_transport::PeerInfo::local(),
+                None,
                 event_rx,
                 shutdown_rx,
             )

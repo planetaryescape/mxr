@@ -2043,7 +2043,9 @@ pub(crate) async fn resolve_from_address(
     resolve_owned_from(account_name.as_deref(), &primary_email, &owned, requested).map_err(
         |registered| {
             let requested_email = requested.map(|a| a.email.trim()).unwrap_or_default();
-            HandlerError::Message(format!(
+            // Kinded so the wire carries `IpcErrorKind::InvalidRequest`
+            // explicitly rather than being string-sniffed.
+            HandlerError::InvalidRequest(format!(
                 "invalid From address: {requested_email} is not a registered address for this account. \
                  Registered addresses: {}. Register it with `mxr accounts addresses add <account> {requested_email}`.",
                 registered.join(", ")

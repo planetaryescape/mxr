@@ -4149,6 +4149,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "comrak",
+ "constant_time_eq",
  "criterion",
  "crossterm",
  "csv",
@@ -4193,6 +4194,7 @@ dependencies = [
  "mxr-store",
  "mxr-sync",
  "mxr-test-support",
+ "mxr-transport",
  "mxr-tui",
  "mxr-web",
  "nix 0.30.1",
@@ -4268,6 +4270,7 @@ dependencies = [
  "futures",
  "mxr-core",
  "mxr-protocol",
+ "mxr-transport",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -4733,6 +4736,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mxr-transport"
+version = "0.6.9"
+dependencies = [
+ "async-trait",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "mxr-tui"
 version = "0.6.9"
 dependencies = [
@@ -4780,6 +4794,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "chrono",
+ "constant_time_eq",
  "futures",
  "include_dir",
  "insta",

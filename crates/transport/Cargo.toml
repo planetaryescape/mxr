@@ -1,0 +1,29 @@
+[package]
+name = "mxr-transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Internal: transport seam for the mxr daemon (server listeners + client connectors over byte streams)"
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+# In-memory duplex transport (server + connector), the "fake provider" analog
+# for the conformance corpus. Off in production builds; the daemon enables it
+# as a dev-dependency feature so the corpus can exercise a real
+# `ServerTransport::bind`/`accept` path with no socket file.
+test-util = []
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }

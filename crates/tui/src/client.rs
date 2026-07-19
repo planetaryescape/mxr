@@ -281,6 +281,10 @@ fn map_request_error(error: ClientError) -> MxrError {
             duration.as_secs()
         )),
         ClientError::Connect { source, .. } => MxrError::Ipc(source.to_string()),
+        // Transport-level connect failure (generic-connector path). The TUI
+        // dials via the path constructor, so this is unreachable here; the arm
+        // keeps the match exhaustive.
+        ClientError::Transport(error) => MxrError::Ipc(error.to_string()),
     }
 }
 

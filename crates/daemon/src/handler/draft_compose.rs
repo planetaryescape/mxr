@@ -9,7 +9,7 @@ use crate::state::AppState;
 use draft_context::DraftContext;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Address, Envelope};
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
+use mxr_llm::{guarded_system_prompt, ChatMessage, CompletionRequest, LlmError, LlmFeature};
 use mxr_protocol::{DraftLengthHintData, VoiceRegisterData};
 
 const SYSTEM_PROMPT_NEW: &str = "You write email for a busy professional in their own voice. \
@@ -23,6 +23,20 @@ line if the thread is mid-conversation, no signature, no subject line. Match the
 length the user uses with this person. Never add commentary about what you're doing, and never \
 invent facts or familiarity that aren't in the thread.";
 
+/// Longest fixed (non-instruction, non-recipient) bytes of a task line, across
+/// the reply and new-message templates, rendered with the longest length label
+/// ("medium"). Kept in sync with the `format!` templates in `draft_reply` and
+/// `draft_brand_new`.
+const TASK_TEMPLATE_FIXED_BYTES: usize = {
+    let reply = "Now draft my reply. Length: medium. Instruction: ".len();
+    let new_msg = "Write a new email to . Length: medium. Purpose: ".len();
+    if reply > new_msg {
+        reply
+    } else {
+        new_msg
+    }
+};
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn draft_compose(
     state: &AppState,
@@ -34,6 +48,24 @@ pub(super) async fn draft_compose(
     register: Option<VoiceRegisterData>,
     length_hint: Option<DraftLengthHintData>,
 ) -> HandlerResult {
+    // The task line (prefix + recipient label + instruction) is never
+    // truncated, so it must be bounded up front or it would break the
+    // assembled-prompt ceiling. Count the recipient label with its real bytes
+    // (a long display name/email is unbounded too) and reject an oversized
+    // task line with an explicit InvalidRequest kind.
+    let recipient_bytes = to
+        .as_ref()
+        .map_or(0, |address| recipient_label(address).len());
+    let task_line_bytes = TASK_TEMPLATE_FIXED_BYTES + recipient_bytes + instruction.len();
+    let limit = draft_context::max_task_line_bytes();
+    if task_line_bytes > limit {
+        return Err(crate::handler::HandlerError::InvalidRequest(format!(
+            "draft is too long: the task line would be {task_line_bytes} bytes, over the {limit} \
+             byte limit (assembled-prompt ceiling minus fixed scaffolding); shorten the \
+             instruction or recipient"
+        )));
+    }
+
     // Reply to an explicit thread (reader / quick-reply).
     if let Some(thread_id) = thread_id.as_ref() {
         let envelopes = state.store.get_thread_envelopes(thread_id).await?;
@@ -125,11 +157,7 @@ async fn draft_reply(
         latest,
     )
     .await;
-    let task_line = format!(
-        "Now draft my reply. Length: {}. Instruction: {}",
-        draft_context::length_label(context.inferred_length),
-        instruction.trim()
-    );
+    let task_line = reply_task_line(context.inferred_length, instruction);
     let user_message = draft_context::assemble_user_message_within_budget(
         &context.prompt,
         &grounding,
@@ -168,12 +196,7 @@ async fn draft_brand_new(
     .await;
     let semantic_query = format!("{}\n{}", instruction.trim(), to.email);
     let grounding = draft_context::prior_sent_grounding(state, None, &semantic_query, None).await;
-    let task_line = format!(
-        "Write a new email to {}. Length: {}. Purpose: {}",
-        recipient_label(&to),
-        draft_context::length_label(context.inferred_length),
-        instruction.trim()
-    );
+    let task_line = new_message_task_line(&to, context.inferred_length, instruction);
     let user_message = draft_context::assemble_user_message_within_budget(
         &context.prompt,
         &grounding,
@@ -203,7 +226,12 @@ async fn complete_and_finish(
         .for_feature(feature)
         .complete(CompletionRequest {
             messages: vec![
-                ChatMessage::system(system_prompt),
+                // The thread transcript inside `user_message` is wrapped in
+                // untrusted-content delimiters by `assemble_user_message_*`;
+                // the guard here tells the model they mark data, not
+                // instructions. Output is a DraftSuggestion — written to a
+                // draft/stdout, never auto-sent (see ai-email.md cut list).
+                ChatMessage::system(guarded_system_prompt(system_prompt)),
                 ChatMessage::user(user_message),
             ],
             max_tokens: Some(draft_context::max_tokens_for_length(
@@ -239,6 +267,28 @@ fn recipient_label(to: &Address) -> String {
         Some(name) => format!("{name} <{}>", to.email),
         None => to.email.clone(),
     }
+}
+
+/// The task line for a reply. Single source of truth for the reply template so
+/// the byte accounting (`TASK_TEMPLATE_FIXED_BYTES`) can be coupling-tested
+/// against the real rendering.
+fn reply_task_line(length: DraftLengthHintData, instruction: &str) -> String {
+    format!(
+        "Now draft my reply. Length: {}. Instruction: {}",
+        draft_context::length_label(length),
+        instruction.trim()
+    )
+}
+
+/// The task line for a new message. Single source of truth for the
+/// new-message template (see [`reply_task_line`]).
+fn new_message_task_line(to: &Address, length: DraftLengthHintData, instruction: &str) -> String {
+    format!(
+        "Write a new email to {}. Length: {}. Purpose: {}",
+        recipient_label(to),
+        draft_context::length_label(length),
+        instruction.trim()
+    )
 }
 
 #[cfg(test)]
@@ -416,6 +466,55 @@ mod tests {
         assert!(captured_prompt(&llm).contains(inbound_text));
     }
 
+    // Injection hardening: reply prompt guards the system message and the
+    // thread being replied to lands inside the untrusted-content markers.
+    #[tokio::test]
+    async fn reply_prompt_guards_system_and_wraps_thread() {
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+        let account_id = state.default_account_id();
+        let (thread_id, _, inbound_text) = seed_inbound_thread(&state, &account_id).await;
+
+        draft_compose(
+            &state,
+            Some(&account_id),
+            None,
+            "reply briefly",
+            None,
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let req = llm
+            .last_request
+            .lock()
+            .expect("request lock")
+            .clone()
+            .expect("captured request");
+        assert!(
+            req.messages[0]
+                .content
+                .contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
+            "system prompt must carry the shared injection guard"
+        );
+        let user = &req.messages[1].content;
+        let begin = user
+            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = user
+            .find(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let body = user.find(inbound_text).expect("inbound thread present");
+        assert!(
+            begin < body && body < end,
+            "thread transcript must sit between the untrusted-content markers"
+        );
+    }
+
     // Behavior 2: source_message_id resolves to its thread.
     #[tokio::test]
     async fn reply_via_source_message_uses_conversation() {
@@ -528,6 +627,114 @@ mod tests {
         let (register, note) = draft_suggestion(response);
         assert_eq!(register, Some(VoiceRegisterData::Casual));
         assert!(note.unwrap().contains("casual"));
+    }
+
+    // An oversized instruction is rejected at the validation layer so the
+    // never-truncated task line can't break the assembled-prompt ceiling. The
+    // rejection carries an explicit InvalidRequest wire kind.
+    #[tokio::test]
+    async fn oversized_instruction_is_rejected_as_invalid_request() {
+        let state = AppState::in_memory().await.unwrap();
+        let account_id = state.default_account_id();
+        let limit = draft_context::max_task_line_bytes();
+        let huge = "x".repeat(limit + 1);
+        let err = draft_compose(
+            &state,
+            Some(&account_id),
+            Some(Address {
+                name: None,
+                email: "a@b.com".to_string(),
+            }),
+            &huge,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("oversized instruction must be rejected");
+        // Assert the WIRE kind, not just the message text.
+        match err.into_response() {
+            mxr_protocol::Response::Error { kind, message, .. } => {
+                assert_eq!(kind, mxr_protocol::IpcErrorKind::InvalidRequest);
+                assert!(message.contains("too long"), "message: {message}");
+            }
+            other => panic!("expected an error response, got {other:?}"),
+        }
+    }
+
+    // A long recipient label plus a maximal instruction still can't exceed the
+    // ceiling: the recipient's real bytes are counted, and the total is
+    // rejected even though the instruction alone would fit.
+    #[tokio::test]
+    async fn long_recipient_plus_maximal_instruction_is_rejected() {
+        let state = AppState::in_memory().await.unwrap();
+        let account_id = state.default_account_id();
+        let limit = draft_context::max_task_line_bytes();
+        // An instruction that exactly fills the limit alongside a tiny
+        // recipient ("a@b.com").
+        let tiny_recipient = "a@b.com".len();
+        let instruction = "x".repeat(limit - TASK_TEMPLATE_FIXED_BYTES - tiny_recipient);
+        // Same instruction, but a long display name pushes the task line over.
+        let to = Address {
+            name: Some("N".repeat(300)),
+            email: "a@b.com".to_string(),
+        };
+        let err = draft_compose(
+            &state,
+            Some(&account_id),
+            Some(to),
+            &instruction,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("long recipient must push the task line over the limit");
+        match err.into_response() {
+            mxr_protocol::Response::Error { kind, .. } => {
+                assert_eq!(kind, mxr_protocol::IpcErrorKind::InvalidRequest);
+            }
+            other => panic!("expected an error response, got {other:?}"),
+        }
+    }
+
+    // TASK_TEMPLATE_FIXED_BYTES duplicates the reply/new-message templates, so
+    // pin it to the ACTUAL rendered fixed portion (via the production task-line
+    // builders). Template text growth OR a longer length label would change the
+    // rendering and trip this — so it can't silently restore a ceiling
+    // violation that the boundary tests (which derive from the same const)
+    // would miss.
+    #[test]
+    fn task_template_fixed_bytes_matches_rendered_templates() {
+        let instruction = "INSTR";
+        let to = Address {
+            name: Some("Recipient Name".to_string()),
+            email: "person@example.com".to_string(),
+        };
+        // The const bakes in the longest length label; take the max fixed
+        // portion across all length variants so label growth is caught too.
+        // (Array mirrors the DraftLengthHintData variants — length_label's
+        // exhaustive match forces a compile error if a variant is added.)
+        let mut expected = 0usize;
+        for length in [
+            DraftLengthHintData::Short,
+            DraftLengthHintData::Medium,
+            DraftLengthHintData::Long,
+        ] {
+            let reply = reply_task_line(length, instruction);
+            let new_msg = new_message_task_line(&to, length, instruction);
+            // Fixed portion = rendered minus the variable parts (recipient +
+            // instruction); the length label stays in, as the const bakes it in.
+            let reply_fixed = reply.len() - instruction.len();
+            let new_fixed = new_msg.len() - recipient_label(&to).len() - instruction.len();
+            expected = expected.max(reply_fixed).max(new_fixed);
+        }
+        assert_eq!(
+            TASK_TEMPLATE_FIXED_BYTES, expected,
+            "TASK_TEMPLATE_FIXED_BYTES must equal the rendered fixed portion (longest label)"
+        );
     }
 
     // Behavior 6: a manual register overrides the inferred tone.

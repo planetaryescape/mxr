@@ -82,7 +82,9 @@ pub fn apply_active_environment() -> anyhow::Result<Option<DemoPaths>> {
 }
 
 pub async fn reset_profile() -> anyhow::Result<()> {
-    let socket = mxr_config::socket_path();
+    // Resolve the same way autostart/probe do (honors MXR_DAEMON_ADDR) so demo
+    // teardown targets the socket the demo daemon actually bound at.
+    let socket = crate::server::resolve_daemon_socket()?;
     let state =
         crate::server::shutdown_daemon_for_maintenance(&socket, Duration::from_secs(5)).await?;
     if matches!(state, crate::server::SocketState::Reachable) {
@@ -112,7 +114,9 @@ pub async fn stop() -> anyhow::Result<()> {
     // demo daemon, not the user's real daemon.
     prepare_environment(read_active_marker().unwrap_or(DEMO_DEFAULT_MESSAGES))?;
 
-    let socket = mxr_config::socket_path();
+    // Resolve the same way autostart/probe do (honors MXR_DAEMON_ADDR) so demo
+    // teardown targets the socket the demo daemon actually bound at.
+    let socket = crate::server::resolve_daemon_socket()?;
     println!("Stopping demo daemon at {}...", socket.display());
     let state =
         crate::server::shutdown_daemon_for_maintenance(&socket, Duration::from_secs(10)).await?;

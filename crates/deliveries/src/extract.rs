@@ -9,7 +9,10 @@
 
 use crate::{tracking, Decision, DeliverySignal, DeliveryStatus, DetectionSource};
 use chrono::{DateTime, Utc};
-use mxr_llm::{ChatMessage, CompletionRequest, FeatureLlmRuntime, LlmError};
+use mxr_llm::{
+    guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, FeatureLlmRuntime,
+    LlmError,
+};
 use mxr_store::DeliveryItem;
 use serde::Deserialize;
 
@@ -84,17 +87,24 @@ pub async fn enrich(
     input: &LlmInput<'_>,
     base: DeliverySignal,
 ) -> DeliverySignal {
+    // From/subject/body are all attacker-controllable; wrap the whole
+    // block in untrusted-content delimiters. Strict-JSON parsing plus the
+    // checksum re-validation of any tracking number are the boundary.
+    let email_block = format!(
+        "From: {} <{}>\nSubject: {}\n\nBody:\n{}",
+        input.from_name,
+        input.from_domain,
+        input.subject,
+        truncate(input.body_text, 6000),
+    );
     let req = CompletionRequest {
         max_tokens: Some(450),
         temperature: Some(0.0),
         messages: vec![
-            ChatMessage::system(SYSTEM_PROMPT),
+            ChatMessage::system(guarded_system_prompt(SYSTEM_PROMPT)),
             ChatMessage::user(format!(
-                "From: {} <{}>\nSubject: {}\n\nBody:\n{}\n\nReturn JSON only.",
-                input.from_name,
-                input.from_domain,
-                input.subject,
-                truncate(input.body_text, 6000),
+                "{}\n\nReturn JSON only.",
+                wrap_untrusted_mail(&email_block)
             )),
         ],
     };
@@ -231,6 +241,72 @@ mod tests {
     fn extract_json_unwraps_fences() {
         let c = "Here you go:\n```json\n{\"is_shipment_related\": true}\n```\nDone.";
         assert_eq!(extract_json(c), "{\"is_shipment_related\": true}");
+    }
+
+    #[tokio::test]
+    async fn enrich_prompt_wraps_email_and_guards_system() {
+        use mxr_llm::{CompletionResponse, LlmCapabilities, LlmFeature, LlmProvider, LlmRuntime};
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Default)]
+        struct Capture {
+            msgs: Mutex<Vec<ChatMessage>>,
+        }
+        #[async_trait::async_trait]
+        impl LlmProvider for Capture {
+            async fn complete(
+                &self,
+                req: CompletionRequest,
+            ) -> Result<CompletionResponse, LlmError> {
+                *self.msgs.lock().expect("msgs lock") = req.messages.clone();
+                Ok(CompletionResponse {
+                    content: r#"{"is_shipment_related": false}"#.into(),
+                    model: "stub".into(),
+                    finish_reason: Some("stop".into()),
+                })
+            }
+            fn capabilities(&self) -> LlmCapabilities {
+                LlmCapabilities {
+                    context_window: 8192,
+                    supports_streaming: false,
+                }
+            }
+            fn model_name(&self) -> &str {
+                "stub"
+            }
+        }
+
+        let cap = Arc::new(Capture::default());
+        let runtime = Arc::new(LlmRuntime::new(cap.clone() as Arc<dyn LlmProvider>));
+        let feature = runtime.for_feature(LlmFeature::DeliveryExtraction);
+        let input = LlmInput {
+            from_name: "Shop",
+            from_domain: "shop.example",
+            subject: "Your order",
+            body_text: "PACKAGE-BODY-MARKER shipped today",
+        };
+
+        let _ = enrich(&feature, &input, base_signal()).await;
+
+        let msgs = cap.msgs.lock().expect("msgs lock");
+        assert!(
+            msgs[0].content.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
+            "system prompt must carry the shared injection guard"
+        );
+        let user = &msgs[1].content;
+        let begin = user
+            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
+            .expect("begin marker present");
+        let end = user
+            .find(mxr_llm::UNTRUSTED_MAIL_END)
+            .expect("end marker present");
+        let body = user
+            .find("PACKAGE-BODY-MARKER")
+            .expect("email body present");
+        assert!(
+            begin < body && body < end,
+            "email content must sit between the untrusted-content markers"
+        );
     }
 
     fn base_signal() -> DeliverySignal {

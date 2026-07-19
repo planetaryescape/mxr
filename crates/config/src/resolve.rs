@@ -137,6 +137,135 @@ pub fn bridge_token_path() -> PathBuf {
     config_dir().join("bridge-token")
 }
 
+/// Environment variable that supplies the daemon IPC bearer token directly,
+/// overriding the on-disk token file (phase 5, transport adapters).
+pub const DAEMON_TOKEN_ENV: &str = "MXR_DAEMON_TOKEN";
+
+/// The on-disk path for the daemon IPC token — the secret the TCP-loopback
+/// transport authenticates with.
+///
+/// **This is a DIFFERENT secret from the HTTP bridge token** ([`bridge_token_path`]).
+/// The bridge deliberately hands its token to any loopback caller via the
+/// `GET /api/v1/auth/local-token` endpoint (to bootstrap the web SPA without a
+/// paste), so reusing it for raw-IPC auth would let any local process fetch it
+/// over HTTP and then reach the daemon over TCP. The IPC token is never exposed
+/// by any HTTP endpoint. Override with `MXR_DAEMON_TOKEN_PATH`.
+pub fn daemon_token_path() -> PathBuf {
+    if let Some(path) = env_path("MXR_DAEMON_TOKEN_PATH") {
+        return path;
+    }
+    config_dir().join("daemon-token")
+}
+
+/// Resolve the daemon IPC bearer token (the TCP transport's secret).
+///
+/// Precedence: `MXR_DAEMON_TOKEN` (env, when set and non-empty) **>** the token
+/// file at [`daemon_token_path`] (mode 0600, never HTTP-exposed). When `create`
+/// is true and no file exists, a fresh 0600 token is minted atomically (the
+/// daemon does this at startup so the listener has a token to check); when
+/// `create` is false the file is only read (a client dialing `tcp://` with no
+/// token available returns `None` and simply fails the server's auth gate).
+///
+/// Reading an existing file re-asserts mode 0600 (tightening a too-open file),
+/// and creation uses an exclusive `O_EXCL` open so a concurrent daemon start
+/// cannot race two different tokens onto disk.
+pub fn resolve_daemon_token(create: bool) -> std::io::Result<Option<String>> {
+    if let Ok(value) = std::env::var(DAEMON_TOKEN_ENV) {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Ok(Some(trimmed.to_string()));
+        }
+    }
+    let path = daemon_token_path();
+    if create {
+        read_or_create_secret_0600(&path).map(Some)
+    } else {
+        read_secret_enforcing_0600(&path)
+    }
+}
+
+/// Read an existing 0600 secret file, tightening its permissions to 0600 if a
+/// wider mode is found. `Ok(None)` for a missing or empty file.
+fn read_secret_enforcing_0600(path: &Path) -> std::io::Result<Option<String>> {
+    match std::fs::read_to_string(path) {
+        Ok(contents) => {
+            let token = contents.trim();
+            if token.is_empty() {
+                return Ok(None);
+            }
+            enforce_mode_0600(path)?;
+            Ok(Some(token.to_string()))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+/// Read the secret, or mint one atomically. Uses an exclusive create so two
+/// daemons racing to start can never write two different tokens: the loser
+/// observes `AlreadyExists` and re-reads the winner's file.
+fn read_or_create_secret_0600(path: &Path) -> std::io::Result<String> {
+    if let Some(token) = read_secret_enforcing_0600(path)? {
+        return Ok(token);
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let token = uuid::Uuid::now_v7().to_string();
+    match create_new_secret_0600(path, &token) {
+        Ok(()) => Ok(token),
+        // Raced by another process between the read and the exclusive create:
+        // use whatever it wrote rather than clobbering it.
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            read_secret_enforcing_0600(path)?.ok_or_else(|| {
+                std::io::Error::other("daemon token file appeared then vanished during creation")
+            })
+        }
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(unix)]
+fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true) // O_EXCL: fail if it already exists
+        .mode(0o600)
+        .open(path)?;
+    file.write_all(token.as_bytes())?;
+    file.write_all(b"\n")
+}
+
+#[cfg(not(unix))]
+fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    file.write_all(token.as_bytes())?;
+    file.write_all(b"\n")
+}
+
+#[cfg(unix)]
+fn enforce_mode_0600(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = std::fs::metadata(path)?;
+    if metadata.permissions().mode() & 0o777 == 0o600 {
+        return Ok(());
+    }
+    let mut perms = metadata.permissions();
+    perms.set_mode(0o600);
+    std::fs::set_permissions(path, perms)
+}
+
+#[cfg(not(unix))]
+fn enforce_mode_0600(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
 /// Returns the on-disk path where the bridge writes the port it actually
 /// bound to. Useful for clients (Vite dev proxy, `mxr web`, scripts) that
 /// need to discover the port after the bridge applied EADDRINUSE retries.

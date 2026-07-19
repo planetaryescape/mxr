@@ -3086,3 +3086,17 @@ async fn invite_reply_sidecar_round_trips_into_compose_draft() {
         .is_none());
     mxr_compose::delete_draft_file_async(&draft_path).await.ok();
 }
+
+/// The bridge's constant-time token comparator: a right token matches, a wrong
+/// or absent token does not. (Timing constancy itself isn't asserted here — the
+/// point of routing through `constant_time_eq` — but the functional contract is
+/// pinned so a refactor can't silently break auth.)
+#[test]
+fn token_matches_accepts_only_the_exact_token() {
+    use crate::auth::token_matches;
+    assert!(token_matches(Some("s3cr3t-token"), "s3cr3t-token"));
+    assert!(!token_matches(Some("wrong"), "s3cr3t-token"));
+    assert!(!token_matches(Some("s3cr3t-token-extra"), "s3cr3t-token"));
+    assert!(!token_matches(None, "s3cr3t-token"));
+    assert!(!token_matches(Some(""), "s3cr3t-token"));
+}

@@ -112,10 +112,13 @@ async fn run_local_foreground(args: Args) -> anyhow::Result<()> {
     let bridge_cfg = mxr_config::load_config()
         .map(|c| c.bridge)
         .unwrap_or_default();
-    let config = WebServerConfig::new(mxr_config::socket_path(), auth_token.clone())
-        .with_cors_allowlist(bridge_cfg.cors_allowlist.clone())
-        .with_host_allowlist(bridge_cfg.host_allowlist.clone())
-        .with_auto_local_token(bridge_cfg.auto_local_token);
+    let config = WebServerConfig::new(
+        crate::server::resolve_daemon_socket_unix_only()?,
+        auth_token.clone(),
+    )
+    .with_cors_allowlist(bridge_cfg.cors_allowlist.clone())
+    .with_host_allowlist(bridge_cfg.host_allowlist.clone())
+    .with_auto_local_token(bridge_cfg.auto_local_token);
 
     let display_host = display_host(addr.ip());
     if args.detached_child {

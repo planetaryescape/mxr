@@ -28,7 +28,8 @@ Before this cleanup, mxr had logical crate seams on disk but not honest Cargo se
 - `mxr-mail-parse` owns shared RFC 5322 / mail parsing helpers
 - `mxr-outbound` owns shared markdown-to-message rendering/building helpers used by compose and send adapters
 - `mxr-store` and `mxr-search` remain separate; `mxr-search` no longer owns store-backed saved-search service glue
-- `mxr-client` owns the one shared IPC connection (connect + frame + correlate + read events) that the daemon-internal CLI client, TUI worker, web bridge, and MCP server all build on; its runtime dependencies are `mxr-protocol` only (test fixtures may dev-depend on `mxr-core`, the same way provider crates dev-depend on `mxr-provider-fake`)
+- `mxr-transport` owns the transport seam: object-safe `ServerTransport` / `TransportListener` / `Connector` traits over a boxed byte stream, `PeerInfo` auth evidence, namespaced `TransportCapabilities`, `unix://` address parsing, and the UDS + in-memory (`test-util`) adapters. It is a pure byte-stream crate and depends on **no** internal `mxr-*` crate (only `tokio` / `async-trait` / `thiserror` / `tracing`) — the wire protocol stays frozen above it. A `mxr-protocol` dependency may arrive in phase 5 with the additive `Authenticate` request. It must not depend on the daemon, store, search, sync, semantic, or provider crates.
+- `mxr-client` owns the one shared IPC connection (connect + frame + correlate + read events) that the daemon-internal CLI client, TUI worker, web bridge, and MCP server all build on; its runtime dependencies are `mxr-protocol` and `mxr-transport` (the connection is generic over a `Connector`; test fixtures may dev-depend on `mxr-core`, the same way provider crates dev-depend on `mxr-provider-fake`)
 - clients (`mxr-tui`, `mxr-web`) stay off daemon/store/search/sync/provider crates, while still being allowed to use client-local utility crates such as `client`, `config`, `compose`, `reader`, and `mail-parse`
 - the IMAP adapter uses the published `mxr-async-imap` fork as a normal registry dependency, so vendored source no longer distorts workspace membership
 
@@ -36,14 +37,15 @@ Before this cleanup, mxr had logical crate seams on disk but not honest Cargo se
 
 1. `mxr-core` is the leaf.
 2. `mxr-protocol` depends only on `mxr-core`.
-3. `mxr-client`'s runtime dependencies are `mxr-protocol` only (same leaf discipline as provider crates; test fixtures may dev-depend on `mxr-core`, mirroring providers' dev-dependency on `mxr-provider-fake`); `mxr` (daemon), `mxr-tui`, `mxr-web`, and `mxr-mcp` may depend on `mxr-client` for their daemon IPC connection.
-4. `mxr-store` depends only on `mxr-core`.
-5. `mxr-search` depends only on `mxr-core`.
-6. `mxr-sync` depends on `mxr-core`, `mxr-store`, `mxr-search`.
-7. `mxr-semantic` depends only on lower utility/runtime crates it truly needs.
-8. Provider crates depend on `mxr-core` plus shared mail utility crates only (`mxr-mail-parse`, `mxr-outbound`).
-9. `mxr` is the integration root.
-10. Use Cargo dependencies for seams; do not use `#[path]` pseudo-crates.
+3. `mxr-transport` depends on **no** internal `mxr-*` crate (only `tokio` / `async-trait` / `thiserror` / `tracing`); it is a wire-agnostic byte-stream seam and must not depend on the daemon, store, search, sync, semantic, or provider crates. (A `mxr-protocol` dep may arrive in phase 5 with the `Authenticate` request.) `mxr-client` and `mxr` (daemon) may depend on `mxr-transport`; `mxr-tui` / `mxr-web` / `mxr-mcp` reach transport only transitively through `mxr-client` and still must not depend on the daemon.
+4. `mxr-client`'s runtime dependencies are `mxr-protocol` and `mxr-transport` (same leaf discipline as provider crates; test fixtures may dev-depend on `mxr-core`, mirroring providers' dev-dependency on `mxr-provider-fake`); `mxr` (daemon), `mxr-tui`, `mxr-web`, and `mxr-mcp` may depend on `mxr-client` for their daemon IPC connection.
+5. `mxr-store` depends only on `mxr-core`.
+6. `mxr-search` depends only on `mxr-core`.
+7. `mxr-sync` depends on `mxr-core`, `mxr-store`, `mxr-search`.
+8. `mxr-semantic` depends only on lower utility/runtime crates it truly needs.
+9. Provider crates depend on `mxr-core` plus shared mail utility crates only (`mxr-mail-parse`, `mxr-outbound`).
+10. `mxr` is the integration root.
+11. Use Cargo dependencies for seams; do not use `#[path]` pseudo-crates.
 
 ## Migration summary
 

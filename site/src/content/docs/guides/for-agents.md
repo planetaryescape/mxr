@@ -190,6 +190,50 @@ allow_destructive = false
 
 Use `safety_policy = "full"`, `allow_send = true`, and `allow_destructive = true` only for a client/session where the human approval loop is strong enough. To let an agent tidy the inbox but never trash or delete, keep `allow_destructive = true` and set `allowed_destructive_actions = ["archive", "unsubscribe"]` (see the [config reference](/reference/config/) for the full action list). MCP mutation and send tools still require `confirm=true`.
 
+## Remote access over SSH
+
+`mxr daemon dial-stdio` connects to the local daemon socket and pipes raw bytes
+between its stdin/stdout and that socket. Run it on the far side of any
+transport that can exec a process and pipe stdio, and the full protocol flows
+over the pipe — requests, responses, and the event stream included:
+
+```bash
+# Speak to a daemon on another host you can SSH into (-T: no PTY):
+ssh -T host mxr daemon dial-stdio
+
+# Or a daemon inside a container:
+docker exec -i <container> mxr daemon dial-stdio
+```
+
+Pass `ssh -T` (and never `-t`): a PTY echoes input and rewrites newlines, which
+corrupts the binary frame stream. For the same reason the remote shell's
+startup must be silent on stdout — a `.bashrc`/`.profile` that prints a banner
+or MOTD injects bytes ahead of the daemon's frames. Route any such output to
+stderr or guard it on an interactive shell.
+
+This is the Docker `connhelper` model: no new daemon trust surface, because the
+caller still needs local Unix-socket access on the daemon's machine. Once
+piping starts, stdout carries only socket bytes — startup and autostart
+messages go to stderr — so a client can drive the byte stream directly. On the
+daemon host, `dial-stdio` autostarts the local daemon if it isn't already
+running.
+
+The same-machine caveats matter here. mxr assumes the daemon and your terminal
+share a filesystem, and over a remote pipe that assumption breaks:
+
+- **Compose is host-local.** `mxr compose`/`reply`/`forward` open `$EDITOR` and
+  key draft sessions by on-disk path *on the daemon's host*, not your terminal.
+  Use `--body`/`--body-stdin` for remote composing.
+- **Attachment paths are host-local.** `--attach <path>` and attachment
+  downloads resolve against the daemon host's filesystem, not yours.
+- **Autostart targets the daemon host.** `dial-stdio` starts (and, on a binary
+  mismatch, restarts) the daemon *on its own machine*.
+
+Because of these, remote `dial-stdio` is aimed at scripting and agent use —
+structured reads, JSON pipelines, and mutations — rather than the interactive
+compose flow. Keep it on a trusted transport (SSH, a container exec): the byte
+pipe carries the daemon's full authority to whoever holds it.
+
 ## IPC bucket model (skim)
 
 Behind the CLI and MCP server, every request lands in one of four [IPC buckets](/guides/glossary/#ipc-buckets): `core-mail`, `mxr-platform`, `admin-maintenance`, `client-specific`. The first three are stable; the fourth is per-client view-shape and not part of the daemon contract. If you're scripting against the [HTTP bridge](/reference/bridge/) or MCP, think in those buckets — they're the contract surface.

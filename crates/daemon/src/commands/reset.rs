@@ -85,7 +85,7 @@ pub async fn run(options: ResetOptions) -> anyhow::Result<()> {
         anyhow::bail!("`mxr reset` requires --hard");
     }
 
-    let context = discover_reset_context();
+    let context = discover_reset_context()?;
     let plan = build_reset_plan(&context, options.including_config).await?;
     println!("{}", render_reset_plan(&plan));
 
@@ -128,12 +128,17 @@ pub async fn run(options: ResetOptions) -> anyhow::Result<()> {
     }
 }
 
-fn discover_reset_context() -> ResetContext {
+fn discover_reset_context() -> anyhow::Result<ResetContext> {
     let data_dir = mxr_config::data_dir();
     let config_path = mxr_config::config_file_path();
-    let socket_path = mxr_config::socket_path();
+    // Destructive command: probe the SAME socket the daemon binds/serves at
+    // (honors MXR_DAEMON_ADDR). Probing the bare per-instance path could
+    // conclude the daemon is stopped while it is live at MXR_DAEMON_ADDR, and
+    // then delete state out from under a running daemon. Fail loudly on a
+    // malformed MXR_DAEMON_ADDR rather than guess.
+    let socket_path = crate::server::resolve_daemon_socket()?;
 
-    match mxr_config::load_config() {
+    Ok(match mxr_config::load_config() {
         Ok(config) => ResetContext {
             data_dir: data_dir.clone(),
             socket_path,
@@ -148,7 +153,7 @@ fn discover_reset_context() -> ResetContext {
             attachment_dir: data_dir.join("attachments"),
             config_read_error: Some(error.to_string()),
         },
-    }
+    })
 }
 
 async fn build_reset_plan(
@@ -749,7 +754,7 @@ mod tests {
                 ("MXR_SOCKET_PATH", Some(socket_path.as_os_str())),
             ],
             || {
-                let context = discover_reset_context();
+                let context = discover_reset_context().expect("resolve reset context");
                 assert_eq!(context.attachment_dir, data_dir.join("attachments"));
                 assert!(context.config_read_error.is_some());
             },

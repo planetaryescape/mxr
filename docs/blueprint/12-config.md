@@ -268,5 +268,48 @@ Path roots are resolved outside the TOML model:
 - `MXR_INSTANCE` picks the runtime identity (`mxr`, `mxr-dev`, `mxr-demo`, or custom)
 - `MXR_CONFIG_DIR`, `MXR_DATA_DIR`, `MXR_TOKEN_DIR`, and `MXR_SOCKET_PATH` override individual roots
 - `MXR_BRIDGE_TOKEN_PATH` and `MXR_BRIDGE_PORT_PATH` override bridge files
+- `MXR_DAEMON_ADDR` selects the client transport for the CLI: `unix://<path>` (default), `tcp://<host:port>` (loopback + token), or `cmd://<command>` (spawn-and-pipe, e.g. `cmd://ssh -T host mxr daemon dial-stdio`). TUI/web/MCP honor `unix://` only. Precedence over `MXR_SOCKET_PATH` and the per-instance default.
+- `MXR_DAEMON_TOKEN` supplies the daemon bearer token directly, overriding the token file. Shared by the HTTP bridge and the TCP transport.
 
 `mxr config` shows resolved values.
+
+## Client transports (`[transports]`)
+
+The daemon always serves a Unix domain socket. Additional transports are opt-in
+under `[transports]` (phase 5, transport adapters):
+
+```toml
+[transports.tcp]
+enabled = false        # opt-in; when true, bind a loopback TCP listener
+bind = "127.0.0.1"     # loopback only — 127.0.0.1 or ::1; non-loopback is refused
+port = 42830           # one above the bridge's 42829
+```
+
+The TCP transport has **no implicit peer identity**, so it requires a bearer
+token: a client sends an in-band `Authenticate` handshake before any request,
+and the daemon rejects everything (and withholds events) with an `auth` error
+until it succeeds. Connect with it via
+`MXR_DAEMON_ADDR=tcp://127.0.0.1:42830 MXR_DAEMON_TOKEN=… mxr status`.
+
+### Daemon IPC token (distinct from the bridge token)
+
+The TCP transport authenticates with the daemon **IPC** token, resolution
+precedence: `MXR_DAEMON_TOKEN` (env, non-empty) **>** a dedicated file at
+`<config_dir>/daemon-token` (mode 0600, minted atomically on first daemon
+start, `MXR_DAEMON_TOKEN_PATH` override).
+
+This is a **different secret** from the HTTP bridge token
+(`<config_dir>/bridge-token`). The bridge hands its token to any loopback
+caller via `GET /api/v1/auth/local-token` to bootstrap the web SPA, so reusing
+it for raw-IPC auth would let any local process fetch it over HTTP and then
+reach the daemon over TCP. The IPC token is never exposed by any HTTP endpoint.
+The token comparison in the auth gate is constant-time.
+
+### Per-transport security policy
+
+| Transport | Implicit auth | Required policy |
+|---|---|---|
+| UDS (`unix://`, always on) | filesystem perms (0600) + peer creds | none extra |
+| In-memory (tests, in-process bridge) | in-process | none |
+| stdio (`mxr daemon --stdio`, `dial-stdio`, `cmd://`) | inherits the spawner's trust | none extra — the spawner is the authenticator |
+| TCP loopback (`tcp://`) | **none** — any local process, plus browsers via DNS-rebinding | bearer token even on loopback; **non-loopback bind refused** (no in-daemon remote — use `dial-stdio` over SSH) |

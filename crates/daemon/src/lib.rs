@@ -29,7 +29,7 @@ pub(crate) mod test_fixtures;
 pub mod unsubscribe;
 
 use clap::Parser;
-use cli::{unsupported_command_guidance, Cli, Command, DemoAction};
+use cli::{unsupported_command_guidance, Cli, Command, DaemonAction, DemoAction};
 
 pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
     if let Some(guidance) = unsupported_command_guidance(&args) {
@@ -71,17 +71,42 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         }
     }
 
+    // `dial-stdio` and `--stdio` both own stdout for raw frames, so they must
+    // never install a stdout tracing layer even if `--foreground` is passed.
+    let is_dial_stdio = matches!(
+        cli.command,
+        Some(Command::Daemon {
+            action: Some(DaemonAction::DialStdio),
+            ..
+        })
+    );
+    let is_stdio_server = matches!(cli.command, Some(Command::Daemon { stdio: true, .. }));
     let is_foreground = matches!(
         cli.command,
         Some(Command::Daemon {
             foreground: true,
             ..
         })
-    );
+    ) && !is_dial_stdio
+        && !is_stdio_server;
     init_tracing(is_foreground)?;
 
     match cli.command {
         Some(Command::Daemon {
+            action: Some(DaemonAction::DialStdio),
+            ..
+        }) => {
+            commands::daemon::run().await?;
+        }
+        Some(Command::Daemon {
+            action: None,
+            stdio: true,
+            ..
+        }) => {
+            crate::server::run_stdio().await?;
+        }
+        Some(Command::Daemon {
+            action: None,
             no_bridge,
             bridge_port,
             ..

@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 mxr-protocol = { workspace = true }
+mxr-transport = { workspace = true }
 futures = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

@@ -9,9 +9,12 @@
 //! error shaping stay *policy* owned by each consumer; this crate only owns the
 //! connection.
 //!
-//! The transport is still a `UnixStream` — concentrating the four copies here
-//! is the point, not abstracting the byte stream. [`IpcConnection::connect`] is
-//! the seam a later transport-adapter phase can open.
+//! The byte stream is abstracted behind [`mxr_transport::Connector`]
+//! (phase 4): [`IpcConnection::connect_with`] takes any connector, while
+//! [`IpcConnection::connect`] keeps the path-based Unix-socket entry point every
+//! consumer already calls (it builds a [`mxr_transport::UnixConnector`]
+//! internally). The connection holds a [`mxr_transport::BoxedIo`], so the same
+//! client speaks to the daemon over any transport.
 //!
 //! ```no_run
 //! # async fn demo() -> Result<(), mxr_client::ClientError> {
@@ -35,8 +38,22 @@ use mxr_protocol::{
     ClientKind, DaemonEvent, IpcCodec, IpcErrorKind, IpcMessage, IpcPayload, Request, Response,
     ResponseData,
 };
-use tokio::net::UnixStream;
+use mxr_transport::{BoxedIo, Connector, TransportError, UnixConnector};
 use tokio_util::codec::Framed;
+
+// Re-exported so unix-only clients (TUI, web bridge, MCP) — which already depend
+// on this crate — can resolve `MXR_DAEMON_ADDR` through the one shared resolver
+// without taking a direct `mxr-transport` dependency.
+pub use mxr_transport::TransportAddr;
+
+/// Resolve `MXR_DAEMON_ADDR` to a Unix socket path for unix-only clients. Thin
+/// wrapper over [`TransportAddr::resolve_unix_socket`] so callers depend only on
+/// `mxr-client`.
+pub fn resolve_unix_socket(
+    default_socket: std::path::PathBuf,
+) -> Result<std::path::PathBuf, TransportError> {
+    TransportAddr::resolve_unix_socket(default_socket)
+}
 
 /// One vocabulary for every way a daemon exchange can fail.
 ///
@@ -103,6 +120,13 @@ pub enum ClientError {
     /// The connection closed before the response arrived.
     #[error("connection closed")]
     Closed,
+
+    /// A [`Connector`] failed to establish the connection. Produced by
+    /// [`IpcConnection::connect_with`]; the path-based [`IpcConnection::connect`]
+    /// re-maps a connect failure onto the historical [`ClientError::Connect`]
+    /// shape so its consumers keep matching on `{ path, source }`.
+    #[error("{0}")]
+    Transport(#[from] TransportError),
 }
 
 /// A single framed connection to the daemon over its Unix socket.
@@ -113,7 +137,7 @@ pub enum ClientError {
 /// carries exactly one in-flight request at a time — the model every mxr client
 /// already uses.
 pub struct IpcConnection {
-    framed: Framed<UnixStream, IpcCodec>,
+    framed: Framed<BoxedIo, IpcCodec>,
     next_id: AtomicU64,
     source: ClientKind,
     default_timeout: Option<Duration>,
@@ -125,19 +149,64 @@ impl IpcConnection {
     /// The `source` tag rides on each [`IpcMessage`] so the daemon's activity
     /// recorder attributes traffic to the right surface — making the class of
     /// bug where a client mislabels itself structurally impossible.
+    ///
+    /// Builds a [`UnixConnector`] internally and delegates to
+    /// [`Self::connect_with`], re-mapping a connect failure onto the historical
+    /// [`ClientError::Connect`] shape (its `source.kind()` still drives
+    /// autostart decisions in policy code).
     pub async fn connect(path: &Path, source: ClientKind) -> Result<Self, ClientError> {
-        let stream = UnixStream::connect(path)
+        Self::connect_with(&UnixConnector::new(path.to_path_buf()), source)
             .await
-            .map_err(|error| ClientError::Connect {
-                path: path.to_path_buf(),
-                source: error,
-            })?;
-        Ok(Self {
-            framed: Framed::new(stream, IpcCodec::new()),
+            .map_err(|error| match error {
+                ClientError::Transport(TransportError::Connect {
+                    source: io_error, ..
+                }) => ClientError::Connect {
+                    path: path.to_path_buf(),
+                    source: io_error,
+                },
+                other => other,
+            })
+    }
+
+    /// Connect to the daemon through any [`Connector`], tagging every request
+    /// with `source`. The transport-agnostic entry point: the connection holds a
+    /// [`BoxedIo`], so the same framing/correlation machinery serves whatever
+    /// byte stream the connector produced.
+    pub async fn connect_with(
+        connector: &dyn Connector,
+        source: ClientKind,
+    ) -> Result<Self, ClientError> {
+        let io = connector.connect().await?;
+        let mut conn = Self {
+            framed: Framed::new(io, IpcCodec::new()),
             next_id: AtomicU64::new(1),
             source,
             default_timeout: None,
-        })
+        };
+        // Token-bearing transports (the TCP-loopback adapter) authenticate
+        // in-band as the FIRST request on the connection. The byte-stream seam
+        // stays protocol-free — the connector only advertises its token; the
+        // framed handshake lives here. Implicit-trust transports (UDS, memory,
+        // stdio, cmd) advertise no token and skip this entirely.
+        if let Some(token) = connector.auth_token() {
+            conn.authenticate(token.to_string()).await?;
+        }
+        Ok(conn)
+    }
+
+    /// Perform the in-band token handshake: send `Authenticate` and require an
+    /// `Authenticated` reply. Any daemon-side rejection surfaces as
+    /// [`ClientError::Daemon`] with [`IpcErrorKind::Auth`]; an unexpected
+    /// success payload is a protocol error.
+    async fn authenticate(&mut self, token: String) -> Result<(), ClientError> {
+        match self.request(Request::Authenticate { token }).await? {
+            ResponseData::Authenticated => Ok(()),
+            other => Err(ClientError::Daemon {
+                message: format!("unexpected response to Authenticate: {other:?}"),
+                kind: IpcErrorKind::Auth,
+                retryable: false,
+            }),
+        }
     }
 
     /// Set the timeout applied by [`Self::request`] (per-connection default).

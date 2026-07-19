@@ -50,23 +50,23 @@ const WAIT: Duration = Duration::from_secs(5);
 /// its near-limit frame scenario).
 const LARGE_WAIT: Duration = Duration::from_secs(30);
 
-/// The maximum frame the wire protocol can put on a transport, in bytes.
+/// The largest single write buffer a conforming transport must carry, in bytes.
 ///
-/// This MUST match `IpcCodec`'s frame cap (`crates/protocol/src/codec.rs`: 16
-/// MiB). It is duplicated as a documented constant here — rather than depending
-/// on `mxr-protocol` — precisely to keep this crate a pure byte-stream leaf: a
-/// transport carries opaque bytes and never parses a frame, so it needs the
-/// *size* of the protocol's byte envelope, not the protocol types. A transport
-/// that cannot round-trip a payload this large would silently fail the daemon's
-/// near-limit-frame scenario in production, so the transport suite proves the
-/// envelope here (see [`run_transport_conformance`]).
-const MAX_PROTOCOL_FRAME_BYTES: usize = 16 * 1024 * 1024;
-
-/// Chunk size for streaming the large-frame round-trip. A single 16 MiB write
-/// would deadlock a socket transport (the kernel buffer is far smaller than the
-/// payload), so writer and reader run concurrently and move the payload in
-/// bounded chunks.
-const LARGE_CHUNK: usize = 64 * 1024;
+/// `Framed<_, IpcCodec>` encodes a whole message — the 4-byte big-endian length
+/// prefix followed by the JSON payload — into ONE contiguous buffer and hands it
+/// to the transport's `poll_write` in a single call. So the byte envelope a
+/// transport must move in one write is the codec's max *payload* (16 MiB —
+/// `IpcCodec`'s cap, `crates/protocol/src/codec.rs`) PLUS the 4-byte length
+/// prefix: `16 * 1024 * 1024 + 4`.
+///
+/// This is duplicated as a documented constant here — rather than depending on
+/// `mxr-protocol` — to keep this crate a pure byte-stream leaf: a transport
+/// carries opaque bytes and never parses a frame, so it needs the *size* of the
+/// protocol's byte envelope, not the protocol types. A transport that cannot
+/// carry a buffer this large in one write would silently fail the daemon's
+/// near-limit-frame scenario in production, so the suite proves the envelope
+/// here with a single `write_all` (see [`round_trip_large`]).
+const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024 + 4;
 
 /// Run the transport-contract conformance suite against a `transport` and a
 /// `connector` pre-wired to the same endpoint.
@@ -128,11 +128,12 @@ where
         .expect("accept should succeed while accepting");
     assert_peer_matches_caps(&peer.auth, caps, connector.auth_token().is_some());
     round_trip(&mut client, &mut server).await;
-    // The transport must carry the protocol's full byte envelope — a payload at
-    // the 16 MiB frame cap round-trips intact each way. Without this, a transport
-    // capped below the cap would pass a tiny round-trip yet fail the daemon's
-    // near-limit-frame scenario in production; proving it here is what lets the
-    // protocol corpus stay out-of-tree (D057).
+    // The transport must carry the protocol's full byte envelope — the max wire
+    // frame (16 MiB payload + 4-byte length prefix) round-trips intact each way,
+    // presented as ONE `write_all` buffer just as `Framed<IpcCodec>` does. Without
+    // this, a transport that only accepts small write buffers would pass a tiny
+    // round-trip yet fail the daemon's near-limit-frame scenario in production;
+    // proving it here is what lets the protocol corpus stay out-of-tree (D057).
     round_trip_large(&mut client, &mut server).await;
     drop(client);
     drop(server);
@@ -248,7 +249,7 @@ where
         "a token transport must surface PeerAuth::TokenRequired on accept"
     );
 
-    listener.stop_accepting().await;
+    within(listener.stop_accepting()).await;
     let _ = listener.cleanup().await;
 }
 
@@ -326,58 +327,46 @@ async fn round_trip(client: &mut BoxedIo, server: &mut BoxedIo) {
     );
 }
 
-/// Round-trip a payload at the protocol's maximum frame size
-/// ([`MAX_PROTOCOL_FRAME_BYTES`]) each way, proving the transport carries the
-/// full byte envelope the wire protocol can put on it. Writer and reader run
-/// concurrently — a 16 MiB payload dwarfs any socket buffer, so a sequential
-/// write-then-read would deadlock a socket transport.
+/// Round-trip a payload at the maximum wire-envelope size ([`MAX_FRAME_BYTES`])
+/// each way, presenting the WHOLE payload to the transport in ONE `write_all`
+/// call — exactly as `Framed<_, IpcCodec>` hands the transport one contiguous
+/// buffer per frame. Deliberately not chunked: an adapter that only accepts
+/// small `poll_write` buffers would pass a chunked test yet fail on a real 16
+/// MiB frame, so the single write is the point. The write and read run
+/// concurrently, so a transport whose write buffer is smaller than the payload
+/// (every socket transport) does not deadlock — the reader drains as the writer
+/// blocks.
 async fn round_trip_large(client: &mut BoxedIo, server: &mut BoxedIo) {
-    let len = MAX_PROTOCOL_FRAME_BYTES;
-    let both = async {
-        tokio::join!(write_filled(client, len), read_filled(server, len));
-    };
-    tokio::time::timeout(LARGE_WAIT, both)
-        .await
-        .expect("a max-size frame must round-trip client -> server without hanging");
-
-    let both = async {
-        tokio::join!(write_filled(server, len), read_filled(client, len));
-    };
-    tokio::time::timeout(LARGE_WAIT, both)
-        .await
-        .expect("a max-size frame must round-trip server -> client without hanging");
+    round_trip_large_one_way(client, server, "client -> server").await;
+    round_trip_large_one_way(server, client, "server -> client").await;
 }
 
-/// Stream `len` bytes of a fixed sentinel pattern onto `io` in bounded chunks.
-async fn write_filled(io: &mut BoxedIo, len: usize) {
-    let chunk = vec![0xA5u8; LARGE_CHUNK];
-    let mut remaining = len;
-    while remaining > 0 {
-        let n = remaining.min(LARGE_CHUNK);
-        io.write_all(&chunk[..n])
+/// One direction of the max-envelope round-trip: a single `write_all` of the
+/// full payload on `from`, concurrent with a single `read_exact` of the same
+/// length on `to`, asserting every byte arrives intact.
+async fn round_trip_large_one_way(from: &mut BoxedIo, to: &mut BoxedIo, direction: &str) {
+    let payload = vec![0xA5u8; MAX_FRAME_BYTES];
+    let mut received = vec![0u8; MAX_FRAME_BYTES];
+    let write = async {
+        from.write_all(&payload)
             .await
-            .expect("large-frame write should succeed");
-        remaining -= n;
-    }
-    io.flush().await.expect("large-frame flush should succeed");
-}
-
-/// Read `len` bytes from `io` in bounded chunks, asserting every byte is the
-/// sentinel pattern — proof the whole payload arrived intact, not truncated.
-async fn read_filled(io: &mut BoxedIo, len: usize) {
-    let mut buf = vec![0u8; LARGE_CHUNK];
-    let mut remaining = len;
-    while remaining > 0 {
-        let n = remaining.min(LARGE_CHUNK);
-        io.read_exact(&mut buf[..n])
+            .expect("a max-envelope frame must write in one buffer");
+        from.flush()
             .await
-            .expect("large-frame read should succeed");
-        assert!(
-            buf[..n].iter().all(|&b| b == 0xA5),
-            "large-frame bytes must arrive intact"
-        );
-        remaining -= n;
-    }
+            .expect("large-frame flush should succeed");
+    };
+    let read = async {
+        to.read_exact(&mut received)
+            .await
+            .expect("a max-envelope frame must read back fully");
+    };
+    tokio::time::timeout(LARGE_WAIT, async { tokio::join!(write, read) })
+        .await
+        .expect("a max-envelope frame must round-trip without hanging");
+    assert!(
+        received.iter().all(|&b| b == 0xA5),
+        "max-envelope frame bytes must arrive intact {direction}"
+    );
 }
 
 /// Await `future` under [`WAIT`], failing the test loudly (via `expect`) if it

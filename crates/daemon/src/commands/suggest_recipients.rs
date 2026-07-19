@@ -65,6 +65,7 @@ async fn build_draft(
     Ok(mxr_core::Draft {
         id: mxr_core::DraftId::new(),
         account_id,
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![],

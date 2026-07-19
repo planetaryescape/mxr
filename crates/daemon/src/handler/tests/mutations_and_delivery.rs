@@ -1441,6 +1441,7 @@ async fn dispatch_send_draft() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id: state.default_account_id(),
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -1484,6 +1485,7 @@ async fn draft_only_safety_policy_blocks_send_but_allows_local_draft() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id: state.default_account_id(),
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -1727,6 +1729,7 @@ async fn mcp_profile_send_gate_blocks_provider_send() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id,
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -1777,6 +1780,7 @@ async fn dispatch_send_draft_preserves_keychain_repair_error() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id,
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -2168,4 +2172,279 @@ async fn seed_carrier_shipment(
         .await
         .unwrap();
     id
+}
+
+// --- Per-message From selection -----------------------------------------
+
+fn from_request(request: Request) -> IpcMessage {
+    IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(request),
+    }
+}
+
+fn draft_from(account_id: mxr_core::AccountId, from: Option<&str>) -> mxr_core::types::Draft {
+    mxr_core::types::Draft {
+        id: mxr_core::DraftId::new(),
+        account_id,
+        from: from.map(|email| mxr_core::types::Address {
+            name: None,
+            email: email.to_string(),
+        }),
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![mxr_core::types::Address {
+            name: None,
+            email: "client@example.com".to_string(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "From selection".to_string(),
+        body_markdown: "Body".to_string(),
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    }
+}
+
+#[tokio::test]
+async fn send_uses_registered_alias_from_override() {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    state
+        .store
+        .add_account_address(&account_id, "hello@example.com", false)
+        .await
+        .unwrap();
+    let state = Arc::new(state);
+
+    let draft = draft_from(account_id, Some("hello@example.com"));
+    let resp = handle_request(
+        &state,
+        &from_request(Request::SendDraft {
+            draft,
+            override_safety_token: None,
+        }),
+    )
+    .await;
+    assert!(
+        matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::SendReceipt { .. }
+            })
+        ),
+        "expected SendReceipt, got {:?}",
+        resp.payload
+    );
+
+    // The resolved From actually handed to the provider is the alias, named
+    // with the account's display name (Zoho-composer behaviour).
+    let froms = fake.sent_from_addresses();
+    assert_eq!(froms.len(), 1);
+    assert_eq!(froms[0].email, "hello@example.com");
+    assert_eq!(froms[0].name.as_deref(), Some("Fake Account"));
+    // The draft the provider saw carries the override, too.
+    assert_eq!(
+        fake.sent_drafts()[0].from.as_ref().unwrap().email,
+        "hello@example.com"
+    );
+}
+
+#[tokio::test]
+async fn send_from_none_uses_account_primary() {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    let state = Arc::new(state);
+
+    let draft = draft_from(account_id, None);
+    let resp = handle_request(
+        &state,
+        &from_request(Request::SendDraft {
+            draft,
+            override_safety_token: None,
+        }),
+    )
+    .await;
+    assert!(matches!(
+        resp.payload,
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::SendReceipt { .. }
+        })
+    ));
+    let froms = fake.sent_from_addresses();
+    assert_eq!(froms[0].email, "user@example.com");
+    assert_eq!(froms[0].name.as_deref(), Some("Fake Account"));
+}
+
+#[tokio::test]
+async fn send_rejects_unowned_from_override() {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    let state = Arc::new(state);
+
+    let draft = draft_from(account_id, Some("stranger@evil.com"));
+    let draft_id = draft.id.clone();
+    let resp = handle_request(
+        &state,
+        &from_request(Request::SendDraft {
+            draft,
+            override_safety_token: None,
+        }),
+    )
+    .await;
+    match resp.payload {
+        IpcPayload::Response(Response::Error { message, .. }) => {
+            assert!(
+                message.to_lowercase().contains("invalid"),
+                "error should be an InvalidRequest: {message}"
+            );
+            assert!(
+                message.contains("user@example.com"),
+                "error should list the registered addresses: {message}"
+            );
+        }
+        other => panic!("expected an error, got {other:?}"),
+    }
+    // Nothing left the daemon, and the draft is not wedged in `Sending`.
+    assert!(fake.sent_drafts().is_empty());
+    assert!(matches!(
+        state.store.get_draft_status(&draft_id).await.unwrap(),
+        None | Some(mxr_core::types::DraftStatus::Draft)
+    ));
+}
+
+#[tokio::test]
+async fn resolve_send_from_previews_and_validates_like_send() {
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    state
+        .store
+        .add_account_address(&account_id, "hello@example.com", false)
+        .await
+        .unwrap();
+    let state = Arc::new(state);
+
+    // None resolves to the account primary.
+    let resp = handle_request(
+        &state,
+        &from_request(Request::ResolveSendFrom {
+            account_id: account_id.clone(),
+            from: None,
+        }),
+    )
+    .await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::ResolvedSendFrom { from },
+        }) => assert_eq!(from.email, "user@example.com"),
+        other => panic!("expected ResolvedSendFrom, got {other:?}"),
+    }
+
+    // A registered alias is accepted and named with the account display name.
+    let resp = handle_request(
+        &state,
+        &from_request(Request::ResolveSendFrom {
+            account_id: account_id.clone(),
+            from: Some(mxr_core::types::Address {
+                name: None,
+                email: "hello@example.com".to_string(),
+            }),
+        }),
+    )
+    .await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::ResolvedSendFrom { from },
+        }) => {
+            assert_eq!(from.email, "hello@example.com");
+            assert_eq!(from.name.as_deref(), Some("Fake Account"));
+        }
+        other => panic!("expected ResolvedSendFrom, got {other:?}"),
+    }
+
+    // An unowned address is rejected identically to the real send path.
+    let resp = handle_request(
+        &state,
+        &from_request(Request::ResolveSendFrom {
+            account_id,
+            from: Some(mxr_core::types::Address {
+                name: None,
+                email: "stranger@evil.com".to_string(),
+            }),
+        }),
+    )
+    .await;
+    match resp.payload {
+        IpcPayload::Response(Response::Error { message, .. }) => {
+            assert!(message.to_lowercase().contains("invalid"), "{message}");
+        }
+        other => panic!("expected an error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn prepare_reply_defaults_from_to_delivered_alias() {
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    state
+        .store
+        .add_account_address(&account_id, "hello@example.com", false)
+        .await
+        .unwrap();
+
+    // Message delivered to the alias -> reply defaults its From to the alias.
+    let to_alias = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .account_id(account_id.clone())
+        .provider_id("reply-alias")
+        .subject("Delivered to alias")
+        .sender_address("Client", "client@example.com")
+        .recipient_address(Some("Hello"), "hello@example.com")
+        .build();
+    let alias_msg_id = to_alias.id.clone();
+    state.store.upsert_envelope(&to_alias).await.unwrap();
+
+    // Message delivered to a non-owned address -> falls back to the primary.
+    let to_other = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .account_id(account_id.clone())
+        .provider_id("reply-other")
+        .subject("Delivered elsewhere")
+        .sender_address("Client", "client@example.com")
+        .recipient_address(Some("List"), "list@example.com")
+        .build();
+    let other_msg_id = to_other.id.clone();
+    state.store.upsert_envelope(&to_other).await.unwrap();
+    let state = Arc::new(state);
+
+    let resp = handle_request(
+        &state,
+        &from_request(Request::PrepareReply {
+            message_id: alias_msg_id,
+            reply_all: false,
+        }),
+    )
+    .await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::ReplyContext { context },
+        }) => assert_eq!(context.from, "hello@example.com"),
+        other => panic!("expected ReplyContext, got {other:?}"),
+    }
+
+    let resp = handle_request(
+        &state,
+        &from_request(Request::PrepareReply {
+            message_id: other_msg_id,
+            reply_all: false,
+        }),
+    )
+    .await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::ReplyContext { context },
+        }) => assert_eq!(context.from, "user@example.com"),
+        other => panic!("expected ReplyContext, got {other:?}"),
+    }
 }

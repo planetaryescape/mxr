@@ -99,6 +99,7 @@ mod tests {
         Draft {
             id: DraftId::new(),
             account_id: AccountId::new(),
+            from: None,
             intent: DraftIntent::New,
             reply_headers: None,
             to: vec![Address {
@@ -1432,6 +1433,7 @@ mod tests {
         let draft = Draft {
             id: DraftId::new(),
             account_id: AccountId::new(),
+            from: None,
             reply_headers: None,
             intent: DraftIntent::Reply,
             to: vec![Address {
@@ -1970,6 +1972,7 @@ mod tests {
             Draft {
                 id: DraftId::new(),
                 account_id: AccountId::new(),
+                from: None,
                 reply_headers: None,
                 intent: DraftIntent::New,
                 to: vec![Address {

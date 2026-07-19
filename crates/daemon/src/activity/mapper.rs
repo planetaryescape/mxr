@@ -626,6 +626,7 @@ pub fn map_request(
         }
         Request::PrepareInviteResponse { .. }
         | Request::CheckDraftSafety { .. }
+        | Request::ResolveSendFrom { .. }
         | Request::ExtractDraftCommitments { .. }
         | Request::TriageSearch { .. }
         | Request::ExplainEntity { .. }

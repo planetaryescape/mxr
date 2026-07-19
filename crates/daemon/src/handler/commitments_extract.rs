@@ -266,6 +266,7 @@ mod tests {
         Draft {
             id: mxr_core::DraftId::new(),
             account_id: account_id.clone(),
+            from: None,
             reply_headers: None,
             intent: DraftIntent::New,
             to: vec![Address {

@@ -803,6 +803,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         Some(Command::Reply {
             message_id,
             account,
+            from,
             body,
             body_stdin,
             attach,
@@ -817,6 +818,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             commands::mutations::reply(commands::mutations::ReplyCommand {
                 message_id,
                 account,
+                from,
                 body,
                 body_stdin,
                 attach,
@@ -832,6 +834,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         Some(Command::ReplyAll {
             message_id,
             account,
+            from,
             body,
             body_stdin,
             attach,
@@ -846,6 +849,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             commands::mutations::reply_all(commands::mutations::ReplyCommand {
                 message_id,
                 account,
+                from,
                 body,
                 body_stdin,
                 attach,
@@ -861,6 +865,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         Some(Command::Forward {
             message_id,
             account,
+            from,
             to,
             body,
             body_stdin,
@@ -875,6 +880,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             commands::mutations::forward(commands::mutations::ForwardCommand {
                 message_id,
                 account,
+                from,
                 to,
                 body,
                 body_stdin,

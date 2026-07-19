@@ -708,6 +708,15 @@ pub enum Request {
         account_id: AccountId,
         email: String,
     },
+    /// Resolve (and validate ownership of) the effective From address a draft
+    /// would send from, without sending. `from == None` resolves to the
+    /// account primary; a `Some` override that the account does not own is
+    /// rejected. The dry-run/preview path uses this so a preview shows exactly
+    /// the From a real send would use, and fails identically on an unowned one.
+    ResolveSendFrom {
+        account_id: AccountId,
+        from: Option<mxr_core::types::Address>,
+    },
     GetLlmStatus,
     GetLlmConfig,
     UpdateLlmConfig {
@@ -1589,6 +1598,7 @@ impl Request {
             | Self::AddAccountAddress { .. }
             | Self::RemoveAccountAddress { .. }
             | Self::SetPrimaryAccountAddress { .. }
+            | Self::ResolveSendFrom { .. }
             | Self::GetLlmStatus
             | Self::GetLlmConfig
             | Self::UpdateLlmConfig { .. }
@@ -2224,6 +2234,11 @@ pub enum ResponseData {
     AccountAddresses {
         addresses: Vec<mxr_core::types::AccountAddress>,
     },
+    /// Effective From address resolved (and ownership-validated) by
+    /// `Request::ResolveSendFrom`.
+    ResolvedSendFrom {
+        from: mxr_core::types::Address,
+    },
     SemanticStatus {
         snapshot: SemanticStatusSnapshot,
     },
@@ -2467,6 +2482,7 @@ impl ResponseData {
             | Self::Job { .. }
             | Self::UnsubscribePurgeResult { .. }
             | Self::SendReceipt { .. }
+            | Self::ResolvedSendFrom { .. }
             | Self::DraftSafetyReportResponse { .. }
             | Self::DraftCommitments { .. }
             | Self::OwedReplies { .. }

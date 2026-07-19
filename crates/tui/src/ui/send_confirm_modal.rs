@@ -56,6 +56,9 @@ fn modal_lines(
         PendingSendMode::Unchanged => "Draft unchanged. Discard or keep editing?".to_string(),
     }];
 
+    if !pending.fm.from.trim().is_empty() {
+        lines.push(format!("From: {}", pending.fm.from));
+    }
     lines.push(format!("Subject: {}", pending.fm.subject));
     lines.push("Voice match: not scored for manual edits".to_string());
     lines.push("Humanizer: scored on AI draft outputs".to_string());

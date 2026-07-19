@@ -792,6 +792,7 @@ async fn seed_demo_drafts(client: &mut IpcClient) -> anyhow::Result<()> {
         Draft {
             id: DraftId::from_provider_id("demo", "draft-q4-roadmap"),
             account_id: personal.clone(),
+            from: None,
             reply_headers: None,
             intent: DraftIntent::New,
             to: vec![Address {
@@ -810,6 +811,7 @@ async fn seed_demo_drafts(client: &mut IpcClient) -> anyhow::Result<()> {
         Draft {
             id: DraftId::from_provider_id("demo", "draft-perf-followup"),
             account_id: personal,
+            from: None,
             reply_headers: None,
             intent: DraftIntent::New,
             to: vec![Address {

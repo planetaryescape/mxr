@@ -30,16 +30,37 @@ pub fn format_addresses(addresses: &[Address]) -> String {
         .join(", ")
 }
 
+/// Parse a compose-file `from:` field into the optional per-message From
+/// override. An empty/whitespace field is `None` (send from the account
+/// primary); otherwise the first parsed address. The daemon validates that
+/// the resulting address is one the account owns before sending.
+pub fn parse_from_field(from: &str) -> Option<Address> {
+    let trimmed = from.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    mxr_mail_parse::parse_address_list(trimmed)
+        .into_iter()
+        .next()
+}
+
 /// Build editor frontmatter from a stored draft. `from` is the sending
 /// account's address — the [`Draft`] stores only an `account_id`, so the
-/// caller resolves the email and passes it in.
+/// caller resolves the email and passes it in. A draft that already carries a
+/// per-message From override renders that instead, so re-opening the draft in
+/// `$EDITOR` shows (and preserves) the chosen sender.
 pub fn frontmatter_from_draft(draft: &Draft, from: &str) -> ComposeFrontmatter {
     ComposeFrontmatter {
         to: format_addresses(&draft.to),
         cc: format_addresses(&draft.cc),
         bcc: format_addresses(&draft.bcc),
         subject: draft.subject.clone(),
-        from: from.to_string(),
+        from: draft
+            .from
+            .as_ref()
+            .map(|address| format_addresses(std::slice::from_ref(address)))
+            .filter(|rendered| !rendered.trim().is_empty())
+            .unwrap_or_else(|| from.to_string()),
         in_reply_to: draft
             .reply_headers
             .as_ref()
@@ -96,6 +117,7 @@ pub fn apply_edited_compose_file(
     Ok(Draft {
         id: existing.id.clone(),
         account_id: existing.account_id.clone(),
+        from: parse_from_field(&frontmatter.from),
         reply_headers,
         // A user who clears `intent:` back to the default keeps the draft's
         // original intent rather than silently downgrading a reply to a new.
@@ -126,6 +148,7 @@ mod tests {
         Draft {
             id: DraftId::new(),
             account_id: AccountId::new(),
+            from: None,
             reply_headers: None,
             intent: DraftIntent::New,
             to: vec![
@@ -156,6 +179,37 @@ mod tests {
             rendered,
             "Alice Example <alice@example.com>, bob@example.com"
         );
+    }
+
+    #[test]
+    fn parse_from_field_maps_blank_to_none_and_address_to_some() {
+        assert!(parse_from_field("   ").is_none());
+        assert!(parse_from_field("").is_none());
+        let parsed = parse_from_field("Support <hello@example.com>").unwrap();
+        assert_eq!(parsed.email, "hello@example.com");
+        assert_eq!(parsed.name.as_deref(), Some("Support"));
+    }
+
+    #[test]
+    fn draft_from_override_renders_and_round_trips() {
+        let mut original = sample_draft();
+        original.from = Some(Address {
+            name: Some("Support".into()),
+            email: "hello@example.com".into(),
+        });
+
+        // The override is what the editor sees, not the passed account primary.
+        let file = draft_to_compose_file(&original, "me@example.com").unwrap();
+        assert!(file.contains("from: Support <hello@example.com>"));
+
+        let later = DateTime::from_timestamp(1_700_000_999, 0).unwrap();
+        let result = apply_edited_compose_file(&original, &file, later).unwrap();
+        assert_eq!(result.from.as_ref().unwrap().email, "hello@example.com");
+
+        // Clearing the `from:` line in the editor drops the override.
+        let cleared = file.replace("from: Support <hello@example.com>", "from:");
+        let result = apply_edited_compose_file(&original, &cleared, later).unwrap();
+        assert!(result.from.is_none());
     }
 
     #[test]

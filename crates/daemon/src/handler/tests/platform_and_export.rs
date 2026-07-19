@@ -308,6 +308,7 @@ async fn dispatch_list_drafts_includes_all_accounts() {
     let old_draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id: default_account_id,
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![],
@@ -323,6 +324,7 @@ async fn dispatch_list_drafts_includes_all_accounts() {
     let new_draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id: other_account_id,
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![],
@@ -372,6 +374,7 @@ async fn dispatch_save_and_send_stored_draft() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id,
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -443,6 +446,7 @@ async fn dispatch_send_stored_draft_replay_returns_original_receipt_without_rese
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id,
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -512,6 +516,7 @@ async fn dispatch_send_draft_replay_returns_original_receipt_without_resending()
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id,
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -586,6 +591,7 @@ async fn override_token_unblocks_send_exactly_once() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id: account_id.clone(),
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -720,6 +726,7 @@ async fn override_token_unblocks_send_exactly_once() {
     let draft2 = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id: account_id.clone(),
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -848,6 +855,7 @@ async fn blocked_send_error_carries_usable_override_token() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id: account_id.clone(),
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -961,6 +969,7 @@ async fn send_stored_draft_touches_heartbeat_after_cas() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id,
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -1038,6 +1047,7 @@ async fn send_stored_draft_blocks_empty_recipient_before_sending_state() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id,
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![],
@@ -1095,6 +1105,7 @@ async fn send_draft_blocks_invalid_recipient_before_provider_send() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id,
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -1172,6 +1183,7 @@ async fn send_stored_reply_all_blocks_missing_original_recipient_before_sending_
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id,
+        from: None,
         reply_headers: Some(mxr_core::ReplyHeaders {
             in_reply_to: "<reply-all-parent@example.com>".to_string(),
             references: vec!["<reply-all-parent@example.com>".to_string()],
@@ -1249,6 +1261,7 @@ async fn dispatch_send_draft_preserves_parent_thread_for_synthetic_sent() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id,
+        from: None,
         reply_headers: Some(mxr_core::ReplyHeaders {
             in_reply_to: "<parent@example.com>".to_string(),
             references: vec!["<parent@example.com>".to_string()],
@@ -1316,6 +1329,7 @@ async fn dispatch_save_draft_to_server_falls_back_to_local_draft() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id,
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -1632,6 +1646,7 @@ async fn dispatch_save_draft_to_server() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::DraftId::new(),
         account_id: state.default_account_id(),
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {

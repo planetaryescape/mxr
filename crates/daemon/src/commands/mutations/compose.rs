@@ -56,6 +56,9 @@ pub(super) fn resolve_compose_from_address(explicit_from: Option<String>) -> Str
 pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account = resolve_compose_account(&mut client, options.from.as_deref()).await?;
+    // When `--from` is an email address, seed it as the draft's From so an
+    // alias is honoured; a bare account name/key falls back to the primary.
+    let from_seed = compose_from_seed(options.from.as_deref(), &account.email);
     let stdin_or_body = read_body_input(options.body, options.body_stdin)?;
     let signature = resolve_compose_signature(
         &mut client,
@@ -72,7 +75,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         cc: options.cc.clone().unwrap_or_default(),
         bcc: options.bcc.clone().unwrap_or_default(),
         subject: options.subject.clone().unwrap_or_default(),
-        from: account.email.clone(),
+        from: from_seed.clone(),
         attach: attachment_strings(&options.attach),
         signature: signature.as_ref().map(|signature| signature.name.clone()),
         ..Default::default()
@@ -96,7 +99,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
                 to: options.to.unwrap_or_default(),
                 subject: options.subject.unwrap_or_default(),
             },
-            &account.email,
+            &from_seed,
             signature.as_ref(),
         )?;
         rewrite_compose_frontmatter(
@@ -122,7 +125,9 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     validate_compose_draft(&frontmatter, &draft.body_markdown, options.yes)?;
 
     if options.dry_run {
-        print_draft_preview(&draft, options.yes, options.format)?;
+        let effective_from =
+            resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
+        print_draft_preview(&draft, &effective_from, options.yes, options.format)?;
         return Ok(());
     }
 
@@ -162,6 +167,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
 pub struct ReplyCommand {
     pub message_id: String,
     pub account: Option<String>,
+    pub from: Option<String>,
     pub body: Option<String>,
     pub body_stdin: bool,
     pub attach: Vec<PathBuf>,
@@ -185,6 +191,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
     let ReplyCommand {
         message_id,
         account,
+        from,
         body,
         body_stdin,
         attach,
@@ -244,7 +251,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
         no_signature,
     )
     .await?;
-    let (frontmatter, body_text, draft_file) = build_compose_draft(
+    let (mut frontmatter, body_text, draft_file) = build_compose_draft(
         &mut client,
         kind,
         &ctx.from,
@@ -254,6 +261,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
         attachment_strings(&attach),
     )
     .await?;
+    apply_from_override(&mut frontmatter, from.as_deref());
 
     finalize_compose(
         &mut client,
@@ -279,6 +287,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
 pub struct ForwardCommand {
     pub message_id: String,
     pub account: Option<String>,
+    pub from: Option<String>,
     pub to: Option<String>,
     pub body: Option<String>,
     pub body_stdin: bool,
@@ -294,6 +303,7 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
     let ForwardCommand {
         message_id,
         account,
+        from,
         to,
         body,
         body_stdin,
@@ -356,6 +366,7 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
             frontmatter.to = to_val;
         }
     }
+    apply_from_override(&mut frontmatter, from.as_deref());
 
     finalize_compose(
         &mut client,
@@ -454,7 +465,9 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     validate_compose_draft(&frontmatter, &draft.body_markdown, yes)?;
 
     if dry_run {
-        print_draft_preview(&draft, yes, format)?;
+        let effective_from =
+            resolve_effective_from(client, &draft.account_id, draft.from.as_ref()).await?;
+        print_draft_preview(&draft, &effective_from, yes, format)?;
         return Ok(());
     }
 
@@ -760,7 +773,9 @@ pub async fn send_draft(
         if recipients.is_empty() {
             anyhow::bail!("Draft has no recipients; aborting before send");
         }
-        print_draft_preview(&draft, true, format)?;
+        let effective_from =
+            resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
+        print_draft_preview(&draft, &effective_from, true, format)?;
         return Ok(());
     }
 
@@ -867,7 +882,7 @@ pub async fn compose_check(options: ComposeOptions, no_llm: bool) -> anyhow::Res
         cc: options.cc.clone().unwrap_or_default(),
         bcc: options.bcc.clone().unwrap_or_default(),
         subject: options.subject.clone().unwrap_or_default(),
-        from: account.email.clone(),
+        from: compose_from_seed(options.from.as_deref(), &account.email),
         attach: attachment_strings(&options.attach),
         signature: None,
         ..Default::default()
@@ -1009,7 +1024,76 @@ async fn resolve_compose_account(
         } => Some(accounts),
         _ => None,
     })?;
-    select_compose_account(&accounts, explicit_from)
+    match select_compose_account(&accounts, explicit_from) {
+        Ok(account) => Ok(account),
+        // `--from` may name a registered alias rather than an account's primary
+        // address; find the send-capable account that owns it.
+        Err(err) => match resolve_account_by_alias(client, &accounts, explicit_from).await? {
+            Some(account) => Ok(account),
+            None => Err(err),
+        },
+    }
+}
+
+/// Find the send-capable account that owns `explicit_from` as a registered
+/// alias. Only consulted when `explicit_from` looks like an email address that
+/// didn't match any account's primary/name/key/id, so the common path pays no
+/// extra round-trips.
+async fn resolve_account_by_alias(
+    client: &mut IpcClient,
+    accounts: &[AccountSummaryData],
+    explicit_from: Option<&str>,
+) -> anyhow::Result<Option<AccountSummaryData>> {
+    let Some(value) = explicit_from
+        .map(str::trim)
+        .filter(|value| value.contains('@'))
+    else {
+        return Ok(None);
+    };
+    for account in accounts
+        .iter()
+        .filter(|account| account.enabled && account.send_kind.is_some())
+    {
+        let resp = client
+            .request(Request::ListAccountAddresses {
+                account_id: account.account_id.clone(),
+            })
+            .await?;
+        let addresses = crate::commands::expect_response(resp, |response| match response {
+            Response::Ok {
+                data: ResponseData::AccountAddresses { addresses },
+            } => Some(addresses),
+            _ => None,
+        })?;
+        if addresses
+            .iter()
+            .any(|address| address.email.eq_ignore_ascii_case(value))
+        {
+            return Ok(Some(account.clone()));
+        }
+    }
+    Ok(None)
+}
+
+/// The From address a compose draft should seed. When `--from` carries an
+/// email it becomes the draft's From (so an alias is honoured); a bare account
+/// name/key falls back to the account's primary address.
+fn compose_from_seed(explicit_from: Option<&str>, primary_email: &str) -> String {
+    explicit_from
+        .map(str::trim)
+        .filter(|value| value.contains('@'))
+        .map_or_else(|| primary_email.to_string(), str::to_string)
+}
+
+/// Override a compose frontmatter's `from:` with an explicit `--from` value
+/// (reply/forward), leaving the delivered-to default in place when absent.
+fn apply_from_override(
+    frontmatter: &mut mxr_compose::frontmatter::ComposeFrontmatter,
+    from: Option<&str>,
+) {
+    if let Some(value) = from.map(str::trim).filter(|value| !value.is_empty()) {
+        frontmatter.from = value.to_string();
+    }
 }
 
 fn select_compose_account(
@@ -1389,6 +1473,7 @@ fn draft_from_frontmatter(
     Ok(Draft {
         id: DraftId::new(),
         account_id,
+        from: mxr_compose::draft_codec::parse_from_field(&frontmatter.from),
         reply_headers,
         intent: if frontmatter.intent == mxr_core::DraftIntent::New {
             fallback_intent
@@ -1529,15 +1614,42 @@ async fn set_auto_reminder_after_send(
     }
 }
 
+/// Resolve (and ownership-validate) the effective From a draft would send
+/// from, via the daemon — the same choke point the real send uses, so a
+/// preview shows exactly the From a send would use and fails identically on
+/// an unowned override.
+async fn resolve_effective_from(
+    client: &mut IpcClient,
+    account_id: &AccountId,
+    from: Option<&Address>,
+) -> anyhow::Result<Address> {
+    let resp = client
+        .request(Request::ResolveSendFrom {
+            account_id: account_id.clone(),
+            from: from.cloned(),
+        })
+        .await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::ResolvedSendFrom { from },
+        } => Ok(from),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response from ResolveSendFrom"),
+    }
+}
+
 #[derive(serde::Serialize)]
 struct DraftPreviewOutput<'a> {
     action: &'static str,
     dry_run: bool,
+    /// Effective From the send would use (primary or the validated override).
+    from: &'a Address,
     draft: &'a Draft,
 }
 
 fn print_draft_preview(
     draft: &Draft,
+    effective_from: &Address,
     sending: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
@@ -1548,6 +1660,7 @@ fn print_draft_preview(
             serde_json::to_string_pretty(&DraftPreviewOutput {
                 action,
                 dry_run: true,
+                from: effective_from,
                 draft,
             })?
         ),
@@ -1556,6 +1669,7 @@ fn print_draft_preview(
             serde_json::to_string(&DraftPreviewOutput {
                 action,
                 dry_run: true,
+                from: effective_from,
                 draft,
             })?
         ),
@@ -1566,6 +1680,7 @@ fn print_draft_preview(
                 "dry_run",
                 "draft_id",
                 "account_id",
+                "from",
                 "to",
                 "cc",
                 "bcc",
@@ -1578,6 +1693,7 @@ fn print_draft_preview(
                 "true".to_string(),
                 draft.id.as_str(),
                 draft.account_id.as_str(),
+                format_addresses(std::slice::from_ref(effective_from)),
                 format_addresses(&draft.to),
                 format_addresses(&draft.cc),
                 format_addresses(&draft.bcc),
@@ -1591,6 +1707,10 @@ fn print_draft_preview(
         OutputFormat::Table => {
             println!("Would {action}:");
             println!("  id: {}", draft.id);
+            println!(
+                "  from: {}",
+                format_addresses(std::slice::from_ref(effective_from))
+            );
             println!("  to: {}", format_addresses(&draft.to));
             println!("  cc: {}", format_addresses(&draft.cc));
             println!("  bcc: {}", format_addresses(&draft.bcc));
@@ -1937,6 +2057,7 @@ mod tests {
             Draft {
                 id: DraftId::new(),
                 account_id: AccountId::new(),
+                from: None,
                 reply_headers,
                 intent,
                 to: vec![],

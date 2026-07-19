@@ -2040,6 +2040,7 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
     Ok(Draft {
         id: DraftId::new(),
         account_id: parse_account_id(account_id)?,
+        from: mxr_compose::draft_codec::parse_from_field(&frontmatter.from),
         reply_headers: frontmatter
             .in_reply_to
             .as_ref()

@@ -44,6 +44,7 @@ pub fn sample_draft(account_id: AccountId) -> Draft {
     Draft {
         id: DraftId::new(),
         account_id,
+        from: None,
         reply_headers: None,
         intent: DraftIntent::New,
         to: vec![Address {

@@ -110,6 +110,7 @@ fn draft_with(body: &str) -> Draft {
     Draft {
         id: mxr_core::DraftId::new(),
         account_id: mxr_core::AccountId::new(),
+        from: None,
         reply_headers: None,
         intent: DraftIntent::New,
         to: vec![Address {

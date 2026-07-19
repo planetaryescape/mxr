@@ -149,6 +149,7 @@ mod tests {
         Draft {
             id: DraftId::new(),
             account_id: AccountId::new(),
+            from: None,
             reply_headers: None,
             intent: DraftIntent::New,
             to: addrs,

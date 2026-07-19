@@ -1117,6 +1117,7 @@ async fn dispatch_schedule_send_persists_and_loop_flushes_when_due() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::id::DraftId::new(),
         account_id: account.id.clone(),
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {
@@ -1220,6 +1221,7 @@ async fn dispatch_cancel_scheduled_send_prevents_flush() {
     let draft = mxr_core::types::Draft {
         id: mxr_core::id::DraftId::new(),
         account_id: account.id.clone(),
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![mxr_core::types::Address {

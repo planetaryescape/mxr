@@ -47,10 +47,15 @@ to:
 cc: []
 bcc: []
 subject: Example
+from: hello@planetaryescape.xyz
 ---
 
 Hello from mxr.
 ```
+
+The `from:` field is the address the message is sent from. Leave it as the
+account's primary address, or set it to any [registered alias](#sending-from-an-alias-per-message-from)
+to send as that address. Editing `from:` in `$EDITOR` works too.
 
 ## Reply context
 
@@ -59,6 +64,8 @@ Reply and forward drafts include message context. If the original message only h
 ## Reply recipient
 
 A reply targets the original message's `Reply-To:` header when the sender set one, falling back to `From:` otherwise. This is what mailing lists and `no-reply@` senders rely on — a reply to a list digest goes to the list, not the unmonitored sender address. `reply-all` adds the other original recipients as Cc on top of that target.
+
+The reply's own From defaults to the owned address the original was delivered to — see [Sending from an alias](#sending-from-an-alias-per-message-from).
 
 ## Send confirmation
 
@@ -116,6 +123,47 @@ from a static status snapshot. This matters for multi-account setups.
 ```bash
 mxr drafts --account work --format json
 ```
+
+## Sending from an alias (per-message From)
+
+An account can own several addresses: its primary plus any aliases you
+[register](/guides/accounts/#owned-addresses-and-aliases) with `mxr accounts
+addresses add`. Any owned address can be the From on a per-message basis —
+handy for a shared mailbox with `hello@`, `accounts@`, and `support@` on one
+account.
+
+Pick the sender three ways, all landing on the same daemon-side path:
+
+```bash
+# --from accepts a registered alias on compose, reply, reply-all, and forward.
+mxr compose --from accounts@planetaryescape.xyz --to client@example.com \
+  --subject "Invoice 42" --dry-run
+
+mxr reply MESSAGE_ID --from support@planetaryescape.xyz --body "On it."
+```
+
+```md
+# ...or edit the `from:` frontmatter field in $EDITOR:
+---
+to: client@example.com
+subject: Invoice 42
+from: accounts@planetaryescape.xyz
+---
+```
+
+Rules:
+
+- **Owned addresses only.** The chosen From must be the account's primary or a
+  registered alias (matched case-insensitively). An unowned address is rejected
+  before anything is sent, with the list of registered addresses in the error —
+  the same check on a real send, a `--dry-run`, and the send-confirm modal.
+- **Replies default to the delivered-to address.** A reply, reply-all, or
+  forward starts from whichever owned address the original was delivered to
+  (its `To`/`Cc`/`Delivered-To`), falling back to the primary. So a message
+  that arrived at `support@` is answered from `support@` unless you override it.
+- **`--from` / `from:` win.** An explicit value overrides the reply default.
+- The From flows into both the message `From:` header and the SMTP envelope
+  sender; `--dry-run --format json` reports the effective `from`.
 
 ## Attachments
 

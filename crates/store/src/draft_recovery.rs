@@ -106,6 +106,7 @@ mod tests {
         let draft = Draft {
             id: DraftId::new(),
             account_id: account.id,
+            from: None,
             reply_headers: None,
             intent: DraftIntent::New,
             to: vec![Address {

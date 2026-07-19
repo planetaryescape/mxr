@@ -65,6 +65,7 @@ impl App {
         let draft = mxr_core::Draft {
             id: mxr_core::id::DraftId::new(),
             account_id: pending.account_id.clone(),
+            from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from),
             reply_headers,
             intent: pending.intent,
             to: parse_addrs(&pending.fm.to),

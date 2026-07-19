@@ -50,6 +50,26 @@ mxr accounts show ACCOUNT
 mxr accounts test ACCOUNT
 ```
 
+## Owned addresses and aliases
+
+An account owns a set of addresses: its primary, plus any aliases you
+register. mxr uses that set to classify mail as inbound vs outbound, and to
+let you send from any of them.
+
+```bash
+mxr accounts addresses list work
+mxr accounts addresses add work accounts@planetaryescape.xyz
+mxr accounts addresses add work support@planetaryescape.xyz
+mxr accounts addresses remove work support@planetaryescape.xyz
+```
+
+Once an address is registered it becomes a valid sender for that account. A
+reply defaults its From to whichever owned address the original was delivered
+to, and `--from` / the `from:` frontmatter field can send as any owned address.
+See [Sending from an alias](/guides/compose/#sending-from-an-alias-per-message-from).
+Only the account's own registered addresses are accepted; an unowned From is
+rejected before the message is sent.
+
 ## Selecting an account
 
 ```bash
@@ -99,7 +119,7 @@ mxr accounts --format json
 
 ## Compose behavior
 
-Compose, reply, and forward resolve the sender from the selected/default runtime account. That is the same source the TUI Accounts page shows.
+Compose, reply, and forward resolve the sender from the selected/default runtime account. That is the same source the TUI Accounts page shows. To send from a specific [owned address](#owned-addresses-and-aliases) rather than the account primary, use `--from <address>` or edit the `from:` frontmatter field — see [Sending from an alias](/guides/compose/#sending-from-an-alias-per-message-from).
 
 ## Multi-account notes
 

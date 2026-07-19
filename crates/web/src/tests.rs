@@ -1813,6 +1813,7 @@ fn draft_summary_includes_updated_time_labels() {
     let draft = Draft {
         id: DraftId::new(),
         account_id: AccountId::new(),
+        from: None,
         reply_headers: None,
         intent: mxr_core::DraftIntent::New,
         to: vec![Address {

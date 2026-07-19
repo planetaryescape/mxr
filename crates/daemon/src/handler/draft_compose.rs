@@ -157,11 +157,7 @@ async fn draft_reply(
         latest,
     )
     .await;
-    let task_line = format!(
-        "Now draft my reply. Length: {}. Instruction: {}",
-        draft_context::length_label(context.inferred_length),
-        instruction.trim()
-    );
+    let task_line = reply_task_line(context.inferred_length, instruction);
     let user_message = draft_context::assemble_user_message_within_budget(
         &context.prompt,
         &grounding,
@@ -200,12 +196,7 @@ async fn draft_brand_new(
     .await;
     let semantic_query = format!("{}\n{}", instruction.trim(), to.email);
     let grounding = draft_context::prior_sent_grounding(state, None, &semantic_query, None).await;
-    let task_line = format!(
-        "Write a new email to {}. Length: {}. Purpose: {}",
-        recipient_label(&to),
-        draft_context::length_label(context.inferred_length),
-        instruction.trim()
-    );
+    let task_line = new_message_task_line(&to, context.inferred_length, instruction);
     let user_message = draft_context::assemble_user_message_within_budget(
         &context.prompt,
         &grounding,
@@ -276,6 +267,28 @@ fn recipient_label(to: &Address) -> String {
         Some(name) => format!("{name} <{}>", to.email),
         None => to.email.clone(),
     }
+}
+
+/// The task line for a reply. Single source of truth for the reply template so
+/// the byte accounting (`TASK_TEMPLATE_FIXED_BYTES`) can be coupling-tested
+/// against the real rendering.
+fn reply_task_line(length: DraftLengthHintData, instruction: &str) -> String {
+    format!(
+        "Now draft my reply. Length: {}. Instruction: {}",
+        draft_context::length_label(length),
+        instruction.trim()
+    )
+}
+
+/// The task line for a new message. Single source of truth for the
+/// new-message template (see [`reply_task_line`]).
+fn new_message_task_line(to: &Address, length: DraftLengthHintData, instruction: &str) -> String {
+    format!(
+        "Write a new email to {}. Length: {}. Purpose: {}",
+        recipient_label(to),
+        draft_context::length_label(length),
+        instruction.trim()
+    )
 }
 
 #[cfg(test)]
@@ -685,6 +698,43 @@ mod tests {
             }
             other => panic!("expected an error response, got {other:?}"),
         }
+    }
+
+    // TASK_TEMPLATE_FIXED_BYTES duplicates the reply/new-message templates, so
+    // pin it to the ACTUAL rendered fixed portion (via the production task-line
+    // builders). Template text growth OR a longer length label would change the
+    // rendering and trip this — so it can't silently restore a ceiling
+    // violation that the boundary tests (which derive from the same const)
+    // would miss.
+    #[test]
+    fn task_template_fixed_bytes_matches_rendered_templates() {
+        let instruction = "INSTR";
+        let to = Address {
+            name: Some("Recipient Name".to_string()),
+            email: "person@example.com".to_string(),
+        };
+        // The const bakes in the longest length label; take the max fixed
+        // portion across all length variants so label growth is caught too.
+        // (Array mirrors the DraftLengthHintData variants — length_label's
+        // exhaustive match forces a compile error if a variant is added.)
+        let mut expected = 0usize;
+        for length in [
+            DraftLengthHintData::Short,
+            DraftLengthHintData::Medium,
+            DraftLengthHintData::Long,
+        ] {
+            let reply = reply_task_line(length, instruction);
+            let new_msg = new_message_task_line(&to, length, instruction);
+            // Fixed portion = rendered minus the variable parts (recipient +
+            // instruction); the length label stays in, as the const bakes it in.
+            let reply_fixed = reply.len() - instruction.len();
+            let new_fixed = new_msg.len() - recipient_label(&to).len() - instruction.len();
+            expected = expected.max(reply_fixed).max(new_fixed);
+        }
+        assert_eq!(
+            TASK_TEMPLATE_FIXED_BYTES, expected,
+            "TASK_TEMPLATE_FIXED_BYTES must equal the rendered fixed portion (longest label)"
+        );
     }
 
     // Behavior 6: a manual register overrides the inferred tone.

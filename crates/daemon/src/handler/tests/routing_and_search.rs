@@ -166,6 +166,41 @@ async fn dispatch_ping_returns_pong() {
     }
 }
 
+// An oversized DraftCompose instruction, driven through the REAL dispatch
+// path, must surface as an explicit InvalidRequest wire kind — not fall back to
+// Internal via string-sniffing. This pins the wire contract end to end, so
+// reverting the boundary to `Response::error` would trip here.
+#[tokio::test]
+async fn dispatch_draft_compose_rejects_oversized_instruction_as_invalid_request() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let account_id = state.default_account_id();
+
+    let msg = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::DraftCompose {
+            account_id: Some(account_id),
+            to: Some(mxr_core::types::Address {
+                name: None,
+                email: "a@b.com".to_string(),
+            }),
+            instruction: "x".repeat(100_000),
+            source_message_id: None,
+            thread_id: None,
+            register: None,
+            length_hint: None,
+        }),
+    };
+
+    let resp = handle_request(&state, &msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Error { kind, .. }) => {
+            assert_eq!(kind, ::mxr_protocol::IpcErrorKind::InvalidRequest);
+        }
+        other => panic!("expected an InvalidRequest error response, got {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn dispatch_list_envelopes_after_sync() {
     let state = Arc::new(AppState::in_memory().await.unwrap());

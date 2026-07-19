@@ -1804,7 +1804,12 @@ async fn create_compose_session(
     request: ComposeSessionStartRequest,
 ) -> Result<serde_json::Value, BridgeError> {
     let (account_id, from) = default_account(socket_path).await?;
-    let (kind, account_id, cursor_line) = match request.kind {
+    // Each arm yields the sender identity to seed: `New` uses the default
+    // account's address; reply/forward/invite use the daemon-computed default
+    // From *for the message's own account* (an owned address), never the
+    // global default account's — otherwise a reply on a non-default account
+    // would seed an address that account doesn't own and be rejected on send.
+    let (kind, account_id, cursor_line, from_seed) = match request.kind {
         ComposeSessionKindRequest::New => (
             ComposeKind::New {
                 to: request.to.unwrap_or_default(),
@@ -1812,6 +1817,7 @@ async fn create_compose_session(
             },
             account_id,
             None::<usize>,
+            from,
         ),
         ComposeSessionKindRequest::Reply | ComposeSessionKindRequest::ReplyAll => {
             let message_id = request
@@ -1831,6 +1837,7 @@ async fn create_compose_session(
                 ResponseData::ReplyContext { context } => context,
                 _ => return Err(BridgeError::UnexpectedResponse),
             };
+            let from_seed = context.from.clone();
             (
                 ComposeKind::Reply {
                     reply_all: matches!(request.kind, ComposeSessionKindRequest::ReplyAll),
@@ -1844,6 +1851,7 @@ async fn create_compose_session(
                 },
                 envelope.account_id,
                 None,
+                from_seed,
             )
         }
         ComposeSessionKindRequest::Forward => {
@@ -1863,6 +1871,7 @@ async fn create_compose_session(
                 ResponseData::ForwardContext { context } => context,
                 _ => return Err(BridgeError::UnexpectedResponse),
             };
+            let from_seed = context.from.clone();
             (
                 ComposeKind::Forward {
                     subject: context.subject,
@@ -1870,6 +1879,7 @@ async fn create_compose_session(
                 },
                 envelope.account_id,
                 None,
+                from_seed,
             )
         }
         ComposeSessionKindRequest::InviteReply => {
@@ -1899,6 +1909,8 @@ async fn create_compose_session(
                 ResponseData::InviteResponsePreview { preview } => preview,
                 _ => return Err(BridgeError::UnexpectedResponse),
             };
+            // RSVP-with-comment sends From the matched ATTENDEE alias.
+            let from_seed = preview.attendee_email.clone();
             (
                 ComposeKind::Reply {
                     reply_all: false,
@@ -1912,15 +1924,16 @@ async fn create_compose_session(
                 },
                 envelope.account_id,
                 None,
+                from_seed,
             )
         }
     };
 
     let account = account_summary(socket_path, &account_id).await?;
-    let compose_from = if from.trim().is_empty() {
+    let compose_from = if from_seed.trim().is_empty() {
         account.email.clone()
     } else {
-        from
+        from_seed
     };
     let (draft_path, resolved_cursor_line) =
         mxr_compose::create_draft_file_async(kind, &compose_from)
@@ -2040,7 +2053,8 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
     Ok(Draft {
         id: DraftId::new(),
         account_id: parse_account_id(account_id)?,
-        from: mxr_compose::draft_codec::parse_from_field(&frontmatter.from),
+        from: mxr_compose::draft_codec::parse_from_field(&frontmatter.from)
+            .map_err(|error| BridgeError::Ipc(error.to_string()))?,
         reply_headers: frontmatter
             .in_reply_to
             .as_ref()

@@ -231,6 +231,10 @@ async fn dispatch_respond_invite_matches_account_alias_attendee() {
         })
     ));
     assert_eq!(fake.sent_drafts().len(), 1);
+    // The RSVP is sent From the matched owned alias, so From and ATTENDEE agree.
+    let froms = fake.sent_from_addresses();
+    assert_eq!(froms.len(), 1);
+    assert_eq!(froms[0].email, "alias@example.com");
     let stored = state
         .store
         .get_calendar_invite_for_message(&message_id)

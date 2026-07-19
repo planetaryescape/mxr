@@ -984,9 +984,14 @@ pub enum Command {
         /// Account to send from, or an owned address to send as. Accepts an
         /// account name/key, the account's primary email, or any registered
         /// alias (`mxr accounts addresses`); an alias sets both the account
-        /// and the From address.
+        /// and the From address. When one alias is registered on several
+        /// accounts, disambiguate with `--account`.
         #[arg(long)]
         from: Option<String>,
+        /// Disambiguate which account to send from when `--from` names an
+        /// address registered on more than one account.
+        #[arg(long)]
+        account: Option<String>,
         /// Insert this signature by name instead of the scoped default
         #[arg(long, conflicts_with = "no_signature")]
         signature: Option<String>,

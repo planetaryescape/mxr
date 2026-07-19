@@ -172,3 +172,81 @@ fn compose_check_passes_clean_draft() {
         .unwrap_or_default();
     assert!(blockers.is_empty(), "no blockers expected: {report:#}");
 }
+
+/// `mxr send <draft-id> --check` must validate the effective From at preview:
+/// a stored draft whose `from:` is no longer an owned address (e.g. the alias
+/// was removed) fails the check, not just the eventual send. Drives the real
+/// `--check` code path end-to-end through the CLI.
+#[test]
+fn send_check_rejects_a_stored_draft_with_an_unowned_from() {
+    let _guard = daemon_lock();
+    let temp = TempDir::new().expect("temp dir");
+    let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "send-check-from");
+
+    let run = |args: &[&str]| {
+        Command::cargo_bin("mxr")
+            .expect("mxr bin")
+            .env("MXR_INSTANCE", &instance)
+            .env("MXR_DATA_DIR", &data_dir)
+            .env("MXR_CONFIG_DIR", &config_dir)
+            .env_remove("EDITOR")
+            .env_remove("VISUAL")
+            .args(args)
+            .assert()
+    };
+
+    // Register an alias, save a draft that sends from it, then remove the alias.
+    run(&[
+        "accounts",
+        "addresses",
+        "add",
+        "--account",
+        "fake",
+        "alias@example.com",
+    ])
+    .success();
+    let saved = run(&[
+        "compose",
+        "--from",
+        "alias@example.com",
+        "--to",
+        "alice@example.com",
+        "--subject",
+        "From check",
+        "--body",
+        "body",
+        "--no-signature",
+    ])
+    .success()
+    .get_output()
+    .clone();
+    let stdout = String::from_utf8(saved.stdout).expect("utf8");
+    let draft_id = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("Draft saved: ").map(str::to_string))
+        .expect(&format!("compose should save a draft; stdout={stdout}"));
+    run(&[
+        "accounts",
+        "addresses",
+        "remove",
+        "--account",
+        "fake",
+        "alias@example.com",
+    ])
+    .success();
+
+    // The stored From is now unowned; --check must fail before the send path.
+    let failure = run(&["send", &draft_id, "--check"])
+        .failure()
+        .get_output()
+        .clone();
+    let stderr = String::from_utf8(failure.stderr).expect("utf8");
+    assert!(
+        stderr.to_lowercase().contains("invalid from address"),
+        "send --check must reject the unowned stored From; stderr={stderr}"
+    );
+    assert!(
+        stderr.contains("fake@example.com"),
+        "error should list the registered addresses; stderr={stderr}"
+    );
+}

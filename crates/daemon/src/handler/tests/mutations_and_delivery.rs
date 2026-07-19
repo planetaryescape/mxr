@@ -2317,6 +2317,52 @@ async fn send_rejects_unowned_from_override() {
 }
 
 #[tokio::test]
+async fn save_draft_to_server_validates_from_like_send() {
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    state
+        .store
+        .add_account_address(&account_id, "hello@example.com", false)
+        .await
+        .unwrap();
+    let state = Arc::new(state);
+
+    // Unowned override: rejected before the provider save payload is built.
+    let resp = handle_request(
+        &state,
+        &from_request(Request::SaveDraftToServer {
+            draft: draft_from(account_id.clone(), Some("stranger@evil.com")),
+        }),
+    )
+    .await;
+    match resp.payload {
+        IpcPayload::Response(Response::Error { message, .. }) => {
+            assert!(message.to_lowercase().contains("invalid"), "{message}");
+        }
+        other => panic!("expected an error, got {other:?}"),
+    }
+
+    // Owned alias: accepted.
+    let resp = handle_request(
+        &state,
+        &from_request(Request::SaveDraftToServer {
+            draft: draft_from(account_id, Some("hello@example.com")),
+        }),
+    )
+    .await;
+    assert!(
+        matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ),
+        "expected Ack, got {:?}",
+        resp.payload
+    );
+}
+
+#[tokio::test]
 async fn resolve_send_from_previews_and_validates_like_send() {
     let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
     let account_id = state.default_account_id_opt().unwrap();

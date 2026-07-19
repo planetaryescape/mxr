@@ -1927,8 +1927,7 @@ pub(super) async fn prepare_reply(
     // Default the reply's From to the owned address the message was delivered
     // to, so a message that arrived at an alias is answered from that alias.
     let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await;
-    let delivered = delivered_recipients(&envelope, body.as_ref());
-    let from = default_reply_from(&owned, &primary_email, delivered.iter().map(String::as_str));
+    let from = reply_from_default(&owned, &primary_email, &envelope, body.as_ref());
 
     // Prefer the Reply-To: header when the sender set one — mailing lists
     // and no-reply senders depend on it — falling back to From: otherwise.
@@ -2001,8 +2000,7 @@ pub(super) async fn prepare_forward(
     // Default the forward's From to the owned address the message was
     // delivered to (same rule as reply), falling back to the primary.
     let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await;
-    let delivered = delivered_recipients(&envelope, body.as_ref());
-    let from = default_reply_from(&owned, &primary_email, delivered.iter().map(String::as_str));
+    let from = reply_from_default(&owned, &primary_email, &envelope, body.as_ref());
 
     Ok(ResponseData::ForwardContext {
         context: ForwardContext {
@@ -2025,7 +2023,7 @@ pub(super) async fn prepare_forward(
 /// `requested` is the draft's `from` override (`None` ⇒ account primary). On
 /// an unowned override this returns an `InvalidRequest`-classified error (the
 /// message contains "invalid") listing the account's registered addresses.
-async fn resolve_from_address(
+pub(crate) async fn resolve_from_address(
     state: &AppState,
     account_id: &mxr_core::AccountId,
     requested: Option<&Address>,
@@ -2107,39 +2105,100 @@ fn resolve_owned_from(
     })
 }
 
-/// Pick the default From for a reply/forward: the owned address the original
-/// message was delivered to. Scans `delivered_recipients` (the parent's
-/// To/Cc/Delivered-To, in that priority order) for the first address that is
-/// an owned address of the account; falls back to `primary_email` when the
-/// message wasn't addressed to any owned address (e.g. delivered via BCC or a
-/// forwarder). Case-insensitive.
+/// Choose the default From for a reply/forward, given the account's owned
+/// addresses, its primary, and the parent's routing headers.
+///
+/// Precedence, hardest-to-spoof first:
+///  1. `Delivered-To:` — stamped by the *receiving* MTA, so it names the
+///     address the message actually landed on. The topmost owned occurrence
+///     wins outright, even if `To:`/`Cc:` name a different owned address (that
+///     is exactly the Bcc/`To`-forgery a sender would use to steer the From).
+///  2. Absent an owned `Delivered-To:`, the sole owned address across `To:`/`Cc:`.
+///  3. Otherwise — no owned recipient, or *several distinct* owned addresses
+///     (ambiguous; we refuse to guess which identity the mail was for) — the
+///     account primary.
+///
+/// This is best-effort, header-based defaulting: `To:`/`Cc:` are sender-set and
+/// `Delivered-To:` can, in adversarial setups, still be spoofed — the same
+/// residual exposure mainstream clients carry. It is bounded: the result is
+/// always one of the *user's own* addresses, never an attacker's, and the
+/// effective From is surfaced in every dry-run and the send-confirm before a
+/// message goes out, so a wrong guess is visible and overridable.
 fn default_reply_from<'a>(
     owned: &[String],
-    primary_email: &'a str,
-    delivered_recipients: impl IntoIterator<Item = &'a str>,
+    primary_email: &str,
+    delivered_to: impl IntoIterator<Item = &'a str>,
+    addressed_to: impl IntoIterator<Item = &'a str>,
 ) -> String {
     let owned_lower: HashSet<String> = owned
         .iter()
         .map(|email| email.trim().to_ascii_lowercase())
         .filter(|email| !email.is_empty())
         .collect();
-    for recipient in delivered_recipients {
+    let canonical = |key: &str| -> Option<String> {
+        owned
+            .iter()
+            .find(|owned| owned.trim().eq_ignore_ascii_case(key))
+            .map(|owned| owned.trim().to_string())
+    };
+
+    // 1. Delivered-To wins — topmost owned occurrence.
+    for recipient in delivered_to {
         let key = recipient.trim().to_ascii_lowercase();
-        if key.is_empty() {
-            continue;
-        }
-        if owned_lower.contains(&key) {
-            // Return the canonical owned casing rather than the header casing.
-            return owned
-                .iter()
-                .find(|owned| owned.trim().eq_ignore_ascii_case(&key))
-                .map_or_else(
-                    || recipient.trim().to_string(),
-                    |owned| owned.trim().to_string(),
-                );
+        if !key.is_empty() && owned_lower.contains(&key) {
+            if let Some(owned) = canonical(&key) {
+                return owned;
+            }
         }
     }
-    primary_email.to_string()
+
+    // 2/3. The lone owned To/Cc address, else primary on absence or ambiguity.
+    let mut distinct: Vec<String> = Vec::new();
+    for recipient in addressed_to {
+        let key = recipient.trim().to_ascii_lowercase();
+        if key.is_empty() || !owned_lower.contains(&key) {
+            continue;
+        }
+        if let Some(owned) = canonical(&key) {
+            if !distinct
+                .iter()
+                .any(|seen| seen.eq_ignore_ascii_case(&owned))
+            {
+                distinct.push(owned);
+            }
+        }
+    }
+    match distinct.as_slice() {
+        [only] => only.clone(),
+        _ => primary_email.to_string(),
+    }
+}
+
+/// Resolve the reply/forward default From from an account's owned set and the
+/// parent envelope + raw headers. See [`default_reply_from`] for the ordering
+/// and its security properties.
+fn reply_from_default(
+    owned: &[String],
+    primary_email: &str,
+    envelope: &Envelope,
+    body: Option<&MessageBody>,
+) -> String {
+    let delivered_to = body
+        .and_then(|body| body.metadata.raw_headers.as_deref())
+        .map(extract_delivered_to)
+        .unwrap_or_default();
+    let addressed_to: Vec<String> = envelope
+        .to
+        .iter()
+        .chain(envelope.cc.iter())
+        .map(|address| address.email.clone())
+        .collect();
+    default_reply_from(
+        owned,
+        primary_email,
+        delivered_to.iter().map(String::as_str),
+        addressed_to.iter().map(String::as_str),
+    )
 }
 
 /// Load an account's primary email and the full set of owned emails
@@ -2168,23 +2227,6 @@ async fn account_owned_addresses(
         }
     }
     (primary, owned)
-}
-
-/// Build the ordered list of recipient emails a message was delivered to, for
-/// reply/forward From defaulting: the parent's `To:` then `Cc:` then any
-/// `Delivered-To:` headers (which mail servers stamp with the address that
-/// actually received the message — the strongest alias signal).
-fn delivered_recipients(envelope: &Envelope, body: Option<&MessageBody>) -> Vec<String> {
-    let mut out: Vec<String> = envelope
-        .to
-        .iter()
-        .chain(envelope.cc.iter())
-        .map(|address| address.email.clone())
-        .collect();
-    if let Some(raw) = body.and_then(|body| body.metadata.raw_headers.as_deref()) {
-        out.extend(extract_delivered_to(raw));
-    }
-    out
 }
 
 /// Extract the address(es) from `Delivered-To:` header lines in a raw header
@@ -2680,19 +2722,9 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
             return save_draft(state, draft).await;
         }
     };
-    let account = state
-        .store
-        .get_account(&draft.account_id)
-        .await
-        .ok()
-        .flatten();
-    let from = Address {
-        name: account.as_ref().map(|account| account.name.clone()),
-        email: account.as_ref().map_or_else(
-            || "user@example.com".to_string(),
-            |account| account.email.clone(),
-        ),
-    };
+    // Validate the per-message From (owned-address) exactly like the send
+    // path — an unvalidated `Draft.from` must never reach a provider payload.
+    let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
     match sender.save_draft(draft, &from).await {
         Ok(Some(draft_id)) => {
             tracing::info!(draft_id, "Draft saved to server");
@@ -4024,33 +4056,51 @@ mod from_selection_tests {
         assert_eq!(err, owned());
     }
 
+    const PRIMARY: &str = "bk@planetaryescape.xyz";
+
     #[test]
-    fn reply_default_prefers_the_owned_address_in_to() {
-        let recipients = ["someone@example.com", "hello@planetaryescape.xyz"];
-        let got = default_reply_from(&owned(), "bk@planetaryescape.xyz", recipients);
+    fn reply_default_uses_sole_owned_to_cc_address() {
+        let addressed = ["someone@example.com", "hello@planetaryescape.xyz"];
+        let got = default_reply_from(&owned(), PRIMARY, std::iter::empty(), addressed);
         assert_eq!(got, "hello@planetaryescape.xyz");
     }
 
     #[test]
-    fn reply_default_honours_recipient_order_to_before_cc() {
-        // First owned match wins; the To address is listed before the Cc one.
-        let recipients = ["accounts@planetaryescape.xyz", "hello@planetaryescape.xyz"];
-        let got = default_reply_from(&owned(), "bk@planetaryescape.xyz", recipients);
-        assert_eq!(got, "accounts@planetaryescape.xyz");
+    fn reply_default_delivered_to_beats_a_forged_to_address() {
+        // Bcc/To-forgery steering: the sender puts owned alias A in `To:` to
+        // steer our From, but the MTA's `Delivered-To:` names owned alias B —
+        // the real destination. Delivered-To must win.
+        let delivered = ["hello@planetaryescape.xyz"]; // B (truth)
+        let addressed = ["accounts@planetaryescape.xyz"]; // A (forged To)
+        let got = default_reply_from(&owned(), PRIMARY, delivered, addressed);
+        assert_eq!(got, "hello@planetaryescape.xyz");
+    }
+
+    #[test]
+    fn reply_default_is_primary_when_owned_to_cc_is_ambiguous() {
+        // Two distinct owned addresses across To/Cc and no Delivered-To: we
+        // refuse to guess which identity the mail was for.
+        let addressed = ["accounts@planetaryescape.xyz", "hello@planetaryescape.xyz"];
+        let got = default_reply_from(&owned(), PRIMARY, std::iter::empty(), addressed);
+        assert_eq!(got, PRIMARY);
     }
 
     #[test]
     fn reply_default_is_case_insensitive_and_canonicalises() {
-        let recipients = ["HELLO@planetaryescape.XYZ"];
-        let got = default_reply_from(&owned(), "bk@planetaryescape.xyz", recipients);
+        let got = default_reply_from(
+            &owned(),
+            PRIMARY,
+            std::iter::empty(),
+            ["HELLO@planetaryescape.XYZ"],
+        );
         assert_eq!(got, "hello@planetaryescape.xyz");
     }
 
     #[test]
     fn reply_default_falls_back_to_primary_when_no_owned_recipient() {
-        let recipients = ["someone@example.com", "other@example.com"];
-        let got = default_reply_from(&owned(), "bk@planetaryescape.xyz", recipients);
-        assert_eq!(got, "bk@planetaryescape.xyz");
+        let addressed = ["someone@example.com", "other@example.com"];
+        let got = default_reply_from(&owned(), PRIMARY, std::iter::empty(), addressed);
+        assert_eq!(got, PRIMARY);
     }
 
     #[test]

@@ -406,7 +406,10 @@ impl MailSendProvider for FakeProvider {
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         });
-        let _ = from;
+        self.sent_from
+            .lock()
+            .expect("fake provider sent_from mutex should not be poisoned")
+            .push(from.clone());
         Ok(SendReceipt {
             provider_message_id: Some(format!("fake-calendar-sent-{}", uuid::Uuid::now_v7())),
             sent_at: chrono::Utc::now(),

@@ -102,6 +102,8 @@ pub enum ComposeError {
     MissingFrontmatter,
     #[error("Invalid frontmatter: {0}")]
     InvalidFrontmatter(String),
+    #[error("Invalid from address: {0}")]
+    InvalidFrom(String),
     #[error("Attachment not found: {0}")]
     AttachmentNotFound(String),
     #[error("No recipients specified")]

@@ -94,11 +94,13 @@ pub(crate) async fn handle_compose_action(
             account_id,
             preloaded,
         } => {
-            let account = resolve_compose_account(bg, Some(&account_id)).await?;
             let context = match preloaded {
                 Some(ctx) => ctx,
                 None => fetch_reply_context(bg, message_id, false).await?,
             };
+            // Seed From from the daemon-computed default (delivered-to owned
+            // address), not the account primary — parity with the CLI.
+            let from = context.from.clone();
             let kind = mxr_compose::ComposeKind::Reply {
                 reply_all: false,
                 in_reply_to: context.in_reply_to,
@@ -112,7 +114,7 @@ pub(crate) async fn handle_compose_action(
             (
                 account_id,
                 mxr_core::DraftIntent::Reply,
-                account.email,
+                from,
                 kind,
                 SignatureContextData::Reply,
             )
@@ -122,11 +124,11 @@ pub(crate) async fn handle_compose_action(
             account_id,
             preloaded,
         } => {
-            let account = resolve_compose_account(bg, Some(&account_id)).await?;
             let context = match preloaded {
                 Some(ctx) => ctx,
                 None => fetch_reply_context(bg, message_id, true).await?,
             };
+            let from = context.from.clone();
             let kind = mxr_compose::ComposeKind::Reply {
                 reply_all: true,
                 in_reply_to: context.in_reply_to,
@@ -140,7 +142,7 @@ pub(crate) async fn handle_compose_action(
             (
                 account_id,
                 mxr_core::DraftIntent::ReplyAll,
-                account.email,
+                from,
                 kind,
                 SignatureContextData::Reply,
             )
@@ -149,15 +151,17 @@ pub(crate) async fn handle_compose_action(
             message_id,
             account_id,
         } => {
-            let account = resolve_compose_account(bg, Some(&account_id)).await?;
             let resp = ipc_call(bg, Request::PrepareForward { message_id }).await?;
-            let kind = match resp {
+            let (from, kind) = match resp {
                 Response::Ok {
                     data: ResponseData::ForwardContext { context },
-                } => mxr_compose::ComposeKind::Forward {
-                    subject: context.subject,
-                    original_context: context.forwarded_content,
-                },
+                } => (
+                    context.from,
+                    mxr_compose::ComposeKind::Forward {
+                        subject: context.subject,
+                        original_context: context.forwarded_content,
+                    },
+                ),
                 Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
                 _ => {
                     return Err(MxrError::Ipc(
@@ -168,7 +172,7 @@ pub(crate) async fn handle_compose_action(
             (
                 account_id,
                 mxr_core::DraftIntent::Forward,
-                account.email,
+                from,
                 kind,
                 SignatureContextData::Reply,
             )
@@ -178,9 +182,12 @@ pub(crate) async fn handle_compose_action(
             account_id,
             action: invite_action,
         } => {
-            let account = resolve_compose_account(bg, Some(&account_id)).await?;
             let preview =
                 fetch_invite_response_preview(bg, message_id.clone(), invite_action).await?;
+            // RSVP-with-comment must send From the same identity as the
+            // ATTENDEE we respond as (the matched owned alias), so From and
+            // ATTENDEE agree; the daemon validates it as owned on send.
+            let from = preview.attendee_email.clone();
             invite_reply = Some(mxr_core::types::InlineCalendarReply {
                 source_message_id: message_id,
                 attendee_email: preview.attendee_email.clone(),
@@ -200,7 +207,7 @@ pub(crate) async fn handle_compose_action(
             (
                 account_id,
                 mxr_core::DraftIntent::Reply,
-                account.email,
+                from,
                 kind,
                 SignatureContextData::Reply,
             )
@@ -566,6 +573,15 @@ pub(crate) async fn handle_compose_editor_status(
     match status {
         Ok(s) if s.success() => match pending_send_from_edited_draft(data).await {
             Ok(mut pending) => {
+                // Validate the effective From through the same daemon choke
+                // point the real send uses, so an unowned From is rejected at
+                // the confirm step, not only when the user hits send. A daemon
+                // *rejection* blocks; an IPC failure (daemon down) is
+                // non-fatal, mirroring the safety-check policy below.
+                if let Err(message) = resolve_pending_from(&pending, bg).await {
+                    app.report_error("From address rejected", message);
+                    return;
+                }
                 // Run the pre-send safety check before showing the
                 // modal. A failed IPC (daemon down, worker dropped)
                 // is non-fatal: the modal still opens with
@@ -590,6 +606,32 @@ pub(crate) async fn handle_compose_editor_status(
                 format!("Failed to launch editor: {error}"),
             );
         }
+    }
+}
+
+/// Resolve (and ownership-validate) the effective From for a pending send via
+/// `Request::ResolveSendFrom`. `Ok` when the daemon accepts the From (owned or
+/// primary); `Err(message)` on a daemon rejection (unowned override). An IPC
+/// failure resolves to `Ok` — like the safety check, daemon-down must not
+/// block the user from their own draft.
+async fn resolve_pending_from(
+    pending: &PendingSend,
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+) -> Result<(), String> {
+    let from = mxr_compose::draft_codec::parse_from_field(&pending.fm.from)
+        .ok()
+        .flatten();
+    match ipc_call(
+        bg,
+        Request::ResolveSendFrom {
+            account_id: pending.account_id.clone(),
+            from,
+        },
+    )
+    .await
+    {
+        Ok(Response::Error { message, .. }) => Err(message),
+        _ => Ok(()),
     }
 }
 
@@ -666,7 +708,12 @@ fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
     mxr_core::Draft {
         id: mxr_core::id::DraftId::new(),
         account_id: pending.account_id.clone(),
-        from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from),
+        // `fm.from` is already validated by `validate_draft` in
+        // `pending_send_from_edited_draft` before a PendingSend exists, so a
+        // parse error here is unreachable; treat it as "no override".
+        from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from)
+            .ok()
+            .flatten(),
         reply_headers,
         intent: pending.intent,
         to: parse_addrs(&pending.fm.to),

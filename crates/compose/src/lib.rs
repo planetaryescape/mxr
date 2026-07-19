@@ -308,6 +308,15 @@ fn validate_draft_with_mode(
         }
     }
 
+    // A non-empty From must be a syntactically valid address, in every mode —
+    // a bad value must never silently fall through to the account primary.
+    if crate::draft_codec::parse_from_field(&frontmatter.from).is_err() {
+        issues.push(ComposeValidation::Error(format!(
+            "Invalid from address: {}",
+            frontmatter.from.trim()
+        )));
+    }
+
     issues
 }
 
@@ -471,6 +480,34 @@ mod tests {
         let body = append_signature_to_body("Hello", "-- \nAlice");
 
         assert_eq!(body, "Hello\n\n-- \nAlice");
+    }
+
+    #[test]
+    fn validates_rejects_unparseable_from() {
+        let fm = ComposeFrontmatter {
+            to: "alice@example.com".into(),
+            subject: "Test".into(),
+            from: "not-an-address".into(),
+            ..Default::default()
+        };
+        let issues = validate_draft(&fm, "body");
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.is_error() && issue.to_string().contains("not-an-address")),
+            "a non-empty unparseable from must be a hard error: {:?}",
+            issue_messages(&issues)
+        );
+        // An empty from is fine (send from primary).
+        let ok = ComposeFrontmatter {
+            to: "alice@example.com".into(),
+            subject: "Test".into(),
+            from: String::new(),
+            ..Default::default()
+        };
+        assert!(validate_draft(&ok, "body")
+            .iter()
+            .all(|issue| !issue.to_string().contains("from address")));
     }
 
     #[test]

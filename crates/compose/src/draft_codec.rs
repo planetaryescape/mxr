@@ -31,17 +31,24 @@ pub fn format_addresses(addresses: &[Address]) -> String {
 }
 
 /// Parse a compose-file `from:` field into the optional per-message From
-/// override. An empty/whitespace field is `None` (send from the account
-/// primary); otherwise the first parsed address. The daemon validates that
-/// the resulting address is one the account owns before sending.
-pub fn parse_from_field(from: &str) -> Option<Address> {
+/// override. An empty/whitespace field is `Ok(None)` (send from the account
+/// primary). A non-empty field that does not yield a syntactically valid
+/// address is a hard [`ComposeError::InvalidFrom`] naming the offending value
+/// — never a silent fall-through to the primary, which would send from the
+/// wrong identity. The daemon separately validates that the resulting address
+/// is one the account *owns* before sending.
+pub fn parse_from_field(from: &str) -> Result<Option<Address>, ComposeError> {
     let trimmed = from.trim();
     if trimmed.is_empty() {
-        return None;
+        return Ok(None);
     }
-    mxr_mail_parse::parse_address_list(trimmed)
+    match mxr_mail_parse::parse_address_list(trimmed)
         .into_iter()
         .next()
+    {
+        Some(address) if address.email.contains('@') => Ok(Some(address)),
+        _ => Err(ComposeError::InvalidFrom(trimmed.to_string())),
+    }
 }
 
 /// Build editor frontmatter from a stored draft. `from` is the sending
@@ -117,7 +124,7 @@ pub fn apply_edited_compose_file(
     Ok(Draft {
         id: existing.id.clone(),
         account_id: existing.account_id.clone(),
-        from: parse_from_field(&frontmatter.from),
+        from: parse_from_field(&frontmatter.from)?,
         reply_headers,
         // A user who clears `intent:` back to the default keeps the draft's
         // original intent rather than silently downgrading a reply to a new.
@@ -183,11 +190,22 @@ mod tests {
 
     #[test]
     fn parse_from_field_maps_blank_to_none_and_address_to_some() {
-        assert!(parse_from_field("   ").is_none());
-        assert!(parse_from_field("").is_none());
-        let parsed = parse_from_field("Support <hello@example.com>").unwrap();
+        assert!(parse_from_field("   ").unwrap().is_none());
+        assert!(parse_from_field("").unwrap().is_none());
+        let parsed = parse_from_field("Support <hello@example.com>")
+            .unwrap()
+            .unwrap();
         assert_eq!(parsed.email, "hello@example.com");
         assert_eq!(parsed.name.as_deref(), Some("Support"));
+    }
+
+    #[test]
+    fn parse_from_field_rejects_a_nonempty_unparseable_value() {
+        let err = parse_from_field("not-an-address").unwrap_err();
+        assert!(
+            matches!(err, ComposeError::InvalidFrom(ref value) if value == "not-an-address"),
+            "expected InvalidFrom, got {err:?}"
+        );
     }
 
     #[test]

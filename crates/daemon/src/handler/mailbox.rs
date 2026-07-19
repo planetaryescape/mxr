@@ -346,15 +346,20 @@ pub(super) async fn respond_invite(
     }
 
     let account_id = preview_account_id(state, message_id).await?;
-    let account = state
-        .store
-        .get_account(&account_id)
-        .await?
-        .ok_or_else(|| "Account not found for calendar invite".to_string())?;
-    let from = Address {
-        name: Some(account.name),
-        email: account.email,
-    };
+    // The reply's From must be the same identity as the ATTENDEE we RSVP as:
+    // when the invite was addressed to an owned alias, respond from that alias
+    // (RFC 6047 — ATTENDEE and From should agree). Route through the shared
+    // choke point so the address is validated as owned before it reaches the
+    // provider, and named with the account's display name.
+    let from = crate::handler::mutations::resolve_from_address(
+        state,
+        &account_id,
+        Some(&Address {
+            name: None,
+            email: preview.attendee_email.clone(),
+        }),
+    )
+    .await?;
     let sender = state.send_provider_for_account(&account_id)?;
     let rfc2822_message_id = mxr_outbound::email::generate_message_id(&from);
     let reply = CalendarReplyMessage {

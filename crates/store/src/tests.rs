@@ -993,7 +993,10 @@ async fn draft_from_override_round_trips_through_get_list_and_update() {
     // Survives get_draft...
     let fetched = store.get_draft(&draft.id).await.unwrap().unwrap();
     assert_eq!(fetched.from.as_ref().unwrap().email, "hello@example.com");
-    assert_eq!(fetched.from.as_ref().unwrap().name.as_deref(), Some("Support"));
+    assert_eq!(
+        fetched.from.as_ref().unwrap().name.as_deref(),
+        Some("Support")
+    );
     // ...and list_drafts.
     let listed = store.list_drafts(&account.id).await.unwrap();
     assert_eq!(listed[0].from.as_ref().unwrap().email, "hello@example.com");

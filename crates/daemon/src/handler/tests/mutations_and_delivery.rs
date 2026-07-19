@@ -2494,3 +2494,67 @@ async fn prepare_reply_defaults_from_to_delivered_alias() {
         other => panic!("expected ReplyContext, got {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn prepare_reply_ignores_a_body_delivered_to_fake_and_defaults_to_primary() {
+    // End-to-end raw-header path: the original was delivered to an external To
+    // (no owned To/Cc), and its stored raw headers carry a smuggled
+    // Delivered-To in the *body* naming an owned alias. The reply must default
+    // to the account primary, never the body-controlled alias.
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    state
+        .store
+        .add_account_address(&account_id, "hello@example.com", false)
+        .await
+        .unwrap();
+
+    let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .account_id(account_id.clone())
+        .provider_id("body-delivered-to-fake")
+        .subject("Steer me")
+        .sender_address("Sender", "sender@example.com")
+        .recipient_address(Some("External"), "external@example.com")
+        .build();
+    let message_id = envelope.id.clone();
+    state.store.upsert_envelope(&envelope).await.unwrap();
+    state
+        .store
+        .insert_body(&mxr_core::types::MessageBody {
+            message_id: message_id.clone(),
+            text_plain: Some("hi".into()),
+            text_html: None,
+            attachments: Vec::new(),
+            fetched_at: chrono::Utc::now(),
+            metadata: mxr_core::types::MessageMetadata {
+                // Header block (before the blank line) has no Delivered-To; the
+                // fake lives in the body and must never be promoted.
+                raw_headers: Some(
+                    "Subject: Steer me\r\n\r\nDelivered-To: hello@example.com\r\nreply from my alias\r\n"
+                        .to_string(),
+                ),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+    let state = Arc::new(state);
+
+    let resp = handle_request(
+        &state,
+        &from_request(Request::PrepareReply {
+            message_id,
+            reply_all: false,
+        }),
+    )
+    .await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::ReplyContext { context },
+        }) => assert_eq!(
+            context.from, "user@example.com",
+            "must default to primary, not the body-smuggled alias"
+        ),
+        other => panic!("expected ReplyContext, got {other:?}"),
+    }
+}

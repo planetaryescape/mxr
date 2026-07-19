@@ -2585,10 +2585,11 @@ async fn prepare_reply_selects_owned_alias_from_a_genuine_delivered_to() {
 }
 
 #[tokio::test]
-async fn prepare_reply_ignores_a_folded_delivered_to_fake_and_defaults_to_primary() {
-    // NEGATIVE end-to-end: a fake `Delivered-To` folded under another header
-    // (leading whitespace) in the same headers-only shape is a continuation,
-    // not a header — the reply must default to the primary, not the alias.
+async fn prepare_reply_neutralizes_a_value_injected_delivered_to_and_defaults_to_primary() {
+    // NEGATIVE end-to-end (the root-cause path): a benign header VALUE carries
+    // an injected "\r\nDelivered-To: <owned alias>" — a provider cloning a
+    // hostile value verbatim. Sanitized at the serialization boundary so it
+    // never becomes a header; the reply defaults to the primary, not the alias.
     let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
     let account_id = state.default_account_id_opt().unwrap();
     state
@@ -2596,15 +2597,13 @@ async fn prepare_reply_ignores_a_folded_delivered_to_fake_and_defaults_to_primar
         .add_account_address(&account_id, "hello@example.com", false)
         .await
         .unwrap();
-    // A Subject value carrying a folded "Delivered-To:" line: the producer
-    // emits it as `Subject: steer\r\n Delivered-To: hello@example.com\r\n`.
     let message_id = seed_reply_source_with_raw_headers(
         &state,
         &account_id,
-        "folded-delivered-to-fake",
+        "value-injected-delivered-to",
         &[(
             "Subject".to_string(),
-            "steer\r\n Delivered-To: hello@example.com".to_string(),
+            "steer\r\nDelivered-To: hello@example.com".to_string(),
         )],
     )
     .await;
@@ -2612,6 +2611,6 @@ async fn prepare_reply_ignores_a_folded_delivered_to_fake_and_defaults_to_primar
     assert_eq!(
         reply_context_from(&state, message_id).await,
         "user@example.com",
-        "a folded fake Delivered-To must not steer the From"
+        "a value-injected Delivered-To must not steer the From"
     );
 }

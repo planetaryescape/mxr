@@ -39,10 +39,43 @@ pub enum ParseError {
     InvalidMessage,
 }
 
+/// Serialize `(name, value)` header pairs into an RFC 5322 header block.
+///
+/// This is the serialization *choke point*, so it is where we neutralize
+/// header injection: a header VALUE that embeds a CR/LF (whether from a hostile
+/// sender whose value a provider cloned verbatim, or any other source) would
+/// otherwise `format!` straight into a new column-0 line — forging an arbitrary
+/// header (`Delivered-To:`, `Bcc:`, anything). Provider APIs return already
+/// *unfolded* values, so a legitimate value contains no CR/LF; any embedded
+/// CR/LF here is anomalous and is collapsed to a single space. Names are
+/// stripped of CR/LF/`:` for the same reason. This is general hardening — every
+/// consumer of the produced block (the `mail_parser` display path, all
+/// provider parse callers, `delivered_to_addresses`) benefits.
 pub fn raw_headers_from_pairs(headers: &[(String, String)]) -> String {
     headers
         .iter()
-        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .map(|(name, value)| {
+            format!(
+                "{}: {}\r\n",
+                sanitize_header_name(name),
+                sanitize_header_value(value)
+            )
+        })
+        .collect()
+}
+
+/// Collapse any CR/LF in a header value to a single space so it can never
+/// introduce a new header line or a fake folded continuation. `\r\n` becomes
+/// one space; bare `\r` / `\n` each become one space.
+fn sanitize_header_value(value: &str) -> String {
+    value.replace("\r\n", " ").replace(['\r', '\n'], " ")
+}
+
+/// Strip CR/LF and any `:` from a header name — a name carrying those is
+/// illegitimate and could otherwise split the field or forge a header.
+fn sanitize_header_name(name: &str) -> String {
+    name.chars()
+        .filter(|ch| !matches!(ch, '\r' | '\n' | ':'))
         .collect()
 }
 
@@ -684,6 +717,48 @@ mod tests {
                 "full-message body excluded, {label}"
             );
         }
+    }
+
+    #[test]
+    fn raw_headers_from_pairs_neutralizes_value_injected_headers() {
+        // The root-cause boundary test: a header VALUE that embeds CR/LF (a
+        // provider cloning a hostile value verbatim) must not serialize into a
+        // new column-0 header line. Covers CRLF, bare CR, and bare LF.
+        for injected in ["\r\n", "\r", "\n"] {
+            let value = format!("legit{injected}Delivered-To: attacker@evil.example");
+            let block = raw_headers_from_pairs(&[("Subject".to_string(), value.clone())]);
+            assert!(
+                !block.contains("\r\nDelivered-To:"),
+                "no forged header line, injected={injected:?}: {block:?}"
+            );
+            assert_eq!(
+                block.matches("\r\n").count(),
+                1,
+                "exactly one header line, injected={injected:?}: {block:?}"
+            );
+            // Downstream parsing sees no injected header.
+            assert!(
+                delivered_to_addresses(&block).is_empty(),
+                "injected={injected:?}: {block:?}"
+            );
+            let parsed =
+                parse_headers_from_pairs(&[("Subject".to_string(), value)], Some(Utc::now()))
+                    .unwrap();
+            assert!(
+                parsed.subject.contains("legit"),
+                "subject retains its flattened value: {:?}",
+                parsed.subject
+            );
+        }
+    }
+
+    #[test]
+    fn raw_headers_from_pairs_strips_cr_lf_and_colon_from_names() {
+        let block = raw_headers_from_pairs(&[("X\r\nDelivered-To".to_string(), "v".to_string())]);
+        assert!(
+            !block.contains("\r\nDelivered-To"),
+            "a name carrying CR/LF cannot forge a header: {block:?}"
+        );
     }
 
     #[test]

@@ -74,10 +74,22 @@ impl ServerTransport for UdsServerTransport {
         // identity is mandatory — we just created this socket, so a `stat`
         // failing immediately after bind is exceptional; fail the bind rather
         // than fall back to an unconditional (successor-clobbering) unlink.
-        let identity = socket_file_identity(&self.path).ok_or_else(|| TransportError::Bind {
-            endpoint,
-            source: std::io::Error::other("could not stat the socket immediately after bind"),
-        })?;
+        let identity = match socket_file_identity(&self.path) {
+            Some(identity) => identity,
+            None => {
+                // We created this socket file microseconds ago and are about to
+                // drop the listener (closing the fd) without handing it back —
+                // so no one downstream will clean it up. Unlink it now, or the
+                // failed bind leaks a stale socket with no listener behind it.
+                let _ = std::fs::remove_file(&self.path);
+                return Err(TransportError::Bind {
+                    endpoint,
+                    source: std::io::Error::other(
+                        "could not stat the socket immediately after bind",
+                    ),
+                });
+            }
+        };
         Ok(Box::new(UdsListener {
             path: self.path.clone(),
             listener: Some(listener),

@@ -11,7 +11,6 @@
 //! [`MemoryListener::accept`] pops the server end.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
@@ -30,45 +29,65 @@ use crate::{
 /// duplex carrier).
 const MEMORY_BUFFER: usize = 16 * 1024 * 1024 + 1024;
 
+/// Queue state guarded by one lock so `closed` and `pending` mutate atomically.
+struct Queue {
+    pending: VecDeque<DuplexStream>,
+    closed: bool,
+}
+
 /// Shared rendezvous between a memory transport's connectors and its listener.
 struct Rendezvous {
-    pending: Mutex<VecDeque<DuplexStream>>,
+    queue: Mutex<Queue>,
     ready: Notify,
-    closed: AtomicBool,
 }
 
 impl Rendezvous {
     fn new() -> Self {
         Self {
-            pending: Mutex::new(VecDeque::new()),
+            queue: Mutex::new(Queue {
+                pending: VecDeque::new(),
+                closed: false,
+            }),
             ready: Notify::new(),
-            closed: AtomicBool::new(false),
         }
     }
 
-    fn push(&self, server_end: DuplexStream) {
-        self.pending
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push_back(server_end);
+    /// Enqueue a fresh connection's server end, but only if the listener is
+    /// still accepting. The closed-check and the push happen under the SAME
+    /// lock `stop_accepting` takes, so a connect can never slip an endpoint in
+    /// after closure (which `accept` would then refuse, hanging the client).
+    /// Returns `false` (rejected) if already closed.
+    fn enqueue(&self, server_end: DuplexStream) -> bool {
+        let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        if queue.closed {
+            return false;
+        }
+        queue.pending.push_back(server_end);
+        drop(queue);
         self.ready.notify_one();
+        true
     }
 
-    fn try_pop(&self) -> Option<DuplexStream> {
-        self.pending
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .pop_front()
+    /// Pop the next pending server end, or report that the listener has closed.
+    /// `Ok(None)` means "empty, keep waiting".
+    fn take(&self) -> std::result::Result<Option<DuplexStream>, ()> {
+        let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        if queue.closed {
+            return Err(());
+        }
+        Ok(queue.pending.pop_front())
     }
 
-    fn is_closed(&self) -> bool {
-        self.closed.load(Ordering::SeqCst)
-    }
-
-    /// Stop accepting: mark closed and wake any parked `accept` so it observes
-    /// the closure and returns.
+    /// Stop accepting: mark closed AND drop every pending server end, so any
+    /// connector that raced in just before closure observes a closed channel
+    /// (EOF/broken pipe) rather than a client that hangs forever unaccepted.
+    /// Then wake any parked `accept` so it observes the closure and returns.
     fn close(&self) {
-        self.closed.store(true, Ordering::SeqCst);
+        {
+            let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+            queue.closed = true;
+            queue.pending.clear();
+        }
         self.ready.notify_waiters();
     }
 }
@@ -143,18 +162,18 @@ struct MemoryListener {
 impl TransportListener for MemoryListener {
     async fn accept(&mut self) -> Result<(BoxedIo, PeerInfo)> {
         loop {
-            if self.inner.is_closed() {
-                return Err(TransportError::Accept(std::io::Error::new(
-                    std::io::ErrorKind::NotConnected,
-                    "listener has stopped accepting",
-                )));
-            }
-            if let Some(server_end) = self.inner.try_pop() {
+            match self.inner.take() {
+                Err(()) => {
+                    return Err(TransportError::Accept(std::io::Error::new(
+                        std::io::ErrorKind::NotConnected,
+                        "listener has stopped accepting",
+                    )));
+                }
                 // In-memory: the peer is this process — an explicit
                 // `LocalProcess`, never a fabricated `UnixPeer`.
-                return Ok((Box::new(server_end), PeerInfo::local()));
+                Ok(Some(server_end)) => return Ok((Box::new(server_end), PeerInfo::local())),
+                Ok(None) => self.inner.ready.notified().await,
             }
-            self.inner.ready.notified().await;
         }
     }
 
@@ -183,8 +202,10 @@ impl Connector for MemoryConnector {
     async fn connect(&self) -> Result<BoxedIo> {
         // Once the listener has stopped accepting, a connect must fail (like a
         // UDS connection-refused) rather than hand back a client whose server
-        // end will never be accepted.
-        if self.inner.is_closed() {
+        // end will never be accepted. The closed-check and enqueue are atomic
+        // inside `enqueue`, so this can't race a concurrent `stop_accepting`.
+        let (server_end, client_end) = tokio::io::duplex(MEMORY_BUFFER);
+        if !self.inner.enqueue(server_end) {
             return Err(TransportError::Connect {
                 endpoint: "memory:".to_string(),
                 source: std::io::Error::new(
@@ -193,8 +214,6 @@ impl Connector for MemoryConnector {
                 ),
             });
         }
-        let (server_end, client_end) = tokio::io::duplex(MEMORY_BUFFER);
-        self.inner.push(server_end);
         Ok(Box::new(client_end))
     }
 
@@ -212,6 +231,8 @@ mod tests {
     )]
 
     use super::*;
+    use std::time::Duration;
+    use tokio::io::AsyncReadExt;
 
     /// Mirror of the UDS `stop_accepting` contract test: after `stop_accepting`,
     /// a connect fails (connection-refused-equivalent) rather than handing back
@@ -245,5 +266,37 @@ mod tests {
             listener.accept().await.is_err(),
             "accept must fail after stop_accepting"
         );
+    }
+
+    /// The race the atomic `enqueue`/`close` closes: a connector that enqueued
+    /// its server end BEFORE `stop_accepting` (but was never accepted) must not
+    /// hang. `stop_accepting` drops the pending server end, so the raced
+    /// client's channel reads EOF. Driven deterministically (no sleeps): the
+    /// EOF is observable the instant the server end is dropped.
+    #[tokio::test]
+    async fn raced_pending_connection_sees_closed_channel_not_a_hang() {
+        let transport = MemoryTransport::new();
+        let connector = transport.connector();
+        let mut listener = transport.bind().await.unwrap();
+
+        // Connect (server end enqueued) but do NOT accept it.
+        let mut raced = connector.connect().await.expect("connect before stop");
+
+        // stop_accepting drains pending: the enqueued server end is dropped, so
+        // the raced client end observes a closed channel.
+        listener.stop_accepting().await;
+
+        let mut buf = [0u8; 1];
+        let read = tokio::time::timeout(Duration::from_secs(5), raced.read(&mut buf))
+            .await
+            .expect("read must not hang")
+            .expect("read completes");
+        assert_eq!(
+            read, 0,
+            "the raced connector's channel must be closed (EOF), never left hanging"
+        );
+
+        // And accept now reports closed rather than blocking forever.
+        assert!(listener.accept().await.is_err(), "accept fails after close");
     }
 }

@@ -162,6 +162,28 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
 
+  # examples/transport-skeleton is likewise excluded from the root workspace so
+  # it stays a copyable standalone template; a transport-trait refactor could rot
+  # it silently. Build it here so the transport example fails loudly instead.
+  transport-skeleton:
+    name: Transport Skeleton Example
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
+    defaults:
+      run:
+        working-directory: examples/transport-skeleton
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: examples/transport-skeleton
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
   release-gates:
     name: Release Gate Scripts
     runs-on: blacksmith-4vcpu-ubuntu-2404

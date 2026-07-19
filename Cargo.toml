@@ -131,6 +131,7 @@ members = [
 default-members = ["."]
 exclude = [
     "examples/adapter-skeleton",
+    "examples/transport-skeleton",
     "fuzz",
 ]
 

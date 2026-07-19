@@ -1,0 +1,22 @@
+[package]
+name = "mxr-transport-skeleton"
+version = "0.1.0"
+edition = "2021"
+description = "Example mxr transport adapter"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[workspace]
+
+[dependencies]
+async-trait = "0.1"
+mxr-transport = { path = "../../crates/transport" }
+tokio = { version = "1", features = ["io-util"] }
+
+[dev-dependencies]
+# The conformance feature exposes `mxr_transport::conformance::*`. Enable it on
+# the dev-dependency so the commented `#[tokio::test]` below can prove this
+# adapter upholds the transport contract — the provider kit's
+# `mxr-provider-fake` conformance pattern, for transports.
+mxr-transport = { path = "../../crates/transport", features = ["conformance"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "io-util"] }

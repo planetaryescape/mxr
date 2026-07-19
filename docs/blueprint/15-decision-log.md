@@ -501,3 +501,48 @@ Superseded by D049. Bodies and body text are now indexed at sync time.
 **Client adoption**: the CLI builds its connector from `MXR_DAEMON_ADDR` (`unix://`/`tcp://`/`cmd://`); autostart and the stale-socket probe are skipped for the non-unix schemes (they manage their own reachability). TUI/web/MCP route socket resolution through the shared `TransportAddr::resolve_unix_socket` (re-exported from `mxr-client`) — `unix://` only, `tcp://`/`cmd://` rejected with a clear message (support can follow demand).
 
 **Conformance**: scenarios 1–13 gain a fifth harness (real TCP+token, post-`Authenticate`); scenario 14 is a bespoke auth matrix (pre-auth reject / bad token reject / good token unlock) plus no-auth pins for the four implicit-trust transports.
+
+---
+
+## D055: Abstract the byte stream, not the RPC layer (transport-adapters)
+
+**Chosen**: A transport adapter produces a connected `AsyncRead + AsyncWrite` byte stream plus peer/auth evidence — nothing more. The wire protocol (`IpcMessage` / `Request` / `ResponseData` / `DaemonEvent` + `IpcCodec` framing) is frozen above every adapter.
+
+**Considered**: A typed `Transport` trait over Rust-typed messages (tarpc's model); abstracting the RPC layer itself.
+
+**Why byte-stream-level**:
+- The ecosystem premium is on the protocol, not transport pluggability. Podman v1 shipped a novel RPC layer (varlink); the ecosystem wouldn't rewrite Docker-API tooling and v2 deleted it for Docker-compatible REST over UDS. Freezing the message protocol and abstracting only the listener/dialer is the pattern successful projects (Docker, LSP, MCP, systemd) converge on.
+- A typed-RPC transport (tarpc) excludes curl/jq/scripts/non-Rust agents — directly against mxr's CLI-first JSON shape. A byte stream carries the same JSON frames everywhere, so every adapter is scriptable.
+- The serve core (lanes, task-per-connection, event fan-out, panic guard, `EventsLagged`) stays shared and generic over the stream; adapters only produce connections, so backpressure and the conformance corpus never fragment per adapter.
+
+**Trade-offs accepted**: adapters cannot negotiate protocol shape per transport — intentional; the protocol is the invariant.
+
+---
+
+## D056: Auth evidence is part of the transport contract (`PeerInfo`) (transport-adapters)
+
+**Chosen**: `TransportListener::accept` returns `(BoxedIo, PeerInfo)`; `PeerInfo` carries `PeerAuth` — `UnixPeer { uid, gid, pid }` | `LocalProcess` | `TokenRequired` (additive). The transport surfaces identity evidence; the serve core decides policy.
+
+**Considered**: accept returns bytes only, and the daemon re-derives peer identity out-of-band.
+
+**Why in the contract**:
+- The Tailscale lesson (`safesocket`): identity evidence is per-transport (UDS peer creds, a pipe SID, a token) and must be surfaced by the abstraction, not just bytes. A transport that hides it forces the daemon to special-case each carrier.
+- `UnixPeer` always means the OS reported real credentials for this connection — a `peer_cred` failure fails that connection closed rather than fabricating the variant, so phase-5's token gate can match `UnixPeer` and *know* the creds are genuine.
+
+**Trade-offs accepted**: a new transport with a novel identity kind adds a `PeerAuth` variant. Additive by construction — existing variants are undisturbed.
+
+---
+
+## D057: Transport-contract conformance in `mxr-transport`; protocol conformance stays in the daemon (transport-adapters, phase 6)
+
+**Chosen**: Split the reusable conformance suite. `mxr-transport` (feature `conformance`) exports `run_transport_conformance` / `run_token_auth_conformance` — the **transport contract** (bind/accept/`stop_accepting`/`cleanup`, cancel-safety, a bidirectional stream, `PeerInfo`↔capability coherence), protocol-free. The daemon keeps the **protocol** corpus (`crates/daemon/src/serve/ipc_conformance.rs`) — id correlation, out-of-order completion, lane back-pressure, event fan-out, framing edges, the `Authenticate` gate.
+
+**Considered**: One suite. Per the phase-6 spec's original 6a option, export a minimal fake-provider-backed `AppState` + serve loop from `mxr-test-support` so out-of-tree adapters run the *protocol* corpus against their own transport.
+
+**Why the split**:
+- An out-of-tree transport crate must prove conformance "without reading daemon source" and "depending only on `mxr-transport`" (phase-6 exit criteria). Requiring a daemon serve core + `AppState` + a fake provider would pull essentially the whole daemon into an adapter's dev-dependencies — the opposite of a leaf-crate kit.
+- Protocol behavior is transport-independent by construction, and the in-tree corpus already proves it by running every scenario over the real UDS / in-memory / TCP transports. An adapter author re-running it would test the daemon, not their adapter. What they actually need to prove is that their byte stream and its lifecycle behave — exactly the transport suite.
+- **The transport suite covers the protocol's byte-envelope requirement**, so the split leaves nothing untested out-of-tree. `run_transport_conformance` round-trips a payload at the codec's 16 MiB max-frame size each way (a documented `MAX_PROTOCOL_FRAME_BYTES` const mirroring `crates/protocol/src/codec.rs`, so the leaf crate needs no `mxr-protocol` dependency). A transport capped below the cap would pass a small round-trip yet fail the daemon's near-limit-frame scenario in production — the large-frame check catches that at the transport layer. It also asserts tri-coherence between `connector.auth_token()`, `capabilities.auth.token`, and the accepted `PeerAuth` (a mismatch would make the IPC client send an unwanted `Authenticate` handshake), and cancel-safety across a parked-then-dropped `accept`.
+- Mirrors the provider kit's `run_sync_conformance<P>` shape: generic functions in the reference-impl leaf crate, consumed via one dev-dependency and a `#[tokio::test]`. Proven end-to-end by an out-of-tree scratch crate that implements its own transport and passes the suite (including the 16 MiB envelope) depending only on `mxr-transport`.
+
+**Trade-offs accepted**: two conformance entry points instead of one. Justified — they test genuinely different contracts (byte-stream lifecycle vs. protocol semantics) and have different, correct homes.

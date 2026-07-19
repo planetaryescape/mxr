@@ -2614,3 +2614,33 @@ async fn prepare_reply_neutralizes_a_value_injected_delivered_to_and_defaults_to
         "a value-injected Delivered-To must not steer the From"
     );
 }
+
+#[tokio::test]
+async fn prepare_reply_ignores_a_synthesized_name_delivered_to_and_defaults_to_primary() {
+    // NEGATIVE end-to-end: a ":Delivered-To" *name* tries to synthesize a real
+    // header by relying on strip-the-colon rewriting. Reject-don't-rewrite
+    // drops the pair, so the reply defaults to the primary, not the alias.
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    state
+        .store
+        .add_account_address(&account_id, "hello@example.com", false)
+        .await
+        .unwrap();
+    let message_id = seed_reply_source_with_raw_headers(
+        &state,
+        &account_id,
+        "synthesized-name-delivered-to",
+        &[
+            ("Received".to_string(), "from mx.example".to_string()),
+            (":Delivered-To".to_string(), "hello@example.com".to_string()),
+        ],
+    )
+    .await;
+    let state = Arc::new(state);
+    assert_eq!(
+        reply_context_from(&state, message_id).await,
+        "user@example.com",
+        "a synthesized-name Delivered-To must not steer the From"
+    );
+}

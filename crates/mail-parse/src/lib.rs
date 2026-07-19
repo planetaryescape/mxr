@@ -47,36 +47,37 @@ pub enum ParseError {
 /// otherwise `format!` straight into a new column-0 line — forging an arbitrary
 /// header (`Delivered-To:`, `Bcc:`, anything). Provider APIs return already
 /// *unfolded* values, so a legitimate value contains no CR/LF; any embedded
-/// CR/LF here is anomalous and is collapsed to a single space. Names are
-/// stripped of CR/LF/`:` for the same reason. This is general hardening — every
-/// consumer of the produced block (the `mail_parser` display path, all
-/// provider parse callers, `delivered_to_addresses`) benefits.
+/// CR/LF here is anomalous and is collapsed to a single space. A pair whose
+/// NAME is not a valid RFC 5322 field name is dropped entirely (see
+/// [`is_valid_header_name`]). This is general hardening — every consumer of the
+/// produced block (the `mail_parser` display path, all provider parse callers,
+/// `delivered_to_addresses`) benefits.
 pub fn raw_headers_from_pairs(headers: &[(String, String)]) -> String {
     headers
         .iter()
-        .map(|(name, value)| {
-            format!(
-                "{}: {}\r\n",
-                sanitize_header_name(name),
-                sanitize_header_value(value)
-            )
-        })
+        .filter(|(name, _)| is_valid_header_name(name))
+        .map(|(name, value)| format!("{name}: {}\r\n", sanitize_header_value(value)))
         .collect()
 }
 
 /// Collapse any CR/LF in a header value to a single space so it can never
 /// introduce a new header line or a fake folded continuation. `\r\n` becomes
-/// one space; bare `\r` / `\n` each become one space.
+/// one space; bare `\r` / `\n` each become one space. (Safe because it can
+/// never introduce a `:` and thus can't synthesize a header field.)
 fn sanitize_header_value(value: &str) -> String {
     value.replace("\r\n", " ").replace(['\r', '\n'], " ")
 }
 
-/// Strip CR/LF and any `:` from a header name — a name carrying those is
-/// illegitimate and could otherwise split the field or forge a header.
-fn sanitize_header_name(name: &str) -> String {
-    name.chars()
-        .filter(|ch| !matches!(ch, '\r' | '\n' | ':'))
-        .collect()
+/// A valid RFC 5322 field name: non-empty and every byte a printable ASCII
+/// char (0x21–0x7E) other than `:`, which excludes leading/trailing/embedded
+/// whitespace, CR/LF, and the field separator.
+///
+/// We REJECT an invalid name (the caller drops the whole pair) rather than
+/// rewrite it: *stripping* CR/LF or `:` from a name could SYNTHESIZE a valid
+/// header — `":Delivered-To"` → `"Delivered-To"`, `"\r\nDelivered-To"` →
+/// `"Delivered-To"` — which is itself a fresh injection vector.
+fn is_valid_header_name(name: &str) -> bool {
+    !name.is_empty() && name.bytes().all(|b| matches!(b, 0x21..=0x7E) && b != b':')
 }
 
 pub fn parse_headers_from_pairs(
@@ -753,12 +754,41 @@ mod tests {
     }
 
     #[test]
-    fn raw_headers_from_pairs_strips_cr_lf_and_colon_from_names() {
-        let block = raw_headers_from_pairs(&[("X\r\nDelivered-To".to_string(), "v".to_string())]);
-        assert!(
-            !block.contains("\r\nDelivered-To"),
-            "a name carrying CR/LF cannot forge a header: {block:?}"
-        );
+    fn raw_headers_from_pairs_drops_pairs_with_invalid_names() {
+        // Rejecting (not rewriting) an invalid name is essential: stripping
+        // would SYNTHESIZE a real header. Each of these must drop the pair so
+        // no usable Delivered-To is produced.
+        for bad_name in [
+            "\r\nDelivered-To", // CR/LF prefix
+            ":Delivered-To",    // leading colon
+            " Delivered-To",    // leading whitespace
+            "Delivered-To ",    // trailing whitespace
+            "Deliv ered-To",    // embedded whitespace
+            "",                 // empty
+        ] {
+            let block = raw_headers_from_pairs(&[(
+                bad_name.to_string(),
+                "alias@owned.example".to_string(),
+            )]);
+            assert!(
+                block.is_empty(),
+                "invalid name {bad_name:?} must drop: {block:?}"
+            );
+            assert!(
+                delivered_to_addresses(&block).is_empty(),
+                "name {bad_name:?}: {block:?}"
+            );
+        }
+
+        // A genuine name in the same batch still serializes.
+        let block = raw_headers_from_pairs(&[
+            (
+                ":Delivered-To".to_string(),
+                "attacker@evil.example".to_string(),
+            ),
+            ("Delivered-To".to_string(), "real@owned.example".to_string()),
+        ]);
+        assert_eq!(delivered_to_addresses(&block), vec!["real@owned.example"]);
     }
 
     #[test]

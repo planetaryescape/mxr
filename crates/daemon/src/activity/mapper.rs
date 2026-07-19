@@ -737,7 +737,7 @@ pub fn map_request(
         | Request::GenerateBugReport { .. } => {
             skip_activity!("diagnostics", "diagnostics requests are not activity");
         }
-        Request::GetStatus | Request::Ping | Request::Shutdown => {
+        Request::GetStatus | Request::Ping | Request::Shutdown | Request::Authenticate { .. } => {
             skip_activity!(
                 "daemon_lifecycle",
                 "daemon lifecycle requests are not activity"

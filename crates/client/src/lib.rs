@@ -41,6 +41,20 @@ use mxr_protocol::{
 use mxr_transport::{BoxedIo, Connector, TransportError, UnixConnector};
 use tokio_util::codec::Framed;
 
+// Re-exported so unix-only clients (TUI, web bridge, MCP) — which already depend
+// on this crate — can resolve `MXR_DAEMON_ADDR` through the one shared resolver
+// without taking a direct `mxr-transport` dependency.
+pub use mxr_transport::TransportAddr;
+
+/// Resolve `MXR_DAEMON_ADDR` to a Unix socket path for unix-only clients. Thin
+/// wrapper over [`TransportAddr::resolve_unix_socket`] so callers depend only on
+/// `mxr-client`.
+pub fn resolve_unix_socket(
+    default_socket: std::path::PathBuf,
+) -> Result<std::path::PathBuf, TransportError> {
+    TransportAddr::resolve_unix_socket(default_socket)
+}
+
 /// One vocabulary for every way a daemon exchange can fail.
 ///
 /// Consumers map these onto their own error surfaces (the TUI's retry
@@ -163,12 +177,36 @@ impl IpcConnection {
         source: ClientKind,
     ) -> Result<Self, ClientError> {
         let io = connector.connect().await?;
-        Ok(Self {
+        let mut conn = Self {
             framed: Framed::new(io, IpcCodec::new()),
             next_id: AtomicU64::new(1),
             source,
             default_timeout: None,
-        })
+        };
+        // Token-bearing transports (the TCP-loopback adapter) authenticate
+        // in-band as the FIRST request on the connection. The byte-stream seam
+        // stays protocol-free — the connector only advertises its token; the
+        // framed handshake lives here. Implicit-trust transports (UDS, memory,
+        // stdio, cmd) advertise no token and skip this entirely.
+        if let Some(token) = connector.auth_token() {
+            conn.authenticate(token.to_string()).await?;
+        }
+        Ok(conn)
+    }
+
+    /// Perform the in-band token handshake: send `Authenticate` and require an
+    /// `Authenticated` reply. Any daemon-side rejection surfaces as
+    /// [`ClientError::Daemon`] with [`IpcErrorKind::Auth`]; an unexpected
+    /// success payload is a protocol error.
+    async fn authenticate(&mut self, token: String) -> Result<(), ClientError> {
+        match self.request(Request::Authenticate { token }).await? {
+            ResponseData::Authenticated => Ok(()),
+            other => Err(ClientError::Daemon {
+                message: format!("unexpected response to Authenticate: {other:?}"),
+                kind: IpcErrorKind::Auth,
+                retryable: false,
+            }),
+        }
     }
 
     /// Set the timeout applied by [`Self::request`] (per-connection default).

@@ -30,6 +30,11 @@ For the active `<instance>`, the default roots are:
 `MXR_BRIDGE_TOKEN_PATH`, and `MXR_BRIDGE_PORT_PATH` override individual
 paths when needed.
 
+`MXR_DAEMON_ADDR` selects which transport the `mxr` CLI dials:
+`unix://<path>` (default), `tcp://<host:port>`, or `cmd://<command>` (e.g.
+`cmd://ssh -T host mxr daemon dial-stdio`). `MXR_DAEMON_TOKEN` supplies the
+daemon bearer token for `tcp://`. See [`transports`](#transports).
+
 ## Top-level sections
 
 ```toml
@@ -41,6 +46,7 @@ paths when needed.
 [logging]
 [appearance]
 [bridge]
+[transports.tcp]
 [notifications.chimes]
 [llm]
 [llm.overrides.answer_coverage]
@@ -447,6 +453,50 @@ HTTP bridge configuration.
 - `host_allowlist` — additional hostnames for future non-loopback bridge mode; the managed daemon refuses non-loopback binds today.
 - `auto_local_token` — when `true` (default), `GET /api/v1/auth/local-token` returns the bridge token to callers whose TCP peer is a loopback IP. Lets the web SPA bootstrap on the same machine without a paste prompt. Set to `false` for paranoid setups that want strict bearer auth even on loopback. Non-loopback peers never receive the token regardless of this setting.
 - `token_path` — path to the auth token file. Omit it to use `<config_dir>/bridge-token` for the active runtime identity.
+
+## `transports`
+
+The daemon always serves a Unix domain socket. Additional client transports are
+opt-in here. Only the CLI dials `tcp://` / `cmd://`; the TUI, web bridge, and MCP
+server use `unix://` only.
+
+```toml
+[transports.tcp]
+enabled = false        # opt-in; when true, bind a loopback TCP listener
+bind = "127.0.0.1"     # loopback only — 127.0.0.1 or ::1; non-loopback is refused
+port = 42830           # default; one above the bridge's 42829
+```
+
+- `transports.tcp.enabled` — bind a loopback TCP listener (default `false`).
+- `transports.tcp.bind` — loopback address only; a non-loopback bind is refused at startup.
+- `transports.tcp.port` — TCP port (default `42830`).
+
+TCP has no OS-level peer identity, so it requires a bearer token. A client sends
+an in-band `Authenticate` handshake first; until it succeeds the daemon answers
+every request with an `auth` error and sends no events. Connect with:
+
+```bash
+MXR_DAEMON_ADDR=tcp://127.0.0.1:42830 MXR_DAEMON_TOKEN=… mxr status
+```
+
+This IPC token is a **different secret** from the HTTP bridge token: the bridge
+hands its token to any loopback caller (`GET /api/v1/auth/local-token`) to
+bootstrap the web SPA, so it must not double as the raw-IPC credential.
+Precedence: `MXR_DAEMON_TOKEN` (env) beats the dedicated file at
+`<config_dir>/daemon-token` (mode 0600, created on first daemon start;
+`MXR_DAEMON_TOKEN_PATH` overrides). The client also refuses to dial a
+non-loopback `tcp://` address, so the token is never sent to a remote host in
+plaintext.
+
+For off-machine access there is no in-daemon remote transport by design; tunnel
+over SSH with `cmd://`:
+
+```bash
+MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio" mxr status
+```
+
+`cmd://` splits its command on whitespace only — no shell quoting; wrap a command
+that needs quoted arguments in a script.
 
 ## `notifications.chimes`
 

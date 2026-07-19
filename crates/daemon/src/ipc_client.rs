@@ -19,10 +19,15 @@ pub struct IpcClient {
 
 impl IpcClient {
     pub async fn connect() -> anyhow::Result<Self> {
-        // Route through the daemon's single socket-resolution source so the
-        // request path agrees with autostart / the liveness probe / doctor
-        // (honors MXR_DAEMON_ADDR; behavior unchanged when unset).
-        Self::connect_to(&crate::server::resolve_daemon_socket()?).await
+        // Build the connector from MXR_DAEMON_ADDR (unix:// default, tcp://
+        // loopback+token, or cmd:// spawn-and-pipe) so the request path agrees
+        // with autostart / the liveness probe / doctor. A tcp:// connector
+        // authenticates automatically inside `connect_with` when it has a token.
+        let connector = crate::server::build_cli_connector()?;
+        let conn = IpcConnection::connect_with(connector.as_ref(), ClientKind::Cli)
+            .await
+            .map_err(map_connect_error)?;
+        Ok(Self { conn })
     }
 
     pub async fn connect_to(socket_path: &Path) -> anyhow::Result<Self> {
@@ -80,6 +85,31 @@ impl IpcClient {
                 return Ok(event);
             }
         }
+    }
+}
+
+/// Map a connect-time failure (over any transport) onto CLI-friendly guidance.
+/// A `unix://` connect failure keeps the "Is the daemon running?" hint; a
+/// `tcp://` auth rejection points at the token; everything else falls back to
+/// the request-error mapper.
+fn map_connect_error(error: ClientError) -> anyhow::Error {
+    match error {
+        ClientError::Connect { path, source } => anyhow::anyhow!(
+            "Cannot connect to daemon at {}: {}. Is the daemon running? Try: mxr daemon",
+            path.display(),
+            source
+        ),
+        ClientError::Transport(source) => anyhow::anyhow!(
+            "{source}. Is the daemon running and reachable at MXR_DAEMON_ADDR?"
+        ),
+        ClientError::Daemon {
+            kind: IpcErrorKind::Auth,
+            message,
+            ..
+        } => anyhow::anyhow!(
+            "Daemon authentication failed: {message}. Set MXR_DAEMON_TOKEN (or check the daemon token file)."
+        ),
+        other => map_request_error(other),
     }
 }
 

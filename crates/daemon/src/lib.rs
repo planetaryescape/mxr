@@ -71,8 +71,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         }
     }
 
-    // `dial-stdio` owns stdout for raw socket bytes, so it must never install a
-    // stdout tracing layer even if `--foreground` is also passed.
+    // `dial-stdio` and `--stdio` both own stdout for raw frames, so they must
+    // never install a stdout tracing layer even if `--foreground` is passed.
     let is_dial_stdio = matches!(
         cli.command,
         Some(Command::Daemon {
@@ -80,13 +80,15 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             ..
         })
     );
+    let is_stdio_server = matches!(cli.command, Some(Command::Daemon { stdio: true, .. }));
     let is_foreground = matches!(
         cli.command,
         Some(Command::Daemon {
             foreground: true,
             ..
         })
-    ) && !is_dial_stdio;
+    ) && !is_dial_stdio
+        && !is_stdio_server;
     init_tracing(is_foreground)?;
 
     match cli.command {
@@ -95,6 +97,13 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             ..
         }) => {
             commands::daemon::run().await?;
+        }
+        Some(Command::Daemon {
+            action: None,
+            stdio: true,
+            ..
+        }) => {
+            crate::server::run_stdio().await?;
         }
         Some(Command::Daemon {
             action: None,

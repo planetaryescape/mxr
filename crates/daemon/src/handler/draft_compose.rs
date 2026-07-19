@@ -34,6 +34,17 @@ pub(super) async fn draft_compose(
     register: Option<VoiceRegisterData>,
     length_hint: Option<DraftLengthHintData>,
 ) -> HandlerResult {
+    // The task line is never truncated, so an unbounded instruction would break
+    // the assembled-prompt ceiling. Reject it here at the validation layer.
+    let max_instruction = draft_context::max_instruction_chars();
+    if instruction.len() > max_instruction {
+        return Err(crate::handler::HandlerError::Message(format!(
+            "draft instruction is too long: {} bytes exceeds the {max_instruction} byte limit \
+             (assembled-prompt ceiling minus fixed scaffolding)",
+            instruction.len()
+        )));
+    }
+
     // Reply to an explicit thread (reader / quick-reply).
     if let Some(thread_id) = thread_id.as_ref() {
         let envelopes = state.store.get_thread_envelopes(thread_id).await?;
@@ -582,6 +593,36 @@ mod tests {
         let (register, note) = draft_suggestion(response);
         assert_eq!(register, Some(VoiceRegisterData::Casual));
         assert!(note.unwrap().contains("casual"));
+    }
+
+    // An oversized instruction is rejected at the validation layer so the
+    // never-truncated task line can't break the assembled-prompt ceiling.
+    #[tokio::test]
+    async fn oversized_instruction_is_rejected() {
+        let state = AppState::in_memory().await.unwrap();
+        let account_id = state.default_account_id();
+        let limit = draft_context::max_instruction_chars();
+        let huge = "x".repeat(limit + 1);
+        let err = draft_compose(
+            &state,
+            Some(&account_id),
+            Some(Address {
+                name: None,
+                email: "a@b.com".to_string(),
+            }),
+            &huge,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("oversized instruction must be rejected");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("too long") && msg.contains(&limit.to_string()),
+            "error must state the limit: {msg}"
+        );
     }
 
     // Behavior 6: a manual register overrides the inferred tone.

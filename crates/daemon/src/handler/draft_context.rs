@@ -50,6 +50,36 @@ const GROUNDING_HEADER: &str = "[PRIOR SENT MESSAGES TO MATCH MY VOICE]\n";
 const THREAD_HEADER: &str = "[THREAD SO FAR]\n";
 const TASK_HEADER: &str = "[TASK]\n";
 const SECTION_SEP: &str = "\n\n";
+/// Bytes reserved for the task-line prefix when bounding an instruction —
+/// covers "Now draft my reply. Length: medium. Instruction: " /
+/// "Write a new email to <recipient>. Length: medium. Purpose: " plus a
+/// bounded recipient label.
+const TASK_PREFIX_RESERVE: usize = 512;
+
+/// Maximum byte length of a draft instruction/purpose. The task line is never
+/// truncated (it must reach the model intact), so an unbounded instruction
+/// would break the assembled-message ceiling; the daemon rejects anything
+/// longer. Derived from the ceiling minus the worst-case fixed scaffolding
+/// (all three wrapped blocks present) and the reserved task-line prefix, so the
+/// postcondition `assembled message <= ASSEMBLED_MESSAGE_BUDGET_CHARS` holds.
+pub(crate) fn max_instruction_chars() -> usize {
+    let wrap_overhead = UNTRUSTED_MAIL_BEGIN.len() + UNTRUSTED_MAIL_END.len() + "\n\n".len();
+    let scaffolding = WRITING_CONSTRAINTS_HEADER.len()
+        + writing_constraints().len()
+        + SECTION_SEP.len()
+        + TASK_HEADER.len()
+        + VOICE_CONTEXT_HEADER.len()
+        + VOICE_CONTEXT_INSTRUCTION.len()
+        + wrap_overhead
+        + SECTION_SEP.len()
+        + GROUNDING_HEADER.len()
+        + wrap_overhead
+        + SECTION_SEP.len()
+        + THREAD_HEADER.len()
+        + wrap_overhead
+        + "\n".len();
+    ASSEMBLED_MESSAGE_BUDGET_CHARS.saturating_sub(scaffolding + TASK_PREFIX_RESERVE)
+}
 
 /// The relationship/voice context plus the inferred tone/length for a draft.
 pub(crate) struct DraftContext {
@@ -913,6 +943,42 @@ mod tests {
             "assembled prompt is {} bytes, over the {} ceiling",
             message.len(),
             ASSEMBLED_MESSAGE_BUDGET_CHARS
+        );
+    }
+
+    #[test]
+    fn assemble_hits_ceiling_with_all_three_blocks_nonempty() {
+        // Worst case for the byte accounting: all three wrapped blocks are
+        // emitted (so all their scaffolding counts). Small transcript/grounding
+        // pass through in full; a huge relationship is the filler that the
+        // budget split truncates to consume the remainder — landing the
+        // assembled prompt exactly on the ceiling.
+        let relationship = "R".repeat(100_000);
+        let grounding = "G".repeat(100);
+        let transcript = "T".repeat(100);
+        let message = assemble_user_message_within_budget(
+            &relationship,
+            &grounding,
+            &transcript,
+            "task",
+            ASSEMBLED_MESSAGE_BUDGET_CHARS,
+        );
+        // All three blocks are present and independently wrapped.
+        assert_eq!(
+            message.match_indices(mxr_llm::UNTRUSTED_MAIL_BEGIN).count(),
+            3,
+            "all three blocks must be emitted and wrapped"
+        );
+        assert!(message.contains(&"T".repeat(100)), "transcript in full");
+        assert!(message.contains(&"G".repeat(100)), "grounding in full");
+        assert!(
+            message.contains("[...relationship context truncated...]"),
+            "relationship is the truncated filler"
+        );
+        assert_eq!(
+            message.len(),
+            ASSEMBLED_MESSAGE_BUDGET_CHARS,
+            "assembled prompt should fill the ceiling exactly"
         );
     }
 

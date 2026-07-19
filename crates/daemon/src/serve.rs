@@ -20,14 +20,17 @@
 //! runtime cost and no client-visible change; adapters (phase 4) reuse it
 //! unchanged over other carriers.
 //!
-//! The conformance corpus ([`ipc_conformance`]) exercises this core over two
-//! carriers — the UDS socketpair and an in-memory `tokio::io::duplex` — proving
-//! the scenarios are carrier-independent, which is the phase-3 premise.
+//! The conformance corpus ([`ipc_conformance`]) exercises this core over four
+//! harnesses — the UDS socketpair and in-memory `tokio::io::duplex` carriers,
+//! plus the real `UdsServerTransport` and `MemoryTransport` through their
+//! production `bind`/`accept`/`connect` path — proving the scenarios are both
+//! carrier- and transport-independent.
 
-use crate::handler::{handle_request, request_lane, IpcLane};
+use crate::handler::{handle_request_with_peer, request_lane, IpcLane};
 use crate::state::AppState;
 use futures::{FutureExt, SinkExt, StreamExt};
 use mxr_protocol::{DaemonEvent, IpcCodec, IpcMessage, IpcPayload, Response};
+use mxr_transport::PeerInfo;
 use std::any::Any;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -59,6 +62,7 @@ pub(crate) async fn serve_client_connection<S>(
     state: Arc<AppState>,
     request_semaphore: Arc<Semaphore>,
     bulk_semaphore: Arc<Semaphore>,
+    peer: PeerInfo,
     mut event_rx: broadcast::Receiver<IpcMessage>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) where
@@ -132,6 +136,11 @@ pub(crate) async fn serve_client_connection<S>(
                             }
                         };
                         let state = state.clone();
+                        // The connection's peer identity rides into every
+                        // request's dispatch context. No policy reads it this
+                        // phase (UDS keeps implicit trust); the plumbing point
+                        // exists for phase 5's token gate.
+                        let peer = peer.clone();
                         request_tasks.spawn(async move {
                             let _permit = permit;
                             tracing::trace!(
@@ -151,7 +160,7 @@ pub(crate) async fn serve_client_connection<S>(
                                 {
                                     return response;
                                 }
-                                handle_request(&state, &ipc_msg).await
+                                handle_request_with_peer(&state, &ipc_msg, peer).await
                             })
                             .await
                         });
@@ -335,6 +344,7 @@ mod tests {
                 state,
                 request_semaphore,
                 bulk_semaphore,
+                mxr_transport::PeerInfo::local(),
                 event_rx,
                 shutdown_rx,
             )
@@ -408,6 +418,7 @@ mod tests {
                 state,
                 request_semaphore,
                 bulk_semaphore,
+                mxr_transport::PeerInfo::local(),
                 event_rx,
                 shutdown_rx,
             )

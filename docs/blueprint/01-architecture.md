@@ -69,6 +69,29 @@ The daemon serves reusable truth and workflows, not screen payloads.
 
 Socket location: `$XDG_RUNTIME_DIR/mxr/mxr.sock` (Linux) or `~/Library/Application Support/mxr/mxr.sock` (macOS).
 
+### Transport seam
+
+The wire protocol is frozen; the byte stream underneath it is pluggable. The `mxr-transport` crate holds the seam — object-safe traits over a boxed byte stream, in the same spirit as the mail-provider adapter system:
+
+```
+clients (CLI, TUI, MCP, web gateway, scripts)
+        │  Connector::connect() -> BoxedIo          (mxr-transport)
+        ▼
+FROZEN protocol: IpcMessage / Request / ResponseData / DaemonEvent + IpcCodec
+        ▲
+        │  ServerTransport::bind() -> TransportListener::accept() -> (BoxedIo, PeerInfo)
+        ▼
+adapters: UDS (default, only production transport) · in-memory duplex (tests)
+          [phase 5: TCP-loopback+token, stdio; community transports out-of-process via `mxr daemon dial-stdio`]
+```
+
+- `ServerTransport::bind` owns the socket lifecycle (bind, `chmod 0600`, stale-socket cleanup, successor detection); the daemon keeps the pid file and the search-index singleton lock, which are daemon — not transport — lifecycle. Graceful shutdown is ordered: `stop_accepting` (refuse new clients so they get connection-refused, not a hang) → drain in-flight connections → `cleanup` (ownership-guarded unlink, last).
+- `TransportListener::accept` returns the byte stream plus `PeerInfo`. `PeerAuth::UnixPeer` always carries *real* OS peer credentials (an accept that can't read them fails that connection closed rather than fabricating an identity); `LocalProcess` marks the in-memory/in-process case; a token-bearing transport carries `TokenRequired` (phase 5). Auth evidence is per-transport (the Tailscale lesson). `accept` is contractually **cancel-safe** — the accept loop polls listeners with `select_all` and drops the losers each round; an adapter must not lose a connection when its `accept` future is dropped. `PeerInfo` is threaded into the dispatch context alongside `ClientKind`; no policy reads it yet (phase 5's token gate does).
+- The serve core (lanes, task-per-connection, event fan-out, panic guard) is shared and generic over the stream; adapters only produce connections.
+- `mxr-client` is generic over a `Connector`; the daemon builds transports through a factory match over config (one UDS arm today) and its accept loop iterates a `Vec` of listeners with per-round rotation for fairness, so multi-transport support is structural.
+- The HTTP bridge (`mxr-web`) is a REST/WS presentation gateway that *consumes* the client transport — it is not a `ServerTransport` implementation (decision D052).
+- **Address resolution has one source.** The daemon's bind, autostart, the liveness/stale probe, doctor's reachability, and the request path all resolve through `TransportAddr::resolve` (`MXR_DAEMON_ADDR` = `unix://<path>` this phase, precedence over `MXR_SOCKET_PATH` / the per-instance default), so start / probe / request can never disagree. The standalone `mxr-tui` / `mxr-web` / `mxr-mcp` clients still resolve via `mxr_config::socket_path()` and do not yet honour `MXR_DAEMON_ADDR`; that adoption lands in phase 5.
+
 ### Subcommand structure
 
 ```
@@ -168,15 +191,22 @@ mxr/
 │   │                             # Shared between daemon and all clients.
 │   │                             # Depends on: core
 │   │
+│   ├── transport/                # Transport seam: ServerTransport / TransportListener
+│   │                             # / Connector traits over a boxed byte stream,
+│   │                             # PeerInfo auth evidence, TransportCapabilities,
+│   │                             # unix:// addressing; UDS + in-memory adapters.
+│   │                             # Depends on: no mxr crate (pure byte-stream)
+│   │
 │   ├── client/                   # Shared daemon IPC connection: connect + frame +
 │   │                             # correlate + read events, kinded ClientError.
-│   │                             # Depends on: protocol
+│   │                             # Generic over a transport Connector.
+│   │                             # Depends on: protocol, transport
 │   │
 │   ├── daemon/                   # Background process: socket server, sync loop,
 │   │                             # snooze waker, rules executor, search indexer.
 │   │                             # Depends on: core, store, search, sync, compose,
 │   │                             #             rules, export, protocol, client,
-│   │                             #             mail-parse, providers
+│   │                             #             transport, mail-parse, providers
 │   │
 │   ├── mcp/                      # First-party MCP server; tools call the daemon
 │   │                             # over IPC (source=mcp) through client.
@@ -211,7 +241,8 @@ These are strict. Violations should be caught in code review:
 
 1. **`core` depends on nothing internal.** It is the leaf node. All other crates depend on it.
 2. **`protocol` depends only on `core`.** It defines the IPC contract between daemon and clients.
-3. **`client` depends only on `protocol` at runtime.** It is the one shared IPC connection (connect + frame + correlate + read events, kinded `ClientError`). Test fixtures may dev-depend on `core` (as provider crates dev-depend on `provider-fake`), but no other runtime dependency is allowed. The daemon (for its CLI/internal client), `tui`, `web`, and `mcp` may depend on `client`; `client` must not depend on daemon, store, search, sync, semantic, or provider crates.
+3. **`transport` depends on no internal mxr crate.** It is a pure byte-stream seam (`ServerTransport` / `TransportListener` / `Connector` traits, `PeerInfo` auth evidence, `TransportCapabilities`, `unix://` addressing, UDS + in-memory (`test-util`) adapters), depending only on `tokio` / `async-trait` / `thiserror` / `tracing`. A `protocol` dependency may arrive in phase 5 with the additive `Authenticate` request. `client` and `daemon` may depend on `transport`; `transport` must not depend on daemon, store, search, sync, semantic, or provider crates. The wire protocol stays frozen — transports abstract only where bytes come from.
+4. **`client` depends only on `protocol` and `transport` at runtime.** It is the one shared IPC connection (connect + frame + correlate + read events, kinded `ClientError`), generic over a transport `Connector`. Test fixtures may dev-depend on `core` (as provider crates dev-depend on `provider-fake`), but no other runtime dependency is allowed. The daemon (for its CLI/internal client), `tui`, `web`, and `mcp` may depend on `client`; `client` must not depend on daemon, store, search, sync, semantic, or provider crates.
 4. **Provider crates depend on `core` plus shared mail utility crates only.** Today that means `mail-parse` and `outbound`. Gmail, IMAP, SMTP, Outlook, and fake adapters do NOT depend on store, search, sync, daemon, TUI, or web.
 4. **`store` depends only on `core`, and `search` depends only on `core`.** They are storage backends, not business logic.
 5. **`semantic` owns embeddings and dense retrieval.** It may depend on `core`, `config`, `reader`, and `store`. It must not depend on daemon, TUI, or provider crates.

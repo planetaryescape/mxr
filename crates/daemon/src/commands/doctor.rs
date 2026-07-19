@@ -11,9 +11,9 @@ use mxr_protocol::{
 };
 use mxr_search::SearchIndex;
 use mxr_store::Store;
+use mxr_transport::Connector as _;
 use std::io::{IsTerminal, Write};
 use std::sync::{Arc, Mutex};
-use tokio::net::UnixStream;
 use tokio::time::{interval, Duration};
 
 pub struct DoctorRunOptions {
@@ -277,13 +277,18 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
     let db_path = data_dir.join("mxr.db");
     let index_path = data_dir.join("search_index");
     let log_path = data_dir.join("logs").join("mxr.log");
-    let socket_path = crate::state::AppState::socket_path();
+    // Same resolution source as autostart/probe/request so doctor's
+    // reachability agrees with where the daemon actually binds.
+    let socket_path = crate::server::resolve_daemon_socket()?;
 
     let data_dir_exists = data_dir.exists();
     let database_exists = db_path.exists();
     let index_exists = index_path.exists();
     let socket_exists = socket_path.exists();
-    let socket_reachable = UnixStream::connect(&socket_path).await.is_ok();
+    let socket_reachable = mxr_transport::UnixConnector::new(socket_path.clone())
+        .connect()
+        .await
+        .is_ok();
     let stale_socket = socket_exists && !socket_reachable;
 
     let mut daemon_pid = None;
@@ -766,11 +771,12 @@ fn recommended_next_steps(
     repair_required: bool,
 ) -> Vec<String> {
     if stale_socket {
+        // Point the remediation at the socket the daemon actually uses (falls
+        // back to the default only if MXR_DAEMON_ADDR is malformed).
+        let sock = crate::server::resolve_daemon_socket()
+            .unwrap_or_else(|_| crate::state::AppState::socket_path());
         return vec![
-            format!(
-                "rm {}",
-                shell_escape_path(&crate::state::AppState::socket_path())
-            ),
+            format!("rm {}", shell_escape_path(&sock)),
             "mxr daemon --foreground".to_string(),
             "mxr status".to_string(),
         ];

@@ -17,13 +17,16 @@ use crate::state::AppState;
 use mxr_protocol::{
     AccountSyncStatus, DaemonHealthClass, Request, Response, ResponseData, IPC_PROTOCOL_VERSION,
 };
+use mxr_transport::{
+    BoxedIo, Connector, PeerInfo, ServerTransport, TransportError, TransportListener,
+    UdsServerTransport, UnixConnector,
+};
 use nix::errno::Errno;
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
-use tokio::net::UnixListener;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -50,7 +53,8 @@ pub async fn run_daemon() -> anyhow::Result<()> {
 }
 
 pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> anyhow::Result<()> {
-    let sock_path = AppState::socket_path();
+    // Bind where every CLI-side probe/request will look (honors MXR_DAEMON_ADDR).
+    let sock_path = resolve_daemon_socket()?;
     if let Some(parent) = sock_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -87,194 +91,263 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         Err(error) => return Err(error),
     });
 
-    // We hold the exclusive lock, so we are the sole daemon. Any socket file
-    // present now is genuinely stale (left by a fully-exited daemon); clear
-    // it and bind ours.
-    let _ = std::fs::remove_file(&sock_path);
-    let listener = UnixListener::bind(&sock_path)?;
-    set_socket_permissions(&sock_path)?;
-    // Remember which socket file is OURS. During an upgrade restart a
-    // successor daemon can re-bind this path while we are still draining;
-    // the exit cleanup below must not delete the successor's socket.
-    let socket_identity = socket_file_identity(&sock_path);
-    write_daemon_pid_file()?;
-    tracing::info!("Daemon listening on {}", sock_path.display());
-    let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
-    let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
-
-    // All syncing happens in the background sync loops — no blocking initial sync.
-    // The daemon starts accepting clients immediately. The sync loops detect
-    // Initial/GmailBackfill cursors and handles them with no startup delay.
-
-    // A previous daemon that died mid-sync leaves sync_in_progress=true
-    // behind; clear it before any loop can read it as "already syncing".
-    loops::reconcile_interrupted_syncs(&state).await;
-
-    // Spawn background loops
-    loops::spawn_sync_loops(state.clone());
-    let startup_handle = spawn_startup_maintenance(state.clone());
-    state.register_startup_maintenance(startup_handle);
-
-    let snooze_state = state.clone();
-    let snooze_handle = tokio::spawn(async move {
-        let shutdown_rx = snooze_state.shutdown_receiver();
-        loops::snooze_loop(snooze_state, shutdown_rx).await;
-    });
-    state.register_snooze_loop(snooze_handle);
-
-    let reminders_state = state.clone();
-    let reminders_handle = tokio::spawn(async move {
-        let shutdown_rx = reminders_state.shutdown_receiver();
-        loops::auto_reminders_loop(reminders_state, shutdown_rx).await;
-    });
-    state.register_auto_reminders_loop(reminders_handle);
-
-    let sends_state = state.clone();
-    let sends_handle = tokio::spawn(async move {
-        let shutdown_rx = sends_state.shutdown_receiver();
-        loops::scheduled_sends_loop(sends_state, shutdown_rx).await;
-    });
-    state.register_scheduled_sends_loop(sends_handle);
-
-    let reconciler_state = state.clone();
-    let reconciler_handle = tokio::spawn(async move {
-        let shutdown_rx = reconciler_state.shutdown_receiver();
-        loops::reply_pair_reconciler_loop(reconciler_state, shutdown_rx).await;
-    });
-    state.register_reply_pair_reconciler(reconciler_handle);
-
-    let contacts_state = state.clone();
-    let contacts_handle = tokio::spawn(async move {
-        let shutdown_rx = contacts_state.shutdown_receiver();
-        loops::contacts_refresher_loop(contacts_state, shutdown_rx).await;
-    });
-    state.register_contacts_refresher(contacts_handle);
-
-    let wrapped_warmer_state = state.clone();
-    let wrapped_warmer_handle = tokio::spawn(async move {
-        let shutdown_rx = wrapped_warmer_state.shutdown_receiver();
-        loops::wrapped_warmer_loop(wrapped_warmer_state, shutdown_rx).await;
-    });
-    state.register_wrapped_warmer(wrapped_warmer_handle);
-
-    // Activity prune loop: enforces the tiered retention windows from
-    // config. Fire-and-forget; on shutdown the watch channel exits the
-    // loop. Not registered with `runtime_tasks` because we don't need to
-    // join on it during graceful shutdown — losing the last sweep is
-    // harmless.
-    let activity_prune_state = state.clone();
-    tokio::spawn(async move {
-        let shutdown_rx = activity_prune_state.shutdown_receiver();
-        loops::activity_prune_loop(activity_prune_state, shutdown_rx).await;
-    });
-
-    // Mutation dedup + undo prune. 24h dedup TTL means rows older
-    // than that are safe to drop; hourly cadence keeps the table
-    // bounded under heavy mutation traffic.
-    let mutation_dedup_state = state.clone();
-    tokio::spawn(async move {
-        let shutdown_rx = mutation_dedup_state.shutdown_receiver();
-        loops::mutation_dedup_prune_loop(mutation_dedup_state, shutdown_rx).await;
-    });
-
-    // Managed HTTP bridge. Reads [bridge] from config, applies CLI
-    // overrides, and keeps daemon-hosted serving loopback-only until remote
-    // bridge TLS is a validated product decision.
-    if !bridge_overrides.disabled {
-        match crate::bridge::spawn_bridge_loop(state.clone(), &bridge_overrides).await {
-            Ok(Some(handle)) => {
-                state.register_bridge_loop(handle);
-            }
-            Ok(None) => {
-                tracing::info!("bridge disabled by config");
-            }
-            Err(crate::bridge::BridgeStartupError::Bind { addr, error }) => {
-                tracing::warn!(
-                    %addr,
-                    %error,
-                    "HTTP bridge disabled because its port is unavailable"
-                );
+    // We hold the exclusive lock, so we are the sole daemon. Build the
+    // configured transports (factory match over config — one UDS arm today)
+    // and bind each. `UdsServerTransport::bind` owns the socket lifecycle that
+    // used to live inline here: clear a genuinely-stale socket, bind, chmod
+    // 0600, and remember our socket identity for successor-safe cleanup. The
+    // pid file and index-lock singleton stay daemon-level.
+    let transports = build_transports(&sock_path);
+    let mut listeners: Vec<Box<dyn TransportListener>> = Vec::with_capacity(transports.len());
+    for transport in &transports {
+        match transport.bind().await {
+            Ok(listener) => {
+                tracing::info!("Daemon listening on {}", listener.endpoint());
+                listeners.push(listener);
             }
             Err(error) => {
-                anyhow::bail!("bridge startup failed: {error}");
+                // A partial bind must not leave earlier listeners' sockets
+                // behind: clean them up before failing.
+                for listener in &mut listeners {
+                    let _ = listener.cleanup().await;
+                }
+                return Err(error.into());
             }
         }
-    } else {
-        tracing::info!("bridge disabled by --no-bridge flag");
     }
 
-    let mut shutdown_rx = state.shutdown_receiver();
+    // Every post-bind exit — a clean shutdown OR any error (pid-file write,
+    // bridge startup, accept failure) — must funnel through the ordered
+    // teardown after this block, so no exit path leaves a stale socket. The
+    // serving body runs in a guarded scope; teardown then runs unconditionally.
     let mut connections = JoinSet::new();
+    let serve_result: anyhow::Result<()> = async {
+        write_daemon_pid_file()?;
+        let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
+        let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
 
-    // Accept connections
-    loop {
-        tokio::select! {
-            joined = connections.join_next(), if !connections.is_empty() => {
-                match joined {
-                    Some(Ok(())) => {}
-                    Some(Err(error)) => {
-                        tracing::warn!("client connection task failed: {error}");
+        // All syncing happens in the background sync loops — no blocking initial sync.
+        // The daemon starts accepting clients immediately. The sync loops detect
+        // Initial/GmailBackfill cursors and handles them with no startup delay.
+
+        // A previous daemon that died mid-sync leaves sync_in_progress=true
+        // behind; clear it before any loop can read it as "already syncing".
+        loops::reconcile_interrupted_syncs(&state).await;
+
+        // Spawn background loops
+        loops::spawn_sync_loops(state.clone());
+        let startup_handle = spawn_startup_maintenance(state.clone());
+        state.register_startup_maintenance(startup_handle);
+
+        let snooze_state = state.clone();
+        let snooze_handle = tokio::spawn(async move {
+            let shutdown_rx = snooze_state.shutdown_receiver();
+            loops::snooze_loop(snooze_state, shutdown_rx).await;
+        });
+        state.register_snooze_loop(snooze_handle);
+
+        let reminders_state = state.clone();
+        let reminders_handle = tokio::spawn(async move {
+            let shutdown_rx = reminders_state.shutdown_receiver();
+            loops::auto_reminders_loop(reminders_state, shutdown_rx).await;
+        });
+        state.register_auto_reminders_loop(reminders_handle);
+
+        let sends_state = state.clone();
+        let sends_handle = tokio::spawn(async move {
+            let shutdown_rx = sends_state.shutdown_receiver();
+            loops::scheduled_sends_loop(sends_state, shutdown_rx).await;
+        });
+        state.register_scheduled_sends_loop(sends_handle);
+
+        let reconciler_state = state.clone();
+        let reconciler_handle = tokio::spawn(async move {
+            let shutdown_rx = reconciler_state.shutdown_receiver();
+            loops::reply_pair_reconciler_loop(reconciler_state, shutdown_rx).await;
+        });
+        state.register_reply_pair_reconciler(reconciler_handle);
+
+        let contacts_state = state.clone();
+        let contacts_handle = tokio::spawn(async move {
+            let shutdown_rx = contacts_state.shutdown_receiver();
+            loops::contacts_refresher_loop(contacts_state, shutdown_rx).await;
+        });
+        state.register_contacts_refresher(contacts_handle);
+
+        let wrapped_warmer_state = state.clone();
+        let wrapped_warmer_handle = tokio::spawn(async move {
+            let shutdown_rx = wrapped_warmer_state.shutdown_receiver();
+            loops::wrapped_warmer_loop(wrapped_warmer_state, shutdown_rx).await;
+        });
+        state.register_wrapped_warmer(wrapped_warmer_handle);
+
+        // Activity prune loop: enforces the tiered retention windows from
+        // config. Fire-and-forget; on shutdown the watch channel exits the
+        // loop. Not registered with `runtime_tasks` because we don't need to
+        // join on it during graceful shutdown — losing the last sweep is
+        // harmless.
+        let activity_prune_state = state.clone();
+        tokio::spawn(async move {
+            let shutdown_rx = activity_prune_state.shutdown_receiver();
+            loops::activity_prune_loop(activity_prune_state, shutdown_rx).await;
+        });
+
+        // Mutation dedup + undo prune. 24h dedup TTL means rows older
+        // than that are safe to drop; hourly cadence keeps the table
+        // bounded under heavy mutation traffic.
+        let mutation_dedup_state = state.clone();
+        tokio::spawn(async move {
+            let shutdown_rx = mutation_dedup_state.shutdown_receiver();
+            loops::mutation_dedup_prune_loop(mutation_dedup_state, shutdown_rx).await;
+        });
+
+        // Managed HTTP bridge. Reads [bridge] from config, applies CLI
+        // overrides, and keeps daemon-hosted serving loopback-only until remote
+        // bridge TLS is a validated product decision.
+        if !bridge_overrides.disabled {
+            match crate::bridge::spawn_bridge_loop(
+                state.clone(),
+                &bridge_overrides,
+                sock_path.clone(),
+            )
+            .await
+            {
+                Ok(Some(handle)) => {
+                    state.register_bridge_loop(handle);
+                }
+                Ok(None) => {
+                    tracing::info!("bridge disabled by config");
+                }
+                Err(crate::bridge::BridgeStartupError::Bind { addr, error }) => {
+                    tracing::warn!(
+                        %addr,
+                        %error,
+                        "HTTP bridge disabled because its port is unavailable"
+                    );
+                }
+                Err(error) => {
+                    anyhow::bail!("bridge startup failed: {error}");
+                }
+            }
+        } else {
+            tracing::info!("bridge disabled by --no-bridge flag");
+        }
+
+        let mut shutdown_rx = state.shutdown_receiver();
+
+        // Accept connections from every bound transport.
+        loop {
+            tokio::select! {
+                joined = connections.join_next(), if !connections.is_empty() => {
+                    match joined {
+                        Some(Ok(())) => {}
+                        Some(Err(error)) => {
+                            tracing::warn!("client connection task failed: {error}");
+                        }
+                        None => {}
                     }
-                    None => {}
                 }
-            }
-            changed = shutdown_rx.changed() => {
-                if changed.is_ok() && *shutdown_rx.borrow_and_update() {
-                    tracing::info!("Daemon shutdown requested; stopping IPC accept loop");
-                    break;
+                changed = shutdown_rx.changed() => {
+                    if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                        tracing::info!("Daemon shutdown requested; stopping IPC accept loop");
+                        break;
+                    }
                 }
-            }
-            accepted = listener.accept() => {
-                let (stream, _addr) = accepted?;
-                let state = state.clone();
-                let request_semaphore = request_semaphore.clone();
-                let bulk_semaphore = bulk_semaphore.clone();
-                let event_rx = state.event_tx.subscribe();
-                let connection_shutdown_rx = state.shutdown_receiver();
+                accepted = accept_any(&mut listeners), if !listeners.is_empty() => {
+                    let (stream, peer) = accepted?;
+                    let state = state.clone();
+                    let request_semaphore = request_semaphore.clone();
+                    let bulk_semaphore = bulk_semaphore.clone();
+                    let event_rx = state.event_tx.subscribe();
+                    let connection_shutdown_rx = state.shutdown_receiver();
 
-                connections.spawn(async move {
-                    serve_client_connection(
-                        stream,
-                        state,
-                        request_semaphore,
-                        bulk_semaphore,
-                        event_rx,
-                        connection_shutdown_rx,
-                    )
-                    .await;
-                });
+                    connections.spawn(async move {
+                        serve_client_connection(
+                            stream,
+                            state,
+                            request_semaphore,
+                            bulk_semaphore,
+                            peer,
+                            event_rx,
+                            connection_shutdown_rx,
+                        )
+                        .await;
+                    });
+                }
             }
         }
+        Ok(())
     }
+    .await;
 
-    drop(listener);
+    // ── Ordered teardown — runs on EVERY post-bind exit (clean or error) ──
+    // Stop accepting FIRST — before the drains — so new clients get a prompt
+    // connection-refused during shutdown instead of hanging against a listening
+    // socket that no longer has an accept loop. The socket file is NOT unlinked
+    // yet: that is deferred to `cleanup` below.
+    for listener in &mut listeners {
+        listener.stop_accepting().await;
+    }
     drain_connection_tasks(&mut connections, CONNECTION_DRAIN_TIMEOUT).await;
     state.shutdown_runtime_tasks(Duration::from_secs(5)).await;
-    // Only remove the socket / pid file if they are still ours. The accept
-    // loop stops several seconds before this line runs (connection +
-    // runtime-task drain), and a successor daemon spawned during that
-    // window may have already re-bound the socket path and written its own
-    // pid. Deleting them here would orphan that successor: alive and
-    // syncing, but unreachable by every client.
-    remove_socket_if_owned(&sock_path, socket_identity);
+    // Release each transport's resources LAST — after the connection and
+    // runtime-task drains. `UdsListener::cleanup` removes the socket file only
+    // if it is still ours: a successor daemon spawned during the drain window
+    // may have already re-bound the socket path, and deleting it here would
+    // orphan that successor (alive and syncing, but unreachable by every
+    // client). The pid file cleanup stays daemon-level for the same reason.
+    for listener in &mut listeners {
+        let _ = listener.cleanup().await;
+    }
+    drop(listeners);
     clear_daemon_pid_file_if_owned();
-    Ok(())
+    serve_result
 }
 
-#[cfg(unix)]
-fn set_socket_permissions(sock_path: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    std::fs::set_permissions(sock_path, std::fs::Permissions::from_mode(0o600))
+/// Accept from whichever bound transport is ready first. `select_all` over the
+/// listeners' accept futures; the loser futures are dropped (accept is
+/// cancel-safe per the `TransportListener::accept` contract). After each accept
+/// the slice is rotated by one so a continuously-ready earlier listener cannot
+/// starve later ones — round-robin fairness. No-op for the single UDS listener
+/// configured this phase, but keeps the multi-transport claim honest.
+async fn accept_any(
+    listeners: &mut [Box<dyn TransportListener>],
+) -> Result<(BoxedIo, PeerInfo), TransportError> {
+    let result = {
+        let futures = listeners.iter_mut().map(|listener| listener.accept());
+        let (result, _index, _remaining) = futures::future::select_all(futures).await;
+        result
+    };
+    listeners.rotate_left(1);
+    result
 }
 
-#[cfg(not(unix))]
-fn set_socket_permissions(_sock_path: &Path) -> std::io::Result<()> {
-    Ok(())
+/// Build the configured server transports. Factory match over config (provider
+/// pattern) — one UDS arm today; TCP/stdio arms arrive in phase 5.
+fn build_transports(sock_path: &Path) -> Vec<Box<dyn ServerTransport>> {
+    vec![Box::new(UdsServerTransport::new(sock_path.to_path_buf()))]
+}
+
+/// The daemon socket path every CLI-side operation agrees on. The daemon's
+/// bind, autostart, the liveness/stale probe, doctor's reachability check, and
+/// the request path (`IpcClient`) all resolve here, so start / probe / request
+/// can never disagree. `MXR_DAEMON_ADDR` (`unix://<path>`) takes precedence over
+/// `MXR_SOCKET_PATH` / the per-instance default; only `unix://` exists this
+/// phase.
+///
+/// The standalone `mxr-tui` / `mxr-web` / `mxr-mcp` clients still resolve their
+/// socket through `mxr_config::socket_path()` and do NOT yet honor
+/// `MXR_DAEMON_ADDR`; that adoption lands in phase 5 (see decision log D053).
+pub(crate) fn resolve_daemon_socket() -> anyhow::Result<PathBuf> {
+    match mxr_transport::TransportAddr::resolve(AppState::socket_path())
+        .map_err(|error| anyhow::anyhow!("invalid {}: {error}", mxr_transport::DAEMON_ADDR_ENV))?
+    {
+        mxr_transport::TransportAddr::Unix(path) => Ok(path),
+    }
 }
 
 pub async fn ensure_daemon_running() -> anyhow::Result<()> {
-    let sock_path = AppState::socket_path();
+    let sock_path = resolve_daemon_socket()?;
 
     match inspect_socket_state(&sock_path).await {
         SocketState::Reachable => {
@@ -309,7 +382,7 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
 }
 
 pub async fn restart_daemon() -> anyhow::Result<()> {
-    let sock_path = AppState::socket_path();
+    let sock_path = resolve_daemon_socket()?;
     restart_daemon_process(
         &sock_path,
         None,
@@ -319,7 +392,7 @@ pub async fn restart_daemon() -> anyhow::Result<()> {
 }
 
 pub async fn ensure_daemon_supports_tui() -> anyhow::Result<()> {
-    let sock_path = AppState::socket_path();
+    let sock_path = resolve_daemon_socket()?;
     let snapshot =
         match fetch_daemon_status_snapshot_from_path(&sock_path, STATUS_REQUEST_TIMEOUT).await {
             Ok(snapshot) => snapshot,
@@ -445,11 +518,15 @@ pub(crate) async fn inspect_socket_state(path: &std::path::Path) -> SocketState 
 }
 
 async fn socket_accepts_connections(path: &Path) -> bool {
+    let connector = UnixConnector::new(path.to_path_buf());
     for attempt in 0..SOCKET_PROBE_ATTEMPTS {
-        match tokio::net::UnixStream::connect(path).await {
-            Ok(_) => return true,
-            Err(error)
-                if should_retry_socket_probe(&error) && attempt + 1 < SOCKET_PROBE_ATTEMPTS =>
+        // Connect-and-drop liveness probe, dialed through the transport
+        // `Connector` (no raw `UnixStream` in daemon code outside the UDS
+        // transport). The connect error's `io::ErrorKind` still drives retry.
+        match connector.connect().await {
+            Ok(_io) => return true,
+            Err(TransportError::Connect { source, .. })
+                if should_retry_socket_probe(&source) && attempt + 1 < SOCKET_PROBE_ATTEMPTS =>
             {
                 tokio::time::sleep(SOCKET_PROBE_DELAY).await;
             }
@@ -472,44 +549,6 @@ fn should_retry_socket_probe(error: &std::io::Error) -> bool {
 
 fn daemon_pid_file_path() -> PathBuf {
     AppState::data_dir().join("daemon.pid")
-}
-
-/// Identity of the file currently at `path`, used to detect whether the
-/// socket we bound is still the one on disk. (dev, ino) alone is not
-/// enough: ext4 recycles inode numbers, so a successor daemon's freshly
-/// bound socket can land on the inode we just freed. The bind timestamp
-/// disambiguates a recycled inode. Caveat: Linux stamps files from the
-/// kernel's coarse clock (~ms ticks), so two binds inside one tick could
-/// collide — irrelevant here because successor binds are separated from
-/// ours by a full daemon startup.
-#[cfg(unix)]
-fn socket_file_identity(path: &Path) -> Option<(u64, u64, i64, i64)> {
-    use std::os::unix::fs::MetadataExt;
-
-    std::fs::metadata(path)
-        .ok()
-        .map(|m| (m.dev(), m.ino(), m.mtime(), m.mtime_nsec()))
-}
-
-#[cfg(not(unix))]
-fn socket_file_identity(_path: &Path) -> Option<(u64, u64, i64, i64)> {
-    None
-}
-
-/// Remove the socket file only if it is still the one this daemon bound.
-/// `owned` of `None` (identity capture failed at bind time) falls back to
-/// unconditional removal, matching the previous behavior.
-fn remove_socket_if_owned(path: &Path, owned: Option<(u64, u64, i64, i64)>) {
-    match (owned, socket_file_identity(path)) {
-        (Some(ours), Some(current)) if ours != current => {
-            tracing::info!(
-                "leaving IPC socket in place: the path was re-bound by a successor daemon"
-            );
-        }
-        _ => {
-            let _ = std::fs::remove_file(path);
-        }
-    }
 }
 
 /// Clear the pid file only if it still names this process. A successor
@@ -902,7 +941,7 @@ pub(crate) async fn shutdown_daemon_for_maintenance(
 }
 
 async fn request_shutdown() -> anyhow::Result<()> {
-    request_shutdown_to(&AppState::socket_path()).await
+    request_shutdown_to(&resolve_daemon_socket()?).await
 }
 
 async fn request_shutdown_to(sock_path: &std::path::Path) -> anyhow::Result<()> {
@@ -1159,38 +1198,6 @@ mod tests {
     use std::time::Duration;
     use tokio::net::UnixListener;
     use tokio_util::codec::Framed;
-
-    #[test]
-    fn socket_removal_skips_a_rebound_path() {
-        use super::{remove_socket_if_owned, socket_file_identity};
-
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("mxr.sock");
-
-        // Same inode → removed (normal shutdown).
-        std::fs::write(&path, b"ours").expect("write socket stand-in");
-        let ours = socket_file_identity(&path);
-        assert!(ours.is_some());
-        remove_socket_if_owned(&path, ours);
-        assert!(!path.exists(), "own socket should be removed");
-
-        // Path re-created by a successor → left alone. ext4 can recycle
-        // the freed inode AND Linux stamps files from the kernel's coarse
-        // clock (~ms ticks), so a same-tick re-create can be byte-identical
-        // to ours. Sleep past the tick — in production the two binds are
-        // separated by a full daemon startup.
-        std::fs::write(&path, b"ours").expect("write socket stand-in");
-        let ours = socket_file_identity(&path);
-        std::fs::remove_file(&path).expect("simulate successor re-bind");
-        std::thread::sleep(Duration::from_millis(20));
-        std::fs::write(&path, b"successor").expect("successor socket stand-in");
-        remove_socket_if_owned(&path, ours);
-        assert!(path.exists(), "successor's socket must survive our cleanup");
-
-        // Unknown identity (capture failed at bind) → fall back to removal.
-        remove_socket_if_owned(&path, None);
-        assert!(!path.exists(), "unknown ownership falls back to removal");
-    }
 
     #[tokio::test]
     async fn wait_for_process_exit_observes_an_unreaped_child() {

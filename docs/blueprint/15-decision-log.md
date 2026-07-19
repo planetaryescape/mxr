@@ -439,3 +439,44 @@ Superseded by D049. Bodies and body text are now indexed at sync time.
 - shared mail parsing moved into `mxr-mail-parse`
 - shared outbound message building moved into `mxr-outbound`
 - `mxr-search` no longer owns store-backed saved-search service glue
+
+---
+
+## D052: HTTP bridge is a gateway, not a transport adapter (transport-adapters Q1)
+
+**Chosen**: The HTTP/WebSocket bridge (`mxr-web`) *consumes* the client transport (`Connector`); it is NOT a `ServerTransport` implementation. Browser-native access stays REST+WS over the bridge.
+
+**Considered**: Make the bridge a WS-binary byte-stream `ServerTransport` so browsers speak the raw IPC frame protocol; keep it a gateway.
+
+**Why gateway**:
+- Discovery measured the bridge: ~100 lines are transport plumbing, ~5,500 are presentation (per-route handlers, view-model assembly, SPA serving, OpenAPI, security posture). Forcing it to implement the same trait as UDS would misshape the trait around a presentation layer.
+- The ecosystem premium is on the protocol, not transport pluggability (the Podman/varlink regret: v1 shipped a novel RPC layer, the ecosystem wouldn't rewrite Docker-API tooling, v2 deleted it for Docker-compatible REST). mxr freezes the wire protocol and abstracts only the byte stream.
+- Typed-transport RPC (tarpc's `Transport` over Rust-typed messages) would exclude curl/jq/scripts/non-Rust agents — against mxr's CLI-first JSON shape.
+
+**Trade-offs accepted**:
+- A future non-REST browser client that wants raw frames would need a WS-binary adapter added then (revisit only if it appears).
+- The bridge's security posture (bearer token, loopback enforcement) is not shared with the trait, but it is directly reusable by a future TCP adapter.
+
+---
+
+## D053: Transport traits live in a new `mxr-transport` leaf crate (transport-adapters Q4)
+
+**Chosen**: A new `crates/transport` (`mxr-transport`) crate owns the transport seam — `ServerTransport` / `TransportListener` / `Connector` traits, `PeerInfo`, `TransportCapabilities`, `unix://` addressing, and the UDS + in-memory adapters. It is a pure byte-stream crate depending on **no** internal `mxr-*` crate (only `tokio` / `async-trait` / `thiserror` / `tracing`); a `mxr-protocol` dependency may arrive in phase 5 with the additive `Authenticate` request.
+
+**Considered**: Put the traits inside `mxr-protocol`; a new leaf crate.
+
+**Why a new crate**:
+- Keeps `mxr-protocol` a pure wire contract (types + codec). Transport is "where bytes come from," a different concern; co-locating them would blur the frozen-protocol boundary.
+- Transport carries no protocol types today (traits deal only in byte streams and peer/auth evidence), so it stays even leaner than protocol — a genuine leaf.
+- Mirrors the provider adapter system's crate shape (a leaf crate of object-safe traits, capability flags, a fake/in-memory reference impl behind a feature) — the discovery's explicit template.
+- `mxr-client` and `mxr` (daemon) depend on it; `tui`/`web`/`mcp` reach it only transitively through `mxr-client` and still cannot depend on the daemon.
+
+**Trade-offs accepted**:
+- One more workspace crate. Justified: the seam is real and shared by both a client (`Connector`) and the daemon (`ServerTransport`), exactly the case for a leaf crate.
+
+**What changed**:
+- `UdsServerTransport` absorbed the UDS socket lifecycle (bind, `chmod 0600`, stale-socket cleanup, successor detection) that was inline in `server.rs`; the pid file and index-lock singleton stayed daemon-level.
+- `IpcConnection` became generic over a `Connector` (`connect_with`); the path constructor builds a `UnixConnector` internally.
+- `PeerInfo` (UDS peer credentials) is threaded into the dispatch context; no policy reads it yet (phase 5's token gate does). `PeerAuth::UnixPeer` always carries real creds — a `peer_cred` failure fails that connection closed rather than fabricating an identity — so phase-5 policy can trust a `UnixPeer` match.
+- The conformance corpus runs every scenario over four harnesses: the socketpair/duplex carriers plus the real UDS and in-memory transports through `bind`/`accept`/`connect`.
+- **`MXR_DAEMON_ADDR` single-source resolution**: the daemon bind, autostart, the socket probe, doctor's reachability, and the request path all resolve through the same `TransportAddr::resolve` (precedence `MXR_DAEMON_ADDR` > `MXR_SOCKET_PATH` > per-instance default), so start / probe / request never disagree. The standalone `mxr-tui` / `mxr-web` / `mxr-mcp` clients stay on `mxr_config::socket_path()` this phase; their `MXR_DAEMON_ADDR` adoption lands in phase 5.

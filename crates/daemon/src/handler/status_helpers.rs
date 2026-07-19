@@ -105,7 +105,9 @@ pub(super) async fn collect_doctor_report(
     let db_path = data_dir.join("mxr.db");
     let index_path = data_dir.join("search_index");
     let log_path = data_dir.join("logs").join("mxr.log");
-    let socket_path = crate::state::AppState::socket_path();
+    // Single-source resolution (honors MXR_DAEMON_ADDR) so the doctor report's
+    // socket reachability agrees with where the daemon binds.
+    let socket_path = crate::server::resolve_daemon_socket().map_err(|error| error.to_string())?;
 
     let data_dir_exists = data_dir.exists();
     let database_exists = db_path.exists();

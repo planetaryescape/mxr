@@ -120,6 +120,7 @@ members = [
     "crates/store",
     "crates/sync",
     "crates/test-support",
+    "crates/transport",
     "crates/tui",
     "crates/web",
 ]
@@ -193,6 +194,7 @@ mxr-semantic = { path = "crates/semantic", version = "0.6.0" }
 mxr-store = { path = "crates/store", version = "0.6.0" }
 mxr-sync = { path = "crates/sync", version = "0.6.0" }
 mxr-test-support = { path = "crates/test-support", version = "0.6.0" }
+mxr-transport = { path = "crates/transport", version = "0.6.0" }
 mxr-tui = { path = "crates/tui", version = "0.6.0" }
 mxr-web = { path = "crates/web", version = "0.6.0" }
 
@@ -349,6 +351,7 @@ mxr-search = { workspace = true }
 mxr-semantic = { workspace = true }
 mxr-store = { workspace = true }
 mxr-sync = { workspace = true }
+mxr-transport = { workspace = true }
 mxr-tui = { workspace = true }
 mxr-web = { workspace = true }
 
@@ -418,6 +421,10 @@ assert_cmd = { workspace = true }
 criterion = "0.5"
 insta = { workspace = true }
 mxr-test-support = { workspace = true }
+# Enables the in-memory MemoryTransport for the IPC conformance corpus. The
+# runtime dependency above stays feature-light; this feature is on only for
+# test/dev builds (Cargo unions dev-dependency features).
+mxr-transport = { workspace = true, features = ["test-util"] }
 predicates = { workspace = true }
 pretty_assertions = { workspace = true }
 proptest = "1"

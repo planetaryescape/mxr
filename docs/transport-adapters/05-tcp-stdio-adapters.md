@@ -32,13 +32,15 @@ The first transport with **no implicit peer identity** — it forces the `PeerAu
 
 ## 5c. `mxr daemon dial-stdio` (client-side proxy — the community unlock)
 
+> **Implemented early (2026-07-18):** shipped as an independent side-track ahead of phase 4. The subcommand, autostart, stdout discipline, docs, and integration tests are in place; the `cmd://` connector below stays deferred to the rest of phase 5.
+
 The Docker `connhelper` move: a subcommand that connects to the local daemon socket and pipes bytes stdin↔socket (`tokio::io::copy_bidirectional`). ~50 lines, no new trust surface — the remote user still needs local UDS access on the daemon machine.
 
 - Enables today, with zero further daemon work:
-  - SSH remoting: `ssh host mxr daemon dial-stdio` — bytes flow, full protocol, events included.
+  - SSH remoting: `ssh -T host mxr daemon dial-stdio` (`-T`: no PTY — a PTY corrupts the byte stream) — bytes flow, full protocol, events included.
   - Container access: `docker exec -i <c> mxr daemon dial-stdio`.
   - Any community bridge that can exec a process and pipe stdio.
-- **`cmd://` connector (stretch, recommended):** `CmdConnector` spawns a command and wraps its stdio as the byte stream — making `MXR_DAEMON_ADDR="cmd://ssh host mxr daemon dial-stdio"` work for every client (CLI, TUI, bridge) uniformly. This is the entire "community transport plugin" system: an executable that speaks bytes.
+- **`cmd://` connector (stretch, recommended):** `CmdConnector` spawns a command and wraps its stdio as the byte stream — making `MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio"` work for every client (CLI, TUI, bridge) uniformly. This is the entire "community transport plugin" system: an executable that speaks bytes.
 - Remote caveats from discovery §9 apply and should be documented where `dial-stdio` is documented: compose `$EDITOR` flow, attachment paths, and autostart assume same-machine; over SSH those degrade — acceptable for scripting/agent use, documented as such. Build-id mismatch handling must not try to restart a remote daemon (`daemon_requires_restart` callers gate on locality capability).
 
 ## 5d. Q5: daemon-hosted bridge goes in-process (optional, recommended)
@@ -62,7 +64,7 @@ With `MemoryTransport` real (phase 4), `spawn_bridge_loop` (`bridge.rs:40`) hand
 - Corpus × 4 transports green; `scripts/cargo-test` per touched crate; full suite before PR.
 - Live TCP: enable `[transports.tcp]`, `MXR_DAEMON_ADDR=tcp://127.0.0.1:<port> MXR_DAEMON_TOKEN=… mxr status --format json`; then without token → clean auth error; `mxr events` over TCP (event stream over the authenticated connection).
 - Live stdio: `mxr daemon --stdio` driven by a scripted client (or `IpcConnection::from_stream` harness) — request/response + event.
-- Live dial-stdio: `ssh localhost mxr daemon dial-stdio` round-trip via `cmd://` connector; `mxr activity` attribution intact.
+- Live dial-stdio: `ssh -T localhost mxr daemon dial-stdio` round-trip via `cmd://` connector; `mxr activity` attribution intact.
 
 ## Risks
 

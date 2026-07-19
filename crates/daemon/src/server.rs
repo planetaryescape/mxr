@@ -52,6 +52,65 @@ pub async fn run_daemon() -> anyhow::Result<()> {
     run_daemon_with_overrides(BridgeOverrides::default()).await
 }
 
+/// `mxr daemon --stdio` — serve exactly ONE connection over this process's
+/// stdin/stdout, the LSP/inetd model (phase 5b, transport adapters).
+///
+/// The process IS the daemon for the lifetime of one stdio connection: it
+/// acquires the same exclusive state as a socket daemon (so it cannot run
+/// alongside one), serves the single connection through the generic serve core
+/// over `tokio::io::join(stdin, stdout)`, and exits when stdin closes
+/// (connection lifetime = process lifetime). No UDS socket is bound and no HTTP
+/// bridge is started — a stdio server owns exactly one client.
+///
+/// Peer trust: [`PeerInfo::local`] (`LocalProcess`) — the spawner is the
+/// authenticator (discovery §7), exactly like the in-process transport. No
+/// token handshake.
+///
+/// **Stdout discipline:** frames own stdout. Tracing is file-only in this mode
+/// (the dispatcher calls `init_tracing(false)`, as for `dial-stdio`); nothing on
+/// this path writes to stdout before or during serving. Diagnostics and the
+/// index-lock conflict message go to stderr.
+pub async fn run_stdio() -> anyhow::Result<()> {
+    // Acquire the exclusive runtime state (search-index lock included). A
+    // running socket daemon holds this, so `--stdio` cannot collide with one;
+    // surface that as a clear stderr message rather than a raw lock error.
+    let state = Arc::new(match AppState::new().await {
+        Ok(state) => state,
+        Err(error) if is_index_lock_error(&error.to_string()) => {
+            anyhow::bail!(
+                "Cannot start a --stdio daemon: another daemon already holds the runtime lock. \
+                 Stop it first, or connect to it with `mxr daemon dial-stdio`.\nOriginal error: {error}"
+            );
+        }
+        Err(error) => return Err(error),
+    });
+
+    let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
+    let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
+    let event_rx = state.event_tx.subscribe();
+    let shutdown_rx = state.shutdown_receiver();
+
+    // One connection over stdin/stdout. `LocalProcess` peer trust: no token
+    // gate (the spawner vouches for the peer). Returns when stdin hits EOF.
+    let stream = tokio::io::join(tokio::io::stdin(), tokio::io::stdout());
+    serve_client_connection(
+        stream,
+        state.clone(),
+        request_semaphore,
+        bulk_semaphore,
+        PeerInfo::local(),
+        None,
+        event_rx,
+        shutdown_rx,
+    )
+    .await;
+
+    // Drain any in-flight background work spawned by handlers, then exit.
+    state.request_shutdown();
+    state.shutdown_runtime_tasks(Duration::from_secs(5)).await;
+    Ok(())
+}
+
 pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> anyhow::Result<()> {
     // Bind where every CLI-side probe/request will look (honors MXR_DAEMON_ADDR).
     let sock_path = resolve_daemon_socket()?;
@@ -92,12 +151,30 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     });
 
     // We hold the exclusive lock, so we are the sole daemon. Build the
-    // configured transports (factory match over config — one UDS arm today)
-    // and bind each. `UdsServerTransport::bind` owns the socket lifecycle that
-    // used to live inline here: clear a genuinely-stale socket, bind, chmod
-    // 0600, and remember our socket identity for successor-safe cleanup. The
-    // pid file and index-lock singleton stay daemon-level.
-    let transports = build_transports(&sock_path);
+    // configured transports (factory match over config — UDS always on, TCP
+    // opt-in) and bind each. `UdsServerTransport::bind` owns the socket
+    // lifecycle that used to live inline here: clear a genuinely-stale socket,
+    // bind, chmod 0600, and remember our socket identity for successor-safe
+    // cleanup. The pid file and index-lock singleton stay daemon-level.
+    let tcp_cfg = mxr_config::load_config()
+        .map(|config| config.transports.tcp)
+        .unwrap_or_default();
+    // When the TCP transport is enabled, resolve (creating on first run) the
+    // shared daemon token that its connections must present. `None` for a
+    // UDS-only daemon; the serve core only consults it for `TokenRequired`
+    // peers, so UDS/memory connections are never affected.
+    let auth_token: Option<Arc<str>> = if tcp_cfg.enabled {
+        match mxr_config::resolve_daemon_token(true) {
+            Ok(Some(token)) => Some(Arc::from(token.as_str())),
+            Ok(None) => None,
+            Err(error) => {
+                anyhow::bail!("could not resolve the daemon token for the TCP transport: {error}");
+            }
+        }
+    } else {
+        None
+    };
+    let transports = build_transports(&sock_path, &tcp_cfg);
     let mut listeners: Vec<Box<dyn TransportListener>> = Vec::with_capacity(transports.len());
     for transport in &transports {
         match transport.bind().await {
@@ -260,6 +337,7 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                     let bulk_semaphore = bulk_semaphore.clone();
                     let event_rx = state.event_tx.subscribe();
                     let connection_shutdown_rx = state.shutdown_receiver();
+                    let auth_token = auth_token.clone();
 
                     connections.spawn(async move {
                         serve_client_connection(
@@ -268,6 +346,7 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                             request_semaphore,
                             bulk_semaphore,
                             peer,
+                            auth_token,
                             event_rx,
                             connection_shutdown_rx,
                         )
@@ -323,9 +402,40 @@ async fn accept_any(
 }
 
 /// Build the configured server transports. Factory match over config (provider
-/// pattern) — one UDS arm today; TCP/stdio arms arrive in phase 5.
-fn build_transports(sock_path: &Path) -> Vec<Box<dyn ServerTransport>> {
-    vec![Box::new(UdsServerTransport::new(sock_path.to_path_buf()))]
+/// pattern): the Unix domain socket is always on; the TCP-loopback transport is
+/// added when `[transports.tcp]` opts in. Its bind address is validated here so
+/// an obviously-wrong `bind` fails fast with a clear message; a non-loopback
+/// address is refused again at `TcpServerTransport::bind` as defense in depth.
+fn build_transports(
+    sock_path: &Path,
+    tcp_cfg: &mxr_config::TcpTransportConfig,
+) -> Vec<Box<dyn ServerTransport>> {
+    let mut transports: Vec<Box<dyn ServerTransport>> =
+        vec![Box::new(UdsServerTransport::new(sock_path.to_path_buf()))];
+
+    if tcp_cfg.enabled {
+        match tcp_cfg.bind.parse::<std::net::IpAddr>() {
+            Ok(ip) if mxr_transport::is_loopback_ip(ip) => {
+                let addr = std::net::SocketAddr::new(ip, tcp_cfg.port);
+                transports.push(Box::new(mxr_transport::TcpServerTransport::new(addr)));
+            }
+            Ok(ip) => {
+                tracing::warn!(
+                    bind = %ip,
+                    "ignoring [transports.tcp]: non-loopback bind is refused (use 127.0.0.1 or ::1)"
+                );
+            }
+            Err(error) => {
+                tracing::warn!(
+                    bind = %tcp_cfg.bind,
+                    %error,
+                    "ignoring [transports.tcp]: bind is not a valid IP address"
+                );
+            }
+        }
+    }
+
+    transports
 }
 
 /// The daemon socket path every CLI-side operation agrees on. The daemon's
@@ -339,14 +449,56 @@ fn build_transports(sock_path: &Path) -> Vec<Box<dyn ServerTransport>> {
 /// socket through `mxr_config::socket_path()` and do NOT yet honor
 /// `MXR_DAEMON_ADDR`; that adoption lands in phase 5 (see decision log D053).
 pub(crate) fn resolve_daemon_socket() -> anyhow::Result<PathBuf> {
-    match mxr_transport::TransportAddr::resolve(AppState::socket_path())
-        .map_err(|error| anyhow::anyhow!("invalid {}: {error}", mxr_transport::DAEMON_ADDR_ENV))?
-    {
+    // The daemon's own UDS bind, autostart, and the UDS liveness probe are
+    // Unix-only concepts. A `tcp://` / `cmd://` value in `MXR_DAEMON_ADDR` is a
+    // *client-side* transport override — it does not relocate the daemon's Unix
+    // socket, so those schemes fall back to the default UDS path here.
+    match resolve_daemon_addr()? {
         mxr_transport::TransportAddr::Unix(path) => Ok(path),
+        mxr_transport::TransportAddr::Tcp(_) | mxr_transport::TransportAddr::Cmd(_) => {
+            Ok(AppState::socket_path())
+        }
     }
 }
 
+/// The resolved client transport address (honors `MXR_DAEMON_ADDR`). The single
+/// source every client-side connect agrees on — `unix://`, `tcp://<host:port>`,
+/// or `cmd://<command>`. Unix is the default when `MXR_DAEMON_ADDR` is unset.
+pub(crate) fn resolve_daemon_addr() -> anyhow::Result<mxr_transport::TransportAddr> {
+    mxr_transport::TransportAddr::resolve(AppState::socket_path())
+        .map_err(|error| anyhow::anyhow!("invalid {}: {error}", mxr_transport::DAEMON_ADDR_ENV))
+}
+
+/// Build the CLI's daemon connector from `MXR_DAEMON_ADDR`. `unix://` keeps the
+/// path-based Unix connector (and the whole autostart/stale-socket story);
+/// `tcp://` dials loopback with the resolved bearer token (env
+/// `MXR_DAEMON_TOKEN` > token file); `cmd://` spawns the command and pipes its
+/// stdio (SSH / container bridges). Token/cmd transports do not autostart a
+/// local daemon.
+pub(crate) fn build_cli_connector() -> anyhow::Result<Box<dyn Connector>> {
+    Ok(match resolve_daemon_addr()? {
+        mxr_transport::TransportAddr::Unix(path) => Box::new(UnixConnector::new(path)),
+        mxr_transport::TransportAddr::Tcp(addr) => {
+            let token = mxr_config::resolve_daemon_token(false)
+                .map_err(|error| anyhow::anyhow!("could not read the daemon token: {error}"))?;
+            Box::new(mxr_transport::TcpConnector::new(addr, token))
+        }
+        mxr_transport::TransportAddr::Cmd(argv) => Box::new(mxr_transport::CmdConnector::new(argv)),
+    })
+}
+
 pub async fn ensure_daemon_running() -> anyhow::Result<()> {
+    // Autostart, the stale-socket probe, and pid-file recovery are all
+    // Unix-socket, same-machine lifecycle. A `tcp://` / `cmd://` client address
+    // manages its own reachability (a loopback TCP daemon the user started, or
+    // an SSH/container process the `cmd://` spawns), so skip local lifecycle
+    // management entirely and let the connect attempt speak for itself.
+    if !matches!(
+        resolve_daemon_addr()?,
+        mxr_transport::TransportAddr::Unix(_)
+    ) {
+        return Ok(());
+    }
     let sock_path = resolve_daemon_socket()?;
 
     match inspect_socket_state(&sock_path).await {

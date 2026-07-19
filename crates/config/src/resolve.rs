@@ -137,6 +137,40 @@ pub fn bridge_token_path() -> PathBuf {
     config_dir().join("bridge-token")
 }
 
+/// Environment variable that supplies the daemon bearer token directly,
+/// overriding the on-disk token file. Shared by the TCP-loopback IPC transport
+/// and (for symmetry) any client dialing it (phase 5, transport adapters).
+pub const DAEMON_TOKEN_ENV: &str = "MXR_DAEMON_TOKEN";
+
+/// Resolve the daemon bearer token — the single secret the HTTP bridge and the
+/// TCP-loopback IPC transport share (one token store, mode 0600).
+///
+/// Precedence: `MXR_DAEMON_TOKEN` (env, when set and non-empty) **>** the token
+/// file at [`bridge_token_path`]. When `create` is true and neither exists, a
+/// fresh 0600 token file is minted (the daemon does this at startup so the
+/// listener has a token to check); when `create` is false the file is only
+/// read (a client dialing `tcp://` with no token available returns `None` and
+/// simply fails the server's auth gate).
+pub fn resolve_daemon_token(create: bool) -> std::io::Result<Option<String>> {
+    if let Ok(value) = std::env::var(DAEMON_TOKEN_ENV) {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Ok(Some(trimmed.to_string()));
+        }
+    }
+    if create {
+        return read_or_create_bridge_token().map(Some);
+    }
+    match std::fs::read_to_string(bridge_token_path()) {
+        Ok(contents) => {
+            let token = contents.trim();
+            Ok((!token.is_empty()).then(|| token.to_string()))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
 /// Returns the on-disk path where the bridge writes the port it actually
 /// bound to. Useful for clients (Vite dev proxy, `mxr web`, scripts) that
 /// need to discover the port after the bridge applied EADDRINUSE retries.

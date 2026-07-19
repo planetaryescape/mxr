@@ -8,7 +8,14 @@ use mxr_protocol::{
 use tokio::sync::mpsc;
 
 pub(crate) fn daemon_socket_path() -> std::path::PathBuf {
-    config_socket_path()
+    // Route through the shared resolver so the TUI agrees with the CLI on the
+    // socket (honors MXR_DAEMON_ADDR=unix://<path>). tcp:// / cmd:// are
+    // CLI-only today; fall back to the config default if one is set, warning so
+    // the mismatch is visible.
+    mxr_client::resolve_unix_socket(config_socket_path()).unwrap_or_else(|error| {
+        tracing::warn!(%error, "falling back to the default socket path");
+        config_socket_path()
+    })
 }
 
 pub(crate) async fn request_account_operation(

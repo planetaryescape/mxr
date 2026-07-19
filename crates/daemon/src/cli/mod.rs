@@ -60,6 +60,12 @@ pub enum Command {
         /// Run in foreground (for debugging / systemd)
         #[arg(long)]
         foreground: bool,
+        /// Serve exactly one connection over stdin/stdout (LSP/inetd model) and
+        /// exit when it closes. For agent embedding and socket-activation-style
+        /// supervision. Frames own stdout; logs go to file only. Cannot run
+        /// alongside a socket daemon.
+        #[arg(long, conflicts_with = "foreground")]
+        stdio: bool,
         /// Hidden instance marker used by daemon autostart to identify the child process.
         #[arg(long, hide = true)]
         instance: Option<String>,

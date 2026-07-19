@@ -28,8 +28,10 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 mod addr;
 mod caps;
+mod cmd;
 mod error;
 mod peer;
+mod tcp;
 mod uds;
 
 #[cfg(feature = "test-util")]
@@ -37,8 +39,10 @@ mod memory;
 
 pub use addr::{TransportAddr, DAEMON_ADDR_ENV};
 pub use caps::{AuthCaps, LifecycleCaps, LocalityCaps, TransportCapabilities};
+pub use cmd::CmdConnector;
 pub use error::{Result, TransportError};
 pub use peer::{PeerAuth, PeerInfo};
+pub use tcp::{is_loopback_ip, TcpConnector, TcpServerTransport};
 pub use uds::{UdsServerTransport, UnixConnector};
 
 #[cfg(feature = "test-util")]
@@ -126,4 +130,16 @@ pub trait Connector: Send + Sync {
 
     /// Human-readable description of what this connector dials (`"unix:/path"`).
     fn describe(&self) -> String;
+
+    /// The bearer token this connector should authenticate with, if any.
+    ///
+    /// The byte-stream seam stays protocol-free — the transport crate never
+    /// constructs an `Authenticate` frame. Instead a token-bearing connector
+    /// (the TCP adapter) advertises its token here, and the shared IPC client
+    /// (`mxr_client::IpcConnection::connect_with`) performs the framed
+    /// handshake after the stream is up. `None` (the default, and every
+    /// implicit-trust transport) means "send no handshake."
+    fn auth_token(&self) -> Option<&str> {
+        None
+    }
 }

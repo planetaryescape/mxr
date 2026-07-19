@@ -1358,6 +1358,22 @@ pub enum Request {
     GetStatus,
     Ping,
     Shutdown,
+    /// In-band authentication handshake for token-bearing transports
+    /// (phase 5, transport adapters). Raw framed IPC carries no headers, so a
+    /// transport with no implicit peer identity (`PeerAuth::TokenRequired`,
+    /// e.g. the TCP-loopback adapter) authenticates by sending this as the
+    /// FIRST request on the connection. The serve core gates every other
+    /// request on that connection behind a successful `Authenticate`, replying
+    /// `IpcErrorKind::Auth` until then. On transports that DO carry implicit
+    /// trust (UDS peer creds, in-process, stdio) the handshake is a harmless
+    /// no-op that returns [`ResponseData::Authenticated`]. Additive only — no
+    /// `IPC_PROTOCOL_VERSION` bump: old clients never emit it, and the only
+    /// transport that requires it (TCP) is itself new.
+    Authenticate {
+        /// Bearer token, matched against the daemon's token store (env
+        /// `MXR_DAEMON_TOKEN` or the daemon token file).
+        token: String,
+    },
 
     // ============================================================
     // Activity log — `user_activity` table queries and mutations.
@@ -1612,6 +1628,7 @@ impl Request {
             | Self::GetStatus
             | Self::Ping
             | Self::Shutdown
+            | Self::Authenticate { .. }
             | Self::ListActivity { .. }
             | Self::CountActivity { .. }
             | Self::ActivityStats { .. }
@@ -2284,6 +2301,9 @@ pub enum ResponseData {
     },
     Pong,
     Ack,
+    /// Success reply to [`Request::Authenticate`]: the connection is now
+    /// trusted for the remainder of its lifetime (phase 5 token transports).
+    Authenticated,
     /// Returned by `Request::SendDraft` and `Request::SendStoredDraft` on
     /// success. Carries the IDs minted during synthetic Sent ingestion so
     /// callers can navigate to or reference the just-sent message without
@@ -2516,6 +2536,7 @@ impl ResponseData {
             | Self::Status { .. }
             | Self::Pong
             | Self::Ack
+            | Self::Authenticated
             | Self::ActivityEntries { .. }
             | Self::ActivityCount { .. }
             | Self::ActivityStatBuckets { .. }

@@ -7,9 +7,9 @@ pub use resolve::{
     app_instance_name, bridge_port_path, bridge_token_path, clear_bridge_port, config_dir,
     config_file_path, data_dir, gmail_oauth_keychain_service, is_demo_instance, load_config,
     load_config_from_path, load_config_from_str, read_bridge_port, read_or_create_bridge_token,
-    remote_bridge_token_path, save_config, save_config_to_path, scoped_credential_service,
-    socket_path, token_dir, write_bridge_port, ConfigError, DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME,
-    PROD_INSTANCE_NAME,
+    remote_bridge_token_path, resolve_daemon_token, save_config, save_config_to_path,
+    scoped_credential_service, socket_path, token_dir, write_bridge_port, ConfigError,
+    DAEMON_TOKEN_ENV, DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME, PROD_INSTANCE_NAME,
 };
 pub use types::*;
 

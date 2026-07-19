@@ -50,11 +50,12 @@ use mxr_core::id::AccountId;
 use mxr_core::types::{Label, Mutation, SyncBatch, SyncCursor};
 use mxr_core::{MailSyncProvider, MxrError, SyncCapabilities};
 use mxr_protocol::{
-    ClientKind, DaemonEvent, IpcCodec, IpcMessage, IpcPayload, Request, Response, ResponseData,
+    ClientKind, DaemonEvent, IpcCodec, IpcErrorKind, IpcMessage, IpcPayload, Request, Response,
+    ResponseData,
 };
 use mxr_transport::{
-    BoxedIo, Connector, MemoryTransport, PeerInfo, ServerTransport, TransportListener,
-    UdsServerTransport, UnixConnector,
+    BoxedIo, Connector, MemoryTransport, PeerAuth, PeerInfo, ServerTransport, TcpConnector,
+    TcpServerTransport, TransportListener, UdsServerTransport, UnixConnector,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -258,7 +259,20 @@ trait Harness: Send + Sync + Sized + 'static {
     /// One connected connection: `(server end for serve, client end for the
     /// scenario, peer identity)`.
     async fn connect(&self) -> (BoxedIo, BoxedIo, PeerInfo);
+
+    /// The bearer token this transport's connections must authenticate with, if
+    /// any. `None` for every implicit-trust transport (UDS/memory/duplex/
+    /// socketpair); `Some` only for the TCP token harness. When present, the
+    /// serve wiring passes it to the serve core AND the framed-client wrappers
+    /// perform the `Authenticate` handshake before running a scenario, so the
+    /// carrier-independent scenarios run unchanged post-auth.
+    fn expected_token(&self) -> Option<Arc<str>> {
+        None
+    }
 }
+
+/// The corpus's fixed TCP token. A real secret in production; a constant here.
+const CORPUS_TOKEN: &str = "corpus-conformance-token";
 
 /// A Unix `socketpair(2)` — the real fd / kernel path, no bind/accept.
 struct SocketpairHarness;
@@ -351,6 +365,49 @@ impl Harness for MemoryTransportHarness {
     }
 }
 
+/// The REAL TCP-loopback + token transport (`TcpServerTransport` bound to an
+/// ephemeral loopback port, dialed by a `TcpConnector`). Its connections carry
+/// [`PeerAuth::TokenRequired`], so the serve core gates them — the framed-client
+/// wrappers authenticate with [`CORPUS_TOKEN`] before running a scenario. This
+/// harness is what proves the auth half of the trait carries the whole corpus.
+struct TcpTokenHarness {
+    listener: Mutex<Box<dyn TransportListener>>,
+    connector: TcpConnector,
+}
+
+#[async_trait]
+impl Harness for TcpTokenHarness {
+    async fn start() -> Self {
+        let transport = TcpServerTransport::new("127.0.0.1:0".parse().unwrap());
+        let listener = transport.bind().await.unwrap();
+        // The kernel-assigned port is reported in the listener endpoint string.
+        let endpoint = listener.endpoint();
+        let addr = endpoint
+            .strip_prefix("tcp://")
+            .and_then(|authority| authority.parse().ok())
+            .expect("tcp listener endpoint should be tcp://host:port");
+        Self {
+            listener: Mutex::new(listener),
+            connector: TcpConnector::new(addr, Some(CORPUS_TOKEN.to_string())),
+        }
+    }
+
+    async fn connect(&self) -> (BoxedIo, BoxedIo, PeerInfo) {
+        let client = self.connector.connect().await.unwrap();
+        let (server, peer) = self.listener.lock().await.accept().await.unwrap();
+        assert_eq!(
+            peer.auth,
+            PeerAuth::TokenRequired,
+            "TCP connections must surface TokenRequired"
+        );
+        (server, client, peer)
+    }
+
+    fn expected_token(&self) -> Option<Arc<str>> {
+        Some(Arc::from(CORPUS_TOKEN))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Client helpers.
 // ---------------------------------------------------------------------------
@@ -377,13 +434,55 @@ async fn spawn_server<H: Harness>(
     prep: impl FnOnce(&Arc<AppState>),
 ) -> (BoxedIo, JoinHandle<()>) {
     let (server_io, client_io, peer) = harness.connect().await;
+    let auth_token = harness.expected_token();
     let event_rx = state.event_tx.subscribe();
     prep(&state);
     let shutdown_rx = state.shutdown_receiver();
     let server = tokio::spawn(async move {
-        serve_client_connection(server_io, state, hot, bulk, peer, event_rx, shutdown_rx).await;
+        serve_client_connection(
+            server_io,
+            state,
+            hot,
+            bulk,
+            peer,
+            auth_token,
+            event_rx,
+            shutdown_rx,
+        )
+        .await;
     });
     (client_io, server)
+}
+
+/// Perform the `Authenticate` handshake on a freshly framed client: send the
+/// token and require an `Authenticated` reply, skipping any (gate-suppressed,
+/// so in practice none) interleaved events. Called by the framed-client
+/// wrappers for token transports so the carrier-independent scenarios run
+/// post-auth.
+async fn authenticate_framed(client: &mut Framed<BoxedIo, IpcCodec>, token: &str) {
+    client
+        .send(request(
+            u64::MAX,
+            Request::Authenticate {
+                token: token.to_string(),
+            },
+        ))
+        .await
+        .unwrap();
+    loop {
+        let frame = tokio::time::timeout(RECV_TIMEOUT, client.next())
+            .await
+            .expect("authenticate response should arrive")
+            .expect("stream should not be closed")
+            .expect("authenticate response should decode");
+        match frame.payload {
+            IpcPayload::Event(_) => continue,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Authenticated,
+            }) => break,
+            other => panic!("expected Authenticated, got {other:?}"),
+        }
+    }
 }
 
 /// A framed client over a served connection.
@@ -408,11 +507,16 @@ async fn serve_with_prep<H: Harness>(
     bulk: Arc<Semaphore>,
     prep: impl FnOnce(&Arc<AppState>),
 ) -> Served {
+    let token = harness.expected_token();
     let (client, server) = spawn_server(harness, state, hot, bulk, prep).await;
-    Served {
-        client: Framed::new(client, IpcCodec::new()),
-        server,
+    let mut client = Framed::new(client, IpcCodec::new());
+    // Token transports (TCP) gate every request; authenticate the framed client
+    // up front so the shared scenario bodies run unchanged. Implicit-trust
+    // transports advertise no token and skip this.
+    if let Some(token) = token {
+        authenticate_framed(&mut client, &token).await;
     }
+    Served { client, server }
 }
 
 impl Served {
@@ -1033,13 +1137,24 @@ async fn scenario_13_shutdown_closes_connections<H: Harness>() {
     state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
 }
 
-/// Scenario 14 — UDS auth posture (placeholder for the phase-5 auth matrix).
-/// Today any local connection is accepted with no handshake: a fresh connection
-/// answers `Ping` immediately, no `Authenticate` step required.
-async fn scenario_14_uds_accepts_any_local_connection<H: Harness>() {
+/// Scenario 14 — the auth matrix (phase 5). Split into the no-auth pin for
+/// implicit-trust transports (below, run per local harness) and the TCP token
+/// matrix (`mod auth_matrix`). The generic `run_on_all_transports!` macro does
+/// NOT include scenario 14 — its assertions differ by transport — so it is
+/// wired by hand.
+///
+/// No-auth pin: an implicit-trust transport (UDS peer creds, in-process,
+/// duplex/stdio `LocalProcess`) accepts a request with NO `Authenticate` step.
+/// This is the guard the spec calls for — an accidental token-gate on UDS would
+/// fail this loudly.
+async fn scenario_14_local_transport_needs_no_auth<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
     let h = H::start().await;
+    assert!(
+        h.expected_token().is_none(),
+        "this pin is for implicit-trust transports only"
+    );
     let mut served = serve(&h, state.clone(), hot, bulk).await;
 
     // No auth handshake — straight to a request.
@@ -1047,10 +1162,177 @@ async fn scenario_14_uds_accepts_any_local_connection<H: Harness>() {
     let response = served.recv_response(1).await;
     assert!(
         pong(&response),
-        "UDS accepts any local connection without authentication"
+        "an implicit-trust transport accepts a local connection without authentication"
     );
 
     finish(&state, served).await;
+}
+
+/// The no-auth pin, one test per implicit-trust harness (the four transports
+/// that carry inherited trust: raw socketpair, in-memory duplex, the real UDS
+/// transport, and the real memory transport — the `LocalProcess`/`UnixPeer`
+/// set, which also stands in for the stdio server's `LocalProcess` peer).
+mod no_auth_pins {
+    #[tokio::test]
+    async fn socketpair() {
+        super::scenario_14_local_transport_needs_no_auth::<super::SocketpairHarness>().await;
+    }
+    #[tokio::test]
+    async fn duplex() {
+        super::scenario_14_local_transport_needs_no_auth::<super::DuplexHarness>().await;
+    }
+    #[tokio::test]
+    async fn uds_transport() {
+        super::scenario_14_local_transport_needs_no_auth::<super::UdsTransportHarness>().await;
+    }
+    #[tokio::test]
+    async fn memory_transport() {
+        super::scenario_14_local_transport_needs_no_auth::<super::MemoryTransportHarness>().await;
+    }
+}
+
+/// The TCP token auth matrix: the three dispositions the gate must enforce on a
+/// `TokenRequired` connection. Each drives a RAW (un-authenticated) framed
+/// client against the real TCP transport so the gate is exercised directly.
+mod auth_matrix {
+    use super::{
+        request, spawn_server, AppState, Arc, Framed, Harness, IpcCodec, IpcErrorKind, IpcMessage,
+        IpcPayload, Request, Response, ResponseData, TcpTokenHarness, CORPUS_TOKEN, JOIN_TIMEOUT,
+        RECV_TIMEOUT,
+    };
+    use futures::{SinkExt, StreamExt};
+
+    /// A `TokenRequired` connection that sends any request BEFORE authenticating
+    /// gets an `Auth` error — not a dispatched response.
+    #[tokio::test]
+    async fn pre_auth_request_is_rejected() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let (hot, bulk) = super::lanes();
+        let h = TcpTokenHarness::start().await;
+        let (client, server) = spawn_server(&h, state.clone(), hot, bulk, |_| {}).await;
+        let mut client = Framed::new(client, IpcCodec::new());
+
+        // Straight to a Ping — no Authenticate first.
+        client.send(request(1, Request::Ping)).await.unwrap();
+        let response = tokio::time::timeout(RECV_TIMEOUT, client.next())
+            .await
+            .expect("a frame should arrive")
+            .expect("stream open")
+            .expect("frame decodes");
+        assert_auth_error(&response);
+
+        drop(client);
+        tokio::time::timeout(JOIN_TIMEOUT, server)
+            .await
+            .expect("serve task terminates")
+            .expect("serve task does not panic");
+        state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
+    }
+
+    /// A wrong token is rejected, and the connection stays gated: a follow-up
+    /// request still gets an `Auth` error.
+    #[tokio::test]
+    async fn bad_token_is_rejected_and_stays_gated() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let (hot, bulk) = super::lanes();
+        let h = TcpTokenHarness::start().await;
+        let (client, server) = spawn_server(&h, state.clone(), hot, bulk, |_| {}).await;
+        let mut client = Framed::new(client, IpcCodec::new());
+
+        client
+            .send(request(
+                1,
+                Request::Authenticate {
+                    token: "not-the-token".to_string(),
+                },
+            ))
+            .await
+            .unwrap();
+        let rejected = tokio::time::timeout(RECV_TIMEOUT, client.next())
+            .await
+            .expect("a frame should arrive")
+            .expect("stream open")
+            .expect("frame decodes");
+        assert_auth_error(&rejected);
+
+        // Still gated: a subsequent request is refused.
+        client.send(request(2, Request::Ping)).await.unwrap();
+        let still_gated = tokio::time::timeout(RECV_TIMEOUT, client.next())
+            .await
+            .expect("a frame should arrive")
+            .expect("stream open")
+            .expect("frame decodes");
+        assert_auth_error(&still_gated);
+
+        drop(client);
+        tokio::time::timeout(JOIN_TIMEOUT, server)
+            .await
+            .expect("serve task terminates")
+            .expect("serve task does not panic");
+        state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
+    }
+
+    /// The good token authenticates, then requests dispatch normally.
+    #[tokio::test]
+    async fn good_token_unlocks_the_connection() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let (hot, bulk) = super::lanes();
+        let h = TcpTokenHarness::start().await;
+        let (client, server) = spawn_server(&h, state.clone(), hot, bulk, |_| {}).await;
+        let mut client = Framed::new(client, IpcCodec::new());
+
+        client
+            .send(request(
+                1,
+                Request::Authenticate {
+                    token: CORPUS_TOKEN.to_string(),
+                },
+            ))
+            .await
+            .unwrap();
+        let authed = tokio::time::timeout(RECV_TIMEOUT, client.next())
+            .await
+            .expect("a frame should arrive")
+            .expect("stream open")
+            .expect("frame decodes");
+        assert!(
+            matches!(
+                authed.payload,
+                IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Authenticated
+                })
+            ),
+            "good token should authenticate, got {authed:?}"
+        );
+
+        // Now a normal request round-trips.
+        client.send(request(2, Request::Ping)).await.unwrap();
+        let pong = tokio::time::timeout(RECV_TIMEOUT, client.next())
+            .await
+            .expect("a frame should arrive")
+            .expect("stream open")
+            .expect("frame decodes");
+        assert!(
+            super::pong(&pong),
+            "post-auth request should dispatch, got {pong:?}"
+        );
+
+        drop(client);
+        tokio::time::timeout(JOIN_TIMEOUT, server)
+            .await
+            .expect("serve task terminates")
+            .expect("serve task does not panic");
+        state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
+    }
+
+    fn assert_auth_error(msg: &IpcMessage) {
+        match &msg.payload {
+            IpcPayload::Response(Response::Error { kind, .. }) => {
+                assert_eq!(*kind, IpcErrorKind::Auth, "expected an Auth error");
+            }
+            other => panic!("expected an Auth error response, got {other:?}"),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1090,6 +1372,13 @@ macro_rules! run_on_all_transports {
                     async fn memory_transport() {
                         super::super::$scenario::<super::super::MemoryTransportHarness>().await;
                     }
+
+                    // The auth half of the trait: the identical scenario runs
+                    // over the REAL TCP token transport, post-`Authenticate`.
+                    #[tokio::test]
+                    async fn tcp_token() {
+                        super::super::$scenario::<super::super::TcpTokenHarness>().await;
+                    }
                 }
             )+
         }
@@ -1110,5 +1399,4 @@ run_on_all_transports! {
     scenario_11_disconnect_with_inflight_request_frees_permit,
     scenario_12_handler_panic_recovers,
     scenario_13_shutdown_closes_connections,
-    scenario_14_uds_accepts_any_local_connection,
 }

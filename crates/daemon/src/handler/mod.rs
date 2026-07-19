@@ -874,6 +874,11 @@ async fn dispatch(
         Request::GetStatus => admin::get_status(state).await,
         Request::Ping => Ok(ResponseData::Pong),
         Request::Shutdown => admin::shutdown(state).await,
+        // Token transports authenticate in the serve core before dispatch; a
+        // request reaching here is on an already-trusted connection (UDS,
+        // in-process, stdio, or a redundant handshake after a valid one), so
+        // acknowledge it as a harmless no-op.
+        Request::Authenticate { .. } => Ok(ResponseData::Authenticated),
 
         // ----- activity log (Phase 3) -----
         Request::ListActivity {
@@ -1848,6 +1853,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ExportSearch { .. }
         | Request::GetStatus
         | Request::Ping
+        | Request::Authenticate { .. }
         | Request::ListEventCategories
         | Request::CountEvents { .. }
         | Request::ListActivity { .. }
@@ -2154,6 +2160,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetStatus => "get_status",
         Request::Ping => "ping",
         Request::Shutdown => "shutdown",
+        Request::Authenticate { .. } => "authenticate",
         Request::ListEventCategories => "list_event_categories",
         Request::CountEvents { .. } => "count_events",
         Request::ListActivity { .. } => "list_activity",

@@ -2,6 +2,14 @@
 
 Adapter-specific: **yes**. Two real adapters with opposite auth models, plus the community escape hatch. Decision gates Q2 (remote) and Q5 (in-process bridge) land here.
 
+> **Implemented 2026-07-19.** 5a (TCP+token), 5b (`mxr daemon --stdio`), and 5c (`cmd://` connector) shipped; 5d (in-process bridge) is **deferred** (see §5d). What follows is the design; deltas from the shipped code are called out inline as **Implemented:** notes.
+>
+> **Protocol-version ruling (the one additive change):** `Request::Authenticate { token }` + `ResponseData::Authenticated` were added **without** bumping `IPC_PROTOCOL_VERSION` (stays `4`). Rationale: the change is additive-only on `#[serde(tag)]` enums; an old client never emits the new request, and the only transport that requires it (TCP) is itself new, so no existing UDS exchange changes shape. `daemon_requires_restart` already forces a restart on any binary upgrade via the build-id handshake (`current_build_id` compares path+size+mtime), so a version bump would add nothing but spurious restart churn for same-build clients. The compatibility rule ("bump only if additive variants require it") is therefore satisfied by leaving it at 4.
+>
+> **Token precedence (documented once):** the daemon bearer token — shared by the HTTP bridge and the TCP transport, one file — resolves as `MXR_DAEMON_TOKEN` (env, non-empty) **>** the token file (`bridge_token_path()`, mode 0600). `mxr_config::resolve_daemon_token(create)` is the single resolver; the daemon creates on first run, clients read-only.
+>
+> **`cmd://` arg parsing (documented limit):** the `cmd://` body is split on ASCII whitespace into argv — **no shell quoting, escapes, globbing, or variable expansion**. An argument that must contain whitespace can't be expressed; wrap it in a script and point `cmd://` at the script.
+
 ## Goal
 
 Demonstrate the trait carries transports with different security shapes without daemon changes, and ship the out-of-process extensibility story.
@@ -47,11 +55,15 @@ The Docker `connhelper` move: a subcommand that connects to the local daemon soc
 
 With `MemoryTransport` real (phase 4), `spawn_bridge_loop` (`bridge.rs:40`) hands the bridge an in-process connector instead of the socket path — deleting a socket round-trip per web request. Pure win, no behavior change; do it here while the plumbing is warm.
 
+> **Deferred (2026-07-19).** `mxr-web` threads `state.config.socket_path` (`&Path`) into ~50 call sites that all funnel into just **two** connection-open points (`ipc_request_with_id` and `bridge_events` in `crates/web/src/lib.rs`). Switching the daemon-hosted bridge to an in-process `MemoryConnector` cleanly means replacing that `PathBuf` with an `Arc<dyn Connector>` and rethreading those call sites — a sizable, self-contained `mxr-web` refactor whose only payoff is latency (Q5 is explicitly "optional, recommended, no behavior change"). It was carved out of phase 5 to keep the web crate stable within this change's blast radius. The landing recipe: give `WebServerConfig` an `Arc<dyn Connector>`, point the two connect sites at `IpcConnection::connect_with`, and have `spawn_bridge_loop` build a `MemoryTransport` whose accept loop serves `serve_client_connection` with `PeerInfo::local()`. Standalone `mxr web` keeps a `UnixConnector`.
+
 ## Conformance & the auth matrix
 
 - Corpus (scenarios 1–13) runs over: UDS, memory, TCP+token, stdio. Scenario 14 becomes real:
   - TCP: pre-auth request → `Auth` error; bad token → `Auth` error; good token → full corpus passes post-auth.
   - UDS/stdio/memory: no auth demanded (pinned explicitly, so a future accidental token-gate on UDS fails loudly).
+
+> **Implemented.** Scenarios 1–13 now run over a **fifth** harness — the real `TcpServerTransport`/`TcpConnector` (`TcpTokenHarness`), which the framed-client wrappers `Authenticate` up front — so the whole carrier-independent corpus passes post-auth (65 matrixed tests). Scenario 14 is pulled out of the generic macro (its assertions differ by transport) and split into: `mod no_auth_pins` (the Ping-without-auth pin, one test each for socketpair/duplex/real-UDS/real-memory — the `LocalProcess`/`UnixPeer` set that also stands in for the stdio server's `LocalProcess` peer) and `mod auth_matrix` (three bespoke TCP tests: pre-auth request → `Auth`, bad token → `Auth` + still-gated, good token → `Authenticated` then a request dispatches). A dedicated stdio *harness* was judged not feasible/needed: `mxr daemon --stdio` feeds `serve_client_connection` a `LocalProcess` peer over joined stdin/stdout, which is byte-for-byte what the duplex/socketpair harnesses already exercise; the real stdio server is covered by a live smoke instead.
 
 ## Non-goals
 

@@ -480,3 +480,24 @@ Superseded by D049. Bodies and body text are now indexed at sync time.
 - `PeerInfo` (UDS peer credentials) is threaded into the dispatch context; no policy reads it yet (phase 5's token gate does). `PeerAuth::UnixPeer` always carries real creds — a `peer_cred` failure fails that connection closed rather than fabricating an identity — so phase-5 policy can trust a `UnixPeer` match.
 - The conformance corpus runs every scenario over four harnesses: the socketpair/duplex carriers plus the real UDS and in-memory transports through `bind`/`accept`/`connect`.
 - **`MXR_DAEMON_ADDR` single-source resolution**: the daemon bind, autostart, the socket probe, doctor's reachability, and the request path all resolve through the same `TransportAddr::resolve` (precedence `MXR_DAEMON_ADDR` > `MXR_SOCKET_PATH` > per-instance default), so start / probe / request never disagree. The standalone `mxr-tui` / `mxr-web` / `mxr-mcp` clients stay on `mxr_config::socket_path()` this phase; their `MXR_DAEMON_ADDR` adoption lands in phase 5.
+
+---
+
+## D054: Phase 5 transports — TCP+token, stdio, `cmd://`; token gate in the serve core; no protocol-version bump
+
+**Chosen**: Ship three transports with opposite trust models and one additive protocol request.
+
+- **5a — TCP loopback + token** (`TcpServerTransport` / `TcpConnector`): binds loopback only and **refuses non-loopback outright** (Q2: no in-daemon remote — off-machine reach is `dial-stdio` over SSH). Its accept surfaces `PeerAuth::TokenRequired`.
+- **5b — stdio server** (`mxr daemon --stdio`): serves exactly one connection over stdin/stdout, `PeerAuth::LocalProcess` (the spawner authenticates), stdout carries only frames. Cannot run alongside a socket daemon (same exclusive state).
+- **5c — `cmd://` connector** (`CmdConnector`): spawns a command and wraps its stdio as the byte stream (kill-on-drop, stderr passthrough), so `MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio"` works for the CLI. Argv is whitespace-split — no shell quoting.
+- **5d — in-process bridge**: **deferred**. The win is latency-only (Q5 is "optional, recommended, no behavior change"); it requires rethreading `mxr-web`'s ~50 `socket_path` call sites onto a `Connector`, a self-contained web-crate refactor carved out to bound this change's blast radius.
+
+**Auth gate**: `Request::Authenticate { token }` → `ResponseData::Authenticated`. The gate is **connection-scoped state in the serve core** (not the transport, which stays protocol-free; not the stateless dispatcher, which has no connection notion). A `TokenRequired` peer gets `IpcErrorKind::Auth` on every request — and no events — until a successful `Authenticate`; the `Authenticated` ack is sent inline so it always precedes any buffered event. UDS/memory/stdio start trusted and are byte-for-byte unchanged (pinned by corpus no-auth tests, so an accidental token-gate on UDS fails loudly).
+
+**Token store**: one secret shared by the bridge and TCP — `MXR_DAEMON_TOKEN` (env) **>** the `bridge-token` file (0600), via `mxr_config::resolve_daemon_token`.
+
+**No `IPC_PROTOCOL_VERSION` bump** (stays 4): the change is additive-only; an old client never emits `Authenticate`, and the only transport that requires it (TCP) is new, so no existing UDS exchange changes shape. The build-id handshake (`daemon_requires_restart`) already forces a restart on any binary upgrade, so a bump would only add spurious restart churn.
+
+**Client adoption**: the CLI builds its connector from `MXR_DAEMON_ADDR` (`unix://`/`tcp://`/`cmd://`); autostart and the stale-socket probe are skipped for the non-unix schemes (they manage their own reachability). TUI/web/MCP route socket resolution through the shared `TransportAddr::resolve_unix_socket` (re-exported from `mxr-client`) — `unix://` only, `tcp://`/`cmd://` rejected with a clear message (support can follow demand).
+
+**Conformance**: scenarios 1–13 gain a fifth harness (real TCP+token, post-`Authenticate`); scenario 14 is a bespoke auth matrix (pre-auth reject / bad token reject / good token unlock) plus no-auth pins for the four implicit-trust transports.

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.12](https://github.com/planetaryescape/mxr/compare/v0.6.11...v0.6.12) (2026-07-22)
+
+
+### Bug Fixes
+
+* let account repair run without daemon ([#158](https://github.com/planetaryescape/mxr/issues/158)) ([443fefb](https://github.com/planetaryescape/mxr/commit/443fefb7cff0edc339313299518b73a73a06747e))
+
 ## [0.6.11](https://github.com/planetaryescape/mxr/compare/v0.6.10...v0.6.11) (2026-07-22)
 
 

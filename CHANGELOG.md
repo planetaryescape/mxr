@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.13](https://github.com/planetaryescape/mxr/compare/v0.6.12...v0.6.13) (2026-07-22)
+
+
+### Features
+
+* **web:** send-as alias picker in compose From control ([#160](https://github.com/planetaryescape/mxr/issues/160)) ([c72bcdd](https://github.com/planetaryescape/mxr/commit/c72bcdd7e4902e18678917ac1e228c2eec8afd1b))
+
 ## [0.6.12](https://github.com/planetaryescape/mxr/compare/v0.6.11...v0.6.12) (2026-07-22)
 
 

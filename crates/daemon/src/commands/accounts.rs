@@ -898,7 +898,13 @@ async fn reauth_account(name: &str) -> anyhow::Result<()> {
 }
 
 async fn repair_account(name: &str) -> anyhow::Result<()> {
-    let mut account = find_account_config(name).await?;
+    // Read the account from disk in-process so repair works whether or not a
+    // daemon is running (the daemon's ListAccountsConfig reads the same file).
+    let mut account = crate::handler::list_account_configs()
+        .map_err(anyhow::Error::msg)?
+        .into_iter()
+        .find(|account| account.key == name)
+        .ok_or_else(|| anyhow::anyhow!("Account '{name}' not found"))?;
 
     let mut repairable = false;
     if let Some(AccountSyncConfigData::Imap {
@@ -931,7 +937,28 @@ async fn repair_account(name: &str) -> anyhow::Result<()> {
         anyhow::bail!("Account '{name}' has no password-backed IMAP/SMTP credentials to repair");
     }
 
-    run_account_operation(Request::RepairAccountConfig { account }).await
+    // Prefer an already-running LOCAL daemon: it is the SecretStore's single
+    // writer, and letting it perform the write also makes it reload the repaired
+    // credential (dropping its stale in-memory cache) so the new password takes
+    // effect without a restart.
+    //
+    // Probe ONLY the local unix socket (`mxr_config::socket_path()`), never the
+    // `MXR_DAEMON_ADDR` transport: repair writes LOCAL credentials, so it must
+    // reuse only a local daemon. Going through the addr connector would let a
+    // `tcp://` value ship local credentials to a remote daemon and a `cmd://`
+    // value SPAWN a process — an autostart repair must never do. `connect_to`
+    // never autostarts; if no local daemon is listening it errors and we fall
+    // back to the in-process disk-first write (no running daemon means no stale
+    // cache and no writer to race).
+    match IpcClient::connect_to(&mxr_config::socket_path()).await {
+        Ok(mut client) => {
+            let result =
+                request_account_operation(&mut client, Request::RepairAccountConfig { account })
+                    .await?;
+            render_account_operation(result)
+        }
+        Err(_) => render_account_operation(crate::handler::repair_account_config(account)),
+    }
 }
 
 async fn ensure_account_available(name: &str) -> anyhow::Result<()> {

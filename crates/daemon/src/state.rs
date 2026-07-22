@@ -439,6 +439,11 @@ pub struct AppState {
     pub analytics_startup_repair_done: std::sync::atomic::AtomicBool,
     config: RwLock<mxr_config::MxrConfig>,
     shutdown_tx: watch::Sender<bool>,
+    /// Bumped by [`AppState::reload_accounts_from_disk`] after the provider
+    /// runtime is rebuilt. Long-lived loops that hold a provider (the IDLE
+    /// watcher) subscribe and re-fetch the refreshed provider on each change,
+    /// so a rotated credential takes effect without a daemon restart.
+    reload_tx: watch::Sender<u64>,
     runtime_tasks: RuntimeTasks,
     admin_blocking: Arc<Semaphore>,
     pub(crate) auth_sessions: ParkingMutex<HashMap<AuthSessionId, AuthSessionRuntime>>,
@@ -521,6 +526,7 @@ impl AppState {
 
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
+        let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
         let locale = mxr_core::i18n::select(&resolve_locale_code(&config));
@@ -553,6 +559,7 @@ impl AppState {
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
+            reload_tx,
             runtime_tasks,
             admin_blocking,
             auth_sessions: ParkingMutex::new(HashMap::new()),
@@ -964,6 +971,20 @@ impl AppState {
         self.shutdown_tx.subscribe()
     }
 
+    /// Subscribe to the provider-reload signal. The value is an opaque
+    /// generation counter; a change means the provider runtime was rebuilt and
+    /// any long-lived provider handle should be re-fetched.
+    pub fn reload_receiver(&self) -> watch::Receiver<u64> {
+        self.reload_tx.subscribe()
+    }
+
+    /// Signal that the provider runtime was rebuilt so long-lived loops (the
+    /// IDLE watcher) drop their captured provider and re-fetch the fresh one.
+    pub fn signal_providers_reloaded(&self) {
+        self.reload_tx
+            .send_modify(|generation| *generation = generation.wrapping_add(1));
+    }
+
     pub fn shutdown_requested(&self) -> bool {
         *self.shutdown_tx.borrow()
     }
@@ -1239,6 +1260,10 @@ impl AppState {
                 default_send_provider: provider_setup.default_send_provider,
             };
         }
+        // Providers are swapped: wake any long-lived loop holding an old
+        // provider Arc (the IDLE watcher) so it reconnects with the refreshed
+        // credential. The periodic sync loop already re-fetches per iteration.
+        self.signal_providers_reloaded();
         self.semantic
             .apply_config(config.search.semantic.clone())
             .await
@@ -1302,6 +1327,7 @@ impl AppState {
 
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
+        let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
         let activity = crate::activity::Recorder::spawn(store.clone());
@@ -1333,6 +1359,7 @@ impl AppState {
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
+            reload_tx,
             runtime_tasks,
             admin_blocking,
             auth_sessions: ParkingMutex::new(HashMap::new()),
@@ -1367,6 +1394,7 @@ impl AppState {
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
+        let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
         let activity = crate::activity::Recorder::spawn(store.clone());
@@ -1398,6 +1426,7 @@ impl AppState {
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
+            reload_tx,
             runtime_tasks,
             admin_blocking,
             auth_sessions: ParkingMutex::new(HashMap::new()),
@@ -1457,6 +1486,7 @@ impl AppState {
 
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
+        let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
         let activity = crate::activity::Recorder::spawn(store.clone());
@@ -1489,6 +1519,7 @@ impl AppState {
                 analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
                 config: RwLock::new(config),
                 shutdown_tx,
+                reload_tx,
                 runtime_tasks,
                 admin_blocking,
                 auth_sessions: ParkingMutex::new(HashMap::new()),

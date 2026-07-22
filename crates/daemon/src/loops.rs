@@ -24,6 +24,38 @@ const SYNC_CYCLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 #[cfg(test)]
 const SYNC_CYCLE_TIMEOUT: Duration = Duration::from_millis(50);
 
+/// Test-only scheduler seam for the IDLE loop's provider-read → reload-snapshot
+/// race window. The IDLE loop calls [`idle_race_hook::fire`] immediately after
+/// reading the provider; a test installs a hook keyed by account to inject a
+/// reload at exactly that point, making the otherwise-nondeterministic data race
+/// deterministically reproducible. Compiled out entirely in release builds.
+#[cfg(test)]
+pub(crate) mod idle_race_hook {
+    use mxr_core::id::AccountId;
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+
+    type Hook = Box<dyn FnMut() + Send>;
+
+    fn hooks() -> &'static Mutex<HashMap<AccountId, Hook>> {
+        static HOOKS: OnceLock<Mutex<HashMap<AccountId, Hook>>> = OnceLock::new();
+        HOOKS.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    pub(crate) fn install(account_id: AccountId, hook: Hook) {
+        hooks().lock().unwrap().insert(account_id, hook);
+    }
+
+    /// Fire (once) the hook registered for `account_id`, if any. The hook is
+    /// removed so it runs a single time.
+    pub(crate) fn fire(account_id: &AccountId) {
+        let hook = hooks().lock().unwrap().remove(account_id);
+        if let Some(mut hook) = hook {
+            hook();
+        }
+    }
+}
+
 /// Extra grace a detached sync gets to finish before the reaper aborts
 /// it. The detach path exists for syncs that outlive their caller's wait
 /// limit but are still making progress; this caps how long a genuinely
@@ -299,7 +331,7 @@ pub async fn reconcile_interrupted_syncs(state: &AppState) {
 
 /// Spawn sync loops for all configured accounts.
 pub fn spawn_sync_loops(state: Arc<AppState>) {
-    for (account_id, provider) in state.sync_provider_entries() {
+    for (account_id, _) in state.sync_provider_entries() {
         if state.mark_sync_loop_spawned(&account_id) {
             let loop_state = state.clone();
             let task_state = state.clone();
@@ -318,16 +350,10 @@ pub fn spawn_sync_loops(state: Arc<AppState>) {
         if state.mark_idle_loop_spawned(&account_id) {
             let loop_state = state.clone();
             let watcher_account_id = account_id.clone();
-            let watcher_provider = provider.clone();
             let handle = tokio::spawn(async move {
                 let shutdown_rx = loop_state.shutdown_receiver();
-                idle_loop_for_account(
-                    loop_state.clone(),
-                    watcher_account_id.clone(),
-                    watcher_provider,
-                    shutdown_rx,
-                )
-                .await;
+                idle_loop_for_account(loop_state.clone(), watcher_account_id.clone(), shutdown_rx)
+                    .await;
                 loop_state.finish_idle_loop(&watcher_account_id);
             });
             state.register_idle_loop_handle(account_id.clone(), handle);
@@ -344,10 +370,14 @@ pub fn spawn_sync_loops(state: Arc<AppState>) {
 async fn idle_loop_for_account(
     state: Arc<AppState>,
     account_id: mxr_core::id::AccountId,
-    provider: Arc<dyn mxr_core::MailSyncProvider>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) {
     let notify = state.idle_notify_for_account(&account_id);
+    // Re-fetch the provider from the runtime each cycle and reconnect whenever
+    // the providers are reloaded, so a rotated credential takes effect without a
+    // daemon restart (the watcher would otherwise keep an old provider Arc and a
+    // long-lived connection using the stale password).
+    let mut reload_rx = state.reload_receiver();
     let mut backoff_secs: u64 = 0;
     loop {
         if *shutdown_rx.borrow() {
@@ -362,6 +392,34 @@ async fn idle_loop_for_account(
                     }
                 }
             }
+        }
+
+        // Snapshot the reload generation as seen BEFORE reading the provider.
+        // `reload_accounts_from_disk` swaps the provider runtime and THEN bumps
+        // this generation, so observing a bump happens-after the swap. Marking
+        // first is what closes the race: any reload landing after this point
+        // leaves `reload_rx` observably changed (caught by the re-check below or
+        // the select arm), instead of being masked. Marking AFTER the provider
+        // read would let a concurrent reload (multi-threaded runtime) swap in a
+        // fresh provider while we open a long-lived watcher on the stale one and
+        // never notice — the exact stale-credential bug this loop exists to fix.
+        reload_rx.mark_unchanged();
+        let Some(provider) = state.sync_provider_for_account(&account_id) else {
+            tracing::info!(account = %account_id, "IDLE loop exiting: account removed from runtime");
+            return;
+        };
+
+        // Test-only seam: inject a reload at exactly the read→snapshot window so
+        // the race guard is deterministic. No-op (and compiled out) in release.
+        #[cfg(test)]
+        idle_race_hook::fire(&account_id);
+
+        // A reload landed between the snapshot and the provider read: re-fetch
+        // before opening a long-lived watcher, so the watcher we block on always
+        // reflects any reload already signaled. `mark_unchanged` at the top of
+        // the next iteration clears the flag, so this cannot busy-spin.
+        if reload_rx.has_changed().unwrap_or(false) {
+            continue;
         }
 
         let mut watcher = match provider.idle_watch().await {
@@ -399,6 +457,14 @@ async fn idle_loop_for_account(
                         return;
                     }
                 }
+                changed = reload_rx.changed() => {
+                    if changed.is_ok() {
+                        tracing::info!(account = %account_id, "providers reloaded; dropping IDLE connection to reconnect with refreshed credentials");
+                        // Drop the current watcher (and its connection) and let the
+                        // outer loop re-fetch the refreshed provider.
+                        break;
+                    }
+                }
             }
         }
     }
@@ -422,6 +488,10 @@ async fn sync_loop_for_account(
             tracing::info!(account = %account_id, "Sync loop exiting: daemon shutdown requested");
             break;
         }
+        // Re-fetched each iteration, so a reload's refreshed provider is picked
+        // up on the next cycle. A reload mid-cycle can cause at most ONE stale
+        // sync cycle (the provider was read before the sleep); that self-corrects
+        // next cycle and sync is retried/idempotent, so it needs no signal here.
         let Some(provider) = state.sync_provider_for_account(&account_id) else {
             tracing::info!(account = %account_id, "Sync loop exiting: account removed from runtime");
             break;
@@ -1890,6 +1960,240 @@ mod tests {
         }
     }
 
+    /// IDLE-capable provider double: records the label of every provider whose
+    /// `idle_watch` is acquired, so a test can prove the IDLE loop re-fetches
+    /// the refreshed provider after a reload. Its watcher blocks forever, so the
+    /// only way the loop acquires a *second* watcher is by reconnecting.
+    struct IdleReloadProvider {
+        account_id: AccountId,
+        label: &'static str,
+        acquired: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    }
+
+    impl IdleReloadProvider {
+        fn new(
+            account_id: AccountId,
+            label: &'static str,
+            acquired: Arc<std::sync::Mutex<Vec<&'static str>>>,
+        ) -> Self {
+            Self {
+                account_id,
+                label,
+                acquired,
+            }
+        }
+    }
+
+    struct PendingWatcher;
+
+    #[async_trait::async_trait]
+    impl mxr_core::IdleWatcher for PendingWatcher {
+        async fn next_event(&mut self) -> Result<(), MxrError> {
+            std::future::pending().await
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MailSyncProvider for IdleReloadProvider {
+        fn name(&self) -> &str {
+            "idle-reload"
+        }
+
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities::default()
+        }
+
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(Vec::new())
+        }
+
+        async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            Ok(SyncBatch {
+                upserted: Vec::new(),
+                deleted_provider_ids: Vec::new(),
+                label_changes: Vec::new(),
+                next_cursor: cursor.clone(),
+                has_more: false,
+                threads_changed: Vec::new(),
+            })
+        }
+
+        async fn fetch_attachment(
+            &self,
+            _provider_message_id: &str,
+            _provider_attachment_id: &str,
+        ) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+
+        async fn apply_mutation(
+            &self,
+            _mutation_id: &str,
+            _mutation: &mxr_core::Mutation,
+        ) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn idle_watch(&self) -> Result<Option<Box<dyn mxr_core::IdleWatcher>>, MxrError> {
+            self.acquired
+                .lock()
+                .expect("acquired lock")
+                .push(self.label);
+            Ok(Some(Box::new(PendingWatcher)))
+        }
+    }
+
+    /// Regression test for the consulting stale-credential bug: the persistent
+    /// IDLE loop captured its provider once, so a rotated password stayed cached
+    /// until a full daemon restart. After `reload_accounts_from_disk` swaps the
+    /// provider runtime and signals a reload, the IDLE loop must drop its
+    /// connection and reconnect using the REFRESHED provider.
+    #[tokio::test]
+    async fn idle_loop_reconnects_with_refreshed_provider_after_reload() {
+        let account_id = AccountId::new();
+        let acquired = Arc::new(std::sync::Mutex::new(Vec::<&'static str>::new()));
+
+        let old_provider = Arc::new(IdleReloadProvider::new(
+            account_id.clone(),
+            "old",
+            acquired.clone(),
+        ));
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, old_provider, None)
+                .await
+                .unwrap(),
+        );
+
+        let shutdown_rx = state.shutdown_receiver();
+        let loop_state = state.clone();
+        let loop_account_id = account_id.clone();
+        let handle = tokio::spawn(async move {
+            idle_loop_for_account(loop_state, loop_account_id, shutdown_rx).await;
+        });
+
+        // The loop acquires the OLD provider's watcher first.
+        wait_until(&acquired, |log| log.contains(&"old")).await;
+
+        // Swap the runtime provider (as reload does) and signal the reload.
+        let new_provider = Arc::new(IdleReloadProvider::new(
+            account_id.clone(),
+            "new",
+            acquired.clone(),
+        ));
+        state.add_sync_provider_for_test(new_provider);
+        state.signal_providers_reloaded();
+
+        // The loop must drop the old watcher and reconnect with the NEW provider.
+        wait_until(&acquired, |log| log.contains(&"new")).await;
+
+        state.request_shutdown();
+        let _ = tokio::time::timeout(Duration::from_secs(1), handle).await;
+
+        let log = acquired.lock().expect("acquired lock").clone();
+        assert_eq!(
+            log.first(),
+            Some(&"old"),
+            "idle loop should start on the original provider"
+        );
+        assert!(
+            log.contains(&"new"),
+            "idle loop must reconnect with the refreshed provider after reload, got {log:?}"
+        );
+    }
+
+    /// Deterministic guard for the exact read→mark race Codex flagged. The
+    /// `idle_reload_race_hook` fires precisely in the window between the provider
+    /// read and the reload-generation snapshot; the hook swaps in the NEW
+    /// provider and signals the reload right there. With the fix (snapshot BEFORE
+    /// the read + `has_changed` re-check) the loop notices and opens its watcher
+    /// on the NEW provider — never touching OLD. Reverting the fix (snapshot
+    /// AFTER the read, no re-check) masks the signal, the loop blocks on OLD
+    /// forever, and this test times out. See the revert-check in the PR notes.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn idle_loop_opens_watcher_on_new_provider_when_reload_lands_in_read_window() {
+        let account_id = AccountId::new();
+        let acquired = Arc::new(std::sync::Mutex::new(Vec::<&'static str>::new()));
+
+        let old_provider = Arc::new(IdleReloadProvider::new(
+            account_id.clone(),
+            "old",
+            acquired.clone(),
+        ));
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, old_provider, None)
+                .await
+                .unwrap(),
+        );
+
+        // Inject the reload at exactly the read→mark window. Fires once.
+        let hook_state = state.clone();
+        let hook_account_id = account_id.clone();
+        let hook_acquired = acquired.clone();
+        idle_race_hook::install(
+            account_id.clone(),
+            Box::new(move || {
+                let new_provider = Arc::new(IdleReloadProvider::new(
+                    hook_account_id.clone(),
+                    "new",
+                    hook_acquired.clone(),
+                ));
+                hook_state.add_sync_provider_for_test(new_provider);
+                hook_state.signal_providers_reloaded();
+            }),
+        );
+
+        let shutdown_rx = state.shutdown_receiver();
+        let loop_state = state.clone();
+        let loop_account_id = account_id.clone();
+        let handle = tokio::spawn(async move {
+            idle_loop_for_account(loop_state, loop_account_id, shutdown_rx).await;
+        });
+
+        // The loop must open its watcher on NEW, having re-fetched after the
+        // injected reload — it must never establish a watcher on OLD.
+        wait_until(&acquired, |log| log.contains(&"new")).await;
+
+        state.request_shutdown();
+        let _ = tokio::time::timeout(Duration::from_secs(1), handle).await;
+
+        let log = acquired.lock().expect("acquired lock").clone();
+        assert_eq!(
+            log,
+            vec!["new"],
+            "loop must open its watcher only on the refreshed provider, got {log:?}"
+        );
+    }
+
+    async fn wait_until(
+        acquired: &Arc<std::sync::Mutex<Vec<&'static str>>>,
+        predicate: impl Fn(&[&'static str]) -> bool,
+    ) {
+        for _ in 0..200 {
+            if predicate(&acquired.lock().expect("acquired lock")) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!(
+            "condition not met within timeout; acquired={:?}",
+            acquired.lock().expect("acquired lock")
+        );
+    }
+
     /// Stale `sync_in_progress=true` rows from a daemon that died
     /// mid-sync are cleared by the startup reconciliation.
     #[tokio::test]
@@ -2157,14 +2461,13 @@ mod tests {
     async fn idle_loop_exits_immediately_when_provider_does_not_support_idle() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let account_id = state.default_provider().account_id().clone();
-        let provider = state.default_provider().clone();
         let (_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
         // Default fake provider has `idle_trigger = None` → idle_watch
         // returns Ok(None) → loop returns immediately.
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(2),
-            idle_loop_for_account(state.clone(), account_id, provider, shutdown_rx),
+            idle_loop_for_account(state.clone(), account_id, shutdown_rx),
         )
         .await;
         assert!(
@@ -2187,10 +2490,13 @@ mod tests {
         let account_id = state.default_provider().account_id().clone();
 
         // Enable IDLE on the fake provider. Get the trigger handle so
-        // the test can simulate a server-pushed event.
+        // the test can simulate a server-pushed event. Install it in the runtime
+        // (overwriting the default fake) so the loop re-fetches it from state —
+        // the loop no longer takes a provider argument.
         let mut fake = mxr_provider_fake::FakeProvider::new(account_id.clone());
         let trigger = fake.enable_idle();
         let provider: StdArc<dyn mxr_core::MailSyncProvider> = StdArc::new(fake);
+        state.add_sync_provider_for_test(provider);
 
         // The notify that the sync loop awaits.
         let notify = state.idle_notify_for_account(&account_id);
@@ -2199,7 +2505,7 @@ mod tests {
         let watcher_state = state.clone();
         let watcher_account = account_id.clone();
         let watcher_handle = tokio::spawn(async move {
-            idle_loop_for_account(watcher_state, watcher_account, provider, shutdown_rx).await;
+            idle_loop_for_account(watcher_state, watcher_account, shutdown_rx).await;
         });
 
         // Race: fire the trigger; the watcher's next_event awaits resolve;

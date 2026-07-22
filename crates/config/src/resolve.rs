@@ -238,7 +238,7 @@ fn read_or_create_secret_0600(path: &Path) -> std::io::Result<String> {
 }
 
 #[cfg(unix)]
-pub(crate) fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Result<()> {
+fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
     let mut file = std::fs::OpenOptions::new()
@@ -251,7 +251,7 @@ pub(crate) fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Resul
 }
 
 #[cfg(not(unix))]
-pub(crate) fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Result<()> {
+fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Result<()> {
     use std::io::Write;
     let mut file = std::fs::OpenOptions::new()
         .write(true)
@@ -262,7 +262,7 @@ pub(crate) fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Resul
 }
 
 #[cfg(unix)]
-pub(crate) fn enforce_mode_0600(path: &Path) -> std::io::Result<()> {
+fn enforce_mode_0600(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let metadata = std::fs::metadata(path)?;
     if metadata.permissions().mode() & 0o777 == 0o600 {
@@ -274,7 +274,7 @@ pub(crate) fn enforce_mode_0600(path: &Path) -> std::io::Result<()> {
 }
 
 #[cfg(not(unix))]
-pub(crate) fn enforce_mode_0600(_path: &Path) -> std::io::Result<()> {
+fn enforce_mode_0600(_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 

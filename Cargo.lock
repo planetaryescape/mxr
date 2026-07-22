@@ -4343,6 +4343,7 @@ version = "0.6.10"
 dependencies = [
  "chrono",
  "dirs",
+ "libc",
  "mxr-core",
  "serde",
  "temp-env",

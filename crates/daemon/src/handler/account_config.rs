@@ -1596,25 +1596,14 @@ fn persist_account_password(
         "persisting credential to disk"
     );
     let scoped_ref = crate::provider_credentials::scoped_password_ref(password_ref);
-
-    // Disk is authoritative: a 0600 file survives binary upgrades, so this can
-    // never be blocked by a lost keychain ACL again.
-    mxr_config::SecretStore::at_default_path()
-        .set(&scoped_ref, username, password)
-        .map_err(|error| {
-            anyhow::anyhow!("failed to persist {service} credential to disk: {error}")
-        })?;
-
-    // Best-effort keychain mirror: keep the keychain in sync for users who rely
-    // on it, but a keychain failure must never fail the operation.
-    if let Err(error) = mxr_keychain::set_password(&scoped_ref, username, password) {
-        tracing::warn!(
-            credential_service = service,
-            password_ref,
-            error = %error,
-            "keychain mirror write failed (non-fatal); credential is stored on disk"
-        );
-    }
+    persist_credential(
+        service,
+        &mxr_config::SecretStore::at_default_path(),
+        &scoped_ref,
+        username,
+        password,
+        mxr_keychain::set_password,
+    )?;
 
     tracing::info!(
         credential_service = service,
@@ -1624,9 +1613,73 @@ fn persist_account_password(
     Ok(())
 }
 
+/// Persist a credential disk-first with a best-effort keychain mirror.
+///
+/// The keychain setter is injected so tests can prove a keychain-write failure
+/// does NOT fail the operation (the disk write is authoritative). Disk is
+/// authoritative: a 0600 file survives binary upgrades, so this can never be
+/// blocked by a lost keychain ACL again.
+fn persist_credential<F, E>(
+    service: &str,
+    store: &mxr_config::SecretStore,
+    scoped_ref: &str,
+    username: &str,
+    password: &str,
+    keychain_set: F,
+) -> anyhow::Result<()>
+where
+    F: FnOnce(&str, &str, &str) -> Result<(), E>,
+    E: std::fmt::Display,
+{
+    store.set(scoped_ref, username, password).map_err(|error| {
+        anyhow::anyhow!("failed to persist {service} credential to disk: {error}")
+    })?;
+
+    // Best-effort keychain mirror: keep the keychain in sync for users who rely
+    // on it, but a keychain failure must never fail the operation.
+    if let Err(error) = keychain_set(scoped_ref, username, password) {
+        tracing::warn!(
+            credential_service = service,
+            error = %error,
+            "keychain mirror write failed (non-fatal); credential is stored on disk"
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keychain_write_failure_does_not_fail_persist_and_disk_wins() {
+        #![expect(
+            clippy::unwrap_used,
+            reason = "test unwraps fixture setup for direct failures"
+        )]
+        let dir = tempfile::tempdir().unwrap();
+        let store = mxr_config::SecretStore::new(dir.path().join("secrets.toml"));
+
+        // Keychain setter always fails; persist must still succeed.
+        let result = persist_credential(
+            "IMAP",
+            &store,
+            "mxr/work-imap",
+            "me@corp.com",
+            "app-pw",
+            |_, _, _| Err::<(), _>("keychain ACL denied"),
+        );
+        assert!(result.is_ok(), "keychain failure must not fail persist");
+
+        // Disk is authoritative — the secret is on disk.
+        assert_eq!(
+            store
+                .get("mxr/work-imap", "me@corp.com")
+                .unwrap()
+                .as_deref(),
+            Some("app-pw")
+        );
+    }
 
     #[test]
     fn imap_config_capabilities_advertise_idle_push_support() {

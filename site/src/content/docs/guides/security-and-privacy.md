@@ -41,25 +41,38 @@ That is the intended boundary. The network is for talking to your provider, not 
 
 ### Where credentials live
 
-All account credentials are stored in your OS-native secret store, not
-in plaintext on disk:
+**IMAP/SMTP passwords are stored on disk, keychain-optional.** They live in
+`<config_dir>/secrets.toml` — a plaintext TOML file at mode `0600` (owner
+read/write only), keyed by `password_ref` + username. This is the same model
+normal CLIs use (`~/.aws/credentials`, `~/.config/gh/hosts.yml`): the deliberate
+tradeoff is plaintext-at-rest, protected only by filesystem permissions rather
+than OS encryption. mxr chose disk-first because an ad-hoc-signed release binary
+loses its OS-keychain read access on every upgrade — which used to hard-fail
+daemon startup for password accounts. A `0600` file survives upgrades untouched
+and is readable only by your own processes.
+
+The OS-native secret store is an **optional fallback**:
 
 - **macOS**: Keychain (Keychain Access)
 - **Linux**: Secret Service (e.g. GNOME Keyring, KWallet)
 
-That includes Gmail OAuth refresh tokens, IMAP passwords, and SMTP
-passwords. Gmail keeps a private disk fallback under the active token
-dir so a noninteractive keychain failure does not strand an otherwise
-valid account. Outlook OAuth tokens are JSON files under the active
-token dir (`<data_dir>/tokens` by default, `MXR_TOKEN_DIR` when set).
-`mxr accounts repair NAME` re-prompts for keychain-backed credentials
-and overwrites the keychain entry. The on-disk `config.toml` only
-references IMAP/SMTP credentials by `password_ref`; it never stores the
+On the first read after upgrading from a keychain-only version, an IMAP/SMTP
+credential found in the keychain is automatically migrated (mirrored) into
+`secrets.toml` and served from disk thereafter. `mxr accounts add` and
+`mxr accounts repair NAME` write `secrets.toml` (disk-authoritative) with a
+best-effort keychain mirror that never blocks the operation. The on-disk
+`config.toml` only references credentials by `password_ref`; it never stores the
 password itself.
 
-If you previously ran a version older than the Gmail keychain migration,
-legacy Gmail token files may be mirrored into the keychain on first
-startup. The private disk fallback can remain available by design.
+Gmail OAuth refresh tokens are stored in the OS keychain with a private disk
+fallback under the active token dir, so a noninteractive keychain failure does
+not strand an otherwise valid account. Outlook OAuth tokens are JSON files under
+the active token dir (`<data_dir>/tokens` by default, `MXR_TOKEN_DIR` when set).
+
+`secrets.toml` lives in the config dir, so `mxr reset` and `mxr reset --hard`
+preserve it — your credentials survive a runtime-state wipe. Override its
+location with `MXR_SECRETS_PATH`. Protect it like any dotfile secret: keep the
+`0600` mode and do not commit it to version control.
 
 ### Backup and restore
 
@@ -74,11 +87,13 @@ mxr status --format json | jq -r '.config_path, .data_dir'
 
 For a clean backup, stop mxr processes first, then copy:
 
-- the directory containing `config.toml`
+- the config directory containing `config.toml` **and `secrets.toml`**
+  (your IMAP/SMTP passwords — keep its `0600` mode and treat it as
+  sensitive)
 - the data directory containing `mxr.db`, `attachments/`, `logs/`,
   `tokens/`, `search_index/`, and `models/`
-- any OS keychain entries for Gmail, IMAP, or SMTP credentials if you
-  are moving to a different machine
+- any OS keychain entries for Gmail if you are moving to a different
+  machine (IMAP/SMTP secrets travel in `secrets.toml`)
 
 `search_index/` and `models/` are rebuildable, so you can omit them from
 space-constrained backups. Keep `mxr.db`, `attachments/`, `tokens/`, and
@@ -87,8 +102,10 @@ unless your filesystem backup tool provides a consistent snapshot.
 
 To restore, install the same or a newer mxr version, stop the daemon,
 put the config/data directories back at the resolved paths (or set
-`MXR_CONFIG_DIR` / `MXR_DATA_DIR`), restore keychain credentials or run
-`mxr accounts repair NAME`, then run:
+`MXR_CONFIG_DIR` / `MXR_DATA_DIR`). If you restored `secrets.toml`, your
+IMAP/SMTP passwords are already in place; otherwise run
+`mxr accounts repair NAME` (and restore any Gmail keychain entries), then
+run:
 
 ```bash
 mxr doctor

@@ -19,15 +19,33 @@
 //!   permissions (`0600`, owner read/write). Any process running as the user
 //!   can read them — the same threat model as `~/.aws/credentials`. We do NOT
 //!   encrypt at rest; that is out of scope by design.
+//! - **Symlink-safe:** the file is opened once with `O_NOFOLLOW` and verified
+//!   to be a regular file through the file descriptor; permissions are read and
+//!   tightened via `fchmod` on that same descriptor (never a path-based chmod),
+//!   so a planted symlink or a swapped path cannot redirect the read or chmod
+//!   an unrelated file (no TOCTOU window).
 //! - The file is created `0600`, and its mode is re-tightened to `0600` on
-//!   every read (a too-open file is fixed in place, mirroring the daemon-token
-//!   behavior).
-//! - Writes are atomic: a uniquely-named temp file in the same directory is
-//!   created `0600`, then `rename(2)`d over the target, so a crash or a
-//!   concurrent reader never observes a partial or corrupt file.
-//! - In-process writes are serialized by a global lock; the atomic rename keeps
-//!   cross-process readers consistent. In practice only the daemon writes;
-//!   both the daemon and the CLI read.
+//!   every read if a wider mode is found.
+//! - **Crash-safe writes:** a uniquely-named temp file in the same directory is
+//!   created `0600`, written, then `fsync`ed (`F_FULLFSYNC` on macOS, so the
+//!   bytes reach the platter), `rename(2)`d over the target, and finally the
+//!   parent directory is `fsync`ed so the rename itself is durable. A crash or a
+//!   concurrent reader therefore never observes a partial or corrupt file, and
+//!   an acknowledged credential survives power loss. The temp file is removed by
+//!   an RAII guard if any step before the rename fails, so a partial plaintext
+//!   temp is never left behind.
+//! - **Empty is treated as absent** everywhere: an empty stored value reads back
+//!   as `None` (so it can never permanently suppress the keychain fallback), and
+//!   [`SecretStore::set`] refuses to persist an empty secret.
+//!
+//! ## Concurrency invariant (single writer)
+//!
+//! In-process writes are serialized by a global lock, and the atomic rename
+//! keeps cross-process *readers* consistent. There is **no cross-process write
+//! lock**: the design assumes a SINGLE writer — the daemon. The CLI and other
+//! processes only read. Two processes writing concurrently could lose-update
+//! (last rename wins). Every mutating entry point runs inside the daemon, so
+//! this holds in practice; see [`SecretStore::set`].
 //!
 //! The keychain remains an OPTIONAL backend. This module is disk-only; the
 //! disk→keychain-fallback and keychain→disk-mirror policy lives in the daemon
@@ -39,11 +57,11 @@ use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
-use crate::resolve::{create_new_secret_0600, enforce_mode_0600, secrets_file_path};
+use crate::resolve::secrets_file_path;
 
 /// Serializes in-process writes so two concurrent daemon handlers performing a
-/// read-modify-write can never clobber each other. Cross-process consistency is
-/// provided by the atomic rename in [`SecretStore::write_atomic`].
+/// read-modify-write can never clobber each other. Cross-process consistency
+/// for readers is provided by the atomic rename in [`write_secrets_atomic`].
 fn write_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
@@ -98,7 +116,10 @@ impl SecretStore {
     }
 
     /// Fetch the secret for `(service, account)`, or `Ok(None)` if the file or
-    /// the entry is absent. Reading re-tightens the file to `0600`.
+    /// the entry is absent. Reading re-tightens the file to `0600`. An empty
+    /// stored value reads back as `None` (empty is treated as absent, so a
+    /// hand-edited or mis-mirrored empty can never suppress the keychain
+    /// fallback). Safe to call concurrently from any process.
     pub fn get(&self, service: &str, account: &str) -> io::Result<Option<String>> {
         let Some(file) = self.read_file()? else {
             return Ok(None);
@@ -107,12 +128,25 @@ impl SecretStore {
             .secrets
             .into_iter()
             .find(|entry| entry.service == service && entry.account == account)
-            .map(|entry| entry.secret))
+            .map(|entry| entry.secret)
+            .filter(|secret| !secret.is_empty()))
     }
 
     /// Upsert the secret for `(service, account)` and persist atomically at
     /// `0600`. Disk is authoritative.
+    ///
+    /// An empty `secret` is refused: it is a no-op (nothing is written and no
+    /// empty entry is created), keeping "empty == absent" consistent with
+    /// [`SecretStore::get`] and with the upstream persistence guard.
+    ///
+    /// **Single-writer invariant:** this serializes writers *within* the
+    /// process only. It is safe against concurrent readers in any process, but
+    /// concurrent *writers* across processes could lose-update. Only the daemon
+    /// is expected to call this (see the module-level concurrency note).
     pub fn set(&self, service: &str, account: &str, secret: &str) -> io::Result<()> {
+        if secret.is_empty() {
+            return Ok(());
+        }
         // Recover from a poisoned lock: the guarded region only does file IO,
         // so a panic elsewhere leaves no in-memory invariant to protect.
         let _guard = write_lock()
@@ -135,42 +169,161 @@ impl SecretStore {
         // Deterministic on-disk ordering keeps diffs stable and reads cheap.
         file.secrets
             .sort_by(|a, b| (&a.service, &a.account).cmp(&(&b.service, &b.account)));
-        self.write_atomic(&file)
+        // SANITIZED: never surface the toml error (it can echo field values);
+        // a serialize failure here is structural, not the caller's fault.
+        let contents = toml::to_string_pretty(&file).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "failed to serialize secrets file",
+            )
+        })?;
+        write_secrets_atomic(&self.path, contents.as_bytes())
     }
 
     fn read_file(&self) -> io::Result<Option<SecretsFile>> {
-        match std::fs::read_to_string(&self.path) {
-            Ok(contents) => {
-                enforce_mode_0600(&self.path)?;
-                let file: SecretsFile = toml::from_str(&contents)
-                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-                Ok(Some(file))
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error),
-        }
+        let Some(contents) = read_secrets_file(&self.path)? else {
+            return Ok(None);
+        };
+        // SANITIZED: a malformed line may contain an actual `secret = "..."`
+        // value, so the toml error text (which quotes the offending source) must
+        // never propagate into an io::Error that could reach a log, RPC reply,
+        // or tracing span. Surface only the path.
+        let file: SecretsFile = toml::from_str(&contents).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("failed to parse secrets file at {}", self.path.display()),
+            )
+        })?;
+        Ok(Some(file))
+    }
+}
+
+/// Removes a temp file on drop unless [`TempFileGuard::disarm`] was called after
+/// a successful rename — so a failed write/rename never leaves a partial
+/// plaintext `.secrets.*.tmp` behind.
+struct TempFileGuard {
+    path: Option<PathBuf>,
+}
+
+impl TempFileGuard {
+    fn new(path: PathBuf) -> Self {
+        Self { path: Some(path) }
     }
 
-    fn write_atomic(&self, file: &SecretsFile) -> io::Result<()> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let contents = toml::to_string_pretty(file)
-            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-        // Unique temp name in the same directory so the rename is atomic on the
-        // same filesystem. `create_new_secret_0600` uses O_EXCL + mode 0600.
-        let tmp = self
-            .path
-            .with_file_name(format!(".secrets.{}.tmp", uuid::Uuid::now_v7()));
-        create_new_secret_0600(&tmp, &contents)?;
-        match std::fs::rename(&tmp, &self.path) {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                let _ = std::fs::remove_file(&tmp);
-                Err(error)
-            }
+    fn disarm(&mut self) {
+        self.path = None;
+    }
+}
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        if let Some(path) = &self.path {
+            let _ = std::fs::remove_file(path);
         }
     }
+}
+
+/// Read the secrets file symlink-safely through a single descriptor. `Ok(None)`
+/// for a missing file; errors for a symlink/non-regular file or IO failure.
+#[cfg(unix)]
+fn read_secrets_file(path: &Path) -> io::Result<Option<String>> {
+    use std::io::Read;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+    let mut file = match std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW) // refuse to follow a symlink at the final component
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+
+    // Verify + tighten THROUGH the fd (fstat/fchmod), never re-resolving the
+    // path — this closes the TOCTOU window a path-based stat+chmod would open.
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "secrets file is not a regular file",
+        ));
+    }
+    if metadata.permissions().mode() & 0o777 != 0o600 {
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?; // fchmod on the open fd
+    }
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(Some(contents))
+}
+
+#[cfg(not(unix))]
+fn read_secrets_file(path: &Path) -> io::Result<Option<String>> {
+    match std::fs::read_to_string(path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+/// Durably, atomically, and symlink-safely replace the secrets file with
+/// `contents`. See the module docs for the fsync/rename/fsync ordering.
+#[cfg(unix)]
+fn write_secrets_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    // Unique temp name in the same directory so the rename is atomic on one
+    // filesystem. O_EXCL (create_new) + O_NOFOLLOW + mode 0600.
+    let tmp = path.with_file_name(format!(".secrets.{}.tmp", uuid::Uuid::now_v7()));
+    let mut guard = TempFileGuard::new(tmp.clone());
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .mode(0o600)
+        .open(&tmp)?;
+    file.write_all(contents)?;
+    // Flush the bytes to durable storage before the rename. On macOS
+    // `sync_all` issues F_FULLFSYNC (a plain fsync would not reach the platter).
+    file.sync_all()?;
+    drop(file);
+
+    std::fs::rename(&tmp, path)?;
+    guard.disarm(); // the temp is now the live file; do not delete it
+
+    // Make the rename itself durable by fsyncing the containing directory.
+    if let Some(parent) = path.parent() {
+        let dir = std::fs::File::open(parent)?;
+        dir.sync_all()?;
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn write_secrets_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
+    use std::io::Write;
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_file_name(format!(".secrets.{}.tmp", uuid::Uuid::now_v7()));
+    let mut guard = TempFileGuard::new(tmp.clone());
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)?;
+    file.write_all(contents)?;
+    file.sync_all()?;
+    drop(file);
+    std::fs::rename(&tmp, path)?;
+    guard.disarm();
+    Ok(())
 }
 
 #[cfg(test)]
@@ -326,5 +479,112 @@ mod tests {
                 Some(format!("secret-{i}").as_str())
             );
         }
+    }
+
+    #[test]
+    fn empty_secret_is_treated_as_absent() {
+        let dir = TempDir::new().unwrap();
+        let store = store_in(&dir);
+
+        // set("") is a no-op: no file, no empty entry.
+        store.set("mxr/imap", "u", "").unwrap();
+        assert!(store.get("mxr/imap", "u").unwrap().is_none());
+
+        // A stored value that is later emptied (e.g. hand-edited) reads as None,
+        // so it can never permanently suppress the keychain fallback.
+        store.set("mxr/imap", "u", "real").unwrap();
+        assert_eq!(store.get("mxr/imap", "u").unwrap().as_deref(), Some("real"));
+        std::fs::write(
+            store.path(),
+            "[[secret]]\nservice = \"mxr/imap\"\naccount = \"u\"\nsecret = \"\"\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(store.path(), std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        assert!(store.get("mxr/imap", "u").unwrap().is_none());
+    }
+
+    #[test]
+    fn parse_error_is_sanitized_and_never_leaks_the_secret() {
+        let dir = TempDir::new().unwrap();
+        let store = store_in(&dir);
+        // A malformed file whose broken line contains a real-looking secret.
+        let leaked = "SUPER-SECRET-PASSWORD-9f3a";
+        std::fs::write(store.path(), format!("this is not toml secret = {leaked}")).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(store.path(), std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+
+        let error = store.get("mxr/imap", "u").unwrap_err();
+        let rendered = error.to_string();
+        assert!(
+            !rendered.contains(leaked),
+            "parse error leaked the secret: {rendered}"
+        );
+        assert!(
+            rendered.contains("failed to parse secrets file"),
+            "unexpected error: {rendered}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_refuses_to_follow_a_symlink() {
+        let dir = TempDir::new().unwrap();
+        // The real secret lives elsewhere; a symlink at the store path points to it.
+        let real = dir.path().join("real-secrets.toml");
+        std::fs::write(
+            &real,
+            "[[secret]]\nservice=\"s\"\naccount=\"a\"\nsecret=\"x\"\n",
+        )
+        .unwrap();
+        let link = dir.path().join("secrets.toml");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let store = SecretStore::new(link);
+        // O_NOFOLLOW makes the open fail rather than silently reading through
+        // the link (which would also let a path-based chmod tighten `real`).
+        assert!(store.get("s", "a").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_write_leaves_no_partial_temp_file() {
+        // Point the store at a path whose parent is a FILE, so temp creation
+        // (after create_dir_all) fails. Assert no `.secrets.*.tmp` is left.
+        let dir = TempDir::new().unwrap();
+        let not_a_dir = dir.path().join("iam-a-file");
+        std::fs::write(&not_a_dir, "x").unwrap();
+        let store = SecretStore::new(not_a_dir.join("secrets.toml"));
+
+        assert!(store.set("mxr/imap", "u", "s").is_err());
+
+        // No stray temp files anywhere under the temp dir.
+        let strays: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_name().to_string_lossy().contains(".secrets."))
+            .collect();
+        assert!(strays.is_empty(), "left a partial temp file: {strays:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_is_durable_and_atomic_round_trip() {
+        // Exercises the fsync/rename/dir-fsync path end to end.
+        let dir = TempDir::new().unwrap();
+        let store = store_in(&dir);
+        store.set("mxr/imap", "u", "durable-pw").unwrap();
+        // Re-open a fresh store to prove the bytes are on disk, not cached.
+        let reopened = SecretStore::new(store.path().to_path_buf());
+        assert_eq!(
+            reopened.get("mxr/imap", "u").unwrap().as_deref(),
+            Some("durable-pw")
+        );
     }
 }

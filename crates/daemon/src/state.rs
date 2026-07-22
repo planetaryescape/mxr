@@ -1855,6 +1855,57 @@ use_tls = true
         );
     }
 
+    #[test]
+    fn create_providers_boots_with_a_corrupt_secrets_file() {
+        // Even a corrupt/unparseable secrets.toml on the default path must not
+        // break boot: construction is lazy and never reads secrets. This also
+        // guards against a regression that makes construction eager again (which
+        // would then fail here on the corrupt file). The corrupt line contains a
+        // secret-looking value to double as a leak check.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let secrets = dir.path().join("secrets.toml");
+        std::fs::write(&secrets, "not valid toml secret = LEAKME-9f3a").expect("write corrupt");
+
+        temp_env::with_var("MXR_SECRETS_PATH", Some(secrets.as_os_str()), || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime");
+            rt.block_on(async {
+                let store = Arc::new(Store::in_memory().await.expect("store"));
+                let config = mxr_config::load_config_from_str(
+                    r#"
+[general]
+default_account = "acct"
+
+[accounts.acct]
+name = "Acct"
+email = "me@corp.com"
+
+[accounts.acct.sync]
+type = "imap"
+host = "imap.corp.com"
+port = 993
+username = "me@corp.com"
+password_ref = "keyring:acct-imap"
+auth_required = true
+use_tls = true
+"#,
+                )
+                .expect("parse config");
+
+                let setup = AppState::create_providers_from_config(&config, &store)
+                    .await
+                    .expect("daemon boots despite a corrupt secrets file");
+                assert_eq!(
+                    setup.providers.len(),
+                    1,
+                    "the account still gets a provider"
+                );
+            });
+        });
+    }
+
     #[tokio::test]
     async fn create_providers_from_config_allows_empty_config() {
         let store = Arc::new(Store::in_memory().await.expect("store"));

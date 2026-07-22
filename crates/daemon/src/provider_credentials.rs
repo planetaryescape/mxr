@@ -95,9 +95,12 @@ where
         return Ok(secret);
     }
 
-    // Disk miss: fall back to the keychain and migrate the hit to disk.
+    // Disk miss: fall back to the keychain and migrate a real hit to disk. An
+    // empty keychain value is treated as absent — mirroring it would write an
+    // empty disk secret (which get() reports as None anyway) and is
+    // inconsistent with persistence rejecting empty passwords.
     match keychain_get(&scoped_ref, username) {
-        Ok(secret) => {
+        Ok(secret) if !secret.is_empty() => {
             match store.set(&scoped_ref, username, &secret) {
                 Ok(()) => tracing::info!(
                     credential_service = %scoped_ref,
@@ -111,6 +114,9 @@ where
             }
             Ok(secret)
         }
+        Ok(_) => Err(anyhow::anyhow!(
+            "no usable credential found on disk or in the keychain for {scoped_ref} (keychain value was empty)"
+        )),
         Err(error) => Err(anyhow::anyhow!(
             "no credential found on disk or in the keychain for {scoped_ref}: {error}"
         )),
@@ -225,6 +231,79 @@ mod tests {
             assert!(
                 error.to_string().contains("no credential found"),
                 "unexpected error: {error}"
+            );
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mirror_write_failure_still_returns_the_keychain_secret() {
+        use std::os::unix::fs::PermissionsExt;
+        temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
+            // A read-only parent dir: get() of a missing file returns None, but
+            // set() (the disk mirror) fails to create its temp. Resolution must
+            // still return the keychain secret.
+            let dir = tempfile::tempdir().unwrap();
+            let ro = dir.path().join("ro");
+            std::fs::create_dir(&ro).unwrap();
+            let store = mxr_config::SecretStore::new(ro.join("secrets.toml"));
+            std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o500)).unwrap();
+
+            let secret = disk_first_password_with(&store, "keyring:imap", "user@host", |_, _| {
+                Ok::<_, String>("keychain-pw".to_string())
+            })
+            .expect("a failed mirror must not fail resolution");
+            assert_eq!(secret, "keychain-pw");
+
+            // Restore perms so the tempdir can be cleaned up.
+            std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o700)).unwrap();
+        });
+    }
+
+    #[test]
+    fn empty_keychain_hit_is_not_mirrored_and_errors() {
+        temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
+            let (_dir, store) = empty_store();
+            let error = disk_first_password_with(&store, "keyring:imap", "user@host", |_, _| {
+                Ok::<_, String>(String::new())
+            })
+            .unwrap_err();
+            assert!(
+                error.to_string().contains("empty"),
+                "unexpected error: {error}"
+            );
+            // Nothing empty was written to disk.
+            assert!(store.get("keyring:imap", "user@host").unwrap().is_none());
+        });
+    }
+
+    #[test]
+    fn corrupt_disk_surfaces_sanitized_error_without_the_secret() {
+        temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
+            let (dir, store) = empty_store();
+            let leaked = "TOP-SECRET-abc123";
+            std::fs::write(
+                dir.path().join("secrets.toml"),
+                format!("garbage secret = {leaked}"),
+            )
+            .unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(
+                    dir.path().join("secrets.toml"),
+                    std::fs::Permissions::from_mode(0o600),
+                )
+                .unwrap();
+            }
+
+            // The keychain must never be consulted — get() errors first.
+            let error =
+                disk_first_password_with(&store, "keyring:imap", "user@host", keychain_never)
+                    .unwrap_err();
+            assert!(
+                !error.to_string().contains(leaked),
+                "sanitized error leaked the secret: {error}"
             );
         });
     }

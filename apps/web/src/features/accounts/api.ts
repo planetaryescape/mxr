@@ -13,7 +13,8 @@ export interface AccountConfig {
 
 export interface AccountAddress {
   email: string;
-  primary?: boolean;
+  /** Matches the daemon wire field (`core::AccountAddress.is_primary`). */
+  is_primary?: boolean;
   created_at?: string;
 }
 

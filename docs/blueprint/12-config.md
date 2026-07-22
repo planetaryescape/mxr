@@ -247,13 +247,30 @@ Lexical side remains literal and field-aware through Tantivy.
 
 Keybindings still live in `keys.toml`.
 
-Credentials are never stored raw in `config.toml`.
+Credentials are never stored raw in `config.toml`; it only references them by
+`password_ref` / `token_ref`.
 
-- Linux: Secret Service / GNOME Keyring / KDE Wallet
-- macOS: Keychain
+**IMAP/SMTP passwords are disk-first.** They live in `<config_dir>/secrets.toml`,
+a plaintext TOML file at mode `0600`, keyed by (scoped `password_ref`, username).
+This is the standard CLI model (same as `~/.aws/credentials`, `~/.config/gh/hosts.yml`):
+the deliberate tradeoff is plaintext-at-rest protected only by filesystem
+permissions, chosen because an ad-hoc-signed release binary loses its OS-keychain
+ACL on every upgrade — which previously hard-failed daemon startup for
+password-auth accounts. The disk file survives upgrades untouched.
+
+- IMAP/SMTP passwords: `secrets.toml` (0600) first; the OS keychain is an
+  optional fallback. On the first read after upgrading from a keychain-only
+  version, a keychain hit is automatically migrated (mirrored) to `secrets.toml`
+  and served from disk thereafter. Writes (`accounts add` / `accounts repair`)
+  are disk-authoritative with a best-effort keychain mirror that can never block
+  the operation.
 - Gmail OAuth: OS keychain first, with a private disk fallback under the active token dir
 - Outlook OAuth: JSON token files under the active token dir
-- IMAP/SMTP passwords: OS keychain/keyring via `password_ref`
+- Keychain backends when used: macOS Keychain; Linux Secret Service / GNOME Keyring / KDE Wallet
+
+`secrets.toml` lives in the config dir, so it is treated like `config.toml`:
+`mxr reset` / `mxr reset --hard` preserve it (credentials survive a runtime-state
+wipe), and it is overridable with `MXR_SECRETS_PATH`.
 
 ## Resolution order
 

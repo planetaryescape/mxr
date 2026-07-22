@@ -675,18 +675,30 @@ impl AppState {
                     auth_required,
                     use_tls,
                 }) => {
-                    let config = crate::provider_credentials::imap_config_with_credentials(
+                    // Degrade, never crash: a bad IMAP config skips just this
+                    // account (mirroring Gmail above). Credentials resolve
+                    // lazily at sync time, so a missing/unreadable secret does
+                    // not reach here — it surfaces as account-unhealthy later.
+                    match crate::provider_credentials::imap_config_with_credentials(
                         host.clone(),
                         *port,
                         username.clone(),
                         password_ref.clone(),
                         *auth_required,
                         *use_tls,
-                    )?;
-                    Some(Arc::new(mxr_provider_imap::ImapProvider::new(
-                        account_id.clone(),
-                        config,
-                    )) as Arc<dyn MailSyncProvider>)
+                    ) {
+                        Ok(config) => Some(Arc::new(mxr_provider_imap::ImapProvider::new(
+                            account_id.clone(),
+                            config,
+                        )) as Arc<dyn MailSyncProvider>),
+                        Err(error) => {
+                            tracing::warn!(
+                                account = %key,
+                                "IMAP provider config invalid, skipping account: {error}"
+                            );
+                            None
+                        }
+                    }
                 }
                 Some(mxr_config::SyncProviderConfig::OutlookPersonal {
                     client_id,
@@ -757,20 +769,35 @@ impl AppState {
                 use_tls,
             }) = &acct_config.send
             {
-                let config = crate::provider_credentials::smtp_config_with_credentials(
+                // Degrade, never crash: an invalid SMTP config skips only this
+                // account's send provider. The password resolves lazily at send
+                // time, so a missing secret does not abort boot here.
+                match crate::provider_credentials::smtp_config_with_credentials(
                     host.clone(),
                     *port,
                     username.clone(),
                     password_ref.clone(),
                     *auth_required,
                     *use_tls,
-                )?;
-                let send_provider = Arc::new(mxr_provider_smtp::SmtpSendProvider::new(config))
-                    as Arc<dyn MailSendProvider>;
-                if requested_default == Some(key.as_str()) || default_send_provider.is_none() {
-                    default_send_provider = Some(send_provider.clone());
+                ) {
+                    Ok(config) => {
+                        let send_provider =
+                            Arc::new(mxr_provider_smtp::SmtpSendProvider::new(config))
+                                as Arc<dyn MailSendProvider>;
+                        if requested_default == Some(key.as_str())
+                            || default_send_provider.is_none()
+                        {
+                            default_send_provider = Some(send_provider.clone());
+                        }
+                        send_providers.insert(account_id.clone(), send_provider);
+                    }
+                    Err(error) => {
+                        tracing::warn!(
+                            account = %key,
+                            "SMTP send provider config invalid, skipping account send: {error}"
+                        );
+                    }
                 }
-                send_providers.insert(account_id.clone(), send_provider);
             }
 
             if let Some(
@@ -1772,6 +1799,114 @@ use_tls = true
             .expect("account fetch")
             .expect("stored account");
         assert_eq!(default_account.name, "Work");
+    }
+
+    #[tokio::test]
+    async fn create_providers_survives_unreadable_credential() {
+        // Regression for the disk-first credential bug: a password-auth IMAP
+        // account whose secret is absent/unreadable must NOT abort daemon
+        // startup. Credentials resolve lazily at sync time, so the provider is
+        // still constructed and the other account keeps working. Pre-fix, the
+        // eager keychain read here returned `?` and bricked the whole daemon.
+        let store = Arc::new(Store::in_memory().await.expect("store"));
+        let config = mxr_config::load_config_from_str(
+            r#"
+[general]
+default_account = "good"
+
+[accounts.good]
+name = "Good"
+email = "good@example.com"
+
+[accounts.good.sync]
+type = "fake"
+
+[accounts.broken]
+name = "Broken"
+email = "broken@corp.com"
+
+[accounts.broken.sync]
+type = "imap"
+host = "imap.corp.com"
+port = 993
+username = "broken@corp.com"
+password_ref = "keyring:definitely-absent-secret"
+auth_required = true
+use_tls = true
+"#,
+        )
+        .expect("parse config");
+
+        // Boot must succeed even though the broken account has no readable
+        // secret on disk or in the keychain.
+        let setup = AppState::create_providers_from_config(&config, &store)
+            .await
+            .expect("daemon boots despite an unreadable credential");
+
+        // Both providers are constructed; the healthy account is fully usable.
+        assert_eq!(
+            setup.providers.len(),
+            2,
+            "both accounts get a sync provider"
+        );
+        assert!(
+            setup.default_provider.is_some(),
+            "the healthy account remains the default provider"
+        );
+    }
+
+    #[test]
+    fn create_providers_boots_despite_a_corrupt_secrets_file() {
+        // A corrupt/unparseable secrets.toml on the default path must not break
+        // boot: construction is lazy and never reads secrets, so the provider is
+        // still built. This also guards against a regression that makes
+        // construction eager again (which would then fail here on the corrupt
+        // file). This test proves boot ONLY — it does not read the file, so it
+        // makes no leak claim; the sanitized-error-omits-the-secret guarantee is
+        // exercised at the resolver layer by
+        // `provider_credentials::tests::corrupt_disk_surfaces_sanitized_error_without_the_secret`.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let secrets = dir.path().join("secrets.toml");
+        std::fs::write(&secrets, "this is not valid toml").expect("write corrupt");
+
+        temp_env::with_var("MXR_SECRETS_PATH", Some(secrets.as_os_str()), || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime");
+            rt.block_on(async {
+                let store = Arc::new(Store::in_memory().await.expect("store"));
+                let config = mxr_config::load_config_from_str(
+                    r#"
+[general]
+default_account = "acct"
+
+[accounts.acct]
+name = "Acct"
+email = "me@corp.com"
+
+[accounts.acct.sync]
+type = "imap"
+host = "imap.corp.com"
+port = 993
+username = "me@corp.com"
+password_ref = "keyring:acct-imap"
+auth_required = true
+use_tls = true
+"#,
+                )
+                .expect("parse config");
+
+                let setup = AppState::create_providers_from_config(&config, &store)
+                    .await
+                    .expect("daemon boots despite a corrupt secrets file");
+                assert_eq!(
+                    setup.providers.len(),
+                    1,
+                    "the account still gets a provider"
+                );
+            });
+        });
     }
 
     #[tokio::test]

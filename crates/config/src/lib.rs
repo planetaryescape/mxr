@@ -1,5 +1,6 @@
 mod defaults;
 mod resolve;
+mod secret_store;
 pub mod snooze;
 mod types;
 
@@ -8,9 +9,11 @@ pub use resolve::{
     config_file_path, daemon_token_path, data_dir, gmail_oauth_keychain_service, is_demo_instance,
     load_config, load_config_from_path, load_config_from_str, read_bridge_port,
     read_or_create_bridge_token, remote_bridge_token_path, resolve_daemon_token, save_config,
-    save_config_to_path, scoped_credential_service, socket_path, token_dir, write_bridge_port,
-    ConfigError, DAEMON_TOKEN_ENV, DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME, PROD_INSTANCE_NAME,
+    save_config_to_path, scoped_credential_service, secrets_file_path, socket_path, token_dir,
+    write_bridge_port, ConfigError, DAEMON_TOKEN_ENV, DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME,
+    PROD_INSTANCE_NAME,
 };
+pub use secret_store::SecretStore;
 pub use types::*;
 
 #[cfg(test)]

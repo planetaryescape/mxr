@@ -90,6 +90,18 @@ pub fn token_dir() -> PathBuf {
     data_dir().join("tokens")
 }
 
+/// Returns the path to the disk-first credential store (`secrets.toml`).
+///
+/// This is the authoritative location for password-backed IMAP/SMTP secrets.
+/// See [`crate::SecretStore`] for the storage format and the plaintext-at-0600
+/// tradeoff. Override with `MXR_SECRETS_PATH` (used by tests for isolation).
+pub fn secrets_file_path() -> PathBuf {
+    if let Some(path) = env_path("MXR_SECRETS_PATH") {
+        return path;
+    }
+    config_dir().join("secrets.toml")
+}
+
 /// Scope an OS-keychain service/ref to the current runtime identity.
 ///
 /// Production keeps legacy service names so installed users retain existing

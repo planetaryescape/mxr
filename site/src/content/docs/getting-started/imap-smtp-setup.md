@@ -11,7 +11,7 @@ For Gmail-over-IMAP, mxr detects Gmail's All Mail folder (`\\All`, `[Gmail]/All 
 
 ## Add an IMAP/SMTP account
 
-The shortest path is `mxr accounts add`. It writes the config entry, stores the password in your OS keychain, and runs an authentication round-trip before saving anything:
+The shortest path is `mxr accounts add`. It writes the config entry, stores the password on disk in `secrets.toml`, and runs an authentication round-trip before saving anything:
 
 ```bash
 # Interactive — prompts for host, port, username, password
@@ -38,9 +38,9 @@ MXR_SMTP_PASSWORD="$WORK_SMTP_PW" mxr accounts add smtp \
   --smtp-username you@example.com
 ```
 
-Passwords resolve in this order: the `--imap-password` / `--smtp-password` flag (if present and stdin is not a TTY), then the `MXR_IMAP_PASSWORD` / `MXR_SMTP_PASSWORD` environment variables, then an interactive prompt. Pass the env-var form when scripting to keep secrets out of shell history. The credential is written to the OS keychain (Keychain on macOS, Secret Service on Linux) — never to `config.toml`.
+Passwords resolve in this order: the `--imap-password` / `--smtp-password` flag (if present and stdin is not a TTY), then the `MXR_IMAP_PASSWORD` / `MXR_SMTP_PASSWORD` environment variables, then an interactive prompt. Pass the env-var form when scripting to keep secrets out of shell history. The credential is written to `<config_dir>/secrets.toml` (a plaintext file at mode `0600`, keyed by `password_ref` + username) — never to `config.toml`. See [Where credentials live](/guides/security-and-privacy/#where-credentials-live) for the disk-first storage model and its tradeoff.
 
-If a password ever goes stale (provider rotated it, you regenerated an app password), re-run `mxr accounts repair work` to overwrite the keychain entry without touching the rest of the account config.
+If a password ever goes stale (provider rotated it, you regenerated an app password), re-run `mxr accounts repair work` to overwrite the stored credential without touching the rest of the account config.
 
 ### Manual TOML (escape hatch)
 
@@ -68,15 +68,26 @@ password_ref = "mxr-work-smtp"
 use_tls = true
 ```
 
-`password_ref` is the **service name** the daemon will query in the OS keychain (paired with the `username` as the account). Store the password yourself with:
+`password_ref` is the **service name** the daemon uses to key the stored credential (paired with the `username` as the account). The password itself is not in `config.toml` — store it with the supported command, which writes it to `secrets.toml`:
 
 ```bash
-# macOS
-security add-generic-password -a "you@example.com" -s "mxr-work-imap" -w
-
-# Linux (using secret-tool)
-secret-tool store --label="mxr-work-imap" service "mxr-work-imap" account "you@example.com"
+mxr accounts repair work
 ```
+
+If you must place the secret by hand, it goes in `<config_dir>/secrets.toml`
+(find the dir with `mxr config path`) as an entry keyed by the **scoped**
+`password_ref` and username, at mode `0600`:
+
+```toml
+[[secret]]
+service = "mxr-work-imap"   # the scoped password_ref
+account = "you@example.com" # the username
+secret = "your-app-password"
+```
+
+The keychain (macOS Keychain / Linux Secret Service) is still consulted as a
+fallback when a secret is absent from `secrets.toml`, and a keychain hit is
+migrated to disk on first read — but `secrets.toml` is the authoritative store.
 
 The `mxr accounts add` flow above is the supported path; the manual TOML shape is documented for advanced users only.
 

@@ -22,6 +22,12 @@ toml = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 
+# O_NOFOLLOW for the secret store's symlink-safe open. fd-based read/write and
+# F_FULLFSYNC-on-macOS durability come from std (File::set_permissions,
+# File::sync_all), so libc is only needed for the open flag.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tempfile = { workspace = true }
 temp-env = "0.3"

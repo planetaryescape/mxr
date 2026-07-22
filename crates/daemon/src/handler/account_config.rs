@@ -129,7 +129,7 @@ pub(super) async fn list_runtime_accounts(
     Ok(accounts)
 }
 
-pub(super) fn list_account_configs() -> Result<Vec<AccountConfigData>, String> {
+pub(crate) fn list_account_configs() -> Result<Vec<AccountConfigData>, String> {
     let config = mxr_config::load_config().map_err(|e| e.to_string())?;
     let default_account = config.general.default_account.clone();
     let mut accounts = config
@@ -445,7 +445,7 @@ pub(super) async fn disable_account_config(
     }
 }
 
-pub(super) fn repair_account_config(account: AccountConfigData) -> AccountOperationResult {
+pub(crate) fn repair_account_config(account: AccountConfigData) -> AccountOperationResult {
     match repair_account_passwords(&account) {
         Ok(count) => account_operation_result(
             true,

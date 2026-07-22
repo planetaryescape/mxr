@@ -267,6 +267,18 @@ fn read_secrets_file(path: &Path) -> io::Result<Option<String>> {
     }
 }
 
+/// The directory containing `path`, resolving a bare filename (whose
+/// `Path::parent()` is the EMPTY path) to `.`. Without this, a relative
+/// `MXR_SECRETS_PATH` like `secrets.toml` would make `create_dir_all("")` and
+/// the parent-dir `fsync` (`File::open("")`) fail — reporting an error even
+/// though the credential was written and is live.
+fn parent_dir(path: &Path) -> PathBuf {
+    match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+        _ => PathBuf::from("."),
+    }
+}
+
 /// Durably, atomically, and symlink-safely replace the secrets file with
 /// `contents`. See the module docs for the fsync/rename/fsync ordering.
 #[cfg(unix)]
@@ -274,9 +286,8 @@ fn write_secrets_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+    let parent = parent_dir(path);
+    std::fs::create_dir_all(&parent)?;
     // Unique temp name in the same directory so the rename is atomic on one
     // filesystem. O_EXCL (create_new) + O_NOFOLLOW + mode 0600.
     let tmp = path.with_file_name(format!(".secrets.{}.tmp", uuid::Uuid::now_v7()));
@@ -298,10 +309,8 @@ fn write_secrets_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     guard.disarm(); // the temp is now the live file; do not delete it
 
     // Make the rename itself durable by fsyncing the containing directory.
-    if let Some(parent) = path.parent() {
-        let dir = std::fs::File::open(parent)?;
-        dir.sync_all()?;
-    }
+    let dir = std::fs::File::open(&parent)?;
+    dir.sync_all()?;
     Ok(())
 }
 
@@ -309,9 +318,7 @@ fn write_secrets_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
 fn write_secrets_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     use std::io::Write;
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+    std::fs::create_dir_all(parent_dir(path))?;
     let tmp = path.with_file_name(format!(".secrets.{}.tmp", uuid::Uuid::now_v7()));
     let mut guard = TempFileGuard::new(tmp.clone());
     let mut file = std::fs::OpenOptions::new()
@@ -554,23 +561,85 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn failed_write_leaves_no_partial_temp_file() {
-        // Point the store at a path whose parent is a FILE, so temp creation
-        // (after create_dir_all) fails. Assert no `.secrets.*.tmp` is left.
+    fn rename_failure_after_temp_creation_leaves_no_partial_temp() {
+        // Call the writer directly so the temp is actually created and written,
+        // then fail at the rename by making the destination a DIRECTORY (rename
+        // of a file onto a dir fails with EISDIR — a non-permission error, so
+        // this holds even under root). This pins the RAII cleanup guard: without
+        // it, the fsync'd temp would be orphaned.
         let dir = TempDir::new().unwrap();
-        let not_a_dir = dir.path().join("iam-a-file");
-        std::fs::write(&not_a_dir, "x").unwrap();
-        let store = SecretStore::new(not_a_dir.join("secrets.toml"));
+        let dest = dir.path().join("secrets.toml");
+        std::fs::create_dir(&dest).unwrap();
 
-        assert!(store.set("mxr/imap", "u", "s").is_err());
+        let error = write_secrets_atomic(&dest, b"[[secret]]\nservice=\"s\"\n").unwrap_err();
+        assert!(
+            !matches!(error.kind(), io::ErrorKind::NotFound),
+            "expected a rename failure, got: {error}"
+        );
 
-        // No stray temp files anywhere under the temp dir.
         let strays: Vec<_> = std::fs::read_dir(dir.path())
             .unwrap()
             .filter_map(Result::ok)
-            .filter(|e| e.file_name().to_string_lossy().contains(".secrets."))
+            .filter(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                name.starts_with(".secrets.") && name.ends_with(".tmp")
+            })
             .collect();
-        assert!(strays.is_empty(), "left a partial temp file: {strays:?}");
+        assert!(
+            strays.is_empty(),
+            "guard must remove the temp after a failed rename: {strays:?}"
+        );
+    }
+
+    #[test]
+    fn temp_file_guard_removes_file_only_when_armed() {
+        let dir = TempDir::new().unwrap();
+
+        let armed = dir.path().join(".secrets.armed.tmp");
+        std::fs::write(&armed, "x").unwrap();
+        drop(TempFileGuard::new(armed.clone()));
+        assert!(!armed.exists(), "an armed guard removes its temp on drop");
+
+        let disarmed = dir.path().join(".secrets.disarmed.tmp");
+        std::fs::write(&disarmed, "x").unwrap();
+        let mut guard = TempFileGuard::new(disarmed.clone());
+        guard.disarm();
+        drop(guard);
+        assert!(
+            disarmed.exists(),
+            "a disarmed guard leaves the (now-live) file in place"
+        );
+    }
+
+    #[test]
+    fn relative_secrets_path_round_trips_and_returns_ok() {
+        // Regression: a relative MXR_SECRETS_PATH like `secrets.toml` has an
+        // EMPTY parent; the parent-dir fsync must resolve it to `.` rather than
+        // `File::open("")`-ing and failing after a successful write. Serialize
+        // the chdir so parallel tests never observe the working-dir change.
+        static CWD_LOCK: Mutex<()> = Mutex::new(());
+        let _cwd = CWD_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let dir = TempDir::new().unwrap();
+        let original = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        // A bare filename → Path::parent() is the empty path.
+        let store = SecretStore::new(PathBuf::from("secrets.toml"));
+        let set_result = store.set("mxr/imap", "u", "pw");
+        let got = store.get("mxr/imap", "u");
+
+        // Restore the CWD before asserting so a failure can't strand the process.
+        std::env::set_current_dir(&original).unwrap();
+
+        set_result.expect("set with a relative path must return Ok");
+        assert_eq!(
+            got.unwrap().as_deref(),
+            Some("pw"),
+            "relative-path secret must round-trip"
+        );
     }
 
     #[cfg(unix)]

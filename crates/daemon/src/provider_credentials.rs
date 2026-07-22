@@ -76,11 +76,34 @@ fn disk_first_password(password_ref: &str, username: &str) -> anyhow::Result<Str
     )
 }
 
+/// The disk half of the resolver, abstracted so tests can inject a store whose
+/// `set` fails deterministically (exercising the mirror-failure branch without
+/// depending on filesystem permissions, which root would bypass).
+trait DiskSecretStore {
+    fn get(&self, service: &str, account: &str) -> std::io::Result<Option<String>>;
+    fn set(&self, service: &str, account: &str, secret: &str) -> std::io::Result<()>;
+}
+
+// Fully-qualified inherent calls (not `Self::`) so they unambiguously reach the
+// inherent method rather than recursing into these same-named trait methods.
+#[expect(
+    clippy::use_self,
+    reason = "explicit path disambiguates the inherent methods from these trait methods"
+)]
+impl DiskSecretStore for mxr_config::SecretStore {
+    fn get(&self, service: &str, account: &str) -> std::io::Result<Option<String>> {
+        mxr_config::SecretStore::get(self, service, account)
+    }
+    fn set(&self, service: &str, account: &str, secret: &str) -> std::io::Result<()> {
+        mxr_config::SecretStore::set(self, service, account, secret)
+    }
+}
+
 /// Testable core of [`disk_first_password`]: the disk store and the keychain
 /// getter are injected so the migration path can be exercised without touching
 /// the real OS keychain.
 fn disk_first_password_with<F, E>(
-    store: &mxr_config::SecretStore,
+    store: &impl DiskSecretStore,
     password_ref: &str,
     username: &str,
     keychain_get: F,
@@ -235,28 +258,39 @@ mod tests {
         });
     }
 
-    #[cfg(unix)]
     #[test]
     fn mirror_write_failure_still_returns_the_keychain_secret() {
-        use std::os::unix::fs::PermissionsExt;
-        temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
-            // A read-only parent dir: get() of a missing file returns None, but
-            // set() (the disk mirror) fails to create its temp. Resolution must
-            // still return the keychain secret.
-            let dir = tempfile::tempdir().unwrap();
-            let ro = dir.path().join("ro");
-            std::fs::create_dir(&ro).unwrap();
-            let store = mxr_config::SecretStore::new(ro.join("secrets.toml"));
-            std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o500)).unwrap();
+        // An injected store: get() reports absent, set() (the disk mirror)
+        // ALWAYS errors — deterministic regardless of filesystem perms/root.
+        // Resolution must still return the keychain secret, and the failed
+        // mirror must leave nothing on disk.
+        struct FailingSetStore {
+            set_calls: std::cell::Cell<usize>,
+        }
+        impl DiskSecretStore for FailingSetStore {
+            fn get(&self, _: &str, _: &str) -> std::io::Result<Option<String>> {
+                Ok(None)
+            }
+            fn set(&self, _: &str, _: &str, _: &str) -> std::io::Result<()> {
+                self.set_calls.set(self.set_calls.get() + 1);
+                Err(std::io::Error::other("disk mirror unavailable"))
+            }
+        }
 
+        temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
+            let store = FailingSetStore {
+                set_calls: std::cell::Cell::new(0),
+            };
             let secret = disk_first_password_with(&store, "keyring:imap", "user@host", |_, _| {
                 Ok::<_, String>("keychain-pw".to_string())
             })
             .expect("a failed mirror must not fail resolution");
             assert_eq!(secret, "keychain-pw");
-
-            // Restore perms so the tempdir can be cleaned up.
-            std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o700)).unwrap();
+            assert_eq!(
+                store.set_calls.get(),
+                1,
+                "the mirror-failure branch must actually run"
+            );
         });
     }
 

@@ -1856,15 +1856,18 @@ use_tls = true
     }
 
     #[test]
-    fn create_providers_boots_with_a_corrupt_secrets_file() {
-        // Even a corrupt/unparseable secrets.toml on the default path must not
-        // break boot: construction is lazy and never reads secrets. This also
-        // guards against a regression that makes construction eager again (which
-        // would then fail here on the corrupt file). The corrupt line contains a
-        // secret-looking value to double as a leak check.
+    fn create_providers_boots_despite_a_corrupt_secrets_file() {
+        // A corrupt/unparseable secrets.toml on the default path must not break
+        // boot: construction is lazy and never reads secrets, so the provider is
+        // still built. This also guards against a regression that makes
+        // construction eager again (which would then fail here on the corrupt
+        // file). This test proves boot ONLY — it does not read the file, so it
+        // makes no leak claim; the sanitized-error-omits-the-secret guarantee is
+        // exercised at the resolver layer by
+        // `provider_credentials::tests::corrupt_disk_surfaces_sanitized_error_without_the_secret`.
         let dir = tempfile::tempdir().expect("tempdir");
         let secrets = dir.path().join("secrets.toml");
-        std::fs::write(&secrets, "not valid toml secret = LEAKME-9f3a").expect("write corrupt");
+        std::fs::write(&secrets, "this is not valid toml").expect("write corrupt");
 
         temp_env::with_var("MXR_SECRETS_PATH", Some(secrets.as_os_str()), || {
             let rt = tokio::runtime::Builder::new_current_thread()

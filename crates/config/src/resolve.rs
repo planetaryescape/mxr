@@ -90,6 +90,18 @@ pub fn token_dir() -> PathBuf {
     data_dir().join("tokens")
 }
 
+/// Returns the path to the disk-first credential store (`secrets.toml`).
+///
+/// This is the authoritative location for password-backed IMAP/SMTP secrets.
+/// See [`crate::SecretStore`] for the storage format and the plaintext-at-0600
+/// tradeoff. Override with `MXR_SECRETS_PATH` (used by tests for isolation).
+pub fn secrets_file_path() -> PathBuf {
+    if let Some(path) = env_path("MXR_SECRETS_PATH") {
+        return path;
+    }
+    config_dir().join("secrets.toml")
+}
+
 /// Scope an OS-keychain service/ref to the current runtime identity.
 ///
 /// Production keeps legacy service names so installed users retain existing
@@ -226,7 +238,7 @@ fn read_or_create_secret_0600(path: &Path) -> std::io::Result<String> {
 }
 
 #[cfg(unix)]
-fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Result<()> {
+pub(crate) fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
     let mut file = std::fs::OpenOptions::new()
@@ -239,7 +251,7 @@ fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Result<()> {
 }
 
 #[cfg(not(unix))]
-fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Result<()> {
+pub(crate) fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Result<()> {
     use std::io::Write;
     let mut file = std::fs::OpenOptions::new()
         .write(true)
@@ -250,7 +262,7 @@ fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Result<()> {
 }
 
 #[cfg(unix)]
-fn enforce_mode_0600(path: &Path) -> std::io::Result<()> {
+pub(crate) fn enforce_mode_0600(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let metadata = std::fs::metadata(path)?;
     if metadata.permissions().mode() & 0o777 == 0o600 {
@@ -262,7 +274,7 @@ fn enforce_mode_0600(path: &Path) -> std::io::Result<()> {
 }
 
 #[cfg(not(unix))]
-fn enforce_mode_0600(_path: &Path) -> std::io::Result<()> {
+pub(crate) fn enforce_mode_0600(_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 

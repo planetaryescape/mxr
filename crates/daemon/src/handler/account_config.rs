@@ -449,10 +449,10 @@ pub(super) fn repair_account_config(account: AccountConfigData) -> AccountOperat
     match repair_account_passwords(&account) {
         Ok(count) => account_operation_result(
             true,
-            format!("Repaired keychain credentials for '{}'.", account.key),
+            format!("Repaired credentials for '{}'.", account.key),
             Some(account_step(
                 true,
-                format!("Stored {count} password-backed credential(s)."),
+                format!("Stored {count} password-backed credential(s) on disk (secrets.toml, mode 0600)."),
             )),
             None,
             None,
@@ -1593,14 +1593,33 @@ fn persist_account_password(
     tracing::info!(
         credential_service = service,
         password_ref,
-        "persisting credential to keychain"
+        "persisting credential to disk"
     );
     let scoped_ref = crate::provider_credentials::scoped_password_ref(password_ref);
-    mxr_keychain::set_password(&scoped_ref, username, password)?;
+
+    // Disk is authoritative: a 0600 file survives binary upgrades, so this can
+    // never be blocked by a lost keychain ACL again.
+    mxr_config::SecretStore::at_default_path()
+        .set(&scoped_ref, username, password)
+        .map_err(|error| {
+            anyhow::anyhow!("failed to persist {service} credential to disk: {error}")
+        })?;
+
+    // Best-effort keychain mirror: keep the keychain in sync for users who rely
+    // on it, but a keychain failure must never fail the operation.
+    if let Err(error) = mxr_keychain::set_password(&scoped_ref, username, password) {
+        tracing::warn!(
+            credential_service = service,
+            password_ref,
+            error = %error,
+            "keychain mirror write failed (non-fatal); credential is stored on disk"
+        );
+    }
+
     tracing::info!(
         credential_service = service,
         password_ref,
-        "credential persisted to keychain"
+        "credential persisted to disk"
     );
     Ok(())
 }

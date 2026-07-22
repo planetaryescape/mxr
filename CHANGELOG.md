@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.11](https://github.com/planetaryescape/mxr/compare/v0.6.10...v0.6.11) (2026-07-22)
+
+
+### Features
+
+* **config:** disk-first credential storage ([#156](https://github.com/planetaryescape/mxr/issues/156)) ([f7d1865](https://github.com/planetaryescape/mxr/commit/f7d18657b2565c53969f65a7f375eb84a7626b32))
+
 ## [0.6.10](https://github.com/planetaryescape/mxr/compare/v0.6.9...v0.6.10) (2026-07-19)
 
 

@@ -104,6 +104,9 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         accounts={controller.runtimeAccounts}
         accountId={draft.accountId}
         onAccountChange={controller.updateAccount}
+        addresses={controller.accountAddresses}
+        fromAddress={draft.frontmatter.from}
+        onFromChange={(email) => controller.updateFrontmatter("from", email)}
       />
 
       <div className="shrink-0 border-b border-border">

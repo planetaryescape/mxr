@@ -28,6 +28,9 @@ interface ComposeTopBarProps {
   accounts: RuntimeAccount[];
   accountId: string;
   onAccountChange: (id: string) => void;
+  addresses: string[];
+  fromAddress: string;
+  onFromChange: (email: string) => void;
 }
 
 export function ComposeTopBar({
@@ -40,6 +43,9 @@ export function ComposeTopBar({
   accounts,
   accountId,
   onAccountChange,
+  addresses,
+  fromAddress,
+  onFromChange,
 }: ComposeTopBarProps) {
   return (
     <header className="shrink-0 border-b border-border">
@@ -51,7 +57,14 @@ export function ComposeTopBar({
           <h1 className="truncate text-sm font-semibold tracking-tight">{title}</h1>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <FromControl accounts={accounts} value={accountId} onChange={onAccountChange} />
+          <FromControl
+            accounts={accounts}
+            value={accountId}
+            onChange={onAccountChange}
+            addresses={addresses}
+            fromAddress={fromAddress}
+            onFromChange={onFromChange}
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm" aria-label="More compose actions">
@@ -93,14 +106,23 @@ function FromControl({
   accounts,
   value,
   onChange,
+  addresses,
+  fromAddress,
+  onFromChange,
 }: {
   accounts: RuntimeAccount[];
   value: string;
   onChange: (id: string) => void;
+  addresses: string[];
+  fromAddress: string;
+  onFromChange: (email: string) => void;
 }) {
   if (accounts.length === 0) return null;
   const selected = accounts.find((account) => account.account_id === value) ?? accounts[0];
-  if (accounts.length === 1) {
+  const hasAliases = addresses.length > 1;
+
+  // Single account, single address: nothing to choose — show the address plainly.
+  if (accounts.length === 1 && !hasAliases) {
     return (
       <span
         className="hidden max-w-[220px] truncate font-mono text-2xs text-muted-foreground sm:inline"
@@ -110,18 +132,40 @@ function FromControl({
       </span>
     );
   }
+
   return (
-    <Select value={value || accounts[0]?.account_id} onValueChange={onChange}>
-      <SelectTrigger className="h-8 w-[200px] bg-card text-xs" aria-label="Send from account">
-        <SelectValue placeholder="From" />
-      </SelectTrigger>
-      <SelectContent>
-        {accounts.map((account) => (
-          <SelectItem key={account.account_id} value={account.account_id}>
-            {account.name || account.email} · {account.email}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="flex items-center gap-2">
+      {accounts.length > 1 ? (
+        <Select value={value || accounts[0]?.account_id} onValueChange={onChange}>
+          <SelectTrigger className="h-8 w-[180px] bg-card text-xs" aria-label="Send from account">
+            <SelectValue placeholder="Account" />
+          </SelectTrigger>
+          <SelectContent>
+            {accounts.map((account) => (
+              <SelectItem key={account.account_id} value={account.account_id}>
+                {account.name || account.email} · {account.email}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
+      {hasAliases ? (
+        <Select
+          value={addresses.includes(fromAddress) ? fromAddress : addresses[0]}
+          onValueChange={onFromChange}
+        >
+          <SelectTrigger className="h-8 w-[200px] bg-card text-xs" aria-label="Send as address">
+            <SelectValue placeholder="From" />
+          </SelectTrigger>
+          <SelectContent>
+            {addresses.map((email) => (
+              <SelectItem key={email} value={email}>
+                {email}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
+    </div>
   );
 }

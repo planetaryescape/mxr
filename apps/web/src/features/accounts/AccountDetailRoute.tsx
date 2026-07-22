@@ -323,12 +323,12 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
               <div key={address.email} className="flex items-center justify-between py-2 text-xs">
                 <span>
                   {address.email}
-                  {address.primary ? " · primary" : ""}
+                  {address.is_primary ? " · primary" : ""}
                 </span>
                 <Button variant="ghost" size="sm" onClick={() => removeAlias.mutate(address.email)}>
                   Remove
                 </Button>
-                {!address.primary ? (
+                {!address.is_primary ? (
                   <Button
                     variant="ghost"
                     size="sm"

@@ -268,6 +268,14 @@ password-auth accounts. The disk file survives upgrades untouched.
 - Outlook OAuth: JSON token files under the active token dir
 - Keychain backends when used: macOS Keychain; Linux Secret Service / GNOME Keyring / KDE Wallet
 
+**`MXR_KEYCHAIN=off` turns the OS keychain off entirely** (mirrors
+`MXR_ACTIVITY=off`). With it set, mxr never touches the keychain for IMAP/SMTP
+passwords — neither the best-effort write mirror nor the read fallback — so
+`secrets.toml` is the sole source of truth. Use it on headless / disk-only hosts
+where no keychain (Secret Service / login keychain) is available, so a disk miss
+fails fast instead of blocking on an absent keychain. It does not affect Gmail /
+Outlook OAuth token storage.
+
 `secrets.toml` lives in the config dir, so it is treated like `config.toml`:
 `mxr reset` / `mxr reset --hard` preserve it (credentials survive a runtime-state
 wipe), and it is overridable with `MXR_SECRETS_PATH`.

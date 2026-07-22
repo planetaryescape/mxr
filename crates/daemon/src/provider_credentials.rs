@@ -1,5 +1,15 @@
 use std::sync::Arc;
 
+/// Whether the OS keychain is fully disabled via `MXR_KEYCHAIN=off` (mirrors
+/// `MXR_ACTIVITY=off`). When off, mxr never touches the keychain at all —
+/// neither the write mirror ([`crate::handler`] persist path) nor the read
+/// fallback ([`disk_first_password`]). Disk (`secrets.toml`) is the sole source
+/// of truth, which is the point on headless / disk-only hosts where the
+/// keychain is unavailable.
+pub(crate) fn keychain_disabled() -> bool {
+    std::env::var("MXR_KEYCHAIN").is_ok_and(|value| value.eq_ignore_ascii_case("off"))
+}
+
 pub(crate) fn imap_config_with_credentials(
     host: String,
     port: u16,
@@ -72,6 +82,7 @@ fn disk_first_password(password_ref: &str, username: &str) -> anyhow::Result<Str
         &mxr_config::SecretStore::at_default_path(),
         password_ref,
         username,
+        !keychain_disabled(),
         mxr_keychain::get_password,
     )
 }
@@ -106,6 +117,7 @@ fn disk_first_password_with<F, E>(
     store: &impl DiskSecretStore,
     password_ref: &str,
     username: &str,
+    keychain_enabled: bool,
     keychain_get: F,
 ) -> anyhow::Result<String>
 where
@@ -116,6 +128,14 @@ where
 
     if let Some(secret) = store.get(&scoped_ref, username)? {
         return Ok(secret);
+    }
+
+    // Keychain fully disabled (`MXR_KEYCHAIN=off`): disk is the only source, so
+    // a disk miss is a hard miss — never read the OS keychain.
+    if !keychain_enabled {
+        return Err(anyhow::anyhow!(
+            "no credential found on disk for {scoped_ref} (keychain disabled via MXR_KEYCHAIN=off)"
+        ));
     }
 
     // Disk miss: fall back to the keychain and migrate a real hit to disk. An
@@ -211,7 +231,7 @@ mod tests {
             store.set("keyring:imap", "user@host", "disk-pw").unwrap();
 
             let secret =
-                disk_first_password_with(&store, "keyring:imap", "user@host", keychain_never)
+                disk_first_password_with(&store, "keyring:imap", "user@host", true, keychain_never)
                     .unwrap();
             assert_eq!(secret, "disk-pw");
         });
@@ -223,10 +243,11 @@ mod tests {
             let (_dir, store) = empty_store();
 
             // Disk miss + keychain hit → returns keychain value and mirrors it.
-            let first = disk_first_password_with(&store, "keyring:imap", "user@host", |_, _| {
-                Ok::<_, String>("keychain-pw".to_string())
-            })
-            .unwrap();
+            let first =
+                disk_first_password_with(&store, "keyring:imap", "user@host", true, |_, _| {
+                    Ok::<_, String>("keychain-pw".to_string())
+                })
+                .unwrap();
             assert_eq!(first, "keychain-pw");
 
             // The secret is now on disk under the scoped service.
@@ -237,7 +258,7 @@ mod tests {
 
             // A subsequent read is served from disk without consulting the keychain.
             let second =
-                disk_first_password_with(&store, "keyring:imap", "user@host", keychain_never)
+                disk_first_password_with(&store, "keyring:imap", "user@host", true, keychain_never)
                     .unwrap();
             assert_eq!(second, "keychain-pw");
         });
@@ -247,14 +268,56 @@ mod tests {
     fn absent_everywhere_errors_at_resolve_not_construction() {
         temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
             let (_dir, store) = empty_store();
-            let error = disk_first_password_with(&store, "keyring:absent", "user@host", |_, _| {
-                Err::<String, _>("not found".to_string())
-            })
-            .unwrap_err();
+            let error =
+                disk_first_password_with(&store, "keyring:absent", "user@host", true, |_, _| {
+                    Err::<String, _>("not found".to_string())
+                })
+                .unwrap_err();
             assert!(
                 error.to_string().contains("no credential found"),
                 "unexpected error: {error}"
             );
+        });
+    }
+
+    #[test]
+    fn keychain_disabled_disk_miss_never_reads_the_keychain() {
+        // MXR_KEYCHAIN=off: a disk miss must error WITHOUT consulting the OS
+        // keychain. `keychain_never` panics if called, so reaching it fails the
+        // test — proving the read fallback is fully gated off.
+        temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
+            let (_dir, store) = empty_store();
+            let error = disk_first_password_with(
+                &store,
+                "keyring:imap",
+                "user@host",
+                false,
+                keychain_never,
+            )
+            .unwrap_err();
+            assert!(
+                error.to_string().contains("keychain disabled"),
+                "unexpected error: {error}"
+            );
+        });
+    }
+
+    #[test]
+    fn keychain_disabled_still_serves_a_disk_hit() {
+        // With the keychain off, an on-disk secret is still served (disk is the
+        // sole source of truth), and the keychain is never consulted.
+        temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
+            let (_dir, store) = empty_store();
+            store.set("keyring:imap", "user@host", "disk-pw").unwrap();
+            let secret = disk_first_password_with(
+                &store,
+                "keyring:imap",
+                "user@host",
+                false,
+                keychain_never,
+            )
+            .unwrap();
+            assert_eq!(secret, "disk-pw");
         });
     }
 
@@ -281,10 +344,11 @@ mod tests {
             let store = FailingSetStore {
                 set_calls: std::cell::Cell::new(0),
             };
-            let secret = disk_first_password_with(&store, "keyring:imap", "user@host", |_, _| {
-                Ok::<_, String>("keychain-pw".to_string())
-            })
-            .expect("a failed mirror must not fail resolution");
+            let secret =
+                disk_first_password_with(&store, "keyring:imap", "user@host", true, |_, _| {
+                    Ok::<_, String>("keychain-pw".to_string())
+                })
+                .expect("a failed mirror must not fail resolution");
             assert_eq!(secret, "keychain-pw");
             assert_eq!(
                 store.set_calls.get(),
@@ -298,10 +362,11 @@ mod tests {
     fn empty_keychain_hit_is_not_mirrored_and_errors() {
         temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
             let (_dir, store) = empty_store();
-            let error = disk_first_password_with(&store, "keyring:imap", "user@host", |_, _| {
-                Ok::<_, String>(String::new())
-            })
-            .unwrap_err();
+            let error =
+                disk_first_password_with(&store, "keyring:imap", "user@host", true, |_, _| {
+                    Ok::<_, String>(String::new())
+                })
+                .unwrap_err();
             assert!(
                 error.to_string().contains("empty"),
                 "unexpected error: {error}"
@@ -333,7 +398,7 @@ mod tests {
 
             // The keychain must never be consulted — get() errors first.
             let error =
-                disk_first_password_with(&store, "keyring:imap", "user@host", keychain_never)
+                disk_first_password_with(&store, "keyring:imap", "user@host", true, keychain_never)
                     .unwrap_err();
             assert!(
                 !error.to_string().contains(leaked),

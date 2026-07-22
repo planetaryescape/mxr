@@ -129,7 +129,7 @@ pub(super) async fn list_runtime_accounts(
     Ok(accounts)
 }
 
-pub(super) fn list_account_configs() -> Result<Vec<AccountConfigData>, String> {
+pub(crate) fn list_account_configs() -> Result<Vec<AccountConfigData>, String> {
     let config = mxr_config::load_config().map_err(|e| e.to_string())?;
     let default_account = config.general.default_account.clone();
     let mut accounts = config
@@ -445,7 +445,7 @@ pub(super) async fn disable_account_config(
     }
 }
 
-pub(super) fn repair_account_config(account: AccountConfigData) -> AccountOperationResult {
+pub(crate) fn repair_account_config(account: AccountConfigData) -> AccountOperationResult {
     match repair_account_passwords(&account) {
         Ok(count) => account_operation_result(
             true,
@@ -1596,13 +1596,24 @@ fn persist_account_password(
         "persisting credential to disk"
     );
     let scoped_ref = crate::provider_credentials::scoped_password_ref(password_ref);
+    // The keychain mirror is best-effort. `MXR_KEYCHAIN=off` skips it entirely
+    // (mirrors `MXR_ACTIVITY=off`): useful on headless/disk-only hosts and to
+    // keep tests from touching the real OS keychain / Secret Service. Disk
+    // remains authoritative either way.
+    let skip_keychain = crate::provider_credentials::keychain_disabled();
     persist_credential(
         service,
         &mxr_config::SecretStore::at_default_path(),
         &scoped_ref,
         username,
         password,
-        mxr_keychain::set_password,
+        |service, account, secret| {
+            if skip_keychain {
+                Ok(())
+            } else {
+                mxr_keychain::set_password(service, account, secret)
+            }
+        },
     )?;
 
     tracing::info!(

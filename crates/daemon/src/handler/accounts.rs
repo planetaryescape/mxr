@@ -82,10 +82,30 @@ pub(super) async fn disable_account(state: &Arc<AppState>, key: &str) -> Handler
     })
 }
 
-pub(super) async fn repair_account(account: AccountConfigData) -> HandlerResult {
-    Ok(ResponseData::AccountOperation {
-        result: repair_account_config(account),
-    })
+pub(super) async fn repair_account(
+    state: &Arc<AppState>,
+    account: AccountConfigData,
+) -> HandlerResult {
+    let mut result = repair_account_config(account);
+    if result.ok {
+        // Reload providers so the repaired password takes effect immediately
+        // (rebuilds provider handles and signals the long-lived IDLE loop to
+        // reconnect). Without this, a running daemon keeps the stale cached
+        // credential until a restart. The credential is already on disk, so a
+        // reload failure does not undo the repair — but we must NOT hide it:
+        // surface that the daemon needs a restart to pick up the new password.
+        if let Err(error) = state.reload_accounts_from_disk().await {
+            result.summary = format!(
+                "{} The credential was saved to disk, but the daemon could not reload it live — restart the daemon to apply the new password.",
+                result.summary
+            );
+            result.sync = Some(account_step(
+                false,
+                format!("daemon reload failed (restart to apply): {error}"),
+            ));
+        }
+    }
+    Ok(ResponseData::AccountOperation { result })
 }
 
 #[cfg(test)]
@@ -269,6 +289,85 @@ mod tests {
                 other => panic!("Expected AccountOperation, got {other:?}"),
             }
         });
+    }
+
+    #[test]
+    fn repair_account_through_ipc_persists_password_to_disk() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp_dir.path().join("config");
+        let data_dir = temp_dir.path().join("data");
+        let socket_path = temp_dir.path().join("mxr.sock");
+        let secrets_path = config_dir.join("secrets.toml");
+        std::fs::create_dir_all(&config_dir).expect("config dir");
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+
+        temp_env::with_vars(
+            [
+                ("MXR_CONFIG_DIR", Some(config_dir.as_os_str())),
+                ("MXR_DATA_DIR", Some(data_dir.as_os_str())),
+                ("MXR_SOCKET_PATH", Some(socket_path.as_os_str())),
+                ("MXR_SECRETS_PATH", Some(secrets_path.as_os_str())),
+                // Prod instance keeps the credential service unscoped; disable
+                // the keychain mirror so the test never touches the real OS
+                // keychain / Secret Service.
+                ("MXR_INSTANCE", Some("mxr".as_ref())),
+                ("MXR_KEYCHAIN", Some("off".as_ref())),
+            ],
+            || {
+                runtime.block_on(async {
+                    let state =
+                        Arc::new(AppState::in_memory_without_accounts().await.expect("state"));
+                    let msg = IpcMessage {
+                        id: 1,
+                        source: ::mxr_protocol::ClientKind::default(),
+                        payload: IpcPayload::Request(Request::RepairAccountConfig {
+                            account: AccountConfigData {
+                                key: "consulting".into(),
+                                name: "Consulting".into(),
+                                email: "consulting@example.com".into(),
+                                enabled: true,
+                                sync: Some(AccountSyncConfigData::Imap {
+                                    host: "imap.example.com".into(),
+                                    port: 993,
+                                    username: "consulting@example.com".into(),
+                                    password_ref: "mxr/consulting-imap".into(),
+                                    password: Some("s3cret-app-pw".into()),
+                                    auth_required: true,
+                                    use_tls: true,
+                                }),
+                                send: None,
+                                is_default: false,
+                            },
+                        }),
+                    };
+
+                    let resp = handle_request(&state, &msg).await;
+                    match resp.payload {
+                        IpcPayload::Response(Response::Ok {
+                            data: ResponseData::AccountOperation { result },
+                        }) => {
+                            assert!(result.ok, "repair should succeed, got {result:?}");
+                        }
+                        other => panic!("Expected AccountOperation, got {other:?}"),
+                    }
+
+                    // The daemon (this handler) is the writer: the credential is
+                    // authoritatively on disk in the secrets store.
+                    let store = mxr_config::SecretStore::new(secrets_path.clone());
+                    assert_eq!(
+                        store
+                            .get("mxr/consulting-imap", "consulting@example.com")
+                            .expect("read secret")
+                            .as_deref(),
+                        Some("s3cret-app-pw"),
+                    );
+                });
+            },
+        );
     }
 
     fn account_config(name: &str, email: &str, enabled: bool) -> mxr_config::AccountConfig {

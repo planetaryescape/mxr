@@ -254,7 +254,7 @@ thiserror = "2"
 anyhow = "1"
 
 # Security
-constant_time_eq = "0.4"
+constant_time_eq = "0.5"
 
 # Logging
 tracing = "0.1"

@@ -708,6 +708,21 @@ body {
   .landing-section .expressive-code pre { padding-inline: 0 !important; }
 }
 
+/* Starlight renders markdown tables as `display: block; overflow: auto`, so a
+   reference table that outgrows a phone becomes a scroll region no keyboard can
+   reach; below 480px the overrun is gutter plus unbreakable field names like
+   `archived_unread_count`. Only `anywhere` lowers the min-content width the
+   table is sized from, and only on inline `code`, or the auto layout breaks
+   ordinary words too and squeezes a `Type` column to a letter per line. These
+   rules are unlayered, so they win on layer order, which is why the gutter
+   override also has to restore the outer edges. */
+@media (max-width: 480px) {
+  .sl-markdown-content :is(th, td) code { overflow-wrap: anywhere; }
+  .sl-markdown-content :is(th, td) { padding-inline: 0.5rem; }
+  .sl-markdown-content :is(th, td):first-child { padding-inline-start: 0; }
+  .sl-markdown-content :is(th, td):last-child { padding-inline-end: 0; }
+}
+
 .kbd {
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-mono-em);

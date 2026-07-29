@@ -59,6 +59,8 @@ MXR_IMAP_PASSWORD="$APP_PASSWORD" MXR_SMTP_PASSWORD="$APP_PASSWORD" \
 
 ## 3. Sync
 
+Your first sync happens in the background. Large mailboxes take longer. You can start using mxr as messages arrive, or wait here until it finishes:
+
 ```bash
 mxr sync --wait
 ```

@@ -202,6 +202,15 @@ async fn reap_detached_sync(
     let cursor_summary = describe_sync_cursor(provider.as_ref(), cursor.as_ref());
     match &result {
         Ok(outcome) => {
+            if outcome.synced_count > 0 {
+                match state.warm_lexical_search(true).await {
+                    Ok(true) => tracing::info!("Lexical search index warmed after detached sync"),
+                    Ok(false) => {}
+                    Err(error) => {
+                        tracing::warn!(%error, "lexical search warm-up failed after detached sync");
+                    }
+                }
+            }
             let _ = state
                 .store
                 .upsert_sync_runtime_status(
@@ -647,6 +656,21 @@ async fn sync_loop_for_account(
                     let initial_backfill_in_progress = post_sync_cursor
                         .as_ref()
                         .is_some_and(|c| provider.is_backfill_cursor(c));
+
+                    let initial_backfill_finished =
+                        was_initial_backfill && !initial_backfill_in_progress;
+                    match state.warm_lexical_search(initial_backfill_finished).await {
+                        Ok(true) => tracing::info!(
+                            account = %account_id,
+                            "Lexical search index warmed"
+                        ),
+                        Ok(false) => {}
+                        Err(error) => tracing::warn!(
+                            account = %account_id,
+                            %error,
+                            "lexical search warm-up failed after sync"
+                        ),
+                    }
 
                     // Critical: the post-sync fan-out (semantic ingest,
                     // contacts refresh, relationship profile, rules

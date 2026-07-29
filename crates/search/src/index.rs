@@ -6,7 +6,7 @@ use mxr_core::MxrError;
 use std::path::Path;
 use tantivy::{
     collector::{Count, TopDocs},
-    query::{BooleanQuery, Occur, Query, QueryParser, TermQuery},
+    query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, TermQuery},
     schema::IndexRecordOption,
     schema::Value,
     Index, IndexReader, IndexWriter, Order, ReloadPolicy, TantivyDocument,
@@ -541,6 +541,40 @@ impl SearchIndex {
     /// Number of indexed documents.
     pub fn num_docs(&self) -> u64 {
         self.reader.searcher().num_docs()
+    }
+
+    /// Touch the index structures used by the first interactive search.
+    ///
+    /// Tantivy memory-maps its index files, so opening the index does not read
+    /// their pages into memory. A small all-documents query loads the count,
+    /// date sort, and first document-store blocks before a user searches.
+    pub fn warm(&self) -> Result<(), MxrError> {
+        const WARM_DOCUMENTS: usize = 40;
+
+        let searcher = self.reader.searcher();
+        if searcher.num_docs() == 0 {
+            return Ok(());
+        }
+
+        let query = AllQuery;
+        searcher
+            .search(&query, &Count)
+            .map_err(|error| MxrError::Search(error.to_string()))?;
+        let top_docs = searcher
+            .search(
+                &query,
+                &TopDocs::with_limit(WARM_DOCUMENTS)
+                    .order_by_fast_field::<i64>("sort_date_ts", Order::Desc),
+            )
+            .map_err(|error| MxrError::Search(error.to_string()))?;
+
+        for (_, address) in top_docs {
+            let _: TantivyDocument = searcher
+                .doc(address)
+                .map_err(|error| MxrError::Search(error.to_string()))?;
+        }
+
+        Ok(())
     }
 
     /// Clear all documents and prepare for reindexing.

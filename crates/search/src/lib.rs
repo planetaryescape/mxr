@@ -248,6 +248,18 @@ mod tests {
             .search("nonexistent", 10, 0, SortOrder::Relevance)
             .unwrap();
         assert!(results.results.is_empty());
+        idx.warm().unwrap();
+    }
+
+    #[test]
+    fn warm_populated_index() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let env = make_envelope("Flight details", "Boarding at gate 12", "Airline");
+        idx.index_envelope(&env).unwrap();
+        idx.commit().unwrap();
+
+        idx.warm().unwrap();
+        assert_eq!(idx.num_docs(), 1);
     }
 
     #[test]

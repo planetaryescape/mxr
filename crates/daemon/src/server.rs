@@ -1225,33 +1225,35 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
 
     let indexed_messages = state.search.num_docs().await.unwrap_or_default();
 
-    if indexed_messages == total_messages as u64 {
-        return Ok(());
+    if indexed_messages != total_messages as u64 {
+        // Startup maintenance only repairs the lexical Tantivy index from SQLite.
+        // Semantic chunks/embeddings remain an optional platform layer and are not
+        // part of this mandatory mail-readiness repair path.
+        tracing::info!(
+            indexed_messages,
+            total_messages,
+            "Reindexing lexical index from SQLite"
+        );
+        let _ = reindex(&state.search, &state.store, |progress| match progress {
+            ReindexProgress::Starting { total } => {
+                tracing::info!(total, "Lexical reindex started");
+            }
+            ReindexProgress::Indexing { indexed, total }
+                if indexed == total || indexed % 10_000 == 0 =>
+            {
+                tracing::info!(indexed, total, "Lexical reindex progress");
+            }
+            ReindexProgress::Indexing { .. } => {}
+            ReindexProgress::Complete { indexed } => {
+                tracing::info!(indexed, "Lexical reindex complete");
+            }
+        })
+        .await?;
     }
 
-    // Startup maintenance only repairs the lexical Tantivy index from SQLite.
-    // Semantic chunks/embeddings remain an optional platform layer and are not
-    // part of this mandatory mail-readiness repair path.
-    tracing::info!(
-        indexed_messages,
-        total_messages,
-        "Reindexing lexical index from SQLite"
-    );
-    let _ = reindex(&state.search, &state.store, |progress| match progress {
-        ReindexProgress::Starting { total } => {
-            tracing::info!(total, "Lexical reindex started");
-        }
-        ReindexProgress::Indexing { indexed, total }
-            if indexed == total || indexed % 10_000 == 0 =>
-        {
-            tracing::info!(indexed, total, "Lexical reindex progress");
-        }
-        ReindexProgress::Indexing { .. } => {}
-        ReindexProgress::Complete { indexed } => {
-            tracing::info!(indexed, "Lexical reindex complete");
-        }
-    })
-    .await?;
+    if state.warm_lexical_search(true).await? {
+        tracing::info!("Lexical search index warmed");
+    }
 
     Ok(())
 }

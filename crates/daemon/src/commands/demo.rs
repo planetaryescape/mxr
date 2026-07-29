@@ -173,13 +173,15 @@ pub async fn run(messages: usize, no_tui: bool) -> anyhow::Result<()> {
     crate::server::ensure_daemon_running().await?;
     seed_demo_rules().await?;
     println!("Seeding demo mailbox...");
-    let statuses = trigger_demo_sync_and_wait(Duration::from_secs(180)).await?;
-    let synced_count = statuses
-        .iter()
-        .map(|status| status.last_synced_count as usize)
-        .sum::<usize>();
+    trigger_demo_sync_and_wait(Duration::from_secs(180)).await?;
+    let synced_count = fetch_demo_message_count().await?;
+    if messages > 0 && synced_count != messages {
+        anyhow::bail!(
+            "Demo sync finished with {synced_count} messages; expected {messages}. Run `mxr demo --reset` to try again."
+        );
+    }
     if synced_count > 0 {
-        println!("Synced {synced_count} demo messages.");
+        println!("Demo mailbox contains {synced_count} messages.");
         write_demo_message_count(&paths, messages)?;
     } else {
         println!("Demo mailbox is already up to date.");
@@ -380,17 +382,33 @@ async fn trigger_demo_account_sync_and_wait(
     timeout: Duration,
 ) -> anyhow::Result<AccountSyncStatus> {
     let mut client = IpcClient::connect().await?;
-    let before = fetch_demo_sync_status(&mut client, &account_id)
-        .await
-        .ok()
-        .and_then(|status| status.last_success_at);
+    let before_status = match fetch_demo_sync_status(&mut client, &account_id).await {
+        Ok(status) => status,
+        Err(error) => {
+            client = reconnect_demo_client(&error).await?;
+            fetch_demo_sync_status(&mut client, &account_id).await?
+        }
+    };
+    let before = before_status.last_success_at;
 
-    match client
+    let sync_response = match client
         .request(Request::SyncNow {
             account_id: Some(account_id.clone()),
         })
-        .await?
+        .await
     {
+        Ok(response) => response,
+        Err(error) => {
+            client = reconnect_demo_client(&error).await?;
+            client
+                .request(Request::SyncNow {
+                    account_id: Some(account_id.clone()),
+                })
+                .await?
+        }
+    };
+
+    match sync_response {
         Response::Ok {
             data: ResponseData::Ack,
         } => {}
@@ -400,7 +418,22 @@ async fn trigger_demo_account_sync_and_wait(
 
     let deadline = std::time::Instant::now() + timeout;
     loop {
-        let status = fetch_demo_sync_status(&mut client, &account_id).await?;
+        let status = match client
+            .request(Request::GetSyncStatus {
+                account_id: account_id.clone(),
+            })
+            .await
+        {
+            Ok(Response::Ok {
+                data: ResponseData::SyncStatus { sync },
+            }) => sync,
+            Ok(Response::Error { message, .. }) => anyhow::bail!(message),
+            Ok(other) => anyhow::bail!("Unexpected sync status response: {other:?}"),
+            Err(error) => {
+                client = reconnect_demo_client(&error).await?;
+                continue;
+            }
+        };
         let completed_new_sync = status.last_success_at != before || status.last_synced_count > 0;
         if completed_new_sync && !status.sync_in_progress {
             return Ok(status);
@@ -411,8 +444,26 @@ async fn trigger_demo_account_sync_and_wait(
                 timeout.as_secs()
             );
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
+}
+
+async fn reconnect_demo_client(cause: &anyhow::Error) -> anyhow::Result<IpcClient> {
+    let mut last_error = None;
+    for _ in 0..5 {
+        match IpcClient::connect().await {
+            Ok(client) => return Ok(client),
+            Err(error) => last_error = Some(error),
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
+    anyhow::bail!(
+        "Lost the daemon connection while waiting for demo sync: {cause}. Reconnecting also failed: {}",
+        last_error
+            .map(|error| error.to_string())
+            .unwrap_or_else(|| "unknown error".to_string())
+    )
 }
 
 async fn fetch_demo_sync_status(
@@ -430,6 +481,25 @@ async fn fetch_demo_sync_status(
         } => Ok(sync),
         Response::Error { message, .. } => anyhow::bail!(message),
         other => anyhow::bail!("Unexpected sync status response: {other:?}"),
+    }
+}
+
+async fn fetch_demo_message_count() -> anyhow::Result<usize> {
+    let mut client = IpcClient::connect().await?;
+    let response = match client.request(Request::GetStatus).await {
+        Ok(response) => response,
+        Err(error) => {
+            client = reconnect_demo_client(&error).await?;
+            client.request(Request::GetStatus).await?
+        }
+    };
+
+    match response {
+        Response::Ok {
+            data: ResponseData::Status { total_messages, .. },
+        } => Ok(total_messages as usize),
+        Response::Error { message, .. } => anyhow::bail!(message),
+        other => anyhow::bail!("Unexpected status response: {other:?}"),
     }
 }
 
@@ -458,27 +528,25 @@ async fn seed_demo_rules() -> anyhow::Result<()> {
 /// seed is better than an aborted `mxr demo` start.
 async fn seed_demo_surfaces() -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    if let Err(error) = seed_demo_snippets(&mut client).await {
-        println!("  seed snippets skipped: {error}");
+
+    macro_rules! seed_surface {
+        ($label:literal, $operation:ident) => {
+            if let Err(error) = $operation(&mut client).await {
+                client = reconnect_demo_client(&error).await?;
+                if let Err(error) = $operation(&mut client).await {
+                    println!(concat!("  seed ", $label, " skipped: {}"), error);
+                }
+            }
+        };
     }
-    if let Err(error) = seed_demo_signatures(&mut client).await {
-        println!("  seed signatures skipped: {error}");
-    }
-    if let Err(error) = seed_demo_labels(&mut client).await {
-        println!("  seed labels skipped: {error}");
-    }
-    if let Err(error) = seed_demo_saved_searches(&mut client).await {
-        println!("  seed saved searches skipped: {error}");
-    }
-    if let Err(error) = seed_demo_screener(&mut client).await {
-        println!("  seed screener skipped: {error}");
-    }
-    if let Err(error) = seed_demo_message_state(&mut client).await {
-        println!("  seed snooze/reply-later skipped: {error}");
-    }
-    if let Err(error) = seed_demo_drafts(&mut client).await {
-        println!("  seed drafts skipped: {error}");
-    }
+
+    seed_surface!("snippets", seed_demo_snippets);
+    seed_surface!("signatures", seed_demo_signatures);
+    seed_surface!("labels", seed_demo_labels);
+    seed_surface!("saved searches", seed_demo_saved_searches);
+    seed_surface!("screener", seed_demo_screener);
+    seed_surface!("snooze/reply-later", seed_demo_message_state);
+    seed_surface!("drafts", seed_demo_drafts);
     Ok(())
 }
 

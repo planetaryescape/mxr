@@ -13,6 +13,8 @@ mxr
 
 ## Trigger sync
 
+Your first sync happens in the background. Large mailboxes take longer. You can start using mxr while it finishes, as long as you leave the daemon running.
+
 ```bash
 mxr sync --wait     # blocks until first sync finishes
 mxr sync --status   # check progress at any time

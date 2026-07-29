@@ -780,6 +780,11 @@ pub fn draw_account_setup_onboarding(frame: &mut Frame, area: Rect, theme: &crat
             Span::styled("Open the account form (defaults)", dim_style),
         ]),
         Line::from(""),
+        Line::from(Span::styled(
+            "Your first sync happens in the background. Large mailboxes take longer.",
+            dim_style,
+        )),
+        Line::from(""),
         Line::from(vec![
             Span::styled(" Esc ", label_style),
             Span::raw(" "),

@@ -53,6 +53,9 @@ enum SearchCommand {
     NumDocs {
         resp: oneshot::Sender<Result<u64, MxrError>>,
     },
+    Warm {
+        resp: oneshot::Sender<Result<(), MxrError>>,
+    },
     Shutdown {
         resp: oneshot::Sender<()>,
     },
@@ -102,6 +105,9 @@ impl SearchServiceHandle {
                     }
                     SearchCommand::NumDocs { resp } => {
                         let _ = resp.send(Ok(index.num_docs()));
+                    }
+                    SearchCommand::Warm { resp } => {
+                        let _ = resp.send(index.warm());
                     }
                     SearchCommand::Shutdown { resp } => {
                         let _ = resp.send(());
@@ -213,6 +219,15 @@ impl SearchServiceHandle {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx
             .send(SearchCommand::NumDocs { resp: resp_tx })
+            .await
+            .map_err(closed_error)?;
+        resp_rx.await.map_err(|_| worker_stopped())?
+    }
+
+    pub async fn warm(&self) -> Result<(), MxrError> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.tx
+            .send(SearchCommand::Warm { resp: resp_tx })
             .await
             .map_err(closed_error)?;
         resp_rx.await.map_err(|_| worker_stopped())?

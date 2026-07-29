@@ -437,6 +437,10 @@ pub struct AppState {
     /// the right cadence for "post-upgrade rescan" — a release that
     /// changes derived columns will start a fresh daemon process.
     pub analytics_startup_repair_done: std::sync::atomic::AtomicBool,
+    /// Guards the one-shot warm-up after the first sync batch. Startup and the
+    /// end of an initial backfill may still force another warm-up because they
+    /// can publish a new Tantivy reader generation.
+    lexical_search_warmed: std::sync::atomic::AtomicBool,
     config: RwLock<mxr_config::MxrConfig>,
     shutdown_tx: watch::Sender<bool>,
     /// Bumped by [`AppState::reload_accounts_from_disk`] after the provider
@@ -557,6 +561,7 @@ impl AppState {
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
+            lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
             reload_tx,
@@ -580,6 +585,31 @@ impl AppState {
                 tracing::warn!(error = %err, "failed to refresh account_addresses cache");
             }
         }
+    }
+
+    /// Load the lexical index structures used by an interactive search.
+    /// Returns `true` when this call performed the warm-up and `false` when a
+    /// previous call already did it for the current daemon process.
+    pub async fn warm_lexical_search(&self, force: bool) -> Result<bool> {
+        use std::sync::atomic::Ordering;
+
+        if force {
+            self.lexical_search_warmed.store(true, Ordering::Release);
+        } else if self
+            .lexical_search_warmed
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Ok(false);
+        }
+
+        if let Err(error) = self.search.warm().await {
+            self.lexical_search_warmed.store(false, Ordering::Release);
+            return Err(error);
+        }
+
+        self.lexical_search_warmed.store(true, Ordering::Release);
+        Ok(true)
     }
 
     async fn create_providers_from_config(
@@ -1357,6 +1387,7 @@ impl AppState {
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
+            lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
             reload_tx,
@@ -1424,6 +1455,7 @@ impl AppState {
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
+            lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
             reload_tx,
@@ -1517,6 +1549,7 @@ impl AppState {
                 wrapped_cache: ParkingMutex::new(HashMap::new()),
                 reply_context_cache: ParkingMutex::new(HashMap::new()),
                 analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
+                lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
                 config: RwLock::new(config),
                 shutdown_tx,
                 reload_tx,

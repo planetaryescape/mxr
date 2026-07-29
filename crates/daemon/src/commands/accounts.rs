@@ -427,6 +427,9 @@ async fn authorize_and_save_account(
                 println!("{message}");
             }
             println!("Account '{}' saved.", completed.account_key);
+            if !reauthorize {
+                print_first_sync_note();
+            }
             Ok(())
         }
         AuthSessionStateData::Failed => anyhow::bail!(
@@ -743,7 +746,15 @@ async fn add_imap(include_smtp: bool, args: &AddArgs) -> anyhow::Result<()> {
 
     run_account_operation(Request::UpsertAccountConfig { account }).await?;
     println!("Account '{account_name}' saved.");
+    print_first_sync_note();
     Ok(())
+}
+
+fn print_first_sync_note() {
+    println!();
+    println!("Your first sync happens in the background. Large mailboxes take longer.");
+    println!("You can start using mxr while it finishes. Leave the daemon running.");
+    println!("Check progress with `mxr sync --status`.");
 }
 
 async fn add_smtp_only(args: &AddArgs) -> anyhow::Result<()> {

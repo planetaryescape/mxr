@@ -68,7 +68,7 @@ hero:
       </video>
     </div>
   </div>
-  <div class="hero-cast-cap">search, pipe, triage — by hand in the shell, in the keyboard-driven TUI, or by an agent that writes the <code>mxr</code> commands for you. <a href="/examples/">see every command →</a></div>
+  <div class="hero-cast-cap">search, pipe, triage by hand in the shell, in the keyboard-driven TUI, or by an agent that writes the <code>mxr</code> commands for you. <a href="/examples/">see every command →</a></div>
 </div>
 
 <div class="hero-pronounce" aria-label="Pronunciation">
@@ -129,7 +129,7 @@ cargo install --git \
 
 ## try it
 
-<p>Every workflow is a one-liner. A taste of what you can run after <code>mxr demo</code> or connecting an account — the <a href="/examples/">full set lives here</a>.</p>
+<p>Every workflow is a one-liner. A taste of what you can run after <code>mxr demo</code> or connecting an account. The <a href="/examples/">full set lives here</a>.</p>
 
 ```bash
 # search your whole mailbox, locally, instantly
@@ -142,11 +142,11 @@ mxr unsubscribe newsletter@example.com --dry-run
 # surface what you owe a reply to
 mxr owed --since 7 --format json
 
-# let an agent drive the same daemon — JSON in, JSON out
+# let an agent drive the same daemon: JSON in, JSON out
 mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
 ```
 
-<p class="tryit-contract">Reads emit <code>--format json|jsonl|ids|csv</code>; mutations take <code>--dry-run</code>; MCP send tools require confirmation. Every command composes with the rest of your shell.</p>
+<p class="tryit-contract">Reads emit <code>{`--format json|jsonl|ids|csv`}</code>; mutations take <code>{`--dry-run`}</code>; MCP send tools require confirmation. Every command composes with the rest of your shell.</p>
 
 <p><a href="/examples/">See everything mxr can do →</a></p>
 
@@ -158,14 +158,14 @@ mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
 
 <div class="cap-grid">
   <div class="cap"><strong>One daemon, every surface.</strong> TUI, CLI, web app, HTTP bridge, and MCP server all drive the same local engine.</div>
-  <div class="cap"><strong>Opens instantly.</strong> A message is a SQLite read, not a network fetch — even offline, even on a plane.</div>
+  <div class="cap"><strong>Opens instantly.</strong> A message is a SQLite read, not a network fetch. It opens the same with the wifi off.</div>
   <div class="cap"><strong>Real search, not a filter.</strong> Tantivy BM25 across your whole mailbox, with optional local semantic search.</div>
-  <div class="cap"><strong>Two-way sync.</strong> Gmail, any IMAP server, any SMTP relay — changes flow both directions.</div>
+  <div class="cap"><strong>Two-way sync.</strong> Gmail, any IMAP server, any SMTP relay. Changes flow both directions.</div>
   <div class="cap"><strong>Compose in $EDITOR.</strong> Markdown in, multipart out. Your keybindings, your muscle memory.</div>
   <div class="cap"><strong>Reader mode.</strong> Strips trackers, banners, and quoted noise. Unsubscribe and archive in one key.</div>
   <div class="cap"><strong>Never drop a thread.</strong> Owed-reply tracking, follow-up reminders, snooze, and send-later.</div>
   <div class="cap"><strong>Local analytics.</strong> Response times, one-sided relationships, storage, and your year in email.</div>
-  <div class="cap"><strong>Pipeable by default.</strong> JSON on every read, <code>--dry-run</code> on every mutation, IDs on stdin.</div>
+  <div class="cap"><strong>Pipeable by default.</strong> JSON on every read, <code>{`--dry-run`}</code> on every mutation, IDs on stdin.</div>
   <div class="cap"><strong>Yours, on disk.</strong> No telemetry, no phone-home. Local-first, MIT / Apache-2.0.</div>
 </div>
 
@@ -194,7 +194,7 @@ mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
   <div class="narrative">
     <h3>No signal. <em>No problem.</em></h3>
     <p>Open mxr on a plane with the wifi off. Triage. Reply. Draft. Snooze. Opening a message is a SQLite read, not a fetch, so there is no network round trip waiting on you. When you land and your laptop reconnects, mxr finishes everything you queued.</p>
-    <p>Your archive is on disk, not in someone else's cloud. Years of email, every attachment, every label: local, indexed, yours.</p>
+    <p>Your synced archive is on disk. Years of email and labels stay indexed locally, and attachment filenames are searchable. Opening an attachment downloads it into mxr's cache. Saving one that isn't cached yet downloads it straight to the destination you choose, without adding it to the cache.</p>
   </div>
 
   <div class="terminal-log" aria-label="Example session: triage on a plane, sync on landing">
@@ -218,7 +218,7 @@ mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
 
 <div class="search-event">
   <span class="search-prompt">$</span>
-  <span><span class="search-cmd">mxr search </span><span class="search-string">"from:supplier subject:contract has:attachment after:2019"</span></span>
+  <span><span class="search-cmd">mxr search </span><span class="search-string">{`"from:supplier subject:contract has:attachment after:2019"`}</span></span>
 </div>
 
 <div class="search-results">
@@ -273,8 +273,8 @@ mxr search "subject:invoice" --format json | jq -r '.results[].from' | sort -u
     <div class="agent-label">◈ prompt</div>
     <div class="agent-prompt">Find newsletters I haven't opened in three months. Show me the list, unsubscribe from the ones I confirm.</div>
     <div class="agent-runs">
-      <code>mxr subscriptions --rank --format json</code>
-      <code>mxr stale --within-days 90 --format ids</code>
+      <code>{`mxr subscriptions --rank --format json`}</code>
+      <code>{`mxr stale --within-days 90 --format ids`}</code>
     </div>
     <div class="agent-result">found 14 candidates ◈ you confirmed 11 ◈<span class="agent-ok">11 unsubscribed, 3 archived.</span></div>
   </div>
@@ -283,8 +283,8 @@ mxr search "subject:invoice" --format json | jq -r '.results[].from' | sort -u
     <div class="agent-label">◈ prompt</div>
     <div class="agent-prompt">I'm prepping for my 1-on-1 with Sarah. Pull all email threads between us from the last two weeks, summarise the open items, draft an agenda.</div>
     <div class="agent-runs">
-      <code>mxr search "from:sarah OR to:sarah after:2026-04-23" --format json</code>
-      <code>mxr draft-assist &lt;thread-id&gt; "1:1 agenda"</code>
+      <code>{`mxr search "from:sarah OR to:sarah after:2026-04-23" --format json`}</code>
+      <code>{`mxr draft-assist <thread-id> "1:1 agenda"`}</code>
     </div>
     <div class="agent-result">7 threads, 4 with open asks ◈<span class="agent-ok">draft body generated.</span></div>
   </div>
@@ -293,15 +293,15 @@ mxr search "subject:invoice" --format json | jq -r '.results[].from' | sort -u
     <div class="agent-label">◈ prompt</div>
     <div class="agent-prompt">Find every CI failure email from last week. Cross-reference with my recent commits and archive the ones whose tests have since been fixed.</div>
     <div class="agent-runs">
-      <code>mxr search "from:ci@github.com after:2026-04-30" --format ids</code>
-      <code>git log --since=1.week --pretty=%H %s</code>
-      <code>echo &lt;ids&gt; | xargs mxr archive --yes</code>
+      <code>{`mxr search "from:ci@github.com after:2026-04-30" --format ids`}</code>
+      <code>{`git log --since=1.week --pretty=%H %s`}</code>
+      <code>{`echo <ids> | xargs mxr archive --yes`}</code>
     </div>
     <div class="agent-result">23 failures, 18 since fixed ◈<span class="agent-ok">18 archived, 5 left for review.</span></div>
   </div>
 </div>
 
-<p>This works because mxr isn't a GUI with an API bolted on. The CLI, MCP server, web bridge, and TUI all call the same daemon. Most reads return <code>--format json</code>, mutations support <code>--dry-run</code>, MCP mutation/send tools require confirmation, and every command composes with the rest of your shell. Your agent doesn't need browser automation, screen scraping, or a provider-specific SDK.</p>
+<p>The CLI, MCP server, web bridge, and TUI all call the same daemon, so an agent drives mxr with the same structured commands you would type yourself. Most read commands support <code>{`--format json`}</code>, mutations support <code>{`--dry-run`}</code>, MCP mutation and send tools require confirmation, and every command composes with the rest of your shell.</p>
 
 <div class="agent-json-peek">
   <div class="agent-json-label">◈ what your agent sees</div>
@@ -341,8 +341,7 @@ mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
 </div>
 
 <div class="eulogy-prose">
-  <p>Each had millions of users when it shut down.</p>
-  <p>If your provider goes dark tomorrow, an outage, a lockout, a deprecation, an account flag, you lose a day or two of new mail. Everything else is on your laptop. You keep your archive, your search, your drafts, your filters. Re-point mxr at a different provider; carry on.</p>
+  <p>If your provider is unavailable, the mail mxr has already synced stays on your laptop, where you can read and search it with no network connection. Moving your address or your incoming mail is a separate job.</p>
   <p>Your email is data. It belongs on a disk you own.</p>
 </div>
 
@@ -457,7 +456,7 @@ L     open links picker`}</code></pre>
 <div class="principle principle-flip">
   <div class="principle-text">
     <h3>Pipeable by default.</h3>
-    <p>Reads support <code>--format json|jsonl|ids|csv|table</code>. Mutations support <code>--dry-run</code>, <code>--search</code> for batch ops, and accept piped IDs from stdin. See the <a href="/guides/automation-contract/">automation contract</a> for per-command capabilities.</p>
+    <p>Reads support <code>{`--format json|jsonl|ids|csv|table`}</code>. Mutations support <code>{`--dry-run`}</code>, <code>{`--search`}</code> for batch ops, and accept piped IDs from stdin. See the <a href="/guides/automation-contract/">automation contract</a> for per-command capabilities.</p>
   </div>
   <div class="principle-margin">
     <pre><code>{`mxr search "from:noreply" --format ids \\

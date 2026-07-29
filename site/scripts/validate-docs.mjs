@@ -60,6 +60,33 @@ for (const file of walk(docsRoot)) {
   }
 }
 
+const homepage = join(docsRoot, 'index.mdx');
+const homepageText = readFileSync(homepage, 'utf8');
+
+if (/—/.test(homepageText)) {
+  console.error(`[docs-validate] ${homepage}: em dashes are banned in homepage copy`);
+  failed = true;
+}
+
+// Smart typography rewrites `--` to an em dash and `"` to curly quotes inside
+// the homepage's raw HTML nodes, silently breaking copy-paste. `{`...`}` opts out.
+const commandNodePatterns = [
+  /<code(?:\s[^>]*)?>([^<]*)<\/code>/g,
+  /<span class="(?:search-string|search-cmd|run-cmd|hero-install-cmd)"[^>]*>([^<]*)<\/span>/g,
+];
+for (const pattern of commandNodePatterns) {
+  for (const [node, inner] of homepageText.matchAll(pattern)) {
+    if (inner.startsWith('{`')) continue;
+    if (/--|"/.test(inner)) {
+      console.error(
+        `[docs-validate] ${homepage}: ${node} needs the {\`...\`} form, ` +
+          'or smart typography will mangle its flags and quotes',
+      );
+      failed = true;
+    }
+  }
+}
+
 const openapi = JSON.parse(readFileSync(openapiPath, 'utf8'));
 const pathCount = Object.keys(openapi.paths || {}).length;
 if (pathCount === 0) {

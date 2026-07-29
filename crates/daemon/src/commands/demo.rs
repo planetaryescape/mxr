@@ -460,9 +460,7 @@ async fn reconnect_demo_client(cause: &anyhow::Error) -> anyhow::Result<IpcClien
 
     anyhow::bail!(
         "Lost the daemon connection while waiting for demo sync: {cause}. Reconnecting also failed: {}",
-        last_error
-            .map(|error| error.to_string())
-            .unwrap_or_else(|| "unknown error".to_string())
+        last_error.map_or_else(|| "unknown error".to_string(), |error| error.to_string())
     )
 }
 

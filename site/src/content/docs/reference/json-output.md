@@ -9,40 +9,163 @@ The CLI does **not** always mirror daemon IPC structs. Some commands intentional
 
 ## Search result
 
-`mxr search QUERY --format json` returns an array. `--format jsonl` returns the same records, one per line.
+`mxr search QUERY --format json` returns one object with `results`, `paging`, and `explain`. It is not a bare array, so `jq` filters need to go through `.results`.
 
 ```json
-[
-  {
-    "message_id": "01JFQ7K3M2X8N5R0VYZA9CTBPE",
-    "from": "Sarah Chen <sarah@example.com>",
-    "subject": "1:1 prep, Friday",
-    "date": "2026-04-30T15:42:11+00:00",
-    "read": false,
-    "starred": true,
-    "score": 12.4
-  }
-]
+{
+  "results": [
+    {
+      "message_id": "01JFQ7K3M2X8N5R0VYZA9CTBPE",
+      "from": "Sarah Chen <sarah@example.com>",
+      "subject": "1:1 prep, Friday",
+      "date": "2026-04-30T15:42:11+00:00",
+      "read": false,
+      "starred": true,
+      "score": 1777563776.0
+    }
+  ],
+  "paging": {
+    "limit": 50,
+    "offset": 0,
+    "total": 73,
+    "has_more": true,
+    "next_offset": 50
+  },
+  "explain": null
+}
 ```
 
 | Field | Type | Notes |
 |---|---|---|
 | `message_id` | string | Pass to `mxr cat`, `mxr reply`, mutations, etc. |
-| `from` | string | Display-ready sender, usually `Name <email>`. |
+| `from` | string | Display-ready sender, usually `Name <email>`. Missing display names leave a leading space before `<email>`. |
 | `subject` | string | Empty subjects are possible. |
 | `date` | string | RFC 3339 timestamp. |
 | `read` | bool | Current local read state. |
 | `starred` | bool | Current local starred state. |
-| `score` | number | Search relevance score. Date-sorted queries still include it. |
+| `score` | number | The ranking value the executed search produced, as a 32-bit float. Its meaning depends on how the search ran; see below. |
 
-With `--explain`, `mxr search` wraps the payload:
+The mode you request and the path the search falls back to together decide what `score` holds.
+
+| Request | Execution | `score` |
+|---|---|---|
+| `--mode lexical --sort relevance` | lexical | BM25 relevance |
+| `--mode lexical` with the default date sort | lexical | message date in Unix seconds |
+| `--mode hybrid` | hybrid | RRF fusion score |
+| `--mode semantic` | semantic | dense score |
+| `--mode hybrid` or `--mode semantic` | lexical fallback | BM25 relevance |
+| any mode, query rejected by the structured parser | Tantivy fallback | matches the requested sort |
+
+Omitting `--mode` picks the request path from `search.default_mode`.
+
+An `f32` carries 24 mantissa bits, so present-day epoch seconds land on 128-second steps: the example message is 1777563731 and comes back as `1777563776.0`. Read `date` when you need a stable value.
+
+### Paging
+
+`paging` sits in the JSON envelope. `--format jsonl` and `--format csv` write the same object to stderr instead.
+
+| Field | Type | Notes |
+|---|---|---|
+| `limit` | number | The page size the CLI sent. Defaults to 50 when `--limit` is omitted. |
+| `offset` | number | The `--offset` value. Defaults to 0. |
+| `total` | number | Match count for the query, not the number of rows on this page. |
+| `has_more` | bool | True when matches exist past this page. |
+| `next_offset` | number or null | Offset to pass to `--offset` for the next page. Null when `has_more` is false. |
+
+`results` is `[]` when nothing matches, and `total` is then 0. A lexical request reports the full match count for the query. A hybrid or semantic request ranks a bounded candidate window, and its `total` can be the size of that pool rather than a full count. Use `has_more` and `next_offset` to page.
+
+### Explain
+
+`explain` is null unless you pass `--explain`.
+
+```bash
+mxr search 'quarterly report' --mode hybrid --explain --format json
+```
+
+An illustrative `explain` for that command, on a config with semantic search switched off:
 
 ```json
 {
-  "results": [/* search result */],
-  "explain": { /* search-mode diagnostics */ }
+  "explain": {
+    "requested_mode": "hybrid",
+    "executed_mode": "lexical",
+    "semantic_query": "quarterly report",
+    "lexical_window": 204,
+    "dense_window": null,
+    "lexical_candidates": 73,
+    "dense_candidates": 0,
+    "final_results": 50,
+    "rrf_k": null,
+    "notes": ["semantic search disabled in config; used lexical ranking"],
+    "results": [
+      {
+        "rank": 1,
+        "message_id": "01JFQ7K3M2X8N5R0VYZA9CTBPE",
+        "final_score": 12.4,
+        "lexical_rank": 1,
+        "lexical_score": 12.4,
+        "dense_rank": null,
+        "dense_score": null
+      }
+    ]
+  }
 }
 ```
+
+| Field | Type | Notes |
+|---|---|---|
+| `requested_mode` | string | `lexical`, `hybrid`, or `semantic`, as asked for by `--mode`. |
+| `executed_mode` | string | What actually ran. It falls back to `lexical` when semantic retrieval is unavailable. |
+| `semantic_query` | string or null | Semantic text extracted from the query. The lexical fallback paths set it too, so a value here does not prove a dense pass ran. |
+| `lexical_window` | number | Candidate window for the lexical pass. Equal to `--limit` for a lexical request, wider for a hybrid or semantic one, including requests that fall back to lexical. |
+| `dense_window` | number or null | Candidate window for the dense pass. Null when no dense pass ran. |
+| `lexical_candidates` | number | Rows the lexical pass produced. |
+| `dense_candidates` | number | Dense rows left after filtering. 0 when no dense pass ran. |
+| `final_results` | number | Rows returned on this page, recounted after post-search filters such as disabled accounts. |
+| `rrf_k` | number or null | Reciprocal rank fusion constant. Set only when hybrid fusion ran. |
+| `notes` | string[] | Reasons for fallbacks and other diagnostics. |
+| `results[]` | object[] | One entry per row on the page, with `rank`, `message_id`, `final_score`, and the nullable `lexical_rank`, `lexical_score`, `dense_rank`, `dense_score`. `--format table` and `--format ids` print only the first five; JSON carries all of them. |
+
+### `--format jsonl`
+
+`--format jsonl` writes the same result records to stdout, one per line, and writes the `paging` and `explain` envelope to stderr as a single line. Capture stderr if you need to page.
+
+```bash
+mxr search 'from:sarah' --format jsonl 2>/dev/null | jq -r '.subject'
+mxr search 'from:sarah' --format jsonl 2>paging.json >/dev/null && jq '.paging.next_offset' paging.json
+```
+
+```json
+{"message_id":"01JFQ7K3M2X8N5R0VYZA9CTBPE","from":"Sarah Chen <sarah@example.com>","subject":"1:1 prep, Friday","date":"2026-04-30T15:42:11+00:00","read":false,"starred":true,"score":1777563776.0}
+```
+
+The stderr line has the same shape in `--format csv`.
+
+### `mxr search --group-by`
+
+`--group-by from|list|category` runs an aggregation instead of a message search, so the payload is different. `--format json` returns one object:
+
+```json
+{
+  "query": "invoice",
+  "group_by": "from",
+  "total": 12,
+  "groups": [
+    {
+      "key": "billing@example.com",
+      "label": "Example Billing <billing@example.com>",
+      "count": 8,
+      "unread": 2,
+      "oldest": 1704067200,
+      "newest": 1777564800
+    }
+  ]
+}
+```
+
+`--format jsonl` flattens each group onto its own line and repeats `query` and `group_by` on every line. `key` is the normalized grouping value and `label` is the display form. `oldest` and `newest` are Unix seconds and are typed as nullable. `total` counts matching messages, not groups, and `--group-by category` can file one message under several categories, so the group counts can add up to more than `total`.
+
+Groups are sorted by `count` descending, then `unread` descending, then `newest` descending, then `label`. `--limit` truncates that sorted list. Aggregations have no `paging` and no `explain`, and `--offset` is not sent.
 
 ## Message and thread reads
 
@@ -63,6 +186,13 @@ mxr search 'label:newsletters older_than:30d' --format ids \
 ```
 
 This is safer and more portable than `xargs -r` on macOS.
+
+`mxr search --format ids` writes paging state to stderr as `#` comment lines, so stdout stays clean for the pipe. Both lines are conditional: the first is skipped only when the page holds every match and `--offset` is 0, and the second appears only when a next page exists.
+
+```
+# search page: returned=50 total=73 offset=0
+# more results: rerun with --offset 50
+```
 
 ## Subscription ranking
 
@@ -233,14 +363,19 @@ Successful sends return:
 ```bash
 # Senders by volume from compact search rows
 mxr search 'newer_than:7d' --format json \
-  | jq -r 'group_by(.from)
+  | jq -r '.results
+           | group_by(.from)
            | map({sender: .[0].from, count: length})
            | sort_by(-.count) | .[]
            | "\(.count)\t\(.sender)"'
 
-# Subjects from a sender
-mxr search 'from:legal@' --format jsonl \
+# Subjects from a sender (jsonl stdout is bare records, so no .results here)
+mxr search 'from:legal@' --format jsonl 2>/dev/null \
   | jq -r '.subject'
+
+# Check whether more pages remain
+mxr search 'has:attachment' --limit 200 --format json \
+  | jq '.paging | {total, has_more, next_offset}'
 
 # IDs from attachment-bearing matches
 mxr search 'has:attachment older_than:30d' --format ids

@@ -14,6 +14,9 @@ export default defineConfig({
       customCss: [
         './src/styles/custom.css',
       ],
+      components: {
+        Footer: './src/components/Footer.astro',
+      },
       head: [
         { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
         { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' } },
@@ -25,10 +28,10 @@ export default defineConfig({
         { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
         { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
         { tag: 'meta', attrs: { property: 'og:image:type', content: 'image/png' } },
-        { tag: 'meta', attrs: { property: 'og:image:alt', content: 'mxr — your inbox, on your computer. Local-first, CLI-first email.' } },
+        { tag: 'meta', attrs: { property: 'og:image:alt', content: 'mxr: your inbox, on your computer. Local-first, CLI-first email.' } },
         { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://mxr.sh/og.png' } },
-        { tag: 'meta', attrs: { name: 'twitter:image:alt', content: 'mxr — your inbox, on your computer.' } },
-        { tag: 'meta', attrs: { name: 'twitter:title', content: 'mxr — your inbox, on your computer' } },
+        { tag: 'meta', attrs: { name: 'twitter:image:alt', content: 'mxr: your inbox, on your computer.' } },
+        { tag: 'meta', attrs: { name: 'twitter:title', content: 'mxr: your inbox, on your computer' } },
         { tag: 'meta', attrs: { name: 'twitter:description', content: 'Local-first, CLI-first email. Read, search, draft, and send offline. Two-way Gmail/IMAP sync. Scriptable and agent-operable.' } },
         { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' } },
         { tag: 'meta', attrs: { name: 'author', content: 'planetaryescape' } },

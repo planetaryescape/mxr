@@ -31,10 +31,14 @@
     toggle.setAttribute('aria-label', next + ' demo recording');
   }
 
+  // A switch away and back leaves the video selected again, so the element alone
+  // cannot separate a live rejection from one left over by a start we have since
+  // replaced. Each start takes the next token, and only the newest one counts.
+  var attempt = 0;
+
   // No pause event follows a start that never happened, so record the stop here.
-  // A pane switch while play() was pending makes the rejection stale.
-  function failed(video) {
-    if (video !== selectedVideo()) return;
+  function failed(video, token) {
+    if (token !== attempt || video !== selectedVideo()) return;
     paused = true;
     label();
   }
@@ -43,17 +47,30 @@
   // while motion is paused, never hit the network.
   function play(video) {
     if (!video.getAttribute('src')) video.src = video.dataset.src;
+    var token = ++attempt;
     try {
       var started = video.play();
       // Browsers older than the promise-returning play() return undefined.
-      if (started) started.catch(function () { failed(video); });
+      if (started) started.catch(function () { failed(video, token); });
     } catch (error) {
-      failed(video);
+      failed(video, token);
     }
+  }
+
+  // The poster is all a pane shows before it plays, so the two that start off
+  // screen keep theirs, and the src of their fallback image, in data attributes
+  // until the first time they are picked.
+  function reveal(video) {
+    if (!video || !video.dataset.poster) return;
+    video.poster = video.dataset.poster;
+    delete video.dataset.poster;
+    var fallback = video.querySelector('img[data-src]');
+    if (fallback) fallback.src = fallback.dataset.src;
   }
 
   function sync() {
     var active = selectedVideo();
+    reveal(active);
     videos.forEach(function (video) {
       if (video === active && !paused) play(video);
       else video.pause();

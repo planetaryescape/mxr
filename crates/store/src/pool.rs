@@ -816,6 +816,42 @@ const MIGRATIONS: &[Migration] = &[
             sql: "ALTER TABLE drafts ADD COLUMN from_addr TEXT",
         },
     },
+    Migration {
+        version: 49,
+        name: "draft_html_content",
+        // Additive and forward-only: existing rows keep `body_markdown` and
+        // take `content_kind = 'markdown'` from the default, so they decode as
+        // `DraftContent::Markdown` without any row being rewritten.
+        // Mirrors migrations/049_draft_html_content.sql.
+        kind: MigrationKind::Composite(&[
+            MigrationStep::AddColumn {
+                table: "drafts",
+                column: "body_html",
+                // The caller's HTML document, stored byte-for-byte.
+                sql: "ALTER TABLE drafts ADD COLUMN body_html TEXT",
+            },
+            MigrationStep::AddColumn {
+                table: "drafts",
+                column: "body_text",
+                // Caller-supplied text/plain alternative; NULL means the
+                // outbound builder generates one from the HTML.
+                sql: "ALTER TABLE drafts ADD COLUMN body_text TEXT",
+            },
+            MigrationStep::AddColumn {
+                table: "drafts",
+                column: "inline_assets",
+                // JSON array of `{cid, path}`. Paths only, like `attachments`,
+                // so image bytes stay out of the DB and off the IPC frame.
+                sql: "ALTER TABLE drafts ADD COLUMN inline_assets TEXT NOT NULL DEFAULT '[]'",
+            },
+            MigrationStep::AddColumn {
+                table: "drafts",
+                column: "content_kind",
+                sql: "ALTER TABLE drafts ADD COLUMN content_kind TEXT NOT NULL DEFAULT 'markdown' \
+                      CHECK (content_kind IN ('markdown', 'html'))",
+            },
+        ]),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

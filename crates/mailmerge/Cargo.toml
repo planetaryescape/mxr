@@ -1,0 +1,34 @@
+[package]
+name = "mxr-mailmerge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Companion: local-first mail merge that drives the mxr CLI to create drafts"
+publish = false
+
+# Deliberately depends on NO internal `mxr-*` crate. This tool is a companion,
+# not a plugin: it composes with mxr by spawning the `mxr` binary and reading
+# its JSON, so it can never reach the SQLite store, credentials, or a provider.
+# `scripts/check_architecture_boundaries.sh` enforces the empty dependency set.
+
+[[bin]]
+name = "mxr-mailmerge"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+csv = { workspace = true }
+minijinja = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

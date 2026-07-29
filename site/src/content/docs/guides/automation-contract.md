@@ -60,6 +60,40 @@ mxr cat --search "from:alice" --account personal --first
 mxr deliveries --account work --format json
 ```
 
+## Creating drafts from an external program
+
+`mxr compose` is the supported interface for a program that wants mxr to create
+a draft — including HTML drafts with inline images. It reports structured output
+under `--format json`/`jsonl`, so callers read a draft id rather than scraping
+a human string:
+
+```bash
+mxr compose --account notto --to person@example.com \
+  --subject "Product Digest" --html-file message.html \
+  --inline notto-logo=logo.png --draft --format json
+```
+
+```json
+{
+  "action": "save_draft",
+  "draft_id": "draft_abc123",
+  "account_id": "acct_...",
+  "subject": "Product Digest",
+  "to": ["person@example.com"],
+  "content_kind": "html",
+  "inline_count": 1,
+  "attachment_count": 0,
+  "local_message_id": null
+}
+```
+
+`--draft` cannot send: it conflicts with `--yes` in the parser. Sending stays a
+separate `mxr send DRAFT_ID` call.
+
+This CLI contract is the supported integration path for external tools such as
+[`mxr-mailmerge`](/guides/mail-merge/). The daemon socket exists but is not a
+public contract — prefer the CLI unless you have measured a reason not to.
+
 ## Mutations (destructive or stateful)
 
 Core mail mutations accept either explicit message IDs as positional args, `--search QUERY` for batch ops, or piped IDs on stdin. Use the generated CLI reference for non-mail lifecycle commands.

@@ -17,10 +17,19 @@ mxr-core = { workspace = true }
 comrak = { workspace = true }
 dirs = { workspace = true }
 futures = { workspace = true }
+# Same renderer and width the reader uses, so the generated text/plain
+# alternative matches what mxr itself shows.
+html2text = { workspace = true }
 lettre = { workspace = true }
+# Parses supplied HTML for validation only. The document is never rewritten.
+scraper = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+base64 = { workspace = true }
 chrono = { workspace = true }
+# Re-parses what we built, so MIME assertions test the wire format rather
+# than the builder's own idea of it.
+mail-parser = { workspace = true }

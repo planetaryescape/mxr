@@ -16,7 +16,9 @@ use lettre::{transport::smtp::authentication::Credentials, AsyncSmtpTransport, T
 use mxr_core::error::MxrError;
 use mxr_core::provider::MailSendProvider;
 use mxr_core::types::{Address, Draft, SendReceipt};
-use mxr_outbound::attachments::{load_attachment_paths_async, LoadedAttachment};
+use mxr_outbound::attachments::{
+    load_attachment_paths_async, load_inline_assets_async, LoadedAttachment,
+};
 #[cfg(test)]
 use mxr_outbound::email::build_message;
 use std::path::PathBuf;
@@ -119,12 +121,16 @@ impl MailSendProvider for SmtpSendProvider {
         rfc2822_message_id: &str,
     ) -> Result<SendReceipt, MxrError> {
         let attachments = load_attachments(&draft.attachments).await?;
+        let inline_assets = load_inline_assets_async(&draft.inline_assets)
+            .await
+            .map_err(|e| MxrError::Provider(format!("Failed to load inline assets: {e}")))?;
         let started_at = Instant::now();
-        let message = mxr_outbound::email::build_message_with_id(
+        let message = mxr_outbound::email::build_message_with_id_and_parts(
             draft,
             from,
             false,
             &attachments,
+            &inline_assets,
             rfc2822_message_id,
         )
         .map_err(|e| MxrError::Provider(format!("Failed to build message: {e}")))?;
@@ -257,7 +263,7 @@ trait TestSender: Send + Sync {
 mod tests {
     use super::*;
     use mxr_core::id::DraftId;
-    use mxr_core::types::DraftIntent;
+    use mxr_core::types::{DraftContent, DraftIntent};
     use std::sync::{Arc, Mutex};
 
     fn test_draft() -> Draft {
@@ -274,8 +280,9 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: "Test Subject".into(),
-            body_markdown: "Hello **world**!".into(),
+            content: DraftContent::markdown("Hello **world**!"),
             attachments: vec![],
+            inline_assets: Vec::new(),
             inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

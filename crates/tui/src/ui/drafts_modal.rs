@@ -120,7 +120,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
             Span::raw(draft.updated_at.format("%Y-%m-%d %H:%M").to_string()),
         ]));
         lines.push(Line::from(""));
-        lines.push(Line::from(draft.body_markdown.clone()));
+        lines.push(Line::from(draft.content.analysis_text().to_string()));
 
         let paragraph = Paragraph::new(lines)
             .style(Style::default().fg(theme.text_primary))
@@ -134,7 +134,7 @@ mod tests {
     use super::*;
     use chrono::{DateTime, Utc};
     use mxr_core::id::{AccountId, DraftId};
-    use mxr_core::types::Address;
+    use mxr_core::types::{Address, DraftContent};
     use mxr_core::Draft;
     use mxr_test_support::render_to_string;
 
@@ -153,8 +153,9 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: subject.to_string(),
-            body_markdown: body.to_string(),
+            content: DraftContent::markdown(body),
             attachments: vec![],
+            inline_assets: vec![],
             inline_calendar_reply: None,
             created_at: now,
             updated_at: now,

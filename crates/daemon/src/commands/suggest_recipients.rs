@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use mxr_core::types::DraftContent;
 use crate::commands::resolve_account;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -72,7 +73,8 @@ async fn build_draft(
         cc: vec![],
         bcc: vec![],
         subject,
-        body_markdown: body,
+        content: DraftContent::markdown(body),
+        inline_assets: Vec::new(),
         attachments: vec![],
         inline_calendar_reply: None,
         created_at: now,

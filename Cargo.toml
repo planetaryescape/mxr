@@ -111,6 +111,7 @@ members = [
     "crates/humanizer",
     "crates/llm",
     "crates/mail-parse",
+    "crates/mailmerge",
     "crates/mcp",
     "crates/outbound",
     "crates/protocol",

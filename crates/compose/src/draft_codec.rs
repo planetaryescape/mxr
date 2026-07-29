@@ -14,7 +14,7 @@ use crate::frontmatter::{
     parse_compose_file, render_compose_file, ComposeError, ComposeFrontmatter,
 };
 use chrono::{DateTime, Utc};
-use mxr_core::types::{Address, Draft, ReplyHeaders};
+use mxr_core::types::{Address, Draft, DraftContent, ReplyHeaders};
 use std::path::PathBuf;
 
 /// Render a list of addresses back into a `"Name <email>, email"` header
@@ -94,9 +94,17 @@ pub fn frontmatter_from_draft(draft: &Draft, from: &str) -> ComposeFrontmatter {
 /// Render a stored draft into the editor-facing compose-file text
 /// (frontmatter + markdown body). No context block: an edit reopens the
 /// user's own content, not a quoted original.
+///
+/// Refuses HTML drafts. The compose file is markdown, and round-tripping a
+/// designed HTML document through it would destroy exactly the markup the
+/// caller supplied it to preserve. Failing loudly beats silently mangling.
 pub fn draft_to_compose_file(draft: &Draft, from: &str) -> Result<String, ComposeError> {
+    let body = draft
+        .content
+        .markdown_source()
+        .ok_or(ComposeError::HtmlDraftNotEditable)?;
     let frontmatter = frontmatter_from_draft(draft, from);
-    render_compose_file(&frontmatter, &draft.body_markdown, None)
+    render_compose_file(&frontmatter, body, None)
 }
 
 /// Re-assemble an edited compose file back into a [`Draft`], preserving the
@@ -110,6 +118,12 @@ pub fn apply_edited_compose_file(
     content: &str,
     updated_at: DateTime<Utc>,
 ) -> Result<Draft, ComposeError> {
+    // Guarded on the way back in as well: converting an HTML draft to markdown
+    // here would drop the document and orphan its inline assets.
+    if existing.content.is_html() {
+        return Err(ComposeError::HtmlDraftNotEditable);
+    }
+
     let (frontmatter, body) = parse_compose_file(content)?;
     let reply_headers = frontmatter
         .in_reply_to
@@ -137,8 +151,9 @@ pub fn apply_edited_compose_file(
         cc: mxr_mail_parse::parse_address_list(&frontmatter.cc),
         bcc: mxr_mail_parse::parse_address_list(&frontmatter.bcc),
         subject: frontmatter.subject,
-        body_markdown: body,
+        content: DraftContent::markdown(body),
         attachments: frontmatter.attach.iter().map(PathBuf::from).collect(),
+        inline_assets: existing.inline_assets.clone(),
         inline_calendar_reply: existing.inline_calendar_reply.clone(),
         created_at: existing.created_at,
         updated_at,
@@ -171,8 +186,9 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: "Q4 plan".into(),
-            body_markdown: "Body line one.\n\nBody line two.".into(),
+            content: DraftContent::markdown("Body line one.\n\nBody line two."),
             attachments: vec![],
+            inline_assets: vec![],
             inline_calendar_reply: None,
             created_at: DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
             updated_at: DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
@@ -250,6 +266,24 @@ mod tests {
         assert_eq!(result.subject, "Q4 plan (revised)");
         assert_eq!(result.to.len(), 2);
         assert_eq!(result.to[0].email, "alice@example.com");
+    }
+
+    #[test]
+    fn an_html_draft_cannot_be_exported_to_a_markdown_compose_file() {
+        let mut draft = sample_draft();
+        draft.content = DraftContent::html("<p>designed</p>", Some("designed".into()));
+        let err = draft_to_compose_file(&draft, "me@example.com").unwrap_err();
+        assert!(matches!(err, ComposeError::HtmlDraftNotEditable));
+    }
+
+    #[test]
+    fn an_html_draft_cannot_be_overwritten_from_a_markdown_compose_file() {
+        let mut draft = sample_draft();
+        draft.content = DraftContent::html("<p>designed</p>", None);
+        let file = "---\nto: a@example.com\nsubject: Hi\nfrom: me@example.com\n---\n\nBody.";
+        let now = DateTime::from_timestamp(1_700_000_500, 0).unwrap();
+        let err = apply_edited_compose_file(&draft, file, now).unwrap_err();
+        assert!(matches!(err, ComposeError::HtmlDraftNotEditable));
     }
 
     #[test]

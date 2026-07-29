@@ -12,7 +12,7 @@ mod tests {
     use super::*;
     use mxr_core::id::{AccountId, DraftId};
     use mxr_core::types::ReplyHeaders;
-    use mxr_core::types::{Address, Draft, DraftIntent};
+    use mxr_core::types::{Address, Draft, DraftContent, DraftIntent};
     use mxr_test_support::redact_rfc822;
 
     fn draft() -> Draft {
@@ -36,8 +36,9 @@ mod tests {
                 email: "hidden@example.com".into(),
             }],
             subject: "Hello".into(),
-            body_markdown: "hello".into(),
+            content: DraftContent::markdown("hello"),
             attachments: vec![],
+            inline_assets: Vec::new(),
             inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

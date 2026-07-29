@@ -1,7 +1,30 @@
-use crate::attachments::{load_attachment_paths_sync, AttachmentLoadError, LoadedAttachment};
-use crate::render::render_markdown;
-use lettre::message::{header::ContentType, Attachment, Mailbox, Message, MultiPart, SinglePart};
-use mxr_core::types::{Address, CalendarReplyMessage, Draft};
+use crate::attachments::{
+    load_attachment_paths_sync, load_inline_assets_sync, AttachmentLoadError, LoadedAttachment,
+    LoadedInlineAsset,
+};
+use crate::render::{render_markdown, RenderedMessage};
+use lettre::message::{
+    header::{self, ContentType},
+    Attachment, Mailbox, Message, MultiPart, SinglePart,
+};
+use mxr_core::types::{Address, CalendarReplyMessage, Draft, DraftContent};
+
+/// Resolve a draft's body into the `text/plain` and `text/html` halves.
+///
+/// Markdown drafts render through comrak as before. HTML drafts pass their
+/// document through untouched and take the caller's text alternative, falling
+/// back to a generated one — generation reads the HTML and never rewrites it.
+fn render_body(content: &DraftContent) -> RenderedMessage {
+    match content {
+        DraftContent::Markdown { source } => render_markdown(source),
+        DraftContent::Html { html, text } => RenderedMessage {
+            plain: text
+                .clone()
+                .unwrap_or_else(|| crate::html::generate_text_alternative(html)),
+            html: html.clone(),
+        },
+    }
+}
 
 /// Generate a stable RFC 5322 Message-ID header for an outgoing message.
 /// Daemon callers persist this on the draft before send so retries / failure
@@ -22,7 +45,8 @@ pub fn build_message(
     keep_bcc: bool,
 ) -> Result<Message, EmailBuildError> {
     let attachments = load_attachment_paths_sync(&draft.attachments)?;
-    build_message_with_attachments(draft, from, keep_bcc, &attachments)
+    let inline_assets = load_inline_assets_sync(&draft.inline_assets)?;
+    build_message_with_parts(draft, from, keep_bcc, &attachments, &inline_assets)
 }
 
 pub fn build_message_with_attachments(
@@ -31,8 +55,18 @@ pub fn build_message_with_attachments(
     keep_bcc: bool,
     attachments: &[LoadedAttachment],
 ) -> Result<Message, EmailBuildError> {
+    build_message_with_parts(draft, from, keep_bcc, attachments, &[])
+}
+
+pub fn build_message_with_parts(
+    draft: &Draft,
+    from: &Address,
+    keep_bcc: bool,
+    attachments: &[LoadedAttachment],
+    inline_assets: &[LoadedInlineAsset],
+) -> Result<Message, EmailBuildError> {
     let message_id = generate_message_id(from);
-    build_message_with_id(draft, from, keep_bcc, attachments, &message_id)
+    build_message_with_id_and_parts(draft, from, keep_bcc, attachments, inline_assets, &message_id)
 }
 
 pub fn build_message_with_id(
@@ -40,6 +74,17 @@ pub fn build_message_with_id(
     from: &Address,
     keep_bcc: bool,
     attachments: &[LoadedAttachment],
+    message_id: &str,
+) -> Result<Message, EmailBuildError> {
+    build_message_with_id_and_parts(draft, from, keep_bcc, attachments, &[], message_id)
+}
+
+pub fn build_message_with_id_and_parts(
+    draft: &Draft,
+    from: &Address,
+    keep_bcc: bool,
+    attachments: &[LoadedAttachment],
+    inline_assets: &[LoadedInlineAsset],
     message_id: &str,
 ) -> Result<Message, EmailBuildError> {
     let from_mailbox = to_mailbox(from)?;
@@ -81,7 +126,7 @@ pub fn build_message_with_id(
         }
     }
 
-    let rendered = render_markdown(&draft.body_markdown);
+    let rendered = render_body(&draft.content);
     let alternative = if let Some(inline_reply) = draft.inline_calendar_reply.as_ref() {
         // Invite-reply-with-comment path: the alternative carries text/plain
         // (the user's comment) + text/calendar; method=REPLY (the pre-built
@@ -109,6 +154,22 @@ pub fn build_message_with_id(
                     .body(inline_reply.ics_body.clone()),
             )
     } else {
+        let mut html_part = SinglePart::builder().header(
+            ContentType::parse("text/html; charset=utf-8")
+                .expect("static text/html content type should parse"),
+        );
+
+        if draft.content.is_html() {
+            // Base64, not the quoted-printable lettre would pick on its own.
+            // QP round-trips the content but canonicalises line endings to
+            // CRLF, so an LF-only source file would not decode back to the
+            // bytes the caller supplied. A designed template is the caller's
+            // artifact; it comes out the far end exactly as it went in.
+            // The markdown path keeps QP — mxr generated that HTML, so there
+            // are no caller bytes to preserve.
+            html_part = html_part.header(header::ContentTransferEncoding::Base64);
+        }
+
         MultiPart::alternative()
             .singlepart(
                 SinglePart::builder()
@@ -118,20 +179,33 @@ pub fn build_message_with_id(
                     )
                     .body(rendered.plain),
             )
-            .singlepart(
-                SinglePart::builder()
-                    .header(
-                        ContentType::parse("text/html; charset=utf-8")
-                            .expect("static text/html content type should parse"),
-                    )
-                    .body(rendered.html),
-            )
+            .singlepart(html_part.body(rendered.html))
+    };
+
+    // multipart/related wraps the alternative so `cid:` references resolve.
+    // Gmail's own composer uses exactly this shape; multipart/mixed is the
+    // common mistake and leaves inline images rendering as attachments.
+    let related = if inline_assets.is_empty() {
+        alternative
+    } else {
+        let mut related = MultiPart::related().multipart(alternative);
+        for asset in inline_assets {
+            let content_type = ContentType::parse(&asset.mime_type).unwrap_or_else(|_| {
+                ContentType::parse("application/octet-stream")
+                    .expect("static octet-stream content type should parse")
+            });
+            related = related.singlepart(
+                Attachment::new_inline(asset.cid.clone())
+                    .body(asset.bytes.clone(), content_type),
+            );
+        }
+        related
     };
 
     let body = if attachments.is_empty() {
-        alternative
+        related
     } else {
-        let mut mixed = MultiPart::mixed().multipart(alternative);
+        let mut mixed = MultiPart::mixed().multipart(related);
         for attachment in attachments {
             let content_type = ContentType::parse(&attachment.mime_type).unwrap_or_else(|_| {
                 ContentType::parse("application/octet-stream")
@@ -278,8 +352,9 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: "Accepted: Demo".into(),
-            body_markdown: "Looking forward to it.".into(),
+            content: DraftContent::markdown("Looking forward to it."),
             attachments: vec![],
+            inline_assets: vec![],
             inline_calendar_reply: Some(InlineCalendarReply {
                 source_message_id: MessageId::new(),
                 attendee_email: "user@example.com".into(),
@@ -337,8 +412,9 @@ mod tests {
                 email: "secret@example.com".into(),
             }],
             subject: subject.into(),
-            body_markdown: body.into(),
+            content: DraftContent::markdown(body),
             attachments: vec![],
+            inline_assets: vec![],
             inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -471,5 +547,270 @@ mod tests {
             email: "weird".into(),
         });
         assert!(no_domain.contains('@'));
+    }
+    // ---- HTML bodies -----------------------------------------------------
+
+    /// A realistic designed email: table layout, inline CSS, a `<style>` block
+    /// with a media query, an Outlook conditional comment, a CID image, and a
+    /// registered mark. Every one of these is something a sanitiser or
+    /// reformatter would damage.
+    const BRANDED_HTML: &str = concat!(
+        "<!DOCTYPE html>\n",
+        "<html>\n<head>\n<meta charset=\"utf-8\">\n",
+        "<style>\n  @media only screen and (max-width:600px){.c{width:100%!important}}\n</style>\n",
+        "<!--[if mso]><style>.f{font-family:Arial,sans-serif}</style><![endif]-->\n",
+        "</head>\n<body>\n",
+        "<table class=\"c\" role=\"presentation\" cellpadding=\"0\" width=\"600\">\n",
+        "<tr><td style=\"padding:24px;font-family:Georgia,serif;color:#1a1a1a\">\n",
+        "<img src=\"cid:notto-logo\" alt=\"Notto\" width=\"120\">\n",
+        "<p>Hi Dumi — the Notto® digest is ready.</p>\n",
+        "</td></tr>\n</table>\n</body>\n</html>",
+    );
+
+    fn html_draft(html: &str, text: Option<&str>) -> Draft {
+        let mut draft = plain_draft("Product Digest", "");
+        draft.content = DraftContent::html(html, text.map(str::to_string));
+        draft
+    }
+
+    fn inline_logo() -> LoadedInlineAsset {
+        LoadedInlineAsset {
+            cid: "notto-logo".to_string(),
+            filename: "notto-logo.png".to_string(),
+            mime_type: "image/png".to_string(),
+            bytes: vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a],
+        }
+    }
+
+    /// Pull the decoded body of the first part whose content type matches.
+    fn decoded_part(raw: &[u8], want: &str) -> String {
+        let parsed = mail_parser::MessageParser::default()
+            .parse(raw)
+            .expect("built message should re-parse");
+        for part in parsed.parts.iter() {
+            let ctype = part
+                .headers
+                .iter()
+                .find(|h| h.name().eq_ignore_ascii_case("content-type"))
+                .map(|h| format!("{:?}", h.value()).to_ascii_lowercase())
+                .unwrap_or_default();
+            if ctype.contains(want) {
+                if let mail_parser::PartType::Text(text) | mail_parser::PartType::Html(text) =
+                    &part.body
+                {
+                    return text.to_string();
+                }
+            }
+        }
+        String::new()
+    }
+
+    #[test]
+    fn supplied_html_survives_byte_for_byte() {
+        // The core promise. Base64 is used precisely so this holds:
+        // quoted-printable would have rewritten the line endings.
+        let draft = html_draft(BRANDED_HTML, Some("Hi Dumi"));
+        let message =
+            build_message_with_id(&draft, &sender(), false, &[], "<m@example.com>").unwrap();
+        let raw = message.formatted();
+
+        let decoded = decoded_part(&raw, "text/html");
+        assert_eq!(
+            decoded, BRANDED_HTML,
+            "supplied HTML was altered on the way to the wire"
+        );
+    }
+
+    #[test]
+    fn tables_inline_css_media_queries_and_outlook_comments_all_survive() {
+        let draft = html_draft(BRANDED_HTML, Some("t"));
+        let raw =
+            build_message_with_id(&draft, &sender(), false, &[], "<m@example.com>")
+                .unwrap()
+                .formatted();
+        let html = decoded_part(&raw, "text/html");
+
+        assert!(html.contains("<table"), "table layout lost");
+        assert!(html.contains("style=\"padding:24px"), "inline CSS lost");
+        assert!(html.contains("@media only screen"), "media query lost");
+        assert!(html.contains("<!--[if mso]>"), "Outlook conditional comment lost");
+        assert!(html.contains("<![endif]-->"), "conditional comment terminator lost");
+        assert!(html.contains("role=\"presentation\""), "a11y attribute lost");
+    }
+
+    #[test]
+    fn unicode_and_registered_marks_survive() {
+        let html = "<p>Notto® — café, naïve, 日本語, 🎉</p>";
+        let draft = html_draft(html, Some("t"));
+        let raw =
+            build_message_with_id(&draft, &sender(), false, &[], "<m@example.com>")
+                .unwrap()
+                .formatted();
+        assert_eq!(decoded_part(&raw, "text/html"), html);
+    }
+
+    #[test]
+    fn lf_only_html_is_not_silently_converted_to_crlf() {
+        // The specific failure quoted-printable would have introduced.
+        let html = "<p>one</p>\n<p>two</p>\n<p>three</p>";
+        let draft = html_draft(html, Some("t"));
+        let raw =
+            build_message_with_id(&draft, &sender(), false, &[], "<m@example.com>")
+                .unwrap()
+                .formatted();
+        let decoded = decoded_part(&raw, "text/html");
+        assert_eq!(decoded, html);
+        assert!(!decoded.contains("\r\n"), "line endings were rewritten");
+    }
+
+    #[test]
+    fn html_part_is_base64_and_markdown_part_is_not() {
+        let html_raw = String::from_utf8(
+            build_message_with_id(
+                &html_draft("<p>hi</p>", Some("hi")),
+                &sender(),
+                false,
+                &[],
+                "<m@example.com>",
+            )
+            .unwrap()
+            .formatted(),
+        )
+        .unwrap();
+        assert!(html_raw.contains("Content-Transfer-Encoding: base64"));
+
+        // The markdown path is untouched by this change.
+        let md_raw = String::from_utf8(
+            build_message_with_id(
+                &plain_draft("s", "Hello **world**"),
+                &sender(),
+                false,
+                &[],
+                "<m@example.com>",
+            )
+            .unwrap()
+            .formatted(),
+        )
+        .unwrap();
+        assert!(md_raw.contains("quoted-printable"));
+    }
+
+    #[test]
+    fn a_supplied_text_alternative_is_used_verbatim() {
+        let draft = html_draft("<p>ignored</p>", Some("The hand-written version."));
+        let raw =
+            build_message_with_id(&draft, &sender(), false, &[], "<m@example.com>")
+                .unwrap()
+                .formatted();
+        assert_eq!(decoded_part(&raw, "text/plain"), "The hand-written version.");
+    }
+
+    #[test]
+    fn a_missing_text_alternative_is_generated_without_touching_the_html() {
+        let html = "<h1>Digest</h1><p>Hi Dumi, the report is ready.</p>";
+        let draft = html_draft(html, None);
+        let raw =
+            build_message_with_id(&draft, &sender(), false, &[], "<m@example.com>")
+                .unwrap()
+                .formatted();
+
+        let text = decoded_part(&raw, "text/plain");
+        assert!(text.contains("Digest"), "generated text was empty: {text:?}");
+        assert!(text.contains("Dumi"));
+        assert!(!text.contains("<h1>"), "generated text still contains markup");
+        // Generation is read-only with respect to the HTML.
+        assert_eq!(decoded_part(&raw, "text/html"), html);
+    }
+
+    #[test]
+    fn inline_images_nest_as_multipart_related_around_the_alternative() {
+        // multipart/related is the discriminator: mixed leaves the logo
+        // rendering as an attachment instead of resolving the cid.
+        let draft = html_draft(BRANDED_HTML, Some("t"));
+        let raw = String::from_utf8(
+            build_message_with_id_and_parts(
+                &draft,
+                &sender(),
+                false,
+                &[],
+                &[inline_logo()],
+                "<m@example.com>",
+            )
+            .unwrap()
+            .formatted(),
+        )
+        .unwrap();
+
+        assert!(raw.contains("multipart/related"), "no multipart/related wrapper");
+        assert!(raw.contains("multipart/alternative"), "alternative was dropped");
+        assert!(raw.contains("Content-ID: <notto-logo>"), "cid header missing");
+        assert!(raw.contains("Content-Disposition: inline"), "not marked inline");
+
+        let related = raw.find("multipart/related").unwrap();
+        let alternative = raw.find("multipart/alternative").unwrap();
+        assert!(related < alternative, "related must wrap the alternative");
+    }
+
+    #[test]
+    fn attachments_and_inline_images_nest_mixed_over_related() {
+        let draft = html_draft(BRANDED_HTML, Some("t"));
+        let attachment = LoadedAttachment {
+            filename: "report.pdf".into(),
+            mime_type: "application/pdf".into(),
+            bytes: b"%PDF-1.7".to_vec(),
+        };
+        let raw = String::from_utf8(
+            build_message_with_id_and_parts(
+                &draft,
+                &sender(),
+                false,
+                &[attachment],
+                &[inline_logo()],
+                "<m@example.com>",
+            )
+            .unwrap()
+            .formatted(),
+        )
+        .unwrap();
+
+        let mixed = raw.find("multipart/mixed").expect("no mixed");
+        let related = raw.find("multipart/related").expect("no related");
+        let alternative = raw.find("multipart/alternative").expect("no alternative");
+        assert!(mixed < related && related < alternative, "wrong nesting order");
+        assert!(raw.contains("filename=\"report.pdf\""));
+        assert!(raw.contains("Content-ID: <notto-logo>"));
+    }
+
+    #[test]
+    fn without_inline_assets_no_related_level_is_added() {
+        // Unused levels collapse — no gratuitous nesting.
+        let raw = String::from_utf8(
+            build_message_with_id(
+                &html_draft("<p>hi</p>", Some("hi")),
+                &sender(),
+                false,
+                &[],
+                "<m@example.com>",
+            )
+            .unwrap()
+            .formatted(),
+        )
+        .unwrap();
+        assert!(!raw.contains("multipart/related"));
+        assert!(raw.contains("multipart/alternative"));
+    }
+
+    #[test]
+    fn an_html_draft_still_carries_headers_and_recipients() {
+        let draft = html_draft("<p>hi</p>", Some("hi"));
+        let raw = String::from_utf8(
+            build_message_with_id(&draft, &sender(), false, &[], "<m1@example.com>")
+                .unwrap()
+                .formatted(),
+        )
+        .unwrap();
+        assert!(raw.contains("Subject: Product Digest"));
+        assert!(raw.contains("alice@example.com"));
+        assert!(raw.contains("Message-ID: <m1@example.com>"));
     }
 }

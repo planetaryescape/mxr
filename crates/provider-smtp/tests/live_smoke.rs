@@ -1,6 +1,6 @@
 use mxr_core::id::{AccountId, DraftId};
 use mxr_core::provider::MailSendProvider;
-use mxr_core::types::{Address, Draft, DraftIntent};
+use mxr_core::types::{Address, Draft, DraftContent, DraftIntent};
 use mxr_provider_smtp::{config::SmtpConfig, SmtpSendProvider};
 
 fn invalid_draft() -> Draft {
@@ -17,8 +17,9 @@ fn invalid_draft() -> Draft {
         cc: vec![],
         bcc: vec![],
         subject: "fixture".into(),
-        body_markdown: "body".into(),
+        content: DraftContent::markdown("body"),
         attachments: vec![],
+        inline_assets: Vec::new(),
         inline_calendar_reply: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),

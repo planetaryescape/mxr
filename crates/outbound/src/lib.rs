@@ -8,4 +8,5 @@
 
 pub mod attachments;
 pub mod email;
+pub mod html;
 pub mod render;

@@ -90,6 +90,113 @@ The `from:` field is the address the message is sent from. Leave it as the
 account's primary address, or set it to any [registered alias](#sending-from-an-alias-per-message-from)
 to send as that address. Editing `from:` in `$EDITOR` works too.
 
+## HTML email
+
+Some mail is designed, not written: a branded template with tables, inline CSS,
+media queries, Outlook conditional comments and a logo. Markdown cannot express
+that, so `--html-file` takes the document as-is.
+
+```bash
+mxr compose \
+  --account notto \
+  --to person@example.com \
+  --subject "Product Digest" \
+  --html-file message.html \
+  --text-file message.txt \
+  --inline notto-logo=assets/notto-logo.png \
+  --draft
+```
+
+`--html-stdin` reads the same thing from a pipe. HTML mode is explicit — mxr
+never guesses that a `--body` string is HTML — and it is mutually exclusive with
+`--body` and `--body-stdin`.
+
+### Your HTML is not rewritten
+
+The document mxr builds contains the bytes you supplied. It is not reformatted,
+re-wrapped, minified, prettified, or sanitised. Tables, inline `style`
+attributes, `<style>` blocks, `@media` queries, Outlook conditional comments,
+and Unicode like ® all survive unchanged.
+
+The `text/html` part is base64-encoded rather than quoted-printable
+specifically to guarantee this: quoted-printable would rewrite your line endings
+to CRLF, so an LF-only file would not decode back to the file you wrote.
+
+### Dangerous content is refused, not stripped
+
+mxr parses the document to check it, then throws the parse away. If it finds
+active content it reports the problem and refuses to create the draft:
+
+- `<script>`, `<object>`, `<embed>`, `<applet>`, `<iframe>`, `<form>` and other
+  executing or submitting elements
+- inline event handlers (`onclick=` and friends)
+- URLs using a scheme outside `http`, `https`, `mailto`, `cid`, `tel` and
+  `data:image/*` — `javascript:` and `vbscript:` are rejected
+- `<style>` blocks containing `expression()` or `javascript:`
+- any of the above hidden inside a conditional comment
+
+It will not quietly delete the offending tag and send the rest. You get the tag,
+the line number, and an unmodified file to fix.
+
+This check runs in the daemon, not just the CLI, so a client speaking IPC
+directly gets the same treatment.
+
+### The plain-text alternative
+
+Every HTML message goes out as `multipart/alternative` with a `text/plain` half.
+Supply it with `--text-file`, or let mxr generate one from the HTML — the same
+renderer the reader uses. Generating it does not alter the HTML.
+
+### Inline images
+
+`--inline NAME=PATH` attaches an image as a CID-referenced part so the HTML can
+reference it:
+
+```html
+<img src="cid:notto-logo" alt="Notto">
+```
+
+The parts nest as `multipart/related` wrapping the alternative, which is the
+shape Gmail's own composer produces and the one clients reliably render. Using
+`multipart/mixed` instead is the common mistake that makes inline images show up
+as attachments. If the HTML references a `cid:` no `--inline` provides, mxr
+warns but does not block — the author may know something mxr does not.
+
+### Signatures
+
+A signature is **never** injected into supplied HTML. Splicing markdown into a
+designed document is exactly the kind of silent edit this feature exists to
+avoid. Opt in explicitly with `--signature-html <path>`, which appends before
+the closing `</body>`. Markdown composition is unchanged: it still appends the
+account signature as before.
+
+### Editing an HTML draft
+
+`mxr drafts edit` refuses an HTML draft. The compose file is markdown, and
+round-tripping a designed document through it would destroy the markup. Edit the
+source file and create a new draft.
+
+### Upgrading from an earlier version
+
+Schema migration 049 adds four columns to `drafts` (`body_html`, `body_text`,
+`inline_assets`, `content_kind`). It is additive and forward-only: existing
+drafts keep their `body_markdown`, default to `content_kind = 'markdown'`, and
+are not rewritten. Nothing needs to be exported or re-created.
+
+The JSON a draft serialises to is unchanged for markdown drafts — still
+`{"body_markdown": "..."}` — so existing scripts keep working. HTML drafts
+carry `body_html` and `body_text` instead, which older clients simply will not
+recognise as a body they can render.
+
+### A caveat about Gmail
+
+mxr guarantees the MIME **it produces**. What Gmail's API then does on send is
+outside its control, and Gmail is known to re-serialise outgoing messages: it
+rewrites MIME boundaries and replaces a supplied `text/plain` part with one it
+generates from the HTML. Stored drafts (`--draft`) are not affected, and the
+SMTP path transmits mxr's bytes unchanged. If byte-level fidelity at the
+recipient matters, prefer an SMTP account.
+
 ## Reply context
 
 Reply and forward drafts include message context. If the original message only had HTML, mxr uses the rendered reader output, not raw HTML tags.

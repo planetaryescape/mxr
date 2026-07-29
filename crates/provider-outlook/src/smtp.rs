@@ -9,8 +9,8 @@ use lettre::{
 use mxr_core::error::MxrError;
 use mxr_core::provider::MailSendProvider;
 use mxr_core::types::{Address, Draft, SendReceipt};
-use mxr_outbound::attachments::load_attachment_paths_sync;
-use mxr_outbound::email::build_message_with_id;
+use mxr_outbound::attachments::{load_attachment_paths_sync, load_inline_assets_sync};
+use mxr_outbound::email::build_message_with_id_and_parts;
 use std::sync::Arc;
 
 type TokenFn = Arc<dyn Fn() -> BoxFuture<'static, anyhow::Result<String>> + Send + Sync>;
@@ -79,7 +79,16 @@ impl MailSendProvider for OutlookSmtpSendProvider {
     ) -> Result<SendReceipt, MxrError> {
         let attachments = load_attachment_paths_sync(&draft.attachments)
             .map_err(|e| MxrError::Provider(format!("failed to load attachments: {e}")))?;
-        let _message = build_message_with_id(draft, from, false, &attachments, rfc2822_message_id)
+        let inline_assets = load_inline_assets_sync(&draft.inline_assets)
+            .map_err(|e| MxrError::Provider(format!("Failed to load inline assets: {e}")))?;
+        let _message = build_message_with_id_and_parts(
+            draft,
+            from,
+            false,
+            &attachments,
+            &inline_assets,
+            rfc2822_message_id,
+        )
             .map_err(|e| MxrError::Provider(format!("failed to build message: {e}")))?;
 
         #[cfg(not(test))]

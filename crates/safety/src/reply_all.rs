@@ -33,7 +33,7 @@ pub fn check(draft: &Draft, ctx: &SafetyContext) -> Vec<DraftSafetyIssue> {
         return Vec::new();
     }
 
-    let cleaned = reader_clean(&draft.body_markdown);
+    let cleaned = reader_clean(draft.content.analysis_text());
     // Only the first non-empty paragraph influences the greeting check.
     // Past the first blank line we are reading the body, where capitalized
     // sentence starters like "Thanks," would create false positives.
@@ -124,7 +124,7 @@ fn reader_clean(body: &str) -> String {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use mxr_core::types::{Address, Draft, DraftIntent};
+    use mxr_core::types::{Address, Draft, DraftContent, DraftIntent};
     use mxr_core::{AccountId, DraftId};
 
     fn addr(email: &str, display: Option<&str>) -> Address {
@@ -145,8 +145,9 @@ mod tests {
             cc,
             bcc: Vec::new(),
             subject: "subject".into(),
-            body_markdown: body.into(),
+            content: DraftContent::markdown(body),
             attachments: Vec::new(),
+            inline_assets: Vec::new(),
             inline_calendar_reply: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),

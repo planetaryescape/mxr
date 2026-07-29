@@ -13,6 +13,57 @@ pub struct SentDraftReceipt {
     pub sent_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// The four content columns a draft writes, derived from its `DraftContent`.
+///
+/// `body_markdown` is `NOT NULL` from the original schema, so an HTML draft
+/// writes an empty string there rather than leaving it unset.
+struct ContentColumns {
+    kind: &'static str,
+    body_markdown: String,
+    body_html: Option<String>,
+    body_text: Option<String>,
+}
+
+fn encode_content(content: &DraftContent) -> ContentColumns {
+    match content {
+        DraftContent::Markdown { source } => ContentColumns {
+            kind: "markdown",
+            body_markdown: source.clone(),
+            body_html: None,
+            body_text: None,
+        },
+        DraftContent::Html { html, text } => ContentColumns {
+            kind: "html",
+            body_markdown: String::new(),
+            body_html: Some(html.clone()),
+            body_text: text.clone(),
+        },
+    }
+}
+
+/// Rebuild a `DraftContent` from its columns.
+///
+/// Rows written before migration 049 have `content_kind = 'markdown'` from the
+/// column default and decode to `Markdown` on their existing `body_markdown` —
+/// which is why no row needed rewriting.
+fn decode_content(row: &sqlx::sqlite::SqliteRow) -> DraftContent {
+    let kind: String = row.get("content_kind");
+    let body_html: Option<String> = row.get("body_html");
+
+    match (kind.as_str(), body_html) {
+        ("html", Some(html)) => DraftContent::Html {
+            html,
+            text: row.get("body_text"),
+        },
+        // `content_kind = 'html'` with a NULL body should be unreachable (the
+        // writer always pairs them). Falling back to markdown keeps the draft
+        // readable instead of erroring the whole list out.
+        _ => DraftContent::Markdown {
+            source: row.get("body_markdown"),
+        },
+    }
+}
+
 impl super::Store {
     pub async fn insert_draft(&self, draft: &Draft) -> Result<(), sqlx::Error> {
         let id = draft.id.as_str();
@@ -21,6 +72,8 @@ impl super::Store {
         let cc_addrs = encode_json(&draft.cc)?;
         let bcc_addrs = encode_json(&draft.bcc)?;
         let attachments = encode_json(&draft.attachments)?;
+        let inline_assets = encode_json(&draft.inline_assets)?;
+        let content = encode_content(&draft.content);
         let from_addr = draft.from.as_ref().map(encode_json).transpose()?;
         let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
         let intent = draft.intent.as_db_str();
@@ -33,8 +86,8 @@ impl super::Store {
         let updated_at = draft.updated_at.timestamp();
 
         sqlx::query(
-            "INSERT INTO drafts (id, account_id, from_addr, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, attachments, inline_calendar_reply_json, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO drafts (id, account_id, from_addr, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, body_html, body_text, content_kind, attachments, inline_assets, inline_calendar_reply_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(account_id)
@@ -45,8 +98,12 @@ impl super::Store {
         .bind(cc_addrs)
         .bind(bcc_addrs)
         .bind(&draft.subject)
-        .bind(&draft.body_markdown)
+        .bind(&content.body_markdown)
+        .bind(&content.body_html)
+        .bind(&content.body_text)
+        .bind(content.kind)
         .bind(attachments)
+        .bind(inline_assets)
         .bind(inline_calendar_reply_json)
         .bind(created_at)
         .bind(updated_at)
@@ -63,6 +120,8 @@ impl super::Store {
         let cc_addrs = encode_json(&draft.cc)?;
         let bcc_addrs = encode_json(&draft.bcc)?;
         let attachments = encode_json(&draft.attachments)?;
+        let inline_assets = encode_json(&draft.inline_assets)?;
+        let content = encode_content(&draft.content);
         let from_addr = draft.from.as_ref().map(encode_json).transpose()?;
         let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
         let intent = draft.intent.as_db_str();
@@ -75,8 +134,8 @@ impl super::Store {
         let updated_at = draft.updated_at.timestamp();
 
         sqlx::query(
-            "INSERT OR IGNORE INTO drafts (id, account_id, from_addr, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, attachments, inline_calendar_reply_json, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO drafts (id, account_id, from_addr, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, body_html, body_text, content_kind, attachments, inline_assets, inline_calendar_reply_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(account_id)
@@ -87,8 +146,12 @@ impl super::Store {
         .bind(cc_addrs)
         .bind(bcc_addrs)
         .bind(&draft.subject)
-        .bind(&draft.body_markdown)
+        .bind(&content.body_markdown)
+        .bind(&content.body_html)
+        .bind(&content.body_text)
+        .bind(content.kind)
         .bind(attachments)
+        .bind(inline_assets)
         .bind(inline_calendar_reply_json)
         .bind(created_at)
         .bind(updated_at)
@@ -104,7 +167,8 @@ impl super::Store {
         let row = sqlx::query(
             r#"SELECT id, account_id, from_addr, in_reply_to, intent,
                       to_addrs, cc_addrs, bcc_addrs, subject, body_markdown,
-                      attachments, inline_calendar_reply_json,
+                      body_html, body_text, content_kind,
+                      attachments, inline_assets, inline_calendar_reply_json,
                       created_at, updated_at
                FROM drafts WHERE id = ?"#,
         )
@@ -128,8 +192,9 @@ impl super::Store {
                 cc: decode_json(&r.get::<String, _>("cc_addrs"))?,
                 bcc: decode_json(&r.get::<String, _>("bcc_addrs"))?,
                 subject: r.get::<String, _>("subject"),
-                body_markdown: r.get::<String, _>("body_markdown"),
+                content: decode_content(&r),
                 attachments: decode_json(&r.get::<String, _>("attachments"))?,
+                inline_assets: decode_json(&r.get::<String, _>("inline_assets"))?,
                 inline_calendar_reply: r
                     .get::<Option<String>, _>("inline_calendar_reply_json")
                     .as_deref()
@@ -154,6 +219,8 @@ impl super::Store {
         let cc_addrs = encode_json(&draft.cc)?;
         let bcc_addrs = encode_json(&draft.bcc)?;
         let attachments = encode_json(&draft.attachments)?;
+        let inline_assets = encode_json(&draft.inline_assets)?;
+        let content = encode_content(&draft.content);
         let from_addr = draft.from.as_ref().map(encode_json).transpose()?;
         let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
         let intent = draft.intent.as_db_str();
@@ -171,7 +238,8 @@ impl super::Store {
             "UPDATE drafts
                 SET account_id = ?, from_addr = ?, in_reply_to = ?, intent = ?,
                     to_addrs = ?, cc_addrs = ?, bcc_addrs = ?, subject = ?,
-                    body_markdown = ?, attachments = ?, inline_calendar_reply_json = ?,
+                    body_markdown = ?, body_html = ?, body_text = ?, content_kind = ?,
+                    attachments = ?, inline_assets = ?, inline_calendar_reply_json = ?,
                     updated_at = ?
               WHERE id = ? AND status = 'draft'",
         )
@@ -183,8 +251,12 @@ impl super::Store {
         .bind(cc_addrs)
         .bind(bcc_addrs)
         .bind(&draft.subject)
-        .bind(&draft.body_markdown)
+        .bind(&content.body_markdown)
+        .bind(&content.body_html)
+        .bind(&content.body_text)
+        .bind(content.kind)
         .bind(attachments)
+        .bind(inline_assets)
         .bind(inline_calendar_reply_json)
         .bind(updated_at)
         .bind(id)
@@ -200,7 +272,8 @@ impl super::Store {
         let rows = sqlx::query(
             r#"SELECT id, account_id, from_addr, in_reply_to, intent,
                       to_addrs, cc_addrs, bcc_addrs, subject, body_markdown,
-                      attachments, inline_calendar_reply_json,
+                      body_html, body_text, content_kind,
+                      attachments, inline_assets, inline_calendar_reply_json,
                       created_at, updated_at
                FROM drafts WHERE account_id = ? ORDER BY updated_at DESC"#,
         )
@@ -225,8 +298,9 @@ impl super::Store {
                     cc: decode_json(&r.get::<String, _>("cc_addrs"))?,
                     bcc: decode_json(&r.get::<String, _>("bcc_addrs"))?,
                     subject: r.get::<String, _>("subject"),
-                    body_markdown: r.get::<String, _>("body_markdown"),
+                    content: decode_content(&r),
                     attachments: decode_json(&r.get::<String, _>("attachments"))?,
+                    inline_assets: decode_json(&r.get::<String, _>("inline_assets"))?,
                     inline_calendar_reply: r
                         .get::<Option<String>, _>("inline_calendar_reply_json")
                         .as_deref()

@@ -4,9 +4,9 @@ use futures::{SinkExt, StreamExt};
 use mxr_core::{
     id::{AccountId, AttachmentId, MessageId, ThreadId},
     types::{
-        Address, AttachmentDisposition, AttachmentMeta, CalendarMetadata, Draft, Envelope, Label,
-        LabelKind, MessageBody, MessageFlags, MessageMetadata, SavedSearch, SortOrder,
-        SubscriptionSummary, Thread, UnsubscribeMethod,
+        Address, AttachmentDisposition, AttachmentMeta, CalendarMetadata, Draft, DraftContent,
+        Envelope, Label, LabelKind, MessageBody, MessageFlags, MessageMetadata, SavedSearch,
+        SortOrder, SubscriptionSummary, Thread, UnsubscribeMethod,
     },
 };
 use mxr_protocol::{
@@ -1823,8 +1823,9 @@ fn draft_summary_includes_updated_time_labels() {
         cc: Vec::new(),
         bcc: Vec::new(),
         subject: "Draft".into(),
-        body_markdown: "Body".into(),
+        content: DraftContent::markdown("Body"),
         attachments: Vec::new(),
+        inline_assets: Vec::new(),
         inline_calendar_reply: None,
         created_at: updated_at,
         updated_at,
@@ -2482,7 +2483,7 @@ async fn compose_session_send_forwards_draft_account_id() {
         .expect("send draft should be forwarded");
     assert_eq!(draft.account_id, expected_account_id);
     assert_eq!(draft.subject, "Bridge send");
-    assert_eq!(draft.body_markdown, "Hello from bridge");
+    assert_eq!(draft.content.analysis_text(), "Hello from bridge");
     assert_eq!(draft.to[0].email, "alice@example.com");
 }
 

@@ -1,5 +1,6 @@
 mod attachments;
 mod compose;
+mod compose_html;
 mod helpers;
 
 pub use attachments::{attachments_download, attachments_list, attachments_open};

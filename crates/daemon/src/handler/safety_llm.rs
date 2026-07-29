@@ -110,7 +110,10 @@ pub(crate) async fn check_answer_coverage(
         ));
     }
 
-    let cleaned_draft = clean(Some(&draft.body_markdown), None, &ReaderConfig::default()).content;
+    let cleaned_draft = {
+        let (text, html) = draft.content.reader_input();
+        clean(text, html, &ReaderConfig::default())
+    }.content;
 
     // Both the inbound thread and the draft reply are mail-derived: the
     // thread is attacker-controlled, and the draft may quote or echo
@@ -222,7 +225,7 @@ fn degradation(reason: String) -> DraftSafetyIssue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_core::types::{Address, Draft, DraftIntent, MessageBody, MessageMetadata};
+    use mxr_core::types::{Address, Draft, DraftContent, DraftIntent, MessageBody, MessageMetadata};
     use mxr_llm::{
         ChatRole, CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider,
     };
@@ -382,7 +385,8 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: "re".into(),
-            body_markdown: body.into(),
+            content: DraftContent::markdown(body),
+            inline_assets: Vec::new(),
             attachments: vec![],
             inline_calendar_reply: None,
             created_at: chrono::Utc::now(),

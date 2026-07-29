@@ -117,8 +117,8 @@ mod tests {
         AccountId, DraftId, MessageId, SavedSearchId, SemanticChunkId, SemanticProfileId, ThreadId,
     };
     use mxr_core::types::{
-        Address, BackendRef, Draft, DraftIntent, EventSource, MessageBody, MessageFlags,
-        ProviderKind, SearchMode, SemanticChunkRecord, SemanticChunkSourceKind,
+        Address, BackendRef, Draft, DraftContent, DraftIntent, EventSource, MessageBody,
+        MessageFlags, ProviderKind, SearchMode, SemanticChunkRecord, SemanticChunkSourceKind,
         SemanticEmbeddingRecord, SemanticEmbeddingStatus, SemanticProfile, SemanticProfileRecord,
         SemanticProfileStatus, Snoozed, SortOrder, UnsubscribeMethod,
     };
@@ -237,8 +237,9 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: "draft".into(),
-            body_markdown: "body".into(),
+            content: DraftContent::markdown("body"),
             attachments: vec![],
+            inline_assets: vec![],
             inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

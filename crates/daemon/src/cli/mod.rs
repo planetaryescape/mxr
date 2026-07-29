@@ -985,6 +985,10 @@ pub enum Command {
 
     // --- Phase 2: Compose ---
     /// Compose a new email
+    // `html_body` groups the two ways to supply HTML so `--text-file`,
+    // `--inline` and `--signature-html` can require one of them without
+    // naming both.
+    #[command(group = clap::ArgGroup::new("html_body").args(["html_file", "html_stdin"]))]
     Compose {
         /// Recipient(s), comma-separated
         #[arg(long)]
@@ -1004,6 +1008,33 @@ pub enum Command {
         /// Read message body from stdin
         #[arg(long, conflicts_with = "body")]
         body_stdin: bool,
+        /// Send this HTML file as the message body, preserved exactly.
+        /// mxr does not reformat, wrap, minify, or sanitise it — tables,
+        /// inline CSS, `<style>` blocks, media queries and Outlook
+        /// conditional comments all survive. Dangerous active content
+        /// (scripts, forms, `javascript:` URLs) is reported and refused
+        /// rather than stripped. Mutually exclusive with the markdown
+        /// body flags.
+        #[arg(long, value_name = "PATH", conflicts_with_all = ["body", "body_stdin", "html_stdin"])]
+        html_file: Option<PathBuf>,
+        /// Read the HTML body from stdin. Same rules as `--html-file`.
+        #[arg(long, conflicts_with_all = ["body", "body_stdin", "html_file"])]
+        html_stdin: bool,
+        /// Plain-text alternative for an HTML body. Without it mxr
+        /// generates one from the HTML deterministically; the HTML is
+        /// never altered either way.
+        #[arg(long, value_name = "PATH", requires = "html_body")]
+        text_file: Option<PathBuf>,
+        /// Attach an image as a CID-referenced inline asset, as
+        /// `--inline NAME=PATH`, so the HTML can use `<img src="cid:NAME">`.
+        /// Repeatable. Requires an HTML body.
+        #[arg(long, value_name = "CID=PATH", action = clap::ArgAction::Append, requires = "html_body")]
+        inline: Vec<String>,
+        /// Append this HTML file to an HTML body before `</body>`.
+        /// Signatures are never injected into supplied HTML automatically —
+        /// pass this to opt in. Markdown composition is unaffected.
+        #[arg(long, value_name = "PATH", requires = "html_body", conflicts_with = "no_signature")]
+        signature_html: Option<PathBuf>,
         /// File path to attach (repeatable)
         #[arg(long, action = clap::ArgAction::Append)]
         attach: Vec<PathBuf>,

@@ -11,7 +11,7 @@ use crate::cli::OutputFormat;
 use crate::commands::{get_draft_for_account, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
-use mxr_core::{AccountId, Address, Draft, DraftId, ReplyHeaders};
+use mxr_core::{AccountId, Address, Draft, DraftContent, DraftId, ReplyHeaders};
 use mxr_protocol::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -25,6 +25,11 @@ pub struct ComposeOptions {
     pub subject: Option<String>,
     pub body: Option<String>,
     pub body_stdin: bool,
+    pub html_file: Option<PathBuf>,
+    pub html_stdin: bool,
+    pub text_file: Option<PathBuf>,
+    pub inline: Vec<String>,
+    pub signature_html: Option<PathBuf>,
     pub attach: Vec<PathBuf>,
     pub from: Option<String>,
     pub account: Option<String>,
@@ -79,6 +84,18 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     )
     .await?;
 
+    // An HTML body never opens $EDITOR: the caller already authored the
+    // document, and round-tripping it through a markdown compose file would
+    // destroy the markup they supplied it to preserve.
+    let html_args = super::compose_html::HtmlComposeArgs {
+        html_file: options.html_file.clone(),
+        html_stdin: options.html_stdin,
+        text_file: options.text_file.clone(),
+        inline: options.inline.clone(),
+        signature_html: options.signature_html.clone(),
+    };
+    let html_input = super::compose_html::read_html_input(&html_args)?;
+
     let make_inline_frontmatter = || mxr_compose::frontmatter::ComposeFrontmatter {
         to: options.to.clone().unwrap_or_default(),
         cc: options.cc.clone().unwrap_or_default(),
@@ -90,7 +107,9 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    let (frontmatter, body, draft_file) = if let Some(body) = stdin_or_body {
+    let (frontmatter, body, draft_file) = if html_input.is_some() {
+        (make_inline_frontmatter(), String::new(), None)
+    } else if let Some(body) = stdin_or_body {
         (
             make_inline_frontmatter(),
             apply_signature_to_body(body, signature.as_ref()),
@@ -125,17 +144,24 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     };
     let body = expand_compose_snippets(&mut client, body).await?;
 
-    let draft = draft_from_frontmatter(
+    let mut draft = draft_from_frontmatter(
         account.account_id,
         mxr_core::DraftIntent::New,
         &frontmatter,
         body,
     )?;
+    if let Some(html) = html_input {
+        for cid in super::compose_html::unresolved_cid_references(&html.html, &html.inline_assets) {
+            eprintln!("warning: HTML references cid:{cid} but no --inline provides it");
+        }
+        draft.content = DraftContent::html(html.html, html.text);
+        draft.inline_assets = html.inline_assets;
+    }
     // `--draft` forces a save and cannot coexist with `--yes` (clap enforces
     // the conflict); computing `sending` locally keeps the save-vs-send
     // decision explicit rather than resting on that guard at a distance.
     let sending = options.yes && !options.draft;
-    validate_compose_draft(&frontmatter, &draft.body_markdown, sending)?;
+    validate_compose_draft(&frontmatter, draft.content.analysis_text(), sending)?;
 
     if options.dry_run {
         let effective_from =
@@ -156,10 +182,12 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
-        println!("Sent draft {}", draft.id);
-        if let Some(info) = receipt.as_ref() {
-            println!("Local message id: {}", info.local_message_id);
-        }
+        print_compose_result(
+            "send",
+            &draft,
+            receipt.as_ref().map(|info| info.local_message_id.to_string()),
+            options.format,
+        )?;
     } else {
         expect_ack(
             client
@@ -171,8 +199,55 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
-        println!("Draft saved: {}", draft.id);
-        println!("Send with: mxr send {}", draft.id);
+        print_compose_result("save_draft", &draft, None, options.format)?;
+    }
+    Ok(())
+}
+
+/// Emit the outcome of a compose in whichever format the caller asked for.
+///
+/// Previously this path printed a fixed human string regardless of `--format`,
+/// which left external clients screen-scraping for a draft id. JSON/JSONL now
+/// carry it as data; `table` keeps the original wording.
+fn print_compose_result(
+    action: &str,
+    draft: &Draft,
+    local_message_id: Option<String>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let payload = serde_json::json!({
+        "action": action,
+        "draft_id": draft.id.as_str(),
+        "account_id": draft.account_id.as_str(),
+        "subject": draft.subject,
+        "to": draft.to.iter().map(|a| a.email.clone()).collect::<Vec<_>>(),
+        "content_kind": draft.content.kind_str(),
+        "inline_count": draft.inline_assets.len(),
+        "attachment_count": draft.attachments.len(),
+        "local_message_id": local_message_id,
+    });
+
+    match resolve_format(format) {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&payload)?),
+        OutputFormat::Jsonl => println!("{}", serde_json::to_string(&payload)?),
+        OutputFormat::Ids => println!("{}", draft.id),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record(["action", "draft_id", "subject"])?;
+            writer.write_record([action, draft.id.as_str().as_str(), draft.subject.as_str()])?;
+            print!("{}", String::from_utf8(writer.into_inner()?)?);
+        }
+        OutputFormat::Table => {
+            if action == "send" {
+                println!("Sent draft {}", draft.id);
+                if let Some(id) = local_message_id {
+                    println!("Local message id: {id}");
+                }
+            } else {
+                println!("Draft saved: {}", draft.id);
+                println!("Send with: mxr send {}", draft.id);
+            }
+        }
     }
     Ok(())
 }
@@ -490,7 +565,7 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     let snippet_ctx = snippet_context_from_frontmatter(&frontmatter);
     let body = expand_compose_snippets_with_context(client, body, Some(&snippet_ctx)).await?;
     let outgoing = draft_from_frontmatter(account_id, intent, &frontmatter, body)?;
-    validate_compose_draft(&frontmatter, &outgoing.body_markdown, sending)?;
+    validate_compose_draft(&frontmatter, outgoing.content.analysis_text(), sending)?;
 
     if dry_run {
         let effective_from =
@@ -1571,7 +1646,8 @@ fn draft_from_frontmatter(
         cc: parse_addresses(&frontmatter.cc),
         bcc: parse_addresses(&frontmatter.bcc),
         subject: frontmatter.subject.clone(),
-        body_markdown: body,
+        content: DraftContent::markdown(body),
+        inline_assets: Vec::new(),
         attachments: frontmatter.attach.iter().map(PathBuf::from).collect(),
         inline_calendar_reply: None,
         created_at: now,
@@ -1785,7 +1861,7 @@ fn print_draft_preview(
                 format_addresses(&draft.cc),
                 format_addresses(&draft.bcc),
                 draft.subject.clone(),
-                draft.body_markdown.len().to_string(),
+                draft.content.byte_len().to_string(),
                 draft.attachments.len().to_string(),
             ])?;
             println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
@@ -2151,7 +2227,8 @@ mod tests {
                 cc: vec![],
                 bcc: vec![],
                 subject: "subj".into(),
-                body_markdown: "body".into(),
+                content: mxr_core::types::DraftContent::markdown("body"),
+                inline_assets: Vec::new(),
                 attachments: vec![],
                 inline_calendar_reply: None,
                 created_at: Utc::now(),

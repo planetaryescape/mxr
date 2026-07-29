@@ -166,3 +166,34 @@ for the operating rule and worked examples.
 - Use app passwords or provider-specific credentials where your provider recommends them.
 - Keep `secrets.toml` at mode `0600`, and keep any fallback keychain entries scoped to the accounts you use.
 - If an agent is involved, prefer workflows that search, read, export, and draft before workflows that mutate.
+
+## Supplied HTML
+
+mxr accepts a designed HTML email and preserves it exactly. That means it does
+not sanitise it either, so validation is a gate rather than a filter:
+
+- Active content — `<script>`, `<object>`, `<embed>`, `<applet>`, `<iframe>`,
+  `<form>`, inline `on*` handlers, `javascript:`/`vbscript:` URLs, `<style>`
+  blocks containing `expression()`, and anything of the sort hidden inside a
+  conditional comment — is **reported and refused**. The draft is not created
+  and the document is not modified.
+- `data:` URLs are allowed only for `data:image/*`.
+- The check runs in the daemon, not only in the CLI, so an IPC client cannot
+  route around it.
+- Validation parses with html5ever to inspect the document. A hostile document
+  could in principle be parsed differently by a specific mail client, so this is
+  a strong gate rather than a proof.
+
+Content IDs supplied via `--inline` are restricted to letters, digits and
+`. _ - +`, which keeps a CR/LF out of a `Content-ID` header.
+
+Web previews of an HTML draft render in a sandboxed frame with a policy that
+blocks remote loads, so opening a draft does not phone home to a sender's
+server.
+
+## What HTML drafts put in the activity log
+
+The activity log records the content kind (`markdown` or `html`) and the number
+of inline assets. It does not record the HTML, the text alternative, inline
+asset paths, recipient addresses, or any template property value. See
+[the activity log](/guides/activity-log/).

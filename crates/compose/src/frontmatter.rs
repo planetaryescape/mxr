@@ -108,6 +108,11 @@ pub enum ComposeError {
     AttachmentNotFound(String),
     #[error("No recipients specified")]
     NoRecipients,
+    #[error(
+        "this draft has an HTML body, which the markdown compose file cannot represent. \
+         Edit the HTML source and create a new draft with `mxr compose --html-file <path>`."
+    )]
+    HtmlDraftNotEditable,
     #[error("Editor failed: {0}")]
     EditorFailed(String),
     #[error("IO error: {0}")]

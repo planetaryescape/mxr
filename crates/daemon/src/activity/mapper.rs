@@ -305,6 +305,11 @@ pub fn map_request(
                 "cc_count": draft.cc.len(),
                 "bcc_count": draft.bcc.len(),
                 "has_attachments": !draft.attachments.is_empty(),
+                // Kind and counts only. The HTML document, the text
+                // alternative, and inline asset paths never land here — see
+                // docs/activity-log.md.
+                "content_kind": draft.content.kind_str(),
+                "inline_count": draft.inline_assets.len(),
             })),
         ),
         Request::SendStoredDraft { draft_id, .. } => (

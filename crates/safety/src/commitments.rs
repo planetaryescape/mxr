@@ -23,7 +23,7 @@ static FOLLOW_UP_PHRASE: Lazy<Regex> = Lazy::new(|| {
 });
 
 pub fn detect_candidates(draft: &Draft) -> Vec<DraftSafetyIssue> {
-    let cleaned = reader_clean(&draft.body_markdown);
+    let cleaned = reader_clean(draft.content.analysis_text());
     let mut hits = Vec::new();
     for cap in FIRST_PERSON_PROMISE.captures_iter(&cleaned) {
         if let Some(m) = cap.get(0) {
@@ -64,7 +64,7 @@ fn reader_clean(body: &str) -> String {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use mxr_core::types::{Draft, DraftIntent};
+    use mxr_core::types::{Draft, DraftContent, DraftIntent};
     use mxr_core::{AccountId, DraftId};
 
     fn draft_with(body: &str) -> Draft {
@@ -78,8 +78,9 @@ mod tests {
             cc: Vec::new(),
             bcc: Vec::new(),
             subject: "subject".into(),
-            body_markdown: body.into(),
+            content: DraftContent::markdown(body),
             attachments: Vec::new(),
+            inline_assets: Vec::new(),
             inline_calendar_reply: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),

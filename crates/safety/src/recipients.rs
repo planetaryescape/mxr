@@ -142,7 +142,7 @@ pub(crate) fn damerau_levenshtein(a: &str, b: &str) -> usize {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use mxr_core::types::{Address, Draft, DraftIntent};
+    use mxr_core::types::{Address, Draft, DraftContent, DraftIntent};
     use mxr_core::{AccountId, DraftId};
 
     fn d(addrs: Vec<Address>) -> Draft {
@@ -156,8 +156,9 @@ mod tests {
             cc: Vec::new(),
             bcc: Vec::new(),
             subject: "hi".into(),
-            body_markdown: "body".into(),
+            content: DraftContent::markdown("body"),
             attachments: Vec::new(),
+            inline_assets: Vec::new(),
             inline_calendar_reply: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),

@@ -104,7 +104,8 @@ struct Aggregate {
 
 fn topic_query(draft: &Draft) -> String {
     let first_para = draft
-        .body_markdown
+        .content
+        .analysis_text()
         .split("\n\n")
         .next()
         .unwrap_or("")
@@ -280,7 +281,8 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: subject.into(),
-            body_markdown: body.into(),
+            content: DraftContent::markdown(body),
+            inline_assets: Vec::new(),
             attachments: vec![],
             inline_calendar_reply: None,
             created_at: chrono::Utc::now(),

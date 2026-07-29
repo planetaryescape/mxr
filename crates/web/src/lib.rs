@@ -48,8 +48,8 @@ use mxr_core::{
     id::LabelId,
     id::{AccountId, DraftId, MessageId, ThreadId},
     types::{
-        Draft, Envelope, Label, MessageBody, ReplyHeaders, SearchMode, Snoozed, SortOrder,
-        SubscriptionSummary,
+        Draft, DraftContent, Envelope, Label, MessageBody, ReplyHeaders, SearchMode, Snoozed,
+        SortOrder, SubscriptionSummary,
     },
 };
 use mxr_mail_parse::parse_address_list;
@@ -2103,8 +2103,9 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
         cc: parse_address_list(&frontmatter.cc),
         bcc: parse_address_list(&frontmatter.bcc),
         subject: frontmatter.subject,
-        body_markdown: body,
+        content: DraftContent::markdown(body),
         attachments: frontmatter.attach.into_iter().map(PathBuf::from).collect(),
+        inline_assets: Vec::new(),
         // Rebuild the iTIP REPLY payload for an invite-with-comment session so
         // the outbound builder emits the ATTENDEE part and the daemon updates
         // PARTSTAT after send (parity with the TUI path).
@@ -2157,7 +2158,16 @@ async fn restore_saved_draft_session(
             .collect(),
         signature: None,
     };
-    let rendered = render_compose_file(&frontmatter, &draft.body_markdown, None)
+    // An HTML draft cannot be represented in the markdown compose file;
+    // rendering one with an empty body would silently discard the document.
+    let Some(body) = draft.content.markdown_source() else {
+        return Err(BridgeError::Ipc(
+            "this draft has an HTML body, which the compose editor cannot edit. \
+             Edit the HTML source and create a new draft."
+                .to_string(),
+        ));
+    };
+    let rendered = render_compose_file(&frontmatter, body, None)
         .map_err(|error| BridgeError::Ipc(error.to_string()))?;
     write_compose_file(&draft_path, rendered).await?;
 

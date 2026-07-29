@@ -76,8 +76,8 @@ mod tests {
 
     use mxr_core::id::*;
     use mxr_core::{
-        Address, Draft, DraftIntent, ExportFormat, SavedSearch, SearchMode, SemanticProfile,
-        SemanticRuntimeMetrics, SemanticStatusSnapshot, SortOrder,
+        Address, Draft, DraftContent, DraftIntent, ExportFormat, SavedSearch, SearchMode,
+        SemanticProfile, SemanticRuntimeMetrics, SemanticStatusSnapshot, SortOrder,
     };
     use proptest::prelude::*;
     use tokio_util::codec::{Decoder, Encoder};
@@ -109,8 +109,9 @@ mod tests {
             cc: Vec::new(),
             bcc: Vec::new(),
             subject: "hello".into(),
-            body_markdown: "body".into(),
+            content: DraftContent::markdown("body"),
             attachments: Vec::new(),
+            inline_assets: Vec::new(),
             inline_calendar_reply: None,
             created_at: now,
             updated_at: now,
@@ -1425,8 +1426,8 @@ mod tests {
     #[test]
     fn check_draft_safety_request_roundtrip() {
         use mxr_core::types::{
-            Address, CitationRef, Draft, DraftIntent, DraftSafetyIssue, DraftSafetyIssueCode,
-            DraftSafetyReport, DraftSafetySeverity, DraftSafetyVerdict,
+            Address, CitationRef, Draft, DraftContent, DraftIntent, DraftSafetyIssue,
+            DraftSafetyIssueCode, DraftSafetyReport, DraftSafetySeverity, DraftSafetyVerdict,
         };
         use std::path::PathBuf;
 
@@ -1443,8 +1444,9 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: "see attached".into(),
-            body_markdown: "yo".into(),
+            content: DraftContent::markdown("yo"),
             attachments: Vec::<PathBuf>::new(),
+            inline_assets: Vec::new(),
             inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -1688,7 +1690,7 @@ mod tests {
             let parsed: Request = serde_json::from_str(&json)?;
             match parsed {
                 Request::ExtractDraftCommitments { draft } => {
-                    prop_assert_eq!(draft.body_markdown, body);
+                    prop_assert_eq!(draft.content.analysis_text(), body);
                 }
                 other => prop_assert!(false, "wrong variant: {other:?}"),
             }
@@ -1982,8 +1984,9 @@ mod tests {
                 cc: vec![],
                 bcc: vec![],
                 subject: "test".into(),
-                body_markdown: body.into(),
+                content: DraftContent::markdown(body),
                 attachments: vec![],
+                inline_assets: Vec::new(),
                 inline_calendar_reply: None,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),

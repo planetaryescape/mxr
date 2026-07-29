@@ -943,8 +943,9 @@ async fn draft_crud() {
         cc: vec![],
         bcc: vec![],
         subject: "Draft subject".to_string(),
-        body_markdown: "# Hello".to_string(),
+        content: DraftContent::markdown("# Hello"),
         attachments: vec![],
+        inline_assets: vec![],
         inline_calendar_reply: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
@@ -982,8 +983,9 @@ async fn draft_from_override_round_trips_through_get_list_and_update() {
         cc: vec![],
         bcc: vec![],
         subject: "Alias draft".to_string(),
-        body_markdown: "body".to_string(),
+        content: DraftContent::markdown("body"),
         attachments: vec![],
+        inline_assets: vec![],
         inline_calendar_reply: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
@@ -1029,8 +1031,9 @@ async fn update_draft_edits_in_place_and_preserves_created_at() {
         cc: vec![],
         bcc: vec![],
         subject: "Original".to_string(),
-        body_markdown: "first".to_string(),
+        content: DraftContent::markdown("first"),
         attachments: vec![],
+        inline_assets: vec![],
         inline_calendar_reply: None,
         created_at: created,
         updated_at: created,
@@ -1041,7 +1044,7 @@ async fn update_draft_edits_in_place_and_preserves_created_at() {
     let later = chrono::DateTime::from_timestamp(1_700_000_500, 0).unwrap();
     let edited = Draft {
         subject: "Edited".to_string(),
-        body_markdown: "second".to_string(),
+        content: DraftContent::markdown("second"),
         updated_at: later,
         ..draft.clone()
     };
@@ -1053,7 +1056,7 @@ async fn update_draft_edits_in_place_and_preserves_created_at() {
     assert_eq!(drafts.len(), 1);
     let stored = store.get_draft(&draft.id).await.unwrap().unwrap();
     assert_eq!(stored.subject, "Edited");
-    assert_eq!(stored.body_markdown, "second");
+    assert_eq!(stored.content.analysis_text(), "second");
     assert_eq!(
         stored.created_at, created,
         "created_at must survive the edit"

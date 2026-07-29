@@ -597,5 +597,5 @@ subjects so I can decide whether to follow up."
 ## See also
 
 - [Recipes — bulk operations](/guides/recipes/#with-xargs--bulk-operations)
-- [Sender view (CLI)](/reference/cli/#sender-view)
+- [CLI — `mxr sender`](/reference/cli/sender/)
 - [Triage flow](/guides/triage-flow/)

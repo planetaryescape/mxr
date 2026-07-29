@@ -46,6 +46,23 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 
   <div id="scalar-api-reference" style="margin-top: 2rem; min-height: 80vh;"></div>
 
+  <style is:global>
+    /* Scalar's muted text reads at 4.4:1 on its dark surfaces and 3.3:1 on its
+       light ones, both under WCAG AA. These clear 4.5:1 on every surface it
+       pairs them with. */
+    .dark-mode #scalar-api-reference,
+    #scalar-api-reference .dark-mode {
+      --scalar-color-3: #949494;
+      --scalar-sidebar-search-color: #949494;
+    }
+
+    .light-mode #scalar-api-reference,
+    #scalar-api-reference .light-mode {
+      --scalar-color-3: #626262;
+      --scalar-sidebar-search-color: #626262;
+    }
+  </style>
+
   <script>
     // Bundled from the installed @scalar/api-reference so the page ships
     // with the site instead of running third-party script from a CDN.
@@ -55,6 +72,115 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
     // Scalar hydrates instead of mounting when its target has children, so the
     // placeholder sits outside the mount point and goes just before mounting.
     document.getElementById('api-routes-loading')?.remove();
+
+    const mount = document.getElementById('scalar-api-reference')!;
+
+    const setAttr = (el: Element, name: string, value: string) => {
+      if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+    };
+
+    // Repairs the WCAG failures in Scalar's own markup. Idempotent, and re-run
+    // whenever Scalar re-renders.
+    function normalize() {
+      for (const el of mount.querySelectorAll('.scalar-code-copy')) {
+        setAttr(el, 'aria-label', 'Copy code sample');
+      }
+
+      // The switcher is a button group, not a tablist: its overflow control
+      // opens a popover, and no control owns a panel.
+      for (const el of mount.querySelectorAll('.client-libraries-list')) {
+        setAttr(el, 'role', 'toolbar');
+        setAttr(el, 'aria-label', 'Code sample language');
+        setAttr(el, 'aria-orientation', 'horizontal');
+        el.removeAttribute('aria-labelledby');
+      }
+
+      for (const el of mount.querySelectorAll('.client-libraries-list .rendered-code-sdks')) {
+        const selected =
+          el.getAttribute('aria-selected') ??
+          (el.classList.contains('client-libraries__active') ? 'true' : 'false');
+        setAttr(el, 'aria-pressed', selected);
+        el.removeAttribute('aria-selected');
+        el.removeAttribute('aria-controls');
+        el.removeAttribute('role');
+      }
+
+      for (const el of mount.querySelectorAll('.client-libraries__select')) {
+        setAttr(el, 'aria-label', 'More client libraries');
+      }
+
+      for (const el of mount.querySelectorAll('[role="tabpanel"], [id^="headlessui-tabs-panel"]')) {
+        setAttr(el, 'role', 'region');
+        setAttr(el, 'aria-label', 'Code sample');
+        el.removeAttribute('aria-labelledby');
+      }
+
+      // Sidebar entries are plain buttons, which cannot carry aria-selected.
+      for (const el of mount.querySelectorAll('button[aria-selected]:not(.rendered-code-sdks)')) {
+        if (el.getAttribute('aria-selected') === 'true') setAttr(el, 'aria-current', 'true');
+        else el.removeAttribute('aria-current');
+        el.removeAttribute('aria-selected');
+      }
+
+      // <aside> takes no navigation role; named, it is a complementary landmark.
+      for (const el of mount.querySelectorAll('aside[role="navigation"]')) {
+        el.removeAttribute('role');
+      }
+
+      for (const el of mount.querySelectorAll('button[role="search"]')) {
+        setAttr(el, 'aria-label', 'Search');
+        el.removeAttribute('role');
+      }
+
+      // A page gets one main, and <main> accepts no role override, so the
+      // nested ones become plain containers. Children move across untouched.
+      for (const el of mount.querySelectorAll('main')) {
+        const replacement = document.createElement('div');
+        for (const { name, value } of el.attributes) replacement.setAttribute(name, value);
+        replacement.append(...el.childNodes);
+        el.replaceWith(replacement);
+      }
+
+      for (const el of mount.querySelectorAll('aside:not([aria-label]):not([aria-labelledby])')) {
+        setAttr(el, 'role', 'presentation');
+      }
+
+      // Every operation labels its response card from the same status-code
+      // strip, so the names collide. Qualify each with its operation.
+      for (const el of mount.querySelectorAll('[role="region"][aria-labelledby]')) {
+        const section = el.parentElement?.closest('section[aria-label], section[aria-labelledby]');
+        const operation =
+          section?.getAttribute('aria-label') ??
+          document.getElementById(section?.getAttribute('aria-labelledby') ?? '')?.textContent?.trim();
+        if (!operation) continue;
+        const base = el.getAttribute('aria-label') ?? 'Responses';
+        const suffix = `: ${operation}`;
+        setAttr(el, 'aria-label', base.endsWith(suffix) ? base : base + suffix);
+        el.removeAttribute('aria-labelledby');
+      }
+    }
+
+    let queued = false;
+    function scheduleNormalize() {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        normalize();
+      });
+    }
+
+    let started = false;
+    function startNormalizing() {
+      normalize();
+      if (started) return;
+      started = true;
+      // Children only: the rewrites above must not re-trigger the observer.
+      new MutationObserver(scheduleNormalize).observe(mount, { childList: true, subtree: true });
+      // Activation updates Vue state in place, so refresh the pressed states.
+      mount.addEventListener('click', scheduleNormalize, true);
+      mount.addEventListener('keyup', scheduleNormalize, true);
+    }
 
     createApiReference('#scalar-api-reference', {
       url: '/openapi.json',
@@ -70,6 +196,7 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
       // api.scalar.com for its chat agent. Neither belongs on these docs.
       withDefaultFonts: false,
       agent: { disabled: true },
+      onLoaded: startNormalizing,
     });
   </script>
 </StarlightPage>

@@ -210,7 +210,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   decisions: {
-    use: 'List or rebuild the citation-backed decision log. Idempotent on unchanged threads. See [archive intelligence](/guides/archive-intelligence/#the-decision-log).',
+    use: 'List or rebuild the citation-backed decision log. Idempotent on unchanged threads. See [archive intelligence](/guides/archive-intelligence/#the-decision-log--mxr-decisions).',
     examples: [
       "mxr decisions --topic pricing --format json",
       "mxr decisions rebuild --since 180",
@@ -226,7 +226,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   cadence: {
-    use: 'Watchlist for relationships you chose to maintain. Surfaces drift against an explicit expected interval — never auto-watches contacts. See [timing and cadence](/guides/timing-and-cadence/#cadence-drift).',
+    use: 'Watchlist for relationships you chose to maintain. Surfaces drift against an explicit expected interval — never auto-watches contacts. See [timing and cadence](/guides/timing-and-cadence/#cadence-drift--mxr-cadence).',
     examples: [
       "mxr cadence watch alice@example.com --every 14d",
       "mxr cadence list --format json",
@@ -243,7 +243,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   expert: {
-    use: 'Identify locally who has answered similar questions before. Ranks answerers above askers; citations point at answer messages, not just topic matches. See [briefings and loop-in](/guides/briefings-and-loop-in/#whos-the-expert).',
+    use: 'Identify locally who has answered similar questions before. Ranks answerers above askers; citations point at answer messages, not just topic matches. See [briefings and loop-in](/guides/briefings-and-loop-in/#whos-the-expert--mxr-expert).',
     examples: [
       "mxr expert MESSAGE_ID",
       "mxr expert --query 'DKIM setup' --format json",
@@ -251,7 +251,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   whois: {
-    use: 'Explain a person, project, or jargon term using only locally cited mail evidence. No invented summaries when the corpus has nothing. See [briefings and loop-in](/guides/briefings-and-loop-in/#whois).',
+    use: 'Explain a person, project, or jargon term using only locally cited mail evidence. No invented summaries when the corpus has nothing. See [briefings and loop-in](/guides/briefings-and-loop-in/#personal-knowledge-graph--mxr-whois).',
     examples: [
       "mxr whois sam",
       "mxr whois 'Project Apollo' --format json",
@@ -259,7 +259,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   'suggest-recipients': {
-    use: 'Suggest "maybe include" Cc recipients for a draft based on co-participation in similar prior threads. Suggestions only, never auto-adds; never reveals Bcc. See [briefings and loop-in](/guides/briefings-and-loop-in/#maybe-include).',
+    use: 'Suggest "maybe include" Cc recipients for a draft based on co-participation in similar prior threads. Suggestions only, never auto-adds; never reveals Bcc. See [briefings and loop-in](/guides/briefings-and-loop-in/#maybe-include--mxr-suggest-recipients).',
     examples: [
       "mxr suggest-recipients --draft DRAFT_ID --format json",
       "echo 'rollout plan attached' | mxr suggest-recipients --subject 'pricing rollout' --body-stdin",

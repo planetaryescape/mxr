@@ -326,4 +326,4 @@ days. Use `mxr stale --mine --older-than-days 7 --format ids | xargs
 - [Crash-safe drafts](/guides/crash-safe-drafts/)
 - [LLM features — draft assist](/guides/llm-features/)
 - [Recipes — compose loops](/guides/recipes/#with-editor--compose-loops)
-- [CLI — Compose and drafts](/reference/cli/#compose-and-drafts)
+- [CLI — `mxr compose`](/reference/cli/compose/) and [`mxr drafts`](/reference/cli/drafts/)

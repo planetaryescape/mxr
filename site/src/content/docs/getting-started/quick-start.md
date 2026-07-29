@@ -3,7 +3,7 @@ title: Quick start
 description: Try mxr safely, then connect your own inbox.
 ---
 
-After [installing](./install/), you have one binary: `mxr`. The TUI is what you'll use most; the CLI handles scripting and one-off operations. Both talk to the same daemon.
+After [installing](/getting-started/install/), you have one binary: `mxr`. The TUI is what you'll use most; the CLI handles scripting and one-off operations. Both talk to the same daemon.
 
 ## 1. Try the demo inbox
 
@@ -40,7 +40,7 @@ For Gmail on your local machine:
 mxr accounts add gmail
 ```
 
-The wizard prompts for an account name and your Gmail address, then opens a browser to authorize. If you're SSH'd into a remote box, see the [Gmail setup notes on SSH-friendly flows](./gmail-setup#working-over-ssh-or-in-a-container).
+The wizard prompts for an account name and your Gmail address, then opens a browser to authorize. If you're SSH'd into a remote box, see the [Gmail setup notes on SSH-friendly flows](/getting-started/gmail-setup/#working-over-ssh-or-in-a-container).
 
 For IMAP+SMTP non-interactively (e.g. Gmail with an app password):
 
@@ -94,8 +94,8 @@ Most read/list/status/mutation surfaces accept `--format json`; the generated [C
 
 ## What's next
 
-- [Configure rules](../guides/rules/) for declarative filing.
-- [Write a saved search](../guides/search/) for your daily inbox lens.
-- [Hand mxr to an LLM](../guides/agent-skill/) — the same CLI is the agent surface.
+- [Configure rules](/guides/rules/) for declarative filing.
+- [Write a saved search](/guides/search/) for your daily inbox lens.
+- [Hand mxr to an LLM](/guides/agent-skill/) — the same CLI is the agent surface.
 
-Run into something? See [Troubleshooting](../troubleshooting/).
+Run into something? See [Troubleshooting](/troubleshooting/).

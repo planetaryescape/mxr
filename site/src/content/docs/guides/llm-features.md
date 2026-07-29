@@ -16,7 +16,7 @@ guide:
 | `mxr send --check` answer coverage | [Pre-send safety](/guides/pre-send-safety/#answer-coverage) | extract asks from thread, judge whether the draft addresses each |
 | `mxr send --check` commitment candidates | [Forgotten work](/guides/forgotten-work/#commitments--promises-you-made) | extract "I'll send the deck Friday" promises from drafts |
 | `mxr ask` | [Archive intelligence](/guides/archive-intelligence/) | retrieval-grounded answer over local mail, every claim cited |
-| `mxr decisions rebuild` | [Archive intelligence](/guides/archive-intelligence/#the-decision-log) | extract explicit decisions from threads |
+| `mxr decisions rebuild` | [Archive intelligence](/guides/archive-intelligence/#the-decision-log--mxr-decisions) | extract explicit decisions from threads |
 | `mxr briefing thread` / `recipient` | [Briefings and loop-in](/guides/briefings-and-loop-in/) | dormant-thread / long-gap recap from the local thread transcript or relationship baseline |
 | delivery extraction | [Deliveries](/guides/deliveries/) | confirm a shortlisted email is a real shipment, extract merchant / carrier / items / ETA |
 
@@ -244,4 +244,4 @@ don't send."
 - [Recipes — talking to your agent](/guides/recipes/#talking-to-your-agent)
 - [For agents](/guides/for-agents/)
 - [Config — `[llm]`](/reference/config/#llm)
-- [CLI — LLM features](/reference/cli/#llm-features)
+- [CLI — `mxr summarize`](/reference/cli/summarize/), [`mxr draft-assist`](/reference/cli/draft-assist/), and [`mxr llm`](/reference/cli/llm/)

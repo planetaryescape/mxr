@@ -139,4 +139,4 @@ suggest a 2-line reply, and wait for me to approve. Use `mxr replies
 - [Unsubscribe](/guides/unsubscribe/)
 - [Recipes — fzf / jq / xargs](/guides/recipes/)
 - [Automated follow-ups](/guides/automated-followups/)
-- [CLI reference — Snooze](/reference/cli/#snooze)
+- [CLI — `mxr snooze`](/reference/cli/snooze/)

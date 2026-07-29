@@ -197,4 +197,4 @@ newer_than:7d' --format json` and `mxr summarize` for any thread with
 - [Labels and saved searches](/guides/labels-and-saved-searches/)
 - [Semantic search](/guides/semantic-search/)
 - [Recipes — fzf / jq](/guides/recipes/)
-- [CLI — Mail retrieval](/reference/cli/#mail-retrieval-and-inspection)
+- [CLI — `mxr search`](/reference/cli/search/)

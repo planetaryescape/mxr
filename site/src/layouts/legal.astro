@@ -2,14 +2,77 @@
 const { frontmatter } = Astro.props;
 ---
 <!doctype html>
-<html lang="en">
+<!-- Legal pages have no theme toggle. Keep their code blocks on the dark syntax theme. -->
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0d0d0c" />
+  <meta name="theme-color" content="#0d0d0c" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f5f0e2" media="(prefers-color-scheme: light)" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <title>{frontmatter.title} - mxr</title>
+  <style is:global>
+    /* Legal pages render outside Starlight and need their own palette. */
+    :root {
+      color-scheme: dark light;
+
+      --paper: #f3eee0;
+      --ink: #0d0d0c;
+      --rule: #2c2920;
+      --signal: #ff7a3d;
+
+      /* Expressive Code reads its frame colours from Starlight variables. */
+      --sl-color-black: #0d0d0c;
+      --sl-color-gray-5: #524e44;
+      --sl-color-gray-6: #15140e;
+      --sl-color-gray-7: #1a1813;
+      --sl-color-text: #f3eee0;
+      --sl-color-accent: #ff7a3d;
+      --sl-color-accent-high: #ffb487;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --paper: #1a1814;
+        --ink: #f5f0e2;
+        --rule: #c8bda7;
+        --signal: #b03a0a;
+      }
+    }
+
+    body {
+      margin: 0;
+      background: var(--ink);
+      color: var(--paper);
+      font-family: system-ui, sans-serif;
+      line-height: 1.6;
+    }
+
+    main {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem clamp(1rem, 4vw, 2rem);
+    }
+
+    a { color: var(--signal); }
+
+    /* Long paths and scopes must wrap on narrow screens. */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border: 1px solid var(--rule);
+      padding: 0.4rem 0.6rem;
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+  </style>
 </head>
-<body style="max-width: 800px; margin: 0 auto; padding: 2rem; font-family: system-ui; line-height: 1.6;">
+<body>
 <a href="#main" style="position:absolute;left:-999px;top:auto;width:1px;height:1px;overflow:hidden;">Skip to content</a>
 <main id="main">
   <h1>{frontmatter.title}</h1>

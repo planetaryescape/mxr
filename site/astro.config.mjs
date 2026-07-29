@@ -14,6 +14,15 @@ export default defineConfig({
       customCss: [
         './src/styles/custom.css',
       ],
+      expressiveCode: {
+        // Expressive Code gives overflowing blocks an unnamed region. Wrapping
+        // avoids that on phones while its copy button keeps the original text.
+        defaultProps: {
+          wrap: true,
+          // Deep visual indentation can still force wrapped lines to overflow.
+          preserveIndent: false,
+        },
+      },
       components: {
         Footer: './src/components/Footer.astro',
       },

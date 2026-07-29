@@ -1071,6 +1071,293 @@ async fn update_draft_edits_in_place_and_preserves_created_at() {
     assert!(!store.update_draft(&ghost).await.unwrap());
 }
 
+fn draft_with(account_id: &AccountId, content: DraftContent, at: i64) -> Draft {
+    Draft {
+        id: DraftId::new(),
+        account_id: account_id.clone(),
+        from: None,
+        reply_headers: None,
+        intent: DraftIntent::New,
+        to: vec![Address {
+            name: None,
+            email: "bob@example.com".to_string(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Subject".to_string(),
+        content,
+        attachments: vec![],
+        inline_assets: vec![],
+        inline_calendar_reply: None,
+        created_at: chrono::DateTime::from_timestamp(at, 0).unwrap(),
+        updated_at: chrono::DateTime::from_timestamp(at, 0).unwrap(),
+    }
+}
+
+#[tokio::test]
+async fn html_draft_survives_a_round_trip_byte_for_byte() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    // Quotes, angle brackets and a multibyte char: nothing may be reformatted.
+    let html = r#"<div class="x"><p>Hi&nbsp;— <img src="cid:logo"></p></div>"#;
+    let mut draft = draft_with(
+        &account.id,
+        DraftContent::html(html, Some("Hi —".to_string())),
+        1_700_000_000,
+    );
+    draft.inline_assets = vec![InlineAsset {
+        cid: "logo".to_string(),
+        path: std::path::PathBuf::from("/tmp/logo.png"),
+    }];
+    store.insert_draft(&draft).await.unwrap();
+
+    let fetched = store.get_draft(&draft.id).await.unwrap().unwrap();
+    assert_eq!(
+        fetched.content,
+        DraftContent::html(html, Some("Hi —".to_string()))
+    );
+    assert_eq!(fetched.inline_assets, draft.inline_assets);
+}
+
+#[tokio::test]
+async fn html_draft_without_a_text_alternative_stays_none_not_empty() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    let draft = draft_with(
+        &account.id,
+        DraftContent::html("<p>hi</p>", None),
+        1_700_000_000,
+    );
+    store.insert_draft(&draft).await.unwrap();
+
+    let fetched = store.get_draft(&draft.id).await.unwrap().unwrap();
+    // None means "the outbound builder generates one"; Some("") would ship an
+    // empty text/plain part instead.
+    assert_eq!(fetched.content, DraftContent::html("<p>hi</p>", None));
+}
+
+#[tokio::test]
+async fn update_draft_on_an_html_draft_preserves_created_at_and_kind() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    let draft = draft_with(
+        &account.id,
+        DraftContent::html("<p>first</p>", None),
+        1_700_000_000,
+    );
+    store.insert_draft(&draft).await.unwrap();
+
+    let later = chrono::DateTime::from_timestamp(1_700_000_500, 0).unwrap();
+    let edited = Draft {
+        content: DraftContent::html("<p>second</p>", Some("second".to_string())),
+        updated_at: later,
+        ..draft.clone()
+    };
+    assert!(store.update_draft(&edited).await.unwrap());
+
+    let stored = store.get_draft(&draft.id).await.unwrap().unwrap();
+    assert_eq!(
+        stored.content,
+        DraftContent::html("<p>second</p>", Some("second".to_string()))
+    );
+    assert_eq!(stored.created_at, draft.created_at);
+    assert_eq!(stored.updated_at, later);
+}
+
+#[tokio::test]
+async fn update_draft_can_switch_an_html_draft_back_to_markdown() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    let draft = draft_with(
+        &account.id,
+        DraftContent::html("<p>hi</p>", Some("hi".to_string())),
+        1_700_000_000,
+    );
+    store.insert_draft(&draft).await.unwrap();
+
+    let edited = Draft {
+        content: DraftContent::markdown("plain again"),
+        updated_at: chrono::DateTime::from_timestamp(1_700_000_500, 0).unwrap(),
+        ..draft.clone()
+    };
+    assert!(store.update_draft(&edited).await.unwrap());
+
+    let stored = store.get_draft(&draft.id).await.unwrap().unwrap();
+    // The stale HTML columns must not leak back through the discriminator.
+    assert_eq!(stored.content, DraftContent::markdown("plain again"));
+}
+
+#[tokio::test]
+async fn list_drafts_decodes_both_kinds_in_one_result_set() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    let md = draft_with(
+        &account.id,
+        DraftContent::markdown("# Hello"),
+        1_700_000_000,
+    );
+    let html = draft_with(
+        &account.id,
+        DraftContent::html("<p>Hello</p>", Some("Hello".to_string())),
+        1_700_000_500,
+    );
+    store.insert_draft(&md).await.unwrap();
+    store.insert_draft(&html).await.unwrap();
+
+    let listed = store.list_drafts(&account.id).await.unwrap();
+    assert_eq!(listed.len(), 2);
+    let by_id = |id: &DraftId| {
+        listed
+            .iter()
+            .find(|d| &d.id == id)
+            .unwrap_or_else(|| panic!("draft {id:?} missing from list"))
+            .content
+            .clone()
+    };
+    assert_eq!(by_id(&md.id), DraftContent::markdown("# Hello"));
+    assert_eq!(
+        by_id(&html.id),
+        DraftContent::html("<p>Hello</p>", Some("Hello".to_string()))
+    );
+}
+
+#[tokio::test]
+async fn a_pre_049_draft_row_still_decodes_as_markdown() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    // A row as migration 048 would have left it: only the pre-049 columns are
+    // written, so `body_html`/`body_text`/`inline_assets`/`content_kind` take
+    // their column defaults exactly as they do on a real upgraded database.
+    let id = DraftId::new();
+    sqlx::query(
+        "INSERT INTO drafts (id, account_id, subject, body_markdown, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(id.as_str())
+    .bind(account.id.as_str())
+    .bind("Legacy subject")
+    .bind("# Written before 049")
+    .bind(1_600_000_000_i64)
+    .bind(1_600_000_000_i64)
+    .execute(store.writer())
+    .await
+    .unwrap();
+
+    // The discriminator the upgrade hands an untouched row. Asserted on the
+    // column, not just the decoded value: the decoder forgives an unusable
+    // `content_kind` by falling back to markdown, so a wrong default would
+    // otherwise be invisible here.
+    let kind: String = sqlx::query_scalar("SELECT content_kind FROM drafts WHERE id = ?")
+        .bind(id.as_str())
+        .fetch_one(store.reader())
+        .await
+        .unwrap();
+    assert_eq!(kind, "markdown");
+
+    let fetched = store.get_draft(&id).await.unwrap().unwrap();
+    assert_eq!(
+        fetched.content,
+        DraftContent::markdown("# Written before 049")
+    );
+    assert_eq!(fetched.subject, "Legacy subject");
+    assert!(fetched.inline_assets.is_empty());
+    // And the same row through the list path.
+    let listed = store.list_drafts(&account.id).await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(
+        listed[0].content,
+        DraftContent::markdown("# Written before 049")
+    );
+}
+
+#[tokio::test]
+async fn an_html_row_with_no_html_body_degrades_to_readable_markdown() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    let healthy = draft_with(
+        &account.id,
+        DraftContent::markdown("healthy"),
+        1_700_000_500,
+    );
+    store.insert_draft(&healthy).await.unwrap();
+
+    // Impossible via the writer, but a corrupt row must not take the list down.
+    let corrupt = DraftId::new();
+    sqlx::query(
+        "INSERT INTO drafts (id, account_id, subject, body_markdown, content_kind, body_html, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'html', NULL, ?, ?)",
+    )
+    .bind(corrupt.as_str())
+    .bind(account.id.as_str())
+    .bind("Corrupt")
+    .bind("salvageable text")
+    .bind(1_700_000_000_i64)
+    .bind(1_700_000_000_i64)
+    .execute(store.writer())
+    .await
+    .unwrap();
+
+    let fetched = store.get_draft(&corrupt).await.unwrap().unwrap();
+    assert_eq!(fetched.content, DraftContent::markdown("salvageable text"));
+
+    let listed = store.list_drafts(&account.id).await.unwrap();
+    assert_eq!(listed.len(), 2, "the healthy draft must still be listed");
+}
+
+#[tokio::test]
+async fn an_interrupted_migration_049_finishes_on_the_next_open() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let db_path = temp_dir.path().join("mxr.db");
+
+    let store = Store::new(&db_path).await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    // Simulate a crash partway through 049: some columns landed, one did not,
+    // and the version stamp was never written. 049 adds its columns one
+    // statement at a time outside a transaction, so this is a state a real
+    // upgrade can be left in.
+    sqlx::query("ALTER TABLE drafts DROP COLUMN body_text")
+        .execute(store.writer())
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM schema_migrations WHERE version = 49")
+        .execute(store.writer())
+        .await
+        .unwrap();
+    drop(store);
+
+    // Re-opening must finish the job rather than trip over the columns that
+    // are already present.
+    let store = Store::new(&db_path).await.unwrap();
+    let draft = draft_with(
+        &account.id,
+        DraftContent::html("<p>resumed</p>", Some("resumed".to_string())),
+        1_700_000_000,
+    );
+    store.insert_draft(&draft).await.unwrap();
+
+    let fetched = store.get_draft(&draft.id).await.unwrap().unwrap();
+    assert_eq!(
+        fetched.content,
+        DraftContent::html("<p>resumed</p>", Some("resumed".to_string()))
+    );
+}
+
 #[tokio::test]
 async fn snooze_lifecycle() {
     let store = Store::in_memory().await.unwrap();

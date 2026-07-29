@@ -1382,10 +1382,7 @@ pub enum DraftContent {
     /// A supplied HTML document, preserved exactly. `text` is the caller's
     /// `text/plain` alternative; when `None` the outbound builder generates a
     /// deterministic one from the HTML without touching the HTML itself.
-    Html {
-        html: String,
-        text: Option<String>,
-    },
+    Html { html: String, text: Option<String> },
 }
 
 impl Default for DraftContent {
@@ -2335,7 +2332,10 @@ mod draft_content_tests {
             json,
             serde_json::json!({ "body_html": "<p>hi</p>", "body_text": "hi" })
         );
-        assert_eq!(serde_json::from_value::<DraftContent>(json).unwrap(), content);
+        assert_eq!(
+            serde_json::from_value::<DraftContent>(json).unwrap(),
+            content
+        );
     }
 
     #[test]
@@ -2381,5 +2381,135 @@ mod draft_content_tests {
     fn kind_str_matches_the_persisted_discriminator() {
         assert_eq!(DraftContent::markdown("").kind_str(), "markdown");
         assert_eq!(DraftContent::html("", None).kind_str(), "html");
+    }
+
+    #[test]
+    fn is_html_follows_the_variant_not_the_body() {
+        // Empty bodies on both sides, so only the variant can decide.
+        assert!(DraftContent::html("", None).is_html());
+        assert!(!DraftContent::markdown("").is_html());
+        assert!(!DraftContent::markdown("<p>looks like html</p>").is_html());
+    }
+
+    #[test]
+    fn an_empty_markdown_key_alongside_html_is_still_a_conflict() {
+        // The boundary an "ignore it if it's empty" precedence rule would let
+        // through. `body_markdown: ""` is exactly what the store writes beside
+        // an HTML body, so a payload carrying both is still a caller bug.
+        let err = serde_json::from_value::<DraftContent>(
+            serde_json::json!({ "body_markdown": "", "body_html": "<p>hi</p>" }),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("mutually exclusive"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn default_is_the_empty_markdown_draft() {
+        // `Draft` relies on this for the no-body-key case; a `Default` that
+        // produced an HTML draft would flip an absent body into the HTML path.
+        assert_eq!(DraftContent::default(), DraftContent::markdown(""));
+    }
+
+    #[test]
+    fn byte_len_measures_the_authored_body_not_the_alternative() {
+        // "é" is two bytes: bytes, not chars.
+        assert_eq!(DraftContent::markdown("é").byte_len(), 2);
+        assert_eq!(DraftContent::markdown("").byte_len(), 0);
+        // The alternative is much longer than the HTML; byte_len must ignore it.
+        assert_eq!(
+            DraftContent::html("<p>x</p>", Some("a much longer alternative".into())).byte_len(),
+            "<p>x</p>".len()
+        );
+    }
+
+    #[test]
+    fn reader_input_pairs_text_with_the_real_html_document() {
+        assert_eq!(
+            DraftContent::markdown("md").reader_input(),
+            (Some("md"), None)
+        );
+        assert_eq!(
+            DraftContent::html("<p>x</p>", Some("plain".into())).reader_input(),
+            (Some("plain"), Some("<p>x</p>"))
+        );
+        // No supplied alternative means no text side, not an empty one — the
+        // reader pipeline must fall back to the HTML rather than analyse "".
+        assert_eq!(
+            DraftContent::html("<p>x</p>", None).reader_input(),
+            (None, Some("<p>x</p>"))
+        );
+    }
+
+    fn draft_fixture(content: DraftContent) -> Draft {
+        Draft {
+            id: DraftId::new(),
+            account_id: AccountId::new(),
+            from: None,
+            reply_headers: None,
+            intent: DraftIntent::New,
+            to: vec![Address {
+                name: None,
+                email: "bob@example.com".to_string(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Subject".to_string(),
+            content,
+            attachments: vec![],
+            inline_assets: vec![],
+            inline_calendar_reply: None,
+            created_at: DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+            updated_at: DateTime::from_timestamp(1_700_000_500, 0).unwrap(),
+        }
+    }
+
+    #[test]
+    fn markdown_draft_carries_body_markdown_at_the_top_level() {
+        let draft = draft_fixture(DraftContent::markdown("# Hi"));
+        let json = serde_json::to_value(&draft).unwrap();
+
+        assert_eq!(json["body_markdown"], serde_json::json!("# Hi"));
+        assert!(json.get("content").is_none(), "content must stay flattened");
+        assert!(json.get("body_html").is_none());
+
+        let back: Draft = serde_json::from_value(json).unwrap();
+        assert_eq!(back.content, draft.content);
+        assert_eq!(back.subject, draft.subject);
+        assert_eq!(back.created_at, draft.created_at);
+    }
+
+    #[test]
+    fn html_draft_roundtrips_through_the_flattened_draft_shape() {
+        let mut draft = draft_fixture(DraftContent::html("<p>hi</p>", Some("hi".into())));
+        draft.inline_assets = vec![InlineAsset {
+            cid: "logo".to_string(),
+            path: PathBuf::from("/tmp/logo.png"),
+        }];
+        let json = serde_json::to_value(&draft).unwrap();
+
+        assert_eq!(json["body_html"], serde_json::json!("<p>hi</p>"));
+        assert_eq!(json["body_text"], serde_json::json!("hi"));
+        assert!(json.get("body_markdown").is_none());
+
+        let back: Draft = serde_json::from_value(json).unwrap();
+        assert_eq!(back.content, draft.content);
+        assert_eq!(back.inline_assets, draft.inline_assets);
+    }
+
+    #[test]
+    fn a_draft_carrying_both_bodies_is_rejected_too() {
+        // The flattened path buffers fields separately from the standalone
+        // one, so the mutual exclusion has to be proven here as well.
+        let mut json = serde_json::to_value(draft_fixture(DraftContent::markdown("hi"))).unwrap();
+        json["body_html"] = serde_json::json!("<p>hi</p>");
+
+        let err = serde_json::from_value::<Draft>(json).unwrap_err();
+        assert!(
+            err.to_string().contains("mutually exclusive"),
+            "unexpected error: {err}"
+        );
     }
 }

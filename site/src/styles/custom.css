@@ -56,18 +56,21 @@
   --sl-font-mono: var(--font-mono);
 }
 
+/* --paper-mute and --signal sit darker than a straight inversion: on cream
+   both have to clear 4.5:1 on --ink and on --ink-soft. --paper-faint clears
+   neither in either theme, so it is decoration only, never text. */
 :root[data-theme='light'] {
   --ink:           #f5f0e2;
   --ink-soft:      #ebe3cf;
   --ink-fold:      #e1d8c2;
   --paper:         #1a1814;
   --paper-soft:    #4d4740;
-  --paper-mute:    #7a7064;
+  --paper-mute:    #665c50;
   --paper-faint:   #a59c8b;
   --rule:          #c8bda7;
   --rule-soft:     #ddd2bb;
 
-  --signal:        #c2410c;
+  --signal:        #b03a0a;
   --signal-soft:   #f1dac8;
   --signal-deep:   #7c2a08;
 
@@ -144,7 +147,7 @@ body {
 .hero .copy { max-width: none !important; }
 
 .hero::before {
-  content: 'mxr · 0.4.72 · ◈ a notebook for your inbox';
+  content: 'mxr ◈ a notebook for your inbox';
   display: block;
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-meta);
@@ -283,6 +286,12 @@ body {
 
 .hero-install-cmd::-webkit-scrollbar { display: none; }
 
+/* The command scrolls sideways on narrow screens, so it takes focus. */
+.hero-install-cmd:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
 .hero-install-copy {
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-meta);
@@ -324,7 +333,7 @@ body {
   font-variation-settings: var(--rec-meta);
   font-size: 0.74rem;
   letter-spacing: 0.04em;
-  color: var(--paper-faint);
+  color: var(--paper-mute);
   text-transform: lowercase;
   flex: 0 1 auto;
 }
@@ -438,7 +447,9 @@ body {
 .hero-cast-bar {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  /* Wraps rather than pushing the motion control off the page on phones. */
+  flex-wrap: wrap;
+  gap: 0.45rem 0.7rem;
   background: var(--ink-soft);
   border: 1px solid var(--rule);
   border-bottom: 0;
@@ -468,7 +479,32 @@ body {
 }
 .hero-cast-dots i:nth-child(1) { background: var(--signal); }
 
-.hero-cast-meta { margin-left: auto; flex: 0 1 auto; color: var(--paper-faint); }
+.hero-cast-meta { margin-left: auto; flex: 0 1 auto; color: var(--paper-mute); }
+
+/* No `display` here: the `hidden` attribute has to keep winning until
+   hero-cast.js reveals the control. */
+.hero-cast-motion {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  color: var(--paper-mute);
+  padding: 0.26rem 0.7rem;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.hero-cast-motion:hover { color: var(--signal); border-color: var(--signal); }
+
+.hero-cast-motion:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
 
 /* CLI / TUI / agent toggle — a segmented control so it clearly reads
    as clickable tabs: one bordered group, dividers between, filled active. */
@@ -558,8 +594,10 @@ body {
 }
 .hero-cast-cap a:hover { text-decoration-color: var(--signal); }
 
+/* The caption and the decorative dots each cost the bar a wrapped row here. */
 @media (max-width: 600px) {
-  .hero-cast-meta { display: none; }
+  .hero-cast-meta, .hero-cast-dots { display: none; }
+  .hero-cast-motion { margin-left: auto; }
 }
 
 /* ---- Sections ---- */
@@ -578,7 +616,7 @@ body {
   font-variation-settings: var(--rec-meta);
   font-size: 0.72rem;
   letter-spacing: 0.12em;
-  color: var(--paper-faint);
+  color: var(--paper-mute);
   margin-bottom: 0.6rem;
   text-transform: lowercase;
 }
@@ -633,7 +671,10 @@ body {
 
 .landing-section a:hover { text-decoration-color: var(--signal); }
 
-.landing-section :not(pre) > code {
+/* .hero-cast-cap sits outside .landing-section; left alone its inline code
+   falls back to Starlight's off-palette code colours, which miss AA. */
+.landing-section :not(pre) > code,
+.hero-cast-cap code {
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-mono);
   font-size: 0.9em;
@@ -657,6 +698,13 @@ body {
   line-height: 1.55;
 }
 
+/* Expressive Code floors its code area at 20ch plus its own padding, so on
+   phones the padding above tips a wrapped block into a scroll, which it then
+   labels `role="region"` with no accessible name. */
+@media (max-width: 480px) {
+  .landing-section .expressive-code pre { padding-inline: 0 !important; }
+}
+
 .kbd {
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-mono-em);
@@ -672,8 +720,6 @@ body {
    No grid. Three methods inline, separated by ◈. Run-line is
    a single mono row.
    ========================================================== */
-.install-section h2 { display: none; }
-
 .install-masthead {
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-meta);
@@ -690,14 +736,27 @@ body {
   gap: 1rem;
 }
 
-.install-masthead span:first-child {
-  color: var(--paper);
+/* This line is the section's heading, so it carries the h2 that keeps the
+   page going h1, h2, h3. It stays masthead-sized rather than taking the
+   display treatment in `.landing-section h2`. */
+.install-masthead h2 {
+  font-family: inherit;
   font-variation-settings: var(--rec-mono-em);
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  color: var(--paper);
+  border-top: 0;
+  padding-top: 0;
+  margin: 0;
 }
 
 .install-flow {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  /* minmax(0, 1fr): a bare 1fr floors each column at the min-content width of
+     its code block, which pushes the third method off-page. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: clamp(1.5rem, 3vw, 2.75rem);
   margin-bottom: 2rem;
 }
@@ -707,6 +766,7 @@ body {
   flex-direction: column;
   gap: 0.6rem;
   position: relative;
+  min-width: 0;
 }
 
 .install-method::before {
@@ -715,14 +775,21 @@ body {
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-meta);
   font-size: 0.74rem;
-  color: var(--paper-faint);
+  color: var(--paper-mute);
   letter-spacing: 0.08em;
   margin-bottom: 0.2rem;
 }
 
 .install-flow { counter-reset: install-method; }
 
-.install-method h4 {
+/* Starlight's markdown flow adds a 1rem top margin to adjacent siblings,
+   which misaligns the methods and doubles the run-line's own gap. */
+.install-section .install-flow > .install-method,
+.install-section .install-runline > .run-step {
+  margin-top: 0;
+}
+
+.install-method h3 {
   font-family: var(--font-display);
   font-variation-settings: var(--rec-headline);
   font-size: 1.05rem;
@@ -766,7 +833,8 @@ body {
 
 .install-runline .run-step {
   display: grid;
-  grid-template-columns: 1.5rem 9rem 1fr;
+  /* Fits the longest command, `mxr accounts add gmail`, on one line. */
+  grid-template-columns: 1.5rem 11.5rem 1fr;
   gap: 0.6rem;
   align-items: baseline;
   color: var(--paper);
@@ -788,7 +856,9 @@ body {
   letter-spacing: 0.02em;
 }
 
-.install-coda {
+/* Section-scoped to outrank `.landing-section p`, which zeroes the top
+   margin and leaves the coda hard against the run-line. */
+.install-section .install-coda {
   margin-top: 1.5rem;
   font-size: 0.92rem;
   color: var(--paper-soft);
@@ -798,7 +868,13 @@ body {
 }
 
 @media (max-width: 880px) {
-  .install-flow { grid-template-columns: 1fr; gap: 2rem; }
+  .install-flow { grid-template-columns: minmax(0, 1fr); gap: 2rem; }
+}
+
+/* Below this the note no longer fits beside the command. */
+@media (max-width: 720px) {
+  .install-runline .run-step { grid-template-columns: 1.5rem 1fr; row-gap: 0.15rem; }
+  .install-runline .run-note { grid-column: 2; }
 }
 
 /* ==========================================================
@@ -1005,7 +1081,8 @@ body {
 
 .search-section .search-coda {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, …) keeps the code column inside its track. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: clamp(2rem, 5vw, 4rem);
   align-items: start;
   margin-top: 1.5rem;
@@ -1022,7 +1099,7 @@ body {
     color: var(--paper-mute);
     font-size: 0.78rem;
   }
-  .search-section .search-coda { grid-template-columns: 1fr; }
+  .search-section .search-coda { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ==========================================================
@@ -1187,7 +1264,7 @@ body {
 
 .eulogy-name { color: var(--paper-mute); }
 .eulogy-date {
-  color: var(--paper-faint);
+  color: var(--paper-mute);
   font-variant-numeric: tabular-nums;
   font-size: 0.78rem;
   letter-spacing: 0.02em;
@@ -1324,7 +1401,7 @@ body {
 
 .principle {
   display: grid;
-  grid-template-columns: 4rem 1fr 0.8fr;
+  grid-template-columns: 4rem minmax(0, 1fr) minmax(0, 0.8fr);
   gap: clamp(1rem, 3vw, 2.5rem);
   padding-block: clamp(1.75rem, 3.5vw, 2.5rem);
   align-items: baseline;
@@ -1344,7 +1421,7 @@ body {
   letter-spacing: 0.06em;
 }
 
-.principle-flip { grid-template-columns: 4rem 0.8fr 1fr; }
+.principle-flip { grid-template-columns: 4rem minmax(0, 0.8fr) minmax(0, 1fr); }
 .principle-flip .principle-text { order: 3; }
 .principle-flip .principle-margin { order: 2; }
 
@@ -1401,7 +1478,7 @@ body {
 
 @media (max-width: 880px) {
   .principle, .principle-flip {
-    grid-template-columns: 3rem 1fr;
+    grid-template-columns: 3rem minmax(0, 1fr);
   }
   .principle-text { grid-column: 2; }
   .principle-margin { grid-column: 2; order: 2; }
@@ -1420,7 +1497,7 @@ body {
 
 .surface-block {
   display: grid;
-  grid-template-columns: 9rem 1fr;
+  grid-template-columns: 9rem minmax(0, 1fr);
   gap: clamp(1.25rem, 3vw, 2.5rem);
   padding: clamp(1.5rem, 3vw, 2.25rem) 0;
   align-items: start;
@@ -1499,7 +1576,7 @@ body {
 }
 
 @media (max-width: 720px) {
-  .surface-block { grid-template-columns: 1fr; gap: 0.75rem; }
+  .surface-block { grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
 }
 
 /* ==========================================================
@@ -1527,7 +1604,8 @@ body {
   position: relative;
   padding: 1rem 0;
   border-bottom: 1px solid var(--rule);
-  opacity: 0;
+  /* Moves but never fades: an opacity ramp holds every line of text inside
+     the entry below AA until it finishes. */
   transform: translateY(8px);
   animation: lineage-reveal 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
@@ -1542,11 +1620,11 @@ body {
 .lineage-entry:nth-child(8) { animation-delay: 0.42s; }
 
 @keyframes lineage-reveal {
-  to { opacity: 1; transform: translateY(0); }
+  to { transform: translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lineage-entry { animation: none; opacity: 1; transform: none; }
+  .lineage-entry { animation: none; transform: none; }
 }
 
 .lineage-entry::before {

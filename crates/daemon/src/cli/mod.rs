@@ -3048,12 +3048,12 @@ mod tests {
         for args in cases {
             // `Cli` doesn't derive `Debug`, so match rather than `expect_err`.
             match Cli::try_parse_from(*args) {
-                Ok(_) => panic!("--draft --yes must be rejected for {:?}", &args[1]),
+                Ok(_) => panic!("--draft --yes must be rejected for {:?}", args[1]),
                 Err(err) => assert_eq!(
                     err.kind(),
                     clap::error::ErrorKind::ArgumentConflict,
                     "expected a conflict error for {:?}, got {:?}",
-                    &args[1],
+                    args[1],
                     err.kind()
                 ),
             }

@@ -117,7 +117,7 @@ mxr search 'has:calendar' --format ids | head
 
 ```bash
 mxr search 'has:calendar newer_than:7d' --format json \
-  | jq -r '.[] | "\(.date)\t\(.from)\t\(.subject)"'
+  | jq -r '.results[] | "\(.date)\t\(.from)\t\(.subject)"'
 ```
 
 What you get: a small agenda-like list from mail, useful when the

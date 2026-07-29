@@ -15,7 +15,7 @@ The CLI does **not** always mirror daemon IPC structs. Some commands intentional
 {
   "results": [
     {
-      "message_id": "01JFQ7K3M2X8N5R0VYZA9CTBPE",
+      "message_id": "019706f4-9b6e-7c31-8a3f-2a1c4de50b91",
       "from": "Sarah Chen <sarah@example.com>",
       "subject": "1:1 prep, Friday",
       "date": "2026-04-30T15:42:11+00:00",
@@ -100,7 +100,7 @@ An illustrative `explain` for that command, on a config with semantic search swi
     "results": [
       {
         "rank": 1,
-        "message_id": "01JFQ7K3M2X8N5R0VYZA9CTBPE",
+        "message_id": "019706f4-9b6e-7c31-8a3f-2a1c4de50b91",
         "final_score": 12.4,
         "lexical_rank": 1,
         "lexical_score": 12.4,
@@ -136,7 +136,7 @@ mxr search 'from:sarah' --format jsonl 2>paging.json >/dev/null && jq '.paging.n
 ```
 
 ```json
-{"message_id":"01JFQ7K3M2X8N5R0VYZA9CTBPE","from":"Sarah Chen <sarah@example.com>","subject":"1:1 prep, Friday","date":"2026-04-30T15:42:11+00:00","read":false,"starred":true,"score":1777563776.0}
+{"message_id":"019706f4-9b6e-7c31-8a3f-2a1c4de50b91","from":"Sarah Chen <sarah@example.com>","subject":"1:1 prep, Friday","date":"2026-04-30T15:42:11+00:00","read":false,"starred":true,"score":1777563776.0}
 ```
 
 The stderr line has the same shape in `--format csv`.
@@ -225,47 +225,121 @@ provider-side read state, filters, or bulk mark-read actions.
 
 ## Mutation dry-run
 
-Bulk mutation dry-runs return a preview object:
+`--dry-run` on a core mail mutation returns one preview object:
 
 ```json
 {
   "action": "archive",
   "dry_run": true,
   "requested": 2,
-  "message_ids": ["01JFQ...", "01JFR..."],
+  "selected_messages": 2,
+  "selected_threads": 1,
+  "message_ids": [
+    "019706f4-9b6e-7c31-8a3f-2a1c4de50b91",
+    "019706f5-1d02-7a48-b0c7-6e5f9a2d4413"
+  ],
   "messages": [
     {
-      "message_id": "01JFQ...",
-      "from": "Alice",
+      "message_id": "019706f4-9b6e-7c31-8a3f-2a1c4de50b91",
+      "from": "Alice <alice@example.com>",
       "subject": "Quarterly review"
     }
   ]
 }
 ```
 
-`--format jsonl` emits one preview line per message:
+`requested` and `selected_messages` both hold the resolved message count.
+`selected_threads` counts the distinct threads those messages belong to, and
+falls back to the message count when the envelopes could not be resolved.
+`messages[].unsubscribe_method` appears on `mxr unsubscribe --dry-run` preview
+records, for every message whose envelope resolved. The value is `OneClick`,
+`HttpLink`, `Mailto`, `BodyLink`, or `None`.
+
+`--format jsonl` emits one preview line per message, without the counts:
 
 ```json
-{"action":"archive","dry_run":true,"message_id":"01JFQ...","from":"Alice","subject":"Quarterly review"}
+{"action":"archive","dry_run":true,"message_id":"019706f4-9b6e-7c31-8a3f-2a1c4de50b91","from":"Alice <alice@example.com>","subject":"Quarterly review"}
 ```
 
 ## Mutation result
 
-Batch mutations return a summary object:
+Archive, trash, spam, read, star, label, and move report the selection at the
+top level and the per-account outcome under a nested `result`:
 
 ```json
 {
   "action": "archive",
   "dry_run": false,
-  "requested": 2,
-  "succeeded": 2,
-  "failed": 0,
-  "message_ids": ["01JFQ...", "01JFR..."],
-  "errors": []
+  "selected_messages": 2,
+  "selected_threads": 1,
+  "message_ids": [
+    "019706f4-9b6e-7c31-8a3f-2a1c4de50b91",
+    "019706f5-1d02-7a48-b0c7-6e5f9a2d4413"
+  ],
+  "result": {
+    "requested": 2,
+    "succeeded": 2,
+    "skipped": 0,
+    "failed": 0,
+    "accounts": [
+      {
+        "account_id": "0196b21c-4e80-7f0a-9c3d-71b8ee402f55",
+        "account_name": "work",
+        "succeeded": 2,
+        "skipped": 0,
+        "failed": 0,
+        "error": null
+      }
+    ],
+    "mutation_id": "019706f7-3a55-7b02-8e11-5d0c9f6a2b34"
+  }
 }
 ```
 
-Single-message mutation commands can return a command-specific `result` payload, but the stable fields are `action`, `dry_run`, and `message_ids`.
+`result.mutation_id` is set by the undoable mutations (archive, trash, spam,
+read, and read-and-archive) and is what you pass to `mxr undo`. Star, label,
+and move return no `mutation_id`. When an undoable mutation lands but its undo
+entry could not be written, `mutation_id` is absent and
+`"undo_unavailable": true` takes its place.
+
+Mutations the daemon only acknowledges emit the same top-level fields with
+`"ok": true` instead of `result`. One dispatched as a background job returns
+`action`, `dry_run`, `message_ids`, and a `job` object; poll it with
+`mxr jobs <job_id>`.
+
+### `mxr snooze`, `mxr unsnooze`, `mxr unsubscribe`
+
+These three walk the selection one message at a time, so they report a flat
+batch shape with no nested `result`:
+
+```json
+{
+  "action": "unsubscribe",
+  "dry_run": false,
+  "requested": 3,
+  "succeeded": 2,
+  "failed": 1,
+  "selected_messages": 3,
+  "selected_threads": 2,
+  "message_ids": [
+    "019706f4-9b6e-7c31-8a3f-2a1c4de50b91",
+    "019706f5-1d02-7a48-b0c7-6e5f9a2d4413",
+    "019706f6-2c11-7d63-9b40-8ad3c5e21f07"
+  ],
+  "errors": [
+    {
+      "message_id": "019706f6-2c11-7d63-9b40-8ad3c5e21f07",
+      "error": "no unsubscribe method"
+    }
+  ]
+}
+```
+
+`requested` here is the length of `message_ids`, and `failed` is the length of
+`errors`. `selected_messages` and `selected_threads` are omitted when the
+command has no selection to report, as with `mxr unsnooze --all`.
+`mxr snooze --dry-run` and `mxr unsubscribe --dry-run` still use the preview
+shape above.
 
 ## Calendar invite
 
@@ -280,8 +354,8 @@ mxr invite show MESSAGE_ID --format json
 ```json
 {
   "id": "018f8c0f-7b78-7c44-9f48-3e5a0ef4f7aa",
-  "account_id": "01JFQ7K3M2X8N5R0VYZA9CTBPE",
-  "message_id": "01JFQ8A2KRZ3F2HQ3V9T6QZJ7N",
+  "account_id": "0196b21c-4e80-7f0a-9c3d-71b8ee402f55",
+  "message_id": "019712a3-88d4-70e9-b5a2-4c9f0d61e7aa",
   "metadata": {
     "method": "REQUEST",
     "component_kind": "VEVENT",
@@ -336,7 +410,7 @@ mxr invite reply MESSAGE_ID accept --dry-run --format json
 
 ```json
 {
-  "message_id": "01JFQ8A2KRZ3F2HQ3V9T6QZJ7N",
+  "message_id": "019712a3-88d4-70e9-b5a2-4c9f0d61e7aa",
   "action": "accept",
   "attendee_email": "you@example.com",
   "organizer_email": "alice@example.com",
@@ -351,7 +425,7 @@ Successful sends return:
 
 ```json
 {
-  "message_id": "01JFQ8A2KRZ3F2HQ3V9T6QZJ7N",
+  "message_id": "019712a3-88d4-70e9-b5a2-4c9f0d61e7aa",
   "action": "accept",
   "provider_message_id": "provider-id-or-null",
   "rfc2822_message_id": "<mxr-generated@example.local>"

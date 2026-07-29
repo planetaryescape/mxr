@@ -93,7 +93,8 @@ Tell an agent
 
 ```bash
 mxr search 'is:unread newer_than:1d' --format json \
-  | jq -r 'group_by(.from)
+  | jq -r '.results
+           | group_by(.from)
            | map({sender: .[0].from, count: length, latest: max_by(.date).subject})
            | sort_by(-.count)
            | .[]
@@ -271,7 +272,7 @@ watch -n 30 'mxr count is:unread'
 
 ```bash
 watch -n 60 'mxr search "newer_than:5m" --format json \
-  | jq -r ".[] | .from" | sort | uniq -c | sort -rn | head'
+  | jq -r ".results[].from" | sort | uniq -c | sort -rn | head'
 ```
 
 What you get: a refreshing top-10 of senders pinging you in the last 5 minutes — useful during incidents.

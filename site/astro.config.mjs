@@ -6,7 +6,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'mxr',
-      description: 'Local-first, CLI-first email for humans and agents. Read, search, draft, and send offline. Two-way Gmail/IMAP sync. Scriptable from your shell and operable by your agent.',
+      description: 'Local-first, CLI-first email for humans and agents. Read, search, and draft offline. Two-way Gmail/IMAP sync. Scriptable from your shell and operable by your agent.',
       disable404Route: true,
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/planetaryescape/mxr' },
@@ -30,7 +30,7 @@ export default defineConfig({
         { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://mxr.sh/og.png' } },
         { tag: 'meta', attrs: { name: 'twitter:image:alt', content: 'mxr: your inbox, on your computer.' } },
         { tag: 'meta', attrs: { name: 'twitter:title', content: 'mxr: your inbox, on your computer' } },
-        { tag: 'meta', attrs: { name: 'twitter:description', content: 'Local-first, CLI-first email. Read, search, draft, and send offline. Two-way Gmail/IMAP sync. Scriptable and agent-operable.' } },
+        { tag: 'meta', attrs: { name: 'twitter:description', content: 'Local-first, CLI-first email. Read, search, and draft offline. Two-way Gmail/IMAP sync. Scriptable and agent-operable.' } },
         { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' } },
         { tag: 'meta', attrs: { name: 'author', content: 'planetaryescape' } },
         { tag: 'meta', attrs: { name: 'keywords', content: 'email client, local-first email, CLI email, terminal email client, TUI email, Gmail CLI, IMAP client, SMTP, Rust, MCP server, agent email, offline email, self-hosted email' } },

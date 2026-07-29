@@ -102,18 +102,16 @@ mxr unsubscribe --account work newsletter@example.com --yes
 mxr search 'from:sarah@example.com OR to:sarah@example.com after:2026-04-23' --account work --format json
 ```
 
-The agent gets compact search rows with `message_id`, `from`, `subject`, `date`, `read`, `starred`, and `score`. When it needs thread context, it exports the matching search directly as markdown:
-
-```bash
-for tid in 01JFQ7K3M2X8N5R0VYZA9CTBPF 01JFQ8...; do
-  mxr export "$tid" --format markdown
-done
-```
-
-Or in one call with `--search`:
+The agent gets compact search rows with `message_id`, `from`, `subject`, `date`, `read`, `starred`, and `score`. Those are message IDs, and `mxr export` takes a thread ID, so the agent exports the matching search in one call instead:
 
 ```bash
 mxr export --account work --search 'from:sarah@example.com OR to:sarah@example.com after:2026-04-23' --format markdown > /tmp/sarah-context.md
+```
+
+To export a single thread, pass its ID positionally:
+
+```bash
+mxr export 019706f6-2c11-7d63-9b40-8ad3c5e21f07 --format markdown
 ```
 
 Agent feeds the markdown into its summariser, then uses `mxr draft-assist` to generate a suggested reply body on stdout. Draft assist can use local relationship context when available and JSON output includes humanizer/voice-match metadata. The agent can show the body to the user or pass it into `mxr compose --body-stdin` / `mxr reply --body-stdin` after approval:
@@ -141,13 +139,15 @@ git log --since=1.week --pretty='%H %s' | grep -i 'fix.*test'
 It builds a list of message IDs to archive. Dry-run:
 
 ```bash
-echo 01JFQ... 01JFQ... | xargs mxr archive --dry-run
+echo 019706f4-9b6e-7c31-8a3f-2a1c4de50b91 019706f5-1d02-7a48-b0c7-6e5f9a2d4413 \
+  | xargs mxr archive --dry-run
 ```
 
 User confirms. Apply:
 
 ```bash
-echo 01JFQ... 01JFQ... | xargs mxr archive --yes
+echo 019706f4-9b6e-7c31-8a3f-2a1c4de50b91 019706f5-1d02-7a48-b0c7-6e5f9a2d4413 \
+  | xargs mxr archive --yes
 ```
 
 Capture the `mutation_id` in the output. If the user notices an over-archive, the agent runs `mxr undo <mutation_id>` within 60 seconds.

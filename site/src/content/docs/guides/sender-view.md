@@ -71,7 +71,8 @@ mxr storage --by sender --format jsonl \
 
 ```bash
 mxr search 'newer_than:1d' --format json \
-  | jq -r 'group_by(.from)
+  | jq -r '.results
+           | group_by(.from)
            | map({sender: .[0].from, count: length, latest: max_by(.date).subject})
            | sort_by(-.count) | .[]
            | "\(.count)\t\(.sender)\t\(.latest)"'

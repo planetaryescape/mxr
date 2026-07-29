@@ -1,12 +1,12 @@
 ---
 title: "Your inbox, on your computer."
-description: "A local-first notebook for your email. Read, search, draft, and send even on a plane. Two-way sync with Gmail or any IMAP server. Scriptable from your shell. Operable by your agent."
+description: "A local-first notebook for your email. Read, search, and draft even on a plane. Two-way sync with Gmail or any IMAP server. Scriptable from your shell. Operable by your agent."
 template: splash
 hero:
   title: |
     Your inbox,
     <span class="hero-accent">on your computer.</span>
-  tagline: "A notebook for your email. Read, search, draft, and send even on a plane. Two-way sync with Gmail or any IMAP server. Scriptable from your shell. Operable by your agent."
+  tagline: "A notebook for your email. Read, search, and draft even on a plane. Two-way sync with Gmail or any IMAP server. Scriptable from your shell. Operable by your agent."
   actions:
     - text: Get started
       link: /getting-started/install/
@@ -160,7 +160,7 @@ mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
   <div class="cap"><strong>One daemon, every surface.</strong> TUI, CLI, web app, HTTP bridge, and MCP server all drive the same local engine.</div>
   <div class="cap"><strong>Opens instantly.</strong> A message is a SQLite read, not a network fetch. It opens the same with the wifi off.</div>
   <div class="cap"><strong>Real search, not a filter.</strong> Tantivy BM25 across your whole mailbox, with optional local semantic search.</div>
-  <div class="cap"><strong>Two-way sync.</strong> Gmail, any IMAP server, any SMTP relay. Changes flow both directions.</div>
+  <div class="cap"><strong>Two-way sync.</strong> Gmail and any IMAP server, with changes flowing both directions. Send through Gmail or any SMTP relay.</div>
   <div class="cap"><strong>Compose in $EDITOR.</strong> Markdown in, multipart out. Your keybindings, your muscle memory.</div>
   <div class="cap"><strong>Reader mode.</strong> Strips trackers, banners, and quoted noise. Unsubscribe and archive in one key.</div>
   <div class="cap"><strong>Never drop a thread.</strong> Owed-reply tracking, follow-up reminders, snooze, and send-later.</div>
@@ -193,20 +193,19 @@ mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
 <div class="spread">
   <div class="narrative">
     <h3>No signal. <em>No problem.</em></h3>
-    <p>Open mxr on a plane with the wifi off. Triage. Reply. Draft. Snooze. Opening a message is a SQLite read, not a fetch, so there is no network round trip waiting on you. When you land and your laptop reconnects, mxr finishes everything you queued.</p>
+    <p>Open mxr on a plane with the wifi off. Read a thread, search the archive, write the replies you owe. Opening a message is a SQLite read, not a fetch, so nothing waits on the network, and a draft saves straight to disk. When you land and reconnect, mxr pulls in the new mail and you send the drafts you wrote in the air.</p>
     <p>Your synced archive is on disk. Years of email and labels stay indexed locally, and attachment filenames are searchable. Opening an attachment downloads it into mxr's cache. Saving one that isn't cached yet downloads it straight to the destination you choose, without adding it to the cache.</p>
   </div>
 
-  <div class="terminal-log" aria-label="Example session: triage on a plane, sync on landing">
+  <div class="terminal-log" aria-label="Example session: reading and drafting on a plane, sending on landing">
     <div class="log-prompt"><span class="log-cmd-prompt">~</span><span class="log-cmd-prompt"> $</span> mxr</div>
     <div class="log-line"><span class="log-time">19:42</span><span class="log-glyph log-read">●</span> opened, 47 unread, 11 threads</div>
-    <div class="log-line"><span class="log-time">20:18</span><span class="log-glyph log-write">↑</span> drafted 3 replies <span class="log-meta">(queued for send)</span></div>
-    <div class="log-line"><span class="log-time">20:55</span><span class="log-glyph log-snooze">↓</span> snoozed 12 threads <span class="log-meta">(resume 09:00 tomorrow)</span></div>
+    <div class="log-line"><span class="log-time">20:03</span><span class="log-glyph log-read">●</span> searched: supplier contract, 4 hits <span class="log-meta">(local index)</span></div>
+    <div class="log-line"><span class="log-time">20:18</span><span class="log-glyph log-write">↑</span> drafted 3 replies <span class="log-meta">(saved locally)</span></div>
     <div class="log-line"><span class="log-time">21:14</span><span class="log-glyph log-write">●</span> drafted: <span class="log-file">announcement-q3.md</span> <span class="log-meta">(saved locally)</span></div>
     <div class="log-divider">◈ wifi reconnected, syncing</div>
-    <div class="log-line"><span class="log-time">21:30</span><span class="log-glyph log-success">✓</span> sent 3 replies <span class="log-meta">(provider acknowledged)</span></div>
-    <div class="log-line"><span class="log-time">21:30</span><span class="log-glyph log-success">✓</span> 47 reads pushed upstream</div>
-    <div class="log-line"><span class="log-time">21:30</span><span class="log-glyph log-success">✓</span> 12 snoozes registered</div>
+    <div class="log-line"><span class="log-time">21:30</span><span class="log-glyph log-success">✓</span> new mail pulled and indexed</div>
+    <div class="log-line"><span class="log-time">21:31</span><span class="log-glyph log-success">✓</span> sent the 3 replies <span class="log-meta">(mxr send)</span></div>
   </div>
 </div>
 
@@ -249,7 +248,7 @@ mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
 </div>
 
 <div class="search-coda">
-  <p>Find a 2019 contract by the supplier's name. Pull every receipt from a vendor. List the apology email you sent in March. mxr indexes your mail with <a href="https://github.com/quickwit-oss/tantivy">Tantivy</a>, the BM25 engine behind Quickwit, with field boosts on subject, body, sender, and attachment names. Local hybrid retrieval is opportunistic; lexical search stays instant and exact. No round trips, no rate limits, no "loading more."</p>
+  <p>Find a 2019 contract by the supplier's name. Pull every receipt from a vendor. List the apology email you sent in March. mxr indexes your mail with <a href="https://github.com/quickwit-oss/tantivy">Tantivy</a>, the BM25 engine behind Quickwit, with field boosts on subject, body, sender, and attachment names. Local hybrid retrieval is opportunistic; lexical search stays instant and exact. Queries hit the index on your disk, so they never make a provider round trip or run into a provider rate limit.</p>
 
 ```bash wrap
 mxr storage --by label --limit 20
@@ -271,12 +270,13 @@ mxr search "subject:invoice" --format json | jq -r '.results[].from' | sort -u
 <div class="agent-conversation">
   <div class="agent-turn">
     <div class="agent-label">◈ prompt</div>
-    <div class="agent-prompt">Find newsletters I haven't opened in three months. Show me the list, unsubscribe from the ones I confirm.</div>
+    <div class="agent-prompt">Rank the newsletters I never open. Show me what unsubscribing from the worst one would touch, then do it if I say go.</div>
     <div class="agent-runs">
       <code>{`mxr subscriptions --rank --format json`}</code>
-      <code>{`mxr stale --within-days 90 --format ids`}</code>
+      <code>{`mxr unsubscribe newsletter@example.com --dry-run`}</code>
+      <code>{`mxr unsubscribe newsletter@example.com --yes`}</code>
     </div>
-    <div class="agent-result">found 14 candidates ◈ you confirmed 11 ◈<span class="agent-ok">11 unsubscribed, 3 archived.</span></div>
+    <div class="agent-result">18 senders ranked ◈ preview: newsletter@example.com, method OneClick ◈<span class="agent-ok">you said go, unsubscribed.</span></div>
   </div>
 
   <div class="agent-turn">
@@ -307,12 +307,13 @@ mxr search "subject:invoice" --format json | jq -r '.results[].from' | sort -u
   <div class="agent-json-label">◈ what your agent sees</div>
 
 ```bash wrap
-mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
+mxr search "from:sarah after:2026-04-23" \
+  --mode lexical --sort relevance --format json | jq '.results[0]'
 ```
 
 ```json wrap
 {
-  "message_id": "01JFQ7K3M2X8N5R0VYZA9CTBPE",
+  "message_id": "019706f4-9b6e-7c31-8a3f-2a1c4de50b91",
   "from": "Sarah Chen <sarah@example.com>",
   "subject": "1:1 prep, Friday",
   "date": "2026-04-30T15:42:11+00:00",

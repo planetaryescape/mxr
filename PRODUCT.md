@@ -61,10 +61,10 @@ In priority order:
 
 - **Terminal-native, deliberately so.** Monospace as accent
   typography, shell-prompt motifs (`> ` headers, `$` prompts),
-  scanline texture. The visual vocabulary nods to old hardware
+  and ruled lines. The visual vocabulary nods to old hardware
   without playing dress-up.
-- **Restrained, then sharply punctuated.** Mostly neutral surfaces
-  with green accents. Color earns its place. Glow is intentional.
+- **Restrained, then sharply punctuated.** Deep blue and pale blue
+  surfaces with cyan and small yellow accents. Color earns its place.
 - **Honest, not performative.** "Show, don't compare." Concrete
   scenarios over adjective lists. No "blazing fast." Cite numbers
   or stay quiet.
@@ -117,10 +117,9 @@ From CLAUDE.md and confirmed in this session.
 5. **No lock-in framing in both directions.** "Gmail can die
    without you" + "you can keep using Gmail" form a pair. Both
    are about user control of their data.
-6. **The agent angle is a use case, not a position.** Agent
-   operability is a real superpower, but the page leads with
-   offline / local / sovereignty. Agent is one of four sections,
-   not the lead.
+6. **Local ownership and agent access lead together.** Keeping the
+   whole mailbox local makes fast search, analytics, and useful agent
+   workflows possible. The first screen shows that relationship.
 
 ## Accessibility & inclusivity needs
 

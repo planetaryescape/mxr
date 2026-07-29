@@ -10,6 +10,10 @@
 
   var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   var paused = reducedMotion.matches;
+  var cycleTimer;
+  var cycleDelay = 8000;
+  var pointerInside = false;
+  var focusInside = false;
 
   function selectedVideo() {
     var index = radios.findIndex(function (radio) {
@@ -28,7 +32,26 @@
   function label() {
     var next = running(selectedVideo()) ? 'pause' : 'play';
     toggle.textContent = next;
-    toggle.setAttribute('aria-label', next + ' demo recording');
+    toggle.setAttribute('aria-label', next.charAt(0).toUpperCase() + next.slice(1) + ' demo');
+  }
+
+  function stopCycle() {
+    window.clearTimeout(cycleTimer);
+    cycleTimer = undefined;
+  }
+
+  function canCycle() {
+    return !paused && !reducedMotion.matches && !pointerInside && !focusInside && !document.hidden;
+  }
+
+  function scheduleCycle() {
+    stopCycle();
+    if (!canCycle()) return;
+    cycleTimer = window.setTimeout(function () {
+      var index = radios.findIndex(function (radio) { return radio.checked; });
+      radios[(index + 1) % radios.length].checked = true;
+      sync();
+    }, cycleDelay);
   }
 
   // A switch away and back leaves the video selected again, so the element alone
@@ -41,6 +64,7 @@
     if (token !== attempt || video !== selectedVideo()) return;
     paused = true;
     label();
+    stopCycle();
   }
 
   // src is assigned on first play, so unselected recordings, and all of them
@@ -76,6 +100,7 @@
       else video.pause();
     });
     label();
+    scheduleCycle();
   }
 
   function setPaused(next) {
@@ -108,6 +133,29 @@
   toggle.addEventListener('click', function () {
     setPaused(!paused);
   });
+
+  cast.addEventListener('pointerenter', function () {
+    pointerInside = true;
+    stopCycle();
+  });
+
+  cast.addEventListener('pointerleave', function () {
+    pointerInside = false;
+    scheduleCycle();
+  });
+
+  cast.addEventListener('focusin', function () {
+    focusInside = true;
+    stopCycle();
+  });
+
+  cast.addEventListener('focusout', function (event) {
+    if (cast.contains(event.relatedTarget)) return;
+    focusInside = false;
+    scheduleCycle();
+  });
+
+  document.addEventListener('visibilitychange', scheduleCycle);
 
   reducedMotion.addEventListener('change', function (event) {
     setPaused(event.matches);

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "generate": "node scripts/generate-cli-reference.mjs && bash scripts/dump-openapi-spec.sh",
+    "generate:social": "node scripts/generate-social-images.mjs",
     "test": "node --test scripts/search-envelope-rule.test.mjs",
     "validate": "node scripts/validate-docs.mjs",
     "postbuild": "node scripts/generate-llms-txt.mjs",

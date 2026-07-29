@@ -7,8 +7,8 @@ const { frontmatter } = Astro.props;
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0d0d0c" media="(prefers-color-scheme: dark)" />
-  <meta name="theme-color" content="#f5f0e2" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#071522" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f4f9fc" media="(prefers-color-scheme: light)" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <title>{frontmatter.title} - mxr</title>
@@ -17,27 +17,27 @@ const { frontmatter } = Astro.props;
     :root {
       color-scheme: dark light;
 
-      --paper: #f3eee0;
-      --ink: #0d0d0c;
-      --rule: #2c2920;
-      --signal: #ff7a3d;
+      --paper: #f4f9fc;
+      --ink: #071522;
+      --rule: #294963;
+      --signal: #57d5ff;
 
       /* Expressive Code reads its frame colours from Starlight variables. */
-      --sl-color-black: #0d0d0c;
-      --sl-color-gray-5: #524e44;
-      --sl-color-gray-6: #15140e;
-      --sl-color-gray-7: #1a1813;
-      --sl-color-text: #f3eee0;
-      --sl-color-accent: #ff7a3d;
-      --sl-color-accent-high: #ffb487;
+      --sl-color-black: #071522;
+      --sl-color-gray-5: #587088;
+      --sl-color-gray-6: #0d2234;
+      --sl-color-gray-7: #132c42;
+      --sl-color-text: #f4f9fc;
+      --sl-color-accent: #57d5ff;
+      --sl-color-accent-high: #bfefff;
     }
 
     @media (prefers-color-scheme: light) {
       :root {
-        --paper: #1a1814;
-        --ink: #f5f0e2;
-        --rule: #c8bda7;
-        --signal: #b03a0a;
+        --paper: #10263b;
+        --ink: #f4f9fc;
+        --rule: #b9cedc;
+        --signal: #006f93;
       }
     }
 

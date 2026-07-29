@@ -1,6 +1,6 @@
 /* ==========================================================
-   mxr — getnyx-influenced overhaul
-   Dark-default, warm not-black surface, single sodium accent.
+   mxr site
+   Deep blue surfaces with cyan and yellow accents.
    No cards. No panels. No glows. No grain. No gradients.
    Typography + rules + columns carry the page. Symbol
    punctuation (§ ◈ ◯ ✓ →). Code as native content, not
@@ -13,22 +13,21 @@
 @import '@fontsource-variable/recursive/full.css';
 
 :root {
-  /* Dark, warm, intentional. Not #000, not GitHub #0d1117. */
-  --ink:           #0d0d0c;
-  --ink-soft:      #15140e;
-  --ink-fold:      #1a1813;
-  --paper:         #f3eee0;
-  --paper-soft:    #d6cebc;
-  --paper-mute:    #8a8273;
-  --paper-faint:   #524e44;
-  --rule:          #2c2920;
-  --rule-soft:     #1f1d16;
+  --ink:           #071522;
+  --ink-soft:      #0d2234;
+  --ink-fold:      #132c42;
+  --paper:         #f4f9fc;
+  --paper-soft:    #c7d8e5;
+  --paper-mute:    #8fa8bc;
+  --paper-faint:   #587088;
+  --rule:          #294963;
+  --rule-soft:     #18354d;
 
-  --signal:        #ff7a3d;
-  --signal-soft:   #2b1c10;
-  --signal-deep:   #ffb487;
+  --signal:        #57d5ff;
+  --signal-soft:   #0b3a4b;
+  --signal-deep:   #bfefff;
 
-  --quiet:         #5eead4;
+  --quiet:         #ffd166;
 
   --font-display:  'Recursive Variable', ui-sans-serif, system-ui, sans-serif;
   --font-body:     'Recursive Variable', ui-sans-serif, system-ui, sans-serif;
@@ -59,25 +58,25 @@
   --sl-font-mono: var(--font-mono);
 }
 
-/* --paper-mute and --signal sit darker than a straight inversion: on cream
-   both have to clear 4.5:1 on --ink and on --ink-soft. --paper-faint clears
+/* --paper-mute and --signal both clear 4.5:1 on --ink and --ink-soft.
+   --paper-faint clears
    neither in either theme, so it is decoration only, never text. */
 :root[data-theme='light'] {
-  --ink:           #f5f0e2;
-  --ink-soft:      #ebe3cf;
-  --ink-fold:      #e1d8c2;
-  --paper:         #1a1814;
-  --paper-soft:    #4d4740;
-  --paper-mute:    #665c50;
-  --paper-faint:   #a59c8b;
-  --rule:          #c8bda7;
-  --rule-soft:     #ddd2bb;
+  --ink:           #f4f9fc;
+  --ink-soft:      #e5f0f6;
+  --ink-fold:      #d7e7f0;
+  --paper:         #10263b;
+  --paper-soft:    #344f66;
+  --paper-mute:    #536e84;
+  --paper-faint:   #8aa0b2;
+  --rule:          #b9cedc;
+  --rule-soft:     #d7e5ed;
 
-  --signal:        #b03a0a;
-  --signal-soft:   #f1dac8;
-  --signal-deep:   #7c2a08;
+  --signal:        #006f93;
+  --signal-soft:   #d5eff7;
+  --signal-deep:   #004f6a;
 
-  --quiet:         #1e5e6e;
+  --quiet:         #7a5400;
 
   --sl-color-bg:           var(--ink);
   --sl-color-text:         var(--paper);
@@ -150,7 +149,7 @@ body {
 .hero .copy { max-width: none !important; }
 
 .hero::before {
-  content: 'mxr ◈ a notebook for your inbox';
+  content: 'mxr ◈ mail for your terminal and your agent';
   display: block;
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-meta);
@@ -166,7 +165,7 @@ body {
 .hero h1 {
   font-family: var(--font-display);
   font-variation-settings: var(--rec-display);
-  font-size: clamp(1.9rem, 4vw, 3.4rem);
+  font-size: clamp(2.5rem, 5vw, 4.75rem);
   line-height: 1.02;
   letter-spacing: -0.04em;
   color: var(--paper);
@@ -479,8 +478,10 @@ body {
   height: 0.7rem;
   border-radius: 50%;
   background: var(--paper-faint);
+  margin: 0;
 }
-.hero-cast-dots i:nth-child(1) { background: var(--signal); }
+.hero-cast-dots i:nth-child(1) { background: var(--quiet); }
+.hero-cast-dots i:nth-child(2) { background: var(--signal); }
 
 .hero-cast-meta { margin-left: auto; flex: 0 1 auto; color: var(--paper-mute); }
 
@@ -542,6 +543,7 @@ body {
   transition: color 0.15s ease, background 0.15s ease;
   user-select: none;
   -webkit-user-select: none;
+  margin: 0;
 }
 .hero-cast-tab:last-child { border-right: 0; }
 .hero-cast-tab:hover { color: var(--paper); background: var(--ink-fold); }
@@ -1863,6 +1865,109 @@ body {
   border: 1px solid var(--rule);
   padding: 0.24rem 0.62rem;
   white-space: nowrap;
+}
+
+/* The first screen is a split product demo: the promise and install path on
+   the left, a real agent/TUI/CLI recording on the right. Everything after the
+   provider line returns to the full-width editorial flow. */
+@media (min-width: 1100px) {
+  main:has(.hero-cast) .content-panel > .sl-container {
+    display: grid;
+    grid-template-columns: minmax(20rem, 0.78fr) minmax(36rem, 1.22fr);
+    grid-template-rows: auto auto auto auto auto;
+    column-gap: clamp(2.5rem, 5vw, 5.5rem);
+    max-width: 92rem;
+    margin-inline: auto;
+    padding: clamp(2rem, 4vw, 4rem) clamp(1.5rem, 4vw, 4rem) 0;
+  }
+
+  main:has(.hero-cast) .content-panel > .sl-container > .hero {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  main:has(.hero-cast) .content-panel > .sl-container > .sl-markdown-content {
+    display: contents;
+  }
+
+  main:has(.hero-cast) .hero::before {
+    margin-bottom: clamp(1.25rem, 2.5vw, 2.25rem);
+  }
+
+  main:has(.hero-cast) .hero h1 {
+    max-width: 10ch;
+    font-size: clamp(3.4rem, 4.6vw, 5.25rem);
+  }
+
+  main:has(.hero-cast) .hero .tagline {
+    max-width: 43ch;
+  }
+
+  main:has(.hero-cast) .hero-install {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: start;
+    max-width: none;
+    margin: clamp(1.5rem, 3vw, 2.25rem) 0 0;
+    padding: 0;
+  }
+
+  main:has(.hero-cast) .hero-install-cmd {
+    flex-basis: 16rem;
+  }
+
+  main:has(.hero-cast) .hero-install-alt {
+    width: 100%;
+    padding-left: 1.8rem;
+  }
+
+  main:has(.hero-cast) .hero-badges {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: start;
+    max-width: none;
+    margin: 1.25rem 0 0;
+    padding: 0;
+  }
+
+  main:has(.hero-cast) .hero-pronounce {
+    grid-column: 1;
+    grid-row: 4;
+    align-self: end;
+    max-width: none;
+    margin: 1.1rem 0 0;
+    padding: 0;
+  }
+
+  main:has(.hero-cast) .hero-cast {
+    grid-column: 2;
+    grid-row: 1 / 5;
+    align-self: center;
+    max-width: none;
+    width: 100%;
+    margin: 0;
+    padding: 0 0 0 clamp(1.5rem, 3vw, 3rem);
+    border-left: 1px solid var(--rule);
+  }
+
+  main:has(.hero-cast) .provider-line {
+    grid-column: 1 / -1;
+    grid-row: 5;
+    max-width: none;
+    width: 100%;
+    margin-top: clamp(2.5rem, 5vw, 4.5rem);
+    padding-inline: 0;
+  }
+
+  main:has(.hero-cast) .landing-section {
+    grid-column: 1 / -1;
+    width: 100%;
+    padding-inline: 0;
+  }
 }
 
 /* Automation contract one-liner inside §try-it. Overrides the

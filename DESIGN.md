@@ -6,13 +6,13 @@ and used by impeccable for on-brand output. Format follows the
 
 ## Theme
 
-**Warm-terminal, editorial.** Dark-default with a warm not-black
-surface (`#0d0d0c`, never `#000`), single saturated sodium accent
-(`#ff7a3d`), tabular cyan (`#5eead4`) for time/metadata. Light
-theme inverts the warmth: paper-cream surface, ink text, deeper
-ember accent. The vocabulary is publishing-meets-shell: column
-rules, section folios (`§ 01`), shell prompts, monospace as
-texture, no cards, no panels, no grain, no gradients.
+**Deep-ocean, editorial.** Dark-default with a navy ink surface
+(`#071522`, never `#000`), bright cyan signal (`#57d5ff`), and a
+small yellow cue (`#ffd166`). Light theme becomes pale blue paper
+with deep navy text and a darker cyan accent. The vocabulary is
+publishing-meets-shell: column rules, section folios (`§ 01`),
+shell prompts, monospace as texture, no cards, no grain, no
+gradients.
 
 The scene sentence: *a developer at 11pm with the TUI in one tmux
 pane and the marketing site open in their browser at 70% screen
@@ -23,53 +23,50 @@ the tool, in prose form.
 ## Color
 
 OKLCH-style relationships, expressed as hex tokens in CSS. Never
-use `#000` or `#fff`; the surface always has a slight warm
-desaturation toward the brand hue.
+use `#000` or `#fff`; the surface always carries a little blue.
 
 ### Tokens (dark theme — default)
 
 | Role | Token | Value | Notes |
 |---|---|---|---|
-| Surface | `--ink` | `#0d0d0c` | Page background, warm not-black |
-| Surface raised | `--ink-soft` | `#15140e` | Code blocks, install command background |
-| Surface fold | `--ink-fold` | `#1a1813` | Inline code, kbd elements |
-| Text 1 | `--paper` | `#f3eee0` | Body, headings, primary text |
-| Text 2 | `--paper-soft` | `#d6cebc` | Tagline, prose |
-| Text 3 | `--paper-mute` | `#8a8273` | Captions, masthead, copy button label |
-| Text 4 | `--paper-faint` | `#524e44` | Folio numbers, tertiary metadata |
-| Rule | `--rule` | `#2c2920` | Section dividers, panel borders |
-| Rule soft | `--rule-soft` | `#1f1d16` | Inner row dividers |
-| Brand accent | `--signal` | `#ff7a3d` | Sodium orange; primary CTA, prompts, hover |
-| Brand soft | `--signal-soft` | `#2b1c10` | Selection background, copy-success state |
-| Brand deep | `--signal-deep` | `#ffb487` | Inline code color, accent-high |
-| Quiet | `--quiet` | `#5eead4` | Cyan; tabular nums (years, dates), agent labels |
+| Surface | `--ink` | `#071522` | Page background, deep navy |
+| Surface raised | `--ink-soft` | `#0d2234` | Code blocks, install command background |
+| Surface fold | `--ink-fold` | `#132c42` | Inline code, kbd elements |
+| Text 1 | `--paper` | `#f4f9fc` | Body, headings, primary text |
+| Text 2 | `--paper-soft` | `#c7d8e5` | Tagline, prose |
+| Text 3 | `--paper-mute` | `#8fa8bc` | Captions, masthead, copy button label |
+| Text 4 | `--paper-faint` | `#587088` | Decoration and tertiary rules only |
+| Rule | `--rule` | `#294963` | Section dividers, panel borders |
+| Rule soft | `--rule-soft` | `#18354d` | Inner row dividers |
+| Brand accent | `--signal` | `#57d5ff` | Cyan; primary CTA, prompts, hover |
+| Brand soft | `--signal-soft` | `#0b3a4b` | Selection background, copy-success state |
+| Brand deep | `--signal-deep` | `#bfefff` | Inline code color, accent-high |
+| Quiet | `--quiet` | `#ffd166` | Yellow; small status and window cues |
 
 ### Tokens (light theme)
 
 | Token | Value | Notes |
 |---|---|---|
-| `--ink` | `#f5f0e2` | Paper-cream surface |
-| `--ink-soft` | `#ebe3cf` | Raised surface, code blocks |
-| `--ink-fold` | `#e1d8c2` | Inline code |
-| `--paper` | `#1a1814` | Primary text |
-| `--paper-soft` | `#4d4740` | Body |
-| `--paper-mute` | `#7a7064` | Captions |
-| `--paper-faint` | `#a59c8b` | Folios |
-| `--rule` | `#c8bda7` | Dividers |
-| `--rule-soft` | `#ddd2bb` | Inner rows |
-| `--signal` | `#c2410c` | Deeper ember on warm-paper background |
-| `--signal-soft` | `#f1dac8` | |
-| `--signal-deep` | `#7c2a08` | |
-| `--quiet` | `#1e5e6e` | |
+| `--ink` | `#f4f9fc` | Pale blue paper surface |
+| `--ink-soft` | `#e5f0f6` | Raised surface, code blocks |
+| `--ink-fold` | `#d7e7f0` | Inline code |
+| `--paper` | `#10263b` | Primary text |
+| `--paper-soft` | `#344f66` | Body |
+| `--paper-mute` | `#536e84` | Captions |
+| `--paper-faint` | `#8aa0b2` | Decoration only |
+| `--rule` | `#b9cedc` | Dividers |
+| `--rule-soft` | `#d7e5ed` | Inner rows |
+| `--signal` | `#006f93` | Cyan on pale paper |
+| `--signal-soft` | `#d5eff7` | |
+| `--signal-deep` | `#004f6a` | |
+| `--quiet` | `#7a5400` | |
 
 ### Color strategy
 
-**Restrained.** Warm neutrals carry 90%+ of the surface. The
-sodium orange `--signal` appears on shell prompts, primary CTA,
-hover states, hero accent, lineage `HEAD`, install commands, and
-`+` deltas in the lineage section. Cyan `--quiet` is a spot
-accent for tabular-nums (years, dates) and agent labels — under
-3% of any one screen.
+**Restrained.** Navy and pale blue carry most of the surface. Cyan
+`--signal` appears on shell prompts, primary CTA, hover states,
+the hero accent, and selected controls. Yellow `--quiet` is a
+small status cue, under 3% of any one screen.
 
 This is a deliberate departure from the GitHub-green +
 saturated-everything template common to dev tools. mxr's surface
@@ -78,16 +75,16 @@ is calm; the accents earn their place.
 ## Typography
 
 **One typeface.** [Recursive](https://www.recursive.design/) variable
-font, loaded from Google Fonts. Variation axes (`wght`, `CASL`,
+font, self-hosted through Fontsource. Variation axes (`wght`, `CASL`,
 `MONO`, `slnt`) generate every voice the page needs without
 loading a second family.
 
 ### Stack
 
 ```css
---font-display:  'Recursive', ui-sans-serif, system-ui, sans-serif;
---font-body:     'Recursive', ui-sans-serif, system-ui, sans-serif;
---font-mono:     'Recursive', ui-monospace, monospace;
+--font-display:  'Recursive Variable', ui-sans-serif, system-ui, sans-serif;
+--font-body:     'Recursive Variable', ui-sans-serif, system-ui, sans-serif;
+--font-mono:     'Recursive Variable', ui-monospace, monospace;
 ```
 
 ### Variation axis presets
@@ -148,17 +145,16 @@ taxonomy move (Linear-inspired).
 
 Each `<h2>` in `.landing-section` has a 1px top border in
 `--paper` and 0.75rem padding-top. Display variation, weight 800,
-italics get the sodium accent and `slnt -10`. No shell-prompt
+italics get the cyan accent and `slnt -10`. No shell-prompt
 prefix on h2 (folios cover that role).
 
 ### Hero
 
-Large display headline (clamp 2.8rem to 8.5rem) on warm ink,
-second line in `--signal` italicised via `--rec-display-italic`.
-Above the headline: a small mono masthead
-(`mxr · 0.4.72 · ◈ a notebook for your inbox`) on a 1px
-`--paper` top rule. Below: the tagline, then mono action links
-with `↗` and `→` arrows that translate on hover.
+On wide screens the hero is split by a 1px column rule. The promise,
+tagline, actions, install command, and concise capability labels sit
+on the left. A real CLI, TUI, or agent recording runs on the right.
+The headline uses `--rec-display`; its second line uses `--signal`
+and `--rec-display-italic`. On narrow screens the pieces stack.
 
 ### Hero install row
 
@@ -223,10 +219,10 @@ animation 60ms apart, honors `prefers-reduced-motion`.
 
 ## Motion
 
-CSS-only, ease-out curves, never bounce or elastic. One
-high-impact orchestrated moment (lineage section staggered
-fade-in). Subtle hover transitions on links, action arrows, and
-copy buttons. Honors `prefers-reduced-motion`.
+Ease-out curves, never bounce or elastic. The hero recording cycles
+between agent, CLI, and TUI, pauses while hovered or focused, and has
+a visible pause control. Subtle hover transitions remain on links,
+action arrows, and copy buttons. Honors `prefers-reduced-motion`.
 
 Forbidden: layout-animating properties, parallax scrolling,
 scroll-jacked transitions, marquee text, animated background
@@ -234,8 +230,8 @@ shaders.
 
 ## Backgrounds
 
-Flat warm ink, no gradient overlays, no noise, no scanlines, no
-glassmorphism. The page is a publication on dark paper. Texture
+Flat navy ink, no gradient overlays, no noise, no scanlines, no
+glassmorphism. The page is a publication on deep blue paper. Texture
 comes from typography, ruled lines, and column rhythm.
 
 ## Forbidden defaults (the AI-slop guardrails)

@@ -27,7 +27,7 @@ export default defineConfig({
         Footer: './src/components/Footer.astro',
       },
       head: [
-        { tag: 'meta', attrs: { name: 'theme-color', content: '#0d0d0c' } },
+        { tag: 'meta', attrs: { name: 'theme-color', content: '#071522' } },
         // Social cards / SEO. Starlight derives canonical, og:title/type/url/locale/
         // description/site_name, and twitter:card from `site` + page frontmatter; these
         // add the image and the bits it does not emit. Absolute URLs are required for og.
@@ -37,9 +37,9 @@ export default defineConfig({
         { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
         { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
         { tag: 'meta', attrs: { property: 'og:image:type', content: 'image/png' } },
-        { tag: 'meta', attrs: { property: 'og:image:alt', content: 'mxr: your inbox, on your computer. Local-first, CLI-first email.' } },
+        { tag: 'meta', attrs: { property: 'og:image:alt', content: 'mxr: Talk to your whole inbox from the TUI, CLI, or your agent.' } },
         { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://mxr.sh/og.png' } },
-        { tag: 'meta', attrs: { name: 'twitter:image:alt', content: 'mxr: your inbox, on your computer.' } },
+        { tag: 'meta', attrs: { name: 'twitter:image:alt', content: 'mxr: Talk to your whole inbox from the TUI, CLI, or your agent.' } },
         { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' } },
         { tag: 'meta', attrs: { name: 'author', content: 'planetaryescape' } },
         { tag: 'meta', attrs: { name: 'keywords', content: 'email client, local-first email, CLI email, terminal email client, TUI email, Gmail CLI, IMAP client, SMTP, Rust, MCP server, agent email, offline email, self-hosted email' } },

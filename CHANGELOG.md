@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.14](https://github.com/planetaryescape/mxr/compare/v0.6.13...v0.6.14) (2026-07-29)
+
+
+### Features
+
+* **compose:** create drafts for any mode with --draft ([#163](https://github.com/planetaryescape/mxr/issues/163)) ([a98f064](https://github.com/planetaryescape/mxr/commit/a98f064ade420bd18fb8425fa3568d549b3e7c52))
+
 ## [0.6.13](https://github.com/planetaryescape/mxr/compare/v0.6.12...v0.6.13) (2026-07-22)
 
 

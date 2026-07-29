@@ -24,7 +24,7 @@
 - [TUI](https://mxr.sh/reference/tui.md): six top-level screens, modals, panes
 - [Config](https://mxr.sh/reference/config.md): TOML schema for ~/.config/mxr/config.toml + custom keybindings
 - [HTTP bridge](https://mxr.sh/reference/bridge.md): endpoints, auth, curl recipes
-- [API explorer](https://mxr.sh/api/bridge/): interactive Scalar reference (requires JS)
+- [API route inventory](https://mxr.sh/reference/api-explorer/): read-only list of the daemon HTTP routes in the generated OpenAPI document; some live routes are missing (requires JS)
 
 ## Working with mxr
 

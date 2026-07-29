@@ -10,9 +10,13 @@ scripts all talk to the same daemon through one stable surface.
 
 The bridge serves an OpenAPI 3.1 spec at
 `http://mxr.localhost:42829/api/v1/openapi.json` (port and host configurable
-in `[bridge]`). The spec is authenticated like the rest of the bridge API.
-The web app generates its TypeScript client from this spec — you can do the
-same for any language with `openapi-generator` or `openapi-typescript`.
+in `[bridge]`). The spec is authenticated like the rest of the bridge API. It
+covers most routes and the shared protocol types. Some live routes are missing
+from it, and no route carries its parameters or response body, so a generated
+client gets the path list and the schemas while payload shapes stay untyped.
+That is what the web app runs on: `openapi-typescript` over the spec, then
+`openapi-fetch` on top. Use the route tables below for request and response
+shapes.
 
 :::tip[curl-friendly auth]
 Get the auth token from the active profile config directory's

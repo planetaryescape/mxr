@@ -514,7 +514,7 @@ would archive 142 messages.`}</code></pre>
       <div class="surface-tag">◈ browser-friendly</div>
     </div>
     <div class="surface-body">
-      <p><code>mxr web</code> exposes the daemon over HTTP and WebSocket. Bearer-token auth, OpenAPI-described, generates typed SDK clients. Use the browser app we ship, or build your own client against the same API.</p>
+      <p><code>mxr web</code> exposes the daemon over HTTP and WebSocket. Bearer-token auth. The daemon publishes an OpenAPI document covering most routes plus the protocol types. The browser app we ship generates its TypeScript types from it. Use that app, or build your own client against the same API.</p>
       <pre class="surface-snippet" tabindex="0"><code>{`curl -H "Authorization: Bearer $TOKEN" \\
     "http://mxr.localhost:42829/api/v1/mail/search?q=is:unread"
 {"results": [...]}`}</code></pre>
@@ -527,7 +527,7 @@ would archive 142 messages.`}</code></pre>
       <div class="surface-tag">◈ build it</div>
     </div>
     <div class="surface-body">
-      <p>A Raycast extension. A phone app. A Slack bot. A custom dashboard. The OpenAPI and MCP surfaces are contracts your agent can write against.</p>
+      <p>A Raycast extension. A phone app. A Slack bot. A custom dashboard. MCP tools carry typed input schemas, and the HTTP bridge reference documents the request and response shapes.</p>
     </div>
   </div>
 </div>
@@ -673,7 +673,7 @@ would archive 142 messages.`}</code></pre>
 
 <div class="endplate-meta">end plate ◈ open source ◈ MIT / Apache-2.0</div>
 
-<p>Built in Rust: one binary for the supported macOS and Linux release targets. No analytics, no phone-home, no third-party service in the core sync/search path. The architecture is designed for contribution: clean crate boundaries, compile-time-checked SQL via sqlx, a conformance test suite for provider adapters. Whether it's a bug fix, a new provider adapter, a CLI improvement, or an idea, we want to hear from you.</p>
+<p>Built in Rust: one binary for the supported macOS and Linux release targets. No telemetry, and no mxr-operated server between you and your mail provider. The architecture is designed for contribution: clean crate boundaries, compile-time-checked SQL via sqlx, a conformance test suite for provider adapters. Whether it's a bug fix, a new provider adapter, a CLI improvement, or an idea, we want to hear from you.</p>
 
 <div class="cta-buttons">
   <a href="/getting-started/install/" class="cta-primary">Get started →</a>

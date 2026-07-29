@@ -532,7 +532,7 @@ or high, propose the better slot. Don't auto-reschedule."
 - [Automation contract](/guides/automation-contract/) — which commands support `--format json`, `--dry-run`, stdin IDs.
 - [JSON output schemas](/reference/json-output/) — canonical field names for piping into `jq`.
 - [HTTP bridge](/reference/bridge/) — same surface over HTTP for web, mobile, and agent clients.
-- [API explorer](/reference/api-explorer/) — interactive Scalar reference; try requests against your local daemon.
+- [API route inventory](/reference/api-explorer/) — the daemon HTTP routes in the generated OpenAPI document.
 - [For agents](/guides/for-agents/) — boundaries and safe defaults when an LLM is driving.
 - [AI agent skill](/guides/agent-skill/) — install the mxr skill into Claude / Cursor / Continue.
 - [Forgotten work](/guides/forgotten-work/) — commitments and owed-reply lens behind the recipes above.

@@ -99,5 +99,43 @@ if (pathCount === 0) {
   failed = true;
 }
 
+// The bridge token file moves with the profile, MXR_CONFIG_DIR,
+// `[bridge].token_path`, and MXR_BRIDGE_TOKEN_PATH.
+if (/~\/\.config\/mxr\/bridge-token/.test(JSON.stringify(openapi))) {
+  console.error('[docs-validate] OpenAPI spec hardcodes ~/.config/mxr/bridge-token');
+  failed = true;
+}
+
+// `/api/v1/health` is the one route the bridge serves without a token, so it
+// must not inherit the document-level bearer requirement or answer 401.
+const health = openapi.paths?.['/api/v1/health']?.get;
+if (health?.security?.length !== 0 || Object.keys(health.responses ?? {}).join() !== '200') {
+  console.error('[docs-validate] GET /api/v1/health must be public: empty `security`, 200 only');
+  failed = true;
+}
+
+// The hosted page renders a route inventory. It has no server to send to and
+// could not reach a local daemon anyway, so Scalar's request-execution and
+// client-generation controls stay off.
+const apiPage = join(repoRoot, 'site', 'src', 'pages', 'reference', 'api-explorer.astro');
+const apiPageText = readFileSync(apiPage, 'utf8');
+const readOnlyScalarFlags = [
+  'hideTestRequestButton: true',
+  'hideClientButton: true',
+  'hiddenClients: true',
+  'mcp: { disabled: true }',
+  "showDeveloperTools: 'never'",
+];
+for (const flag of readOnlyScalarFlags) {
+  if (!apiPageText.includes(flag)) {
+    console.error(`[docs-validate] ${apiPage}: Scalar config must set \`${flag}\``);
+    failed = true;
+  }
+}
+if (/^\s*servers:/m.test(apiPageText)) {
+  console.error(`[docs-validate] ${apiPage}: no server belongs on a read-only route inventory`);
+  failed = true;
+}
+
 if (failed) process.exit(1);
 console.log(`[docs-validate] ok (${pathCount} OpenAPI paths)`);

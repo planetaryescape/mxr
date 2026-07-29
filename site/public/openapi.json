@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "mxr HTTP Bridge",
-    "description": "Local-first email daemon HTTP/WebSocket surface. All routes (except /api/v1/health) require a bearer token from ~/.config/mxr/bridge-token.",
+    "description": "Local-first email daemon HTTP/WebSocket surface. This document is a route inventory plus the protocol schemas: it lists paths and methods, not per-route parameters or response bodies, and some live bridge routes are not declared here. All routes except /api/v1/health require a bearer token, read from the `bridge-token` file in the active profile's config directory (`~/Library/Application Support/mxr` on macOS, `$XDG_CONFIG_HOME/mxr` or `~/.config/mxr` on Linux). `[bridge].token_path` wins over `MXR_BRIDGE_TOKEN_PATH`, which wins over `MXR_CONFIG_DIR`.",
     "contact": {
       "name": "mxr",
       "url": "https://mxr.sh"
@@ -170,12 +170,10 @@
         "operationId": "health",
         "responses": {
           "200": {
-            "description": "OK"
-          },
-          "401": {
-            "description": "Missing or invalid bridge token"
+            "description": "Bridge is up. Returns status, service, and protocol_version"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/v1/mail/actions/invite/reply": {
@@ -16957,7 +16955,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "opaque",
-        "description": "Token from `~/.config/mxr/bridge-token`. Send via `Authorization: Bearer <token>` header. Browser WebSocket clients can use the `Sec-WebSocket-Protocol: bearer, <token>` subprotocol. The `?token=<token>` query string is accepted only by `/api/v1/events` for command-line WebSocket fallback."
+        "description": "Token from the `bridge-token` file in the active profile's config directory, or from `[bridge].token_path` / `MXR_BRIDGE_TOKEN_PATH` when either is set. Send via `Authorization: Bearer <token>` header. Browser WebSocket clients can use the `Sec-WebSocket-Protocol: bearer, <token>` subprotocol. The `?token=<token>` query string is accepted only by `/api/v1/events` for command-line WebSocket fallback."
       }
     }
   },

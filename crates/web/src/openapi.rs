@@ -17,8 +17,17 @@ use utoipa::{
     info(
         title = "mxr HTTP Bridge",
         description = "Local-first email daemon HTTP/WebSocket surface. \
-                       All routes (except /api/v1/health) require a bearer \
-                       token from ~/.config/mxr/bridge-token.",
+                       This document is a route inventory plus the protocol \
+                       schemas: it lists paths and methods, not per-route \
+                       parameters or response bodies, and some live bridge \
+                       routes are not declared here. \
+                       All routes except /api/v1/health require a bearer \
+                       token, read from the `bridge-token` file in the active \
+                       profile's config directory (`~/Library/Application \
+                       Support/mxr` on macOS, `$XDG_CONFIG_HOME/mxr` or \
+                       `~/.config/mxr` on Linux). `[bridge].token_path` wins \
+                       over `MXR_BRIDGE_TOKEN_PATH`, which wins over \
+                       `MXR_CONFIG_DIR`.",
         license(name = "MIT OR Apache-2.0"),
         contact(name = "mxr", url = "https://mxr.sh")
     ),
@@ -95,7 +104,21 @@ macro_rules! endpoint {
     };
 }
 
-endpoint!(get health "/api/v1/health", "Unauthenticated bridge liveness probe");
+/// The one route `router::app` serves outside the bearer-auth layer, so its
+/// operation overrides the document-level security requirement.
+#[utoipa::path(
+    get,
+    path = "/api/v1/health",
+    summary = "Unauthenticated bridge liveness probe",
+    security(),
+    responses((
+        status = 200,
+        description = "Bridge is up. Returns status, service, and protocol_version"
+    ))
+)]
+#[allow(dead_code)]
+fn health() {}
+
 endpoint!(get openapi_json "/api/v1/openapi.json", "OpenAPI 3.1 document");
 endpoint!(get swagger_ui "/api/v1/docs", "Swagger UI");
 endpoint!(get events_ws "/api/v1/events", "WebSocket daemon event stream");
@@ -275,7 +298,10 @@ impl Modify for BearerSecurity {
                     .scheme(HttpAuthScheme::Bearer)
                     .bearer_format("opaque")
                     .description(Some(
-                        "Token from `~/.config/mxr/bridge-token`. Send via \
+                        "Token from the `bridge-token` file in the active \
+                         profile's config directory, or from \
+                         `[bridge].token_path` / `MXR_BRIDGE_TOKEN_PATH` when \
+                         either is set. Send via \
                          `Authorization: Bearer <token>` header. \
                          Browser WebSocket clients can use the \
                          `Sec-WebSocket-Protocol: bearer, <token>` subprotocol. \

@@ -154,11 +154,39 @@ Capture the `mutation_id` in the output. If the user notices an over-archive, th
 
 ## What stays local, what doesn't
 
-- **Embeddings (semantic search)** — local, with locally-stored model weights. Never sent off-device.
+- **Embeddings (semantic search)** — computed on your machine and never sent off-device. The model weights are downloaded from Hugging Face the first time a profile runs, unless you already have them or turn the download off.
 - **`mxr summarize` and `mxr draft-assist`** — call your configured `[llm]` endpoint. That can be a local server (Ollama, LM Studio) or a remote provider. Configure in `config.toml`. The thread content goes wherever the LLM is.
+- **Remote images in HTML mail** — fetched from whatever URLs the sender put in the message, tracking pixels included.
 - **Provider mail content** — passes through mxr to whatever provider the account is connected to (Gmail, IMAP). mxr never proxies through third parties.
 
-If you want a strict local-only setup: set `[llm].base_url = "http://localhost:11434/v1"` for Ollama and `[search.semantic].enabled = true`. No third-party calls beyond your own provider.
+For an agent loop that talks to nothing but your mail provider, set all three:
+
+```toml
+[llm]
+base_url = "http://localhost:11434/v1"   # Ollama, or any local server
+
+[render]
+html_remote_content = false              # stop fetching remote images
+
+[search.semantic]
+auto_download_models = false             # stop fetching model weights
+```
+
+Those last two ship as `true`, so an untouched config downloads embedding weights
+during the background pass after a sync and fetches every image an HTML message
+points at. `mxr config set render.html_remote_content false` sets the render key;
+`auto_download_models` has no `config set` key, so edit `config.toml` by hand.
+Semantic search then needs the active profile's weights already installed and
+errors when they are missing.
+
+`render.html_remote_content` only covers the daemon-side fetches used by the TUI
+and `mxr cat`. The web app renders message HTML in your browser, so the browser
+makes those requests, and its Remote images toggle starts on no matter what that
+key says. Turn it off in the web app as well.
+
+Two paths still leave the machine after that. `mxr unsubscribe` contacts the
+endpoint the sender chose, and adding an OAuth account talks to the provider's
+identity service.
 
 ## Token-budget tips
 
@@ -255,4 +283,4 @@ If you need stronger OS sandboxing, run the agent in a separate user/session and
 - [Agent skill](/guides/agent-skill/) — install the mxr skill into Claude Code, Cursor, Continue, Aider
 - [MCP server](/reference/mcp/) — first-party stdio MCP tools and profile gates
 - [HTTP bridge](/reference/bridge/) — same surface over HTTP
-- [API explorer](/reference/api-explorer/) — interactive Scalar reference
+- [API route inventory](/reference/api-explorer/) — the daemon HTTP routes in the generated OpenAPI document

@@ -140,7 +140,7 @@ export default defineConfig({
             { label: 'JSON output schemas', slug: 'reference/json-output' },
             { label: 'HTTP Bridge', slug: 'reference/bridge' },
             { label: 'MCP Server', slug: 'reference/mcp' },
-            { label: 'API Explorer', link: '/reference/api-explorer/' },
+            { label: 'API route inventory', link: '/reference/api-explorer/' },
             { label: 'Bug Reports', slug: 'reference/bug-report' },
             { label: 'Adapters', slug: 'reference/adapters' },
             { label: 'Conformance Tests', slug: 'reference/conformance' },

@@ -207,4 +207,4 @@ The point of the skill is not magic. It's that the agent uses the same CLI a hum
 - [Automation contract](/guides/automation-contract/) — what's safe to script
 - [MCP server](/reference/mcp/) — first-party stdio MCP tools for MCP clients
 - [HTTP bridge](/reference/bridge/) — same surface over HTTP for non-shell agents
-- [API explorer](/reference/api-explorer/) — try requests interactively
+- [API route inventory](/reference/api-explorer/) — the daemon HTTP routes in the generated OpenAPI document

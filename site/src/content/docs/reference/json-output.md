@@ -245,7 +245,7 @@ provider-side read state, filters, or bulk mark-read actions.
   "messages": [
     {
       "message_id": "019706f4-9b6e-7c31-8a3f-2a1c4de50b91",
-      "from": "Alice <alice@example.com>",
+      "from": "Alice",
       "subject": "Quarterly review"
     }
   ]
@@ -255,6 +255,11 @@ provider-side read state, filters, or bulk mark-read actions.
 `requested` and `selected_messages` both hold the resolved message count.
 `selected_threads` counts the distinct threads those messages belong to, and
 falls back to the message count when the envelopes could not be resolved.
+`messages[].from` is the sender's display name, falling back to their address
+when the message carries no display name. The full `Name <address>` form never
+appears here, so match on `message_id` instead of parsing `from`. `subject`
+reads `(no subject)` when the subject is empty. Both fields are empty strings
+for a message whose envelope did not resolve.
 `messages[].unsubscribe_method` appears on `mxr unsubscribe --dry-run` preview
 records, for every message whose envelope resolved. The value is `OneClick`,
 `HttpLink`, `Mailto`, `BodyLink`, or `None`.
@@ -262,7 +267,7 @@ records, for every message whose envelope resolved. The value is `OneClick`,
 `--format jsonl` emits one preview line per message, without the counts:
 
 ```json
-{"action":"archive","dry_run":true,"message_id":"019706f4-9b6e-7c31-8a3f-2a1c4de50b91","from":"Alice <alice@example.com>","subject":"Quarterly review"}
+{"action":"archive","dry_run":true,"message_id":"019706f4-9b6e-7c31-8a3f-2a1c4de50b91","from":"Alice","subject":"Quarterly review"}
 ```
 
 ## Mutation result

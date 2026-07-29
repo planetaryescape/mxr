@@ -4,56 +4,68 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 
 <StarlightPage
   frontmatter={{
-    title: 'API Explorer',
-    description: 'Interactive reference for the mxr HTTP bridge. Try requests against your local daemon at http://127.0.0.1:42829.',
+    title: 'API route inventory',
+    description: 'Read-only list of the mxr daemon HTTP routes described in the OpenAPI document generated at build time. Some live routes are missing from that document.',
     template: 'splash',
     pagefind: false,
   }}
 >
   <p>
-    The mxr daemon serves an OpenAPI 3.1 spec at <code>/api/v1/openapi.json</code> when
-    <code>[bridge]&nbsp;enabled&nbsp;=&nbsp;true</code> in your config (default). The explorer below
-    is rendered from the spec generated during this site's build.
+    A read-only list of the mxr daemon HTTP routes described in the generated
+    OpenAPI document. That document carries paths, methods, and the protocol
+    schemas. It leaves out per-route parameters and response bodies, and some
+    live routes are missing from it. The
+    <a href="/reference/bridge/">HTTP bridge reference</a> documents the request
+    and response shapes.
   </p>
 
   <p>
-    To try requests, start the daemon (<code>mxr</code> or <code>mxr daemon</code>) and click
-    <strong>Authorize</strong> in the explorer. The bearer token sits in the
-    <code>bridge-token</code> file in your active profile's config directory unless you have
-    overridden it; <a href="/reference/bridge/#auth">the bridge reference</a> shows how to read it.
+    This page sends no request to a daemon. The only thing it fetches is the
+    OpenAPI document from this site. Your daemon runs on your own machine, and
+    by default its bridge accepts browser requests only from loopback origins,
+    so a page served from mxr.sh cannot reach it. The daemon hosts its own
+    Swagger UI at <code>/api/v1/docs</code> behind the same bearer token as the
+    rest of the bridge, so an address-bar visit gets a 401. The bridge reference
+    covers reading that token and the curl recipes.
   </p>
 
   <p>
-    If the embedded explorer does not load, open the raw spec at
-    <a href="/openapi.json"><code>/openapi.json</code></a>.
+    The raw document is at <a href="/openapi.json"><code>/openapi.json</code></a>.
+    A running daemon serves the same thing at <code>/api/v1/openapi.json</code>.
   </p>
 
   <noscript>
-    <style>#api-explorer-loading { display: none; }</style>
+    <style>#api-routes-loading { display: none; }</style>
     <p>
-      The interactive explorer requires JavaScript. The raw spec is at
+      Rendering the route list requires JavaScript. The raw document is at
       <a href="/openapi.json"><code>/openapi.json</code></a>.
     </p>
   </noscript>
 
-  <p id="api-explorer-loading">Loading API Explorer...</p>
+  <p id="api-routes-loading">Loading route list...</p>
 
   <div id="scalar-api-reference" style="margin-top: 2rem; min-height: 80vh;"></div>
 
   <script>
-    // Bundled from the installed @scalar/api-reference so the explorer ships
+    // Bundled from the installed @scalar/api-reference so the page ships
     // with the site instead of running third-party script from a CDN.
     import { createApiReference } from '@scalar/api-reference';
     import '@scalar/api-reference/style.css';
 
     // Scalar hydrates instead of mounting when its target has children, so the
     // placeholder sits outside the mount point and goes just before mounting.
-    document.getElementById('api-explorer-loading')?.remove();
+    document.getElementById('api-routes-loading')?.remove();
 
     createApiReference('#scalar-api-reference', {
       url: '/openapi.json',
       darkMode: true,
-      servers: [{ url: 'http://127.0.0.1:42829', description: 'Local mxr daemon' }],
+      // No server, no request execution, no client generation: the document
+      // cannot describe a real call and this origin cannot reach a daemon.
+      hideTestRequestButton: true,
+      hideClientButton: true,
+      hiddenClients: true,
+      mcp: { disabled: true },
+      showDeveloperTools: 'never',
       // Scalar otherwise pulls webfonts from fonts.scalar.com and calls
       // api.scalar.com for its chat agent. Neither belongs on these docs.
       withDefaultFonts: false,

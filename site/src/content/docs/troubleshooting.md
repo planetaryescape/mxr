@@ -48,7 +48,8 @@ Common causes:
 
 - **Provider rate-limit.** The daemon backs off automatically; just wait. `mxr status --format json` will show `last_error` if it's a rate-limit retry.
 - **Stale Gmail history cursor.** mxr falls back to a full resync automatically. If it doesn't, force one with `mxr doctor --reindex`.
-- **Stale credential.** Run `mxr accounts repair <name>` (works for any password- or token-backed account — Gmail OAuth, IMAP password, or SMTP password). Re-prompts for the credential and overwrites the stored value (IMAP/SMTP passwords are written to `secrets.toml` on disk; Gmail OAuth to the keychain).
+- **Stale IMAP/SMTP password.** Run `mxr accounts repair <name>`. It re-prompts for password-backed IMAP/SMTP credentials and writes them to `secrets.toml`. The command can run directly from config when the daemon is unavailable, so a broken legacy keychain credential does not block its own repair.
+- **Stale OAuth credential.** Run `mxr accounts reauth <name>` for Gmail or Outlook. OAuth tokens do not use the IMAP/SMTP repair path.
 
 ### "sync still running" after 10 minutes
 

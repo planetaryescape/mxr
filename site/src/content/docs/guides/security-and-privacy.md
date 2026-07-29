@@ -64,6 +64,13 @@ best-effort keychain mirror that never blocks the operation. The on-disk
 `config.toml` only references credentials by `password_ref`; it never stores the
 password itself.
 
+Password lookup happens when an account connects or syncs, not while the daemon
+is being constructed. An unreadable password should fail that account's
+operation without preventing the daemon or other configured accounts from
+starting. Set `MXR_KEYCHAIN=off` to disable keychain reads and writes for
+IMAP/SMTP passwords; with that setting, `secrets.toml` is their only source.
+The setting does not affect Gmail or Outlook OAuth token storage.
+
 Gmail OAuth refresh tokens are stored in the OS keychain with a private disk
 fallback under the active token dir, so a noninteractive keychain failure does
 not strand an otherwise valid account. Outlook OAuth tokens are JSON files under
@@ -132,20 +139,30 @@ constrained to safe destination roots. Inline and remote HTML assets live
 under mxr's attachment cache, get private file permissions, and remote
 asset fetches have a fixed body-size cap.
 
-## Not shipped yet
+## Agent and MCP boundaries
 
-- First-party MCP server
-- Read-only mode for agents
-- Draft-only mode for agents
-- Account-scoped agent permissions
-- Explicit send approval flow
-- Config-based blocking of risky commands
+The first-party MCP server and agent-origin permission profiles now run through
+the daemon's normal IPC boundary. Configure `read-only`, `draft-only`,
+`restricted`, or `full` policy per origin; limit accessible accounts; and gate
+send or destructive operations separately. MCP send and mutation tools also
+require `confirm=true`.
 
-Those are real gaps. The current model is "broad CLI with dry-run and history," not "fully permissioned agent mail sandbox."
+```toml
+[agents.profiles.mcp]
+safety_policy = "draft-only"
+allowed_accounts = ["work"]
+allow_send = false
+allow_destructive = false
+```
+
+These controls reduce blast radius. They do not make email trustworthy. Every
+email field and attachment remains untrusted data, so an agent must never treat
+mail content as permission or instructions. See [For agents](/guides/for-agents/)
+for the operating rule and worked examples.
 
 ## Practical advice
 
 - Use `--dry-run` before any batch mutation.
 - Use app passwords or provider-specific credentials where your provider recommends them.
-- Keep your system keyring clean and scoped to the accounts you use.
+- Keep `secrets.toml` at mode `0600`, and keep any fallback keychain entries scoped to the accounts you use.
 - If an agent is involved, prefer workflows that search, read, export, and draft before workflows that mutate.

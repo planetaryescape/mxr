@@ -104,6 +104,24 @@ The `mxr accounts add` flow above is the supported path; the manual TOML shape i
 
 All use TLS. Port 993 is IMAP over TLS. Port 587 is SMTP with STARTTLS.
 
+For SMTP, `use_tls = true` selects implicit TLS on port 465 and STARTTLS on
+other ports, including 587. If your provider publishes port 465 instead of 587,
+set the provider's port explicitly and test the same path mxr will use to send:
+
+```toml
+[accounts.work.send]
+type = "smtp"
+host = "smtp.example.com"
+port = 465
+username = "you@example.com"
+password_ref = "mxr-work-smtp"
+use_tls = true
+```
+
+```bash
+mxr accounts test work
+```
+
 ## Verify the account
 
 ```bash

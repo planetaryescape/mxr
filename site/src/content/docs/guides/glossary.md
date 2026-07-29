@@ -30,7 +30,7 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 **Runtime account** — what the daemon actually has connected. May include accounts that are config-backed (the common case) plus runtime-only entries (e.g. browser-auth Gmail sessions that don't have a TOML row). `mxr accounts` shows runtime; `mxr config show` shows config.
 
-**Owned address** — a verified address belonging to an account, used for direction inference (inbound vs outbound). Manage with `mxr accounts addresses`.
+**Owned address** — an address registered locally against an mxr account, used for direction inference and per-message From selection. Registering it in mxr does not create or authorise the address at the mail provider. Manage with `mxr accounts addresses`.
 
 ## Search
 

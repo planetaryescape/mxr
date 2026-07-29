@@ -36,7 +36,7 @@ Complete reference for the `mxr` CLI. Pronounced "Mixer".
 - **Draft ID** = UUIDv7. From `mxr drafts --format json` or printed by `mxr compose`.
 - **Mutation ID** = printed by destructive mutations (`archive`, `trash`, `spam`, `read`, `read-archive`). Pass to `mxr undo` within ~60s.
 - **`--dry-run`** = preview without mutating. Exercises the same selection path as the real mutation.
-- **`--yes`** = skip confirmation. Required for non-interactive batch mutations.
+- **`--yes`** = skip confirmation. Required for non-interactive batch mutations. On `compose`/`reply`/`reply-all`/`forward` it is the **send** switch — to save a draft instead, use `--draft` (see [Compose, drafts, send](#compose-drafts-send)).
 - **`--search QUERY`** = batch path; resolves to multiple IDs. Mutually exclusive with positional `<id>...`. Most mutations also accept piped IDs on stdin.
 - **`--first` / `--limit N`** (on read-shaped commands with `--search`) = cap how many matches the command iterates over.
 
@@ -215,6 +215,15 @@ Daemon status: uptime, accounts, message count, sync state.
 
 All compose commands open `$EDITOR` (markdown + YAML frontmatter) unless `--body` or `--body-stdin` is provided. Inline `;snippet` expansions are resolved at parse time.
 
+**Save-vs-send — read before scripting compose/reply/reply-all/forward.** Each command's action is:
+
+- `--draft` → **saves a draft, never sends.** Prints `Draft saved: <id>` + `Send with: mxr send <id>`. Use this to create a draft of any kind (new, reply, reply-all, forward). Threading is preserved.
+- `--yes` → **sends now.** (Confusingly, `--yes` reads as "skip confirmation" but it is the send switch.)
+- neither → interactive: opens `$EDITOR`, then saves a draft.
+- `--dry-run` → preview only; reports the action (`save draft` / `send`) it would take.
+
+`--draft` and `--yes` are mutually exclusive (clap rejects both), so once you pass `--draft` no added flag can turn a save into a send. **When you want a draft, always pass `--draft` — do not rely on omitting `--yes`, and never add `--yes` to a command you previewed as a draft.**
+
 ### `mxr compose [OPTIONS]`
 ```
 --to <EMAILS>             Comma-separated
@@ -224,8 +233,12 @@ All compose commands open `$EDITOR` (markdown + YAML frontmatter) unless `--body
 --body <STRING>
 --body-stdin              Read body from stdin
 --attach <PATH>           Repeatable
---from <ACCOUNT_KEY>      Account to send from
---yes
+--from <ACCOUNT_OR_ADDRESS>
+                           Account to send from, or a registered owned
+                           address to use as the per-message From
+--account <ACCOUNT>        Disambiguate an address owned by multiple accounts
+--draft                    Save as a draft (never sends; conflicts with --yes)
+--yes                      Send now
 --dry-run
 --format <FORMAT>
 ```
@@ -233,16 +246,20 @@ All compose commands open `$EDITOR` (markdown + YAML frontmatter) unless `--body
 ### `mxr reply <MESSAGE_ID> [OPTIONS]`
 ```
 --body <STRING> | --body-stdin
+--from <OWNED_ADDRESS> / --account <ACCOUNT>
+--attach <PATH>            Repeatable
+--draft                    Save as a draft (never sends; conflicts with --yes)
 --yes / --dry-run / --format
 ```
 
 ### `mxr reply-all <MESSAGE_ID> [OPTIONS]`
-Same flags as `reply`.
+Same flags as `reply` (including `--draft`).
 
 ### `mxr forward <MESSAGE_ID> [OPTIONS]`
 ```
 --to <EMAILS>
 --body <STRING> | --body-stdin
+--draft                    Save as a draft (never sends; conflicts with --yes)
 --yes / --dry-run / --format
 ```
 
@@ -557,7 +574,7 @@ mxr accounts                          # list (default)
 mxr accounts add <provider>           # Interactive wizard, or pass flags below
 mxr accounts show <account>
 mxr accounts test <account>           # Connectivity check
-mxr accounts repair <account>         # Re-save passwords into protected keychain
+mxr accounts repair <account>         # Re-save IMAP/SMTP passwords to secrets.toml
 mxr accounts disable <account>
 mxr accounts remove <account>         # Cached mail kept unless purged
 ```
@@ -583,13 +600,24 @@ mxr accounts remove <account>         # Cached mail kept unless purged
 ```
 
 ### `mxr accounts addresses <SUBCOMMAND>`
-Manage owned addresses (aliases). Drives inbound/outbound direction inference for analytics.
+Manage owned addresses (aliases). They drive direction inference and define
+which From addresses the account may use.
 ```
-mxr accounts addresses list <account>
-mxr accounts addresses add <account> <email>
-mxr accounts addresses remove <account> <email>
-mxr accounts addresses set-primary <account> <email>
+mxr accounts addresses list --account <account>
+mxr accounts addresses add --account <account> <email>
+mxr accounts addresses add --account <account> <email> --primary
+mxr accounts addresses remove --account <account> <email>
+mxr accounts addresses set-primary --account <account> <email>
 ```
+
+`mxr compose --from <owned-address>` selects both the account and that sender
+identity. Replies and forwards also accept `--from <owned-address>`. Dry-run
+output reports the effective From that the real send path will use.
+
+The account's configured `email` remains the default From when compose selects
+an account by key. `set-primary` and `add --primary` change the address
+inventory's `is_primary` marker; in mxr 0.6.12 they do not rewrite that
+configured account email.
 
 ---
 
@@ -751,5 +779,5 @@ mxr completions <bash|zsh|fish|powershell|elvish>
 6. **Reader mode is default for `cat`.** Use `--raw` or `--html` only if you specifically need them.
 7. **`mxr web` for human handoff.** When the user wants to do something visual (lots of images, complex compose), launch the web UI rather than fighting the terminal.
 8. **`mxr screener` before mass cleanup.** Triaging unknown senders avoids re-archiving the same noise next week.
-9. **Aliases matter for analytics.** If `stale`, `response-time`, `contacts`, or `sender` produce odd results, check `mxr accounts addresses list <account>` — direction inference depends on knowing the user's addresses.
+9. **Aliases matter for analytics.** If `stale`, `response-time`, `contacts`, or `sender` produce odd results, check `mxr accounts addresses list --account <account>` — direction inference depends on knowing the user's addresses.
 10. **`mxr reset --hard` preserves config and credentials by default.** Only suggest `--including-config` if the user explicitly wants a from-scratch reinstall.

@@ -84,16 +84,17 @@ const COMMAND_EXAMPLES = {
     ],
   },
   compose: {
-    use: 'Write a new message in $EDITOR or from stdin in scripts. Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) against a transient draft built from these flags — useful in CI / pre-commit hooks.',
+    use: 'Write a new message in $EDITOR or from stdin in scripts. `--yes` sends; `--draft` saves to `mxr drafts` without sending (the two are mutually exclusive, so no added flag can turn a draft into a send). Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) against a transient draft built from these flags — useful in CI / pre-commit hooks.',
     examples: [
       "mxr compose --to alice@example.com --subject 'Friday'",
       "printf 'Approved' | mxr compose --to alice@example.com --subject 'Re: plan' --body-stdin --dry-run",
+      "mxr compose --to alice@example.com --body 'Draft it.' --draft   # saves, never sends",
       "mxr compose --to alice@example.com --body 'see attached' --check --format json   # warns: missing attachment",
     ],
   },
-  reply: { use: 'Reply to one message, interactively or from an agent-approved body.', examples: ["mxr reply MESSAGE_ID", "mxr reply MESSAGE_ID --body 'On it.' --yes"] },
-  'reply-all': { use: 'Reply to everyone on a thread.', examples: ["mxr reply-all MESSAGE_ID --body-stdin --dry-run"] },
-  forward: { use: 'Forward a message with optional context.', examples: ["mxr forward MESSAGE_ID --to teammate@example.com"] },
+  reply: { use: 'Reply to one message, interactively or from an agent-approved body. `--yes` sends; `--draft` saves a threaded draft to send later with `mxr send`.', examples: ["mxr reply MESSAGE_ID", "mxr reply MESSAGE_ID --body 'On it.' --yes", "mxr reply MESSAGE_ID --body 'Draft it.' --draft   # saves, never sends"] },
+  'reply-all': { use: 'Reply to everyone on a thread. `--yes` sends; `--draft` saves a threaded draft to send later with `mxr send`.', examples: ["mxr reply-all MESSAGE_ID --body-stdin --dry-run", "mxr reply-all MESSAGE_ID --body 'Thanks all.' --draft   # saves, never sends"] },
+  forward: { use: 'Forward a message with optional context. `--yes` sends; `--draft` saves the forward as a draft to send later with `mxr send`.', examples: ["mxr forward MESSAGE_ID --to teammate@example.com", "mxr forward MESSAGE_ID --to teammate@example.com --body 'FYI' --draft   # saves, never sends"] },
   drafts: { use: 'List, recover, resume, or discard local drafts.', examples: ["mxr drafts --format json", "mxr drafts recover"] },
   send: {
     use: 'Send or schedule a saved draft. Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) without sending; exit 2 on Blocker. Use `--override-safety <TOKEN>` to bypass a Blocker the previous `--check` minted.',

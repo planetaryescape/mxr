@@ -1027,6 +1027,12 @@ pub enum Command {
         /// Skip confirmation prompt
         #[arg(long)]
         yes: bool,
+        /// Save as a draft instead of sending. Never transmits; the
+        /// message lands in `mxr drafts` and is sent later with
+        /// `mxr send <draft-id>`. Mutually exclusive with `--yes`, so
+        /// no added flag can turn a draft into a send.
+        #[arg(long, conflicts_with = "yes")]
+        draft: bool,
         /// Show what would be sent without sending
         #[arg(long)]
         dry_run: bool,
@@ -1037,7 +1043,7 @@ pub enum Command {
         /// saving. Exit non-zero only on Blocker issues. Useful for
         /// CI/pre-commit hooks: pipe a body in and assert the JSON
         /// report.
-        #[arg(long, conflicts_with_all = ["dry_run", "yes"])]
+        #[arg(long, conflicts_with_all = ["dry_run", "yes", "draft"])]
         check: bool,
         /// With `--check`: skip LLM-backed checks (answer-coverage).
         /// Has no effect on a real send.
@@ -1072,6 +1078,12 @@ pub enum Command {
         /// Skip confirmation
         #[arg(long)]
         yes: bool,
+        /// Save as a draft instead of sending. Never transmits; the
+        /// reply lands in `mxr drafts` (threaded, ready to send with
+        /// `mxr send <draft-id>`). Mutually exclusive with `--yes`, so
+        /// no added flag can turn a draft into a send.
+        #[arg(long, conflicts_with = "yes")]
+        draft: bool,
         /// Show what would be sent
         #[arg(long)]
         dry_run: bool,
@@ -1116,6 +1128,12 @@ pub enum Command {
         /// Skip confirmation
         #[arg(long)]
         yes: bool,
+        /// Save as a draft instead of sending. Never transmits; the
+        /// reply lands in `mxr drafts` (threaded, ready to send with
+        /// `mxr send <draft-id>`). Mutually exclusive with `--yes`, so
+        /// no added flag can turn a draft into a send.
+        #[arg(long, conflicts_with = "yes")]
+        draft: bool,
         /// Show what would be sent
         #[arg(long)]
         dry_run: bool,
@@ -1163,6 +1181,12 @@ pub enum Command {
         /// Skip confirmation
         #[arg(long)]
         yes: bool,
+        /// Save as a draft instead of sending. Never transmits; the
+        /// forward lands in `mxr drafts`, ready to send with
+        /// `mxr send <draft-id>`. Mutually exclusive with `--yes`, so
+        /// no added flag can turn a draft into a send.
+        #[arg(long, conflicts_with = "yes")]
+        draft: bool,
         /// Show what would be sent
         #[arg(long)]
         dry_run: bool,
@@ -2989,6 +3013,50 @@ mod tests {
                 assert_eq!(format, Some(OutputFormat::Json));
             }
             other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn reply_all_accepts_draft_flag() {
+        let cli = Cli::parse_from(["mxr", "reply-all", "msg_1", "--body", "hi", "--draft"]);
+        match cli.command {
+            Some(Command::ReplyAll {
+                message_id,
+                draft,
+                yes,
+                ..
+            }) => {
+                assert_eq!(message_id, "msg_1");
+                assert!(draft, "--draft should parse");
+                assert!(!yes);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    /// `--draft` and `--yes` are mutually exclusive so no added flag can
+    /// turn a save-as-draft into a send. Covers all four compose-family
+    /// commands, since each declares the conflict independently.
+    #[test]
+    fn draft_conflicts_with_yes_across_compose_family() {
+        let cases: &[&[&str]] = &[
+            &["mxr", "compose", "--to", "a@b.co", "--draft", "--yes"],
+            &["mxr", "reply", "msg_1", "--draft", "--yes"],
+            &["mxr", "reply-all", "msg_1", "--draft", "--yes"],
+            &["mxr", "forward", "msg_1", "--draft", "--yes"],
+        ];
+        for args in cases {
+            // `Cli` doesn't derive `Debug`, so match rather than `expect_err`.
+            match Cli::try_parse_from(*args) {
+                Ok(_) => panic!("--draft --yes must be rejected for {:?}", &args[1]),
+                Err(err) => assert_eq!(
+                    err.kind(),
+                    clap::error::ErrorKind::ArgumentConflict,
+                    "expected a conflict error for {:?}, got {:?}",
+                    &args[1],
+                    err.kind()
+                ),
+            }
         }
     }
 }

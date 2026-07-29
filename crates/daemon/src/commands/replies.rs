@@ -119,6 +119,7 @@ async fn walk_reply_queue(
                     signature: None,
                     no_signature: false,
                     yes: false,
+                    draft: false,
                     dry_run: false,
                     remind_after: None,
                     format: None,

@@ -363,7 +363,7 @@ without an active inbox.
 | `POST` | `/platform/accounts/test` | Test credentials |
 | `POST` | `/platform/accounts/upsert` | Add / update an account |
 | `POST` | `/platform/accounts/authorize` | `{account, reauthorize}` — `AuthorizeAccountConfig` (OAuth / credential handoff) |
-| `POST` | `/platform/accounts/repair` | Repair keychain / stored credentials for a config |
+| `POST` | `/platform/accounts/repair` | Repair stored IMAP/SMTP passwords for a config |
 | `POST` | `/platform/accounts/default` | `{key}` set default |
 | `DELETE` | `/platform/accounts/{key}` | Remove |
 | `POST` | `/platform/accounts/{key}/disable` | Soft-disable |

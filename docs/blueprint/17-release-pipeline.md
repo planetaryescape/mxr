@@ -568,7 +568,8 @@ No extra work needed if the GitHub Release assets follow the naming pattern `{na
 
 The release workflow does not deploy the docs site. The docs site lives in
 `site/`, builds with Astro/Starlight, and deploys through Vercel for
-`https://mxr-mail.vercel.app` when `main` changes.
+`https://mxr.sh` when `main` changes. The old Vercel hostname redirects to the
+canonical domain.
 
 Local proof:
 

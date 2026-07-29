@@ -1,6 +1,6 @@
 # mxr — Internal Docs
 
-Contributor- and agent-facing docs. User-facing docs live in [`site/src/content/docs/`](../site/src/content/docs/) and are published to <https://mxr-mail.vercel.app>.
+Contributor- and agent-facing docs. User-facing docs live in [`site/src/content/docs/`](../site/src/content/docs/) and are published to <https://mxr.sh>.
 
 | Area | Path | Purpose |
 |---|---|---|

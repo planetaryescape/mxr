@@ -199,7 +199,7 @@ mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
   <div class="narrative">
     <h3>No signal. <em>No problem.</em></h3>
     <p>Open mxr on a plane with the wifi off. Read a thread, search the archive, write the replies you owe. Opening a message is a SQLite read, not a fetch, so nothing waits on the network, and a draft saves straight to disk. When you land and reconnect, mxr pulls in the new mail and you send the drafts you wrote in the air.</p>
-    <p>Your synced archive is on disk. Years of email and labels stay indexed locally, and attachment filenames are searchable. Opening an attachment downloads it into mxr's cache. Saving one that isn't cached yet downloads it straight to the destination you choose, without adding it to the cache.</p>
+    <p>Your synced archive is on disk. Years of email and labels stay indexed locally, and attachment filenames are searchable. Opening an attachment downloads it into mxr's cache. In the TUI, saving one that isn't cached yet downloads it straight to the destination you choose, without adding it to the cache.</p>
   </div>
 
   <div class="terminal-log" aria-label="Example session: reading and drafting on a plane, sending on landing">
@@ -298,11 +298,11 @@ mxr search "subject:invoice" --format json | jq -r '.results[].from' | sort -u
     <div class="agent-label">◈ prompt</div>
     <div class="agent-prompt">Find every CI failure email from last week. Cross-reference with my recent commits and archive the ones whose tests have since been fixed.</div>
     <div class="agent-runs">
-      <code>{`mxr search "from:ci@github.com after:2026-04-30" --format ids`}</code>
-      <code>{`git log --since=1.week --pretty=%H %s`}</code>
-      <code>{`echo <ids> | xargs mxr archive --yes`}</code>
+      <code>{`mxr search "from:ci@github.com after:2026-04-30" --format json | jq -r '.results[] | [.message_id, .subject] | @tsv'`}</code>
+      <code>{`git log --since=1.week --pretty='%H %s'`}</code>
+      <code>{`mxr search "from:ci@github.com after:2026-04-30 subject:upload" --format ids | mxr archive --yes`}</code>
     </div>
-    <div class="agent-result">23 failures, 18 since fixed ◈<span class="agent-ok">18 archived, 5 left for review.</span></div>
+    <div class="agent-result">23 failures, 18 from the upload suite that a later commit fixed ◈<span class="agent-ok">18 archived, 5 left for review.</span></div>
   </div>
 </div>
 
@@ -437,7 +437,7 @@ We're cutting v0.5 on Friday.`}</code></pre>
 <div class="principle principle-flip">
   <div class="principle-text">
     <h3>Provider-agnostic by construction.</h3>
-    <p>Gmail, IMAP, SMTP all normalise into one internal model. Mix providers freely; mxr handles the per-provider quirks behind a clean Rust trait. A conformance suite validates new adapters before they ship.</p>
+    <p>Gmail and IMAP sync mailbox data and normalise it into one internal model. Gmail and SMTP handle outgoing mail. Mix providers freely; mxr keeps the per-provider quirks behind one Rust trait for sync and another for send. A conformance suite validates new adapters before they ship.</p>
   </div>
   <div class="principle-margin">
     <pre tabindex="0"><code>{`mxr accounts add gmail

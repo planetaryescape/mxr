@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "generate": "node scripts/generate-cli-reference.mjs && bash scripts/dump-openapi-spec.sh",
+    "test": "node --test scripts/search-envelope-rule.test.mjs",
     "validate": "node scripts/validate-docs.mjs",
     "postbuild": "node scripts/generate-llms-txt.mjs",
     "dev": "npm run generate && astro dev",
-    "build": "npm run generate && npm run validate && astro build && node scripts/generate-llms-txt.mjs",
+    "build": "npm run generate && npm test && npm run validate && astro build && node scripts/generate-llms-txt.mjs",
     "preview": "astro preview"
   },
   "dependencies": {

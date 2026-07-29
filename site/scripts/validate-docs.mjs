@@ -2,6 +2,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { searchEnvelopeMisreads } from './search-envelope-rule.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const repoRoot = resolve(__dirname, '..', '..');
@@ -18,24 +19,6 @@ const banned = [
   { re: /--view\s+body/, message: '`mxr cat --view` accepts reader|raw|html|headers' },
   { re: /\|\s*xargs\s+-r/, message: 'GNU-only `xargs -r`; prefer mxr stdin or portable while-read' },
 ];
-
-// `mxr search --format json` emits an envelope, so a jq filter has to enter
-// through one of its top-level keys. Backslash continuations push the filter
-// onto later lines, so join them before matching.
-const searchJsonJq =
-  /mxr search\b[^\n]*?--format json(?![a-z])[^\n]*?\|\s*jq\s+(?:-[a-zA-Z]+\s+)*['"]?\s*([^\s|'"]+)/g;
-const envelopeKeys = new Set(['results', 'paging', 'explain', 'groups', 'query', 'group_by', 'total']);
-
-function searchEnvelopeMisreads(text) {
-  const joined = text.replace(/\\\n\s*/g, ' ');
-  return [...joined.matchAll(searchJsonJq)]
-    .map(([, filter]) => filter)
-    .filter((filter) => {
-      if (filter === '.') return false;
-      const key = /^\.([A-Za-z_][A-Za-z0-9_]*)/.exec(filter);
-      return key === null || !envelopeKeys.has(key[1]);
-    });
-}
 
 function* walk(dir) {
   for (const entry of readdirSync(dir)) {
@@ -73,10 +56,10 @@ for (const file of walk(docsRoot)) {
     }
   }
 
-  for (const filter of searchEnvelopeMisreads(text)) {
+  for (const { filter, command, keys } of searchEnvelopeMisreads(text)) {
     console.error(
-      `[docs-validate] ${file}: \`mxr search --format json\` emits an envelope; ` +
-        `jq must read \`.results\` (found \`${filter}\`)`,
+      `[docs-validate] ${file}: \`${command}\` emits an envelope keyed by ${keys}; ` +
+        `jq must enter through one of those (found \`${filter}\`)`,
     );
     failed = true;
   }

@@ -167,6 +167,10 @@ The stderr line has the same shape in `--format csv`.
 
 Groups are sorted by `count` descending, then `unread` descending, then `newest` descending, then `label`. `--limit` truncates that sorted list. Aggregations have no `paging` and no `explain`, and `--offset` is not sent.
 
+`--mode` applies to aggregations too, and it decides how much of the mailbox they see. A lexical aggregation groups every match, so `total` and the groups describe the same messages.
+
+A hybrid or semantic aggregation runs the query twice. The first run decides how many top results the second run will group. The second run searches a candidate pool that can be wider, and `total` reports how many candidates it ranked. The groups cover only the top results the first run allowed, so `total` can be larger than the number of grouped messages. Neither number counts every match in the mailbox, so use `--mode lexical` when you need exact counts.
+
 ## Message and thread reads
 
 `mxr cat`, `mxr thread`, `mxr headers`, and `mxr export --format json` return fuller daemon payloads because they are read surfaces, not compact search rows. Prefer `mxr search --format ids` when you only need IDs.

@@ -109,7 +109,7 @@ loading a second family.
 | Section header | `--rec-display` | clamp(1.6rem, 3vw, 2.4rem); ruled top border in `--paper` |
 | Body | `--rec-body` | line-height 1.65; max-width 38rem |
 | Mono / code | `--rec-mono` | font-feature-settings 'ss01', 'ss02', 'ss03' globally |
-| Tabular numbers | `--rec-mono` + `font-variant-numeric: tabular-nums` | Lineage years, eulogy dates |
+| Tabular numbers | `--rec-mono` + `font-variant-numeric: tabular-nums` | Search dates, terminal timestamps |
 
 ### Anti-rules
 
@@ -151,8 +151,10 @@ prefix on h2 (folios cover that role).
 ### Hero
 
 On wide screens the hero is split by a 1px column rule. The promise,
-tagline, actions, install command, and concise capability labels sit
-on the left. A real CLI, TUI, or agent recording runs on the right.
+tagline, actions, provider support, and install command sit on the
+left. A real CLI, TUI, or agent recording runs on the right.
+The mono eyebrow names Gmail, Outlook, and IMAP so provider breadth
+remains visible on short viewports before the detailed ledger.
 The headline uses `--rec-display`; its second line uses `--signal`
 and `--rec-display-italic`. On narrow screens the pieces stack.
 
@@ -163,23 +165,22 @@ Single mono line directly under the hero actions:
 background, 1px `--rule` left border (the only "stripe" allowed
 under DESIGN guardrails), copy button toggles to `--signal`
 on success. A trailing micro-meta line links to the full install
-grid in §01.
+grid in §07.
 
-### Provider line
+### Provider ledger
 
-Single typographic statement replacing logo-wall conventions:
-`works with Gmail, any IMAP server, any SMTP relay ◈ tested
-with Fastmail, Migadu, Proton Bridge`. Sits in the same horizontal
-rhythm as the section folios. No marquee, no animation, no
-gradient overlay.
+Three compact, unboxed rows in the hero show sync, send, and adapter
+support. Gmail, Outlook / Microsoft 365, IMAP, and SMTP are visible
+before the install command. The adapter row links to the documented
+provider interface. No logo wall, marquee, or feature tags.
 
-### Install grid (§01)
+### Install grid (§07)
 
 Three methods inline (Homebrew, Cargo, binaries) under a single
 masthead. A run-line below shows the three first-run commands:
-`mxr accounts add` → `mxr sync` → `mxr`. No card chrome.
+`mxr demo` → `mxr accounts add gmail` → `mxr`. No card chrome.
 
-### Search section (§03)
+### Search section (§02)
 
 Query renders as a typographic event: `$` prompt in `--signal`,
 command in `--paper`, query string in `--signal-em`. Results
@@ -188,7 +189,7 @@ tabular-nums, sender in `--paper` mono-em, subject in `--paper`
 sans, attachment glyph in `--paper-mute`. No marketing latency
 display in the header.
 
-### Agent transcripts (§04)
+### Agent transcripts (§03)
 
 Italic `--rec-body-italic` prompt with a 2px `--paper` left
 border (quote-block convention, not decorative accent). Mono
@@ -198,24 +199,24 @@ result with `--signal` success span. The closing JSON peek
 `crates/daemon/src/commands/search.rs`: `message_id`, flat
 `from` string, `date` RFC 3339, `read`, `starred`, `score`.
 
-### Eulogy (§05)
+### Two-way sync (§04)
 
-Two-column: ledger on the left with real ink-strikethrough lines
-on each killed Google product, a pending `?` row, prose on the
-right. No card. The strikethrough is a CSS pseudo-element, not a
-text decoration, so it persists across line wraps.
+Three-column comparison: actions in another mail client, the provider
+protocols in the centre, and the resulting state in mxr. Gmail,
+Outlook / Microsoft 365, and generic IMAP remain visible.
 
-### Lineage / git-log (§09)
+### Client surfaces (§05)
 
-Specialised component class set (`.lineage-log`, `.lineage-entry`,
-`.lineage-graph`, `.lineage-decoration`, `.lineage-tool`,
-`.lineage-year`, `.lineage-tagline`, `.lineage-deltas`,
-`.lineage-inherits`) renders the section as a literal `git log
---graph` view. Vertical `--rule` connector line, commit dots
-(●○◌) in `--signal` / `--paper-mute`, year stamps in `--quiet`
-tabular-nums, italic taglines, `+` (signal) for mxr's additions
-vs. `→` (cyan) for inherited features. Staggered fade-in
-animation 60ms apart, honors `prefers-reduced-motion`.
+Ruled rows explain the TUI, CLI, HTTP bridge, and MCP / agent
+surfaces. Each row names the interface, its role, and one concrete
+command or request. The section follows sync so the shared daemon
+model answers how all interfaces see the same mailbox.
+
+### Daily mail tools (§06)
+
+A compact scan grid holds the useful features that do not need a full
+section: editor compose, reader mode, follow-up queues, analytics,
+mail rules, and saved searches.
 
 ## Motion
 

@@ -8,10 +8,10 @@ into actionable signal. The orientation is **decisions first** — every
 metric ends in a verb (unsubscribe, archive, reply, demote a contact). If a
 number doesn't drive an action, it's not in the surface.
 
-Cloud analytics tools (Email Meter, EmailAnalytics, Sanebox) are
-structurally limited to headers + subject for legal/PR reasons. mxr has the
-full body, attachments, and graph locally — the analytics here are the ones
-SaaS tools won't ship.
+mxr computes analytics against local message bodies, attachment metadata, and
+the relationship graph built from your mail history. The commands can answer
+questions about response times, storage, stale threads, and contact activity
+without uploading that history to a separate analytics service.
 
 ## Bootstrap
 

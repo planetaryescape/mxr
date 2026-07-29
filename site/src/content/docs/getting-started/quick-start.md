@@ -42,6 +42,18 @@ mxr accounts add gmail
 
 The wizard prompts for an account name and your Gmail address, then opens a browser to authorize. If you're SSH'd into a remote box, see the [Gmail setup notes on SSH-friendly flows](/getting-started/gmail-setup/#working-over-ssh-or-in-a-container).
 
+For Outlook.com, Hotmail, or Live:
+
+```bash
+mxr accounts add outlook
+```
+
+For a Microsoft 365 work or school account:
+
+```bash
+mxr accounts add outlook-work
+```
+
 For IMAP+SMTP non-interactively (e.g. Gmail with an app password):
 
 ```bash

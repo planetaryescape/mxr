@@ -20,6 +20,8 @@ Keep provider-specific logic inside the adapter crate. Map native provider state
 4. Use `mxr-provider-fake::conformance` in your test suite.
 5. Compare your mapping against the fake provider and the first-party IMAP adapter.
 
+mxr does not load adapter crates as runtime plugins. To use a new adapter today, add it to mxr's provider wiring and build mxr with it, or contribute the adapter upstream.
+
 ## Design rules
 
 - Preserve provider IDs needed for round-trips.

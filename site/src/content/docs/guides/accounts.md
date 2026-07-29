@@ -1,6 +1,6 @@
 ---
 title: Accounts
-description: Manage runtime accounts and config-backed account definitions across Gmail, IMAP, and SMTP.
+description: Manage runtime accounts and config-backed account definitions across Gmail, Outlook, IMAP, and SMTP.
 ---
 
 ## Account model
@@ -33,7 +33,7 @@ The page shows:
 
 - Details on the left
 - Account list on the right
-- Runtime Gmail, IMAP, and SMTP-backed accounts
+- Runtime Gmail, Outlook, IMAP, and SMTP-backed accounts
 - Editable config-backed accounts where supported
 - Default-account state
 - Provider kind and enabled state
@@ -44,6 +44,8 @@ The page shows:
 ```bash
 mxr accounts
 mxr accounts add gmail
+mxr accounts add outlook       # Outlook.com, Hotmail, Live
+mxr accounts add outlook-work  # Microsoft 365 work or school
 mxr accounts add imap
 mxr accounts add smtp
 mxr accounts show ACCOUNT

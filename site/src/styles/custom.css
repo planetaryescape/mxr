@@ -149,7 +149,7 @@ body {
 .hero .copy { max-width: none !important; }
 
 .hero::before {
-  content: 'mxr ◈ mail for your terminal and your agent';
+  content: 'mxr ◈ Gmail, Outlook and IMAP';
   display: block;
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-meta);
@@ -252,7 +252,7 @@ body {
   max-width: 84rem;
   margin: 0 auto;
   padding: 0 clamp(1.25rem, 4vw, 4rem);
-  margin-top: clamp(-1.5rem, -2vw, -0.5rem);
+  margin-top: 0;
   margin-bottom: clamp(2rem, 4vw, 3rem);
   display: flex;
   align-items: center;
@@ -366,74 +366,50 @@ body {
   .hero-install-alt { font-size: 0.7rem; }
 }
 
-/* Provider line — single typographic statement that replaces the
-   marquee. Honest about what mxr connects to, no logo wall in
-   disguise. Tested-with list is a quieter trailing note. */
-.provider-line {
+/* Provider support sits in the main hero reading path. Three unboxed rows
+   separate sync, send, and extension support without another feature list. */
+.hero-providers {
   max-width: 84rem;
-  margin: 0 auto;
-  padding: 1rem clamp(1.25rem, 4vw, 4rem);
+  margin: clamp(-1.5rem, -2vw, -0.5rem) auto clamp(1rem, 2vw, 1.5rem);
+  padding: 0.75rem clamp(1.25rem, 4vw, 4rem) 0;
   border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-meta);
-  font-size: 0.82rem;
-  letter-spacing: 0.04em;
-  color: var(--paper-mute);
-  text-transform: lowercase;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.4rem;
-  line-height: 1.6;
+  font-size: clamp(0.75rem, 0.9vw, 0.84rem);
+  letter-spacing: 0.02em;
+  color: var(--paper-soft);
+  display: grid;
+  gap: 0.35rem;
+  line-height: 1.5;
 }
 
-.provider-line strong {
+.hero-provider-row {
+  display: grid;
+  grid-template-columns: 3.75rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: baseline;
+}
+
+.hero-provider-key {
+  color: var(--paper-mute);
+  text-transform: lowercase;
+}
+
+.hero-provider-row strong {
   color: var(--paper);
   font-variation-settings: var(--rec-mono-em);
   font-weight: normal;
 }
 
-.provider-line-sep {
-  color: var(--paper-faint);
-  font-size: 0.7em;
-  margin-inline: 0.5rem;
+.hero-provider-row a {
+  color: var(--signal);
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 3px;
 }
 
-.hero-pronounce {
-  max-width: 84rem;
-  margin: 0 auto;
-  padding: 0.6rem clamp(1.25rem, 4vw, 4rem) 0;
-  font-family: var(--font-mono);
-  font-variation-settings: var(--rec-meta);
-  font-size: 0.78rem;
-  letter-spacing: 0.04em;
-  color: var(--paper-mute);
-  text-transform: lowercase;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.4rem;
-}
-
-.hero-pronounce code {
-  color: var(--paper);
-  background: transparent;
-  padding: 0;
-  font-family: var(--font-mono);
-  font-variation-settings: var(--rec-mono-em);
-}
-
-.hero-pronounce strong {
-  color: var(--paper);
-  font-variation-settings: var(--rec-mono-em);
-  font-weight: normal;
-}
-
-.hero-pronounce-sep {
-  color: var(--paper-faint);
-  font-size: 0.7em;
-  margin-inline: 0.4rem;
+.hero-provider-row a:hover {
+  text-decoration-color: var(--signal);
 }
 
 /* Hero terminal demo — a real VHS recording of mxr against the
@@ -1838,43 +1814,18 @@ body {
 }
 
 /* ==========================================================
-   Front-loaded landing additions
-   Badge line, automation contract coda, "what mxr does"
-   scan-grid, and the intent router. Rules and columns carry
+   Landing additions
+   Automation contract coda, daily-tools scan grid, and documentation routes. Rules and columns carry
    these, in keeping with the no-cards house style.
    ========================================================== */
 
-/* Hero badge line — the 1-second "what it is" scan, right
-   under the actions. Quiet mono tags, not a logo wall. */
-.hero-badges {
-  max-width: 84rem;
-  margin: clamp(1rem, 2.5vw, 1.75rem) auto 0;
-  padding: 0 clamp(1.25rem, 4vw, 4rem);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 0.55rem;
-}
-
-.hero-badge {
-  font-family: var(--font-mono);
-  font-variation-settings: var(--rec-meta);
-  font-size: 0.74rem;
-  letter-spacing: 0.04em;
-  text-transform: lowercase;
-  color: var(--paper-mute);
-  border: 1px solid var(--rule);
-  padding: 0.24rem 0.62rem;
-  white-space: nowrap;
-}
-
-/* The first screen is a split product demo: the promise and install path on
-   the left, a real agent/TUI/CLI recording on the right. Everything after the
-   provider line returns to the full-width editorial flow. */
+/* The first screen is a split product demo: the promise, provider support,
+   and install path on the left, with a real recording on the right. */
 @media (min-width: 1100px) {
   main:has(.hero-cast) .content-panel > .sl-container {
     display: grid;
     grid-template-columns: minmax(20rem, 0.78fr) minmax(36rem, 1.22fr);
-    grid-template-rows: auto auto auto auto auto;
+    grid-template-rows: auto auto auto;
     column-gap: clamp(2.5rem, 5vw, 5.5rem);
     max-width: 92rem;
     margin-inline: auto;
@@ -1907,12 +1858,21 @@ body {
     max-width: 43ch;
   }
 
-  main:has(.hero-cast) .hero-install {
+  main:has(.hero-cast) .hero-providers {
     grid-column: 1;
     grid-row: 2;
     align-self: start;
     max-width: none;
-    margin: clamp(1.5rem, 3vw, 2.25rem) 0 0;
+    margin: clamp(1.25rem, 2.5vw, 2rem) 0 0;
+    padding: 0.75rem 0 0;
+  }
+
+  main:has(.hero-cast) .hero-install {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: start;
+    max-width: none;
+    margin: clamp(1.25rem, 2.5vw, 2rem) 0 0;
     padding: 0;
   }
 
@@ -1925,42 +1885,15 @@ body {
     padding-left: 1.8rem;
   }
 
-  main:has(.hero-cast) .hero-badges {
-    grid-column: 1;
-    grid-row: 3;
-    align-self: start;
-    max-width: none;
-    margin: 1.25rem 0 0;
-    padding: 0;
-  }
-
-  main:has(.hero-cast) .hero-pronounce {
-    grid-column: 1;
-    grid-row: 4;
-    align-self: end;
-    max-width: none;
-    margin: 1.1rem 0 0;
-    padding: 0;
-  }
-
   main:has(.hero-cast) .hero-cast {
     grid-column: 2;
-    grid-row: 1 / 5;
+    grid-row: 1 / 4;
     align-self: center;
     max-width: none;
     width: 100%;
     margin: 0;
     padding: 0 0 0 clamp(1.5rem, 3vw, 3rem);
     border-left: 1px solid var(--rule);
-  }
-
-  main:has(.hero-cast) .provider-line {
-    grid-column: 1 / -1;
-    grid-row: 5;
-    max-width: none;
-    width: 100%;
-    margin-top: clamp(2.5rem, 5vw, 4.5rem);
-    padding-inline: 0;
   }
 
   main:has(.hero-cast) .landing-section {
@@ -1988,7 +1921,7 @@ body {
   padding: 0.05em 0.4em;
 }
 
-/* "what mxr does" — a two-column scan grid built from hairlines,
+/* Daily mail tools — a two-column scan grid built from hairlines,
    not panels. One bold lead phrase per cell. */
 .cap-grid {
   display: grid;
@@ -2038,7 +1971,7 @@ body {
   .cap:nth-child(even) { padding-left: 0; }
 }
 
-/* "pick your path" — route by intent. Intent on the left,
+/* Documentation routes. Intent on the left,
    destination on the right, hairline rows with a hover nudge. */
 .pickpath-grid {
   display: grid;

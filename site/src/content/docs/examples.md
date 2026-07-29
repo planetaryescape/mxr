@@ -203,7 +203,7 @@ One mailbox, one search, many providers.
 mxr accounts add gmail
 mxr accounts add imap
 mxr search "is:unread" --account work --format json
-mxr accounts addresses add alias@example.com   # aliases you send and receive as
+mxr accounts addresses add alias@example.com   # register a provider-configured alias locally
 ```
 
 Full guide → [Accounts](/guides/accounts/)

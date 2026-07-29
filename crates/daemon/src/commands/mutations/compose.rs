@@ -31,6 +31,7 @@ pub struct ComposeOptions {
     pub signature: Option<String>,
     pub no_signature: bool,
     pub yes: bool,
+    pub draft: bool,
     pub dry_run: bool,
     pub format: Option<OutputFormat>,
 }
@@ -130,16 +131,20 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         &frontmatter,
         body,
     )?;
-    validate_compose_draft(&frontmatter, &draft.body_markdown, options.yes)?;
+    // `--draft` forces a save and cannot coexist with `--yes` (clap enforces
+    // the conflict); computing `sending` locally keeps the save-vs-send
+    // decision explicit rather than resting on that guard at a distance.
+    let sending = options.yes && !options.draft;
+    validate_compose_draft(&frontmatter, &draft.body_markdown, sending)?;
 
     if options.dry_run {
         let effective_from =
             resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
-        print_draft_preview(&draft, &effective_from, options.yes, options.format)?;
+        print_draft_preview(&draft, &effective_from, sending, options.format)?;
         return Ok(());
     }
 
-    if options.yes {
+    if sending {
         let receipt = expect_send_receipt(
             client
                 .request(Request::SendDraft {
@@ -182,6 +187,7 @@ pub struct ReplyCommand {
     pub signature: Option<String>,
     pub no_signature: bool,
     pub yes: bool,
+    pub draft: bool,
     pub dry_run: bool,
     pub remind_after: Option<String>,
     pub format: Option<OutputFormat>,
@@ -206,6 +212,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
         signature,
         no_signature,
         yes,
+        draft,
         dry_run,
         remind_after,
         format,
@@ -287,6 +294,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
             body: body_text,
             draft_file,
             yes,
+            draft,
             dry_run,
             remind_after,
             format,
@@ -306,6 +314,7 @@ pub struct ForwardCommand {
     pub signature: Option<String>,
     pub no_signature: bool,
     pub yes: bool,
+    pub draft: bool,
     pub dry_run: bool,
     pub format: Option<OutputFormat>,
 }
@@ -322,6 +331,7 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
         signature,
         no_signature,
         yes,
+        draft,
         dry_run,
         format,
     } = command;
@@ -388,6 +398,7 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
             body: body_text,
             draft_file,
             yes,
+            draft,
             dry_run,
             remind_after: None,
             format,
@@ -450,6 +461,7 @@ struct FinalizeCompose {
     body: String,
     draft_file: Option<PathBuf>,
     yes: bool,
+    draft: bool,
     dry_run: bool,
     remind_after: Option<String>,
     format: Option<OutputFormat>,
@@ -463,34 +475,39 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
         body,
         draft_file,
         yes,
+        draft,
         dry_run,
         remind_after,
         format,
     } = compose;
+    // `--draft` forces a save and cannot coexist with `--yes` (clap enforces
+    // the conflict); computing `sending` locally keeps the save-vs-send
+    // decision explicit rather than resting on that guard at a distance.
+    let sending = yes && !draft;
 
     // Recipient + thread context is only meaningful at the
     // post-$EDITOR stage where the user has filled in `to:` / `subject:`.
     let snippet_ctx = snippet_context_from_frontmatter(&frontmatter);
     let body = expand_compose_snippets_with_context(client, body, Some(&snippet_ctx)).await?;
-    let draft = draft_from_frontmatter(account_id, intent, &frontmatter, body)?;
-    validate_compose_draft(&frontmatter, &draft.body_markdown, yes)?;
+    let outgoing = draft_from_frontmatter(account_id, intent, &frontmatter, body)?;
+    validate_compose_draft(&frontmatter, &outgoing.body_markdown, sending)?;
 
     if dry_run {
         let effective_from =
-            resolve_effective_from(client, &draft.account_id, draft.from.as_ref()).await?;
-        print_draft_preview(&draft, &effective_from, yes, format)?;
+            resolve_effective_from(client, &outgoing.account_id, outgoing.from.as_ref()).await?;
+        print_draft_preview(&outgoing, &effective_from, sending, format)?;
         return Ok(());
     }
 
-    if !yes && remind_after.is_some() {
+    if !sending && remind_after.is_some() {
         anyhow::bail!("--remind-after requires --yes; saved drafts can be sent later with `mxr send <draft-id> --remind-after <time>`");
     }
 
-    if yes {
+    if sending {
         let receipt = expect_send_receipt(
             client
                 .request(Request::SendDraft {
-                    draft: draft.clone(),
+                    draft: outgoing.clone(),
                     override_safety_token: None,
                 })
                 .await?,
@@ -499,7 +516,7 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
-        println!("Sent draft {}", draft.id);
+        println!("Sent draft {}", outgoing.id);
         if let Some(info) = receipt.as_ref() {
             println!("Local message id: {}", info.local_message_id);
         }
@@ -507,15 +524,15 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
         expect_ack(
             client
                 .request(Request::SaveDraft {
-                    draft: draft.clone(),
+                    draft: outgoing.clone(),
                 })
                 .await?,
         )?;
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
-        println!("Draft saved: {}", draft.id);
-        println!("Send with: mxr send {}", draft.id);
+        println!("Draft saved: {}", outgoing.id);
+        println!("Send with: mxr send {}", outgoing.id);
     }
     Ok(())
 }

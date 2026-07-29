@@ -20,6 +20,7 @@ Options:
       --signature <SIGNATURE>  Insert this signature by name instead of the scoped default
       --no-signature           Do not insert any signature
       --yes                    Skip confirmation prompt
+      --draft                  Save as a draft instead of sending. Never transmits; the message lands in `mxr drafts` and is sent later with `mxr send <draft-id>`. Mutually exclusive with `--yes`, so no added flag can turn a draft into a send
       --dry-run                Show what would be sent without sending
       --format <FORMAT>        [possible values: table, json, jsonl, csv, ids]
       --check                  Build a transient draft from these args and run the pre-send safety pipeline against it without sending or saving. Exit non-zero only on Blocker issues. Useful for CI/pre-commit hooks: pipe a body in and assert the JSON report

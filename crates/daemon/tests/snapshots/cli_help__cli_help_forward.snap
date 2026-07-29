@@ -19,6 +19,7 @@ Options:
       --signature <SIGNATURE>  Insert this signature by name instead of the scoped default
       --no-signature           Do not insert any signature
       --yes                    Skip confirmation
+      --draft                  Save as a draft instead of sending. Never transmits; the forward lands in `mxr drafts`, ready to send with `mxr send <draft-id>`. Mutually exclusive with `--yes`, so no added flag can turn a draft into a send
       --dry-run                Show what would be sent
       --format <FORMAT>        [possible values: table, json, jsonl, csv, ids]
   -h, --help                   Print help

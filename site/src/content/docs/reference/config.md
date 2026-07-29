@@ -23,12 +23,20 @@ For the active `<instance>`, the default roots are:
 | Kind | Linux / XDG | macOS |
 |---|---|---|
 | Config | `$XDG_CONFIG_HOME/<instance>/config.toml` | `~/Library/Application Support/<instance>/config.toml` |
+| IMAP/SMTP secrets | `$XDG_CONFIG_HOME/<instance>/secrets.toml` | `~/Library/Application Support/<instance>/secrets.toml` |
 | Data | `$XDG_DATA_HOME/<instance>/` | `~/Library/Application Support/<instance>/` |
 | Socket | `$XDG_RUNTIME_DIR/<instance>/mxr.sock` | `~/Library/Application Support/<instance>/mxr.sock` |
 
-`MXR_CONFIG_DIR`, `MXR_DATA_DIR`, `MXR_TOKEN_DIR`, `MXR_SOCKET_PATH`,
-`MXR_BRIDGE_TOKEN_PATH`, and `MXR_BRIDGE_PORT_PATH` override individual
-paths when needed.
+`MXR_CONFIG_DIR`, `MXR_SECRETS_PATH`, `MXR_DATA_DIR`, `MXR_TOKEN_DIR`,
+`MXR_SOCKET_PATH`, `MXR_BRIDGE_TOKEN_PATH`, and `MXR_BRIDGE_PORT_PATH`
+override individual paths when needed.
+
+IMAP/SMTP passwords are stored in `secrets.toml` at mode `0600`, not in
+`config.toml`. The OS keychain is an optional migration fallback. Set
+`MXR_KEYCHAIN=off` when IMAP/SMTP password handling must not touch it, such as
+on a headless host. This setting does not change OAuth token storage.
+See [Security & Privacy](/guides/security-and-privacy/#where-credentials-live)
+for the storage model and its tradeoff.
 
 `MXR_DAEMON_ADDR` selects which transport the `mxr` CLI dials:
 `unix://<path>` (default), `tcp://<host:port>`, or `cmd://<command>` (e.g.
@@ -263,7 +271,7 @@ apply changes.
 Each `[accounts.<key>]` is a TOML subtable. Required:
 
 - `name` — display name in the sidebar
-- `email` — primary address
+- `email` — canonical account email and default From for account-key selection
 - `enabled` (default `true`) — when `false` the daemon skips the account
   on sync. Useful for keeping a dormant account configured without
   paying its sync cost.
@@ -310,6 +318,11 @@ password_ref = "imap:work"
 Same shape as the IMAP block but with the SMTP host/port and
 `password_ref`. `auth_required = false` is the rare relay case where
 the SMTP server accepts the message without credentials.
+
+With `use_tls = true`, port 465 uses implicit TLS and other ports use
+STARTTLS. With `use_tls = false`, the transport is plaintext; mxr refuses that
+combination when `auth_required = true` so credentials cannot be submitted over
+an unencrypted connection.
 
 ## `render`
 

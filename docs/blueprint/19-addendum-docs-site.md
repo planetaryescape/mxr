@@ -113,8 +113,8 @@ cd site && npm run build
 
 **Deploy trigger**: Push to `main` branch, changes in `site/` directory.
 
-**Public URL**: `https://mxr-mail.vercel.app` (configured in
-`site/astro.config.mjs`).
+**Public URL**: `https://mxr.sh` (configured in `site/astro.config.mjs`). The
+old `mxr-mail.vercel.app` hostname redirects to the canonical domain.
 
 Local checks:
 

@@ -27,6 +27,39 @@ mxr drafts
 mxr send DRAFT_ID
 ```
 
+## Save as a draft (don't send)
+
+`compose`, `reply`, `reply-all`, and `forward` each save a draft with
+`--draft` and send with `--yes`. The two flags are mutually exclusive, so
+no added flag can turn a save into a send — pass `--draft` and the command
+cannot transmit.
+
+```bash
+# Save a reply-all as a draft. Threading is preserved; nothing is sent.
+mxr reply-all MESSAGE_ID --body "Thanks all." --draft
+# → Draft saved: draft_abc123
+#   Send with: mxr send draft_abc123
+
+# Same for a new message, a reply, or a forward.
+mxr compose --to alice@example.com --subject "Friday" --body "Notes below." --draft
+mxr reply MESSAGE_ID --body "On it." --draft
+mxr forward MESSAGE_ID --to team@example.com --body "FYI" --draft
+
+# Preview first — the dry-run reports "save draft", matching what runs.
+mxr reply-all MESSAGE_ID --body "Thanks all." --draft --dry-run
+
+# --draft and --yes cannot be combined:
+mxr reply-all MESSAGE_ID --draft --yes
+# → error: the argument '--draft' cannot be used with '--yes'
+```
+
+Without `--draft` and without `--yes`, an interactive `mxr reply`
+(no `--body`) opens `$EDITOR` and then saves a draft; adding `--yes` is
+what sends. Reach for `--draft` when you want the save to be explicit and
+unsendable — especially from scripts or agents, where an accidental
+`--yes` would otherwise transmit. Send the saved draft later with
+`mxr send DRAFT_ID` (which runs the [pre-send safety pipeline](#pre-send-safety)).
+
 ## TUI
 
 - `c`: compose
@@ -117,6 +150,12 @@ New compose uses `--from <account-or-address>` to choose the sender.
 Replies and forwards can also take `--account <selector>` to assert which
 account owns the original message before drafting.
 
+Those are two related choices, not one identity. An account key such as
+`--from work` selects that account and uses its configured account email. An
+owned address such as `--from accounts@example.com` selects the account that
+owns the address and uses that exact address as the message From. If more than
+one account owns the address, add `--account` to disambiguate it.
+
 The sender address comes from the selected/default runtime account, not
 from a static status snapshot. This matters for multi-account setups.
 
@@ -164,6 +203,11 @@ Rules:
 - **`--from` / `from:` win.** An explicit value overrides the reply default.
 - The From flows into both the message `From:` header and the SMTP envelope
   sender; `--dry-run --format json` reports the effective `from`.
+- **Provider permission is separate.** Registering an owned address in mxr
+  does not create the alias or grant send-as permission at Zoho, Gmail, or an
+  SMTP provider. Configure the alias there first. A dry-run proves mxr's local
+  account and From resolution; the provider still makes the final acceptance
+  decision when you send.
 
 ## Attachments
 

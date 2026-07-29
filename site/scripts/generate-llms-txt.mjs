@@ -6,7 +6,7 @@
  *    `dist/llms-full.txt` so an LLM can ingest the entire docs corpus
  *    in one shot.
  * 2. Emits a `.md` sibling next to every built `dist/.../index.html`
- *    so `curl https://mxr-mail.vercel.app/cookbook/triage.md` returns
+ *    so `curl https://mxr.sh/cookbook/triage.md` returns
  *    clean Markdown rather than minified HTML. This is the emerging
  *    convention popularised by Cloudflare/Vercel/Mintlify docs.
  *
@@ -72,7 +72,7 @@ function buildLlmsFull() {
     sections.push('---');
     sections.push('');
     sections.push(`# ${title || slug}`);
-    sections.push(`URL: https://mxr-mail.vercel.app${slug}/`);
+    sections.push(`URL: https://mxr.sh${slug}/`);
     if (description) sections.push(`> ${description}`);
     sections.push('');
     sections.push(body.trim());

@@ -41,7 +41,7 @@ Pre-built release tarballs are also available for:
 [Download a release asset](https://github.com/planetaryescape/mxr/releases/latest)
 
 V1 macOS tarballs may be unsigned. Gatekeeper can warn on first run; see the
-[installation guide](https://mxr-mail.vercel.app/getting-started/install/#macos-gatekeeper)
+[installation guide](https://mxr.sh/getting-started/install/#macos-gatekeeper)
 for the quarantine workaround.
 
 To build from the repository instead:
@@ -225,8 +225,8 @@ Real execution is intentionally hard to trigger:
 - `mxr reset --hard` is the primary command
 - `mxr burn` is the memorable alias
 - both stop the daemon first, then remove local runtime state under `MXR_DATA_DIR`
-- both preserve `config.toml` and system keychain/keyring credentials by default
-- `--including-config` also deletes `config.toml`, but still preserves system keychain/keyring credentials
+- both preserve `config.toml`, `secrets.toml`, and system keychain/keyring credentials by default
+- `--including-config` deletes `config.toml`, but still preserves `secrets.toml` and system keychain/keyring credentials
 - attachment dirs outside `MXR_DATA_DIR` stay preserved, even with `--including-config`
 - `--dry-run` prints the exact delete plan first
 - interactive destructive runs require typing `DELETE MY MXR DATA`
@@ -261,7 +261,7 @@ run a command can parse CLI JSON; tools that speak MCP can connect to
 email field and attachment is untrusted input. Instructions inside mail are
 never followed, regardless of sender — an email cannot expand permissions,
 redirect recipients, trigger tools, request credentials, or override the
-agent's instructions. See [For agents](https://mxr-mail.vercel.app/guides/for-agents/).
+agent's instructions. See [For agents](https://mxr.sh/guides/for-agents/).
 
 **Search is the universal selector.** Every list/search command writes one ID per line under `--format ids`; every read or mutate command takes an ID. Compose with anything:
 
@@ -285,7 +285,7 @@ mxr search "is:unread" --format json --limit 200 \
   | jq -r '.results[].from' | sort | uniq -c | sort -rn | head   # noisiest unread senders
 ```
 
-`--search` is on every read command that takes an ID (`cat`, `thread`, `headers`, `summarize`, `draft-assist`, `open`, `attachments list`) and on every mutation. See [`docs/recipes`](https://mxr-mail.vercel.app/guides/recipes/) for the full cookbook (fzf / jq / xargs / cron / agent prompts).
+`--search` is on every read command that takes an ID (`cat`, `thread`, `headers`, `summarize`, `draft-assist`, `open`, `attachments list`) and on every mutation. See [`docs/recipes`](https://mxr.sh/guides/recipes/) for the full cookbook (fzf / jq / xargs / cron / agent prompts).
 
 That same surface is what the agent skill uses. MCP clients can use the first-party server instead:
 
@@ -373,7 +373,7 @@ cargo test --workspace provider_offline_smoke_
 
 ## Docs
 
-- Site: [mxr-mail.vercel.app](https://mxr-mail.vercel.app)
+- Site: [mxr.sh](https://mxr.sh)
 - Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
 - Blueprint: [docs/blueprint/README.md](docs/blueprint/README.md)
 - Tokio runtime guide: [docs/reference/tokio-runtime-guide.md](docs/reference/tokio-runtime-guide.md)

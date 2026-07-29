@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.5.62"
+    "version": "0.6.12"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -343,6 +343,21 @@
         }
       }
     },
+    "/api/v1/mail/compose/session/collaborators": {
+      "post": {
+        "tags": [],
+        "summary": "Suggest maybe-include recipients for a compose session",
+        "operationId": "compose_session_collaborators",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/compose/session/discard": {
       "post": {
         "tags": [],
@@ -378,6 +393,21 @@
         "tags": [],
         "summary": "Restore compose session",
         "operationId": "compose_session_restore",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/compose/session/safety-check": {
+      "post": {
+        "tags": [],
+        "summary": "Run the pre-send safety report for a compose session",
+        "operationId": "compose_session_safety_check",
         "responses": {
           "200": {
             "description": "OK"
@@ -438,6 +468,36 @@
         "tags": [],
         "summary": "Prefix-search known senders",
         "operationId": "contacts_autocomplete",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/contacts/briefing": {
+      "get": {
+        "tags": [],
+        "summary": "Recipient briefing for compose context",
+        "operationId": "mail_contacts_briefing",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/contacts/expert": {
+      "get": {
+        "tags": [],
+        "summary": "Find experts who answered similar questions",
+        "operationId": "mail_contacts_expert",
         "responses": {
           "200": {
             "description": "OK"
@@ -1360,6 +1420,21 @@
         "tags": [],
         "summary": "Read a thread",
         "operationId": "mail_thread",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/threads/{thread_id}/briefing": {
+      "get": {
+        "tags": [],
+        "summary": "Briefing for a dormant thread",
+        "operationId": "mail_thread_briefing",
         "responses": {
           "200": {
             "description": "OK"
@@ -5098,6 +5173,17 @@
             "type": "string",
             "format": "date-time"
           },
+          "from": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Address",
+                "description": "Per-message From override. `None` sends from the account's primary\naddress (default). `Some(addr)` sends from a specific owned address\n(the primary or a registered alias); the daemon validates ownership at\nsend time and rejects a `from` the account does not own. The name falls\nback to the account's display name when the override carries none."
+              }
+            ]
+          },
           "id": {
             "$ref": "#/components/schemas/DraftId"
           },
@@ -8636,6 +8722,35 @@
           },
           {
             "type": "object",
+            "description": "Resolve (and validate ownership of) the effective From address a draft\nwould send from, without sending. `from == None` resolves to the\naccount primary; a `Some` override that the account does not own is\nrejected. The dry-run/preview path uses this so a preview shows exactly\nthe From a real send would use, and fails identically on an unowned one.",
+            "required": [
+              "account_id",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ResolveSendFrom"
+                ]
+              },
+              "from": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Address"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "cmd"
             ],
@@ -11270,6 +11385,44 @@
           },
           {
             "type": "object",
+            "description": "Fetch a single locally-stored draft by id (for editing in place).\nReturns `ResponseData::Draft`; errors when no such draft exists.",
+            "required": [
+              "draft_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetDraft"
+                ]
+              },
+              "draft_id": {
+                "$ref": "#/components/schemas/DraftId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Update a locally-stored draft in place, keyed by `draft.id`. Preserves\nthe draft's `created_at`; only drafts still in `'draft'` status are\neditable. Errors when the draft is missing or already sending/sent.",
+            "required": [
+              "draft",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UpdateDraft"
+                ]
+              },
+              "draft": {
+                "$ref": "#/components/schemas/Draft"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Save draft to the mail server (e.g. Gmail Drafts folder).",
             "required": [
               "draft",
@@ -11428,6 +11581,26 @@
                 "enum": [
                   "Shutdown"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "In-band authentication handshake for token-bearing transports\n(phase 5, transport adapters). Raw framed IPC carries no headers, so a\ntransport with no implicit peer identity (`PeerAuth::TokenRequired`,\ne.g. the TCP-loopback adapter) authenticates by sending this as the\nFIRST request on the connection. The serve core gates every other\nrequest on that connection behind a successful `Authenticate`, replying\n`IpcErrorKind::Auth` until then. On transports that DO carry implicit\ntrust (UDS peer creds, in-process, stdio) the handshake is a harmless\nno-op that returns [`ResponseData::Authenticated`]. Additive only — no\n`IPC_PROTOCOL_VERSION` bump: old clients never emit it, and the only\ntransport that requires it (TCP) is itself new.",
+            "required": [
+              "token",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "Authenticate"
+                ]
+              },
+              "token": {
+                "type": "string",
+                "description": "Bearer token, matched against the daemon's token store (env\n`MXR_DAEMON_TOKEN` or the daemon token file)."
               }
             }
           },
@@ -11731,7 +11904,8 @@
               }
             }
           }
-        ]
+        ],
+        "description": "Every command a client can ask the daemon to perform.\n\nTagged `cmd` on the wire. One flat enum is the whole client-facing\nsurface: the CLI, TUI, web bridge, and MCP server all speak these same\nrequests, which is what keeps daemon capabilities client-agnostic (see\n[`IpcCategory`] for the conceptual grouping). Mutations are expressed as\nexplicit commands with dry-run/preview options rather than free-form\nstate writes."
       },
       "Response": {
         "oneOf": [
@@ -11781,7 +11955,8 @@
               }
             }
           }
-        ]
+        ],
+        "description": "The daemon's reply to a [`Request`], correlated by [`IpcMessage::id`].\n\nEither `Ok` wrapping a [`ResponseData`] payload, or `Error` with a\nhuman-readable message plus a machine-readable [`IpcErrorKind`] so\nclients can branch on failure class instead of parsing strings."
       },
       "ResponseData": {
         "oneOf": [
@@ -12312,6 +12487,25 @@
                 "type": "string",
                 "enum": [
                   "Drafts"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A single locally-stored draft, returned by `Request::GetDraft`.",
+            "required": [
+              "draft",
+              "kind"
+            ],
+            "properties": {
+              "draft": {
+                "$ref": "#/components/schemas/Draft"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Draft"
                 ]
               }
             }
@@ -13445,6 +13639,25 @@
           },
           {
             "type": "object",
+            "description": "Effective From address resolved (and ownership-validated) by\n`Request::ResolveSendFrom`.",
+            "required": [
+              "from",
+              "kind"
+            ],
+            "properties": {
+              "from": {
+                "$ref": "#/components/schemas/Address"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ResolvedSendFrom"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "snapshot",
               "kind"
@@ -13767,6 +13980,21 @@
                 "type": "string",
                 "enum": [
                   "Ack"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Success reply to [`Request::Authenticate`]: the connection is now\ntrusted for the remainder of its lifetime (phase 5 token transports).",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Authenticated"
                 ]
               }
             }
@@ -16729,7 +16957,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "opaque",
-        "description": "Token from `~/.config/mxr/bridge-token`. Send via `Authorization: Bearer <token>` header. WebSocket clients can also pass it via the `?token=<token>` query string or the `Sec-WebSocket-Protocol: bearer, <token>` subprotocol."
+        "description": "Token from `~/.config/mxr/bridge-token`. Send via `Authorization: Bearer <token>` header. Browser WebSocket clients can use the `Sec-WebSocket-Protocol: bearer, <token>` subprotocol. The `?token=<token>` query string is accepted only by `/api/v1/events` for command-line WebSocket fallback."
       }
     }
   },

@@ -52,23 +52,53 @@ mxr accounts test ACCOUNT
 
 ## Owned addresses and aliases
 
-An account owns a set of addresses: its primary, plus any aliases you
-register. mxr uses that set to classify mail as inbound vs outbound, and to
-let you send from any of them.
+An account owns its configured account email plus any aliases you register.
+mxr uses that set to classify mail as inbound vs outbound, and to let you send
+from any of them.
 
 ```bash
-mxr accounts addresses list work
-mxr accounts addresses add work accounts@planetaryescape.xyz
-mxr accounts addresses add work support@planetaryescape.xyz
-mxr accounts addresses remove work support@planetaryescape.xyz
+mxr accounts addresses list --account work
+mxr accounts addresses add --account work accounts@planetaryescape.xyz
+mxr accounts addresses add --account work support@planetaryescape.xyz
+mxr accounts addresses set-primary --account work hello@planetaryescape.xyz
+mxr accounts addresses remove --account work support@planetaryescape.xyz
 ```
 
-Once an address is registered it becomes a valid sender for that account. A
-reply defaults its From to whichever owned address the original was delivered
-to, and `--from` / the `from:` frontmatter field can send as any owned address.
-See [Sending from an alias](/guides/compose/#sending-from-an-alias-per-message-from).
+Once an address is registered it becomes a valid sender inside mxr for that
+account. A reply defaults its From to whichever owned address the original was
+delivered to, and `--from` / the `from:` frontmatter field can send as any
+owned address. See [Sending from an alias](/guides/compose/#sending-from-an-alias-per-message-from).
 Only the account's own registered addresses are accepted; an unowned From is
 rejected before the message is sent.
+
+Register the alias with your mail provider first. Adding it to mxr does not
+create the address at Zoho, Gmail, or another SMTP provider, and it does not
+grant provider-side send-as permission. Confirm mxr's local sender resolution
+before sending:
+
+```bash
+mxr compose --from accounts@planetaryescape.xyz --to alice@example.com \
+  --subject "Invoice 42" --dry-run --format json
+```
+
+What you get: a preview whose `from` field names the exact address mxr will
+hand to the provider. The provider can still reject an alias it has not
+authorised.
+
+The address registry also has an `is_primary` marker. In mxr 0.6.12,
+`set-primary` and `add --primary` change that marker; they do not rewrite the
+configured account `email` or the default From used by an account-key selector.
+Existing aliases stay registered and remain valid per-message senders:
+
+```bash
+mxr accounts addresses add --account work hello@planetaryescape.xyz --primary
+mxr accounts addresses list --account work --format table
+```
+
+What you get: `hello@planetaryescape.xyz` marked as primary in the owned-address
+inventory, with the previous primary retained as a non-primary owned address.
+Use an exact owned address with `mxr compose --from <address>` when you need
+that address as the visible From.
 
 ## Selecting an account
 

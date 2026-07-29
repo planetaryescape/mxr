@@ -1,7 +1,7 @@
 # HTTP Bridge
 
 > **Audience:** contributors. This page is the **internal architecture + security model** for the bridge.
-> Canonical endpoint reference for users lives at [/reference/bridge](https://mxr-mail.vercel.app/reference/bridge/) (source: `site/src/content/docs/reference/bridge.md`).
+> Canonical endpoint reference for users lives at [/reference/bridge](https://mxr.sh/reference/bridge/) (source: `site/src/content/docs/reference/bridge.md`).
 
 `mxr daemon` exposes an HTTP/WebSocket surface so non-terminal clients —
 browser apps, mobile clients, agents, scripts — can drive the same

@@ -100,7 +100,7 @@ mxr mcp serve                                # Serve first-party MCP over stdio
 1. **Message / thread / draft / mutation IDs are UUIDs** — get them from `mxr search --format ids` (one per line), `--format json`, or printed inline by mutations.
 2. **Account scope with `--account`** — when the user names an account, keep the selector on search, read, dry-run, and mutate steps. Selectors accept account key, email, id, or unambiguous display name.
 3. **Batch via `--search`** — most mutations accept `<id>` positionals, piped stdin IDs, OR `--search <query>`. Always add `--yes` for non-interactive batches.
-4. **`--dry-run`** — available on every mutation, compose flow, `rules dry-run`, `reset --dry-run`, and `undo --dry-run`. Preview the count and sample before committing.
+4. **`--dry-run`** — available on the core mail mutations, compose flow, `rules dry-run`, `reset --dry-run`, and `undo --dry-run`. Preview the count and sample before committing.
 5. **Output formats** — `--format table|json|jsonl|csv|ids`. `ids` is the cheapest form to pipe into other commands; `jsonl` is best for streams (`events`, `history`, search).
 6. **`mxr undo` window is ~60s** — destructive ops (`archive`, `trash`, `spam`, `read`, `read-archive`) print a mutation ID; capture it if you might need to reverse.
 7. **`draft-assist` never sends** — output goes to stdout. JSON output includes model, humanizer, and voice-match metadata when available. Pipe the body into `mxr reply --body "$(...)"`.

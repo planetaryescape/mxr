@@ -3,7 +3,7 @@ title: Recipes
 description: Real pipelines that compose mxr with fzf, jq, xargs, watch, cron, $EDITOR, and your AI agent.
 ---
 
-mxr is a Unix citizen. Most list/search commands support `--format json|jsonl|ids|csv|table`; the core mail mutations support `--dry-run` and accept either explicit IDs, `--search QUERY`, or piped IDs on stdin. The exact per-command capabilities live in the [automation contract](/guides/automation-contract/); the JSON shapes are documented in [JSON output schemas](/reference/json-output/). This page is the cookbook.
+mxr is a Unix citizen. Most list and search commands support `--format json`, and the other formats vary by command; the core mail mutations support `--dry-run` and accept either explicit IDs, `--search QUERY`, or piped IDs on stdin. The exact per-command capabilities live in the [automation contract](/guides/automation-contract/); the JSON shapes are documented in [JSON output schemas](/reference/json-output/). This page is the cookbook.
 
 Each recipe shows three things:
 
@@ -29,7 +29,7 @@ mxr archive --account work --search 'from:no-reply older_than:30d' --yes
 :::
 
 :::note[Two equivalent forms]
-For mxr-on-mxr chaining, every read command that takes a single ID (`cat`, `thread`, `headers`, `summarize`, `draft-assist`, `open`, `attachments list`) **also** accepts `--search QUERY` directly, with `--first` (most recent only) or `--limit N` modifiers. That's daemon-native, snapshot-consistent, and one fewer process.
+For mxr-on-mxr chaining, the read commands that resolve a target by ID (`cat`, `thread`, `headers`, `summarize`, `draft-assist`, `open`, `attachments list`) **also** accept `--search QUERY` directly, with `--first` (most recent only) or `--limit N` modifiers. That's daemon-native, snapshot-consistent, and one fewer process.
 
 ```bash
 # Pipeline form (works with any partner tool: jq, fzf, xargs, parallel, ...)
@@ -409,7 +409,7 @@ mxr accounts --format ids \
 mxr is designed so agents can run it directly. Three rules keep the interaction safe:
 
 1. **Read-only first**. Have the agent run `mxr search`, `mxr cat`, `mxr stale`, `mxr storage --by sender`, `mxr sender`, `mxr summarize` before any mutation.
-2. **Always `--dry-run` before bulk mutations.** Every mutation supports it; the agent should preview the affected IDs and report them back to you.
+2. **Always `--dry-run` before bulk mutations.** The core mail mutations support it; the agent should preview the affected IDs and report them back to you.
 3. **Use `--format json` or `--format jsonl`** when piping into the agent's reasoning loop, never `table` (that's for humans).
 
 ### Prompt patterns that work

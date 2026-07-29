@@ -534,11 +534,11 @@ mxr saved add hot-clients "from:client@bigcorp.com" --mode hybrid
 
 ### Run analytics in scripts
 
-Every command exits zero on success and writes machine-readable output
-to stdout when `--format json` or `--jsonl` is set. They compose into
-shell pipelines, scripts, agents, and editor integrations the same way
-`grep` does. There is no separate "automation API" — the CLI *is* the
-API.
+Every analytics command exits zero on success and writes machine-readable
+output to stdout when `--format json` or `--format jsonl` is set. They
+compose into shell pipelines, scripts, agents, and editor integrations
+the same way `grep` does. There is no separate "automation API" — the
+CLI *is* the API.
 
 ```bash
 # A weekly cron that emails you your inbox health report.

@@ -1,9 +1,9 @@
 ---
 title: Examples
-description: Everything mxr can do, as copy-pasteable one-liners — search, triage, compose, clean up, follow up, analyze, and drive it from an agent.
+description: "Copy-pasteable mxr workflows: search, triage, compose, clean up, follow up, analyze, and drive it from an agent."
 ---
 
-mxr is a single binary with a deep command set. This page is the fast tour: one-liners grouped by what you're trying to do, each linking to its full guide. Most commands take `--format json|jsonl|ids|csv|table`, and every mutation takes `--dry-run` — so anything here composes with your shell or an agent.
+mxr is a single binary with a deep command set. This page is the fast tour: one-liners grouped by what you're trying to do, each linking to its full guide. Most read commands support `--format json`; other formats vary by command. The core mail mutations support `--dry-run`, so most of what follows composes with your shell or an agent.
 
 For multi-step pipelines (fzf, jq, xargs, cron) see [Recipes](/guides/recipes/); for the per-command automation guarantees see the [Automation Contract](/guides/automation-contract/).
 
@@ -155,7 +155,7 @@ Full guide → [LLM Features](/guides/llm-features/) · [Briefings and Loop-in](
 
 ## Automate and pipe
 
-Reads emit JSON; mutations take IDs on stdin. It's a Unix citizen.
+Most reads emit JSON, and the core mail mutations accept IDs from stdin. It's a Unix citizen.
 
 ```bash
 # archive everything from a sender — reviewed first
@@ -172,7 +172,7 @@ Full guide → [Recipes](/guides/recipes/) · [Automation Contract](/guides/auto
 
 ## Drive it from an agent
 
-The CLI, MCP server, and HTTP bridge all call the same daemon — JSON in, JSON out, dry-run on every mutation.
+The CLI, MCP server, and HTTP bridge all call the same daemon. Most reads return JSON, and the core mail mutations support `--dry-run`.
 
 ```bash
 mxr mcp serve                                              # typed tools over stdio

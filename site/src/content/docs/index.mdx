@@ -68,7 +68,7 @@ hero:
       </video>
     </div>
   </div>
-  <div class="hero-cast-cap">search, pipe, triage by hand in the shell, in the keyboard-driven TUI, or by an agent that writes the <code>mxr</code> commands for you. <a href="/examples/">see every command →</a></div>
+  <div class="hero-cast-cap">search, pipe, triage by hand in the shell, in the keyboard-driven TUI, or by an agent that writes the <code>mxr</code> commands for you. <a href="/examples/">see more examples →</a></div>
 </div>
 
 <div class="hero-pronounce" aria-label="Pronunciation">
@@ -142,13 +142,13 @@ mxr unsubscribe newsletter@example.com --dry-run
 # surface what you owe a reply to
 mxr owed --since 7 --format json
 
-# let an agent drive the same daemon: JSON in, JSON out
+# let an agent drive the same daemon, JSON on stdout
 mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
 ```
 
-<p class="tryit-contract">Reads emit <code>{`--format json|jsonl|ids|csv`}</code>; mutations take <code>{`--dry-run`}</code>; MCP send tools require confirmation. Every command composes with the rest of your shell.</p>
+<p class="tryit-contract">Most read commands support <code>{`--format json`}</code>, and the other formats vary by command. Core mail mutations support <code>{`--dry-run`}</code> and accept IDs from stdin. MCP mutation and send tools require <code>{`confirm=true`}</code>. The <a href="/guides/automation-contract/">automation contract</a> lists what each command supports.</p>
 
-<p><a href="/examples/">See everything mxr can do →</a></p>
+<p><a href="/examples/">Browse more examples →</a></p>
 
 </div>
 
@@ -165,7 +165,7 @@ mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
   <div class="cap"><strong>Reader mode.</strong> Strips trackers, banners, and quoted noise. Unsubscribe and archive in one key.</div>
   <div class="cap"><strong>Never drop a thread.</strong> Owed-reply tracking, follow-up reminders, snooze, and send-later.</div>
   <div class="cap"><strong>Local analytics.</strong> Response times, one-sided relationships, storage, and your year in email.</div>
-  <div class="cap"><strong>Pipeable by default.</strong> JSON on every read, <code>{`--dry-run`}</code> on every mutation, IDs on stdin.</div>
+  <div class="cap"><strong>Pipeable by default.</strong> <code>{`--format json`}</code> on most reads. <code>{`--dry-run`}</code> and stdin IDs on the core mail mutations.</div>
   <div class="cap"><strong>Yours, on disk.</strong> No telemetry, no phone-home. Local-first, MIT / Apache-2.0.</div>
 </div>
 
@@ -301,7 +301,7 @@ mxr search "subject:invoice" --format json | jq -r '.results[].from' | sort -u
   </div>
 </div>
 
-<p>The CLI, MCP server, web bridge, and TUI all call the same daemon, so an agent drives mxr with the same structured commands you would type yourself. Most read commands support <code>{`--format json`}</code>, mutations support <code>{`--dry-run`}</code>, MCP mutation and send tools require confirmation, and every command composes with the rest of your shell.</p>
+<p>The CLI, MCP server, web bridge, and TUI all call the same daemon, so an agent drives mxr with the same structured commands you would type yourself. Most read commands support <code>{`--format json`}</code>, the core mail mutations support <code>{`--dry-run`}</code> and piped IDs, and MCP mutation and send tools require <code>{`confirm=true`}</code>. The <a href="/guides/automation-contract/">automation contract</a> covers the exceptions.</p>
 
 <div class="agent-json-peek">
   <div class="agent-json-label">◈ what your agent sees</div>
@@ -458,7 +458,7 @@ L     open links picker`}</code></pre>
 <div class="principle principle-flip">
   <div class="principle-text">
     <h3>Pipeable by default.</h3>
-    <p>Reads support <code>{`--format json|jsonl|ids|csv|table`}</code>. Mutations support <code>{`--dry-run`}</code>, <code>{`--search`}</code> for batch ops, and accept piped IDs from stdin. See the <a href="/guides/automation-contract/">automation contract</a> for per-command capabilities.</p>
+    <p>Most read commands support <code>{`--format json`}</code>, and the other formats vary by command. The core mail mutations support <code>{`--dry-run`}</code>, <code>{`--search`}</code> for batch ops, and accept piped IDs from stdin. See the <a href="/guides/automation-contract/">automation contract</a> for per-command capabilities.</p>
   </div>
   <div class="principle-margin">
     <pre tabindex="0"><code>{`mxr search "from:noreply" --format ids \\
@@ -548,7 +548,7 @@ would archive 142 messages.`}</code></pre>
       <li><span class="delta-add">+</span> daemon-backed: TUI, CLI, HTTP bridge, MCP, and your agent share one engine</li>
       <li><span class="delta-add">+</span> eager body fetch: opening a message is a SQLite read, not a fetch</li>
       <li><span class="delta-add">+</span> Tantivy BM25 with field boosts; opportunistic local hybrid retrieval</li>
-      <li><span class="delta-add">+</span> agent-native pipeable JSON across every command</li>
+      <li><span class="delta-add">+</span> structured output for reads and safe mutation previews for agents</li>
       <li><span class="delta-add">+</span> OpenAPI HTTP bridge for browser apps, mobile, custom clients</li>
       <li><span class="delta-add">+</span> analytics that self-heal post-sync</li>
     </ul>

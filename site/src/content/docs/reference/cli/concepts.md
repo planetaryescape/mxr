@@ -1,9 +1,9 @@
 ---
 title: CLI concepts
-description: Query operators, search modes, JSON output, IPC buckets — the things that span every command.
+description: Query operators, search modes, JSON output, IPC buckets. The parts that are shared across commands.
 ---
 
-The per-command pages are auto-generated. Everything that's true _across_ commands lives here: query syntax, search modes, output formats, the IPC contract.
+The per-command pages are auto-generated. The shared parts live here: query syntax, search modes, output formats, the IPC contract.
 
 ## The one line that does most of it
 
@@ -11,11 +11,13 @@ The per-command pages are auto-generated. Everything that's true _across_ comman
 mxr search '<query>' --format ids | xargs -I{} <command> {}
 ```
 
-That's the entire composition story. Every list/search command writes
-one ID per line under `--format ids`; every other command accepts an
-ID as a positional argument. So search becomes the universal selector,
-and any other tool — your own script, fzf, jq, GNU parallel — slots
-in where `<command>` is.
+That is the common composition pattern. `mxr search --format ids`
+writes one ID per line. Commands that support `--format ids` use the
+same shape. The core mail mutations accept those IDs as positional
+arguments or from stdin. Anything can sit where `<command>` is: your
+own script, fzf, jq, or GNU parallel. The
+[automation contract](/guides/automation-contract/) lists which
+commands accept piped IDs.
 
 Two equivalent forms exist for read commands that take an ID:
 
@@ -31,11 +33,15 @@ mxr cat --search 'from:alice' --first         # latest match only
 mxr cat --search 'from:alice' --limit 10      # top 10 by date desc
 ```
 
-`--search` lives on every read command that takes a single ID
+`--search` lives on the read commands that resolve a target by ID
 (`cat`, `thread`, `headers`, `summarize`, `draft-assist`, `open`,
-`attachments list`) and on every mutation (`archive`, `trash`,
-`label`, `snooze`, etc.). When you're chaining mxr-on-mxr, prefer
-`--search` — it resolves once inside the daemon, with the same view
+`attachments list`) and on the core mail mutations
+(`archive`, `trash`, `label`, `snooze`, and the rest of the mutation
+table in the [automation contract](/guides/automation-contract/)).
+`unsnooze`, `undo`, `send`, and `remind` have no `--search`; their
+generated reference pages list the selectors they accept. When you're
+chaining mxr-on-mxr, prefer
+`--search`: it resolves once inside the daemon, with the same view
 the daemon mutators see. When you're piping into a non-mxr tool, use
 the `--format ids | xargs` form.
 

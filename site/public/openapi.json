@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "mxr HTTP Bridge",
-    "description": "Local-first email daemon HTTP/WebSocket surface. This document is a route inventory plus the protocol schemas: it lists paths and methods, not per-route parameters or response bodies, and some live bridge routes are not declared here. All routes except /api/v1/health require a bearer token, read from the `bridge-token` file in the active profile's config directory (`~/Library/Application Support/mxr` on macOS, `$XDG_CONFIG_HOME/mxr` or `~/.config/mxr` on Linux). `[bridge].token_path` wins over `MXR_BRIDGE_TOKEN_PATH`, which wins over `MXR_CONFIG_DIR`.",
+    "description": "Local-first email daemon HTTP/WebSocket surface. This document is a route inventory plus the protocol schemas: it lists paths and methods, not per-route parameters or response bodies, and some live bridge routes are not declared here. All routes declared in this document except /api/v1/health require a bearer token, read from the `bridge-token` file in the active profile's config directory (`~/Library/Application Support/mxr` on macOS, `$XDG_CONFIG_HOME/mxr` or `~/.config/mxr` on Linux). `[bridge].token_path` wins over `MXR_BRIDGE_TOKEN_PATH`, which wins over `MXR_CONFIG_DIR`.",
     "contact": {
       "name": "mxr",
       "url": "https://mxr.sh"

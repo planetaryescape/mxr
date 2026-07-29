@@ -54,6 +54,7 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
     #scalar-api-reference .dark-mode {
       --scalar-color-3: #949494;
       --scalar-sidebar-search-color: #949494;
+      --scalar-color-red: #ff5c5c;
     }
 
     .light-mode #scalar-api-reference,
@@ -116,7 +117,7 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
       }
 
       // Sidebar entries are plain buttons, which cannot carry aria-selected.
-      for (const el of mount.querySelectorAll('button[aria-selected]:not(.rendered-code-sdks)')) {
+      for (const el of mount.querySelectorAll('button[aria-selected]:not([role="tab"]):not(.rendered-code-sdks)')) {
         if (el.getAttribute('aria-selected') === 'true') setAttr(el, 'aria-current', 'true');
         else el.removeAttribute('aria-current');
         el.removeAttribute('aria-selected');

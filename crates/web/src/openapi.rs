@@ -21,7 +21,8 @@ use utoipa::{
                        schemas: it lists paths and methods, not per-route \
                        parameters or response bodies, and some live bridge \
                        routes are not declared here. \
-                       All routes except /api/v1/health require a bearer \
+                       All routes declared in this document except \
+                       /api/v1/health require a bearer \
                        token, read from the `bridge-token` file in the active \
                        profile's config directory (`~/Library/Application \
                        Support/mxr` on macOS, `$XDG_CONFIG_HOME/mxr` or \

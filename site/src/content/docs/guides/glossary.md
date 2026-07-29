@@ -102,7 +102,7 @@ deterministic profile fallbacks may return no citations. See [archive intelligen
 
 **Reader mode** — strips signatures, quoted text, tracking pixels, and remote-image references for distraction-free reading. Toggle with `R`.
 
-**Plain text first** — mxr renders text/plain bodies if they exist, falling back to HTML→text only when needed. HTML remote images are controlled by `render.html_remote_content`; tracking pixels are stripped separately.
+**Plain text first** — mxr renders text/plain bodies if they exist, falling back to HTML→text only when needed. HTML remote images are controlled by `render.html_remote_content`; with it on, the TUI and CLI fetch every image the HTML points at, tracking pixels included. Only the web app filters: it drops images that declare a width or height of two pixels or less, plus images from known tracker hosts.
 
 ## Provider quirks (the seam)
 

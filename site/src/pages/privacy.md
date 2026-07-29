@@ -80,8 +80,8 @@ HTML makes the daemon fetch every remote image that message points at. The TUI's
 HTML view and `mxr cat --assets` both do this. Those URLs were chosen by whoever
 sent the mail, so each fetch tells that server your IP address, when you opened
 the message, and whatever per-recipient identifier they put in the URL. That is
-how an open-tracking pixel works, and mxr does not strip tracking pixels out of
-HTML. Fetched images are cached under `_html_assets/` in the attachment
+how an open-tracking pixel works, and nothing on this path filters those pixels
+out. Fetched images are cached under `_html_assets/` in the attachment
 directory.
 
 Turn the fetches off:
@@ -96,7 +96,11 @@ config.
 
 The web app is a separate case. It renders message HTML in your browser, so your
 browser issues the image requests, and its "Remote images" toggle starts on
-regardless of `render.html_remote_content`. Turn that off there as well.
+regardless of `render.html_remote_content`. It does drop some pixels before
+rendering: images whose `width` or `height` attribute is two pixels or less, and
+images from a short list of known tracker hosts. A pixel sized in CSS, or served
+from a host outside that list, loads like any other image. Turn the toggle off
+there as well.
 
 ### Unsubscribing
 
@@ -181,7 +185,7 @@ Since data is local, you can delete mxr data by removing the active config and d
 mxr status --format json
 ```
 
-`config_path` in that output is the `config.toml` file, not a directory; the config directory is its parent. `data_dir` is the data directory itself. At the default paths, deleting the config directory removes `config.toml`, `secrets.toml`, and the `bridge-token` and `daemon-token` files together, and deleting the data directory removes the OAuth token files in `tokens/`, the downloaded embedding models in `models/`, and the cached remote images under `attachments/_html_assets/` along with the rest of your local mail data. Deleting `config.toml` on its own leaves your IMAP and SMTP passwords sitting in `secrets.toml`. `MXR_SECRETS_PATH`, `MXR_TOKEN_DIR`, `MXR_BRIDGE_TOKEN_PATH`, `MXR_DAEMON_TOKEN_PATH`, and `bridge.token_path` move those files outside the two directories, and status does not report where they went, so delete whatever paths you set as well.
+`config_path` in that output is the `config.toml` file, not a directory; the config directory is its parent. `data_dir` is the data directory itself. At the default paths, deleting the config directory removes `config.toml`, `secrets.toml`, and the `bridge-token` and `daemon-token` files together, and deleting the data directory removes the OAuth token files in `tokens/`, the downloaded embedding models in `models/`, and the cached remote images under `attachments/_html_assets/` along with the rest of your local mail data. Deleting `config.toml` on its own leaves your IMAP and SMTP passwords sitting in `secrets.toml`. `MXR_SECRETS_PATH`, `MXR_TOKEN_DIR`, `MXR_BRIDGE_TOKEN_PATH`, `MXR_DAEMON_TOKEN_PATH`, and `bridge.token_path` move those files outside the two directories, and status does not report where they went, so delete whatever paths you set as well. `general.attachment_dir` moves the attachment cache, `_html_assets/` included, out of the data directory, and `MXR_ATTACHMENT_DIR` overrides that setting for any process that reads it. Neither shows up in status, so run `mxr config get general.attachment_dir` in the same environment the daemon runs under and delete the path it prints.
 
 Any IMAP or SMTP password copied to the OS-native secret store, and any Gmail OAuth token held there, has to be deleted separately with Keychain Access on macOS or your Secret Service tool on Linux.
 

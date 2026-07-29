@@ -84,7 +84,7 @@ download_dir = "~/Downloads"        # default destination for user-initiated sav
 html_command = "w3m -dump"         # how plain-text HTML view is rendered
 reader_mode = true                 # default to reader on open
 show_reader_stats = true
-html_remote_content = true         # allow remote images in HTML view; tracking pixels are still stripped
+html_remote_content = true         # allow remote images in HTML view; every img is fetched, pixels included
 
 [search]
 default_sort = "date_desc"
@@ -331,7 +331,7 @@ an unencrypted connection.
 | `html_command` | string | `w3m -dump` | Shell command to render HTML to plain text |
 | `reader_mode` | bool | `true` | Default to reader mode when opening a message |
 | `show_reader_stats` | bool | `true` | Display word/reading-time on opened messages |
-| `html_remote_content` | bool | `true` | Allow remote image fetches in HTML view; tracking pixels are still stripped |
+| `html_remote_content` | bool | `true` | Allow remote image fetches in HTML view; every `<img>` in the message is fetched, tracking pixels included |
 
 ## `search`
 

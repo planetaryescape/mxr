@@ -17,9 +17,10 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
   </p>
 
   <p>
-    To try requests, start the daemon (<code>mxr</code> or <code>mxr daemon</code>), grab your
-    bearer token from <code>~/.config/mxr/bridge-token</code>, and click <strong>Authorize</strong>
-    in the explorer.
+    To try requests, start the daemon (<code>mxr</code> or <code>mxr daemon</code>) and click
+    <strong>Authorize</strong> in the explorer. The bearer token sits in the
+    <code>bridge-token</code> file in your active profile's config directory unless you have
+    overridden it; <a href="/reference/bridge/#auth">the bridge reference</a> shows how to read it.
   </p>
 
   <p>

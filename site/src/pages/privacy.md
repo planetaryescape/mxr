@@ -54,11 +54,11 @@ Gmail OAuth refresh tokens are written to the OS-native secret store and to a pr
 
 ## No Telemetry
 
-mxr does not collect telemetry, analytics, crash reports, tracking pixels, or anonymous usage statistics.
+mxr does not collect telemetry, analytics, crash reports, or anonymous usage statistics.
 
 ## Network Requests
 
-mxr makes network requests only for configured user workflows:
+mxr makes network requests for the following:
 
 - Gmail API calls to sync messages, send mail, and manage labels.
 - Google OAuth calls to authorize and refresh Gmail access.
@@ -70,8 +70,9 @@ mxr makes network requests only for configured user workflows:
 - Embedding model downloads from Hugging Face for semantic search.
 - External LLM calls, when you configure a nonlocal provider.
 
-mxr does not contact an mxr-operated server. The last three are worth reading
-closely, because two of them are on by default.
+mxr does not contact an mxr-operated server. Remote-image fetching and semantic
+model downloads are on by default in shipped release builds. Each has its own
+section below.
 
 ### Remote Images in HTML Messages
 
@@ -175,7 +176,7 @@ Local search, reading, and core mailbox operations do not require a hosted AI se
 
 ## Third-Party Services
 
-mxr does not integrate with third-party analytics, advertising, or tracking services. The third-party services involved are the mail providers and optional AI/model providers you explicitly configure.
+mxr does not integrate with third-party analytics, advertising, or tracking services. The services it contacts are the mail providers and optional AI or model providers you configure, plus Hugging Face for embedding model downloads. Remote images and unsubscribe requests also go to whatever hosts a message names; those destinations come from the sender, and mxr does not integrate with them.
 
 ## Data Deletion
 

@@ -57,6 +57,32 @@ const { frontmatter } = Astro.props;
 
     a { color: var(--signal); }
 
+    .skip-link {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .skip-link:focus,
+    .skip-link:focus-visible {
+      position: fixed;
+      top: 1rem;
+      left: 1rem;
+      z-index: 10;
+      width: auto;
+      height: auto;
+      margin: 0;
+      padding: 0.6rem 1rem;
+      clip-path: none;
+      background: var(--paper);
+      color: var(--ink);
+      outline: 2px solid var(--signal);
+      outline-offset: 2px;
+    }
+
     /* Long paths and scopes must wrap on narrow screens. */
     table {
       width: 100%;
@@ -73,7 +99,7 @@ const { frontmatter } = Astro.props;
   </style>
 </head>
 <body>
-<a href="#main" style="position:absolute;left:-999px;top:auto;width:1px;height:1px;overflow:hidden;">Skip to content</a>
+<a class="skip-link" href="#main">Skip to content</a>
 <main id="main">
   <h1>{frontmatter.title}</h1>
   <slot />

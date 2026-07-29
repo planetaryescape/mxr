@@ -4,7 +4,7 @@ layout: ../layouts/legal.astro
 ---
 
 **Effective date**: 2026-03-18
-**Last updated**: 2026-05-31
+**Last updated**: 2026-07-29
 
 mxr is a local-first, open-source email client. Your mail data is stored on your machine, and mxr does not run a hosted relay, analytics service, or remote database.
 
@@ -17,21 +17,29 @@ Default release-build locations:
 | Data | Linux / XDG | macOS |
 |---|---|---|
 | Config | `$XDG_CONFIG_HOME/mxr/config.toml` | `~/Library/Application Support/mxr/config.toml` |
+| IMAP and SMTP passwords | `$XDG_CONFIG_HOME/mxr/secrets.toml` | `~/Library/Application Support/mxr/secrets.toml` |
 | SQLite database and local data | `$XDG_DATA_HOME/mxr/` | `~/Library/Application Support/mxr/` |
-| Token fallback files | `$XDG_DATA_HOME/mxr/tokens/` | `~/Library/Application Support/mxr/tokens/` |
+| OAuth token files | `$XDG_DATA_HOME/mxr/tokens/` | `~/Library/Application Support/mxr/tokens/` |
 
-`MXR_CONFIG_DIR`, `MXR_DATA_DIR`, and `MXR_TOKEN_DIR` can override these paths.
+`MXR_CONFIG_DIR`, `MXR_SECRETS_PATH`, `MXR_DATA_DIR`, and `MXR_TOKEN_DIR` can
+override these paths.
 
 The Tantivy search index and semantic model cache are local and rebuildable. Attachments opened or saved through mxr are written locally.
 
 ## Credentials
 
-Gmail OAuth refresh tokens, IMAP passwords, and SMTP passwords are stored in the OS-native secret store when available:
+IMAP and SMTP passwords are stored on disk, in `secrets.toml` in the config directory. On macOS and Linux that file is plain TOML at mode `0600`: your user account can read and write it, other users have no access. Root and anything else running under your own account can still read it. The passwords are not encrypted at rest, so the file mode is the only protection. This is the arrangement `~/.aws/credentials` and `~/.config/gh/hosts.yml` use.
+
+The OS-native secret store is an optional fallback for those passwords:
 
 - macOS: Keychain
 - Linux: Secret Service, such as GNOME Keyring or KWallet
 
-Gmail may keep a private disk fallback under the active token directory so a noninteractive keychain failure does not strand an otherwise valid account. Outlook OAuth tokens are stored as JSON files under the active token directory. `config.toml` references credentials by keychain/token reference and does not store IMAP or SMTP passwords.
+When a password is missing from `secrets.toml`, mxr looks in the secret store, copies what it finds back to `secrets.toml`, and reads it from disk after that. Set `MXR_KEYCHAIN=off` to keep IMAP and SMTP password handling away from the secret store entirely.
+
+Gmail OAuth refresh tokens are written to the OS-native secret store and to a private file at mode `0600` under the active token directory. mxr reads the secret store first and falls back to the file, so a keychain read that fails without a prompt does not strand a working account. Outlook OAuth tokens are JSON files at mode `0600` under the active token directory. `MXR_KEYCHAIN=off` does not change OAuth token storage.
+
+`config.toml` refers to credentials by reference name. It never holds an IMAP or SMTP password.
 
 ## No Telemetry
 
@@ -76,11 +84,15 @@ mxr does not integrate with third-party analytics, advertising, or tracking serv
 
 ## Data Deletion
 
-Since data is local, you can delete mxr data by removing the active config and data directories. To inspect them:
+Since data is local, you can delete mxr data by removing the active config and data directories. To find them:
 
 ```bash
 mxr status --format json
 ```
+
+`config_path` in that output is the `config.toml` file, not a directory; the config directory is its parent. `data_dir` is the data directory itself. At the default paths, deleting the config directory removes `config.toml` and `secrets.toml` together, and deleting the data directory removes the OAuth token files in `tokens/` along with the rest of your local mail data. Deleting `config.toml` on its own leaves your IMAP and SMTP passwords sitting in `secrets.toml`. `MXR_SECRETS_PATH` and `MXR_TOKEN_DIR` move those files outside the two directories, and status does not report where they went, so delete whatever paths you set as well.
+
+Any IMAP or SMTP password copied to the OS-native secret store, and any Gmail OAuth token held there, has to be deleted separately with Keychain Access on macOS or your Secret Service tool on Linux.
 
 To revoke Gmail access, visit [Google Account Permissions](https://myaccount.google.com/permissions) and remove mxr or your custom OAuth app.
 

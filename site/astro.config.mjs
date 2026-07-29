@@ -18,8 +18,6 @@ export default defineConfig({
         Footer: './src/components/Footer.astro',
       },
       head: [
-        { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
-        { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' } },
         { tag: 'meta', attrs: { name: 'theme-color', content: '#0d0d0c' } },
         // Social cards / SEO. Starlight derives canonical, og:title/type/url/locale/
         // description/site_name, and twitter:card from `site` + page frontmatter; these

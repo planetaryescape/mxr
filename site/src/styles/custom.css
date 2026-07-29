@@ -7,7 +7,10 @@
    decoration.
    ========================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Recursive:slnt,wght,CASL,CRSV,MONO@-15..0,300..1000,0..1,0..1,0..1&display=swap');
+/* Self-hosted Recursive. The `full` entrypoint carries every axis (slnt, wght,
+   CASL, CRSV, MONO); the package default ships wght alone, and the rules below
+   vary CASL, MONO, and slnt. */
+@import '@fontsource-variable/recursive/full.css';
 
 :root {
   /* Dark, warm, intentional. Not #000, not GitHub #0d1117. */
@@ -27,9 +30,9 @@
 
   --quiet:         #5eead4;
 
-  --font-display:  'Recursive', ui-sans-serif, system-ui, sans-serif;
-  --font-body:     'Recursive', ui-sans-serif, system-ui, sans-serif;
-  --font-mono:     'Recursive', ui-monospace, monospace;
+  --font-display:  'Recursive Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-body:     'Recursive Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:     'Recursive Variable', ui-monospace, monospace;
 
   --rec-display:        'wght' 800, 'CASL' 0.0, 'MONO' 0, 'slnt' 0;
   --rec-display-italic: 'wght' 800, 'CASL' 0.0, 'MONO' 0, 'slnt' -10;

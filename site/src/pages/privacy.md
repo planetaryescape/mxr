@@ -20,9 +20,20 @@ Default release-build locations:
 | IMAP and SMTP passwords | `$XDG_CONFIG_HOME/mxr/secrets.toml` | `~/Library/Application Support/mxr/secrets.toml` |
 | SQLite database and local data | `$XDG_DATA_HOME/mxr/` | `~/Library/Application Support/mxr/` |
 | OAuth token files | `$XDG_DATA_HOME/mxr/tokens/` | `~/Library/Application Support/mxr/tokens/` |
+| HTTP bridge bearer token | `$XDG_CONFIG_HOME/mxr/bridge-token` | `~/Library/Application Support/mxr/bridge-token` |
+| Daemon IPC bearer token | `$XDG_CONFIG_HOME/mxr/daemon-token` | `~/Library/Application Support/mxr/daemon-token` |
 
-`MXR_CONFIG_DIR`, `MXR_SECRETS_PATH`, `MXR_DATA_DIR`, and `MXR_TOKEN_DIR` can
-override these paths.
+`MXR_CONFIG_DIR`, `MXR_SECRETS_PATH`, `MXR_DATA_DIR`, `MXR_TOKEN_DIR`,
+`MXR_BRIDGE_TOKEN_PATH`, and `MXR_DAEMON_TOKEN_PATH` can override these paths.
+
+The two token files hold local secrets, not mail. The daemon writes each at
+mode `0600` the first time it needs one. `bridge-token` authorizes callers of
+the local HTTP bridge, which `mxr daemon` starts by default; its path comes from
+`bridge.token_path` in `config.toml` when that is set, otherwise from
+`MXR_BRIDGE_TOKEN_PATH`, otherwise from the config directory. `daemon-token`
+authorizes raw IPC over the loopback TCP transport, so it only exists once you
+set `[transports.tcp] enabled = true`; `MXR_DAEMON_TOKEN_PATH` moves it, and
+`MXR_DAEMON_TOKEN` supplies the token directly with no file involved.
 
 The Tantivy search index and semantic model cache are local and rebuildable. Attachments opened or saved through mxr are written locally.
 
@@ -54,9 +65,89 @@ mxr makes network requests only for configured user workflows:
 - IMAP connections to configured mail servers.
 - SMTP connections to configured mail servers.
 - Microsoft identity/OAuth calls for Outlook-style OAuth accounts.
-- Optional model downloads or external LLM calls only when the user explicitly configures those features.
+- Remote images in HTML messages, fetched from whatever URLs the message carries.
+- Unsubscribe requests to the endpoint or link a message supplies.
+- Embedding model downloads from Hugging Face for semantic search.
+- External LLM calls, when you configure a nonlocal provider.
 
-mxr does not contact an mxr-operated server.
+mxr does not contact an mxr-operated server. The last three are worth reading
+closely, because two of them are on by default.
+
+### Remote Images in HTML Messages
+
+`render.html_remote_content` defaults to `true`. With it on, viewing a message's
+HTML makes the daemon fetch every remote image that message points at. The TUI's
+HTML view and `mxr cat --assets` both do this. Those URLs were chosen by whoever
+sent the mail, so each fetch tells that server your IP address, when you opened
+the message, and whatever per-recipient identifier they put in the URL. That is
+how an open-tracking pixel works, and mxr does not strip tracking pixels out of
+HTML. Fetched images are cached under `_html_assets/` in the attachment
+directory.
+
+Turn the fetches off:
+
+```bash
+mxr config set render.html_remote_content false
+```
+
+Remote images then come back marked `blocked` and nothing is requested. `M` in
+the TUI flips the same switch for the running session without touching the
+config.
+
+The web app is a separate case. It renders message HTML in your browser, so your
+browser issues the image requests, and its "Remote images" toggle starts on
+regardless of `render.html_remote_content`. Turn that off there as well.
+
+### Unsubscribing
+
+`mxr unsubscribe` acts on the `List-Unsubscribe` header the sender put in the
+message. For a one-click subscription mxr POSTs `List-Unsubscribe=One-Click` to
+the sender's endpoint. For the link methods it opens the sender's URL in your
+browser. Either way the destination comes from the message, and the request
+tells the sender your IP address and that the address they mailed is live.
+`mxr unsubscribe <sender> --dry-run` shows what it would act on without
+contacting anyone, and `mxr subscriptions` lists the stored method for every
+sender.
+
+### Semantic Search and Model Downloads
+
+The prebuilt binaries from Homebrew, `install.sh`, and the GitHub release
+archives are built with the `semantic-local` feature, and the shipped defaults
+have semantic indexing on:
+
+```toml
+[search.semantic]
+enabled = true
+auto_download_models = true
+active_profile = "bge-small-en-v1.5"
+```
+
+Embeddings are computed on your machine, and `lexical` is still the default
+search mode. Indexing, though, runs in the background after every sync. If the
+active profile's model files are not already in `models/` under the data
+directory, `auto_download_models = true` lets that background pass download them
+from `https://huggingface.co` without asking first. `HF_ENDPOINT` sends the
+download to a mirror instead.
+
+Turning semantic work off stops that:
+
+```bash
+mxr semantic disable    # or: mxr config set search.semantic.enabled false
+```
+
+Sync still prepares text chunks locally, so nothing is downloaded and turning
+semantic search back on later stays cheap.
+
+To keep semantic search and refuse downloads, edit `config.toml`:
+
+```toml
+[search.semantic]
+auto_download_models = false
+```
+
+A model you already have keeps working; a missing one becomes an error instead
+of a download. `mxr config set` does not expose that key, so this one has to be
+edited by hand.
 
 ## Gmail API Scopes
 
@@ -90,7 +181,7 @@ Since data is local, you can delete mxr data by removing the active config and d
 mxr status --format json
 ```
 
-`config_path` in that output is the `config.toml` file, not a directory; the config directory is its parent. `data_dir` is the data directory itself. At the default paths, deleting the config directory removes `config.toml` and `secrets.toml` together, and deleting the data directory removes the OAuth token files in `tokens/` along with the rest of your local mail data. Deleting `config.toml` on its own leaves your IMAP and SMTP passwords sitting in `secrets.toml`. `MXR_SECRETS_PATH` and `MXR_TOKEN_DIR` move those files outside the two directories, and status does not report where they went, so delete whatever paths you set as well.
+`config_path` in that output is the `config.toml` file, not a directory; the config directory is its parent. `data_dir` is the data directory itself. At the default paths, deleting the config directory removes `config.toml`, `secrets.toml`, and the `bridge-token` and `daemon-token` files together, and deleting the data directory removes the OAuth token files in `tokens/`, the downloaded embedding models in `models/`, and the cached remote images under `attachments/_html_assets/` along with the rest of your local mail data. Deleting `config.toml` on its own leaves your IMAP and SMTP passwords sitting in `secrets.toml`. `MXR_SECRETS_PATH`, `MXR_TOKEN_DIR`, `MXR_BRIDGE_TOKEN_PATH`, `MXR_DAEMON_TOKEN_PATH`, and `bridge.token_path` move those files outside the two directories, and status does not report where they went, so delete whatever paths you set as well.
 
 Any IMAP or SMTP password copied to the OS-native secret store, and any Gmail OAuth token held there, has to be deleted separately with Keychain Access on macOS or your Secret Service tool on Linux.
 

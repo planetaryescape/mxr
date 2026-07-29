@@ -31,6 +31,8 @@ export default defineConfig({
         // Social cards / SEO. Starlight derives canonical, og:title/type/url/locale/
         // description/site_name, and twitter:card from `site` + page frontmatter; these
         // add the image and the bits it does not emit. Absolute URLs are required for og.
+        // Do not add twitter:title or twitter:description here: one site-wide value
+        // overrides the per-page og:* fallback and labels every page the homepage.
         { tag: 'meta', attrs: { property: 'og:image', content: 'https://mxr.sh/og.png' } },
         { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
         { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
@@ -38,8 +40,6 @@ export default defineConfig({
         { tag: 'meta', attrs: { property: 'og:image:alt', content: 'mxr: your inbox, on your computer. Local-first, CLI-first email.' } },
         { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://mxr.sh/og.png' } },
         { tag: 'meta', attrs: { name: 'twitter:image:alt', content: 'mxr: your inbox, on your computer.' } },
-        { tag: 'meta', attrs: { name: 'twitter:title', content: 'mxr: your inbox, on your computer' } },
-        { tag: 'meta', attrs: { name: 'twitter:description', content: 'Local-first, CLI-first email. Read, search, and draft offline. Two-way Gmail/IMAP sync. Scriptable and agent-operable.' } },
         { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' } },
         { tag: 'meta', attrs: { name: 'author', content: 'planetaryescape' } },
         { tag: 'meta', attrs: { name: 'keywords', content: 'email client, local-first email, CLI email, terminal email client, TUI email, Gmail CLI, IMAP client, SMTP, Rust, MCP server, agent email, offline email, self-hosted email' } },

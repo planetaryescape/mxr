@@ -28,24 +28,35 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
   </p>
 
   <noscript>
+    <style>#api-explorer-loading { display: none; }</style>
     <p>
       The interactive explorer requires JavaScript. The raw spec is at
       <a href="/openapi.json"><code>/openapi.json</code></a>.
     </p>
   </noscript>
 
-  <div id="scalar-api-reference" style="margin-top: 2rem; min-height: 80vh;">
-    <p>Loading API Explorer...</p>
-  </div>
+  <p id="api-explorer-loading">Loading API Explorer...</p>
 
-  <script
-    is:inline
-    id="api-reference"
-    data-url="/openapi.json"
-    data-configuration='{"theme":"default","darkMode":true,"hideClientButton":false,"servers":[{"url":"http://127.0.0.1:42829","description":"Local mxr daemon"}]}'
-  ></script>
-  <script
-    is:inline
-    src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.55.1"
-  ></script>
+  <div id="scalar-api-reference" style="margin-top: 2rem; min-height: 80vh;"></div>
+
+  <script>
+    // Bundled from the installed @scalar/api-reference so the explorer ships
+    // with the site instead of running third-party script from a CDN.
+    import { createApiReference } from '@scalar/api-reference';
+    import '@scalar/api-reference/style.css';
+
+    // Scalar hydrates instead of mounting when its target has children, so the
+    // placeholder sits outside the mount point and goes just before mounting.
+    document.getElementById('api-explorer-loading')?.remove();
+
+    createApiReference('#scalar-api-reference', {
+      url: '/openapi.json',
+      darkMode: true,
+      servers: [{ url: 'http://127.0.0.1:42829', description: 'Local mxr daemon' }],
+      // Scalar otherwise pulls webfonts from fonts.scalar.com and calls
+      // api.scalar.com for its chat agent. Neither belongs on these docs.
+      withDefaultFonts: false,
+      agent: { disabled: true },
+    });
+  </script>
 </StarlightPage>

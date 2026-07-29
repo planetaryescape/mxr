@@ -29,6 +29,6 @@ minijinja = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
-
-[dev-dependencies]
+# Rendered bodies carry personalised links, so they are written to a private
+# (0700) directory that is removed even when a run ends early.
 tempfile = { workspace = true }

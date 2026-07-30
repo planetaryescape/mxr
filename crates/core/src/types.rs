@@ -1520,6 +1520,15 @@ impl<'de> Deserialize<'de> for DraftContent {
                 html,
                 text: wire.body_text,
             }),
+            // Symmetric with the rejection above. A `body_text` with no
+            // `body_html` used to fall through to empty markdown, silently
+            // discarding the caller's text and — when the payload targeted an
+            // existing HTML draft — its stored document too. Strict in one
+            // direction and lossy in the other is indefensible.
+            (_, None) if wire.body_text.is_some() => Err(serde::de::Error::custom(
+                "draft carries body_text without body_html; a text alternative \
+                 has no meaning without the document it accompanies",
+            )),
             (markdown, None) => Ok(Self::Markdown {
                 source: markdown.unwrap_or_default(),
             }),
@@ -2354,6 +2363,49 @@ mod draft_content_tests {
             err.to_string().contains("mutually exclusive"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn a_text_alternative_without_a_document_is_rejected() {
+        // Previously fell through to empty markdown, silently discarding the
+        // caller's text — and, when the payload targeted an existing HTML
+        // draft, that draft's stored document with it.
+        let err = serde_json::from_value::<DraftContent>(
+            serde_json::json!({ "body_text": "plain words" }),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("without body_html"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn body_text_alongside_markdown_is_also_rejected() {
+        let err = serde_json::from_value::<DraftContent>(
+            serde_json::json!({ "body_markdown": "hi", "body_text": "hi" }),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("without body_html"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn the_strictness_is_symmetric_in_both_directions() {
+        // Both bodies present -> rejected. Text without a document -> rejected.
+        // Neither silently wins; that asymmetry was the root cause of a
+        // data-loss bug.
+        for payload in [
+            serde_json::json!({ "body_markdown": "a", "body_html": "<p>a</p>" }),
+            serde_json::json!({ "body_text": "a" }),
+        ] {
+            assert!(
+                serde_json::from_value::<DraftContent>(payload.clone()).is_err(),
+                "should have rejected: {payload}"
+            );
+        }
     }
 
     #[test]

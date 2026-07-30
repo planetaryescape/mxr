@@ -76,6 +76,10 @@ name = "compose_check_cli"
 path = "crates/daemon/tests/compose_check_cli.rs"
 
 [[test]]
+name = "compose_html_cli"
+path = "crates/daemon/tests/compose_html_cli.rs"
+
+[[test]]
 name = "timing_cadence_cli"
 path = "crates/daemon/tests/timing_cadence_cli.rs"
 

@@ -1033,7 +1033,12 @@ pub enum Command {
         /// Append this HTML file to an HTML body before `</body>`.
         /// Signatures are never injected into supplied HTML automatically —
         /// pass this to opt in. Markdown composition is unaffected.
-        #[arg(long, value_name = "PATH", requires = "html_body", conflicts_with = "no_signature")]
+        #[arg(
+            long,
+            value_name = "PATH",
+            requires = "html_body",
+            conflicts_with = "no_signature"
+        )]
         signature_html: Option<PathBuf>,
         /// File path to attach (repeatable)
         #[arg(long, action = clap::ArgAction::Append)]
@@ -3088,6 +3093,113 @@ mod tests {
                     err.kind()
                 ),
             }
+        }
+    }
+
+    /// clap's own consistency check over the whole definition: catches a
+    /// `conflicts_with`/`requires` naming an argument that does not exist, a
+    /// group whose members do not exist, and duplicate long flags. Fails at the
+    /// definition rather than at a user's first invocation.
+    #[test]
+    fn cli_definition_is_internally_consistent() {
+        use clap::CommandFactory;
+        Cli::command().debug_assert();
+    }
+
+    fn assert_compose_rejects(args: &[&str], kind: clap::error::ErrorKind) {
+        let mut argv = vec!["mxr", "compose"];
+        argv.extend_from_slice(args);
+        // `Cli` doesn't derive `Debug`, so discard the Ok value.
+        match Cli::try_parse_from(argv).map(|_| ()) {
+            Ok(()) => panic!("`mxr compose {}` must be rejected", args.join(" ")),
+            Err(err) => assert_eq!(
+                err.kind(),
+                kind,
+                "wrong error kind for `mxr compose {}`: {err}",
+                args.join(" ")
+            ),
+        }
+    }
+
+    /// An HTML body and a markdown body are two different messages. Accepting
+    /// both and silently picking one is how the wrong email gets sent.
+    #[test]
+    fn html_body_flags_conflict_with_the_markdown_body_flags() {
+        use clap::error::ErrorKind::ArgumentConflict;
+        assert_compose_rejects(&["--html-file", "b.html", "--body", "hi"], ArgumentConflict);
+        assert_compose_rejects(&["--html-file", "b.html", "--body-stdin"], ArgumentConflict);
+        assert_compose_rejects(&["--html-stdin", "--body", "hi"], ArgumentConflict);
+        assert_compose_rejects(&["--html-stdin", "--body-stdin"], ArgumentConflict);
+    }
+
+    #[test]
+    fn the_two_ways_to_supply_html_conflict_with_each_other() {
+        assert_compose_rejects(
+            &["--html-file", "b.html", "--html-stdin"],
+            clap::error::ErrorKind::ArgumentConflict,
+        );
+    }
+
+    /// `--text-file`, `--inline` and `--signature-html` only mean anything
+    /// alongside an HTML body. Accepting them on a markdown compose would
+    /// silently ignore them.
+    #[test]
+    fn the_html_shaping_flags_require_an_html_body() {
+        use clap::error::ErrorKind::MissingRequiredArgument;
+        assert_compose_rejects(&["--text-file", "alt.txt"], MissingRequiredArgument);
+        assert_compose_rejects(&["--inline", "logo=logo.png"], MissingRequiredArgument);
+        assert_compose_rejects(&["--signature-html", "sig.html"], MissingRequiredArgument);
+    }
+
+    /// Counterweight to the rejection tests above: the full HTML invocation must
+    /// still parse, and land in the fields the command reads. Without this, a
+    /// definition that rejected everything would look correct.
+    #[test]
+    fn a_full_html_compose_invocation_parses() {
+        let cli = Cli::parse_from([
+            "mxr",
+            "compose",
+            "--to",
+            "alice@example.com",
+            "--html-file",
+            "body.html",
+            "--text-file",
+            "alt.txt",
+            "--inline",
+            "logo=logo.png",
+            "--inline",
+            "banner=banner.png",
+            "--signature-html",
+            "sig.html",
+            "--draft",
+            "--format",
+            "json",
+        ]);
+        match cli.command {
+            Some(Command::Compose {
+                html_file,
+                html_stdin,
+                text_file,
+                inline,
+                signature_html,
+                draft,
+                yes,
+                format,
+                ..
+            }) => {
+                assert_eq!(html_file, Some(PathBuf::from("body.html")));
+                assert!(!html_stdin);
+                assert_eq!(text_file, Some(PathBuf::from("alt.txt")));
+                assert_eq!(
+                    inline,
+                    vec!["logo=logo.png".to_string(), "banner=banner.png".to_string()]
+                );
+                assert_eq!(signature_html, Some(PathBuf::from("sig.html")));
+                assert!(draft, "--draft should parse");
+                assert!(!yes, "--yes was not passed");
+                assert_eq!(format, Some(OutputFormat::Json));
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
         }
     }
 }

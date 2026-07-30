@@ -128,7 +128,10 @@ fn parse_inline_assets(raw: &[String]) -> anyhow::Result<Vec<InlineAsset>> {
 
         let path = expand_tilde(path);
         if !path.exists() {
-            bail!("--inline `{cid}` points at a missing file: {}", path.display());
+            bail!(
+                "--inline `{cid}` points at a missing file: {}",
+                path.display()
+            );
         }
 
         assets.push(InlineAsset {
@@ -200,8 +203,7 @@ mod tests {
     fn inline_assets_parse_as_cid_equals_path() {
         let file = std::env::temp_dir().join("mxr-inline-test.png");
         std::fs::write(&file, b"png").unwrap();
-        let parsed =
-            parse_inline_assets(&[format!("notto-logo={}", file.display())]).unwrap();
+        let parsed = parse_inline_assets(&[format!("notto-logo={}", file.display())]).unwrap();
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].cid, "notto-logo");
         std::fs::remove_file(&file).ok();
@@ -236,10 +238,7 @@ mod tests {
     fn signature_goes_before_the_closing_body_tag() {
         let html = "<html><body><p>hi</p></body></html>";
         let merged = append_signature(html, "<p>-- Notto</p>");
-        assert_eq!(
-            merged,
-            "<html><body><p>hi</p><p>-- Notto</p></body></html>"
-        );
+        assert_eq!(merged, "<html><body><p>hi</p><p>-- Notto</p></body></html>");
     }
 
     #[test]
@@ -284,6 +283,35 @@ mod tests {
             path: PathBuf::from("/tmp/logo.png"),
         }];
         assert_eq!(unresolved_cid_references(html, &assets), vec!["banner"]);
+    }
+
+    /// Reported, but not a refusal: a `cid:` mxr cannot resolve may still be
+    /// something the recipient's client can, and refusing would be mxr
+    /// overruling the author.
+    #[test]
+    fn an_unresolved_cid_does_not_stop_the_body_being_assembled() {
+        let html = r#"<html><body><img src="cid:missing-banner"></body></html>"#;
+        let file = std::env::temp_dir().join("mxr-html-unresolved-cid.html");
+        std::fs::write(&file, html).unwrap();
+        let mut a = args();
+        a.html_file = Some(file.clone());
+
+        let input = read_html_input(&a)
+            .expect("an unresolved cid must not be an error")
+            .expect("html mode");
+
+        assert_eq!(input.html, html);
+        assert_eq!(
+            unresolved_cid_references(&input.html, &input.inline_assets),
+            vec!["missing-banner"]
+        );
+        std::fs::remove_file(&file).ok();
+    }
+
+    #[test]
+    fn inline_rejects_an_entry_with_no_path() {
+        let err = parse_inline_assets(&["logo=".to_string()]).unwrap_err();
+        assert!(err.to_string().contains("no path"), "{err}");
     }
 
     #[test]

@@ -59,7 +59,8 @@ pub(crate) async fn extract_and_store(
     let cleaned = {
         let (text, html) = draft.content.reader_input();
         clean(text, html, &ReaderConfig::default())
-    }.content;
+    }
+    .content;
     if !COMMITMENT_PREFILTER.is_match(&cleaned) {
         return Ok(Vec::new());
     }

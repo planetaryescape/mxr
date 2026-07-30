@@ -142,7 +142,10 @@ async fn dispatch_respond_invite_sends_reply_and_updates_local_partstat() {
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].to[0].email, "organizer@example.com");
     assert!(sent[0].content.analysis_text().contains("METHOD:REPLY"));
-    assert!(sent[0].content.analysis_text().contains("PARTSTAT=DECLINED"));
+    assert!(sent[0]
+        .content
+        .analysis_text()
+        .contains("PARTSTAT=DECLINED"));
 
     let stored = state
         .store

@@ -1115,4 +1115,100 @@ mod tests {
         assert!(q.ends_with('…'));
         assert!(q.chars().count() <= QUERY_LIMIT + 1);
     }
+
+    fn draft_with_content(
+        content: mxr_core::types::DraftContent,
+        inline_assets: Vec<mxr_core::types::InlineAsset>,
+    ) -> mxr_core::types::Draft {
+        mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id: mxr_core::AccountId::new(),
+            from: None,
+            reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
+            to: vec![mxr_core::types::Address {
+                name: Some("Alice Example".into()),
+                email: "alice@example.com".into(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Quarterly numbers".into(),
+            content,
+            inline_assets,
+            attachments: vec![],
+            inline_calendar_reply: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    /// Activity rows record what happened, never the message. An HTML draft
+    /// carries a whole document, a text alternative and inline asset paths on
+    /// disk; none of it may reach `context_json`. Recipient addresses are
+    /// counted, not named.
+    #[test]
+    fn send_activity_records_kind_and_counts_but_no_body_recipients_or_asset_paths() {
+        let draft = draft_with_content(
+            mxr_core::types::DraftContent::html(
+                "<html><body><p>BODY-HTML-MARKER</p></body></html>",
+                Some("BODY-TEXT-MARKER".into()),
+            ),
+            vec![mxr_core::types::InlineAsset {
+                cid: "logo".into(),
+                path: std::path::PathBuf::from("/home/user/private/brand-logo.png"),
+            }],
+        );
+
+        let entry = ok_map(&Request::SendDraft {
+            draft,
+            override_safety_token: None,
+        })
+        .expect("a send must be recorded");
+        let context = entry.context.expect("a send must carry context");
+        let json = serde_json::to_string(&context).unwrap();
+
+        for leaked in [
+            "BODY-HTML-MARKER",
+            "BODY-TEXT-MARKER",
+            "<p>",
+            "brand-logo.png",
+            "/home/user/private",
+            "alice@example.com",
+            "Alice Example",
+        ] {
+            assert!(
+                !json.contains(leaked),
+                "activity context leaked `{leaked}`: {json}"
+            );
+        }
+
+        assert_eq!(context["content_kind"], "html");
+        assert_eq!(context["inline_count"], 1);
+        assert_eq!(context["to_count"], 1);
+        assert_eq!(context["subject"], "Quarterly numbers");
+    }
+
+    #[test]
+    fn send_activity_labels_a_markdown_draft_as_markdown_with_no_inline_assets() {
+        let draft = draft_with_content(
+            mxr_core::types::DraftContent::markdown("plain body"),
+            vec![],
+        );
+
+        let entry = ok_map(&Request::SendDraft {
+            draft,
+            override_safety_token: None,
+        })
+        .expect("a send must be recorded");
+        let context = entry.context.expect("a send must carry context");
+
+        assert_eq!(context["content_kind"], "markdown");
+        assert_eq!(context["inline_count"], 0);
+        assert!(
+            !serde_json::to_string(&context)
+                .unwrap()
+                .contains("plain body"),
+            "markdown source must not be recorded either"
+        );
+    }
 }

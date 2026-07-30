@@ -19,14 +19,25 @@ use scraper::{Html, Node};
 
 /// Schemes a URL-bearing attribute may use.
 ///
-/// `data:` is handled separately: only `data:image/*` is allowed, because a
-/// `data:text/html` payload is a script vector.
+/// `data:` is handled separately: only raster `data:image/*` is allowed. A
+/// `data:text/html` payload is a script vector, and so is SVG — see
+/// [`UnsafeUrl::SvgDataUrl`].
 const ALLOWED_SCHEMES: &[&str] = &["http", "https", "mailto", "cid", "tel"];
 
 /// Elements that execute, submit, navigate, or embed foreign content.
 const FORBIDDEN_ELEMENTS: &[&str] = &[
     "script", "object", "embed", "applet", "iframe", "frame", "frameset", "form", "input",
     "button", "textarea", "select", "base",
+];
+
+/// Elements html5ever discards when they appear with no table ancestor.
+///
+/// The HTML tree-construction rules drop a stray `<td>` token outright, so the
+/// element — and any `onclick` it carries — never reaches the validator. A more
+/// forgiving mail client parser may well keep it. Measured, not assumed: see
+/// `only_table_scoped_elements_vanish_from_a_document_parse`.
+const TABLE_SCOPED_ELEMENTS: &[&str] = &[
+    "td", "tr", "th", "tbody", "thead", "tfoot", "caption", "col", "colgroup",
 ];
 
 /// Attributes that can carry a URL.
@@ -57,6 +68,8 @@ pub enum HtmlIssueKind {
     EventHandler { attribute: String },
     /// A URL whose scheme is not on the allowlist.
     UnsafeUrlScheme { attribute: String, scheme: String },
+    /// A `data:image/svg+xml` payload, refused where raster images are allowed.
+    SvgDataUrl { attribute: String },
     /// A `<style>` block containing an active-content construct.
     UnsafeStyle,
     /// A forbidden element hidden inside a comment. Outlook conditional
@@ -87,6 +100,15 @@ impl fmt::Display for HtmlIssue {
             HtmlIssueKind::UnsafeUrlScheme { attribute, scheme } => write!(
                 f,
                 "`{attribute}` uses unsafe URL scheme `{scheme}:`{where_}: {}",
+                self.detail
+            ),
+            HtmlIssueKind::SvgDataUrl { attribute } => write!(
+                f,
+                "`{attribute}` uses a `data:image/svg+xml` URL{where_}: SVG is the one \
+                 image format that can carry <script> and event handlers, so it is \
+                 refused where data:image/png, jpeg, gif and webp are allowed. This is \
+                 deliberate, not a bug — inline the artwork as a raster image or link \
+                 it over https. {}",
                 self.detail
             ),
             HtmlIssueKind::UnsafeStyle => {
@@ -142,7 +164,10 @@ impl std::error::Error for HtmlValidationError {}
 ///
 /// Best-effort by nature: this parses with html5ever, and a given mail client's
 /// parser may disagree at the margins. It reports and refuses; it never
-/// silently rewrites to "make safe".
+/// silently rewrites to "make safe". Where html5ever is stricter than a mail
+/// client is likely to be — it discards stray table cells — a second parse of a
+/// throw-away copy covers the difference; see
+/// [`orphan_table_element_issues`].
 pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
     let document = Html::parse_document(html);
     let mut issues = Vec::new();
@@ -196,6 +221,8 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
                     }
                 }
                 issues.extend(unsafe_style_blocks(&inner, html));
+                let orphans = orphan_table_element_issues(body, html, &issues);
+                issues.extend(orphans);
             }
             _ => {}
         }
@@ -204,6 +231,10 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
     // `<style>` is allowed — media queries are the whole point of a responsive
     // template — but its contents still get checked for active constructs.
     issues.extend(unsafe_style_blocks(&document, html));
+
+    // Last, because it needs to know what the document parse already found.
+    let orphans = orphan_table_element_issues(html, html, &issues);
+    issues.extend(orphans);
 
     if issues.is_empty() {
         Ok(())
@@ -249,11 +280,16 @@ fn attribute_issues(element: &scraper::node::Element, html: &str) -> Vec<HtmlIss
         }
 
         if URL_ATTRIBUTES.contains(&attribute.as_str()) {
-            if let Some(scheme) = unsafe_scheme(value) {
+            if let Some(verdict) = unsafe_url(value) {
                 issues.push(HtmlIssue {
                     line: locate_line(html, value.trim()),
                     detail: truncate(value, 60),
-                    kind: HtmlIssueKind::UnsafeUrlScheme { attribute, scheme },
+                    kind: match verdict {
+                        UnsafeUrl::Scheme(scheme) => {
+                            HtmlIssueKind::UnsafeUrlScheme { attribute, scheme }
+                        }
+                        UnsafeUrl::SvgDataUrl => HtmlIssueKind::SvgDataUrl { attribute },
+                    },
                 });
             }
         }
@@ -262,17 +298,95 @@ fn attribute_issues(element: &scraper::node::Element, html: &str) -> Vec<HtmlIss
     issues
 }
 
+/// Attribute issues on table-scoped elements the parse of `markup` threw away.
+///
+/// html5ever obeys the HTML tree-construction rules, so a `<td onclick="...">`
+/// with no table ancestor is dropped before the validator ever sees it. Parse a
+/// throw-away copy wrapped in `<table>`, where those tokens are legal, and take
+/// only the table-scoped elements from it. Everything else in the copy has
+/// already been inspected in its proper place, and `already_reported` keeps a
+/// real table's cells from being counted twice.
+///
+/// `html` is the caller's original document, used only for line numbers. The
+/// copy is never handed back.
+fn orphan_table_element_issues(
+    markup: &str,
+    html: &str,
+    already_reported: &[HtmlIssue],
+) -> Vec<HtmlIssue> {
+    let wrapped = format!("<table>{}", without_table_end_tags(markup));
+    let fragment = Html::parse_fragment(&wrapped);
+
+    fragment
+        .tree
+        .nodes()
+        .filter_map(|node| node.value().as_element())
+        .filter(|element| {
+            TABLE_SCOPED_ELEMENTS
+                .iter()
+                .any(|tag| element.name().eq_ignore_ascii_case(tag))
+        })
+        .flat_map(|element| attribute_issues(element, html))
+        .filter(|issue| !already_reported.contains(issue))
+        .collect()
+}
+
+/// `markup` with every `</table>` end tag removed.
+///
+/// The wrapper in [`orphan_table_element_issues`] is the only thing keeping
+/// stray table tokens alive, and an unmatched `</table>` in the source would
+/// close it — hiding exactly the markup being looked for. Dropping end tags
+/// from the throw-away copy cannot invent an attribute, so it cannot invent an
+/// issue either.
+fn without_table_end_tags(markup: &str) -> String {
+    const END_TAG: &str = "</table";
+
+    let lowered = markup.to_ascii_lowercase();
+    let mut kept = String::with_capacity(markup.len());
+    let mut cursor = 0;
+
+    while let Some(offset) = lowered[cursor..].find(END_TAG) {
+        let start = cursor + offset;
+        let after_name = start + END_TAG.len();
+        match lowered[after_name..].find('>').map(|at| after_name + at) {
+            // Only whitespace may sit between the name and the `>`, so
+            // `</tablet>` is a different tag and stays.
+            Some(close) if markup[after_name..close].trim().is_empty() => {
+                kept.push_str(&markup[cursor..start]);
+                cursor = close + 1;
+            }
+            _ => {
+                kept.push_str(&markup[cursor..after_name]);
+                cursor = after_name;
+            }
+        }
+    }
+    kept.push_str(&markup[cursor..]);
+    kept
+}
+
 fn is_meta_refresh(element: &scraper::node::Element) -> bool {
     element
         .attr("http-equiv")
         .is_some_and(|value| value.trim().eq_ignore_ascii_case("refresh"))
 }
 
-/// The scheme of `url`, when it is one we refuse.
+/// Why a URL is refused.
+enum UnsafeUrl {
+    /// A scheme outside [`ALLOWED_SCHEMES`].
+    Scheme(String),
+    /// `data:image/svg+xml`. SVG is the one image format that carries
+    /// `<script>` and event handlers, so it is refused where raster images are
+    /// not. `<img>` will not run it and `<object>`/`<embed>` are forbidden
+    /// outright, but a mail client's behaviour is not something to bet on.
+    SvgDataUrl,
+}
+
+/// What is wrong with `url`, when something is.
 ///
-/// Returns `None` for allowed schemes, `data:image/*`, and scheme-relative or
-/// relative URLs.
-fn unsafe_scheme(url: &str) -> Option<String> {
+/// Returns `None` for allowed schemes, raster `data:image/*`, and
+/// scheme-relative or relative URLs.
+fn unsafe_url(url: &str) -> Option<UnsafeUrl> {
     // Browsers and mail clients strip whitespace and control characters before
     // resolving a scheme, so `java\tscript:` is live. Do the same here.
     let cleaned: String = url
@@ -303,15 +417,17 @@ fn unsafe_scheme(url: &str) -> Option<String> {
     if ALLOWED_SCHEMES.contains(&scheme.as_str()) {
         return None;
     }
-    if scheme == "data"
-        && cleaned[colon + 1..]
-            .to_ascii_lowercase()
-            .starts_with("image/")
-    {
-        return None;
+    if scheme == "data" {
+        let media_type = cleaned[colon + 1..].to_ascii_lowercase();
+        if media_type.starts_with("image/svg") {
+            return Some(UnsafeUrl::SvgDataUrl);
+        }
+        if media_type.starts_with("image/") {
+            return None;
+        }
     }
 
-    Some(scheme)
+    Some(UnsafeUrl::Scheme(scheme))
 }
 
 fn unsafe_style_blocks(document: &Html, html: &str) -> Vec<HtmlIssue> {
@@ -754,5 +870,166 @@ mod tests {
         // different matter, and are covered above.
         assert_eq!(validate_html(r#"<p o&#110;click="steal()">x</p>"#), Ok(()));
         refusal(r#"<p onclick="steal()">x</p>"#);
+    }
+
+    /// Spelled out rather than read from `TABLE_SCOPED_ELEMENTS`, so that
+    /// shrinking that list fails a test instead of quietly narrowing one.
+    const DROPPED_WITHOUT_A_TABLE: &[&str] = &[
+        "td", "tr", "th", "tbody", "thead", "tfoot", "caption", "col", "colgroup",
+    ];
+
+    /// Why the second parse exists at all. If html5ever ever starts keeping
+    /// these, or starts dropping something new, this is the test that says so.
+    #[test]
+    fn only_table_scoped_elements_vanish_from_a_document_parse() {
+        fn survives(tag: &str) -> bool {
+            let document = Html::parse_document(&format!("<{tag} data-probe=\"1\">x"));
+            document
+                .tree
+                .nodes()
+                .filter_map(|node| node.value().as_element())
+                .any(|element| element.name() == tag)
+        }
+
+        assert_eq!(
+            TABLE_SCOPED_ELEMENTS, DROPPED_WITHOUT_A_TABLE,
+            "the validator's list drifted from what html5ever actually drops"
+        );
+        for tag in DROPPED_WITHOUT_A_TABLE {
+            assert!(!survives(tag), "<{tag}> unexpectedly survived");
+        }
+        for tag in [
+            "li", "option", "optgroup", "dt", "dd", "legend", "rt", "source",
+        ] {
+            assert!(survives(tag), "<{tag}> is dropped too and needs covering");
+        }
+    }
+
+    /// A realistic branded template whose cells sit in a real table. Nothing
+    /// here may ever be refused.
+    const BRANDED_TABLE_CELLS: &str = r#"<!DOCTYPE html>
+<html>
+<body>
+<table role="presentation" cellpadding="0" cellspacing="0" width="600">
+  <caption style="caption-side:top;font-size:11px;">Notto® weekly</caption>
+  <colgroup><col style="width:600px"></colgroup>
+  <thead><tr><th style="text-align:left;font-family:Georgia,serif;">Notto® digest</th></tr></thead>
+  <tbody>
+    <tr><td style="padding:24px;color:#1a1a1a;background:#fff;">
+      <a href="https://example.com/read" style="color:#0b57d0;">Read it</a>
+    </td></tr>
+    <tr><td style="padding:0 24px 24px;"><img src="cid:notto-logo" alt="Notto®" width="120"></td></tr>
+  </tbody>
+  <tfoot><tr><td style="font-size:12px;color:#666;">Unsubscribe any time.</td></tr></tfoot>
+</table>
+</body>
+</html>"#;
+
+    #[test]
+    fn an_event_handler_on_an_orphan_table_element_is_not_a_blind_spot() {
+        for tag in DROPPED_WITHOUT_A_TABLE {
+            let error = refusal(&format!(r#"<{tag} onclick="steal()">x"#));
+            assert!(
+                error.issues.iter().any(|issue| issue.kind
+                    == HtmlIssueKind::EventHandler {
+                        attribute: "onclick".to_string()
+                    }),
+                "orphan <{tag}> hid its handler: {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unsafe_url_on_an_orphan_table_element_is_not_a_blind_spot() {
+        let error = refusal(r#"<td background="javascript:steal()">x</td>"#);
+        assert!(
+            error.issues.iter().any(|issue| matches!(
+                &issue.kind,
+                HtmlIssueKind::UnsafeUrlScheme { scheme, .. } if scheme == "javascript"
+            )),
+            "{error:?}"
+        );
+    }
+
+    /// Held before the orphan scan existed and must keep holding: only the
+    /// `<td>` token is dropped, so the `<a>` beneath it is reparented into the
+    /// body and inspected there.
+    #[test]
+    fn an_unsafe_url_below_an_orphan_table_element_is_caught() {
+        let error = refusal(r#"<td><a href="javascript:steal()">x</a></td>"#);
+        assert!(
+            error.issues.iter().any(|issue| matches!(
+                &issue.kind,
+                HtmlIssueKind::UnsafeUrlScheme { scheme, .. } if scheme == "javascript"
+            )),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn a_stray_table_end_tag_does_not_hide_the_orphan_that_follows_it() {
+        // The second parse wraps a copy in `<table>`; an unmatched `</table>`
+        // in the source would otherwise close that wrapper.
+        for markup in [
+            r#"<div></table><td onclick="steal()">x"#,
+            r#"<div></TABLE><td onclick="steal()">x"#,
+            r#"<div></table  ><td onclick="steal()">x"#,
+        ] {
+            refusal(markup);
+        }
+    }
+
+    #[test]
+    fn a_handler_on_an_orphan_cell_inside_a_conditional_comment_is_rejected() {
+        refusal(r#"<!--[if mso]><td onclick="steal()">x<![endif]-->"#);
+    }
+
+    #[test]
+    fn a_real_table_cell_is_not_mistaken_for_an_orphan() {
+        assert_eq!(validate_html(BRANDED_TABLE_CELLS), Ok(()));
+    }
+
+    #[test]
+    fn a_real_table_cell_with_a_handler_is_reported_once_not_twice() {
+        let error =
+            refusal(r#"<table><tr><td onclick="steal()" style="padding:8px">x</td></tr></table>"#);
+        assert_eq!(error.issues.len(), 1, "{error:?}");
+    }
+
+    #[test]
+    fn an_svg_data_url_is_rejected_although_raster_data_urls_are_not() {
+        for markup in [
+            r#"<img src="data:image/svg+xml;base64,PHN2Zz48c2NyaXB0Pjwvc2NyaXB0Pjwvc3ZnPg==">"#,
+            r#"<img src="data:image/svg+xml,%3Csvg%3E%3C/svg%3E">"#,
+            r#"<img src="DATA:IMAGE/SVG+XML;base64,PHN2Zz4=">"#,
+        ] {
+            let rendered = refusal(markup).to_string();
+            assert!(rendered.contains("svg"), "no mention of svg: {rendered}");
+            assert!(
+                rendered.contains("script"),
+                "must say why SVG differs from other images: {rendered}"
+            );
+        }
+
+        for markup in [
+            r#"<img src="data:image/png;base64,iVBORw0KGgo=">"#,
+            r#"<img src="data:image/jpeg;base64,/9j/4AAQ">"#,
+            r#"<img src="data:image/gif;base64,R0lGOD">"#,
+            r#"<img src="data:image/webp;base64,UklGRg==">"#,
+        ] {
+            assert_eq!(validate_html(markup), Ok(()), "wrongly refused: {markup}");
+        }
+    }
+
+    #[test]
+    fn the_newly_covered_refusals_still_hand_back_the_exact_source() {
+        for source in [
+            String::from("<td onclick=\"steal()\">®</td>\n"),
+            String::from("<img src=\"data:image/svg+xml;base64,PHN2Zz4=\" alt=\"®\">\n"),
+        ] {
+            let before = source.clone();
+            assert!(validate_html(&source).is_err(), "{source}");
+            assert_eq!(source, before);
+        }
     }
 }

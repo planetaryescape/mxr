@@ -319,6 +319,19 @@ async fn draft_without_keys(
     id: &mxr_core::DraftId,
     keys: &[&str],
 ) -> mxr_core::types::Draft {
+    try_draft_without_keys(state, id, keys)
+        .await
+        .expect("payload should decode")
+}
+
+/// The fallible form: some key removals are refused by `DraftContent`'s own
+/// deserialiser rather than by a handler, and a test asserting that needs the
+/// error rather than a panic.
+async fn try_draft_without_keys(
+    state: &Arc<AppState>,
+    id: &mxr_core::DraftId,
+    keys: &[&str],
+) -> serde_json::Result<mxr_core::types::Draft> {
     let stored = state.store.get_draft(id).await.unwrap().unwrap();
     let mut payload = serde_json::to_value(&stored).unwrap();
     let object = payload
@@ -327,7 +340,7 @@ async fn draft_without_keys(
     for key in keys {
         object.remove(*key);
     }
-    serde_json::from_value(payload).unwrap()
+    serde_json::from_value(payload)
 }
 
 /// The data-loss vector: an update payload with no body fields at all
@@ -363,23 +376,25 @@ async fn update_draft_refuses_a_payload_that_omits_the_body_entirely() {
     assert!(fake.sent_drafts().is_empty());
 }
 
-/// Same root cause, second shape: `body_text` without `body_html` also decodes
-/// to empty markdown.
+/// Same root cause, second shape: `body_text` without `body_html`. This one is
+/// now stopped a layer earlier — `DraftContent`'s deserialiser refuses it — so
+/// the payload never becomes a `Draft` for `update_draft` to judge. The
+/// assertion follows the guard to where it actually lives; asserting on
+/// `update_draft` instead would only prove that the wire never reaches it.
 #[tokio::test]
-async fn update_draft_refuses_a_payload_that_supplies_only_the_text_alternative() {
+async fn a_payload_that_supplies_only_the_text_alternative_never_decodes() {
     let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
     let state = Arc::new(state);
     let id = stored_html_draft(&state, SAFE_HTML).await;
 
-    let edited = draft_without_keys(&state, &id, &["body_html"]).await;
-    assert_eq!(
-        edited.content.kind_str(),
-        "markdown",
-        "body_text alone decodes as markdown, which is the bug being guarded"
+    let error = try_draft_without_keys(&state, &id, &["body_html"])
+        .await
+        .expect_err("body_text with no body_html must not decode to a Draft");
+
+    assert!(
+        error.to_string().contains("body_text without body_html"),
+        "the refusal must name what was wrong; got: {error}"
     );
-
-    expect_error(handle_request(&state, &request(2, Request::UpdateDraft { draft: edited })).await);
-
     assert_eq!(stored_html(&state, &id).await, SAFE_HTML);
 }
 
@@ -534,6 +549,54 @@ async fn sending_an_html_only_draft_scans_the_document_for_secrets() {
     assert!(
         message.contains("AWS access key id"),
         "safety must read the HTML document; got: {message}"
+    );
+    assert!(
+        fake.sent_drafts().is_empty(),
+        "a blocked draft must not be sent"
+    );
+}
+
+/// The blank-alternative variant, and the more dangerous one: the row carries
+/// `text: Some("")`, which is "supplied" as far as every consumer is concerned.
+/// `materialize_text_alternative` used to match only `None`, so this row kept
+/// its useless alternative and safety scanned an empty string — a live
+/// credential in the document, and a green verdict.
+#[tokio::test]
+async fn sending_an_html_draft_with_a_blank_text_alternative_still_scans_the_document() {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    let state = Arc::new(state);
+    let draft = html_draft(state.default_account_id(), SECRET_IN_HTML, Some("   \n"));
+    let id = draft.id.clone();
+    // Straight into the store: this is the shape an older binary, or any IPC
+    // client that skips the CLI, leaves behind.
+    state.store.insert_draft(&draft).await.unwrap();
+
+    // Guard the premise: the row must really come back blank, or this test
+    // would pass for the wrong reason.
+    let loaded = state.store.get_draft(&id).await.unwrap().unwrap();
+    assert!(
+        loaded.content.analysis_text().trim().is_empty(),
+        "the stored row must have a blank text alternative; got {:?}",
+        loaded.content
+    );
+
+    let message = expect_error(
+        handle_request(
+            &state,
+            &request(
+                1,
+                Request::SendStoredDraft {
+                    draft_id: id,
+                    override_safety_token: None,
+                },
+            ),
+        )
+        .await,
+    );
+
+    assert!(
+        message.contains("AWS access key id"),
+        "safety must read the HTML document, not the blank alternative; got: {message}"
     );
     assert!(
         fake.sent_drafts().is_empty(),

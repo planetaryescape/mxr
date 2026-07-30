@@ -17,13 +17,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 fn workspace_root() -> PathBuf {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    // CARGO_MANIFEST_DIR is `crates/daemon`. The workspace root is two parents up.
-    manifest
-        .parent()
-        .and_then(Path::parent)
-        .unwrap()
-        .to_path_buf()
+    // This test target belongs to the `mxr` package, whose manifest *is* the
+    // workspace root Cargo.toml (the sources live under `crates/daemon/` via
+    // explicit `path =` entries, so there is no `crates/daemon/Cargo.toml`).
+    // `CARGO_MANIFEST_DIR` is therefore already the repo root. The previous
+    // `../..` landed two levels above it and scanned every unrelated
+    // repository sitting next to this one — the single-writer scan would have
+    // false-positived on any sibling checkout containing `record_activity(`.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
 fn collect_rs_files(root: &Path) -> Vec<PathBuf> {
@@ -43,8 +44,15 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
             .and_then(|n| n.to_str())
             .unwrap_or_default()
             .to_string();
-        // Skip build outputs and node_modules.
-        if name == "target" || name == "target-cli" || name == "node_modules" {
+        // Skip build outputs, node_modules, and dot-directories. The last one
+        // matters now that the walk starts at the repo root: `.claude/worktrees/`
+        // holds full checkouts of this same repo, and scanning them would judge
+        // another branch's in-progress edits as this branch's violation.
+        if name == "target"
+            || name == "target-cli"
+            || name == "node_modules"
+            || name.starts_with('.')
+        {
             continue;
         }
         let ty = entry.file_type().ok();

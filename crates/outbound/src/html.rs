@@ -330,19 +330,13 @@ fn attribute_issues(element: &scraper::node::Element, html: &str) -> Vec<HtmlIss
         }
 
         if attribute == "style" {
-            if let Some(offender) = active_css_construct(value) {
-                issues.push(HtmlIssue {
-                    line: locate_line(html, offender),
-                    detail: truncate(value, 60),
-                    kind: HtmlIssueKind::UnsafeStyleAttribute,
-                });
-            }
+            issues.extend(css_issues(value, html, HtmlIssueKind::UnsafeStyleAttribute));
             continue;
         }
 
-        // `srcset` holds a list of candidates, so each one is a URL and the
-        // value as a whole is not.
-        let urls: Vec<&str> = if attribute == "srcset" {
+        // `srcset` and `imagesrcset` hold a list of candidates, so each one is
+        // a URL and the value as a whole is not.
+        let urls: Vec<&str> = if attribute == "srcset" || attribute == "imagesrcset" {
             srcset_candidates(value).collect()
         } else if URL_ATTRIBUTES.contains(&attribute.as_str()) {
             vec![value]
@@ -381,6 +375,84 @@ fn srcset_candidates(value: &str) -> impl Iterator<Item = &str> {
     value
         .split(',')
         .filter_map(|candidate| candidate.split_whitespace().next())
+}
+
+/// Every reason a fragment of CSS is refused.
+///
+/// The single rule set for both `<style>` blocks and inline `style`
+/// attributes. Splitting these was the original defect, and CSS `url()` was a
+/// way straight round the scheme allowlist that guards `src` and `href`, so
+/// both checks live here: the active-content constructs, and every `url()`
+/// payload run through the same [`unsafe_url`] the attributes use.
+///
+/// `style_kind` is the only thing that differs between the two callers.
+fn css_issues(css: &str, html: &str, style_kind: HtmlIssueKind) -> Vec<HtmlIssue> {
+    let mut issues = Vec::new();
+
+    if let Some(offender) = active_css_construct(css) {
+        issues.push(HtmlIssue {
+            line: locate_line(html, offender),
+            detail: truncate(offender, 40),
+            kind: style_kind,
+        });
+    }
+
+    for url in css_url_payloads(css) {
+        if let Some(verdict) = unsafe_url(url) {
+            issues.push(HtmlIssue {
+                line: locate_line(html, url.trim()),
+                detail: truncate(url, 60),
+                kind: match verdict {
+                    UnsafeUrl::Scheme(scheme) => HtmlIssueKind::UnsafeUrlScheme {
+                        attribute: "style".to_string(),
+                        scheme,
+                    },
+                    UnsafeUrl::SvgDataUrl => HtmlIssueKind::SvgDataUrl {
+                        attribute: "style".to_string(),
+                    },
+                },
+            });
+        }
+    }
+
+    issues
+}
+
+/// The payload of every `url()` in a fragment of CSS.
+///
+/// Covers `url(x)`, `url('x')`, `url("x")`, whitespace inside the parens, and
+/// several `url()` in one declaration. A `)` inside the payload ends it early,
+/// which can only truncate a URL — never hide its scheme, which is what the
+/// caller looks at.
+fn css_url_payloads(css: &str) -> Vec<&str> {
+    const OPENER: &str = "url(";
+
+    let lowered = css.to_ascii_lowercase();
+    let mut payloads = Vec::new();
+    let mut cursor = 0;
+
+    while let Some(offset) = lowered[cursor..].find(OPENER) {
+        let open = cursor + offset + OPENER.len();
+        let Some(close) = lowered[open..].find(')').map(|at| open + at) else {
+            break;
+        };
+        payloads.push(unquote(css[open..close].trim()));
+        cursor = close + 1;
+    }
+
+    payloads
+}
+
+/// `value` without one surrounding pair of matching quotes.
+fn unquote(value: &str) -> &str {
+    ['\'', '"']
+        .into_iter()
+        .find_map(|quote| {
+            value
+                .strip_prefix(quote)
+                .and_then(|inner| inner.strip_suffix(quote))
+        })
+        .unwrap_or(value)
 }
 
 /// The first active-content construct in `css`, when there is one.
@@ -535,13 +607,9 @@ fn unsafe_style_blocks(document: &Html, html: &str) -> Vec<HtmlIssue> {
 
     document
         .select(&selector)
-        .filter_map(|element| {
-            let offender = active_css_construct(&element.text().collect::<String>())?;
-            Some(HtmlIssue {
-                line: locate_line(html, offender),
-                detail: truncate(offender, 40),
-                kind: HtmlIssueKind::UnsafeStyle,
-            })
+        .flat_map(|element| {
+            let css = element.text().collect::<String>();
+            css_issues(&css, html, HtmlIssueKind::UnsafeStyle)
         })
         .collect()
 }
@@ -1003,13 +1071,15 @@ mod tests {
 <body>
 <table role="presentation" cellpadding="0" cellspacing="0" width="600">
   <caption style="caption-side:top;font-size:11px;">Notto® weekly</caption>
+  <!-- The url() forms a real branded template actually uses. -->
+  <colgroup><col style="background-image:url(&quot;https://cdn.example.com/rule.gif&quot;)"></colgroup>
   <colgroup><col style="width:600px"></colgroup>
   <thead><tr><th style="text-align:left;font-family:Georgia,serif;">Notto® digest</th></tr></thead>
   <tbody>
     <tr><td style="padding:24px;color:#1a1a1a;background:#fff;mso-line-height-rule:exactly;">
       <a href="https://example.com/read" style="color:#0b57d0;">Read it</a>
     </td></tr>
-    <tr><td style="background:url(https://cdn.example.com/hero.png) no-repeat center;">
+    <tr><td style="background:url(https://cdn.example.com/hero.png) no-repeat center,url('cid:notto-texture');list-style-image:url(data:image/png;base64,iVBORw0KGgo=);">
       <img src="cid:notto-logo" alt="Notto®" width="120"
            srcset="https://cdn.example.com/logo.png 1x, https://cdn.example.com/logo@2x.png 2x">
     </td></tr>
@@ -1168,6 +1238,73 @@ mod tests {
         }
     }
 
+    /// The round-1 SVG refusal covered `src` and `href` only, so CSS was a way
+    /// straight round it. Blocks and attributes are asserted together, because
+    /// a rule living in one and not the other is the defect being fixed.
+    #[test]
+    fn a_url_in_css_is_held_to_the_same_scheme_allowlist_as_an_attribute() {
+        for css in [
+            "background:url(data:image/svg+xml;base64,PHN2Zz4=)",
+            "background:url('data:image/svg+xml;base64,PHN2Zz4=')",
+            "background:url( data:image/svg+xml;base64,PHN2Zz4= )",
+            "background:url(vbscript:steal())",
+            "background:url(file:///etc/passwd)",
+            "background:url(a.png),url(data:image/svg+xml;base64,PHN2Zz4=)",
+        ] {
+            assert!(
+                validate_html(&format!("<style>.a{{{css}}}</style>")).is_err(),
+                "block allowed {css}"
+            );
+            assert!(
+                validate_html(&format!(r#"<p style="{css}">x</p>"#)).is_err(),
+                "attribute allowed {css}"
+            );
+        }
+
+        // Double quotes cannot survive inside a double-quoted attribute, so the
+        // two forms are checked where each is actually written.
+        refusal(r#"<style>.a{background:url("data:image/svg+xml;base64,PHN2Zz4=")}</style>"#);
+        refusal(
+            r#"<p style="background:url(&quot;data:image/svg+xml;base64,PHN2Zz4=&quot;)">x</p>"#,
+        );
+
+        for css in [
+            "background:url(https://cdn.example.com/bg.png)",
+            "background:url(cid:notto-logo)",
+            "background:url('cid:notto-logo')",
+            "background:url(data:image/png;base64,iVBORw0KGgo=)",
+            "background:url(images/bg.png),url(images/bg@2x.png)",
+            "background:url()",
+            "list-style:none",
+        ] {
+            assert_eq!(
+                validate_html(&format!("<style>.a{{{css}}}</style>")),
+                Ok(()),
+                "block refused {css}"
+            );
+            assert_eq!(
+                validate_html(&format!(r#"<p style="{css}">x</p>"#)),
+                Ok(()),
+                "attribute refused {css}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_svg_data_url_in_css_gets_the_same_explanation_as_one_in_an_attribute() {
+        for markup in [
+            r#"<p style="background:url(data:image/svg+xml;base64,PHN2Zz4=)">x</p>"#,
+            r#"<style>.a{background:url(data:image/svg+xml;base64,PHN2Zz4=)}</style>"#,
+        ] {
+            let rendered = refusal(markup).to_string();
+            assert!(rendered.contains("svg"), "no mention of svg: {rendered}");
+            assert!(
+                rendered.contains("script"),
+                "must say why SVG differs from other images: {rendered}"
+            );
+        }
+    }
+
     #[test]
     fn an_inline_style_in_a_real_table_cell_is_reported_once_not_twice() {
         let error =
@@ -1205,6 +1342,7 @@ mod tests {
         for markup in [
             r#"<img srcset="javascript:steal() 1x">"#,
             r#"<img srcset="hero.png 1x, javascript:steal() 2x">"#,
+            r#"<link imagesrcset="hero.png 1x, javascript:steal() 2x">"#,
         ] {
             let error = refusal(markup);
             assert!(
@@ -1263,6 +1401,7 @@ mod tests {
             String::from("<p style=\"width:expression(steal())\">®</p>\n"),
             String::from("<img srcset=\"a.png 1x, javascript:steal() 2x\" alt=\"®\">\n"),
             String::from("<svg><animate attributeName=\"href\"></svg>\n"),
+            String::from("<p style=\"background:url(data:image/svg+xml;base64,PHN2Zz4=)\">®</p>\n"),
         ] {
             let before = source.clone();
             assert!(validate_html(&source).is_err(), "{source}");

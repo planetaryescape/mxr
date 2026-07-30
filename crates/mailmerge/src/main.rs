@@ -328,7 +328,9 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
         println!("  failed:         {failed}");
     }
     println!("\nNothing was sent. Review with:");
-    println!("  mxr drafts list --account {}", args.account);
+    // `--account`/`--format` belong to the parent `drafts` command; `list` is
+    // the default action and rejects them.
+    println!("  mxr drafts --account {}", args.account);
     println!("Send with:");
     println!("  mxr-mailmerge send {campaign_id} --dry-run");
     Ok(())

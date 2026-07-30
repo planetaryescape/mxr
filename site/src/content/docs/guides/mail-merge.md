@@ -76,7 +76,7 @@ mxr-mailmerge draft ... --yes
 Review them as ordinary mxr drafts — because that is what they are:
 
 ```bash
-mxr drafts list --account notto --format json
+mxr drafts --account notto --format json
 ```
 
 Sending is a separate command, and confirmed separately:

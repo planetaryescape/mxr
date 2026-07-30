@@ -194,3 +194,56 @@ describe("ComposeRoute keyboard flow", () => {
     expect(screen.getByRole("button", { name: /more compose actions/i })).toBeVisible();
   });
 });
+
+describe("ComposeRoute opening a saved draft that has an HTML body", () => {
+  beforeEach(() => {
+    router.location = { pathname: "/compose/draft-42", search: {} };
+    rawApi.fetch.mockResolvedValue({ snippets: [] });
+    api.fetchContactsAutocomplete.mockResolvedValue([]);
+    api.fetchAccounts.mockResolvedValue({ accounts: [] });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    router.location = { pathname: "/compose/new", search: {} };
+  });
+
+  test("previews the document read-only instead of offering a hopeless retry", async () => {
+    api.restoreComposeSession.mockRejectedValue(
+      Object.assign(
+        new Error("this draft has an HTML body, which the compose editor cannot edit"),
+        {
+          status: 409,
+          code: "html_draft_not_editable",
+          details: {
+            previewHtml: '<p>Ship on Friday.</p><img src="https://tracker.example.com/p.png">',
+          },
+        },
+      ),
+    );
+
+    renderWithQueryClient(<ComposeRoute />);
+
+    expect(await screen.findByText(/This draft has an HTML body/i)).toBeVisible();
+    // Retrying a permanent refusal can only fail again.
+    expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+
+    const frame = screen.getByTitle("HTML message body") as HTMLIFrameElement;
+    const srcDoc = frame.getAttribute("srcdoc") ?? "";
+    expect(srcDoc).toContain("Ship on Friday.");
+    const preview = new DOMParser().parseFromString(srcDoc, "text/html");
+    expect(preview.querySelector('img[src^="http"]')).toBeNull();
+  });
+
+  test("still offers a retry for a failure that might be transient", async () => {
+    api.restoreComposeSession.mockRejectedValue(
+      new Error("failed to connect to mxr daemon at /tmp/mxr.sock"),
+    );
+
+    renderWithQueryClient(<ComposeRoute />);
+
+    expect(await screen.findByText(/failed to connect to mxr daemon/i)).toBeVisible();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeVisible();
+    expect(screen.queryByText(/This draft has an HTML body/i)).not.toBeInTheDocument();
+  });
+});

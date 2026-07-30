@@ -642,14 +642,31 @@ async fn restore_compose_session(
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
     Json(request): Json<ComposeSessionRestoreRequest>,
-) -> Result<Json<serde_json::Value>, BridgeError> {
+) -> Result<Response, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    let session = restore_saved_draft_session(
+    let restored = restore_saved_draft_session(
         &state.config.socket_path,
         parse_draft_id(&request.draft_id)?,
     )
     .await?;
-    Ok(Json(json!({ "session": session })))
+    Ok(match restored {
+        RestoredComposeSession::Editable(session) => {
+            Json(json!({ "session": session })).into_response()
+        }
+        // 409, not 502: the daemon is healthy and the draft is intact. This
+        // combination will never succeed, so the client must not retry it.
+        RestoredComposeSession::HtmlNotEditable { preview_html } => (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "this draft has an HTML body, which the markdown compose editor \
+                          cannot edit. Edit the HTML source and re-create the draft with \
+                          `mxr compose --html-file <path>`.",
+                "code": "html_draft_not_editable",
+                "previewHtml": preview_html,
+            })),
+        )
+            .into_response(),
+    })
 }
 
 async fn update_compose_session(
@@ -2115,11 +2132,36 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
     })
 }
 
+/// Outcome of asking the bridge to open a saved draft in the browser composer.
+enum RestoredComposeSession {
+    /// A markdown draft: a compose file exists on disk and can be edited.
+    Editable(serde_json::Value),
+    /// A draft whose body is a supplied HTML document. The markdown compose
+    /// file cannot represent it, so no compose file is written and no editing
+    /// session exists — the client gets the document for read-only preview and
+    /// nothing it does can write back.
+    HtmlNotEditable { preview_html: String },
+}
+
 async fn restore_saved_draft_session(
     socket_path: &Path,
     draft_id: DraftId,
-) -> Result<serde_json::Value, BridgeError> {
+) -> Result<RestoredComposeSession, BridgeError> {
     let draft = saved_draft(socket_path, &draft_id).await?;
+    // Decide up front, before creating any scratch file: refusing later would
+    // leave an orphaned compose file behind on every attempt to open an HTML
+    // draft. Exhaustive so a future body kind is a compile error here rather
+    // than a session with a silently empty body.
+    let body = match &draft.content {
+        mxr_core::DraftContent::Html { html, .. } => {
+            return Ok(RestoredComposeSession::HtmlNotEditable {
+                // Verbatim: the client sanitises for display only. Whatever mxr
+                // sends on the wire is this document, untouched.
+                preview_html: html.clone(),
+            });
+        }
+        mxr_core::DraftContent::Markdown { source } => source.clone(),
+    };
     let account = account_summary(socket_path, &draft.account_id).await?;
     let (draft_path, cursor_line) = mxr_compose::create_draft_file_async(
         ComposeKind::New {
@@ -2158,16 +2200,7 @@ async fn restore_saved_draft_session(
             .collect(),
         signature: None,
     };
-    // An HTML draft cannot be represented in the markdown compose file;
-    // rendering one with an empty body would silently discard the document.
-    let Some(body) = draft.content.markdown_source() else {
-        return Err(BridgeError::Ipc(
-            "this draft has an HTML body, which the compose editor cannot edit. \
-             Edit the HTML source and create a new draft."
-                .to_string(),
-        ));
-    };
-    let rendered = render_compose_file(&frontmatter, body, None)
+    let rendered = render_compose_file(&frontmatter, &body, None)
         .map_err(|error| BridgeError::Ipc(error.to_string()))?;
     write_compose_file(&draft_path, rendered).await?;
 
@@ -2176,7 +2209,7 @@ async fn restore_saved_draft_session(
     session["accountId"] = json!(account.account_id);
     session["kind"] = json!("new");
     session["editorCommand"] = json!(resolved_editor_command());
-    Ok(session)
+    Ok(RestoredComposeSession::Editable(session))
 }
 
 async fn saved_draft(socket_path: &Path, draft_id: &DraftId) -> Result<Draft, BridgeError> {

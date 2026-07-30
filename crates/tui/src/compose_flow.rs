@@ -247,6 +247,13 @@ pub(crate) async fn prepare_draft_edit(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     draft: Draft,
 ) -> Result<DraftEditReadyData, MxrError> {
+    // Bail before the account round trip: nothing the daemon returns can give
+    // an HTML document a markdown compose-file representation.
+    if draft.content.is_html() {
+        return Err(MxrError::Ipc(
+            mxr_compose::frontmatter::ComposeError::HtmlDraftNotEditable.to_string(),
+        ));
+    }
     let account = resolve_compose_account(bg, Some(&draft.account_id)).await?;
     let content = mxr_compose::draft_codec::draft_to_compose_file(&draft, &account.email)
         .map_err(|e| MxrError::Ipc(e.to_string()))?;
@@ -917,6 +924,44 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&temp);
+    }
+
+    #[tokio::test]
+    async fn prepare_draft_edit_refuses_an_html_draft_without_asking_the_daemon() {
+        let draft = mxr_core::Draft {
+            id: mxr_core::id::DraftId::new(),
+            account_id: mxr_core::AccountId::new(),
+            from: None,
+            reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Designed".into(),
+            content: mxr_core::DraftContent::html("<p>designed</p>", None),
+            attachments: vec![],
+            inline_assets: vec![],
+            inline_calendar_reply: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let (bg, mut bg_rx) = mpsc::unbounded_channel::<IpcRequest>();
+
+        // Matched rather than `expect_err`: `DraftEditReadyData` deliberately
+        // has no `Debug`, so draft bodies cannot reach a log line.
+        let error = match super::prepare_draft_edit(&bg, draft).await {
+            Ok(_) => panic!("an HTML draft has no markdown compose-file representation"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().to_lowercase().contains("html"),
+            "the error must name the HTML body as the reason; got {error}"
+        );
+        assert!(
+            bg_rx.try_recv().is_err(),
+            "a draft that cannot be edited must not cost a daemon round trip"
+        );
     }
 
     /// Plan 004 / Step 4b: editor non-zero exit (discard) deletes the

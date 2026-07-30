@@ -19,10 +19,13 @@ const api = vi.hoisted(() => ({
   fetchContactsAutocomplete: vi.fn<(query: string) => Promise<unknown[]>>(),
   refreshComposeSession: vi.fn<(draftPath: string) => Promise<unknown>>(),
   restoreComposeSession: vi.fn<(draftId: string) => Promise<unknown>>(),
-  saveComposeSession: vi.fn<(draftPath: string, accountId: string) => Promise<unknown>>(),
+  saveComposeSession:
+    vi.fn<(draftPath: string, accountId: string, draftId?: string) => Promise<unknown>>(),
   sendComposeSession: vi.fn<(draftPath: string, accountId: string) => Promise<unknown>>(),
   startComposeSession:
     vi.fn<(kind: string, messageId?: string) => Promise<ComposeSessionResponse>>(),
+  suggestComposeCollaborators:
+    vi.fn<(draftPath: string, accountId: string) => Promise<{ suggestions: unknown[] }>>(),
   updateComposeSession: vi.fn<(input: unknown) => Promise<ComposeSessionResponse>>(),
   uploadComposeAttachment: vi.fn<(input: unknown) => Promise<unknown>>(),
 }));
@@ -57,6 +60,7 @@ vi.mock("./api", () => ({
   saveComposeSession: api.saveComposeSession,
   sendComposeSession: api.sendComposeSession,
   startComposeSession: api.startComposeSession,
+  suggestComposeCollaborators: api.suggestComposeCollaborators,
   updateComposeSession: api.updateComposeSession,
   uploadComposeAttachment: api.uploadComposeAttachment,
 }));
@@ -192,6 +196,84 @@ describe("ComposeRoute keyboard flow", () => {
     expect(screen.getByRole("button", { name: "Send later" })).toBeVisible();
     expect(screen.getByRole("button", { name: /attach/i })).toBeVisible();
     expect(screen.getByRole("button", { name: /more compose actions/i })).toBeVisible();
+  });
+});
+
+describe("ComposeRoute saving to a stored draft", () => {
+  const savedDraftSession: ComposeSessionResponse = {
+    session: {
+      ...composeSession.session,
+      frontmatter: {
+        ...composeSession.session.frontmatter,
+        to: "alice@example.com",
+        subject: "Quarterly plan",
+      },
+      bodyMarkdown: "First pass.",
+    },
+  };
+
+  beforeEach(() => {
+    rawApi.fetch.mockResolvedValue({ snippets: [] });
+    api.fetchContactsAutocomplete.mockResolvedValue([]);
+    api.fetchAccounts.mockResolvedValue({
+      accounts: [
+        {
+          account_id: "account-1",
+          name: "Work",
+          email: "me@example.com",
+          provider_kind: "fake",
+          enabled: true,
+          is_default: true,
+          capabilities: {
+            supports_send: true,
+            supports_local_drafts: true,
+            supports_server_drafts: true,
+          },
+        },
+      ],
+    });
+    api.restoreComposeSession.mockResolvedValue(savedDraftSession);
+    api.startComposeSession.mockResolvedValue(composeSession);
+    api.saveComposeSession.mockResolvedValue({ ok: true });
+    api.suggestComposeCollaborators.mockResolvedValue({ suggestions: [] });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    router.location = { pathname: "/compose/new", search: {} };
+  });
+
+  // Without the id the daemon has nothing to update and stores a second copy,
+  // so every save of an opened draft leaves another indistinguishable row.
+  test("saves back into the draft it opened instead of storing another copy", async () => {
+    router.location = { pathname: "/compose/draft-42", search: {} };
+    renderWithQueryClient(<ComposeRoute />);
+
+    const to = await screen.findByLabelText("To");
+    fireEvent.keyDown(to, { key: "S", ctrlKey: true, shiftKey: true });
+
+    await waitFor(() =>
+      expect(api.saveComposeSession).toHaveBeenCalledWith(
+        "/tmp/mxr-compose.md",
+        "account-1",
+        "draft-42",
+      ),
+    );
+  });
+
+  test("saves a session that was never a stored draft without an id, so one is created", async () => {
+    renderWithQueryClient(<ComposeRoute />);
+
+    const to = await screen.findByLabelText("To");
+    fireEvent.keyDown(to, { key: "S", ctrlKey: true, shiftKey: true });
+
+    await waitFor(() =>
+      expect(api.saveComposeSession).toHaveBeenCalledWith(
+        "/tmp/mxr-compose.md",
+        "account-1",
+        undefined,
+      ),
+    );
   });
 });
 

@@ -782,7 +782,10 @@ async fn send_compose_session(
         draft_file,
         "bridge compose send requested"
     );
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
+    // Deliberately a fresh id even for a session restored from a stored draft:
+    // `SendDraft` sends the *stored* row whenever one already carries that id,
+    // so reusing it here would put the pre-edit body on the wire.
+    let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
     let draft_id = draft.id.clone();
     match ipc_request_with_id(
         &state.config.socket_path,
@@ -832,7 +835,10 @@ async fn check_compose_session_safety(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let request_id = bridge_request_id(&headers);
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
+    // Nothing is stored, so the id never leaves this report: the safety
+    // pipeline reads recipients and body only, and override tokens are keyed
+    // by blocker kind rather than by draft.
+    let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
     match ipc_request_with_id(
         &state.config.socket_path,
         request_id,
@@ -860,7 +866,8 @@ async fn suggest_compose_collaborators(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let request_id = bridge_request_id(&headers);
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
+    // Read-only suggestion lookup; nothing is stored under this draft's id.
+    let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
     match ipc_request_with_id(
         &state.config.socket_path,
         request_id,
@@ -888,22 +895,33 @@ async fn save_compose_session(
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("unknown");
+    let stored_draft_id = request
+        .draft_id
+        .as_deref()
+        .map(parse_draft_id)
+        .transpose()?;
+    let editing_stored_draft = stored_draft_id.is_some();
     tracing::info!(
         request_id,
         endpoint = "compose/save",
         account_id = %request.account_id,
         draft_file,
+        editing_stored_draft,
         "bridge compose save requested"
     );
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
+    let draft =
+        compose_draft_from_file(&request.draft_path, &request.account_id, stored_draft_id).await?;
     let draft_id = draft.id.clone();
-    match ipc_request_with_id(
-        &state.config.socket_path,
-        request_id,
-        Request::SaveDraftToServer { draft },
-    )
-    .await
-    {
+    // A session opened from a stored draft edits that draft: `UpdateDraft`
+    // rewrites the row in place, keeps its `created_at`, and refuses when the
+    // draft has been discarded or is mid-send. Only a session with no stored
+    // draft behind it may create one.
+    let save_request = if editing_stored_draft {
+        Request::UpdateDraft { draft }
+    } else {
+        Request::SaveDraftToServer { draft }
+    };
+    match ipc_request_with_id(&state.config.socket_path, request_id, save_request).await {
         Ok(ResponseData::Ack) => {
             tracing::info!(
                 request_id,
@@ -2087,7 +2105,17 @@ fn extract_thread_id(content: &str) -> Result<Option<String>, BridgeError> {
     Ok(frontmatter.thread_id)
 }
 
-async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<Draft, BridgeError> {
+/// Build the daemon `Draft` a compose file describes.
+///
+/// `draft_id` names the stored draft this session is editing, when there is
+/// one: carrying it through is what lets a save land on the draft the user
+/// opened instead of storing a second copy of it. A session with no stored
+/// draft behind it mints a fresh id, so saving creates one.
+async fn compose_draft_from_file(
+    draft_path: &str,
+    account_id: &str,
+    draft_id: Option<DraftId>,
+) -> Result<Draft, BridgeError> {
     let raw_content = read_compose_file(Path::new(draft_path)).await?;
     let (frontmatter, body) =
         parse_compose_file(&raw_content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
@@ -2103,7 +2131,7 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
 
     let now = Utc::now();
     Ok(Draft {
-        id: DraftId::new(),
+        id: draft_id.unwrap_or_else(DraftId::new),
         account_id: parse_account_id(account_id)?,
         from: mxr_compose::draft_codec::parse_from_field(&frontmatter.from)
             .map_err(|error| BridgeError::Ipc(error.to_string()))?,

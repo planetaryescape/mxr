@@ -227,10 +227,26 @@ export function createScheduledSend(draftId: string, sendAt: Date): Promise<unkn
   });
 }
 
-export function saveComposeSession(draftPath: string, accountId: string): Promise<{ ok: boolean }> {
+/**
+ * Store the compose session as a draft.
+ *
+ * `draftId` is the stored draft this session was restored from, when it was
+ * one — passing it updates that draft in place, omitting it creates a new one.
+ * Same rule as the scheduled-send path: reusing the id is what stops an edit
+ * from becoming a second copy the user then has to tell apart.
+ */
+export function saveComposeSession(
+  draftPath: string,
+  accountId: string,
+  draftId?: string,
+): Promise<{ ok: boolean }> {
   return apiFetch<{ ok: boolean }>("/api/v1/mail/compose/session/save", {
     method: "POST",
-    body: { draft_path: draftPath, account_id: accountId },
+    body: {
+      draft_path: draftPath,
+      account_id: accountId,
+      ...(draftId ? { draft_id: draftId } : {}),
+    },
   });
 }
 

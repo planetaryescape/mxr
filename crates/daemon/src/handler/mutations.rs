@@ -1912,10 +1912,19 @@ fn validate_draft_content(draft: &Draft) -> Result<(), crate::handler::HandlerEr
 /// export, and the TUI alike.
 ///
 /// The HTML itself is not touched; generation only reads it.
+///
+/// A blank alternative counts as absent, not just a missing one. A row carrying
+/// `text: Some("")` — written by an older binary, or by any IPC client that
+/// skips the CLI — used to survive this function untouched, and then reached
+/// safety as an empty analysis body: the exact scan-nothing hazard the function
+/// exists to close, one variant over.
 fn materialize_text_alternative(draft: &Draft) -> std::borrow::Cow<'_, Draft> {
-    let DraftContent::Html { html, text: None } = &draft.content else {
+    let DraftContent::Html { html, text } = &draft.content else {
         return std::borrow::Cow::Borrowed(draft);
     };
+    if text.as_ref().is_some_and(|text| !text.trim().is_empty()) {
+        return std::borrow::Cow::Borrowed(draft);
+    }
     let mut owned = draft.clone();
     owned.content = DraftContent::html(
         html.clone(),

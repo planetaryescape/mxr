@@ -73,6 +73,19 @@ pub fn read_html_input(args: &HtmlComposeArgs) -> anyhow::Result<Option<HtmlComp
         })
         .transpose()?;
 
+    // A caller who passes `--text-file` means to supply the alternative, so an
+    // empty one is a mistake — and a mistake that survives all the way to the
+    // reader. Consumers prefer a supplied alternative over the document, and
+    // `Some("")` is still "supplied", so the message renders blank despite
+    // carrying a perfectly good HTML document. Omitting the flag is how you ask
+    // mxr to generate the alternative.
+    if text.as_ref().is_some_and(|text| text.trim().is_empty()) {
+        bail!(
+            "--text-file is empty; a blank plain-text alternative renders as an empty \
+             message. Omit it to have mxr generate one from the HTML."
+        );
+    }
+
     let inline_assets = parse_inline_assets(&args.inline)?;
 
     // Report before anything is created. The daemon re-checks at its own
@@ -273,6 +286,34 @@ mod tests {
         assert!(err.to_string().contains("<script>"), "{err}");
         assert!(err.to_string().contains("was not modified"), "{err}");
         std::fs::remove_file(&file).ok();
+    }
+
+    /// An empty `--text-file` is a mistake, not an instruction. Accepting it
+    /// stores a draft with `body_text: Some("")`, and consumers that prefer a
+    /// supplied alternative over the document then render a blank message for
+    /// something that has a perfectly good HTML body.
+    #[test]
+    fn an_empty_text_alternative_is_refused_but_a_real_one_is_kept() {
+        let dir = std::env::temp_dir();
+        let html = dir.join("mxr-text-alt-doc.html");
+        let text = dir.join("mxr-text-alt-alternative.txt");
+        std::fs::write(&html, "<p>hi</p>").unwrap();
+        std::fs::write(&text, "  \n\t\n").unwrap();
+        let mut a = args();
+        a.html_file = Some(html.clone());
+        a.text_file = Some(text.clone());
+
+        let err = read_html_input(&a).unwrap_err();
+        assert!(err.to_string().contains("--text-file is empty"), "{err}");
+
+        // Counterweight: a real alternative must still come through untouched,
+        // or the check is just a ban on the flag.
+        std::fs::write(&text, "hi").unwrap();
+        let input = read_html_input(&a).unwrap().unwrap();
+        assert_eq!(input.text.as_deref(), Some("hi"));
+
+        std::fs::remove_file(&html).ok();
+        std::fs::remove_file(&text).ok();
     }
 
     #[test]

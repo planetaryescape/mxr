@@ -986,8 +986,8 @@ pub enum Command {
     // --- Phase 2: Compose ---
     /// Compose a new email
     // `html_body` groups the two ways to supply HTML so `--text-file`,
-    // `--inline` and `--signature-html` can require one of them without
-    // naming both.
+    // `--inline` and `--signature-html` can require one of them — and
+    // `--signature` can refuse one — without naming both.
     #[command(group = clap::ArgGroup::new("html_body").args(["html_file", "html_stdin"]))]
     Compose {
         /// Recipient(s), comma-separated
@@ -1054,10 +1054,16 @@ pub enum Command {
         /// address registered on more than one account.
         #[arg(long)]
         account: Option<String>,
-        /// Insert this signature by name instead of the scoped default
-        #[arg(long, conflicts_with = "no_signature")]
+        /// Insert this signature by name instead of the scoped default.
+        /// Markdown bodies only: a named signature is never spliced into a
+        /// supplied HTML document, so pairing this with `--html-file` /
+        /// `--html-stdin` would accept the flag and do nothing. Append a
+        /// signature to an HTML body with `--signature-html` instead.
+        #[arg(long, conflicts_with_all = ["no_signature", "html_body"])]
         signature: Option<String>,
-        /// Do not insert any signature
+        /// Do not insert any signature. Stays legal alongside an HTML body:
+        /// it asks for the behaviour an HTML compose already has, so honouring
+        /// it silently is honest. `--signature-html` is what it conflicts with.
         #[arg(long)]
         no_signature: bool,
         /// Skip confirmation prompt
@@ -3149,6 +3155,58 @@ mod tests {
         assert_compose_rejects(&["--text-file", "alt.txt"], MissingRequiredArgument);
         assert_compose_rejects(&["--inline", "logo=logo.png"], MissingRequiredArgument);
         assert_compose_rejects(&["--signature-html", "sig.html"], MissingRequiredArgument);
+    }
+
+    /// A named signature is markdown-only. mxr never splices a signature into
+    /// a document the caller supplied, so accepting `--signature` next to an
+    /// HTML body would take the flag and drop it on the floor.
+    #[test]
+    fn a_named_signature_is_refused_alongside_an_html_body() {
+        use clap::error::ErrorKind::ArgumentConflict;
+        assert_compose_rejects(
+            &["--html-file", "b.html", "--signature", "work"],
+            ArgumentConflict,
+        );
+        assert_compose_rejects(&["--html-stdin", "--signature", "work"], ArgumentConflict);
+    }
+
+    /// `--no-signature` is the opposite case and must stay accepted: an HTML
+    /// compose already inserts no signature, so the flag gets exactly what it
+    /// asked for. Rejecting it would break callers that pass it unconditionally
+    /// as a safety default. The pairing that *would* be contradictory —
+    /// `--no-signature --signature-html` — is already a conflict.
+    #[test]
+    fn no_signature_stays_legal_alongside_an_html_body() {
+        let cli = Cli::parse_from([
+            "mxr",
+            "compose",
+            "--html-stdin",
+            "--no-signature",
+            "--draft",
+        ]);
+        match cli.command {
+            Some(Command::Compose {
+                no_signature,
+                signature,
+                html_stdin,
+                ..
+            }) => {
+                assert!(no_signature, "--no-signature should parse");
+                assert_eq!(signature, None);
+                assert!(html_stdin);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+
+        assert_compose_rejects(
+            &[
+                "--html-stdin",
+                "--no-signature",
+                "--signature-html",
+                "s.html",
+            ],
+            clap::error::ErrorKind::ArgumentConflict,
+        );
     }
 
     /// Counterweight to the rejection tests above: the full HTML invocation must

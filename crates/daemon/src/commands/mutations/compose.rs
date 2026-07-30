@@ -232,6 +232,11 @@ fn apply_html_body(draft: &mut Draft, input: super::compose_html::HtmlComposeInp
 }
 
 /// Emit the outcome of a compose in whichever format the caller asked for.
+///
+/// Shared by `mxr compose`, `mxr reply`, `mxr reply-all` and `mxr forward` so
+/// the four report an outcome identically. Reply and forward used to `println!`
+/// a human line unconditionally and ignore `--format` outright, which made
+/// `mxr reply --format json` emit prose.
 fn print_compose_result(
     action: &str,
     draft: &Draft,
@@ -252,10 +257,12 @@ fn print_compose_result(
 /// carry it as data; `table` keeps the original wording.
 ///
 /// Defaults to `table` rather than going through `resolve_format`, which turns
-/// a non-terminal stdout into JSON. `mxr reply` and `mxr forward` print the
-/// human line whether or not stdout is a pipe, and `Draft saved: <id>` is what
-/// scripts have always read here; flipping it on redirect is a silent break.
-/// A caller that wants data asks for it with `--format`.
+/// a non-terminal stdout into JSON. `Draft saved: <id>` is what scripts have
+/// always read from a redirected compose, reply or forward; flipping it on
+/// redirect is a silent break. A caller that wants data asks with `--format`.
+/// This deliberately departs from the "piped → json" rule in
+/// `docs/blueprint/16-addendum.md`; the departure is one place, for all four
+/// commands, rather than per command.
 fn compose_result_output(
     action: &str,
     draft: &Draft,
@@ -640,10 +647,14 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
-        println!("Sent draft {}", outgoing.id);
-        if let Some(info) = receipt.as_ref() {
-            println!("Local message id: {}", info.local_message_id);
-        }
+        print_compose_result(
+            "send",
+            &outgoing,
+            receipt
+                .as_ref()
+                .map(|info| info.local_message_id.to_string()),
+            format,
+        )?;
     } else {
         expect_ack(
             client
@@ -655,8 +666,7 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
-        println!("Draft saved: {}", outgoing.id);
-        println!("Send with: mxr send {}", outgoing.id);
+        print_compose_result("save_draft", &outgoing, None, format)?;
     }
     Ok(())
 }

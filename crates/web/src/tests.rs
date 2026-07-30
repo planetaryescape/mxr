@@ -3215,6 +3215,97 @@ async fn restoring_an_html_draft_refuses_with_an_actionable_conflict() {
     );
 }
 
+/// Every top-level entry of the private scratch directory, for before/after
+/// comparison. A directory that cannot be read yields nothing, so a missing
+/// scratch root is simply "no entries" rather than a panic.
+fn scratch_entries(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries.flatten().map(|entry| entry.path()).collect()
+}
+
+/// Refusing to open an HTML draft must leave the private scratch directory
+/// exactly as it found it.
+///
+/// A compose file written for a draft the bridge then refuses is an orphan:
+/// no session references its path, no discard call can name it, and nothing
+/// sweeps the directory — so every attempt to open the same draft would
+/// strand another copy of the user's subject line in temp.
+///
+/// The sibling test above asserts a proxy for this ("no account lookup went
+/// out"), which stays green for any file-creating step that happens to land
+/// before the lookup. This asserts the property against the directory itself.
+#[tokio::test]
+async fn refusing_an_html_draft_leaves_no_compose_file_in_the_scratch_directory() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let account = sample_account(&account_id);
+
+    // The scratch directory is per-user and shared with every other compose
+    // test running concurrently, so a leak is attributed by content rather
+    // than by counting entries: a compose file is rendered from the draft it
+    // was created for, and only this request could have written this subject.
+    let subject = format!("scratch proof {draft_id}");
+    let mut draft = html_body_draft(&draft_id, &account_id);
+    draft.subject = subject.clone();
+
+    let scratch_dir = mxr_compose::private_tmp::private_scratch_dir().unwrap();
+    let before = scratch_entries(&scratch_dir);
+
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::ListDrafts => Some(Response::Ok {
+                data: ResponseData::Drafts {
+                    drafts: vec![draft.clone()],
+                },
+            }),
+            Request::ListAccounts => Some(Response::Ok {
+                data: ResponseData::Accounts {
+                    accounts: vec![account.clone()],
+                },
+            }),
+            _ => None,
+        },
+        None,
+    )
+    .await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/compose/session/restore"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "draft_id": draft_id.to_string() }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+
+    let stranded = scratch_entries(&scratch_dir)
+        .into_iter()
+        .filter(|path| !before.contains(path))
+        .filter(|path| {
+            std::fs::read_to_string(path).is_ok_and(|contents| contents.contains(&subject))
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        stranded.is_empty(),
+        "refusing an HTML draft stranded {} unreferenced compose file(s) under {}: {stranded:?}",
+        stranded.len(),
+        scratch_dir.display()
+    );
+}
+
 /// The preview the bridge hands out is the stored document, verbatim.
 ///
 /// Sanitising belongs at the point of display and nowhere else. If the bridge

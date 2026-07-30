@@ -50,9 +50,15 @@ pub async fn build_rfc2822_async_with_id(
 ) -> Result<Vec<u8>, GmailSendError> {
     let attachments = load_attachments_async(&draft.attachments).await?;
     let inline_assets = load_inline_async(&draft.inline_assets).await?;
-    let message =
-        build_message_with_id_and_parts(draft, from, true, &attachments, &inline_assets, message_id)
-            .map_err(|err| GmailSendError::Build(err.to_string()))?;
+    let message = build_message_with_id_and_parts(
+        draft,
+        from,
+        true,
+        &attachments,
+        &inline_assets,
+        message_id,
+    )
+    .map_err(|err| GmailSendError::Build(err.to_string()))?;
     Ok(format_message_for_gmail(&message))
 }
 

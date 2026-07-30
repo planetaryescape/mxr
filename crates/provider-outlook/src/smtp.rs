@@ -89,7 +89,7 @@ impl MailSendProvider for OutlookSmtpSendProvider {
             &inline_assets,
             rfc2822_message_id,
         )
-            .map_err(|e| MxrError::Provider(format!("failed to build message: {e}")))?;
+        .map_err(|e| MxrError::Provider(format!("failed to build message: {e}")))?;
 
         #[cfg(not(test))]
         {

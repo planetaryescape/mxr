@@ -19,17 +19,65 @@ use scraper::{Html, Node};
 
 /// Schemes a URL-bearing attribute may use.
 ///
-/// `data:` is handled separately: only `data:image/*` is allowed, because a
-/// `data:text/html` payload is a script vector.
+/// `data:` is handled separately: only raster `data:image/*` is allowed. A
+/// `data:text/html` payload is a script vector, and so is SVG — see
+/// [`UnsafeUrl::SvgDataUrl`].
 const ALLOWED_SCHEMES: &[&str] = &["http", "https", "mailto", "cid", "tel"];
 
 /// Elements that execute, submit, navigate, or embed foreign content.
+///
+/// The SVG animation elements are here because `<animate
+/// attributeName="href" values="javascript:...">` reaches script through
+/// indirection that no attribute-by-attribute rule can follow. Nothing in a
+/// mail template needs them, so refusing the elements is both simpler and
+/// safer than reasoning about what they animate.
 const FORBIDDEN_ELEMENTS: &[&str] = &[
-    "script", "object", "embed", "applet", "iframe", "frame", "frameset", "form", "input",
-    "button", "textarea", "select", "base",
+    "script",
+    "object",
+    "embed",
+    "applet",
+    "iframe",
+    "frame",
+    "frameset",
+    "form",
+    "input",
+    "button",
+    "textarea",
+    "select",
+    "base",
+    "animate",
+    "animatemotion",
+    "animatetransform",
+    "set",
 ];
 
-/// Attributes that can carry a URL.
+/// Constructs that make a fragment of CSS active content.
+///
+/// `expression()` is legacy IE script-in-CSS; `javascript:` in a `url()` is the
+/// same idea; `-moz-binding` attaches XBL. Shared by `<style>` blocks and
+/// inline `style` attributes so the two cannot drift apart — most mail clients
+/// strip `<style>`, which makes the attribute the common case in real email.
+const ACTIVE_CSS_CONSTRUCTS: &[&str] = &["expression(", "javascript:", "-moz-binding"];
+
+/// Elements html5ever discards when they appear with no table ancestor.
+///
+/// The HTML tree-construction rules drop a stray `<td>` token outright, so the
+/// element — and any `onclick` it carries — never reaches the validator. A more
+/// forgiving mail client parser may well keep it. Measured, not assumed: see
+/// `only_table_scoped_elements_vanish_from_a_document_parse`.
+const TABLE_SCOPED_ELEMENTS: &[&str] = &[
+    "td", "tr", "th", "tbody", "thead", "tfoot", "caption", "col", "colgroup",
+];
+
+/// Attributes whose whole value is a single URL.
+///
+/// These are local names. html5ever adjusts foreign attributes, and scraper
+/// yields only the local part, so SVG's `xlink:href` arrives here as `href` and
+/// needs no entry of its own — see
+/// `every_url_bearing_attribute_is_checked_not_just_href_and_src`.
+///
+/// `srcset` is deliberately absent: it holds a list, not a URL, and is handled
+/// separately.
 const URL_ATTRIBUTES: &[&str] = &[
     "href",
     "src",
@@ -37,6 +85,11 @@ const URL_ATTRIBUTES: &[&str] = &[
     "background",
     "poster",
     "formaction",
+    "longdesc",
+    "cite",
+    "usemap",
+    "dynsrc",
+    "lowsrc",
 ];
 
 /// One reason a document was refused.
@@ -57,8 +110,13 @@ pub enum HtmlIssueKind {
     EventHandler { attribute: String },
     /// A URL whose scheme is not on the allowlist.
     UnsafeUrlScheme { attribute: String, scheme: String },
+    /// A `data:image/svg+xml` payload, refused where raster images are allowed.
+    SvgDataUrl { attribute: String },
     /// A `<style>` block containing an active-content construct.
     UnsafeStyle,
+    /// An inline `style` attribute containing an active-content construct.
+    /// The common case in email, where `<style>` blocks are often stripped.
+    UnsafeStyleAttribute,
     /// A forbidden element hidden inside a comment. Outlook conditional
     /// comments are real markup to Outlook, so a `<script>` in one is a live
     /// script, not inert text.
@@ -89,6 +147,15 @@ impl fmt::Display for HtmlIssue {
                 "`{attribute}` uses unsafe URL scheme `{scheme}:`{where_}: {}",
                 self.detail
             ),
+            HtmlIssueKind::SvgDataUrl { attribute } => write!(
+                f,
+                "`{attribute}` uses a `data:image/svg+xml` URL{where_}: SVG is the one \
+                 image format that can carry <script> and event handlers, so it is \
+                 refused where data:image/png, jpeg, gif and webp are allowed. This is \
+                 deliberate, not a bug — inline the artwork as a raster image or link \
+                 it over https. {}",
+                self.detail
+            ),
             HtmlIssueKind::UnsafeStyle => {
                 write!(
                     f,
@@ -96,6 +163,11 @@ impl fmt::Display for HtmlIssue {
                     self.detail
                 )
             }
+            HtmlIssueKind::UnsafeStyleAttribute => write!(
+                f,
+                "inline `style` attribute contains active content{where_}: {}",
+                self.detail
+            ),
             HtmlIssueKind::ForbiddenElementInComment { tag } => write!(
                 f,
                 "<{tag}> inside a conditional comment is not allowed{where_}: {}",
@@ -142,7 +214,10 @@ impl std::error::Error for HtmlValidationError {}
 ///
 /// Best-effort by nature: this parses with html5ever, and a given mail client's
 /// parser may disagree at the margins. It reports and refuses; it never
-/// silently rewrites to "make safe".
+/// silently rewrites to "make safe". Where html5ever is stricter than a mail
+/// client is likely to be — it discards stray table cells — a second parse of a
+/// throw-away copy covers the difference; see
+/// [`orphan_table_element_issues`].
 pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
     let document = Html::parse_document(html);
     let mut issues = Vec::new();
@@ -196,6 +271,8 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
                     }
                 }
                 issues.extend(unsafe_style_blocks(&inner, html));
+                let orphans = orphan_table_element_issues(body, html, &issues);
+                issues.extend(orphans);
             }
             _ => {}
         }
@@ -204,6 +281,10 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
     // `<style>` is allowed — media queries are the whole point of a responsive
     // template — but its contents still get checked for active constructs.
     issues.extend(unsafe_style_blocks(&document, html));
+
+    // Last, because it needs to know what the document parse already found.
+    let orphans = orphan_table_element_issues(html, html, &issues);
+    issues.extend(orphans);
 
     if issues.is_empty() {
         Ok(())
@@ -248,12 +329,35 @@ fn attribute_issues(element: &scraper::node::Element, html: &str) -> Vec<HtmlIss
             continue;
         }
 
-        if URL_ATTRIBUTES.contains(&attribute.as_str()) {
-            if let Some(scheme) = unsafe_scheme(value) {
+        if attribute == "style" {
+            issues.extend(css_issues(value, html, HtmlIssueKind::UnsafeStyleAttribute));
+            continue;
+        }
+
+        // `srcset` and `imagesrcset` hold a list of candidates, so each one is
+        // a URL and the value as a whole is not.
+        let urls: Vec<&str> = if attribute == "srcset" || attribute == "imagesrcset" {
+            srcset_candidates(value).collect()
+        } else if URL_ATTRIBUTES.contains(&attribute.as_str()) {
+            vec![value]
+        } else {
+            continue;
+        };
+
+        for url in urls {
+            if let Some(verdict) = unsafe_url(url) {
                 issues.push(HtmlIssue {
-                    line: locate_line(html, value.trim()),
-                    detail: truncate(value, 60),
-                    kind: HtmlIssueKind::UnsafeUrlScheme { attribute, scheme },
+                    line: locate_line(html, url.trim()),
+                    detail: truncate(url, 60),
+                    kind: match verdict {
+                        UnsafeUrl::Scheme(scheme) => HtmlIssueKind::UnsafeUrlScheme {
+                            attribute: attribute.clone(),
+                            scheme,
+                        },
+                        UnsafeUrl::SvgDataUrl => HtmlIssueKind::SvgDataUrl {
+                            attribute: attribute.clone(),
+                        },
+                    },
                 });
             }
         }
@@ -262,17 +366,196 @@ fn attribute_issues(element: &scraper::node::Element, html: &str) -> Vec<HtmlIss
     issues
 }
 
+/// The URLs in a `srcset` value.
+///
+/// `srcset` is a comma-separated list of `url [descriptor]` candidates, as in
+/// `hero.png 1x, hero@2x.png 2x`. Scheme-checking the whole value finds
+/// nothing, because the commas and spaces disqualify it as a scheme.
+fn srcset_candidates(value: &str) -> impl Iterator<Item = &str> {
+    value
+        .split(',')
+        .filter_map(|candidate| candidate.split_whitespace().next())
+}
+
+/// Every reason a fragment of CSS is refused.
+///
+/// The single rule set for both `<style>` blocks and inline `style`
+/// attributes. Splitting these was the original defect, and CSS `url()` was a
+/// way straight round the scheme allowlist that guards `src` and `href`, so
+/// both checks live here: the active-content constructs, and every `url()`
+/// payload run through the same [`unsafe_url`] the attributes use.
+///
+/// `style_kind` is the only thing that differs between the two callers.
+fn css_issues(css: &str, html: &str, style_kind: HtmlIssueKind) -> Vec<HtmlIssue> {
+    let mut issues = Vec::new();
+
+    if let Some(offender) = active_css_construct(css) {
+        issues.push(HtmlIssue {
+            line: locate_line(html, offender),
+            detail: truncate(offender, 40),
+            kind: style_kind,
+        });
+    }
+
+    for url in css_url_payloads(css) {
+        if let Some(verdict) = unsafe_url(url) {
+            issues.push(HtmlIssue {
+                line: locate_line(html, url.trim()),
+                detail: truncate(url, 60),
+                kind: match verdict {
+                    UnsafeUrl::Scheme(scheme) => HtmlIssueKind::UnsafeUrlScheme {
+                        attribute: "style".to_string(),
+                        scheme,
+                    },
+                    UnsafeUrl::SvgDataUrl => HtmlIssueKind::SvgDataUrl {
+                        attribute: "style".to_string(),
+                    },
+                },
+            });
+        }
+    }
+
+    issues
+}
+
+/// The payload of every `url()` in a fragment of CSS.
+///
+/// Covers `url(x)`, `url('x')`, `url("x")`, whitespace inside the parens, and
+/// several `url()` in one declaration. A `)` inside the payload ends it early,
+/// which can only truncate a URL — never hide its scheme, which is what the
+/// caller looks at.
+fn css_url_payloads(css: &str) -> Vec<&str> {
+    const OPENER: &str = "url(";
+
+    let lowered = css.to_ascii_lowercase();
+    let mut payloads = Vec::new();
+    let mut cursor = 0;
+
+    while let Some(offset) = lowered[cursor..].find(OPENER) {
+        let open = cursor + offset + OPENER.len();
+        let Some(close) = lowered[open..].find(')').map(|at| open + at) else {
+            break;
+        };
+        payloads.push(unquote(css[open..close].trim()));
+        cursor = close + 1;
+    }
+
+    payloads
+}
+
+/// `value` without one surrounding pair of matching quotes.
+fn unquote(value: &str) -> &str {
+    ['\'', '"']
+        .into_iter()
+        .find_map(|quote| {
+            value
+                .strip_prefix(quote)
+                .and_then(|inner| inner.strip_suffix(quote))
+        })
+        .unwrap_or(value)
+}
+
+/// The first active-content construct in `css`, when there is one.
+///
+/// One function for `<style>` blocks and inline `style` attributes alike; the
+/// two having separate rules was the defect.
+fn active_css_construct(css: &str) -> Option<&'static str> {
+    let lowered = css.to_ascii_lowercase();
+    ACTIVE_CSS_CONSTRUCTS
+        .iter()
+        .copied()
+        .find(|needle| lowered.contains(needle))
+}
+
+/// Attribute issues on table-scoped elements the parse of `markup` threw away.
+///
+/// html5ever obeys the HTML tree-construction rules, so a `<td onclick="...">`
+/// with no table ancestor is dropped before the validator ever sees it. Parse a
+/// throw-away copy wrapped in `<table>`, where those tokens are legal, and take
+/// only the table-scoped elements from it. Everything else in the copy has
+/// already been inspected in its proper place, and `already_reported` keeps a
+/// real table's cells from being counted twice.
+///
+/// `html` is the caller's original document, used only for line numbers. The
+/// copy is never handed back.
+fn orphan_table_element_issues(
+    markup: &str,
+    html: &str,
+    already_reported: &[HtmlIssue],
+) -> Vec<HtmlIssue> {
+    let wrapped = format!("<table>{}", without_table_end_tags(markup));
+    let fragment = Html::parse_fragment(&wrapped);
+
+    fragment
+        .tree
+        .nodes()
+        .filter_map(|node| node.value().as_element())
+        .filter(|element| {
+            TABLE_SCOPED_ELEMENTS
+                .iter()
+                .any(|tag| element.name().eq_ignore_ascii_case(tag))
+        })
+        .flat_map(|element| attribute_issues(element, html))
+        .filter(|issue| !already_reported.contains(issue))
+        .collect()
+}
+
+/// `markup` with every `</table>` end tag removed.
+///
+/// The wrapper in [`orphan_table_element_issues`] is the only thing keeping
+/// stray table tokens alive, and an unmatched `</table>` in the source would
+/// close it — hiding exactly the markup being looked for. Dropping end tags
+/// from the throw-away copy cannot invent an attribute, so it cannot invent an
+/// issue either.
+fn without_table_end_tags(markup: &str) -> String {
+    const END_TAG: &str = "</table";
+
+    let lowered = markup.to_ascii_lowercase();
+    let mut kept = String::with_capacity(markup.len());
+    let mut cursor = 0;
+
+    while let Some(offset) = lowered[cursor..].find(END_TAG) {
+        let start = cursor + offset;
+        let after_name = start + END_TAG.len();
+        match lowered[after_name..].find('>').map(|at| after_name + at) {
+            // Only whitespace may sit between the name and the `>`, so
+            // `</tablet>` is a different tag and stays.
+            Some(close) if markup[after_name..close].trim().is_empty() => {
+                kept.push_str(&markup[cursor..start]);
+                cursor = close + 1;
+            }
+            _ => {
+                kept.push_str(&markup[cursor..after_name]);
+                cursor = after_name;
+            }
+        }
+    }
+    kept.push_str(&markup[cursor..]);
+    kept
+}
+
 fn is_meta_refresh(element: &scraper::node::Element) -> bool {
     element
         .attr("http-equiv")
         .is_some_and(|value| value.trim().eq_ignore_ascii_case("refresh"))
 }
 
-/// The scheme of `url`, when it is one we refuse.
+/// Why a URL is refused.
+enum UnsafeUrl {
+    /// A scheme outside [`ALLOWED_SCHEMES`].
+    Scheme(String),
+    /// `data:image/svg+xml`. SVG is the one image format that carries
+    /// `<script>` and event handlers, so it is refused where raster images are
+    /// not. `<img>` will not run it and `<object>`/`<embed>` are forbidden
+    /// outright, but a mail client's behaviour is not something to bet on.
+    SvgDataUrl,
+}
+
+/// What is wrong with `url`, when something is.
 ///
-/// Returns `None` for allowed schemes, `data:image/*`, and scheme-relative or
-/// relative URLs.
-fn unsafe_scheme(url: &str) -> Option<String> {
+/// Returns `None` for allowed schemes, raster `data:image/*`, and
+/// scheme-relative or relative URLs.
+fn unsafe_url(url: &str) -> Option<UnsafeUrl> {
     // Browsers and mail clients strip whitespace and control characters before
     // resolving a scheme, so `java\tscript:` is live. Do the same here.
     let cleaned: String = url
@@ -303,15 +586,17 @@ fn unsafe_scheme(url: &str) -> Option<String> {
     if ALLOWED_SCHEMES.contains(&scheme.as_str()) {
         return None;
     }
-    if scheme == "data"
-        && cleaned[colon + 1..]
-            .to_ascii_lowercase()
-            .starts_with("image/")
-    {
-        return None;
+    if scheme == "data" {
+        let media_type = cleaned[colon + 1..].to_ascii_lowercase();
+        if media_type.starts_with("image/svg") {
+            return Some(UnsafeUrl::SvgDataUrl);
+        }
+        if media_type.starts_with("image/") {
+            return None;
+        }
     }
 
-    Some(scheme)
+    Some(UnsafeUrl::Scheme(scheme))
 }
 
 fn unsafe_style_blocks(document: &Html, html: &str) -> Vec<HtmlIssue> {
@@ -322,19 +607,9 @@ fn unsafe_style_blocks(document: &Html, html: &str) -> Vec<HtmlIssue> {
 
     document
         .select(&selector)
-        .filter_map(|element| {
+        .flat_map(|element| {
             let css = element.text().collect::<String>();
-            let lowered = css.to_ascii_lowercase();
-            // `expression()` is legacy IE script-in-CSS; `javascript:` in a
-            // `url()` is the same idea.
-            let offender = ["expression(", "javascript:", "-moz-binding"]
-                .into_iter()
-                .find(|needle| lowered.contains(needle))?;
-            Some(HtmlIssue {
-                line: locate_line(html, offender),
-                detail: truncate(offender, 40),
-                kind: HtmlIssueKind::UnsafeStyle,
-            })
+            css_issues(&css, html, HtmlIssueKind::UnsafeStyle)
         })
         .collect()
 }
@@ -754,5 +1029,383 @@ mod tests {
         // different matter, and are covered above.
         assert_eq!(validate_html(r#"<p o&#110;click="steal()">x</p>"#), Ok(()));
         refusal(r#"<p onclick="steal()">x</p>"#);
+    }
+
+    /// Spelled out rather than read from `TABLE_SCOPED_ELEMENTS`, so that
+    /// shrinking that list fails a test instead of quietly narrowing one.
+    const DROPPED_WITHOUT_A_TABLE: &[&str] = &[
+        "td", "tr", "th", "tbody", "thead", "tfoot", "caption", "col", "colgroup",
+    ];
+
+    /// Why the second parse exists at all. If html5ever ever starts keeping
+    /// these, or starts dropping something new, this is the test that says so.
+    #[test]
+    fn only_table_scoped_elements_vanish_from_a_document_parse() {
+        fn survives(tag: &str) -> bool {
+            let document = Html::parse_document(&format!("<{tag} data-probe=\"1\">x"));
+            document
+                .tree
+                .nodes()
+                .filter_map(|node| node.value().as_element())
+                .any(|element| element.name() == tag)
+        }
+
+        assert_eq!(
+            TABLE_SCOPED_ELEMENTS, DROPPED_WITHOUT_A_TABLE,
+            "the validator's list drifted from what html5ever actually drops"
+        );
+        for tag in DROPPED_WITHOUT_A_TABLE {
+            assert!(!survives(tag), "<{tag}> unexpectedly survived");
+        }
+        for tag in [
+            "li", "option", "optgroup", "dt", "dd", "legend", "rt", "source",
+        ] {
+            assert!(survives(tag), "<{tag}> is dropped too and needs covering");
+        }
+    }
+
+    /// A realistic branded template whose cells sit in a real table. Nothing
+    /// here may ever be refused.
+    const BRANDED_TABLE_CELLS: &str = r#"<!DOCTYPE html>
+<html>
+<body>
+<table role="presentation" cellpadding="0" cellspacing="0" width="600">
+  <caption style="caption-side:top;font-size:11px;">Notto® weekly</caption>
+  <!-- The url() forms a real branded template actually uses. -->
+  <colgroup><col style="background-image:url(&quot;https://cdn.example.com/rule.gif&quot;)"></colgroup>
+  <colgroup><col style="width:600px"></colgroup>
+  <thead><tr><th style="text-align:left;font-family:Georgia,serif;">Notto® digest</th></tr></thead>
+  <tbody>
+    <tr><td style="padding:24px;color:#1a1a1a;background:#fff;mso-line-height-rule:exactly;">
+      <a href="https://example.com/read" style="color:#0b57d0;">Read it</a>
+    </td></tr>
+    <tr><td style="background:url(https://cdn.example.com/hero.png) no-repeat center,url('cid:notto-texture');list-style-image:url(data:image/png;base64,iVBORw0KGgo=);">
+      <img src="cid:notto-logo" alt="Notto®" width="120"
+           srcset="https://cdn.example.com/logo.png 1x, https://cdn.example.com/logo@2x.png 2x">
+    </td></tr>
+  </tbody>
+  <tfoot><tr><td style="font-size:12px;color:#666;">Unsubscribe any time.</td></tr></tfoot>
+</table>
+</body>
+</html>"#;
+
+    #[test]
+    fn an_event_handler_on_an_orphan_table_element_is_not_a_blind_spot() {
+        for tag in DROPPED_WITHOUT_A_TABLE {
+            let error = refusal(&format!(r#"<{tag} onclick="steal()">x"#));
+            assert!(
+                error.issues.iter().any(|issue| issue.kind
+                    == HtmlIssueKind::EventHandler {
+                        attribute: "onclick".to_string()
+                    }),
+                "orphan <{tag}> hid its handler: {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unsafe_url_on_an_orphan_table_element_is_not_a_blind_spot() {
+        let error = refusal(r#"<td background="javascript:steal()">x</td>"#);
+        assert!(
+            error.issues.iter().any(|issue| matches!(
+                &issue.kind,
+                HtmlIssueKind::UnsafeUrlScheme { scheme, .. } if scheme == "javascript"
+            )),
+            "{error:?}"
+        );
+    }
+
+    /// Held before the orphan scan existed and must keep holding: only the
+    /// `<td>` token is dropped, so the `<a>` beneath it is reparented into the
+    /// body and inspected there.
+    #[test]
+    fn an_unsafe_url_below_an_orphan_table_element_is_caught() {
+        let error = refusal(r#"<td><a href="javascript:steal()">x</a></td>"#);
+        assert!(
+            error.issues.iter().any(|issue| matches!(
+                &issue.kind,
+                HtmlIssueKind::UnsafeUrlScheme { scheme, .. } if scheme == "javascript"
+            )),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn a_stray_table_end_tag_does_not_hide_the_orphan_that_follows_it() {
+        // The second parse wraps a copy in `<table>`; an unmatched `</table>`
+        // in the source would otherwise close that wrapper.
+        for markup in [
+            r#"<div></table><td onclick="steal()">x"#,
+            r#"<div></TABLE><td onclick="steal()">x"#,
+            r#"<div></table  ><td onclick="steal()">x"#,
+        ] {
+            refusal(markup);
+        }
+    }
+
+    #[test]
+    fn a_handler_on_an_orphan_cell_inside_a_conditional_comment_is_rejected() {
+        refusal(r#"<!--[if mso]><td onclick="steal()">x<![endif]-->"#);
+    }
+
+    #[test]
+    fn a_real_table_cell_is_not_mistaken_for_an_orphan() {
+        assert_eq!(validate_html(BRANDED_TABLE_CELLS), Ok(()));
+    }
+
+    #[test]
+    fn a_real_table_cell_with_a_handler_is_reported_once_not_twice() {
+        let error =
+            refusal(r#"<table><tr><td onclick="steal()" style="padding:8px">x</td></tr></table>"#);
+        assert_eq!(error.issues.len(), 1, "{error:?}");
+    }
+
+    #[test]
+    fn an_svg_data_url_is_rejected_although_raster_data_urls_are_not() {
+        for markup in [
+            r#"<img src="data:image/svg+xml;base64,PHN2Zz48c2NyaXB0Pjwvc2NyaXB0Pjwvc3ZnPg==">"#,
+            r#"<img src="data:image/svg+xml,%3Csvg%3E%3C/svg%3E">"#,
+            r#"<img src="DATA:IMAGE/SVG+XML;base64,PHN2Zz4=">"#,
+        ] {
+            let rendered = refusal(markup).to_string();
+            assert!(rendered.contains("svg"), "no mention of svg: {rendered}");
+            assert!(
+                rendered.contains("script"),
+                "must say why SVG differs from other images: {rendered}"
+            );
+        }
+
+        for markup in [
+            r#"<img src="data:image/png;base64,iVBORw0KGgo=">"#,
+            r#"<img src="data:image/jpeg;base64,/9j/4AAQ">"#,
+            r#"<img src="data:image/gif;base64,R0lGOD">"#,
+            r#"<img src="data:image/webp;base64,UklGRg==">"#,
+        ] {
+            assert_eq!(validate_html(markup), Ok(()), "wrongly refused: {markup}");
+        }
+    }
+
+    /// Inline CSS is the dominant form in email, because most mail clients
+    /// strip `<style>` blocks. Checking blocks but not attributes left the
+    /// rules absent from exactly the place email puts its CSS.
+    #[test]
+    fn active_css_in_an_inline_style_attribute_is_rejected() {
+        for markup in [
+            r#"<td style="width:expression(steal())">x</td>"#,
+            r#"<p style="background:url(javascript:steal())">x</p>"#,
+            r#"<p style="-moz-binding:url(evil.xml#x)">x</p>"#,
+            r#"<p STYLE="WIDTH:EXPRESSION(steal())">x</p>"#,
+            r#"<table><tr><td style="width:expression(steal())">x</td></tr></table>"#,
+            r#"<!--[if mso]><p style="width:expression(steal())">x</p><![endif]-->"#,
+        ] {
+            refusal(markup);
+        }
+    }
+
+    /// The defect was drift between the block rules and the attribute rules,
+    /// so assert the two agree rather than that each works alone.
+    #[test]
+    fn a_block_and_an_attribute_reach_the_same_verdict_on_the_same_css() {
+        for css in [
+            "width:expression(steal())",
+            "background:url(javascript:steal())",
+            "-moz-binding:url(evil.xml#x)",
+        ] {
+            assert!(
+                validate_html(&format!("<style>.a{{{css}}}</style>")).is_err(),
+                "block allowed {css}"
+            );
+            assert!(
+                validate_html(&format!(r#"<p style="{css}">x</p>"#)).is_err(),
+                "attribute allowed {css}"
+            );
+        }
+        for css in [
+            "background:url(https://cdn.example.com/bg.png)",
+            "mso-line-height-rule:exactly",
+            "padding:24px;color:#1a1a1a",
+        ] {
+            assert_eq!(
+                validate_html(&format!("<style>.a{{{css}}}</style>")),
+                Ok(()),
+                "block refused {css}"
+            );
+            assert_eq!(
+                validate_html(&format!(r#"<p style="{css}">x</p>"#)),
+                Ok(()),
+                "attribute refused {css}"
+            );
+        }
+    }
+
+    /// The round-1 SVG refusal covered `src` and `href` only, so CSS was a way
+    /// straight round it. Blocks and attributes are asserted together, because
+    /// a rule living in one and not the other is the defect being fixed.
+    #[test]
+    fn a_url_in_css_is_held_to_the_same_scheme_allowlist_as_an_attribute() {
+        for css in [
+            "background:url(data:image/svg+xml;base64,PHN2Zz4=)",
+            "background:url('data:image/svg+xml;base64,PHN2Zz4=')",
+            "background:url( data:image/svg+xml;base64,PHN2Zz4= )",
+            "background:url(vbscript:steal())",
+            "background:url(file:///etc/passwd)",
+            "background:url(a.png),url(data:image/svg+xml;base64,PHN2Zz4=)",
+        ] {
+            assert!(
+                validate_html(&format!("<style>.a{{{css}}}</style>")).is_err(),
+                "block allowed {css}"
+            );
+            assert!(
+                validate_html(&format!(r#"<p style="{css}">x</p>"#)).is_err(),
+                "attribute allowed {css}"
+            );
+        }
+
+        // Double quotes cannot survive inside a double-quoted attribute, so the
+        // two forms are checked where each is actually written.
+        refusal(r#"<style>.a{background:url("data:image/svg+xml;base64,PHN2Zz4=")}</style>"#);
+        refusal(
+            r#"<p style="background:url(&quot;data:image/svg+xml;base64,PHN2Zz4=&quot;)">x</p>"#,
+        );
+
+        for css in [
+            "background:url(https://cdn.example.com/bg.png)",
+            "background:url(cid:notto-logo)",
+            "background:url('cid:notto-logo')",
+            "background:url(data:image/png;base64,iVBORw0KGgo=)",
+            "background:url(images/bg.png),url(images/bg@2x.png)",
+            "background:url()",
+            "list-style:none",
+        ] {
+            assert_eq!(
+                validate_html(&format!("<style>.a{{{css}}}</style>")),
+                Ok(()),
+                "block refused {css}"
+            );
+            assert_eq!(
+                validate_html(&format!(r#"<p style="{css}">x</p>"#)),
+                Ok(()),
+                "attribute refused {css}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_svg_data_url_in_css_gets_the_same_explanation_as_one_in_an_attribute() {
+        for markup in [
+            r#"<p style="background:url(data:image/svg+xml;base64,PHN2Zz4=)">x</p>"#,
+            r#"<style>.a{background:url(data:image/svg+xml;base64,PHN2Zz4=)}</style>"#,
+        ] {
+            let rendered = refusal(markup).to_string();
+            assert!(rendered.contains("svg"), "no mention of svg: {rendered}");
+            assert!(
+                rendered.contains("script"),
+                "must say why SVG differs from other images: {rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_inline_style_in_a_real_table_cell_is_reported_once_not_twice() {
+        let error =
+            refusal(r#"<table><tr><td style="width:expression(steal())">x</td></tr></table>"#);
+        assert_eq!(error.issues.len(), 1, "{error:?}");
+    }
+
+    #[test]
+    fn every_url_bearing_attribute_is_checked_not_just_href_and_src() {
+        for markup in [
+            r#"<img longdesc="javascript:steal()">"#,
+            r#"<blockquote cite="javascript:steal()">x</blockquote>"#,
+            r#"<img usemap="javascript:steal()">"#,
+            r#"<img dynsrc="javascript:steal()">"#,
+            r#"<img lowsrc="javascript:steal()">"#,
+            r#"<svg><a xlink:href="javascript:steal()">x</a></svg>"#,
+        ] {
+            let error = refusal(markup);
+            assert!(
+                error
+                    .issues
+                    .iter()
+                    .any(|issue| matches!(issue.kind, HtmlIssueKind::UnsafeUrlScheme { .. })),
+                "expected an UnsafeUrlScheme issue for {markup}, got {:?}",
+                error.issues
+            );
+        }
+    }
+
+    #[test]
+    fn each_candidate_in_a_srcset_is_checked_not_the_whole_value() {
+        // `srcset` is a comma-separated list of `url [descriptor]` candidates.
+        // Scheme-checking the whole value finds nothing at all in the second
+        // case: the comma disqualifies everything before the colon.
+        for markup in [
+            r#"<img srcset="javascript:steal() 1x">"#,
+            r#"<img srcset="hero.png 1x, javascript:steal() 2x">"#,
+            r#"<link imagesrcset="hero.png 1x, javascript:steal() 2x">"#,
+        ] {
+            let error = refusal(markup);
+            assert!(
+                error.issues.iter().any(|issue| matches!(
+                    &issue.kind,
+                    HtmlIssueKind::UnsafeUrlScheme { scheme, .. } if scheme == "javascript"
+                )),
+                "{error:?}"
+            );
+        }
+        assert_eq!(
+            validate_html(
+                r#"<img srcset="hero.png 1x, hero@2x.png 2x, https://cdn.example.com/h.png 3x">"#
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn svg_animation_elements_are_refused_outright() {
+        // `<animate attributeName="href" values="javascript:...">` reaches
+        // script through indirection no attribute-by-attribute rule can follow,
+        // and animation has no legitimate use in a mail template.
+        for (markup, tag) in [
+            (
+                r#"<svg><animate attributeName="href" values="javascript:steal()"></svg>"#,
+                "animate",
+            ),
+            (
+                r#"<svg><set attributeName="href" to="javascript:steal()"></svg>"#,
+                "set",
+            ),
+            (
+                r#"<svg><animateTransform attributeName="transform"></svg>"#,
+                "animatetransform",
+            ),
+            (r#"<svg><animateMotion></svg>"#, "animatemotion"),
+        ] {
+            let error = refusal(markup);
+            assert!(
+                error.issues.iter().any(|issue| issue.kind
+                    == HtmlIssueKind::ForbiddenElement {
+                        tag: tag.to_string()
+                    }),
+                "expected <{tag}> to be refused, got {:?}",
+                error.issues
+            );
+        }
+    }
+
+    #[test]
+    fn the_newly_covered_refusals_still_hand_back_the_exact_source() {
+        for source in [
+            String::from("<td onclick=\"steal()\">®</td>\n"),
+            String::from("<img src=\"data:image/svg+xml;base64,PHN2Zz4=\" alt=\"®\">\n"),
+            String::from("<p style=\"width:expression(steal())\">®</p>\n"),
+            String::from("<img srcset=\"a.png 1x, javascript:steal() 2x\" alt=\"®\">\n"),
+            String::from("<svg><animate attributeName=\"href\"></svg>\n"),
+            String::from("<p style=\"background:url(data:image/svg+xml;base64,PHN2Zz4=)\">®</p>\n"),
+        ] {
+            let before = source.clone();
+            assert!(validate_html(&source).is_err(), "{source}");
+            assert_eq!(source, before);
+        }
     }
 }

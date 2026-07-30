@@ -153,6 +153,11 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
 /// mail.
 fn preview_body(content: &mxr_core::DraftContent) -> String {
     let (text, html) = content.reader_input();
+    // A blank alternative is dropped rather than preferred: `--text-file`
+    // accepts an empty file, and the reader takes a supplied text over the
+    // document whenever there is one — which would blank the pane just as
+    // surely as no alternative at all.
+    let text = text.filter(|text| !text.trim().is_empty());
     let Some(html) = html else {
         return text.unwrap_or_default().to_string();
     };
@@ -275,6 +280,30 @@ mod tests {
         assert!(
             snapshot.contains("We go live on Friday."),
             "an HTML draft with no text alternative must still show its body; got:\n{snapshot}",
+        );
+    }
+
+    #[test]
+    fn html_draft_detail_falls_back_to_the_document_when_the_text_alternative_is_blank() {
+        let mut state = DraftsModalState::default();
+        state.open_loading();
+        // `mxr compose --html-file … --text-file …` accepts an empty or
+        // whitespace-only text file, so a draft can reach the modal carrying a
+        // text alternative that says nothing. Absent and present-but-blank are
+        // the same thing to a reader.
+        state.set_drafts(vec![html_draft(
+            "Launch",
+            "<html><body><h1>Ship day</h1><p>We go live on Friday.</p></body></html>",
+            Some("   \n\t\n"),
+        )]);
+
+        let snapshot = render_to_string(100, 20, |frame| {
+            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
+        });
+        assert!(
+            snapshot.contains("We go live on Friday."),
+            "a blank text alternative is no alternative at all: the document must \
+             still be shown; got:\n{snapshot}",
         );
     }
 

@@ -947,9 +947,20 @@ mod tests {
         };
         let (bg, mut bg_rx) = mpsc::unbounded_channel::<IpcRequest>();
 
+        // Bounded, because the regression here is a hang rather than a wrong
+        // answer: nothing serves `bg`, so a refusal that only arrives after the
+        // account lookup waits forever. Unbounded, it wedges the run instead of
+        // failing it.
+        let refusal = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            super::prepare_draft_edit(&bg, draft),
+        )
+        .await
+        .expect("refusing an HTML draft must not depend on a daemon reply");
+
         // Matched rather than `expect_err`: `DraftEditReadyData` deliberately
         // has no `Debug`, so draft bodies cannot reach a log line.
-        let error = match super::prepare_draft_edit(&bg, draft).await {
+        let error = match refusal {
             Ok(_) => panic!("an HTML draft has no markdown compose-file representation"),
             Err(error) => error,
         };

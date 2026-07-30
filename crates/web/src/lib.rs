@@ -2244,6 +2244,11 @@ fn draft_summary_view(draft: Draft) -> serde_json::Value {
         "updated_at_full": format_date_full(draft.updated_at),
         "updated_at_relative": format!("edited {}", format_relative_label(draft.updated_at)),
         "attachment_count": draft.attachments.len(),
+        // Lets a client tell an HTML draft apart before opening it. Without
+        // this the only way to discover one is uneditable in the markdown
+        // composer is to click it and take the 409.
+        "content_kind": draft.content.kind_str(),
+        "inline_asset_count": draft.inline_assets.len(),
     })
 }
 

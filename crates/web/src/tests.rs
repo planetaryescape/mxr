@@ -3236,6 +3236,50 @@ fn scratch_entries(dir: &Path) -> Vec<PathBuf> {
 /// The sibling test above asserts a proxy for this ("no account lookup went
 /// out"), which stays green for any file-creating step that happens to land
 /// before the lookup. This asserts the property against the directory itself.
+#[test]
+fn draft_summary_reports_content_kind_so_a_client_need_not_guess() {
+    // A client must be able to tell an HTML draft apart in the LIST. Without
+    // this the only way to discover one is uneditable in the markdown
+    // composer is to open it and take the 409.
+    let updated_at = chrono::Utc::now();
+    let base = Draft {
+        id: DraftId::new(),
+        account_id: AccountId::new(),
+        from: None,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![Address {
+            name: None,
+            email: "user@example.com".into(),
+        }],
+        cc: Vec::new(),
+        bcc: Vec::new(),
+        subject: "Draft".into(),
+        content: DraftContent::markdown("Body"),
+        attachments: Vec::new(),
+        inline_assets: Vec::new(),
+        inline_calendar_reply: None,
+        created_at: updated_at,
+        updated_at,
+    };
+
+    let view = draft_summary_view(base.clone());
+    assert_eq!(view["content_kind"], "markdown");
+    assert_eq!(view["inline_asset_count"], 0);
+
+    let html = Draft {
+        content: DraftContent::html("<p>hi</p>", Some("hi".into())),
+        inline_assets: vec![mxr_core::types::InlineAsset {
+            cid: "logo".into(),
+            path: std::path::PathBuf::from("/tmp/logo.png"),
+        }],
+        ..base
+    };
+    let view = draft_summary_view(html);
+    assert_eq!(view["content_kind"], "html");
+    assert_eq!(view["inline_asset_count"], 1);
+}
+
 #[tokio::test]
 async fn refusing_an_html_draft_leaves_no_compose_file_in_the_scratch_directory() {
     let temp = TempDir::new().unwrap();

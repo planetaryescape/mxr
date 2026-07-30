@@ -245,3 +245,81 @@ fn expand_tilde(path: &str) -> String {
 
     path.to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_cid_that_could_end_a_header_line_is_refused() {
+        // The cid is written straight into `Content-ID: <...>`. Anything that
+        // can end the line can append headers of the sender's choosing.
+        for hostile in [
+            "logo\r\nBcc: evil@example.com",
+            "logo\nBcc: evil@example.com",
+            "logo\r",
+            "logo\n",
+            "\r\n",
+            "logo\r\n\r\n<html>injected body</html>",
+            "logo\u{0}",
+        ] {
+            assert!(
+                matches!(
+                    validate_cid(hostile),
+                    Err(InlineAssetError::InvalidCid { .. })
+                ),
+                "header forgery slipped through: {hostile:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_empty_cid_is_refused() {
+        assert!(matches!(
+            validate_cid(""),
+            Err(InlineAssetError::InvalidCid { .. })
+        ));
+    }
+
+    #[test]
+    fn the_documented_cid_charset_is_accepted() {
+        // Letters, digits, and `. _ - +`.
+        for cid in [
+            "logo",
+            "notto-logo",
+            "logo.v2",
+            "hero_image",
+            "logo+2x",
+            "LOGO",
+            "0",
+            "a.b_c-d+e9",
+        ] {
+            assert_eq!(validate_cid(cid), Ok(()), "should have accepted: {cid}");
+        }
+    }
+
+    #[test]
+    fn characters_outside_the_documented_charset_are_refused() {
+        for cid in [
+            "logo bar",
+            "<logo>",
+            "logo@example.com",
+            "logo:1",
+            "logo;name=x",
+            "logo\"x",
+            "logo\tx",
+            "logo/1",
+            "lögo",
+            "🎉",
+        ] {
+            assert!(validate_cid(cid).is_err(), "should have refused: {cid:?}");
+        }
+    }
+
+    #[test]
+    fn a_refusal_names_the_offending_cid() {
+        let error = validate_cid("logo bar").unwrap_err();
+        let rendered = error.to_string();
+        assert!(rendered.contains("logo bar"), "{rendered}");
+    }
+}

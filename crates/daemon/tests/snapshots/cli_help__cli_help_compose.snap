@@ -14,6 +14,11 @@ Options:
       --subject <SUBJECT>      Subject line
       --body <BODY>            Message body as string
       --body-stdin             Read message body from stdin
+      --html-file <PATH>       Send this HTML file as the message body, preserved exactly. mxr does not reformat, wrap, minify, or sanitise it — tables, inline CSS, `<style>` blocks, media queries and Outlook conditional comments all survive. Dangerous active content (scripts, forms, `javascript:` URLs) is reported and refused rather than stripped. Mutually exclusive with the markdown body flags
+      --html-stdin             Read the HTML body from stdin. Same rules as `--html-file`
+      --text-file <PATH>       Plain-text alternative for an HTML body. Without it mxr generates one from the HTML deterministically; the HTML is never altered either way
+      --inline <CID=PATH>      Attach an image as a CID-referenced inline asset, as `--inline NAME=PATH`, so the HTML can use `<img src="cid:NAME">`. Repeatable. Requires an HTML body
+      --signature-html <PATH>  Append this HTML file to an HTML body before `</body>`. Signatures are never injected into supplied HTML automatically — pass this to opt in. Markdown composition is unaffected
       --attach <ATTACH>        File path to attach (repeatable)
       --from <FROM>            Account to send from, or an owned address to send as. Accepts an account name/key, the account's primary email, or any registered alias (`mxr accounts addresses`); an alias sets both the account and the From address. When one alias is registered on several accounts, disambiguate with `--account`
       --account <ACCOUNT>      Disambiguate which account to send from when `--from` names an address registered on more than one account

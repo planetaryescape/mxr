@@ -6,9 +6,8 @@ use crate::state::AppState;
 use lettre::message::Mailbox;
 use mxr_core::types::{
     Address, Draft, DraftContent, DraftSafetyIssue, DraftSafetyIssueCode, DraftSafetyReport,
-    DraftSafetySeverity,
-    DraftStatus, Envelope, MessageBody, MessageDirection, MessageFlags, MessageMetadata,
-    SendReceipt, UnsubscribeMethod,
+    DraftSafetySeverity, DraftStatus, Envelope, MessageBody, MessageDirection, MessageFlags,
+    MessageMetadata, SendReceipt, UnsubscribeMethod,
 };
 use mxr_core::MxrError;
 use mxr_protocol::{
@@ -1866,23 +1865,21 @@ pub(super) async fn reset_orphaned_draft(
     Ok(ResponseData::Ack)
 }
 
-/// Gate an HTML draft on validation before it can be stored or sent.
+/// Gate a draft on validation before it can be stored or sent.
 ///
 /// Enforced here, at the IPC boundary, rather than only in the CLI — the
 /// daemon is the authority, and an external client speaking the socket
-/// directly must hit the same gate. Markdown drafts are unaffected: mxr
-/// generated that HTML itself.
+/// directly must hit the same gate.
 ///
 /// The draft is never modified. A rejected document comes back to the caller
 /// with the reasons; mxr does not sanitise it into something sendable.
 fn validate_draft_content(draft: &Draft) -> Result<(), crate::handler::HandlerError> {
-    let DraftContent::Html { html, .. } = &draft.content else {
-        return Ok(());
-    };
-
-    mxr_outbound::html::validate_html(html)
-        .map_err(|error| crate::handler::HandlerError::Message(error.to_string()))?;
-
+    // Inline assets are checked whatever the body kind. `inline_assets` is
+    // documented as always empty on a markdown draft, but nothing stops an IPC
+    // client from setting it, the store persists it either way, and the
+    // outbound builder writes `Content-ID` from whatever cid it is handed. A
+    // cid carrying CRLF would forge a header, so the check cannot live behind
+    // the HTML branch.
     let mut seen = std::collections::HashSet::new();
     for asset in &draft.inline_assets {
         mxr_outbound::attachments::validate_cid(&asset.cid)
@@ -1894,6 +1891,14 @@ fn validate_draft_content(draft: &Draft) -> Result<(), crate::handler::HandlerEr
             ));
         }
     }
+
+    // Only a supplied document is validated for active content. mxr generated
+    // the HTML for a markdown draft itself.
+    let DraftContent::Html { html, .. } = &draft.content else {
+        return Ok(());
+    };
+    mxr_outbound::html::validate_html(html)
+        .map_err(|error| crate::handler::HandlerError::Message(error.to_string()))?;
 
     Ok(())
 }
@@ -1939,9 +1944,27 @@ pub(super) async fn get_draft(state: &AppState, draft_id: &mxr_core::DraftId) ->
 /// Update a stored draft in place (same `DraftId`). The store only touches
 /// rows still in `'draft'` status; when nothing is updated we inspect the
 /// current status to return a precise reason.
+///
+/// An update may not change the draft's body *kind*. This is an upsert keyed on
+/// a caller-supplied id, and `DraftContent` deserialises a payload carrying no
+/// body fields at all to an empty markdown body — so an update that merely
+/// omits `body_html` would replace a supplied HTML document with `""` and
+/// report success. The store's own guard only covers `status`, so it does not
+/// help here. Refusing is the only safe answer: a caller that genuinely wants a
+/// different kind of message discards this draft and composes a new one.
 pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResult {
     validate_draft_content(draft)?;
     let draft = &*materialize_text_alternative(draft);
+    if let Some(stored) = state.store.get_draft(&draft.id).await? {
+        let stored_kind = stored.content.kind_str();
+        let incoming_kind = draft.content.kind_str();
+        if stored_kind != incoming_kind {
+            return Err(crate::handler::HandlerError::Message(format!(
+                "draft body is {stored_kind} and an update cannot change it to {incoming_kind}; \
+                 discard the draft and compose a new one"
+            )));
+        }
+    }
     if state.store.update_draft(draft).await? {
         return Ok(ResponseData::Ack);
     }
@@ -2602,7 +2625,6 @@ async fn append_sent_to_server(
         .await
         .map_err(|error| error.to_string())
 }
-
 
 /// Body halves for the synthetic Sent envelope a send ingests locally.
 ///

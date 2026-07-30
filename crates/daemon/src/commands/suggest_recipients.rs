@@ -1,8 +1,8 @@
 use crate::cli::OutputFormat;
-use mxr_core::types::DraftContent;
 use crate::commands::resolve_account;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
+use mxr_core::types::DraftContent;
 use mxr_protocol::*;
 use std::io::Read;
 use std::str::FromStr;

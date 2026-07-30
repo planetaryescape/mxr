@@ -606,12 +606,14 @@ async fn override_token_unblocks_send_exactly_once() {
         cc: vec![],
         bcc: vec![],
         subject: "key transfer".to_string(),
-        content: mxr_core::types::DraftContent::markdown(concat!(
-            "Here is the key:\n",
-            "-----BEGIN RSA ",
-            "PRIVATE KEY-----\n...\n"
-        )
-        .to_string()),
+        content: mxr_core::types::DraftContent::markdown(
+            concat!(
+                "Here is the key:\n",
+                "-----BEGIN RSA ",
+                "PRIVATE KEY-----\n...\n"
+            )
+            .to_string(),
+        ),
         inline_assets: Vec::new(),
         attachments: vec![],
         inline_calendar_reply: None,
@@ -742,7 +744,10 @@ async fn override_token_unblocks_send_exactly_once() {
         cc: vec![],
         bcc: vec![],
         subject: "again".into(),
-        content: mxr_core::types::DraftContent::markdown(concat!("-----BEGIN RSA ", "PRIVATE KEY-----\nzz\n")),
+        content: mxr_core::types::DraftContent::markdown(concat!(
+            "-----BEGIN RSA ",
+            "PRIVATE KEY-----\nzz\n"
+        )),
         inline_assets: Vec::new(),
         attachments: vec![],
         inline_calendar_reply: None,
@@ -872,12 +877,14 @@ async fn blocked_send_error_carries_usable_override_token() {
         cc: vec![],
         bcc: vec![],
         subject: "key transfer".to_string(),
-        content: mxr_core::types::DraftContent::markdown(concat!(
-            "Here is the key:\n",
-            "-----BEGIN RSA ",
-            "PRIVATE KEY-----\n...\n"
-        )
-        .to_string()),
+        content: mxr_core::types::DraftContent::markdown(
+            concat!(
+                "Here is the key:\n",
+                "-----BEGIN RSA ",
+                "PRIVATE KEY-----\n...\n"
+            )
+            .to_string(),
+        ),
         inline_assets: Vec::new(),
         attachments: vec![],
         inline_calendar_reply: None,

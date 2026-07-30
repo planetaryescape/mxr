@@ -113,7 +113,8 @@ pub(crate) async fn check_answer_coverage(
     let cleaned_draft = {
         let (text, html) = draft.content.reader_input();
         clean(text, html, &ReaderConfig::default())
-    }.content;
+    }
+    .content;
 
     // Both the inbound thread and the draft reply are mail-derived: the
     // thread is attacker-controlled, and the draft may quote or echo
@@ -225,7 +226,9 @@ fn degradation(reason: String) -> DraftSafetyIssue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_core::types::{Address, Draft, DraftContent, DraftIntent, MessageBody, MessageMetadata};
+    use mxr_core::types::{
+        Address, Draft, DraftContent, DraftIntent, MessageBody, MessageMetadata,
+    };
     use mxr_llm::{
         ChatRole, CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider,
     };

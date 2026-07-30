@@ -187,9 +187,18 @@ export interface DraftAddress {
   email: string;
 }
 
-/** Payload for `POST /drafts/save-local` (the daemon `Draft` shape). Scheduled
+/**
+ * Payload for `POST /drafts/save-local` (the daemon `Draft` shape). Scheduled
  * sends operate on stored drafts, so the compose session is materialised into
- * one before scheduling. */
+ * one before scheduling.
+ *
+ * Markdown-only by construction, and deliberately so: the browser composer
+ * edits compose files, which cannot represent a supplied HTML document. That
+ * makes the required `body_markdown` honest here — but it also makes `id`
+ * dangerous. `save-local` is an upsert, and a draft whose stored body is HTML
+ * would be *replaced* by the markdown one in this payload, discarding the
+ * document. Only ever send an `id` that came from a markdown compose session.
+ */
 export interface LocalDraftPayload {
   id: string;
   account_id: string;

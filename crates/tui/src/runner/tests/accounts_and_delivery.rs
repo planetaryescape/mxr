@@ -772,6 +772,31 @@ fn stored_drafts_edit_key_queues_pending_edit_for_selected_draft() {
 }
 
 #[test]
+fn stored_drafts_edit_refuses_an_html_draft_and_says_why() {
+    let mut app = App::new();
+    let mut draft = test_draft("Designed announcement");
+    draft.content = DraftContent::html("<p>designed</p>", None);
+    app.modals.drafts.open_loading();
+    app.modals.drafts.set_drafts(vec![draft]);
+
+    app.apply(Action::StoredDraftsModalEdit);
+
+    assert!(
+        app.pending_draft_edit_request.is_none(),
+        "an HTML draft cannot be expressed as a markdown compose file, so no edit may be queued"
+    );
+    let message = app.status_message.clone().unwrap_or_default();
+    assert!(
+        message.to_lowercase().contains("html"),
+        "the refusal must name the HTML body as the reason; got {message:?}"
+    );
+    assert!(
+        app.modals.drafts.visible,
+        "nothing happened, so the drafts list must stay open for the user to pick another"
+    );
+}
+
+#[test]
 fn compose_blank_recipient_advances_to_subject_modal() {
     let mut app = App::new();
     app.mailbox.all_envelopes = make_test_envelopes(1);

@@ -3101,3 +3101,175 @@ fn token_matches_accepts_only_the_exact_token() {
     assert!(!token_matches(None, "s3cr3t-token"));
     assert!(!token_matches(Some(""), "s3cr3t-token"));
 }
+
+/// The document a mail-merge or `--html-file` draft carries: hand-authored
+/// HTML the sender expects to reach the wire byte-for-byte, including the bits
+/// a display sanitiser would strip.
+const HTML_DRAFT_BODY: &str = concat!(
+    "<html><body><h1>Ship day</h1><p>We go live on Friday.</p>",
+    "<img src=\"https://tracker.example.com/pixel.png?id=42\">",
+    "<script>track()</script>",
+    "</body></html>"
+);
+
+fn html_body_draft(draft_id: &DraftId, account_id: &AccountId) -> Draft {
+    let now = Utc::now();
+    Draft {
+        id: draft_id.clone(),
+        account_id: account_id.clone(),
+        from: None,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![Address {
+            name: None,
+            email: "alice@example.com".into(),
+        }],
+        cc: Vec::new(),
+        bcc: Vec::new(),
+        subject: "Launch".into(),
+        content: DraftContent::html(HTML_DRAFT_BODY, None),
+        attachments: Vec::new(),
+        inline_assets: Vec::new(),
+        inline_calendar_reply: None,
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+/// Opening an HTML-bodied draft in the browser composer is a permanent
+/// refusal, and the refusal is actionable: a distinct status the client can
+/// branch on, a machine-readable code, and the document itself so the client
+/// can show the user what they wrote.
+#[tokio::test]
+async fn restoring_an_html_draft_refuses_with_an_actionable_conflict() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let draft = html_body_draft(&draft_id, &account_id);
+    let account = sample_account(&account_id);
+    let saw_account_lookup = std::sync::Arc::new(AtomicBool::new(false));
+    let saw_account_lookup_for_server = saw_account_lookup.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::ListDrafts => Some(Response::Ok {
+                data: ResponseData::Drafts {
+                    drafts: vec![draft.clone()],
+                },
+            }),
+            Request::ListAccounts => {
+                saw_account_lookup_for_server.store(true, Ordering::SeqCst);
+                Some(Response::Ok {
+                    data: ResponseData::Accounts {
+                        accounts: vec![account.clone()],
+                    },
+                })
+            }
+            _ => None,
+        },
+        None,
+    )
+    .await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/compose/session/restore"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "draft_id": draft_id.to_string() }))
+        .send()
+        .await
+        .unwrap();
+
+    // 409, not 502: the daemon is healthy and the draft is intact, so the
+    // client must not treat this as a transient upstream failure and retry.
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["code"], "html_draft_not_editable");
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or_default()
+            .to_lowercase()
+            .contains("html"),
+        "the message must name the HTML body as the reason; got {body}"
+    );
+    assert!(
+        body["session"].is_null(),
+        "no editing session exists, so the client must not be handed one; got {body}"
+    );
+    assert!(
+        !saw_account_lookup.load(Ordering::SeqCst),
+        "the refusal must land before any work that provisions an editing session \
+         (resolving the account, then writing a scratch compose file that nothing \
+         would ever clean up)"
+    );
+}
+
+/// The preview the bridge hands out is the stored document, verbatim.
+///
+/// Sanitising belongs at the point of display and nowhere else. If the bridge
+/// pre-sanitised, the client could only ever show a lossy rendition, and any
+/// path that fed that rendition back would silently rewrite what the recipient
+/// receives — the exact thing supplied-HTML drafts exist to prevent.
+#[tokio::test]
+async fn the_html_draft_preview_is_the_stored_document_byte_for_byte() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let draft = html_body_draft(&draft_id, &account_id);
+    let account = sample_account(&account_id);
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::ListDrafts => Some(Response::Ok {
+                data: ResponseData::Drafts {
+                    drafts: vec![draft.clone()],
+                },
+            }),
+            Request::ListAccounts => Some(Response::Ok {
+                data: ResponseData::Accounts {
+                    accounts: vec![account.clone()],
+                },
+            }),
+            _ => None,
+        },
+        None,
+    )
+    .await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let body: serde_json::Value = reqwest::Client::new()
+        .post(format!("http://{addr}/compose/session/restore"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "draft_id": draft_id.to_string() }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        body["previewHtml"].as_str(),
+        Some(HTML_DRAFT_BODY),
+        "the preview must be the author's document, not a scrubbed copy"
+    );
+}

@@ -2131,7 +2131,9 @@ async fn compose_draft_from_file(
 
     let now = Utc::now();
     Ok(Draft {
-        id: draft_id.unwrap_or_else(DraftId::new),
+        // A restored session supplies the id so the draft updates in place;
+        // a new compose mints one.
+        id: draft_id.unwrap_or_default(),
         account_id: parse_account_id(account_id)?,
         from: mxr_compose::draft_codec::parse_from_field(&frontmatter.from)
             .map_err(|error| BridgeError::Ipc(error.to_string()))?,

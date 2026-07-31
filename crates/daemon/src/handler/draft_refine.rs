@@ -82,7 +82,7 @@ pub(super) async fn draft_refine(
     // system prompt names the [DRAFT] block so the model knows what to revise
     // without treating its contents as instructions.
     prompt.push_str("\n[DRAFT]\n");
-    prompt.push_str(&wrap_untrusted_mail(&draft.body_markdown));
+    prompt.push_str(&wrap_untrusted_mail(draft.content.analysis_text()));
 
     let response = match state
         .llm
@@ -122,7 +122,7 @@ pub(super) async fn draft_refine(
 mod tests {
     use super::*;
     use crate::state::AppState;
-    use mxr_core::types::{Address, Draft, DraftIntent};
+    use mxr_core::types::{Address, Draft, DraftContent, DraftIntent};
     use mxr_llm::{CompletionResponse, LlmCapabilities, LlmProvider};
     use mxr_store::ContactRelationshipSummaryRecord;
     use std::sync::{Arc, Mutex};
@@ -192,7 +192,8 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: "re".into(),
-            body_markdown: "draft body".into(),
+            content: DraftContent::markdown("draft body"),
+            inline_assets: Vec::new(),
             attachments: vec![],
             inline_calendar_reply: None,
             created_at: chrono::Utc::now(),

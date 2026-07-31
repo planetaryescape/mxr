@@ -5,9 +5,9 @@ use super::{
 use crate::state::AppState;
 use lettre::message::Mailbox;
 use mxr_core::types::{
-    Address, Draft, DraftSafetyIssue, DraftSafetyIssueCode, DraftSafetyReport, DraftSafetySeverity,
-    DraftStatus, Envelope, MessageBody, MessageDirection, MessageFlags, MessageMetadata,
-    SendReceipt, UnsubscribeMethod,
+    Address, Draft, DraftContent, DraftSafetyIssue, DraftSafetyIssueCode, DraftSafetyReport,
+    DraftSafetySeverity, DraftStatus, Envelope, MessageBody, MessageDirection, MessageFlags,
+    MessageMetadata, SendReceipt, UnsubscribeMethod,
 };
 use mxr_core::MxrError;
 use mxr_protocol::{
@@ -397,6 +397,10 @@ pub(crate) async fn check_draft_safety_request(
     draft: &Draft,
     context: &DraftSafetyContextData,
 ) -> HandlerResult {
+    // `--check` builds a transient draft that was never stored, so the text
+    // alternative has to be materialised here too — otherwise an HTML draft
+    // would be checked against an empty body and always come back SAFE.
+    let draft = &*materialize_text_alternative(draft);
     let mut report = run_safety_pipeline(state, draft, context).await?;
 
     // Always audit a check run.
@@ -1861,8 +1865,78 @@ pub(super) async fn reset_orphaned_draft(
     Ok(ResponseData::Ack)
 }
 
+/// Gate a draft on validation before it can be stored or sent.
+///
+/// Enforced here, at the IPC boundary, rather than only in the CLI — the
+/// daemon is the authority, and an external client speaking the socket
+/// directly must hit the same gate.
+///
+/// The draft is never modified. A rejected document comes back to the caller
+/// with the reasons; mxr does not sanitise it into something sendable.
+fn validate_draft_content(draft: &Draft) -> Result<(), crate::handler::HandlerError> {
+    // Inline assets are checked whatever the body kind. `inline_assets` is
+    // documented as always empty on a markdown draft, but nothing stops an IPC
+    // client from setting it, the store persists it either way, and the
+    // outbound builder writes `Content-ID` from whatever cid it is handed. A
+    // cid carrying CRLF would forge a header, so the check cannot live behind
+    // the HTML branch.
+    let mut seen = std::collections::HashSet::new();
+    for asset in &draft.inline_assets {
+        mxr_outbound::attachments::validate_cid(&asset.cid)
+            .map_err(|error| crate::handler::HandlerError::Message(error.to_string()))?;
+        if !seen.insert(asset.cid.as_str()) {
+            return Err(crate::handler::HandlerError::Message(
+                mxr_outbound::attachments::InlineAssetError::DuplicateCid(asset.cid.clone())
+                    .to_string(),
+            ));
+        }
+    }
+
+    // Only a supplied document is validated for active content. mxr generated
+    // the HTML for a markdown draft itself.
+    let DraftContent::Html { html, .. } = &draft.content else {
+        return Ok(());
+    };
+    mxr_outbound::html::validate_html(html)
+        .map_err(|error| crate::handler::HandlerError::Message(error.to_string()))?;
+
+    Ok(())
+}
+
+/// Fill in the `text/plain` alternative for an HTML draft that has none.
+///
+/// Without this, `DraftContent::analysis_text()` returns an empty string for an
+/// HTML-only draft, and every safety check — PII, secrets, tone, commitments —
+/// would silently pass because it had nothing to read. Generating the fallback
+/// once, at creation, means the stored draft is complete for analysis, preview,
+/// export, and the TUI alike.
+///
+/// The HTML itself is not touched; generation only reads it.
+///
+/// A blank alternative counts as absent, not just a missing one. A row carrying
+/// `text: Some("")` — written by an older binary, or by any IPC client that
+/// skips the CLI — used to survive this function untouched, and then reached
+/// safety as an empty analysis body: the exact scan-nothing hazard the function
+/// exists to close, one variant over.
+fn materialize_text_alternative(draft: &Draft) -> std::borrow::Cow<'_, Draft> {
+    let DraftContent::Html { html, text } = &draft.content else {
+        return std::borrow::Cow::Borrowed(draft);
+    };
+    if text.as_ref().is_some_and(|text| !text.trim().is_empty()) {
+        return std::borrow::Cow::Borrowed(draft);
+    }
+    let mut owned = draft.clone();
+    owned.content = DraftContent::html(
+        html.clone(),
+        Some(mxr_outbound::html::generate_text_alternative(html)),
+    );
+    std::borrow::Cow::Owned(owned)
+}
+
 pub(super) async fn save_draft(state: &AppState, draft: &Draft) -> HandlerResult {
-    state.store.insert_draft(draft).await?;
+    validate_draft_content(draft)?;
+    let draft = materialize_text_alternative(draft);
+    state.store.insert_draft(&draft).await?;
     Ok(ResponseData::Ack)
 }
 
@@ -1879,7 +1953,27 @@ pub(super) async fn get_draft(state: &AppState, draft_id: &mxr_core::DraftId) ->
 /// Update a stored draft in place (same `DraftId`). The store only touches
 /// rows still in `'draft'` status; when nothing is updated we inspect the
 /// current status to return a precise reason.
+///
+/// An update may not change the draft's body *kind*. This is an upsert keyed on
+/// a caller-supplied id, and `DraftContent` deserialises a payload carrying no
+/// body fields at all to an empty markdown body — so an update that merely
+/// omits `body_html` would replace a supplied HTML document with `""` and
+/// report success. The store's own guard only covers `status`, so it does not
+/// help here. Refusing is the only safe answer: a caller that genuinely wants a
+/// different kind of message discards this draft and composes a new one.
 pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResult {
+    validate_draft_content(draft)?;
+    let draft = &*materialize_text_alternative(draft);
+    if let Some(stored) = state.store.get_draft(&draft.id).await? {
+        let stored_kind = stored.content.kind_str();
+        let incoming_kind = draft.content.kind_str();
+        if stored_kind != incoming_kind {
+            return Err(crate::handler::HandlerError::Message(format!(
+                "draft body is {stored_kind} and an update cannot change it to {incoming_kind}; \
+                 discard the draft and compose a new one"
+            )));
+        }
+    }
     if state.store.update_draft(draft).await? {
         return Ok(ResponseData::Ack);
     }
@@ -2253,6 +2347,9 @@ pub(super) async fn send_draft(
         return Ok(sent_draft_receipt_response(receipt));
     }
 
+    validate_draft_content(draft)?;
+    let draft = &*materialize_text_alternative(draft);
+
     if state.store.get_draft_status(&draft.id).await?.is_none() {
         state.store.insert_draft_if_absent(draft).await?;
     }
@@ -2291,6 +2388,14 @@ pub(crate) async fn send_stored_draft(
         .get_draft(draft_id)
         .await?
         .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
+
+    // Re-validated at the send choke point, not just on the way in: a row
+    // could have been written by an older binary, or edited by a path that
+    // predates the gate. Nothing reaches a provider unvalidated.
+    validate_draft_content(&draft)?;
+    // Covers rows written before the alternative was materialised at creation:
+    // safety must never run against an empty body.
+    draft = materialize_text_alternative(&draft).into_owned();
 
     enforce_draft_safety_with_override(state, &draft, override_safety_token).await?;
 
@@ -2512,11 +2617,15 @@ async fn append_sent_to_server(
     let attachments = mxr_outbound::attachments::load_attachment_paths_async(&draft.attachments)
         .await
         .map_err(|error| format!("failed to load attachments for Sent APPEND: {error}"))?;
-    let message = mxr_outbound::email::build_message_with_id(
+    let inline_assets = mxr_outbound::attachments::load_inline_assets_async(&draft.inline_assets)
+        .await
+        .map_err(|error| format!("failed to load inline assets for Sent APPEND: {error}"))?;
+    let message = mxr_outbound::email::build_message_with_id_and_parts(
         draft,
         from,
         false,
         &attachments,
+        &inline_assets,
         &receipt.rfc2822_message_id,
     )
     .map_err(|error| format!("failed to render message for Sent APPEND: {error}"))?;
@@ -2524,6 +2633,22 @@ async fn append_sent_to_server(
         .append_sent(&message.formatted(), receipt.sent_at)
         .await
         .map_err(|error| error.to_string())
+}
+
+/// Body halves for the synthetic Sent envelope a send ingests locally.
+///
+/// Markdown drafts file their source as `text/plain`, as before. HTML drafts
+/// file the supplied text alternative (or a generated one) plus the HTML
+/// itself, so the Sent copy renders the same message the recipient got.
+fn sent_body_parts(content: &DraftContent) -> (String, Option<String>) {
+    match content {
+        DraftContent::Markdown { source } => (source.clone(), None),
+        DraftContent::Html { html, text } => (
+            text.clone()
+                .unwrap_or_else(|| mxr_outbound::html::generate_text_alternative(html)),
+            Some(html.clone()),
+        ),
+    }
 }
 
 async fn ingest_sent_message(
@@ -2582,8 +2707,11 @@ async fn ingest_sent_message(
         &provider_id_value,
     );
 
-    let snippet: String = draft
-        .body_markdown
+    // An HTML draft files a Sent copy carrying both halves, so the user's own
+    // reader shows the message they actually sent instead of a blank body.
+    let (sent_text, sent_html) = sent_body_parts(&draft.content);
+
+    let snippet: String = sent_text
         .chars()
         .filter(|c| !c.is_control())
         .take(200)
@@ -2610,7 +2738,7 @@ async fn ingest_sent_message(
         flags: MessageFlags::SENT | MessageFlags::READ,
         snippet: snippet.clone(),
         has_attachments: !draft.attachments.is_empty(),
-        size_bytes: draft.body_markdown.len() as u64,
+        size_bytes: draft.content.byte_len() as u64,
         unsubscribe: UnsubscribeMethod::None,
         link_count: 0,
         body_word_count: 0,
@@ -2627,8 +2755,8 @@ async fn ingest_sent_message(
 
     let body = MessageBody {
         message_id: message_id.clone(),
-        text_plain: Some(draft.body_markdown.clone()),
-        text_html: None,
+        text_plain: Some(sent_text),
+        text_html: sent_html,
         attachments: Vec::new(),
         fetched_at: receipt.sent_at,
         metadata: MessageMetadata::default(),
@@ -2712,6 +2840,8 @@ async fn sent_thread_id(state: &AppState, draft: &Draft) -> Option<mxr_core::Thr
 }
 
 pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> HandlerResult {
+    validate_draft_content(draft)?;
+    let draft = &*materialize_text_alternative(draft);
     let sender = match state.send_provider_for_account(&draft.account_id) {
         Ok(sender) => sender,
         Err(error) => {
@@ -2975,7 +3105,8 @@ pub(super) async fn unsubscribe(
                 cc: vec![],
                 bcc: vec![],
                 subject: subject.clone().unwrap_or_else(|| "unsubscribe".to_string()),
-                body_markdown: "unsubscribe".to_string(),
+                content: DraftContent::markdown("unsubscribe".to_string()),
+                inline_assets: Vec::new(),
                 attachments: vec![],
                 inline_calendar_reply: None,
                 created_at: now,
@@ -3526,7 +3657,8 @@ mod safety_context_wiring_tests {
             cc: Vec::new(),
             bcc: Vec::new(),
             subject: "subject".into(),
-            body_markdown: body.into(),
+            content: DraftContent::markdown(body),
+            inline_assets: Vec::new(),
             attachments: Vec::new(),
             inline_calendar_reply: None,
             created_at: Utc::now(),
@@ -3869,7 +4001,8 @@ mod sent_append_tests {
             cc: Vec::new(),
             bcc: Vec::new(),
             subject: "hello".into(),
-            body_markdown: "body".into(),
+            content: DraftContent::markdown("body"),
+            inline_assets: Vec::new(),
             attachments: Vec::new(),
             inline_calendar_reply: None,
             created_at: Utc::now(),

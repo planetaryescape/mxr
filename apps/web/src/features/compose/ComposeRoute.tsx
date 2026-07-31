@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import type { ComposeKind } from "./api";
 import { ComposeEditorPanel } from "./ComposeEditorPanel";
+import { htmlDraftRefusal, HtmlDraftNotice } from "./HtmlDraftNotice";
 import { useComposeSession, type ComposeIntent } from "./useComposeSession";
 
 type ComposeSearch = Record<string, unknown>;
@@ -21,6 +22,13 @@ export function ComposeRoute() {
 
   if (controller.sessionLoading) {
     return <ComposeLoading title={intent.title} />;
+  }
+
+  // An HTML-bodied draft is a permanent refusal, not a transient failure:
+  // retrying can only fail again. Show the document instead.
+  const htmlDraft = htmlDraftRefusal(controller.sessionError);
+  if (htmlDraft) {
+    return <HtmlDraftNotice refusal={htmlDraft} />;
   }
 
   if (controller.sessionError) {

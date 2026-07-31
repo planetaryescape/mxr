@@ -3235,15 +3235,20 @@ export interface components {
             stale_socket: boolean;
             sync_statuses: components["schemas"]["AccountSyncStatus"][];
         };
-        Draft: {
+        Draft: components["schemas"]["DraftContentSchema"] & {
             account_id: components["schemas"]["AccountId"];
             attachments: string[];
             bcc: components["schemas"]["Address"][];
-            body_markdown: string;
             cc: components["schemas"]["Address"][];
             /** Format: date-time */
             created_at: string;
+            from?: null | components["schemas"]["Address"];
             id: components["schemas"]["DraftId"];
+            /**
+             * @description CID-referenced inline images for an HTML body. Always empty for a
+             *     markdown draft.
+             */
+            inline_assets?: components["schemas"]["InlineAsset"][];
             inline_calendar_reply?: null | components["schemas"]["InlineCalendarReply"];
             intent?: components["schemas"]["DraftIntent"];
             reply_headers?: null | components["schemas"]["ReplyHeaders"];
@@ -3264,6 +3269,21 @@ export interface components {
             id: string;
             what: string;
             who_owes: string;
+        };
+        /**
+         * @description Documents the flattened [`DraftContent`] wire shape for OpenAPI.
+         *
+         *     `DraftContent` hand-rolls its serde impls to stay backward compatible, so
+         *     a derived schema on the enum itself would describe the Rust shape rather
+         *     than the JSON. This mirrors what actually goes over the wire.
+         */
+        DraftContentSchema: {
+            /** @description Present on HTML drafts. Mutually exclusive with `body_markdown`. */
+            body_html?: string | null;
+            /** @description Present on markdown drafts. */
+            body_markdown?: string | null;
+            /** @description Optional `text/plain` alternative supplied alongside `body_html`. */
+            body_text?: string | null;
         };
         /** Format: uuid */
         DraftId: string;
@@ -3466,6 +3486,18 @@ export interface components {
         };
         /** @enum {string} */
         IndexFreshness: "unknown" | "current" | "stale" | "disabled" | "indexing" | "error" | "repair_required";
+        /**
+         * @description An image referenced from an HTML body by `<img src="cid:NAME">`.
+         *
+         *     Only the path crosses IPC; the daemon reads the bytes at send time, the
+         *     same contract `Draft::attachments` uses. Keeping bytes off the wire matters
+         *     because the IPC frame cap is 16 MiB.
+         */
+        InlineAsset: {
+            /** @description The `cid:` token the HTML references, without angle brackets. */
+            cid: string;
+            path: string;
+        };
         InlineCalendarReply: {
             attendee_email: string;
             ics_body: string;
@@ -3803,6 +3835,16 @@ export interface components {
              */
             thread_id?: string | null;
         };
+        /**
+         * @description Every command a client can ask the daemon to perform.
+         *
+         *     Tagged `cmd` on the wire. One flat enum is the whole client-facing
+         *     surface: the CLI, TUI, web bridge, and MCP server all speak these same
+         *     requests, which is what keeps daemon capabilities client-agnostic (see
+         *     [`IpcCategory`] for the conceptual grouping). Mutations are expressed as
+         *     explicit commands with dry-run/preview options rather than free-form
+         *     state writes.
+         */
         Request: {
             account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
@@ -4110,6 +4152,11 @@ export interface components {
             /** @enum {string} */
             cmd: "SetPrimaryAccountAddress";
             email: string;
+        } | {
+            account_id: components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ResolveSendFrom";
+            from?: null | components["schemas"]["Address"];
         } | {
             /** @enum {string} */
             cmd: "GetLlmStatus";
@@ -4688,6 +4735,14 @@ export interface components {
             draft_id: components["schemas"]["DraftId"];
         } | {
             /** @enum {string} */
+            cmd: "GetDraft";
+            draft_id: components["schemas"]["DraftId"];
+        } | {
+            /** @enum {string} */
+            cmd: "UpdateDraft";
+            draft: components["schemas"]["Draft"];
+        } | {
+            /** @enum {string} */
             cmd: "SaveDraftToServer";
             draft: components["schemas"]["Draft"];
         } | {
@@ -4720,6 +4775,14 @@ export interface components {
         } | {
             /** @enum {string} */
             cmd: "Shutdown";
+        } | {
+            /** @enum {string} */
+            cmd: "Authenticate";
+            /**
+             * @description Bearer token, matched against the daemon's token store (env
+             *     `MXR_DAEMON_TOKEN` or the daemon token file).
+             */
+            token: string;
         } | {
             /** @enum {string} */
             cmd: "ListActivity";
@@ -4784,6 +4847,13 @@ export interface components {
             cmd: "DeleteSavedActivityFilter";
             slug: string;
         };
+        /**
+         * @description The daemon's reply to a [`Request`], correlated by [`IpcMessage::id`].
+         *
+         *     Either `Ok` wrapping a [`ResponseData`] payload, or `Error` with a
+         *     human-readable message plus a machine-readable [`IpcErrorKind`] so
+         *     clients can branch on failure class instead of parsing strings.
+         */
         Response: {
             data: components["schemas"]["ResponseData"];
             /** @enum {string} */
@@ -4920,6 +4990,10 @@ export interface components {
             drafts: components["schemas"]["Draft"][];
             /** @enum {string} */
             kind: "Drafts";
+        } | {
+            draft: components["schemas"]["Draft"];
+            /** @enum {string} */
+            kind: "Draft";
         } | {
             /** @enum {string} */
             kind: "SnoozedMessages";
@@ -5153,6 +5227,10 @@ export interface components {
             /** @enum {string} */
             kind: "AccountAddresses";
         } | {
+            from: components["schemas"]["Address"];
+            /** @enum {string} */
+            kind: "ResolvedSendFrom";
+        } | {
             /** @enum {string} */
             kind: "SemanticStatus";
             snapshot: components["schemas"]["SemanticStatusSnapshot"];
@@ -5222,6 +5300,9 @@ export interface components {
         } | {
             /** @enum {string} */
             kind: "Ack";
+        } | {
+            /** @enum {string} */
+            kind: "Authenticated";
         } | {
             /** @enum {string} */
             kind: "SendReceipt";
@@ -6327,15 +6408,8 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Bridge is up. Returns status, service, and protocol_version */
             200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6711,6 +6785,13 @@ export interface operations {
             };
             /** @description Missing or invalid bridge token */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The draft's body is a supplied HTML document, which the markdown compose editor cannot represent. Body carries `code: "html_draft_not_editable"` and `previewHtml` (the document verbatim, for read-only display). Retrying cannot succeed. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -693,6 +693,15 @@ impl App {
                     self.status_message = Some("No draft selected".into());
                     return;
                 };
+                // A supplied HTML document has no markdown compose-file form, so
+                // `$EDITOR` has nothing to open. Say why — in the same words the
+                // CLI uses — and leave the list up so the user can pick another.
+                if draft.content.is_html() {
+                    self.status_message = Some(
+                        mxr_compose::frontmatter::ComposeError::HtmlDraftNotEditable.to_string(),
+                    );
+                    return;
+                }
                 self.modals.drafts.close();
                 self.pending_draft_edit_request = Some(draft);
                 self.status_message = Some("Opening draft in editor...".into());

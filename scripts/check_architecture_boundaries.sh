@@ -17,6 +17,11 @@ ALLOW = {
     "mxr-keychain": set(),
     "mxr-llm": set(),
     "mxr-mail-parse": {"mxr-core"},
+    # Companion executable, not a core crate. The empty set is the boundary:
+    # mxr-mailmerge composes with mxr by spawning the `mxr` CLI, so it can
+    # never reach the store, credentials, or a provider. Adding any internal
+    # dependency here fails CI, which is the point.
+    "mxr-mailmerge": set(),
     "mxr-outbound": {"mxr-core"},
     "mxr-protocol": {"mxr-core"},
     "mxr-reader": set(),

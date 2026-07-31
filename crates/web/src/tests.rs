@@ -4,9 +4,9 @@ use futures::{SinkExt, StreamExt};
 use mxr_core::{
     id::{AccountId, AttachmentId, MessageId, ThreadId},
     types::{
-        Address, AttachmentDisposition, AttachmentMeta, CalendarMetadata, Draft, Envelope, Label,
-        LabelKind, MessageBody, MessageFlags, MessageMetadata, SavedSearch, SortOrder,
-        SubscriptionSummary, Thread, UnsubscribeMethod,
+        Address, AttachmentDisposition, AttachmentMeta, CalendarMetadata, Draft, DraftContent,
+        Envelope, Label, LabelKind, MessageBody, MessageFlags, MessageMetadata, SavedSearch,
+        SortOrder, SubscriptionSummary, Thread, UnsubscribeMethod,
     },
 };
 use mxr_protocol::{
@@ -1823,8 +1823,9 @@ fn draft_summary_includes_updated_time_labels() {
         cc: Vec::new(),
         bcc: Vec::new(),
         subject: "Draft".into(),
-        body_markdown: "Body".into(),
+        content: DraftContent::markdown("Body"),
         attachments: Vec::new(),
+        inline_assets: Vec::new(),
         inline_calendar_reply: None,
         created_at: updated_at,
         updated_at,
@@ -2482,7 +2483,7 @@ async fn compose_session_send_forwards_draft_account_id() {
         .expect("send draft should be forwarded");
     assert_eq!(draft.account_id, expected_account_id);
     assert_eq!(draft.subject, "Bridge send");
-    assert_eq!(draft.body_markdown, "Hello from bridge");
+    assert_eq!(draft.content.analysis_text(), "Hello from bridge");
     assert_eq!(draft.to[0].email, "alice@example.com");
 }
 
@@ -3052,7 +3053,7 @@ async fn invite_reply_sidecar_round_trips_into_compose_draft() {
     let path_str = draft_path.to_str().unwrap().to_string();
 
     // No sidecar → a plain draft with no iTIP payload.
-    let plain = compose_draft_from_file(&path_str, &account_id.to_string())
+    let plain = compose_draft_from_file(&path_str, &account_id.to_string(), None)
         .await
         .unwrap();
     assert!(plain.inline_calendar_reply.is_none());
@@ -3068,7 +3069,7 @@ async fn invite_reply_sidecar_round_trips_into_compose_draft() {
     write_invite_reply_sidecar(&draft_path, &reply)
         .await
         .unwrap();
-    let with_invite = compose_draft_from_file(&path_str, &account_id.to_string())
+    let with_invite = compose_draft_from_file(&path_str, &account_id.to_string(), None)
         .await
         .unwrap();
     let got = with_invite
@@ -3099,4 +3100,693 @@ fn token_matches_accepts_only_the_exact_token() {
     assert!(!token_matches(Some("s3cr3t-token-extra"), "s3cr3t-token"));
     assert!(!token_matches(None, "s3cr3t-token"));
     assert!(!token_matches(Some(""), "s3cr3t-token"));
+}
+
+/// The document a mail-merge or `--html-file` draft carries: hand-authored
+/// HTML the sender expects to reach the wire byte-for-byte, including the bits
+/// a display sanitiser would strip.
+const HTML_DRAFT_BODY: &str = concat!(
+    "<html><body><h1>Ship day</h1><p>We go live on Friday.</p>",
+    "<img src=\"https://tracker.example.com/pixel.png?id=42\">",
+    "<script>track()</script>",
+    "</body></html>"
+);
+
+fn html_body_draft(draft_id: &DraftId, account_id: &AccountId) -> Draft {
+    let now = Utc::now();
+    Draft {
+        id: draft_id.clone(),
+        account_id: account_id.clone(),
+        from: None,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![Address {
+            name: None,
+            email: "alice@example.com".into(),
+        }],
+        cc: Vec::new(),
+        bcc: Vec::new(),
+        subject: "Launch".into(),
+        content: DraftContent::html(HTML_DRAFT_BODY, None),
+        attachments: Vec::new(),
+        inline_assets: Vec::new(),
+        inline_calendar_reply: None,
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+/// Opening an HTML-bodied draft in the browser composer is a permanent
+/// refusal, and the refusal is actionable: a distinct status the client can
+/// branch on, a machine-readable code, and the document itself so the client
+/// can show the user what they wrote.
+#[tokio::test]
+async fn restoring_an_html_draft_refuses_with_an_actionable_conflict() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let draft = html_body_draft(&draft_id, &account_id);
+    let account = sample_account(&account_id);
+    let saw_account_lookup = std::sync::Arc::new(AtomicBool::new(false));
+    let saw_account_lookup_for_server = saw_account_lookup.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::ListDrafts => Some(Response::Ok {
+                data: ResponseData::Drafts {
+                    drafts: vec![draft.clone()],
+                },
+            }),
+            Request::ListAccounts => {
+                saw_account_lookup_for_server.store(true, Ordering::SeqCst);
+                Some(Response::Ok {
+                    data: ResponseData::Accounts {
+                        accounts: vec![account.clone()],
+                    },
+                })
+            }
+            _ => None,
+        },
+        None,
+    )
+    .await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/compose/session/restore"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "draft_id": draft_id.to_string() }))
+        .send()
+        .await
+        .unwrap();
+
+    // 409, not 502: the daemon is healthy and the draft is intact, so the
+    // client must not treat this as a transient upstream failure and retry.
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["code"], "html_draft_not_editable");
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or_default()
+            .to_lowercase()
+            .contains("html"),
+        "the message must name the HTML body as the reason; got {body}"
+    );
+    assert!(
+        body["session"].is_null(),
+        "no editing session exists, so the client must not be handed one; got {body}"
+    );
+    assert!(
+        !saw_account_lookup.load(Ordering::SeqCst),
+        "the refusal must land before any work that provisions an editing session \
+         (resolving the account, then writing a scratch compose file that nothing \
+         would ever clean up)"
+    );
+}
+
+/// Every top-level entry of the private scratch directory, for before/after
+/// comparison. A directory that cannot be read yields nothing, so a missing
+/// scratch root is simply "no entries" rather than a panic.
+fn scratch_entries(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries.flatten().map(|entry| entry.path()).collect()
+}
+
+/// Refusing to open an HTML draft must leave the private scratch directory
+/// exactly as it found it.
+///
+/// A compose file written for a draft the bridge then refuses is an orphan:
+/// no session references its path, no discard call can name it, and nothing
+/// sweeps the directory — so every attempt to open the same draft would
+/// strand another copy of the user's subject line in temp.
+///
+/// The sibling test above asserts a proxy for this ("no account lookup went
+/// out"), which stays green for any file-creating step that happens to land
+/// before the lookup. This asserts the property against the directory itself.
+#[test]
+fn draft_summary_reports_content_kind_so_a_client_need_not_guess() {
+    // A client must be able to tell an HTML draft apart in the LIST. Without
+    // this the only way to discover one is uneditable in the markdown
+    // composer is to open it and take the 409.
+    let updated_at = chrono::Utc::now();
+    let base = Draft {
+        id: DraftId::new(),
+        account_id: AccountId::new(),
+        from: None,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![Address {
+            name: None,
+            email: "user@example.com".into(),
+        }],
+        cc: Vec::new(),
+        bcc: Vec::new(),
+        subject: "Draft".into(),
+        content: DraftContent::markdown("Body"),
+        attachments: Vec::new(),
+        inline_assets: Vec::new(),
+        inline_calendar_reply: None,
+        created_at: updated_at,
+        updated_at,
+    };
+
+    let view = draft_summary_view(base.clone());
+    assert_eq!(view["content_kind"], "markdown");
+    assert_eq!(view["inline_asset_count"], 0);
+
+    let html = Draft {
+        content: DraftContent::html("<p>hi</p>", Some("hi".into())),
+        inline_assets: vec![mxr_core::types::InlineAsset {
+            cid: "logo".into(),
+            path: std::path::PathBuf::from("/tmp/logo.png"),
+        }],
+        ..base
+    };
+    let view = draft_summary_view(html);
+    assert_eq!(view["content_kind"], "html");
+    assert_eq!(view["inline_asset_count"], 1);
+}
+
+#[tokio::test]
+async fn refusing_an_html_draft_leaves_no_compose_file_in_the_scratch_directory() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let account = sample_account(&account_id);
+
+    // The scratch directory is per-user and shared with every other compose
+    // test running concurrently, so a leak is attributed by content rather
+    // than by counting entries: a compose file is rendered from the draft it
+    // was created for, and only this request could have written this subject.
+    let subject = format!("scratch proof {draft_id}");
+    let mut draft = html_body_draft(&draft_id, &account_id);
+    draft.subject = subject.clone();
+
+    let scratch_dir = mxr_compose::private_tmp::private_scratch_dir().unwrap();
+    let before = scratch_entries(&scratch_dir);
+
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::ListDrafts => Some(Response::Ok {
+                data: ResponseData::Drafts {
+                    drafts: vec![draft.clone()],
+                },
+            }),
+            Request::ListAccounts => Some(Response::Ok {
+                data: ResponseData::Accounts {
+                    accounts: vec![account.clone()],
+                },
+            }),
+            _ => None,
+        },
+        None,
+    )
+    .await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/compose/session/restore"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "draft_id": draft_id.to_string() }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+
+    let stranded = scratch_entries(&scratch_dir)
+        .into_iter()
+        .filter(|path| !before.contains(path))
+        .filter(|path| {
+            std::fs::read_to_string(path).is_ok_and(|contents| contents.contains(&subject))
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        stranded.is_empty(),
+        "refusing an HTML draft stranded {} unreferenced compose file(s) under {}: {stranded:?}",
+        stranded.len(),
+        scratch_dir.display()
+    );
+}
+
+/// The preview the bridge hands out is the stored document, verbatim.
+///
+/// Sanitising belongs at the point of display and nowhere else. If the bridge
+/// pre-sanitised, the client could only ever show a lossy rendition, and any
+/// path that fed that rendition back would silently rewrite what the recipient
+/// receives — the exact thing supplied-HTML drafts exist to prevent.
+#[tokio::test]
+async fn the_html_draft_preview_is_the_stored_document_byte_for_byte() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let draft = html_body_draft(&draft_id, &account_id);
+    let account = sample_account(&account_id);
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::ListDrafts => Some(Response::Ok {
+                data: ResponseData::Drafts {
+                    drafts: vec![draft.clone()],
+                },
+            }),
+            Request::ListAccounts => Some(Response::Ok {
+                data: ResponseData::Accounts {
+                    accounts: vec![account.clone()],
+                },
+            }),
+            _ => None,
+        },
+        None,
+    )
+    .await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let body: serde_json::Value = reqwest::Client::new()
+        .post(format!("http://{addr}/compose/session/restore"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "draft_id": draft_id.to_string() }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        body["previewHtml"].as_str(),
+        Some(HTML_DRAFT_BODY),
+        "the preview must be the author's document, not a scrubbed copy"
+    );
+}
+/// A stand-in for the daemon's draft store, modelling only what the compose
+/// save path depends on: `ListDrafts` reads it, a create appends a row, and
+/// `UpdateDraft` rewrites the row carrying that id while keeping the stored
+/// `created_at` (`Store::update_draft` leaves `created_at` out of its SET).
+#[derive(Clone, Default)]
+struct FakeDraftStore(std::sync::Arc<std::sync::Mutex<Vec<Draft>>>);
+
+impl FakeDraftStore {
+    fn with(drafts: Vec<Draft>) -> Self {
+        Self(std::sync::Arc::new(std::sync::Mutex::new(drafts)))
+    }
+
+    fn snapshot(&self) -> Vec<Draft> {
+        self.0.lock().unwrap().clone()
+    }
+
+    fn clear(&self) {
+        self.0.lock().unwrap().clear();
+    }
+
+    /// The daemon's fallback for an account with no server-side drafts:
+    /// `SaveDraftToServer` -> `save_draft` -> `insert_draft`, a plain INSERT
+    /// that stores the payload's `created_at` verbatim.
+    fn insert(&self, draft: Draft) {
+        self.0.lock().unwrap().push(draft);
+    }
+
+    /// `Store::update_draft` + the daemon's not-found reporting.
+    fn update(&self, draft: Draft) -> Result<(), String> {
+        let mut drafts = self.0.lock().unwrap();
+        let Some(stored) = drafts.iter_mut().find(|stored| stored.id == draft.id) else {
+            return Err(format!("Draft not found: {}", draft.id));
+        };
+        let created_at = stored.created_at;
+        *stored = Draft {
+            created_at,
+            ..draft
+        };
+        Ok(())
+    }
+}
+
+fn draft_store_responder(
+    store: FakeDraftStore,
+    account: mxr_protocol::AccountSummaryData,
+) -> impl Fn(Request) -> Option<Response> + Send + Sync + 'static {
+    move |request| {
+        let data = match request {
+            Request::ListDrafts => ResponseData::Drafts {
+                drafts: store.snapshot(),
+            },
+            Request::ListAccounts => ResponseData::Accounts {
+                accounts: vec![account.clone()],
+            },
+            Request::SaveDraftToServer { draft } => {
+                store.insert(draft);
+                ResponseData::Ack
+            }
+            Request::UpdateDraft { draft } => match store.update(draft) {
+                Ok(()) => ResponseData::Ack,
+                Err(message) => {
+                    return Some(Response::Error {
+                        message,
+                        kind: Default::default(),
+                        code: String::new(),
+                        retryable: false,
+                        details: None,
+                    })
+                }
+            },
+            _ => return None,
+        };
+        Some(Response::Ok { data })
+    }
+}
+
+fn markdown_draft(
+    draft_id: &DraftId,
+    account_id: &AccountId,
+    subject: &str,
+    body: &str,
+    created_at: chrono::DateTime<Utc>,
+) -> Draft {
+    Draft {
+        id: draft_id.clone(),
+        account_id: account_id.clone(),
+        from: None,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![Address {
+            name: None,
+            email: "alice@example.com".into(),
+        }],
+        cc: Vec::new(),
+        bcc: Vec::new(),
+        subject: subject.into(),
+        content: DraftContent::markdown(body),
+        attachments: Vec::new(),
+        inline_assets: Vec::new(),
+        inline_calendar_reply: None,
+        created_at,
+        updated_at: created_at,
+    }
+}
+
+/// Opening a stored draft in the browser composer and saving it must leave the
+/// user with the draft they opened, edited — not that draft plus a copy.
+///
+/// Every save cycle used to mint a fresh `DraftId`, so a draft edited three
+/// times became four indistinguishable rows and the user had no way to tell
+/// which one the composer was still writing to.
+#[tokio::test]
+async fn saving_a_restored_draft_updates_it_in_place_instead_of_storing_a_copy() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    // Distinctly older than "now" so a create (which stores the payload's
+    // timestamp) cannot be mistaken for an in-place update.
+    let created_at = Utc::now() - chrono::Duration::days(3);
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &draft_id,
+        &account_id,
+        "Quarterly plan",
+        "First pass.",
+        created_at,
+    )]);
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        draft_store_responder(store.clone(), sample_account(&account_id)),
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+
+    let draft_path = restore_session_path(&client, addr, &draft_id).await;
+    edit_session(
+        &client,
+        addr,
+        &draft_path,
+        "Quarterly plan v2",
+        "Second pass, with numbers.",
+    )
+    .await;
+
+    let response = client
+        .post(format!("http://{addr}/compose/session/save"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&json!({
+            "draft_path": draft_path,
+            "account_id": account_id.to_string(),
+            "draft_id": draft_id.to_string(),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["draft_id"], json!(draft_id.to_string()));
+
+    let drafts = store.snapshot();
+    assert_eq!(
+        drafts.len(),
+        1,
+        "editing one draft must leave one draft; got {:?}",
+        drafts
+            .iter()
+            .map(|draft| &draft.subject)
+            .collect::<Vec<_>>()
+    );
+    let saved = &drafts[0];
+    assert_eq!(
+        saved.id, draft_id,
+        "the edit must land on the draft the user opened"
+    );
+    assert_eq!(
+        saved.created_at, created_at,
+        "an edit must not reset when the draft was created"
+    );
+    assert_eq!(saved.subject, "Quarterly plan v2");
+    assert_eq!(
+        saved.content,
+        DraftContent::markdown("Second pass, with numbers.")
+    );
+
+    mxr_compose::delete_draft_file_async(Path::new(&draft_path))
+        .await
+        .ok();
+}
+
+/// A compose session that was never restored from a stored draft has nothing
+/// to update, so it must still create one.
+#[tokio::test]
+async fn a_compose_session_that_was_not_restored_still_creates_a_stored_draft() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let store = FakeDraftStore::default();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        draft_store_responder(store.clone(), sample_account(&account_id)),
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+
+    let session: serde_json::Value = client
+        .post(format!("http://{addr}/compose/session"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&json!({ "kind": "new" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let draft_path = session["session"]["draftPath"]
+        .as_str()
+        .expect("a new compose session must carry a draft path")
+        .to_string();
+    edit_session(&client, addr, &draft_path, "Hello", "A brand new message.").await;
+
+    let response = client
+        .post(format!("http://{addr}/compose/session/save"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&json!({
+            "draft_path": draft_path,
+            "account_id": account_id.to_string(),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = response.json().await.unwrap();
+
+    let drafts = store.snapshot();
+    assert_eq!(
+        drafts.len(),
+        1,
+        "an unsaved compose session must become a draft"
+    );
+    assert_eq!(drafts[0].subject, "Hello");
+    assert_eq!(body["draft_id"], json!(drafts[0].id.to_string()));
+
+    mxr_compose::delete_draft_file_async(Path::new(&draft_path))
+        .await
+        .ok();
+}
+
+/// Discarding the draft elsewhere (another surface, the CLI) while the
+/// composer still has it open must surface the daemon's refusal, not quietly
+/// re-create the row the user just threw away.
+#[tokio::test]
+async fn saving_a_restored_draft_that_no_longer_exists_reports_it_instead_of_recreating_it() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &draft_id,
+        &account_id,
+        "Quarterly plan",
+        "First pass.",
+        Utc::now(),
+    )]);
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        draft_store_responder(store.clone(), sample_account(&account_id)),
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+
+    let draft_path = restore_session_path(&client, addr, &draft_id).await;
+    edit_session(
+        &client,
+        addr,
+        &draft_path,
+        "Quarterly plan v2",
+        "Second pass.",
+    )
+    .await;
+    store.clear();
+
+    let response = client
+        .post(format!("http://{addr}/compose/session/save"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&json!({
+            "draft_path": draft_path,
+            "account_id": account_id.to_string(),
+            "draft_id": draft_id.to_string(),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(
+        response.status(),
+        reqwest::StatusCode::OK,
+        "a save that stored nothing must not report success"
+    );
+    let body: serde_json::Value = response.json().await.unwrap();
+    let error = body["error"].as_str().unwrap_or_default();
+    assert!(
+        error.to_lowercase().contains("not found") && error.contains(&draft_id.to_string()),
+        "the message must name the missing draft so the user can tell which one; got {body}"
+    );
+    assert!(
+        store.snapshot().is_empty(),
+        "a failed save must not leave a resurrected draft behind"
+    );
+
+    mxr_compose::delete_draft_file_async(Path::new(&draft_path))
+        .await
+        .ok();
+}
+
+async fn restore_session_path(
+    client: &reqwest::Client,
+    addr: std::net::SocketAddr,
+    draft_id: &DraftId,
+) -> String {
+    let response = client
+        .post(format!("http://{addr}/compose/session/restore"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&json!({ "draft_id": draft_id.to_string() }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = response.json().await.unwrap();
+    body["session"]["draftPath"]
+        .as_str()
+        .expect("a restored session must carry a draft path")
+        .to_string()
+}
+
+/// Rewrite the session the way the composer's own autosave does.
+async fn edit_session(
+    client: &reqwest::Client,
+    addr: std::net::SocketAddr,
+    draft_path: &str,
+    subject: &str,
+    body: &str,
+) {
+    let response = client
+        .post(format!("http://{addr}/compose/session/update"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&json!({
+            "draft_path": draft_path,
+            "to": "alice@example.com",
+            "cc": "",
+            "bcc": "",
+            "subject": subject,
+            "from": "me@example.com",
+            "body": body,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
 }

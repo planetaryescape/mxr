@@ -714,8 +714,9 @@ fn test_draft(subject: &str) -> Draft {
         cc: vec![],
         bcc: vec![],
         subject: subject.into(),
-        body_markdown: "Body.".into(),
+        content: DraftContent::markdown("Body."),
         attachments: vec![],
+        inline_assets: vec![],
         inline_calendar_reply: None,
         created_at: now,
         updated_at: now,
@@ -767,6 +768,31 @@ fn stored_drafts_edit_key_queues_pending_edit_for_selected_draft() {
     assert_eq!(
         app.pending_draft_edit_request.as_ref().map(|d| &d.id),
         Some(&selected_id)
+    );
+}
+
+#[test]
+fn stored_drafts_edit_refuses_an_html_draft_and_says_why() {
+    let mut app = App::new();
+    let mut draft = test_draft("Designed announcement");
+    draft.content = DraftContent::html("<p>designed</p>", None);
+    app.modals.drafts.open_loading();
+    app.modals.drafts.set_drafts(vec![draft]);
+
+    app.apply(Action::StoredDraftsModalEdit);
+
+    assert!(
+        app.pending_draft_edit_request.is_none(),
+        "an HTML draft cannot be expressed as a markdown compose file, so no edit may be queued"
+    );
+    let message = app.status_message.clone().unwrap_or_default();
+    assert!(
+        message.to_lowercase().contains("html"),
+        "the refusal must name the HTML body as the reason; got {message:?}"
+    );
+    assert!(
+        app.modals.drafts.visible,
+        "nothing happened, so the drafts list must stay open for the user to pick another"
     );
 }
 

@@ -11,7 +11,7 @@ use crate::cli::OutputFormat;
 use crate::commands::{get_draft_for_account, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
-use mxr_core::{AccountId, Address, Draft, DraftId, ReplyHeaders};
+use mxr_core::{AccountId, Address, Draft, DraftContent, DraftId, ReplyHeaders};
 use mxr_protocol::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -25,6 +25,11 @@ pub struct ComposeOptions {
     pub subject: Option<String>,
     pub body: Option<String>,
     pub body_stdin: bool,
+    pub html_file: Option<PathBuf>,
+    pub html_stdin: bool,
+    pub text_file: Option<PathBuf>,
+    pub inline: Vec<String>,
+    pub signature_html: Option<PathBuf>,
     pub attach: Vec<PathBuf>,
     pub from: Option<String>,
     pub account: Option<String>,
@@ -79,6 +84,18 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     )
     .await?;
 
+    // An HTML body never opens $EDITOR: the caller already authored the
+    // document, and round-tripping it through a markdown compose file would
+    // destroy the markup they supplied it to preserve.
+    let html_args = super::compose_html::HtmlComposeArgs {
+        html_file: options.html_file.clone(),
+        html_stdin: options.html_stdin,
+        text_file: options.text_file.clone(),
+        inline: options.inline.clone(),
+        signature_html: options.signature_html.clone(),
+    };
+    let html_input = super::compose_html::read_html_input(&html_args)?;
+
     let make_inline_frontmatter = || mxr_compose::frontmatter::ComposeFrontmatter {
         to: options.to.clone().unwrap_or_default(),
         cc: options.cc.clone().unwrap_or_default(),
@@ -90,7 +107,9 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    let (frontmatter, body, draft_file) = if let Some(body) = stdin_or_body {
+    let (frontmatter, body, draft_file) = if html_input.is_some() {
+        (make_inline_frontmatter(), String::new(), None)
+    } else if let Some(body) = stdin_or_body {
         (
             make_inline_frontmatter(),
             apply_signature_to_body(body, signature.as_ref()),
@@ -125,17 +144,20 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     };
     let body = expand_compose_snippets(&mut client, body).await?;
 
-    let draft = draft_from_frontmatter(
+    let mut draft = draft_from_frontmatter(
         account.account_id,
         mxr_core::DraftIntent::New,
         &frontmatter,
         body,
     )?;
+    if let Some(html) = html_input {
+        apply_html_body(&mut draft, html);
+    }
     // `--draft` forces a save and cannot coexist with `--yes` (clap enforces
     // the conflict); computing `sending` locally keeps the save-vs-send
     // decision explicit rather than resting on that guard at a distance.
     let sending = options.yes && !options.draft;
-    validate_compose_draft(&frontmatter, &draft.body_markdown, sending)?;
+    validate_compose_draft(&frontmatter, draft.content.analysis_text(), sending)?;
 
     if options.dry_run {
         let effective_from =
@@ -156,10 +178,14 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
-        println!("Sent draft {}", draft.id);
-        if let Some(info) = receipt.as_ref() {
-            println!("Local message id: {}", info.local_message_id);
-        }
+        print_compose_result(
+            "send",
+            &draft,
+            receipt
+                .as_ref()
+                .map(|info| info.local_message_id.to_string()),
+            options.format,
+        )?;
     } else {
         expect_ack(
             client
@@ -171,10 +197,115 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
-        println!("Draft saved: {}", draft.id);
-        println!("Send with: mxr send {}", draft.id);
+        print_compose_result("save_draft", &draft, None, options.format)?;
     }
     Ok(())
+}
+
+/// Put an assembled HTML body onto a draft.
+///
+/// Shared by `compose` and `compose --check` so the check path builds the same
+/// draft a save or a send would. While the two diverged, `--check` ignored the
+/// HTML flags entirely and ran the safety pipeline against an empty markdown
+/// draft, which reported every HTML email as safe.
+///
+/// Generates the `text/plain` alternative when the caller supplied none.
+/// `DraftContent::analysis_text()` is honestly `""` without one, and passing
+/// that to validation reported "Message body is empty" for a perfectly good
+/// HTML email. The HTML itself is only read.
+fn apply_html_body(draft: &mut Draft, input: super::compose_html::HtmlComposeInput) {
+    let super::compose_html::HtmlComposeInput {
+        html,
+        text,
+        inline_assets,
+    } = input;
+
+    // A reference mxr cannot resolve is a warning, not a refusal: the author
+    // may know something mxr does not.
+    for cid in super::compose_html::unresolved_cid_references(&html, &inline_assets) {
+        eprintln!("warning: HTML references cid:{cid} but no --inline provides it");
+    }
+
+    let text = text.unwrap_or_else(|| mxr_outbound::html::generate_text_alternative(&html));
+    draft.content = DraftContent::html(html, Some(text));
+    draft.inline_assets = inline_assets;
+}
+
+/// Emit the outcome of a compose in whichever format the caller asked for.
+///
+/// Shared by `mxr compose`, `mxr reply`, `mxr reply-all` and `mxr forward` so
+/// the four report an outcome identically. Reply and forward used to `println!`
+/// a human line unconditionally and ignore `--format` outright, which made
+/// `mxr reply --format json` emit prose.
+fn print_compose_result(
+    action: &str,
+    draft: &Draft,
+    local_message_id: Option<String>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    print!(
+        "{}",
+        compose_result_output(action, draft, local_message_id, format)?
+    );
+    Ok(())
+}
+
+/// Render the outcome of a compose.
+///
+/// Previously this path printed a fixed human string regardless of `--format`,
+/// which left external clients screen-scraping for a draft id. JSON/JSONL now
+/// carry it as data; `table` keeps the original wording.
+///
+/// Defaults to `table` rather than going through `resolve_format`, which turns
+/// a non-terminal stdout into JSON. `Draft saved: <id>` is what scripts have
+/// always read from a redirected compose, reply or forward; flipping it on
+/// redirect is a silent break. A caller that wants data asks with `--format`.
+/// This deliberately departs from the "piped → json" rule in
+/// `docs/blueprint/16-addendum.md`; the departure is one place, for all four
+/// commands, rather than per command.
+fn compose_result_output(
+    action: &str,
+    draft: &Draft,
+    local_message_id: Option<String>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<String> {
+    let payload = serde_json::json!({
+        "action": action,
+        "draft_id": draft.id.as_str(),
+        "account_id": draft.account_id.as_str(),
+        "subject": draft.subject,
+        "to": draft.to.iter().map(|a| a.email.clone()).collect::<Vec<_>>(),
+        "content_kind": draft.content.kind_str(),
+        "inline_count": draft.inline_assets.len(),
+        "attachment_count": draft.attachments.len(),
+        "local_message_id": local_message_id,
+    });
+
+    Ok(match format.unwrap_or(OutputFormat::Table) {
+        OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(&payload)?),
+        OutputFormat::Jsonl => format!("{}\n", serde_json::to_string(&payload)?),
+        OutputFormat::Ids => format!("{}\n", draft.id),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record(["action", "draft_id", "subject"])?;
+            writer.write_record([action, draft.id.as_str().as_str(), draft.subject.as_str()])?;
+            String::from_utf8(writer.into_inner()?)?
+        }
+        OutputFormat::Table => {
+            if action == "send" {
+                let mut out = format!("Sent draft {}\n", draft.id);
+                if let Some(id) = local_message_id {
+                    out.push_str(&format!("Local message id: {id}\n"));
+                }
+                out
+            } else {
+                format!(
+                    "Draft saved: {}\nSend with: mxr send {}\n",
+                    draft.id, draft.id
+                )
+            }
+        }
+    })
 }
 
 pub struct ReplyCommand {
@@ -490,7 +621,7 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     let snippet_ctx = snippet_context_from_frontmatter(&frontmatter);
     let body = expand_compose_snippets_with_context(client, body, Some(&snippet_ctx)).await?;
     let outgoing = draft_from_frontmatter(account_id, intent, &frontmatter, body)?;
-    validate_compose_draft(&frontmatter, &outgoing.body_markdown, sending)?;
+    validate_compose_draft(&frontmatter, outgoing.content.analysis_text(), sending)?;
 
     if dry_run {
         let effective_from =
@@ -516,10 +647,14 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
-        println!("Sent draft {}", outgoing.id);
-        if let Some(info) = receipt.as_ref() {
-            println!("Local message id: {}", info.local_message_id);
-        }
+        print_compose_result(
+            "send",
+            &outgoing,
+            receipt
+                .as_ref()
+                .map(|info| info.local_message_id.to_string()),
+            format,
+        )?;
     } else {
         expect_ack(
             client
@@ -531,8 +666,7 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
-        println!("Draft saved: {}", outgoing.id);
-        println!("Send with: mxr send {}", outgoing.id);
+        print_compose_result("save_draft", &outgoing, None, format)?;
     }
     Ok(())
 }
@@ -914,7 +1048,22 @@ pub async fn compose_check(options: ComposeOptions, no_llm: bool) -> anyhow::Res
     )
     .await?;
     let from_seed = from_override.unwrap_or_else(|| account.email.clone());
-    let body_text = read_body_input(options.body, options.body_stdin)?.unwrap_or_default();
+
+    // `--check` has to read the HTML the same way a save or a send does.
+    // Ignoring these flags here meant checking an empty markdown draft and
+    // calling every HTML email safe, dangerous documents included.
+    let html_input = super::compose_html::read_html_input(&super::compose_html::HtmlComposeArgs {
+        html_file: options.html_file.clone(),
+        html_stdin: options.html_stdin,
+        text_file: options.text_file.clone(),
+        inline: options.inline.clone(),
+        signature_html: options.signature_html.clone(),
+    })?;
+    let body_text = if html_input.is_some() {
+        String::new()
+    } else {
+        read_body_input(options.body, options.body_stdin)?.unwrap_or_default()
+    };
 
     let frontmatter = mxr_compose::frontmatter::ComposeFrontmatter {
         to: options.to.clone().unwrap_or_default(),
@@ -929,12 +1078,15 @@ pub async fn compose_check(options: ComposeOptions, no_llm: bool) -> anyhow::Res
     let snippet_ctx = snippet_context_from_frontmatter(&frontmatter);
     let body =
         expand_compose_snippets_with_context(&mut client, body_text, Some(&snippet_ctx)).await?;
-    let draft = draft_from_frontmatter(
+    let mut draft = draft_from_frontmatter(
         account.account_id,
         mxr_core::DraftIntent::New,
         &frontmatter,
         body,
     )?;
+    if let Some(html) = html_input {
+        apply_html_body(&mut draft, html);
+    }
 
     // Validate the effective From at preview, mirroring the real send path.
     resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
@@ -1571,7 +1723,8 @@ fn draft_from_frontmatter(
         cc: parse_addresses(&frontmatter.cc),
         bcc: parse_addresses(&frontmatter.bcc),
         subject: frontmatter.subject.clone(),
-        body_markdown: body,
+        content: DraftContent::markdown(body),
+        inline_assets: Vec::new(),
         attachments: frontmatter.attach.iter().map(PathBuf::from).collect(),
         inline_calendar_reply: None,
         created_at: now,
@@ -1785,7 +1938,7 @@ fn print_draft_preview(
                 format_addresses(&draft.cc),
                 format_addresses(&draft.bcc),
                 draft.subject.clone(),
-                draft.body_markdown.len().to_string(),
+                draft.content.byte_len().to_string(),
                 draft.attachments.len().to_string(),
             ])?;
             println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
@@ -2151,7 +2304,8 @@ mod tests {
                 cc: vec![],
                 bcc: vec![],
                 subject: "subj".into(),
-                body_markdown: "body".into(),
+                content: mxr_core::types::DraftContent::markdown("body"),
+                inline_assets: Vec::new(),
                 attachments: vec![],
                 inline_calendar_reply: None,
                 created_at: Utc::now(),
@@ -2268,6 +2422,265 @@ mod tests {
             let request = auto_reminder_request_after_send(None, None, now).unwrap();
 
             assert!(request.is_none());
+        }
+    }
+
+    /// Assembling an HTML body onto a draft, and the structured outcome the
+    /// compose command reports.
+    mod html_compose_tests {
+        use super::super::{apply_html_body, compose_result_output};
+        use crate::cli::OutputFormat;
+        use crate::commands::mutations::compose_html::HtmlComposeInput;
+        use mxr_core::types::{Address, Draft, DraftContent, InlineAsset};
+        use mxr_core::{AccountId, DraftId, DraftIntent};
+        use std::path::PathBuf;
+
+        const HTML: &str = "<html><body><table><tr><td style=\"color:#333\">\
+Quarterly numbers are in the table below.</td></tr></table></body></html>";
+
+        fn draft() -> Draft {
+            Draft {
+                id: DraftId::new(),
+                account_id: AccountId::new(),
+                from: None,
+                reply_headers: None,
+                intent: DraftIntent::New,
+                to: vec![Address {
+                    name: None,
+                    email: "alice@example.com".into(),
+                }],
+                cc: vec![],
+                bcc: vec![],
+                subject: "Quarterly numbers".into(),
+                content: DraftContent::markdown(""),
+                inline_assets: Vec::new(),
+                attachments: vec![],
+                inline_calendar_reply: None,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }
+        }
+
+        fn frontmatter() -> mxr_compose::frontmatter::ComposeFrontmatter {
+            mxr_compose::frontmatter::ComposeFrontmatter {
+                to: "alice@example.com".into(),
+                subject: "Quarterly numbers".into(),
+                from: "me@example.com".into(),
+                ..Default::default()
+            }
+        }
+
+        fn empty_body_warning(body: &str) -> bool {
+            mxr_compose::validate_draft(&frontmatter(), body)
+                .iter()
+                .any(|issue| issue.to_string().contains("Message body is empty"))
+        }
+
+        /// The bug: an HTML draft's analysis text is `""` until an alternative
+        /// exists, so validation reported a perfectly good HTML email as empty.
+        /// Documented as a pair so the assertion below cannot pass vacuously.
+        #[test]
+        fn an_html_body_without_an_alternative_reads_as_an_empty_message() {
+            let bare = DraftContent::html(HTML, None);
+            assert_eq!(bare.analysis_text(), "");
+            assert!(
+                empty_body_warning(bare.analysis_text()),
+                "premise of the fix: the un-materialised body validates as empty"
+            );
+        }
+
+        #[test]
+        fn applying_an_html_body_generates_the_text_alternative_validation_reads() {
+            let mut draft = draft();
+            apply_html_body(
+                &mut draft,
+                HtmlComposeInput {
+                    html: HTML.to_string(),
+                    text: None,
+                    inline_assets: Vec::new(),
+                },
+            );
+
+            let text = draft.content.analysis_text();
+            assert!(
+                text.contains("Quarterly numbers"),
+                "generated alternative lost the body copy: {text:?}"
+            );
+            assert!(
+                !empty_body_warning(text),
+                "a valid HTML body must not validate as an empty message"
+            );
+        }
+
+        #[test]
+        fn applying_an_html_body_leaves_the_document_byte_for_byte() {
+            let mut draft = draft();
+            apply_html_body(
+                &mut draft,
+                HtmlComposeInput {
+                    html: HTML.to_string(),
+                    text: None,
+                    inline_assets: Vec::new(),
+                },
+            );
+
+            match &draft.content {
+                DraftContent::Html { html, .. } => assert_eq!(html, HTML),
+                other => panic!("expected an HTML body, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn a_supplied_text_alternative_is_not_replaced_by_a_generated_one() {
+            let mut draft = draft();
+            apply_html_body(
+                &mut draft,
+                HtmlComposeInput {
+                    html: HTML.to_string(),
+                    text: Some("The numbers are in the table.".into()),
+                    inline_assets: Vec::new(),
+                },
+            );
+
+            assert_eq!(
+                draft.content.analysis_text(),
+                "The numbers are in the table."
+            );
+        }
+
+        #[test]
+        fn applying_an_html_body_carries_the_inline_assets_over() {
+            let mut draft = draft();
+            apply_html_body(
+                &mut draft,
+                HtmlComposeInput {
+                    html: HTML.to_string(),
+                    text: None,
+                    inline_assets: vec![InlineAsset {
+                        cid: "logo".into(),
+                        path: PathBuf::from("/tmp/logo.png"),
+                    }],
+                },
+            );
+
+            assert_eq!(draft.inline_assets.len(), 1);
+            assert_eq!(draft.inline_assets[0].cid, "logo");
+        }
+
+        fn html_draft_for_output() -> Draft {
+            let mut draft = draft();
+            draft.attachments = vec![PathBuf::from("/tmp/notes.txt")];
+            apply_html_body(
+                &mut draft,
+                HtmlComposeInput {
+                    html: HTML.to_string(),
+                    text: None,
+                    inline_assets: vec![InlineAsset {
+                        cid: "logo".into(),
+                        path: PathBuf::from("/tmp/logo.png"),
+                    }],
+                },
+            );
+            draft
+        }
+
+        /// The documented JSON contract. `mxr-mailmerge` reads `draft_id` out
+        /// of this payload, so dropping or renaming a field breaks a shipped
+        /// consumer.
+        #[test]
+        fn json_output_carries_the_documented_fields() {
+            let draft = html_draft_for_output();
+            let out = compose_result_output("save_draft", &draft, None, Some(OutputFormat::Json))
+                .unwrap();
+
+            let payload: serde_json::Value = serde_json::from_str(&out).unwrap();
+            assert_eq!(payload["action"], "save_draft");
+            assert_eq!(payload["draft_id"], draft.id.as_str().as_str());
+            assert_eq!(payload["account_id"], draft.account_id.as_str().as_str());
+            assert_eq!(payload["subject"], "Quarterly numbers");
+            assert_eq!(payload["to"], serde_json::json!(["alice@example.com"]));
+            assert_eq!(payload["content_kind"], "html");
+            assert_eq!(payload["inline_count"], 1);
+            assert_eq!(payload["attachment_count"], 1);
+        }
+
+        #[test]
+        fn jsonl_output_is_one_line_of_the_same_payload() {
+            let draft = html_draft_for_output();
+            let out = compose_result_output("save_draft", &draft, None, Some(OutputFormat::Jsonl))
+                .unwrap();
+
+            assert_eq!(out.lines().count(), 1, "jsonl must be a single line: {out}");
+            let payload: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+            assert_eq!(payload["draft_id"], draft.id.as_str().as_str());
+            assert_eq!(payload["content_kind"], "html");
+        }
+
+        #[test]
+        fn csv_output_has_a_header_row_and_the_draft_id() {
+            let draft = html_draft_for_output();
+            let out =
+                compose_result_output("save_draft", &draft, None, Some(OutputFormat::Csv)).unwrap();
+
+            let mut lines = out.lines();
+            assert_eq!(lines.next(), Some("action,draft_id,subject"));
+            let row = lines.next().expect("csv data row");
+            assert!(row.contains(draft.id.as_str().as_str()), "row={row}");
+            assert!(row.contains("Quarterly numbers"), "row={row}");
+        }
+
+        #[test]
+        fn ids_output_is_just_the_draft_id() {
+            let draft = html_draft_for_output();
+            let out =
+                compose_result_output("save_draft", &draft, None, Some(OutputFormat::Ids)).unwrap();
+
+            assert_eq!(out.trim(), draft.id.as_str().as_str());
+        }
+
+        /// Without `--format`, the human line stands whether stdout is a
+        /// terminal or a pipe. Routing this through `resolve_format` turned a
+        /// redirected `mxr compose` into JSON and broke every script reading
+        /// `Draft saved: <id>`.
+        #[test]
+        fn no_explicit_format_keeps_the_human_wording() {
+            let draft = html_draft_for_output();
+            let out = compose_result_output("save_draft", &draft, None, None).unwrap();
+
+            assert!(
+                out.starts_with(&format!("Draft saved: {}", draft.id)),
+                "out={out}"
+            );
+        }
+
+        #[test]
+        fn table_output_keeps_the_human_wording_for_both_actions() {
+            let draft = html_draft_for_output();
+
+            let saved =
+                compose_result_output("save_draft", &draft, None, Some(OutputFormat::Table))
+                    .unwrap();
+            assert!(
+                saved.contains(&format!("Draft saved: {}", draft.id)),
+                "saved={saved}"
+            );
+            assert!(
+                saved.contains(&format!("Send with: mxr send {}", draft.id)),
+                "saved={saved}"
+            );
+
+            let sent = compose_result_output(
+                "send",
+                &draft,
+                Some("msg-123".to_string()),
+                Some(OutputFormat::Table),
+            )
+            .unwrap();
+            assert!(
+                sent.contains(&format!("Sent draft {}", draft.id)),
+                "sent={sent}"
+            );
+            assert!(sent.contains("Local message id: msg-123"), "sent={sent}");
         }
     }
 }

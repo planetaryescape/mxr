@@ -9,12 +9,14 @@
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use mail_builder::MessageBuilder;
-use mxr_core::types::{Address, Draft};
+use mxr_core::types::{Address, Draft, DraftContent};
 use mxr_outbound::attachments::{
-    load_attachment_paths_async, load_attachment_paths_sync, LoadedAttachment,
+    load_attachment_paths_async, load_attachment_paths_sync, load_inline_assets_async,
+    load_inline_assets_sync, LoadedAttachment, LoadedInlineAsset,
 };
 use mxr_outbound::email::{
-    build_message, build_message_with_attachments, build_message_with_id, format_message_for_gmail,
+    build_message, build_message_with_id_and_parts, build_message_with_parts,
+    format_message_for_gmail,
 };
 use mxr_outbound::render::render_markdown;
 use std::path::PathBuf;
@@ -29,8 +31,9 @@ pub fn build_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSend
 
 pub async fn build_rfc2822_async(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSendError> {
     let attachments = load_attachments_async(&draft.attachments).await?;
+    let inline_assets = load_inline_async(&draft.inline_assets).await?;
     let started_at = Instant::now();
-    let message = build_message_with_attachments(draft, from, true, &attachments)
+    let message = build_message_with_parts(draft, from, true, &attachments, &inline_assets)
         .map_err(|err| GmailSendError::Build(err.to_string()))?;
     tracing::trace!(
         attachment_count = attachments.len(),
@@ -46,8 +49,16 @@ pub async fn build_rfc2822_async_with_id(
     message_id: &str,
 ) -> Result<Vec<u8>, GmailSendError> {
     let attachments = load_attachments_async(&draft.attachments).await?;
-    let message = build_message_with_id(draft, from, true, &attachments, message_id)
-        .map_err(|err| GmailSendError::Build(err.to_string()))?;
+    let inline_assets = load_inline_async(&draft.inline_assets).await?;
+    let message = build_message_with_id_and_parts(
+        draft,
+        from,
+        true,
+        &attachments,
+        &inline_assets,
+        message_id,
+    )
+    .map_err(|err| GmailSendError::Build(err.to_string()))?;
     Ok(format_message_for_gmail(&message))
 }
 
@@ -57,7 +68,8 @@ pub async fn build_rfc2822_async_with_id(
 /// transport-envelope requirement imposed by lettre's builder path.
 pub fn build_draft_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSendError> {
     let attachments = load_attachments_sync(&draft.attachments)?;
-    build_draft_rfc2822_with_attachments(draft, from, &attachments)
+    let inline_assets = load_inline_sync(&draft.inline_assets)?;
+    build_draft_rfc2822_with_attachments(draft, from, &attachments, &inline_assets)
 }
 
 pub async fn build_draft_rfc2822_async(
@@ -65,20 +77,34 @@ pub async fn build_draft_rfc2822_async(
     from: &Address,
 ) -> Result<Vec<u8>, GmailSendError> {
     let attachments = load_attachments_async(&draft.attachments).await?;
-    build_draft_rfc2822_with_attachments(draft, from, &attachments)
+    let inline_assets = load_inline_async(&draft.inline_assets).await?;
+    build_draft_rfc2822_with_attachments(draft, from, &attachments, &inline_assets)
 }
 
 fn build_draft_rfc2822_with_attachments(
     draft: &Draft,
     from: &Address,
     attachments: &[LoadedAttachment],
+    inline_assets: &[LoadedInlineAsset],
 ) -> Result<Vec<u8>, GmailSendError> {
     let started_at = Instant::now();
-    let rendered = render_markdown(&draft.body_markdown);
+    // Both body kinds land here. An HTML draft passes its document through
+    // untouched; rendering markdown for it would have stored an empty draft.
+    let (plain, html) = match &draft.content {
+        DraftContent::Markdown { source } => {
+            let rendered = render_markdown(source);
+            (rendered.plain, rendered.html)
+        }
+        DraftContent::Html { html, text } => (
+            text.clone()
+                .unwrap_or_else(|| mxr_outbound::html::generate_text_alternative(html)),
+            html.clone(),
+        ),
+    };
     let mut builder = address_with_name(MessageBuilder::new(), HeaderAddressKind::From, from)
         .subject(draft.subject.clone())
-        .text_body(rendered.plain)
-        .html_body(rendered.html);
+        .text_body(plain)
+        .html_body(html);
 
     for address in &draft.to {
         builder = address_with_name(builder, HeaderAddressKind::To, address);
@@ -112,6 +138,14 @@ fn build_draft_rfc2822_with_attachments(
             attachment.mime_type.clone(),
             attachment.filename.clone(),
             attachment.bytes.clone(),
+        );
+    }
+
+    for asset in inline_assets {
+        builder = builder.inline(
+            asset.mime_type.clone(),
+            asset.cid.clone(),
+            asset.bytes.clone(),
         );
     }
 
@@ -181,6 +215,20 @@ fn load_attachments_sync(paths: &[PathBuf]) -> Result<Vec<LoadedAttachment>, Gma
     load_attachment_paths_sync(paths).map_err(|err| GmailSendError::Build(err.to_string()))
 }
 
+fn load_inline_sync(
+    assets: &[mxr_core::types::InlineAsset],
+) -> Result<Vec<LoadedInlineAsset>, GmailSendError> {
+    load_inline_assets_sync(assets).map_err(|err| GmailSendError::Build(err.to_string()))
+}
+
+async fn load_inline_async(
+    assets: &[mxr_core::types::InlineAsset],
+) -> Result<Vec<LoadedInlineAsset>, GmailSendError> {
+    load_inline_assets_async(assets)
+        .await
+        .map_err(|err| GmailSendError::Build(err.to_string()))
+}
+
 async fn load_attachments_async(
     paths: &[PathBuf],
 ) -> Result<Vec<LoadedAttachment>, GmailSendError> {
@@ -203,7 +251,7 @@ mod tests {
     use super::*;
     use mail_parser::MessageParser;
     use mxr_core::id::{AccountId, DraftId};
-    use mxr_core::types::{DraftIntent, ReplyHeaders};
+    use mxr_core::types::{DraftContent, DraftIntent, ReplyHeaders};
 
     fn test_draft() -> Draft {
         Draft {
@@ -219,8 +267,9 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: "Test Subject".into(),
-            body_markdown: "Hello **world**!".into(),
+            content: DraftContent::markdown("Hello **world**!"),
             attachments: vec![],
+            inline_assets: Vec::new(),
             inline_calendar_reply: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

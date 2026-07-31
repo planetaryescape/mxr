@@ -48,8 +48,8 @@ use mxr_core::{
     id::LabelId,
     id::{AccountId, DraftId, MessageId, ThreadId},
     types::{
-        Draft, Envelope, Label, MessageBody, ReplyHeaders, SearchMode, Snoozed, SortOrder,
-        SubscriptionSummary,
+        Draft, DraftContent, Envelope, Label, MessageBody, ReplyHeaders, SearchMode, Snoozed,
+        SortOrder, SubscriptionSummary,
     },
 };
 use mxr_mail_parse::parse_address_list;
@@ -642,14 +642,31 @@ async fn restore_compose_session(
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
     Json(request): Json<ComposeSessionRestoreRequest>,
-) -> Result<Json<serde_json::Value>, BridgeError> {
+) -> Result<Response, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    let session = restore_saved_draft_session(
+    let restored = restore_saved_draft_session(
         &state.config.socket_path,
         parse_draft_id(&request.draft_id)?,
     )
     .await?;
-    Ok(Json(json!({ "session": session })))
+    Ok(match restored {
+        RestoredComposeSession::Editable(session) => {
+            Json(json!({ "session": session })).into_response()
+        }
+        // 409, not 502: the daemon is healthy and the draft is intact. This
+        // combination will never succeed, so the client must not retry it.
+        RestoredComposeSession::HtmlNotEditable { preview_html } => (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "this draft has an HTML body, which the markdown compose editor \
+                          cannot edit. Edit the HTML source and re-create the draft with \
+                          `mxr compose --html-file <path>`.",
+                "code": "html_draft_not_editable",
+                "previewHtml": preview_html,
+            })),
+        )
+            .into_response(),
+    })
 }
 
 async fn update_compose_session(
@@ -765,7 +782,10 @@ async fn send_compose_session(
         draft_file,
         "bridge compose send requested"
     );
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
+    // Deliberately a fresh id even for a session restored from a stored draft:
+    // `SendDraft` sends the *stored* row whenever one already carries that id,
+    // so reusing it here would put the pre-edit body on the wire.
+    let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
     let draft_id = draft.id.clone();
     match ipc_request_with_id(
         &state.config.socket_path,
@@ -815,7 +835,10 @@ async fn check_compose_session_safety(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let request_id = bridge_request_id(&headers);
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
+    // Nothing is stored, so the id never leaves this report: the safety
+    // pipeline reads recipients and body only, and override tokens are keyed
+    // by blocker kind rather than by draft.
+    let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
     match ipc_request_with_id(
         &state.config.socket_path,
         request_id,
@@ -843,7 +866,8 @@ async fn suggest_compose_collaborators(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let request_id = bridge_request_id(&headers);
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
+    // Read-only suggestion lookup; nothing is stored under this draft's id.
+    let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
     match ipc_request_with_id(
         &state.config.socket_path,
         request_id,
@@ -871,22 +895,33 @@ async fn save_compose_session(
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("unknown");
+    let stored_draft_id = request
+        .draft_id
+        .as_deref()
+        .map(parse_draft_id)
+        .transpose()?;
+    let editing_stored_draft = stored_draft_id.is_some();
     tracing::info!(
         request_id,
         endpoint = "compose/save",
         account_id = %request.account_id,
         draft_file,
+        editing_stored_draft,
         "bridge compose save requested"
     );
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
+    let draft =
+        compose_draft_from_file(&request.draft_path, &request.account_id, stored_draft_id).await?;
     let draft_id = draft.id.clone();
-    match ipc_request_with_id(
-        &state.config.socket_path,
-        request_id,
-        Request::SaveDraftToServer { draft },
-    )
-    .await
-    {
+    // A session opened from a stored draft edits that draft: `UpdateDraft`
+    // rewrites the row in place, keeps its `created_at`, and refuses when the
+    // draft has been discarded or is mid-send. Only a session with no stored
+    // draft behind it may create one.
+    let save_request = if editing_stored_draft {
+        Request::UpdateDraft { draft }
+    } else {
+        Request::SaveDraftToServer { draft }
+    };
+    match ipc_request_with_id(&state.config.socket_path, request_id, save_request).await {
         Ok(ResponseData::Ack) => {
             tracing::info!(
                 request_id,
@@ -2070,7 +2105,17 @@ fn extract_thread_id(content: &str) -> Result<Option<String>, BridgeError> {
     Ok(frontmatter.thread_id)
 }
 
-async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<Draft, BridgeError> {
+/// Build the daemon `Draft` a compose file describes.
+///
+/// `draft_id` names the stored draft this session is editing, when there is
+/// one: carrying it through is what lets a save land on the draft the user
+/// opened instead of storing a second copy of it. A session with no stored
+/// draft behind it mints a fresh id, so saving creates one.
+async fn compose_draft_from_file(
+    draft_path: &str,
+    account_id: &str,
+    draft_id: Option<DraftId>,
+) -> Result<Draft, BridgeError> {
     let raw_content = read_compose_file(Path::new(draft_path)).await?;
     let (frontmatter, body) =
         parse_compose_file(&raw_content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
@@ -2086,7 +2131,9 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
 
     let now = Utc::now();
     Ok(Draft {
-        id: DraftId::new(),
+        // A restored session supplies the id so the draft updates in place;
+        // a new compose mints one.
+        id: draft_id.unwrap_or_default(),
         account_id: parse_account_id(account_id)?,
         from: mxr_compose::draft_codec::parse_from_field(&frontmatter.from)
             .map_err(|error| BridgeError::Ipc(error.to_string()))?,
@@ -2103,8 +2150,9 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
         cc: parse_address_list(&frontmatter.cc),
         bcc: parse_address_list(&frontmatter.bcc),
         subject: frontmatter.subject,
-        body_markdown: body,
+        content: DraftContent::markdown(body),
         attachments: frontmatter.attach.into_iter().map(PathBuf::from).collect(),
+        inline_assets: Vec::new(),
         // Rebuild the iTIP REPLY payload for an invite-with-comment session so
         // the outbound builder emits the ATTENDEE part and the daemon updates
         // PARTSTAT after send (parity with the TUI path).
@@ -2114,11 +2162,36 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
     })
 }
 
+/// Outcome of asking the bridge to open a saved draft in the browser composer.
+enum RestoredComposeSession {
+    /// A markdown draft: a compose file exists on disk and can be edited.
+    Editable(serde_json::Value),
+    /// A draft whose body is a supplied HTML document. The markdown compose
+    /// file cannot represent it, so no compose file is written and no editing
+    /// session exists — the client gets the document for read-only preview and
+    /// nothing it does can write back.
+    HtmlNotEditable { preview_html: String },
+}
+
 async fn restore_saved_draft_session(
     socket_path: &Path,
     draft_id: DraftId,
-) -> Result<serde_json::Value, BridgeError> {
+) -> Result<RestoredComposeSession, BridgeError> {
     let draft = saved_draft(socket_path, &draft_id).await?;
+    // Decide up front, before creating any scratch file: refusing later would
+    // leave an orphaned compose file behind on every attempt to open an HTML
+    // draft. Exhaustive so a future body kind is a compile error here rather
+    // than a session with a silently empty body.
+    let body = match &draft.content {
+        mxr_core::DraftContent::Html { html, .. } => {
+            return Ok(RestoredComposeSession::HtmlNotEditable {
+                // Verbatim: the client sanitises for display only. Whatever mxr
+                // sends on the wire is this document, untouched.
+                preview_html: html.clone(),
+            });
+        }
+        mxr_core::DraftContent::Markdown { source } => source.clone(),
+    };
     let account = account_summary(socket_path, &draft.account_id).await?;
     let (draft_path, cursor_line) = mxr_compose::create_draft_file_async(
         ComposeKind::New {
@@ -2157,7 +2230,7 @@ async fn restore_saved_draft_session(
             .collect(),
         signature: None,
     };
-    let rendered = render_compose_file(&frontmatter, &draft.body_markdown, None)
+    let rendered = render_compose_file(&frontmatter, &body, None)
         .map_err(|error| BridgeError::Ipc(error.to_string()))?;
     write_compose_file(&draft_path, rendered).await?;
 
@@ -2166,7 +2239,7 @@ async fn restore_saved_draft_session(
     session["accountId"] = json!(account.account_id);
     session["kind"] = json!("new");
     session["editorCommand"] = json!(resolved_editor_command());
-    Ok(session)
+    Ok(RestoredComposeSession::Editable(session))
 }
 
 async fn saved_draft(socket_path: &Path, draft_id: &DraftId) -> Result<Draft, BridgeError> {
@@ -2201,6 +2274,11 @@ fn draft_summary_view(draft: Draft) -> serde_json::Value {
         "updated_at_full": format_date_full(draft.updated_at),
         "updated_at_relative": format!("edited {}", format_relative_label(draft.updated_at)),
         "attachment_count": draft.attachments.len(),
+        // Lets a client tell an HTML draft apart before opening it. Without
+        // this the only way to discover one is uneditable in the markdown
+        // composer is to click it and take the 409.
+        "content_kind": draft.content.kind_str(),
+        "inline_asset_count": draft.inline_assets.len(),
     })
 }
 

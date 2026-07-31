@@ -1353,6 +1353,206 @@ impl DraftIntent {
     }
 }
 
+/// An image referenced from an HTML body by `<img src="cid:NAME">`.
+///
+/// Only the path crosses IPC; the daemon reads the bytes at send time, the
+/// same contract `Draft::attachments` uses. Keeping bytes off the wire matters
+/// because the IPC frame cap is 16 MiB.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct InlineAsset {
+    /// The `cid:` token the HTML references, without angle brackets.
+    pub cid: String,
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub path: PathBuf,
+}
+
+/// A draft's body, as one of two mutually exclusive kinds.
+///
+/// Modelled as a variant type rather than a bag of optional strings so a draft
+/// cannot hold both a markdown source and a supplied HTML document. Callers
+/// that need text for analysis (safety checks, LLM assist, export, previews)
+/// go through [`DraftContent::analysis_text`]; callers that render for the
+/// wire match on the variant explicitly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DraftContent {
+    /// The historical path: markdown authored in `$EDITOR`, rendered to
+    /// `text/plain` + `text/html` by the outbound builder.
+    Markdown { source: String },
+    /// A supplied HTML document, preserved exactly. `text` is the caller's
+    /// `text/plain` alternative; when `None` the outbound builder generates a
+    /// deterministic one from the HTML without touching the HTML itself.
+    Html { html: String, text: Option<String> },
+}
+
+impl Default for DraftContent {
+    fn default() -> Self {
+        Self::Markdown {
+            source: String::new(),
+        }
+    }
+}
+
+impl DraftContent {
+    pub fn markdown(source: impl Into<String>) -> Self {
+        Self::Markdown {
+            source: source.into(),
+        }
+    }
+
+    pub fn html(html: impl Into<String>, text: Option<String>) -> Self {
+        Self::Html {
+            html: html.into(),
+            text,
+        }
+    }
+
+    pub fn is_html(&self) -> bool {
+        matches!(self, Self::Html { .. })
+    }
+
+    /// Discriminator persisted in `drafts.content_kind`.
+    pub fn kind_str(&self) -> &'static str {
+        match self {
+            Self::Markdown { .. } => "markdown",
+            Self::Html { .. } => "html",
+        }
+    }
+
+    /// The markdown source, or `None` for an HTML draft.
+    ///
+    /// Deliberately not a `&str` that falls back to `""`: an empty-string
+    /// fallback would make safety checks silently analyse nothing on HTML
+    /// drafts. Use [`Self::analysis_text`] when you want text regardless of
+    /// kind.
+    pub fn markdown_source(&self) -> Option<&str> {
+        match self {
+            Self::Markdown { source } => Some(source),
+            Self::Html { .. } => None,
+        }
+    }
+
+    /// Size of the authored body in bytes, for size accounting and previews.
+    ///
+    /// Measures the markdown source or the HTML document — the thing the user
+    /// actually wrote — not the generated text alternative.
+    pub fn byte_len(&self) -> usize {
+        match self {
+            Self::Markdown { source } => source.len(),
+            Self::Html { html, .. } => html.len(),
+        }
+    }
+
+    /// The body as reader-pipeline input: `(text, html)`.
+    ///
+    /// Lets HTML drafts feed their real document into `mxr_reader::clean`
+    /// rather than a flattened approximation, so safety checks and commitment
+    /// extraction see what the recipient will see.
+    pub fn reader_input(&self) -> (Option<&str>, Option<&str>) {
+        match self {
+            Self::Markdown { source } => (Some(source.as_str()), None),
+            Self::Html { html, text } => (text.as_deref(), Some(html.as_str())),
+        }
+    }
+
+    /// Text suitable for reading, analysis, and preview, for either kind.
+    ///
+    /// Markdown drafts yield their source. HTML drafts yield the supplied
+    /// `text/plain` alternative when there is one; otherwise the caller should
+    /// fall back to the generated alternative, which lives in `mxr-outbound`
+    /// (this crate has no HTML dependency by design). Returning the empty
+    /// string here is honest: there is no text yet.
+    pub fn analysis_text(&self) -> &str {
+        match self {
+            Self::Markdown { source } => source,
+            Self::Html { text, .. } => text.as_deref().unwrap_or(""),
+        }
+    }
+}
+
+/// Flat wire shape for [`DraftContent`].
+///
+/// Keeps the JSON contract backward compatible: a markdown draft serialises to
+/// exactly the historical `{"body_markdown": "..."}`, so existing clients see
+/// byte-identical output. HTML drafts carry `body_html`/`body_text`, which
+/// legacy clients simply do not model.
+#[derive(Serialize, Deserialize)]
+struct DraftContentWire {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    body_markdown: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    body_html: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    body_text: Option<String>,
+}
+
+impl Serialize for DraftContent {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let wire = match self {
+            Self::Markdown { source } => DraftContentWire {
+                // Always emitted, even when empty, so the markdown wire shape
+                // is unchanged from before HTML drafts existed.
+                body_markdown: Some(source.clone()),
+                body_html: None,
+                body_text: None,
+            },
+            Self::Html { html, text } => DraftContentWire {
+                body_markdown: None,
+                body_html: Some(html.clone()),
+                body_text: text.clone(),
+            },
+        };
+        wire.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for DraftContent {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = DraftContentWire::deserialize(deserializer)?;
+        match (wire.body_markdown, wire.body_html) {
+            // Rejected rather than resolved by precedence: a payload carrying
+            // both is a caller bug, and silently dropping one body is how the
+            // wrong message gets sent.
+            (Some(_), Some(_)) => Err(serde::de::Error::custom(
+                "draft carries both body_markdown and body_html; they are mutually exclusive",
+            )),
+            (_, Some(html)) => Ok(Self::Html {
+                html,
+                text: wire.body_text,
+            }),
+            // Symmetric with the rejection above. A `body_text` with no
+            // `body_html` used to fall through to empty markdown, silently
+            // discarding the caller's text and — when the payload targeted an
+            // existing HTML draft — its stored document too. Strict in one
+            // direction and lossy in the other is indefensible.
+            (_, None) if wire.body_text.is_some() => Err(serde::de::Error::custom(
+                "draft carries body_text without body_html; a text alternative \
+                 has no meaning without the document it accompanies",
+            )),
+            (markdown, None) => Ok(Self::Markdown {
+                source: markdown.unwrap_or_default(),
+            }),
+        }
+    }
+}
+
+/// Documents the flattened [`DraftContent`] wire shape for OpenAPI.
+///
+/// `DraftContent` hand-rolls its serde impls to stay backward compatible, so
+/// a derived schema on the enum itself would describe the Rust shape rather
+/// than the JSON. This mirrors what actually goes over the wire.
+#[cfg(feature = "openapi")]
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+pub struct DraftContentSchema {
+    /// Present on markdown drafts.
+    pub body_markdown: Option<String>,
+    /// Present on HTML drafts. Mutually exclusive with `body_markdown`.
+    pub body_html: Option<String>,
+    /// Optional `text/plain` alternative supplied alongside `body_html`.
+    pub body_text: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Draft {
@@ -1372,9 +1572,18 @@ pub struct Draft {
     pub cc: Vec<Address>,
     pub bcc: Vec<Address>,
     pub subject: String,
-    pub body_markdown: String,
+    /// The body, as either a markdown source or a supplied HTML document.
+    /// Flattened so the JSON stays flat: `body_markdown`, or
+    /// `body_html`+`body_text`.
+    #[serde(flatten)]
+    #[cfg_attr(feature = "openapi", schema(value_type = DraftContentSchema))]
+    pub content: DraftContent,
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub attachments: Vec<PathBuf>,
+    /// CID-referenced inline images for an HTML body. Always empty for a
+    /// markdown draft.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inline_assets: Vec<InlineAsset>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     /// Set when this draft is the user-comment compose path for an iCal
@@ -2091,4 +2300,268 @@ pub struct SendReceipt {
     /// dedupe on subsequent sync.
     #[serde(default)]
     pub rfc2822_message_id: String,
+}
+
+#[cfg(test)]
+mod draft_content_tests {
+    use super::*;
+
+    #[test]
+    fn markdown_draft_keeps_the_historical_wire_shape() {
+        let json = serde_json::to_value(DraftContent::markdown("hello")).unwrap();
+        assert_eq!(json, serde_json::json!({ "body_markdown": "hello" }));
+    }
+
+    #[test]
+    fn empty_markdown_still_emits_the_key() {
+        // Legacy clients read `body_markdown` unconditionally; omitting it on
+        // an empty body would break them.
+        let json = serde_json::to_value(DraftContent::markdown("")).unwrap();
+        assert_eq!(json, serde_json::json!({ "body_markdown": "" }));
+    }
+
+    #[test]
+    fn legacy_payload_without_html_keys_deserialises_as_markdown() {
+        let content: DraftContent =
+            serde_json::from_value(serde_json::json!({ "body_markdown": "hi" })).unwrap();
+        assert_eq!(content, DraftContent::markdown("hi"));
+    }
+
+    #[test]
+    fn payload_with_no_body_key_at_all_is_empty_markdown() {
+        let content: DraftContent = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert_eq!(content, DraftContent::markdown(""));
+    }
+
+    #[test]
+    fn html_roundtrips_with_its_text_alternative() {
+        let content = DraftContent::html("<p>hi</p>", Some("hi".to_string()));
+        let json = serde_json::to_value(&content).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "body_html": "<p>hi</p>", "body_text": "hi" })
+        );
+        assert_eq!(
+            serde_json::from_value::<DraftContent>(json).unwrap(),
+            content
+        );
+    }
+
+    #[test]
+    fn html_without_a_text_alternative_omits_the_key() {
+        let json = serde_json::to_value(DraftContent::html("<p>hi</p>", None)).unwrap();
+        assert_eq!(json, serde_json::json!({ "body_html": "<p>hi</p>" }));
+    }
+
+    #[test]
+    fn carrying_both_bodies_is_rejected_rather_than_resolved_by_precedence() {
+        let err = serde_json::from_value::<DraftContent>(
+            serde_json::json!({ "body_markdown": "hi", "body_html": "<p>hi</p>" }),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("mutually exclusive"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn a_text_alternative_without_a_document_is_rejected() {
+        // Previously fell through to empty markdown, silently discarding the
+        // caller's text — and, when the payload targeted an existing HTML
+        // draft, that draft's stored document with it.
+        let err = serde_json::from_value::<DraftContent>(
+            serde_json::json!({ "body_text": "plain words" }),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("without body_html"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn body_text_alongside_markdown_is_also_rejected() {
+        let err = serde_json::from_value::<DraftContent>(
+            serde_json::json!({ "body_markdown": "hi", "body_text": "hi" }),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("without body_html"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn the_strictness_is_symmetric_in_both_directions() {
+        // Both bodies present -> rejected. Text without a document -> rejected.
+        // Neither silently wins; that asymmetry was the root cause of a
+        // data-loss bug.
+        for payload in [
+            serde_json::json!({ "body_markdown": "a", "body_html": "<p>a</p>" }),
+            serde_json::json!({ "body_text": "a" }),
+        ] {
+            assert!(
+                serde_json::from_value::<DraftContent>(payload.clone()).is_err(),
+                "should have rejected: {payload}"
+            );
+        }
+    }
+
+    #[test]
+    fn markdown_source_is_none_for_html_rather_than_an_empty_string() {
+        // An empty-string fallback here would make safety checks analyse
+        // nothing on HTML drafts.
+        assert_eq!(
+            DraftContent::html("<p>hi</p>", Some("hi".into())).markdown_source(),
+            None
+        );
+        assert_eq!(DraftContent::markdown("hi").markdown_source(), Some("hi"));
+    }
+
+    #[test]
+    fn analysis_text_prefers_the_supplied_alternative() {
+        assert_eq!(DraftContent::markdown("md").analysis_text(), "md");
+        assert_eq!(
+            DraftContent::html("<p>x</p>", Some("plain".into())).analysis_text(),
+            "plain"
+        );
+        assert_eq!(DraftContent::html("<p>x</p>", None).analysis_text(), "");
+    }
+
+    #[test]
+    fn kind_str_matches_the_persisted_discriminator() {
+        assert_eq!(DraftContent::markdown("").kind_str(), "markdown");
+        assert_eq!(DraftContent::html("", None).kind_str(), "html");
+    }
+
+    #[test]
+    fn is_html_follows_the_variant_not_the_body() {
+        // Empty bodies on both sides, so only the variant can decide.
+        assert!(DraftContent::html("", None).is_html());
+        assert!(!DraftContent::markdown("").is_html());
+        assert!(!DraftContent::markdown("<p>looks like html</p>").is_html());
+    }
+
+    #[test]
+    fn an_empty_markdown_key_alongside_html_is_still_a_conflict() {
+        // The boundary an "ignore it if it's empty" precedence rule would let
+        // through. `body_markdown: ""` is exactly what the store writes beside
+        // an HTML body, so a payload carrying both is still a caller bug.
+        let err = serde_json::from_value::<DraftContent>(
+            serde_json::json!({ "body_markdown": "", "body_html": "<p>hi</p>" }),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("mutually exclusive"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn default_is_the_empty_markdown_draft() {
+        // `Draft` relies on this for the no-body-key case; a `Default` that
+        // produced an HTML draft would flip an absent body into the HTML path.
+        assert_eq!(DraftContent::default(), DraftContent::markdown(""));
+    }
+
+    #[test]
+    fn byte_len_measures_the_authored_body_not_the_alternative() {
+        // "é" is two bytes: bytes, not chars.
+        assert_eq!(DraftContent::markdown("é").byte_len(), 2);
+        assert_eq!(DraftContent::markdown("").byte_len(), 0);
+        // The alternative is much longer than the HTML; byte_len must ignore it.
+        assert_eq!(
+            DraftContent::html("<p>x</p>", Some("a much longer alternative".into())).byte_len(),
+            "<p>x</p>".len()
+        );
+    }
+
+    #[test]
+    fn reader_input_pairs_text_with_the_real_html_document() {
+        assert_eq!(
+            DraftContent::markdown("md").reader_input(),
+            (Some("md"), None)
+        );
+        assert_eq!(
+            DraftContent::html("<p>x</p>", Some("plain".into())).reader_input(),
+            (Some("plain"), Some("<p>x</p>"))
+        );
+        // No supplied alternative means no text side, not an empty one — the
+        // reader pipeline must fall back to the HTML rather than analyse "".
+        assert_eq!(
+            DraftContent::html("<p>x</p>", None).reader_input(),
+            (None, Some("<p>x</p>"))
+        );
+    }
+
+    fn draft_fixture(content: DraftContent) -> Draft {
+        Draft {
+            id: DraftId::new(),
+            account_id: AccountId::new(),
+            from: None,
+            reply_headers: None,
+            intent: DraftIntent::New,
+            to: vec![Address {
+                name: None,
+                email: "bob@example.com".to_string(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Subject".to_string(),
+            content,
+            attachments: vec![],
+            inline_assets: vec![],
+            inline_calendar_reply: None,
+            created_at: DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+            updated_at: DateTime::from_timestamp(1_700_000_500, 0).unwrap(),
+        }
+    }
+
+    #[test]
+    fn markdown_draft_carries_body_markdown_at_the_top_level() {
+        let draft = draft_fixture(DraftContent::markdown("# Hi"));
+        let json = serde_json::to_value(&draft).unwrap();
+
+        assert_eq!(json["body_markdown"], serde_json::json!("# Hi"));
+        assert!(json.get("content").is_none(), "content must stay flattened");
+        assert!(json.get("body_html").is_none());
+
+        let back: Draft = serde_json::from_value(json).unwrap();
+        assert_eq!(back.content, draft.content);
+        assert_eq!(back.subject, draft.subject);
+        assert_eq!(back.created_at, draft.created_at);
+    }
+
+    #[test]
+    fn html_draft_roundtrips_through_the_flattened_draft_shape() {
+        let mut draft = draft_fixture(DraftContent::html("<p>hi</p>", Some("hi".into())));
+        draft.inline_assets = vec![InlineAsset {
+            cid: "logo".to_string(),
+            path: PathBuf::from("/tmp/logo.png"),
+        }];
+        let json = serde_json::to_value(&draft).unwrap();
+
+        assert_eq!(json["body_html"], serde_json::json!("<p>hi</p>"));
+        assert_eq!(json["body_text"], serde_json::json!("hi"));
+        assert!(json.get("body_markdown").is_none());
+
+        let back: Draft = serde_json::from_value(json).unwrap();
+        assert_eq!(back.content, draft.content);
+        assert_eq!(back.inline_assets, draft.inline_assets);
+    }
+
+    #[test]
+    fn a_draft_carrying_both_bodies_is_rejected_too() {
+        // The flattened path buffers fields separately from the standalone
+        // one, so the mutual exclusion has to be proven here as well.
+        let mut json = serde_json::to_value(draft_fixture(DraftContent::markdown("hi"))).unwrap();
+        json["body_html"] = serde_json::json!("<p>hi</p>");
+
+        let err = serde_json::from_value::<Draft>(json).unwrap_err();
+        assert!(
+            err.to_string().contains("mutually exclusive"),
+            "unexpected error: {err}"
+        );
+    }
 }

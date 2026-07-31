@@ -24,6 +24,47 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/**
+ * A non-2xx bridge response. The bridge answers failures with a JSON body
+ * carrying a human `error` string, sometimes a machine-readable `code`, and
+ * sometimes extra fields a caller can act on. Unwrapping it here means callers
+ * render the daemon's own sentence instead of `502 Bad Gateway: {"error":…}`,
+ * and can branch on `code` rather than matching message text.
+ */
+export class BridgeRequestError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly details: Record<string, unknown>;
+
+  constructor(status: number, message: string, code?: string, details?: Record<string, unknown>) {
+    super(message);
+    this.name = "BridgeRequestError";
+    this.status = status;
+    this.code = code;
+    this.details = details ?? {};
+  }
+}
+
+function bridgeRequestError(status: number, statusText: string, body: string): BridgeRequestError {
+  const fallback = `${status} ${statusText}${body ? `: ${body}` : ""}`;
+  const details = jsonObject(body);
+  if (!details) return new BridgeRequestError(status, fallback);
+  const message = typeof details.error === "string" ? details.error : "";
+  const code = typeof details.code === "string" ? details.code : undefined;
+  return new BridgeRequestError(status, message || fallback, code, details);
+}
+
+function jsonObject(body: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 const authMiddleware: Middleware = {
   async onRequest({ request }) {
     let token = getToken();
@@ -86,7 +127,7 @@ export async function apiFetch<T>(path: string, opts: RawFetchOpts = {}): Promis
   if (res.status === 401) throw new UnauthorizedError();
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText}${text ? `: ${text}` : ""}`);
+    throw bridgeRequestError(res.status, res.statusText, text);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

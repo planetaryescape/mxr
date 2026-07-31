@@ -854,7 +854,7 @@ async fn prewarm_decision_log(
 
 async fn seed_demo_drafts(client: &mut IpcClient) -> anyhow::Result<()> {
     use mxr_core::id::DraftId;
-    use mxr_core::types::{Address, Draft, DraftIntent};
+    use mxr_core::types::{Address, Draft, DraftContent, DraftIntent};
 
     let personal = AccountId::from_provider_id("fake", DEMO_PERSONAL_EMAIL);
     let now = chrono::Utc::now();
@@ -872,7 +872,8 @@ async fn seed_demo_drafts(client: &mut IpcClient) -> anyhow::Result<()> {
             cc: vec![],
             bcc: vec![],
             subject: "Q4 roadmap — first pass".to_string(),
-            body_markdown: "Hey Alice,\n\nQuick draft of the Q4 roadmap before the planning meeting. The big rocks:\n\n1. Ship v0.6 by end of October.\n2. Migration window in mid-November.\n3. Search-perf cleanup before the holiday freeze.\n\nGrab me before the standup if you want to push anything around.\n\n— Alex".to_string(),
+            content: DraftContent::markdown("Hey Alice,\n\nQuick draft of the Q4 roadmap before the planning meeting. The big rocks:\n\n1. Ship v0.6 by end of October.\n2. Migration window in mid-November.\n3. Search-perf cleanup before the holiday freeze.\n\nGrab me before the standup if you want to push anything around.\n\n— Alex".to_string()),
+            inline_assets: Vec::new(),
             attachments: vec![],
             inline_calendar_reply: None,
             created_at: now - chrono::Duration::hours(3),
@@ -891,7 +892,8 @@ async fn seed_demo_drafts(client: &mut IpcClient) -> anyhow::Result<()> {
             cc: vec![],
             bcc: vec![],
             subject: "perf regression — follow-up".to_string(),
-            body_markdown: "Diana,\n\nWanted to circle back on the perf regression you flagged. Did you get a chance to repro on the latest cut? If it's still there I'll carve out time on Thursday to dig in with you.\n\n— Alex".to_string(),
+            content: DraftContent::markdown("Diana,\n\nWanted to circle back on the perf regression you flagged. Did you get a chance to repro on the latest cut? If it's still there I'll carve out time on Thursday to dig in with you.\n\n— Alex".to_string()),
+            inline_assets: Vec::new(),
             attachments: vec![],
             inline_calendar_reply: None,
             created_at: now - chrono::Duration::hours(1),

@@ -141,8 +141,11 @@ async fn dispatch_respond_invite_sends_reply_and_updates_local_partstat() {
     let sent = fake.sent_drafts();
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].to[0].email, "organizer@example.com");
-    assert!(sent[0].body_markdown.contains("METHOD:REPLY"));
-    assert!(sent[0].body_markdown.contains("PARTSTAT=DECLINED"));
+    assert!(sent[0].content.analysis_text().contains("METHOD:REPLY"));
+    assert!(sent[0]
+        .content
+        .analysis_text()
+        .contains("PARTSTAT=DECLINED"));
 
     let stored = state
         .store
@@ -1131,7 +1134,8 @@ async fn dispatch_schedule_send_persists_and_loop_flushes_when_due() {
         cc: vec![],
         bcc: vec![],
         subject: "scheduled".into(),
-        body_markdown: "Body".into(),
+        content: mxr_core::types::DraftContent::markdown("Body"),
+        inline_assets: Vec::new(),
         attachments: vec![],
         inline_calendar_reply: None,
         created_at: chrono::Utc::now(),
@@ -1235,7 +1239,8 @@ async fn dispatch_cancel_scheduled_send_prevents_flush() {
         cc: vec![],
         bcc: vec![],
         subject: "scheduled-then-cancelled".into(),
-        body_markdown: "Body".into(),
+        content: mxr_core::types::DraftContent::markdown("Body"),
+        inline_assets: Vec::new(),
         attachments: vec![],
         inline_calendar_reply: None,
         created_at: chrono::Utc::now(),
@@ -1454,7 +1459,8 @@ fn invite_reply_draft(
         cc: vec![],
         bcc: vec![],
         subject: "Re: Team sync".to_string(),
-        body_markdown: "See you there.".to_string(),
+        content: mxr_core::types::DraftContent::markdown("See you there.".to_string()),
+        inline_assets: Vec::new(),
         attachments: vec![],
         inline_calendar_reply: Some(reply),
         created_at: now,

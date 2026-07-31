@@ -119,8 +119,22 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
             Span::styled("Updated: ", label_style),
             Span::raw(draft.updated_at.format("%Y-%m-%d %H:%M").to_string()),
         ]));
+        if draft.content.is_html() {
+            lines.push(Line::from(Span::styled(
+                "HTML body — not editable here",
+                Style::default().fg(theme.warning),
+            )));
+            lines.push(Line::from(Span::styled(
+                "Edit the source, then `mxr compose --html-file <path>`.",
+                label_style,
+            )));
+        }
         lines.push(Line::from(""));
-        lines.push(Line::from(draft.body_markdown.clone()));
+        lines.extend(
+            preview_body(&draft.content)
+                .lines()
+                .map(|line| Line::from(line.to_string())),
+        );
 
         let paragraph = Paragraph::new(lines)
             .style(Style::default().fg(theme.text_primary))
@@ -129,12 +143,40 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
     }
 }
 
+/// Flatten a draft body into the text the detail pane shows.
+///
+/// `DraftContent::analysis_text` is empty for an HTML draft that carries no
+/// `text/plain` alternative, which would leave the pane blank on exactly the
+/// drafts the user most wants to eyeball. Routing through the reader gives
+/// every kind something readable. The stripping passes are off: this previews
+/// what the author wrote, not what the reader would trim from someone else's
+/// mail.
+fn preview_body(content: &mxr_core::DraftContent) -> String {
+    let (text, html) = content.reader_input();
+    // A blank alternative is dropped rather than preferred: `--text-file`
+    // accepts an empty file, and the reader takes a supplied text over the
+    // document whenever there is one — which would blank the pane just as
+    // surely as no alternative at all.
+    let text = text.filter(|text| !text.trim().is_empty());
+    let Some(html) = html else {
+        return text.unwrap_or_default().to_string();
+    };
+    let config = mxr_reader::ReaderConfig {
+        html_command: None,
+        strip_signatures: false,
+        collapse_quotes: false,
+        strip_boilerplate: false,
+        strip_tracking: false,
+    };
+    mxr_reader::clean(text, Some(html), &config).content
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::{DateTime, Utc};
     use mxr_core::id::{AccountId, DraftId};
-    use mxr_core::types::Address;
+    use mxr_core::types::{Address, DraftContent};
     use mxr_core::Draft;
     use mxr_test_support::render_to_string;
 
@@ -153,8 +195,9 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: subject.to_string(),
-            body_markdown: body.to_string(),
+            content: DraftContent::markdown(body),
             attachments: vec![],
+            inline_assets: vec![],
             inline_calendar_reply: None,
             created_at: now,
             updated_at: now,
@@ -212,6 +255,108 @@ mod tests {
         assert!(
             snapshot.contains("Draft body text."),
             "detail pane must render body preview; got:\n{snapshot}",
+        );
+    }
+
+    fn html_draft(subject: &str, html: &str, text: Option<&str>) -> Draft {
+        let mut draft = draft(subject, "alice@example.com", "");
+        draft.content = DraftContent::html(html, text.map(str::to_string));
+        draft
+    }
+
+    #[test]
+    fn html_draft_detail_renders_readable_text_rather_than_a_blank_body() {
+        let mut state = DraftsModalState::default();
+        state.open_loading();
+        state.set_drafts(vec![html_draft(
+            "Launch",
+            "<html><body><h1>Ship day</h1><p>We go live on Friday.</p></body></html>",
+            None,
+        )]);
+
+        let snapshot = render_to_string(100, 20, |frame| {
+            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
+        });
+        assert!(
+            snapshot.contains("We go live on Friday."),
+            "an HTML draft with no text alternative must still show its body; got:\n{snapshot}",
+        );
+    }
+
+    #[test]
+    fn html_draft_detail_falls_back_to_the_document_when_the_text_alternative_is_blank() {
+        let mut state = DraftsModalState::default();
+        state.open_loading();
+        // `mxr compose --html-file … --text-file …` accepts an empty or
+        // whitespace-only text file, so a draft can reach the modal carrying a
+        // text alternative that says nothing. Absent and present-but-blank are
+        // the same thing to a reader.
+        state.set_drafts(vec![html_draft(
+            "Launch",
+            "<html><body><h1>Ship day</h1><p>We go live on Friday.</p></body></html>",
+            Some("   \n\t\n"),
+        )]);
+
+        let snapshot = render_to_string(100, 20, |frame| {
+            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
+        });
+        assert!(
+            snapshot.contains("We go live on Friday."),
+            "a blank text alternative is no alternative at all: the document must \
+             still be shown; got:\n{snapshot}",
+        );
+    }
+
+    #[test]
+    fn html_draft_detail_prefers_the_supplied_text_alternative() {
+        let mut state = DraftsModalState::default();
+        state.open_loading();
+        state.set_drafts(vec![html_draft(
+            "Launch",
+            "<p>markup version</p>",
+            Some("author's own plain text"),
+        )]);
+
+        let snapshot = render_to_string(100, 20, |frame| {
+            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
+        });
+        assert!(
+            snapshot.contains("author's own plain text"),
+            "the supplied text/plain alternative is what the recipient reads; got:\n{snapshot}",
+        );
+    }
+
+    #[test]
+    fn html_draft_detail_says_it_cannot_be_opened_in_the_editor() {
+        let mut state = DraftsModalState::default();
+        state.open_loading();
+        state.set_drafts(vec![html_draft("Launch", "<p>body</p>", None)]);
+
+        let snapshot = render_to_string(100, 20, |frame| {
+            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
+        });
+        assert!(
+            snapshot.contains("HTML"),
+            "the detail pane must tell the user the draft is HTML; got:\n{snapshot}",
+        );
+        assert!(
+            snapshot.contains("not editable"),
+            "the user must learn why Enter/e will not open this draft; got:\n{snapshot}",
+        );
+    }
+
+    #[test]
+    fn markdown_draft_detail_is_not_labelled_as_html() {
+        let mut state = DraftsModalState::default();
+        state.open_loading();
+        state.set_drafts(vec![draft("Q4 plan", "alice@example.com", "Plain body.")]);
+
+        let snapshot = render_to_string(100, 20, |frame| {
+            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
+        });
+        assert!(
+            !snapshot.contains("not editable"),
+            "a markdown draft is editable and must not carry the HTML warning; got:\n{snapshot}",
         );
     }
 

@@ -14,7 +14,9 @@
     reason = "integration tests unwrap stored audit rows and JSON fields for direct invariant failures"
 )]
 
-use mxr_core::types::{Address, Draft, DraftIntent, DraftSafetyReport, DraftSafetySeverity};
+use mxr_core::types::{
+    Address, Draft, DraftContent, DraftIntent, DraftSafetyReport, DraftSafetySeverity,
+};
 use mxr_safety::{check_draft_deterministic, SafetyConfig, SafetyContext};
 use mxr_store::Store;
 
@@ -120,8 +122,9 @@ fn draft_with(body: &str) -> Draft {
         cc: vec![],
         bcc: vec![],
         subject: "test".into(),
-        body_markdown: body.into(),
+        content: DraftContent::markdown(body),
         attachments: vec![],
+        inline_assets: vec![],
         inline_calendar_reply: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),

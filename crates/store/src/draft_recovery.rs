@@ -94,7 +94,7 @@ mod tests {
     use super::super::Store;
     use chrono::{Duration, TimeZone, Utc};
     use mxr_core::id::DraftId;
-    use mxr_core::types::{Address, Draft, DraftIntent, DraftStatus};
+    use mxr_core::types::{Address, Draft, DraftContent, DraftIntent, DraftStatus};
 
     fn anchor() -> chrono::DateTime<chrono::Utc> {
         Utc.with_ymd_and_hms(2024, 5, 7, 14, 0, 0).unwrap()
@@ -116,8 +116,9 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: "Test".into(),
-            body_markdown: "Body".into(),
+            content: DraftContent::markdown("Body"),
             attachments: vec![],
+            inline_assets: vec![],
             inline_calendar_reply: None,
             created_at: anchor(),
             updated_at: anchor(),

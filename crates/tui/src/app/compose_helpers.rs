@@ -76,13 +76,14 @@ impl App {
             cc: parse_addrs(&pending.fm.cc),
             bcc: parse_addrs(&pending.fm.bcc),
             subject: pending.fm.subject,
-            body_markdown: pending.body,
+            content: mxr_core::DraftContent::markdown(pending.body),
             attachments: pending
                 .fm
                 .attach
                 .iter()
                 .map(std::path::PathBuf::from)
                 .collect(),
+            inline_assets: Vec::new(),
             inline_calendar_reply: pending.invite_reply.clone(),
             created_at: now,
             updated_at: now,

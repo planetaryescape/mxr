@@ -1280,7 +1280,7 @@ fn refine_pending_draft_saves_then_queues_refine_request() {
         Request::SaveDraft { draft } => {
             assert_eq!(draft.account_id, account_id);
             assert_eq!(draft.subject, "Quarterly plan");
-            assert_eq!(draft.body_markdown, "Could you review the plan?");
+            assert_eq!(draft.content.analysis_text(), "Could you review the plan?");
             draft.id.clone()
         }
         other => panic!("expected SaveDraft prelude, got {other:?}"),

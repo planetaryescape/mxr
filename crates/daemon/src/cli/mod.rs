@@ -985,6 +985,10 @@ pub enum Command {
 
     // --- Phase 2: Compose ---
     /// Compose a new email
+    // `html_body` groups the two ways to supply HTML so `--text-file`,
+    // `--inline` and `--signature-html` can require one of them — and
+    // `--signature` can refuse one — without naming both.
+    #[command(group = clap::ArgGroup::new("html_body").args(["html_file", "html_stdin"]))]
     Compose {
         /// Recipient(s), comma-separated
         #[arg(long)]
@@ -1004,6 +1008,38 @@ pub enum Command {
         /// Read message body from stdin
         #[arg(long, conflicts_with = "body")]
         body_stdin: bool,
+        /// Send this HTML file as the message body, preserved exactly.
+        /// mxr does not reformat, wrap, minify, or sanitise it — tables,
+        /// inline CSS, `<style>` blocks, media queries and Outlook
+        /// conditional comments all survive. Dangerous active content
+        /// (scripts, forms, `javascript:` URLs) is reported and refused
+        /// rather than stripped. Mutually exclusive with the markdown
+        /// body flags.
+        #[arg(long, value_name = "PATH", conflicts_with_all = ["body", "body_stdin", "html_stdin"])]
+        html_file: Option<PathBuf>,
+        /// Read the HTML body from stdin. Same rules as `--html-file`.
+        #[arg(long, conflicts_with_all = ["body", "body_stdin", "html_file"])]
+        html_stdin: bool,
+        /// Plain-text alternative for an HTML body. Without it mxr
+        /// generates one from the HTML deterministically; the HTML is
+        /// never altered either way.
+        #[arg(long, value_name = "PATH", requires = "html_body")]
+        text_file: Option<PathBuf>,
+        /// Attach an image as a CID-referenced inline asset, as
+        /// `--inline NAME=PATH`, so the HTML can use `<img src="cid:NAME">`.
+        /// Repeatable. Requires an HTML body.
+        #[arg(long, value_name = "CID=PATH", action = clap::ArgAction::Append, requires = "html_body")]
+        inline: Vec<String>,
+        /// Append this HTML file to an HTML body before `</body>`.
+        /// Signatures are never injected into supplied HTML automatically —
+        /// pass this to opt in. Markdown composition is unaffected.
+        #[arg(
+            long,
+            value_name = "PATH",
+            requires = "html_body",
+            conflicts_with = "no_signature"
+        )]
+        signature_html: Option<PathBuf>,
         /// File path to attach (repeatable)
         #[arg(long, action = clap::ArgAction::Append)]
         attach: Vec<PathBuf>,
@@ -1018,10 +1054,16 @@ pub enum Command {
         /// address registered on more than one account.
         #[arg(long)]
         account: Option<String>,
-        /// Insert this signature by name instead of the scoped default
-        #[arg(long, conflicts_with = "no_signature")]
+        /// Insert this signature by name instead of the scoped default.
+        /// Markdown bodies only: a named signature is never spliced into a
+        /// supplied HTML document, so pairing this with `--html-file` /
+        /// `--html-stdin` would accept the flag and do nothing. Append a
+        /// signature to an HTML body with `--signature-html` instead.
+        #[arg(long, conflicts_with_all = ["no_signature", "html_body"])]
         signature: Option<String>,
-        /// Do not insert any signature
+        /// Do not insert any signature. Stays legal alongside an HTML body:
+        /// it asks for the behaviour an HTML compose already has, so honouring
+        /// it silently is honest. `--signature-html` is what it conflicts with.
         #[arg(long)]
         no_signature: bool,
         /// Skip confirmation prompt
@@ -3057,6 +3099,165 @@ mod tests {
                     err.kind()
                 ),
             }
+        }
+    }
+
+    /// clap's own consistency check over the whole definition: catches a
+    /// `conflicts_with`/`requires` naming an argument that does not exist, a
+    /// group whose members do not exist, and duplicate long flags. Fails at the
+    /// definition rather than at a user's first invocation.
+    #[test]
+    fn cli_definition_is_internally_consistent() {
+        use clap::CommandFactory;
+        Cli::command().debug_assert();
+    }
+
+    fn assert_compose_rejects(args: &[&str], kind: clap::error::ErrorKind) {
+        let mut argv = vec!["mxr", "compose"];
+        argv.extend_from_slice(args);
+        // `Cli` doesn't derive `Debug`, so discard the Ok value.
+        match Cli::try_parse_from(argv).map(|_| ()) {
+            Ok(()) => panic!("`mxr compose {}` must be rejected", args.join(" ")),
+            Err(err) => assert_eq!(
+                err.kind(),
+                kind,
+                "wrong error kind for `mxr compose {}`: {err}",
+                args.join(" ")
+            ),
+        }
+    }
+
+    /// An HTML body and a markdown body are two different messages. Accepting
+    /// both and silently picking one is how the wrong email gets sent.
+    #[test]
+    fn html_body_flags_conflict_with_the_markdown_body_flags() {
+        use clap::error::ErrorKind::ArgumentConflict;
+        assert_compose_rejects(&["--html-file", "b.html", "--body", "hi"], ArgumentConflict);
+        assert_compose_rejects(&["--html-file", "b.html", "--body-stdin"], ArgumentConflict);
+        assert_compose_rejects(&["--html-stdin", "--body", "hi"], ArgumentConflict);
+        assert_compose_rejects(&["--html-stdin", "--body-stdin"], ArgumentConflict);
+    }
+
+    #[test]
+    fn the_two_ways_to_supply_html_conflict_with_each_other() {
+        assert_compose_rejects(
+            &["--html-file", "b.html", "--html-stdin"],
+            clap::error::ErrorKind::ArgumentConflict,
+        );
+    }
+
+    /// `--text-file`, `--inline` and `--signature-html` only mean anything
+    /// alongside an HTML body. Accepting them on a markdown compose would
+    /// silently ignore them.
+    #[test]
+    fn the_html_shaping_flags_require_an_html_body() {
+        use clap::error::ErrorKind::MissingRequiredArgument;
+        assert_compose_rejects(&["--text-file", "alt.txt"], MissingRequiredArgument);
+        assert_compose_rejects(&["--inline", "logo=logo.png"], MissingRequiredArgument);
+        assert_compose_rejects(&["--signature-html", "sig.html"], MissingRequiredArgument);
+    }
+
+    /// A named signature is markdown-only. mxr never splices a signature into
+    /// a document the caller supplied, so accepting `--signature` next to an
+    /// HTML body would take the flag and drop it on the floor.
+    #[test]
+    fn a_named_signature_is_refused_alongside_an_html_body() {
+        use clap::error::ErrorKind::ArgumentConflict;
+        assert_compose_rejects(
+            &["--html-file", "b.html", "--signature", "work"],
+            ArgumentConflict,
+        );
+        assert_compose_rejects(&["--html-stdin", "--signature", "work"], ArgumentConflict);
+    }
+
+    /// `--no-signature` is the opposite case and must stay accepted: an HTML
+    /// compose already inserts no signature, so the flag gets exactly what it
+    /// asked for. Rejecting it would break callers that pass it unconditionally
+    /// as a safety default. The pairing that *would* be contradictory —
+    /// `--no-signature --signature-html` — is already a conflict.
+    #[test]
+    fn no_signature_stays_legal_alongside_an_html_body() {
+        let cli = Cli::parse_from([
+            "mxr",
+            "compose",
+            "--html-stdin",
+            "--no-signature",
+            "--draft",
+        ]);
+        match cli.command {
+            Some(Command::Compose {
+                no_signature,
+                signature,
+                html_stdin,
+                ..
+            }) => {
+                assert!(no_signature, "--no-signature should parse");
+                assert_eq!(signature, None);
+                assert!(html_stdin);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+
+        assert_compose_rejects(
+            &[
+                "--html-stdin",
+                "--no-signature",
+                "--signature-html",
+                "s.html",
+            ],
+            clap::error::ErrorKind::ArgumentConflict,
+        );
+    }
+
+    /// Counterweight to the rejection tests above: the full HTML invocation must
+    /// still parse, and land in the fields the command reads. Without this, a
+    /// definition that rejected everything would look correct.
+    #[test]
+    fn a_full_html_compose_invocation_parses() {
+        let cli = Cli::parse_from([
+            "mxr",
+            "compose",
+            "--to",
+            "alice@example.com",
+            "--html-file",
+            "body.html",
+            "--text-file",
+            "alt.txt",
+            "--inline",
+            "logo=logo.png",
+            "--inline",
+            "banner=banner.png",
+            "--signature-html",
+            "sig.html",
+            "--draft",
+            "--format",
+            "json",
+        ]);
+        match cli.command {
+            Some(Command::Compose {
+                html_file,
+                html_stdin,
+                text_file,
+                inline,
+                signature_html,
+                draft,
+                yes,
+                format,
+                ..
+            }) => {
+                assert_eq!(html_file, Some(PathBuf::from("body.html")));
+                assert!(!html_stdin);
+                assert_eq!(text_file, Some(PathBuf::from("alt.txt")));
+                assert_eq!(
+                    inline,
+                    vec!["logo=logo.png".to_string(), "banner=banner.png".to_string()]
+                );
+                assert_eq!(signature_html, Some(PathBuf::from("sig.html")));
+                assert!(draft, "--draft should parse");
+                assert!(!yes, "--yes was not passed");
+                assert_eq!(format, Some(OutputFormat::Json));
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
         }
     }
 }

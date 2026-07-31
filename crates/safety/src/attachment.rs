@@ -39,7 +39,7 @@ pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
         return Vec::new();
     }
 
-    let cleaned = reader_clean(&draft.body_markdown);
+    let cleaned = reader_clean(draft.content.analysis_text());
     let haystack = format!("{}\n{}", draft.subject, cleaned);
 
     if NEGATIVE.is_match(&haystack) {
@@ -81,7 +81,7 @@ fn reader_clean(body: &str) -> String {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use mxr_core::types::{Draft, DraftIntent};
+    use mxr_core::types::{Draft, DraftContent, DraftIntent};
     use mxr_core::{AccountId, DraftId};
     use std::path::PathBuf;
 
@@ -96,8 +96,9 @@ mod tests {
             cc: Vec::new(),
             bcc: Vec::new(),
             subject: "test subject".into(),
-            body_markdown: body.into(),
+            content: DraftContent::markdown(body),
             attachments,
+            inline_assets: Vec::new(),
             inline_calendar_reply: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),

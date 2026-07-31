@@ -310,8 +310,11 @@ export function useComposeSession(
     }) => sendComposeSession(draftPath, accountId, overrideToken),
   });
   const serverSave = useMutation({
+    // Editing an existing stored draft must save it in place; only a session
+    // that was never a stored draft may create one. Without the id the daemon
+    // stores a second copy the user then has to tell apart from the original.
     mutationFn: ({ draftPath, accountId }: { draftPath: string; accountId: string }) =>
-      saveComposeSession(draftPath, accountId),
+      saveComposeSession(draftPath, accountId, intent.draftId),
   });
   const discardSession = useMutation({ mutationFn: discardComposeSession });
   const scheduleSession = useMutation({

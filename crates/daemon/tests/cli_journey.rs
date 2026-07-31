@@ -200,6 +200,93 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         reply_out.stderr,
     );
 
+    // `reply` and `forward` honour `--format` exactly like `compose`. They used
+    // to `println!` the human line unconditionally and ignore the flag, so
+    // `--format json` produced prose an external client could not parse.
+    // `--draft` keeps this off the wire.
+    let reply_json = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &[
+            "reply",
+            message_id,
+            "--body",
+            "Structured reply body",
+            "--draft",
+            "--format",
+            "json",
+        ],
+    );
+    assert_eq!(reply_json["action"].as_str(), Some("save_draft"));
+    let reply_draft_id = reply_json["draft_id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("reply --format json needs a draft_id: {reply_json:#}"));
+
+    let forward_json = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &[
+            "forward",
+            message_id,
+            "--to",
+            "bob@example.com",
+            "--body",
+            "Structured forward body",
+            "--draft",
+            "--format",
+            "json",
+        ],
+    );
+    assert_eq!(forward_json["action"].as_str(), Some("save_draft"));
+    assert!(
+        forward_json["draft_id"].as_str().is_some(),
+        "forward --format json needs a draft_id: {forward_json:#}"
+    );
+
+    // `--format ids` is the machine-shortest form: the draft id, nothing else.
+    let reply_ids = run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &[
+            "reply",
+            message_id,
+            "--body",
+            "Ids reply body",
+            "--draft",
+            "--format",
+            "ids",
+        ],
+    );
+    let ids_line = reply_ids.stdout.trim();
+    assert!(
+        !ids_line.is_empty() && !ids_line.contains(' ') && ids_line != reply_draft_id,
+        "reply --format ids should print one fresh draft id; got {ids_line:?}"
+    );
+
+    // Without `--format`, both keep the human wording scripts already read.
+    let forward_human = run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &[
+            "forward",
+            message_id,
+            "--to",
+            "bob@example.com",
+            "--body",
+            "Human forward body",
+            "--draft",
+        ],
+    );
+    assert!(
+        forward_human.stdout.starts_with("Draft saved: "),
+        "forward without --format keeps the human line; got {:?}",
+        forward_human.stdout
+    );
+
     // The synthetic Sent envelope must be searchable immediately — no
     // intervening sync. Regression for Bug 1 of the v1 ship gate (sent
     // messages used to only appear after the next sync).

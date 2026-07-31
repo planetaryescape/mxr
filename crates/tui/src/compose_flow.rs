@@ -247,6 +247,13 @@ pub(crate) async fn prepare_draft_edit(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     draft: Draft,
 ) -> Result<DraftEditReadyData, MxrError> {
+    // Bail before the account round trip: nothing the daemon returns can give
+    // an HTML document a markdown compose-file representation.
+    if draft.content.is_html() {
+        return Err(MxrError::Ipc(
+            mxr_compose::frontmatter::ComposeError::HtmlDraftNotEditable.to_string(),
+        ));
+    }
     let account = resolve_compose_account(bg, Some(&draft.account_id)).await?;
     let content = mxr_compose::draft_codec::draft_to_compose_file(&draft, &account.email)
         .map_err(|e| MxrError::Ipc(e.to_string()))?;
@@ -734,13 +741,14 @@ fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
         cc: parse_addrs(&pending.fm.cc),
         bcc: parse_addrs(&pending.fm.bcc),
         subject: pending.fm.subject.clone(),
-        body_markdown: pending.body.clone(),
+        content: mxr_core::DraftContent::markdown(pending.body.clone()),
         attachments: pending
             .fm
             .attach
             .iter()
             .map(std::path::PathBuf::from)
             .collect(),
+        inline_assets: Vec::new(),
         inline_calendar_reply: pending.invite_reply.clone(),
         created_at: now,
         updated_at: now,
@@ -916,6 +924,55 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&temp);
+    }
+
+    #[tokio::test]
+    async fn prepare_draft_edit_refuses_an_html_draft_without_asking_the_daemon() {
+        let draft = mxr_core::Draft {
+            id: mxr_core::id::DraftId::new(),
+            account_id: mxr_core::AccountId::new(),
+            from: None,
+            reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Designed".into(),
+            content: mxr_core::DraftContent::html("<p>designed</p>", None),
+            attachments: vec![],
+            inline_assets: vec![],
+            inline_calendar_reply: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let (bg, mut bg_rx) = mpsc::unbounded_channel::<IpcRequest>();
+
+        // Bounded, because the regression here is a hang rather than a wrong
+        // answer: nothing serves `bg`, so a refusal that only arrives after the
+        // account lookup waits forever. Unbounded, it wedges the run instead of
+        // failing it.
+        let refusal = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            super::prepare_draft_edit(&bg, draft),
+        )
+        .await
+        .expect("refusing an HTML draft must not depend on a daemon reply");
+
+        // Matched rather than `expect_err`: `DraftEditReadyData` deliberately
+        // has no `Debug`, so draft bodies cannot reach a log line.
+        let error = match refusal {
+            Ok(_) => panic!("an HTML draft has no markdown compose-file representation"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().to_lowercase().contains("html"),
+            "the error must name the HTML body as the reason; got {error}"
+        );
+        assert!(
+            bg_rx.try_recv().is_err(),
+            "a draft that cannot be edited must not cost a daemon round trip"
+        );
     }
 
     /// Plan 004 / Step 4b: editor non-zero exit (discard) deletes the

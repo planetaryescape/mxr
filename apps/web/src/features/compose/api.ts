@@ -187,9 +187,18 @@ export interface DraftAddress {
   email: string;
 }
 
-/** Payload for `POST /drafts/save-local` (the daemon `Draft` shape). Scheduled
+/**
+ * Payload for `POST /drafts/save-local` (the daemon `Draft` shape). Scheduled
  * sends operate on stored drafts, so the compose session is materialised into
- * one before scheduling. */
+ * one before scheduling.
+ *
+ * Markdown-only by construction, and deliberately so: the browser composer
+ * edits compose files, which cannot represent a supplied HTML document. That
+ * makes the required `body_markdown` honest here — but it also makes `id`
+ * dangerous. `save-local` is an upsert, and a draft whose stored body is HTML
+ * would be *replaced* by the markdown one in this payload, discarding the
+ * document. Only ever send an `id` that came from a markdown compose session.
+ */
 export interface LocalDraftPayload {
   id: string;
   account_id: string;
@@ -218,10 +227,26 @@ export function createScheduledSend(draftId: string, sendAt: Date): Promise<unkn
   });
 }
 
-export function saveComposeSession(draftPath: string, accountId: string): Promise<{ ok: boolean }> {
+/**
+ * Store the compose session as a draft.
+ *
+ * `draftId` is the stored draft this session was restored from, when it was
+ * one — passing it updates that draft in place, omitting it creates a new one.
+ * Same rule as the scheduled-send path: reusing the id is what stops an edit
+ * from becoming a second copy the user then has to tell apart.
+ */
+export function saveComposeSession(
+  draftPath: string,
+  accountId: string,
+  draftId?: string,
+): Promise<{ ok: boolean }> {
   return apiFetch<{ ok: boolean }>("/api/v1/mail/compose/session/save", {
     method: "POST",
-    body: { draft_path: draftPath, account_id: accountId },
+    body: {
+      draft_path: draftPath,
+      account_id: accountId,
+      ...(draftId ? { draft_id: draftId } : {}),
+    },
   });
 }
 

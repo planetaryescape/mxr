@@ -16,7 +16,7 @@ pub fn check(draft: &Draft, ctx: &SafetyContext, cfg: &SafetyToneConfig) -> Vec<
     if ctx.contact_styles.is_empty() {
         return Vec::new();
     }
-    let draft_metrics = compute_metrics(&draft.body_markdown);
+    let draft_metrics = compute_metrics(draft.content.analysis_text());
     let mut issues = Vec::new();
     let mut seen = Vec::new();
     for addr in draft.to.iter().chain(&draft.cc) {
@@ -76,7 +76,7 @@ pub fn check(draft: &Draft, ctx: &SafetyContext, cfg: &SafetyToneConfig) -> Vec<
 mod tests {
     use super::*;
     use chrono::Utc;
-    use mxr_core::types::{Address, Draft, DraftIntent};
+    use mxr_core::types::{Address, Draft, DraftContent, DraftIntent};
     use mxr_core::{AccountId, DraftId};
     use mxr_relationship::StylometryMetrics;
 
@@ -93,8 +93,9 @@ mod tests {
             cc: Vec::new(),
             bcc: Vec::new(),
             subject: "subject".into(),
-            body_markdown: body.into(),
+            content: DraftContent::markdown(body),
             attachments: Vec::new(),
+            inline_assets: Vec::new(),
             inline_calendar_reply: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),

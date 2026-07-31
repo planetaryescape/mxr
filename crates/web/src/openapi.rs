@@ -199,7 +199,24 @@ endpoint!(get mail_contacts_expert "/api/v1/mail/contacts/expert", "Find experts
 
 endpoint!(post compose_session_start "/api/v1/mail/compose/session", "Start compose session");
 endpoint!(post compose_session_refresh "/api/v1/mail/compose/session/refresh", "Refresh compose session");
-endpoint!(post compose_session_restore "/api/v1/mail/compose/session/restore", "Restore compose session");
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/compose/session/restore",
+    summary = "Restore compose session",
+    responses(
+        (status = 200, description = "OK"),
+        (status = 401, description = "Missing or invalid bridge token"),
+        (
+            status = 409,
+            description = "The draft's body is a supplied HTML document, which the markdown \
+                           compose editor cannot represent. Body carries `code: \
+                           \"html_draft_not_editable\"` and `previewHtml` (the document \
+                           verbatim, for read-only display). Retrying cannot succeed."
+        )
+    )
+)]
+#[allow(dead_code)]
+fn compose_session_restore() {}
 endpoint!(post compose_session_update "/api/v1/mail/compose/session/update", "Update compose session");
 endpoint!(post compose_session_send "/api/v1/mail/compose/session/send", "Send compose session");
 endpoint!(post compose_session_safety_check "/api/v1/mail/compose/session/safety-check", "Run the pre-send safety report for a compose session");

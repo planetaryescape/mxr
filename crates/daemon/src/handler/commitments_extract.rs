@@ -56,7 +56,11 @@ pub(crate) async fn extract_and_store(
     state: &AppState,
     draft: &Draft,
 ) -> Result<Vec<DraftCommitmentCandidate>, String> {
-    let cleaned = clean(Some(&draft.body_markdown), None, &ReaderConfig::default()).content;
+    let cleaned = {
+        let (text, html) = draft.content.reader_input();
+        clean(text, html, &ReaderConfig::default())
+    }
+    .content;
     if !COMMITMENT_PREFILTER.is_match(&cleaned) {
         return Ok(Vec::new());
     }
@@ -228,7 +232,7 @@ pub(crate) async fn promote_after_send(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_core::types::{Address, DraftIntent};
+    use mxr_core::types::{Address, DraftContent, DraftIntent};
     use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
     use std::sync::{Arc, Mutex};
 
@@ -287,7 +291,8 @@ mod tests {
             cc: vec![],
             bcc: vec![],
             subject: "Re: deck".into(),
-            body_markdown: body.into(),
+            content: DraftContent::markdown(body),
+            inline_assets: Vec::new(),
             attachments: vec![],
             inline_calendar_reply: None,
             created_at: chrono::Utc::now(),

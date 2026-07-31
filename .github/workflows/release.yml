@@ -150,7 +150,7 @@ jobs:
 
       - name: Build (native)
         if: "!matrix.use_cross"
-        run: cargo build --release --locked --target ${{ matrix.target }} -p mxr ${{ matrix.cargo_args }}
+        run: cargo build --release --locked --target ${{ matrix.target }} -p mxr -p mxr-mailmerge ${{ matrix.cargo_args }}
         env:
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
 
@@ -220,7 +220,8 @@ jobs:
           fi
           for BINARY in \
             "target/${MATRIX_TARGET}/release/mxr" \
-            "target/${MATRIX_TARGET}/release/mxr-chime-player"
+            "target/${MATRIX_TARGET}/release/mxr-chime-player" \
+            "target/${MATRIX_TARGET}/release/mxr-mailmerge"
           do
             codesign --force --options runtime --timestamp \
               --sign "$APPLE_DEVELOPER_ID" "$BINARY"
@@ -239,6 +240,7 @@ jobs:
           mkdir -p release
           cp "target/${MATRIX_TARGET}/release/mxr" release/
           cp "target/${MATRIX_TARGET}/release/mxr-chime-player" release/
+          cp "target/${MATRIX_TARGET}/release/mxr-mailmerge" release/
           cp LICENSE-MIT LICENSE-APACHE README.md release/
           cd release && tar czf "../${ARCHIVE}" ./* && cd ..
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
@@ -264,6 +266,7 @@ jobs:
           mkdir -p "$NOTARIZE_DIR"
           cp "target/${MATRIX_TARGET}/release/mxr" "$NOTARIZE_DIR/"
           cp "target/${MATRIX_TARGET}/release/mxr-chime-player" "$NOTARIZE_DIR/"
+          cp "target/${MATRIX_TARGET}/release/mxr-mailmerge" "$NOTARIZE_DIR/"
           ditto -c -k "$NOTARIZE_DIR" "$NOTARIZE_ZIP"
           xcrun notarytool submit "$NOTARIZE_ZIP" \
             --apple-id "$APPLE_ID" \

@@ -60,7 +60,7 @@ static PEM_PRIVATE_KEY: Lazy<Regex> = Lazy::new(|| {
 });
 
 pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
-    let cleaned_body = reader_clean(&draft.body_markdown);
+    let cleaned_body = reader_clean(draft.content.analysis_text());
     let mut hay = String::with_capacity(draft.subject.len() + cleaned_body.len() + 1);
     hay.push_str(&draft.subject);
     hay.push('\n');
@@ -211,7 +211,7 @@ fn reader_clean(body: &str) -> String {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use mxr_core::types::{Draft, DraftIntent};
+    use mxr_core::types::{Draft, DraftContent, DraftIntent};
     use mxr_core::{AccountId, DraftId};
 
     fn d(body: &str) -> Draft {
@@ -225,8 +225,9 @@ mod tests {
             cc: Vec::new(),
             bcc: Vec::new(),
             subject: "subject".into(),
-            body_markdown: body.into(),
+            content: DraftContent::markdown(body),
             attachments: Vec::new(),
+            inline_assets: Vec::new(),
             inline_calendar_reply: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),

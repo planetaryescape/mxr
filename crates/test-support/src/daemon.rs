@@ -21,11 +21,19 @@ static DAEMON_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 /// (multiple integration tests trying to build `mxr` simultaneously
 /// thrash) and the macOS-specific `Application Support/<instance>`
 /// directory cleanup.
+///
+/// Poisoning is recovered from rather than propagated. The guarded value is
+/// `()` — a serialisation token, not data with invariants a panicking test
+/// could have left half-updated — so there is nothing for the next test to
+/// observe in a broken state. Propagating instead turned one genuine failure
+/// into N: the first test to panic poisoned the mutex and every test after it
+/// died on `daemon lock poisoned`, burying the one real cause under a pile of
+/// identical secondary failures.
 pub fn daemon_lock() -> MutexGuard<'static, ()> {
     DAEMON_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()
-        .expect("daemon lock poisoned")
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// RAII guard that kills the spawned daemon and cleans up its
@@ -229,4 +237,34 @@ pub fn spawn_fake_daemon(
     );
 
     (daemon, instance, data_dir, config_dir)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::daemon_lock;
+
+    /// One panicking test must stay one failing test. Before `daemon_lock`
+    /// recovered from poisoning, the second acquisition here panicked with
+    /// `daemon lock poisoned` — which is exactly how a single genuine
+    /// integration failure used to present as four.
+    ///
+    /// The panic backtrace the helper thread prints is expected output.
+    #[test]
+    #[expect(
+        clippy::panic,
+        reason = "the test poisons the lock on purpose, which requires a panic"
+    )]
+    fn a_panic_under_the_lock_does_not_poison_the_next_acquisition() {
+        let poisoner = std::thread::spawn(|| {
+            let _held = daemon_lock();
+            panic!("simulated integration failure while holding the daemon lock");
+        });
+        assert!(
+            poisoner.join().is_err(),
+            "the helper thread must actually panic, or this proves nothing"
+        );
+
+        // Would panic with `daemon lock poisoned` without the recovery.
+        let _guard = daemon_lock();
+    }
 }

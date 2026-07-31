@@ -32,7 +32,7 @@ use scraper::{Html, Node};
 ///
 /// `data:` is handled separately: only raster `data:image/*` is allowed. A
 /// `data:text/html` payload is a script vector, and so is SVG — see
-/// [`UnsafeUrl::SvgDataUrl`]. The declared media type is only the sender's
+/// `UnsafeUrl::SvgDataUrl`. The declared media type is only the sender's
 /// label, so the payload behind it is checked too; see
 /// `data_url_payload_is_markup`.
 const ALLOWED_SCHEMES: &[&str] = &["http", "https", "mailto", "cid", "tel"];
@@ -649,7 +649,7 @@ fn is_meta_refresh(element: &scraper::node::Element) -> bool {
 
 /// Why a URL is refused.
 enum UnsafeUrl {
-    /// A scheme outside [`ALLOWED_SCHEMES`].
+    /// A scheme outside `ALLOWED_SCHEMES`.
     Scheme(String),
     /// `data:image/svg+xml`. SVG is the one image format that carries
     /// `<script>` and event handlers, so it is refused where raster images are

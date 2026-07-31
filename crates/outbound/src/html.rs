@@ -11,18 +11,59 @@
 //!    layouts.
 //! 2. **The text alternative is derived, not substituted.** Generating the
 //!    `text/plain` part reads the HTML and leaves it untouched.
+//!
+//! Known edges, written down rather than left as folklore:
+//!
+//! - A `data:image/*` payload padded with more than [`DATA_URL_SNIFF_BYTES`] of
+//!   leading whitespace hides its signature from
+//!   [`data_url_payload_is_markup`]. A sniffing client skips whitespace with no
+//!   bound at all; this one stops, so that a multi-megabyte inlined logo costs
+//!   the same to check as a small one.
+//! - A `data:` payload that does not decode is allowed through. See
+//!   [`FORGIVING_BASE64`] for why that is sound rather than lazy.
 
 use std::collections::BTreeSet;
 use std::fmt;
 
+use base64::Engine as _;
 use scraper::{Html, Node};
 
 /// Schemes a URL-bearing attribute may use.
 ///
 /// `data:` is handled separately: only raster `data:image/*` is allowed. A
 /// `data:text/html` payload is a script vector, and so is SVG — see
-/// [`UnsafeUrl::SvgDataUrl`].
+/// [`UnsafeUrl::SvgDataUrl`]. The declared media type is only the sender's
+/// label, so the payload behind it is checked too; see
+/// [`data_url_payload_is_markup`].
 const ALLOWED_SCHEMES: &[&str] = &["http", "https", "mailto", "cid", "tel"];
+
+/// How much of a `data:` payload to decode before giving up on a signature.
+///
+/// The longest thing being looked for is a single `<`, so this is almost
+/// entirely headroom. It is not sized for the signature; it is sized against
+/// evasion. A client that sniffs skips leading whitespace with no bound, so a
+/// tight prefix would be defeated by padding the payload with spaces. The bound
+/// exists so the work is constant: a two-megabyte inlined logo costs the same
+/// to check as a small one.
+const DATA_URL_SNIFF_BYTES: usize = 4096;
+
+/// A base64 decoder as forgiving as the one a mail client uses.
+///
+/// WHATWG "forgiving-base64", which is how a `data:` URL is decoded, strips
+/// ASCII whitespace, tolerates missing padding, and ignores non-zero trailing
+/// bits. Matching it is what makes it sound to allow an undecodable payload
+/// through: a payload *this* cannot read is a payload *no client* can read, so
+/// it is not a hidden SVG — it is nothing at all.
+///
+/// Do not "tighten" this into a stricter decoder. A stricter decoder would
+/// start rejecting payloads that clients accept, turning a check that refuses
+/// active content into one that refuses legitimate mail.
+const FORGIVING_BASE64: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
+    &base64::alphabet::STANDARD,
+    base64::engine::GeneralPurposeConfig::new()
+        .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent)
+        .with_decode_allow_trailing_bits(true),
+);
 
 /// Elements that execute, submit, navigate, or embed foreign content.
 ///
@@ -31,6 +72,12 @@ const ALLOWED_SCHEMES: &[&str] = &["http", "https", "mailto", "cid", "tel"];
 /// indirection that no attribute-by-attribute rule can follow. Nothing in a
 /// mail template needs them, so refusing the elements is both simpler and
 /// safer than reasoning about what they animate.
+///
+/// `foreignobject` is here for the same reason: it embeds arbitrary XHTML
+/// inside `<svg>`, so allowing it would mean re-deciding every rule in this
+/// module for a second document buried in the first. html5ever normalises the
+/// name to `foreignObject` whatever case it was written in, and the caller
+/// lowercases before the lookup.
 const FORBIDDEN_ELEMENTS: &[&str] = &[
     "script",
     "object",
@@ -49,6 +96,7 @@ const FORBIDDEN_ELEMENTS: &[&str] = &[
     "animatemotion",
     "animatetransform",
     "set",
+    "foreignobject",
 ];
 
 /// Constructs that make a fragment of CSS active content.
@@ -100,6 +148,26 @@ pub struct HtmlIssue {
     pub line: Option<usize>,
     /// Short, truncated excerpt of the offending construct.
     pub detail: String,
+    /// Which scan found it. Private: it exists to keep issues from different
+    /// contexts distinguishable, not to be read by callers.
+    origin: IssueOrigin,
+}
+
+/// Which scan found an issue.
+///
+/// Part of an issue's identity, because "same kind, same line, same excerpt" is
+/// not the same as "same problem". The same markup written both inside a
+/// conditional comment and outside it is two problems and has to be reported
+/// twice, while a real table cell seen by both the document parse and the
+/// orphan reparse is one problem and must not be. Without this, the
+/// duplicate-suppression in [`orphan_table_element_issues`] cannot tell the two
+/// cases apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IssueOrigin {
+    /// The document itself.
+    Document,
+    /// The body of the nth comment, counted in document order.
+    Comment(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,6 +180,10 @@ pub enum HtmlIssueKind {
     UnsafeUrlScheme { attribute: String, scheme: String },
     /// A `data:image/svg+xml` payload, refused where raster images are allowed.
     SvgDataUrl { attribute: String },
+    /// A `data:image/*` URL whose payload is markup rather than an image, so a
+    /// client that sniffs the content gets a document the declared type
+    /// promised it would not.
+    MislabelledDataUrl { attribute: String, declared: String },
     /// A `<style>` block containing an active-content construct.
     UnsafeStyle,
     /// An inline `style` attribute containing an active-content construct.
@@ -154,6 +226,18 @@ impl fmt::Display for HtmlIssue {
                  refused where data:image/png, jpeg, gif and webp are allowed. This is \
                  deliberate, not a bug — inline the artwork as a raster image or link \
                  it over https. {}",
+                self.detail
+            ),
+            HtmlIssueKind::MislabelledDataUrl {
+                attribute,
+                declared,
+            } => write!(
+                f,
+                "`{attribute}` declares `data:{declared}` but its payload begins with \
+                 markup{where_}: a client that sniffs the content gets a document rather \
+                 than an image, and an SVG or HTML document can carry <script>. The \
+                 declared type is only a label; the bytes decide. Inline the real raster \
+                 image or link the artwork over https. {}",
                 self.detail
             ),
             HtmlIssueKind::UnsafeStyle => {
@@ -221,6 +305,7 @@ impl std::error::Error for HtmlValidationError {}
 pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
     let document = Html::parse_document(html);
     let mut issues = Vec::new();
+    let mut comments_seen = 0;
 
     for node in document.tree.nodes() {
         match node.value() {
@@ -232,6 +317,7 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
                         line: locate_line(html, &format!("<{tag}")),
                         detail: truncate(&format!("<{tag}>"), 80),
                         kind: HtmlIssueKind::ForbiddenElement { tag: tag.clone() },
+                        origin: IssueOrigin::Document,
                     });
                 }
 
@@ -242,6 +328,7 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
                         kind: HtmlIssueKind::ForbiddenElement {
                             tag: "meta http-equiv=refresh".to_string(),
                         },
+                        origin: IssueOrigin::Document,
                     });
                 }
 
@@ -252,11 +339,18 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
                 // the same rules rather than trusting the `<!--`.
                 let body = comment.comment.as_ref();
 
+                // Collected apart from `issues` so the orphan scan below
+                // deduplicates against this comment's own findings and nothing
+                // else. Deduplicating against the whole document would let an
+                // identical offence elsewhere suppress this one.
+                let mut found = Vec::new();
+
                 for tag in forbidden_tags_in(body) {
-                    issues.push(HtmlIssue {
+                    found.push(HtmlIssue {
                         line: locate_line(html, &format!("<{tag}")),
                         detail: truncate(body, 80),
                         kind: HtmlIssueKind::ForbiddenElementInComment { tag },
+                        origin: IssueOrigin::Document,
                     });
                 }
 
@@ -267,12 +361,19 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
                 let inner = Html::parse_fragment(body);
                 for node in inner.tree.nodes() {
                     if let Node::Element(element) = node.value() {
-                        issues.extend(attribute_issues(element, html));
+                        found.extend(attribute_issues(element, html));
                     }
                 }
-                issues.extend(unsafe_style_blocks(&inner, html));
-                let orphans = orphan_table_element_issues(body, html, &issues);
-                issues.extend(orphans);
+                found.extend(unsafe_style_blocks(&inner, html));
+                let orphans = orphan_table_element_issues(body, html, &found);
+                found.extend(orphans);
+
+                // Stamped last, so the scans above compared like with like.
+                for issue in &mut found {
+                    issue.origin = IssueOrigin::Comment(comments_seen);
+                }
+                comments_seen += 1;
+                issues.extend(found);
             }
             _ => {}
         }
@@ -325,6 +426,9 @@ fn attribute_issues(element: &scraper::node::Element, html: &str) -> Vec<HtmlIss
                 line: locate_line(html, &attribute),
                 detail: truncate(value, 60),
                 kind: HtmlIssueKind::EventHandler { attribute },
+                // Callers scanning a comment body overwrite this with the
+                // comment's index; the document scan leaves it as-is.
+                origin: IssueOrigin::Document,
             });
             continue;
         }
@@ -349,15 +453,8 @@ fn attribute_issues(element: &scraper::node::Element, html: &str) -> Vec<HtmlIss
                 issues.push(HtmlIssue {
                     line: locate_line(html, url.trim()),
                     detail: truncate(url, 60),
-                    kind: match verdict {
-                        UnsafeUrl::Scheme(scheme) => HtmlIssueKind::UnsafeUrlScheme {
-                            attribute: attribute.clone(),
-                            scheme,
-                        },
-                        UnsafeUrl::SvgDataUrl => HtmlIssueKind::SvgDataUrl {
-                            attribute: attribute.clone(),
-                        },
-                    },
+                    kind: verdict.into_kind(attribute.clone()),
+                    origin: IssueOrigin::Document,
                 });
             }
         }
@@ -394,6 +491,7 @@ fn css_issues(css: &str, html: &str, style_kind: HtmlIssueKind) -> Vec<HtmlIssue
             line: locate_line(html, offender),
             detail: truncate(offender, 40),
             kind: style_kind,
+            origin: IssueOrigin::Document,
         });
     }
 
@@ -402,15 +500,8 @@ fn css_issues(css: &str, html: &str, style_kind: HtmlIssueKind) -> Vec<HtmlIssue
             issues.push(HtmlIssue {
                 line: locate_line(html, url.trim()),
                 detail: truncate(url, 60),
-                kind: match verdict {
-                    UnsafeUrl::Scheme(scheme) => HtmlIssueKind::UnsafeUrlScheme {
-                        attribute: "style".to_string(),
-                        scheme,
-                    },
-                    UnsafeUrl::SvgDataUrl => HtmlIssueKind::SvgDataUrl {
-                        attribute: "style".to_string(),
-                    },
-                },
+                kind: verdict.into_kind("style".to_string()),
+                origin: IssueOrigin::Document,
             });
         }
     }
@@ -478,6 +569,13 @@ fn active_css_construct(css: &str) -> Option<&'static str> {
 ///
 /// `html` is the caller's original document, used only for line numbers. The
 /// copy is never handed back.
+///
+/// The suppression subtracts *one copy per copy* already reported, rather than
+/// every copy that looks alike. Treating it as a set was a miss, not merely an
+/// under-report: in
+/// `<table><tr><td onclick></table><td onclick>` the real cell and the orphan
+/// produce identical issues, so the real one swallowed the orphan and a
+/// genuinely unreported problem went unreported.
 fn orphan_table_element_issues(
     markup: &str,
     html: &str,
@@ -485,6 +583,7 @@ fn orphan_table_element_issues(
 ) -> Vec<HtmlIssue> {
     let wrapped = format!("<table>{}", without_table_end_tags(markup));
     let fragment = Html::parse_fragment(&wrapped);
+    let mut unclaimed: Vec<&HtmlIssue> = already_reported.iter().collect();
 
     fragment
         .tree
@@ -496,7 +595,15 @@ fn orphan_table_element_issues(
                 .any(|tag| element.name().eq_ignore_ascii_case(tag))
         })
         .flat_map(|element| attribute_issues(element, html))
-        .filter(|issue| !already_reported.contains(issue))
+        .filter(
+            |issue| match unclaimed.iter().position(|seen| *seen == issue) {
+                Some(at) => {
+                    unclaimed.swap_remove(at);
+                    false
+                }
+                None => true,
+            },
+        )
         .collect()
 }
 
@@ -549,6 +656,23 @@ enum UnsafeUrl {
     /// not. `<img>` will not run it and `<object>`/`<embed>` are forbidden
     /// outright, but a mail client's behaviour is not something to bet on.
     SvgDataUrl,
+    /// A `data:image/*` URL whose payload turned out to be markup, whatever
+    /// media type it declared.
+    MislabelledDataUrl { declared: String },
+}
+
+impl UnsafeUrl {
+    /// The reported issue for this verdict on `attribute`.
+    fn into_kind(self, attribute: String) -> HtmlIssueKind {
+        match self {
+            Self::Scheme(scheme) => HtmlIssueKind::UnsafeUrlScheme { attribute, scheme },
+            Self::SvgDataUrl => HtmlIssueKind::SvgDataUrl { attribute },
+            Self::MislabelledDataUrl { declared } => HtmlIssueKind::MislabelledDataUrl {
+                attribute,
+                declared,
+            },
+        }
+    }
 }
 
 /// What is wrong with `url`, when something is.
@@ -587,16 +711,117 @@ fn unsafe_url(url: &str) -> Option<UnsafeUrl> {
         return None;
     }
     if scheme == "data" {
-        let media_type = cleaned[colon + 1..].to_ascii_lowercase();
-        if media_type.starts_with("image/svg") {
+        // Not lowercased: base64 is case-sensitive, and this is the payload.
+        let rest = &cleaned[colon + 1..];
+        let declared = rest
+            .split([';', ','])
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+
+        if declared.starts_with("image/svg") {
             return Some(UnsafeUrl::SvgDataUrl);
         }
-        if media_type.starts_with("image/") {
-            return None;
+        if declared.starts_with("image/") {
+            return data_url_payload_is_markup(rest)
+                .then(|| UnsafeUrl::MislabelledDataUrl { declared });
         }
     }
 
     Some(UnsafeUrl::Scheme(scheme))
+}
+
+/// Whether a `data:image/*` payload is markup rather than an image.
+///
+/// The declared media type is a label the sender chose; a client that sniffs
+/// reads the bytes. `data:image/png;base64,<an SVG document>` is an SVG to
+/// anything that sniffs, and SVG carries `<script>`.
+///
+/// The test is deliberately "is this markup", not "does this match the raster
+/// format it claims". Magic-byte matching would have to enumerate every format
+/// a mail client renders — png, jpeg, gif, webp, avif, heic, bmp, ico, tiff —
+/// and would refuse a legitimate image the moment that list fell behind the
+/// formats in use. Nothing that begins with `<` is a raster image in any
+/// format, so the narrower test gives up no coverage while risking far fewer
+/// false positives.
+///
+/// An unreadable payload is allowed through; see [`FORGIVING_BASE64`].
+fn data_url_payload_is_markup(rest: &str) -> bool {
+    let Some((parameters, payload)) = rest.split_once(',') else {
+        // No comma means no payload: not a usable data URL, nothing to sniff.
+        return false;
+    };
+
+    // The base64 flag is the last parameter. Whitespace is already gone.
+    let decoded = if parameters.to_ascii_lowercase().ends_with(";base64") {
+        decode_base64_prefix(payload)
+    } else {
+        percent_decode_prefix(payload)
+    };
+
+    // A sniffing client skips leading whitespace before matching a signature.
+    decoded
+        .iter()
+        .find(|byte| !byte.is_ascii_whitespace())
+        .is_some_and(|byte| *byte == b'<')
+}
+
+/// At most [`DATA_URL_SNIFF_BYTES`] bytes from the front of a base64 payload.
+///
+/// Empty when the prefix does not decode, which the caller treats as "not
+/// markup" rather than as a refusal.
+fn decode_base64_prefix(payload: &str) -> Vec<u8> {
+    // Four base64 characters carry three bytes.
+    let wanted = DATA_URL_SNIFF_BYTES.div_ceil(3) * 4;
+    // Sliced as bytes: a payload may hold arbitrary UTF-8, and a character
+    // boundary is not something to trip over while looking at a prefix.
+    let bytes = payload.as_bytes();
+    let mut prefix = &bytes[..bytes.len().min(wanted)];
+
+    // Padding is only ever final, so anything from the first `=` is the tail.
+    if let Some(pad) = prefix.iter().position(|byte| *byte == b'=') {
+        prefix = &prefix[..pad];
+    }
+    // A lone trailing character is not a whole quantum. Dropping it costs
+    // nothing: the byte it half-encodes lies beyond the prefix anyway.
+    if prefix.len() % 4 == 1 {
+        prefix = &prefix[..prefix.len() - 1];
+    }
+
+    FORGIVING_BASE64.decode(prefix).unwrap_or_default()
+}
+
+/// At most [`DATA_URL_SNIFF_BYTES`] bytes from the front of a percent-encoded
+/// payload.
+///
+/// An invalid escape is kept verbatim, which is what URL percent-decoding does
+/// with one.
+fn percent_decode_prefix(payload: &str) -> Vec<u8> {
+    let bytes = payload.as_bytes();
+    let mut decoded = Vec::new();
+    let mut cursor = 0;
+
+    while cursor < bytes.len() && decoded.len() < DATA_URL_SNIFF_BYTES {
+        let escaped = (bytes[cursor] == b'%')
+            .then(|| bytes.get(cursor + 1..cursor + 3))
+            .flatten()
+            .filter(|pair| pair.iter().all(u8::is_ascii_hexdigit))
+            .and_then(|pair| std::str::from_utf8(pair).ok())
+            .and_then(|pair| u8::from_str_radix(pair, 16).ok());
+
+        match escaped {
+            Some(byte) => {
+                decoded.push(byte);
+                cursor += 3;
+            }
+            None => {
+                decoded.push(bytes[cursor]);
+                cursor += 1;
+            }
+        }
+    }
+
+    decoded
 }
 
 fn unsafe_style_blocks(document: &Html, html: &str) -> Vec<HtmlIssue> {
@@ -1083,6 +1308,10 @@ mod tests {
       <img src="cid:notto-logo" alt="Notto®" width="120"
            srcset="https://cdn.example.com/logo.png 1x, https://cdn.example.com/logo@2x.png 2x">
     </td></tr>
+    <!-- An inlined raster logo, base64 wrapped across lines as a real
+         template writes it. -->
+    <tr><td><img alt="Notto®" width="1" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB
+      CAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABV81f1QAAAABJRU5ErkJggg=="></td></tr>
   </tbody>
   <tfoot><tr><td style="font-size:12px;color:#666;">Unsubscribe any time.</td></tr></tfoot>
 </table>
@@ -1391,6 +1620,147 @@ mod tests {
                 error.issues
             );
         }
+    }
+
+    #[test]
+    fn foreign_object_is_refused_outright() {
+        // `<foreignObject>` embeds arbitrary XHTML inside `<svg>`. Refusing the
+        // element beats reasoning about what it carries, exactly as with the
+        // SVG animation elements.
+        for markup in [
+            "<svg><foreignObject><p>x</p></foreignObject></svg>",
+            "<svg><foreignobject><p>x</p></foreignobject></svg>",
+            "<svg><FOREIGNOBJECT></FOREIGNOBJECT></svg>",
+        ] {
+            let error = refusal(markup);
+            assert!(
+                error.issues.iter().any(|issue| issue.kind
+                    == HtmlIssueKind::ForbiddenElement {
+                        tag: "foreignobject".to_string()
+                    }),
+                "expected <foreignObject> to be refused, got {:?}",
+                error.issues
+            );
+        }
+    }
+
+    #[test]
+    fn foreign_object_inside_a_conditional_comment_is_refused_too() {
+        let error =
+            refusal("<!--[if mso]><svg><foreignObject><p>x</p></foreignObject></svg><![endif]-->");
+        assert!(
+            error.issues.iter().any(|issue| issue.kind
+                == HtmlIssueKind::ForbiddenElementInComment {
+                    tag: "foreignobject".to_string()
+                }),
+            "{error:?}"
+        );
+    }
+
+    /// Claimed already covered, because html5ever adjusts foreign attributes
+    /// and scraper yields only the local name, so SVG's `xlink:href` arrives as
+    /// `href`. Asserted rather than inherited.
+    #[test]
+    fn an_svg_use_reference_is_held_to_the_scheme_allowlist() {
+        for markup in [
+            r#"<svg><use href="javascript:steal()"></use></svg>"#,
+            r#"<svg><use xlink:href="javascript:steal()"></use></svg>"#,
+        ] {
+            let error = refusal(markup);
+            assert!(
+                error.issues.iter().any(|issue| matches!(
+                    &issue.kind,
+                    HtmlIssueKind::UnsafeUrlScheme { attribute, scheme }
+                        if attribute == "href" && scheme == "javascript"
+                )),
+                "expected <use> to be checked, got {:?}",
+                error.issues
+            );
+        }
+    }
+
+    /// The scheme check reads the declared media type and stops. A client that
+    /// content-sniffs reads the payload, so the payload is what decides:
+    /// `data:image/png;base64,<an SVG document>` is an SVG, and SVG carries
+    /// `<script>`.
+    #[test]
+    fn a_data_image_url_whose_payload_is_markup_is_refused_whatever_it_claims_to_be() {
+        for markup in [
+            // <svg xmlns="..."><script>steal()</script></svg>
+            r#"<img src="data:image/png;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxzY3JpcHQ+c3RlYWwoKTwvc2NyaXB0Pjwvc3ZnPg==">"#,
+            // <?xml version="1.0"?><svg/>
+            r#"<img src="data:image/gif;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2Zy8+">"#,
+            // <!DOCTYPE html><html></html>
+            r#"<img src="data:image/jpeg;base64,PCFET0NUWVBFIGh0bWw+PGh0bWw+PC9odG1sPg==">"#,
+            // <html><body>x</body></html>
+            r#"<img src="data:image/webp;base64,PGh0bWw+PGJvZHk+eDwvYm9keT48L2h0bWw+">"#,
+            // "   \n <svg/>" — whitespace before the signature, which a
+            // sniffing client skips.
+            r#"<img src="data:image/png;base64,ICAgCiA8c3ZnLz4=">"#,
+            // Percent-encoded rather than base64.
+            r#"<img src="data:image/png,%3Csvg%2F%3E">"#,
+            r#"<img src="data:image/png,%20%20%3Csvg%2F%3E">"#,
+            // The same dodge routed through CSS.
+            r#"<p style="background:url(data:image/png;base64,PHN2Zz4=)">x</p>"#,
+            r#"<style>.a{background:url(data:image/png;base64,PHN2Zz4=)}</style>"#,
+            // And hidden in a conditional comment.
+            r#"<!--[if mso]><img src="data:image/png;base64,PHN2Zz4="><![endif]-->"#,
+        ] {
+            refusal(markup);
+        }
+    }
+
+    #[test]
+    fn a_mislabelled_data_url_says_the_payload_disagrees_with_the_declared_type() {
+        let rendered = refusal(r#"<img src="data:image/png;base64,PHN2Zz4=">"#).to_string();
+        assert!(rendered.contains("image/png"), "{rendered}");
+        assert!(rendered.contains("markup"), "{rendered}");
+    }
+
+    /// The false-positive side of the payload check, which matters more than
+    /// the true-positive side: real templates inline raster logos.
+    #[test]
+    fn a_raster_data_url_still_passes_and_an_unreadable_payload_is_not_refused() {
+        for markup in [
+            // A real 1x1 PNG, wrapped across lines the way a template does it.
+            "<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB\n  CAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABV81f1QAAAABJRU5ErkJggg==\">",
+            r#"<img src="data:image/jpeg;base64,/9j/4AAQ">"#,
+            r#"<img src="data:image/gif;base64,R0lGOD">"#,
+            r#"<img src="data:image/webp;base64,UklGRg==">"#,
+            // Formats the validator knows no signature for. Allowed: it is only
+            // looking for markup, not vouching for the declared type.
+            r#"<img src="data:image/avif;base64,AAAAIGZ0eXBhdmlm">"#,
+            r#"<img src="data:image/x-icon;base64,AAABAAEAEBA=">"#,
+            // Undecodable, empty and comma-less payloads: nothing to sniff, and
+            // refusing what cannot be read would refuse legitimate mail.
+            r#"<img src="data:image/png;base64,****">"#,
+            r#"<img src="data:image/png;base64,">"#,
+            r#"<img src="data:image/png">"#,
+        ] {
+            assert_eq!(validate_html(markup), Ok(()), "wrongly refused: {markup}");
+        }
+    }
+
+    /// Identical markup written both inside a conditional comment and outside
+    /// it is two problems. Comparing whole issues collapsed them into one,
+    /// because both carry the same value and the same first-occurrence line.
+    #[test]
+    fn the_same_offence_in_a_comment_and_in_the_document_is_reported_twice() {
+        let error =
+            refusal(r#"<!--[if mso]><td onclick="steal()">x<![endif]--><td onclick="steal()">y"#);
+        assert_eq!(error.issues.len(), 2, "{error:?}");
+    }
+
+    /// The suppression exists so a real table cell is not reported by both the
+    /// document parse and the orphan reparse. It has to subtract one copy, not
+    /// every copy: a second, genuinely orphaned cell on the same line is a
+    /// second problem.
+    #[test]
+    fn a_real_table_cell_does_not_mask_an_identical_orphan_beside_it() {
+        let error = refusal(
+            r#"<table><tr><td onclick="steal()">x</td></tr></table><td onclick="steal()">y"#,
+        );
+        assert_eq!(error.issues.len(), 2, "{error:?}");
     }
 
     #[test]

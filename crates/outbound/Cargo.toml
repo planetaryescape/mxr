@@ -14,6 +14,9 @@ workspace = true
 
 [dependencies]
 mxr-core = { workspace = true }
+# Decodes a bounded prefix of a `data:` URL so the payload can be inspected
+# rather than the media type the sender declared.
+base64 = { workspace = true }
 comrak = { workspace = true }
 dirs = { workspace = true }
 futures = { workspace = true }
@@ -28,7 +31,6 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-base64 = { workspace = true }
 chrono = { workspace = true }
 # Re-parses what we built, so MIME assertions test the wire format rather
 # than the builder's own idea of it.

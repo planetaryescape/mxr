@@ -14,13 +14,13 @@
 //!
 //! Known edges, written down rather than left as folklore:
 //!
-//! - A `data:image/*` payload padded with more than [`DATA_URL_SNIFF_BYTES`] of
+//! - A `data:image/*` payload padded with more than `DATA_URL_SNIFF_BYTES` of
 //!   leading whitespace hides its signature from
-//!   [`data_url_payload_is_markup`]. A sniffing client skips whitespace with no
+//!   `data_url_payload_is_markup`. A sniffing client skips whitespace with no
 //!   bound at all; this one stops, so that a multi-megabyte inlined logo costs
 //!   the same to check as a small one.
 //! - A `data:` payload that does not decode is allowed through. See
-//!   [`FORGIVING_BASE64`] for why that is sound rather than lazy.
+//!   `FORGIVING_BASE64` for why that is sound rather than lazy.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -34,7 +34,7 @@ use scraper::{Html, Node};
 /// `data:text/html` payload is a script vector, and so is SVG — see
 /// [`UnsafeUrl::SvgDataUrl`]. The declared media type is only the sender's
 /// label, so the payload behind it is checked too; see
-/// [`data_url_payload_is_markup`].
+/// `data_url_payload_is_markup`.
 const ALLOWED_SCHEMES: &[&str] = &["http", "https", "mailto", "cid", "tel"];
 
 /// How much of a `data:` payload to decode before giving up on a signature.
@@ -160,7 +160,7 @@ pub struct HtmlIssue {
 /// conditional comment and outside it is two problems and has to be reported
 /// twice, while a real table cell seen by both the document parse and the
 /// orphan reparse is one problem and must not be. Without this, the
-/// duplicate-suppression in [`orphan_table_element_issues`] cannot tell the two
+/// duplicate-suppression in `orphan_table_element_issues` cannot tell the two
 /// cases apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum IssueOrigin {
@@ -301,7 +301,7 @@ impl std::error::Error for HtmlValidationError {}
 /// silently rewrites to "make safe". Where html5ever is stricter than a mail
 /// client is likely to be — it discards stray table cells — a second parse of a
 /// throw-away copy covers the difference; see
-/// [`orphan_table_element_issues`].
+/// `orphan_table_element_issues`.
 pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
     let document = Html::parse_document(html);
     let mut issues = Vec::new();
@@ -480,7 +480,7 @@ fn srcset_candidates(value: &str) -> impl Iterator<Item = &str> {
 /// attributes. Splitting these was the original defect, and CSS `url()` was a
 /// way straight round the scheme allowlist that guards `src` and `href`, so
 /// both checks live here: the active-content constructs, and every `url()`
-/// payload run through the same [`unsafe_url`] the attributes use.
+/// payload run through the same `unsafe_url` the attributes use.
 ///
 /// `style_kind` is the only thing that differs between the two callers.
 fn css_issues(css: &str, html: &str, style_kind: HtmlIssueKind) -> Vec<HtmlIssue> {
@@ -609,7 +609,7 @@ fn orphan_table_element_issues(
 
 /// `markup` with every `</table>` end tag removed.
 ///
-/// The wrapper in [`orphan_table_element_issues`] is the only thing keeping
+/// The wrapper in `orphan_table_element_issues` is the only thing keeping
 /// stray table tokens alive, and an unmatched `</table>` in the source would
 /// close it — hiding exactly the markup being looked for. Dropping end tags
 /// from the throw-away copy cannot invent an attribute, so it cannot invent an
@@ -724,7 +724,7 @@ fn unsafe_url(url: &str) -> Option<UnsafeUrl> {
         }
         if declared.starts_with("image/") {
             return data_url_payload_is_markup(rest)
-                .then(|| UnsafeUrl::MislabelledDataUrl { declared });
+                .then_some(UnsafeUrl::MislabelledDataUrl { declared });
         }
     }
 
@@ -745,7 +745,7 @@ fn unsafe_url(url: &str) -> Option<UnsafeUrl> {
 /// format, so the narrower test gives up no coverage while risking far fewer
 /// false positives.
 ///
-/// An unreadable payload is allowed through; see [`FORGIVING_BASE64`].
+/// An unreadable payload is allowed through; see `FORGIVING_BASE64`.
 fn data_url_payload_is_markup(rest: &str) -> bool {
     let Some((parameters, payload)) = rest.split_once(',') else {
         // No comma means no payload: not a usable data URL, nothing to sniff.
@@ -766,7 +766,7 @@ fn data_url_payload_is_markup(rest: &str) -> bool {
         .is_some_and(|byte| *byte == b'<')
 }
 
-/// At most [`DATA_URL_SNIFF_BYTES`] bytes from the front of a base64 payload.
+/// At most `DATA_URL_SNIFF_BYTES` bytes from the front of a base64 payload.
 ///
 /// Empty when the prefix does not decode, which the caller treats as "not
 /// markup" rather than as a refusal.
@@ -791,7 +791,7 @@ fn decode_base64_prefix(payload: &str) -> Vec<u8> {
     FORGIVING_BASE64.decode(prefix).unwrap_or_default()
 }
 
-/// At most [`DATA_URL_SNIFF_BYTES`] bytes from the front of a percent-encoded
+/// At most `DATA_URL_SNIFF_BYTES` bytes from the front of a percent-encoded
 /// payload.
 ///
 /// An invalid escape is kept verbatim, which is what URL percent-decoding does

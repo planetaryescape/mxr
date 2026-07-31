@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.6.15](https://github.com/planetaryescape/mxr/compare/v0.6.14...v0.6.15) (2026-07-31)
+
+
+### Features
+
+* native HTML email composition and a mail merge companion ([#167](https://github.com/planetaryescape/mxr/issues/167)) ([e3999de](https://github.com/planetaryescape/mxr/commit/e3999de199133add9a4b40d9fea91b011fdfc9be))
+* redesign the mxr landing page ([ba7caf8](https://github.com/planetaryescape/mxr/commit/ba7caf8e3a4099829715ddc64fde885f74831b05))
+* warm search before first use ([fef5d98](https://github.com/planetaryescape/mxr/commit/fef5d986013626732ff0043e02059fac3c2a3e93))
+
+
+### Bug Fixes
+
+* correct mxr docs and trust links ([1424ce1](https://github.com/planetaryescape/mxr/commit/1424ce14f69bf8dcc9f425c5d18ad894abda6aa3))
+* correct mxr homepage commands and claims ([d642926](https://github.com/planetaryescape/mxr/commit/d6429260d25ab7b9e81fd7a99e3f32e90983c7a0))
+* correct mxr site offline, mutation JSON, and agent examples ([c032e44](https://github.com/planetaryescape/mxr/commit/c032e44efd1645e27ef083472f398f8fdcb059e0))
+* correct mxr site provider, agent, and aggregation copy ([1119496](https://github.com/planetaryescape/mxr/commit/111949688534e195caf1745c392f5d0ce25f2ad1))
+* correct mxr site trust claims and reframe the API page ([78e2421](https://github.com/planetaryescape/mxr/commit/78e2421f9095b10dd0614241315fee02ef64998f))
+* correct privacy credential storage and self-host site fonts ([1bdfae0](https://github.com/planetaryescape/mxr/commit/1bdfae013c91ac2563828ce6a8f52fff1f72b98e))
+* disclose default network behaviour and bundle the API explorer ([a12ca66](https://github.com/planetaryescape/mxr/commit/a12ca6655f7913822a30997c8fe27a4b5df9067e))
+* finish API inventory review fixes ([d5dc865](https://github.com/planetaryescape/mxr/commit/d5dc86563116c44bbf03c9128aa4357e89d392ab))
+* improve mxr site accessibility and media ([ed1979d](https://github.com/planetaryescape/mxr/commit/ed1979d519379ec43af2a3b9b481a62a73ba49cd))
+* make legal and code layouts accessible ([b9a6f0d](https://github.com/planetaryescape/mxr/commit/b9a6f0d674bdba0e379f631ccbedd7b7dcac170c))
+* make mxr site tables, demo control, and video descriptions accessible ([a2ba4a2](https://github.com/planetaryescape/mxr/commit/a2ba4a2c1dada644846eaae8b58e5d1302e80986))
+* qualify absolute automation claims in mxr site docs ([902e31e](https://github.com/planetaryescape/mxr/commit/902e31eea6a969f172612e3fe2af80dd49380643))
+* reveal legal skip link on focus ([3a18ffb](https://github.com/planetaryescape/mxr/commit/3a18ffbccc58ca65ff52b281537adb6200b2198e))
+* satisfy clippy in demo reconnect ([d94dc8d](https://github.com/planetaryescape/mxr/commit/d94dc8d2bfd875301c5de99e1ecdb4bd65c7314a))
+* settle the hero demo's stale play refusals and idle posters ([45e2152](https://github.com/planetaryescape/mxr/commit/45e21523be25e0eede231abbbea8a3517832efb4))
+* **site:** repair api explorer accessibility and broken doc links ([3793deb](https://github.com/planetaryescape/mxr/commit/3793deb5168cc22b155ef1cfdd6a86f3f194688b))
+* state default-on network behaviour and all contacted services ([9687f50](https://github.com/planetaryescape/mxr/commit/9687f502f3547382eef72eea8486f74c3d1e3c12))
+* state the real tracker-pixel behaviour and attachment dir overrides ([c0973e3](https://github.com/planetaryescape/mxr/commit/c0973e37c7249b53bbaf7f26f2d8ce972fe1e28a))
+
+
+### Documentation
+
+* sharpen mxr launch story ([c4ada04](https://github.com/planetaryescape/mxr/commit/c4ada04f5d9ca2d9f0e0c128ba575ab9c152e7bd))
+
 ## [0.6.14](https://github.com/planetaryescape/mxr/compare/v0.6.13...v0.6.14) (2026-07-29)
 
 

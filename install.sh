@@ -65,5 +65,14 @@ tar -xzf "$tmp_dir/$archive" -C "$tmp_dir"
 mkdir -p "$INSTALL_DIR"
 install "$tmp_dir/mxr" "$INSTALL_DIR/mxr"
 
+# Companion executables ship in the same archive. They are installed when
+# present so an older archive, which has only `mxr`, still installs cleanly.
+for companion in mxr-mailmerge; do
+    if [ -f "$tmp_dir/$companion" ]; then
+        install "$tmp_dir/$companion" "$INSTALL_DIR/$companion"
+        echo "Installed $companion to $INSTALL_DIR/$companion"
+    fi
+done
+
 echo "Installed mxr to $INSTALL_DIR/mxr"
 echo "Run: $INSTALL_DIR/mxr version"

@@ -1,10 +1,11 @@
 ---
-title: Mail merge
-description: Personalised drafts from one template and a list of records, using the mxr-mailmerge companion. Drafts by default, never sends by itself.
+title: Run a mail merge
+description: Create, review, send, and schedule personalised drafts from structured recipient records.
 ---
 
-Sending the same designed email to forty people with a different link each is a
-real need. It is also not an email client's job.
+Use `mxr-mailmerge` to create, review, send, or schedule one personalised draft
+per recipient record. Each message can share a design while carrying its own
+recipient, text, and links.
 
 `mxr-mailmerge` is a separate executable that renders one message per record and
 asks mxr to save each as a draft. mxr keeps owning mail: accounts, validation,
@@ -86,6 +87,49 @@ mxr-mailmerge send campaign-20260729-140301 --dry-run
 mxr-mailmerge send campaign-20260729-140301 --yes
 ```
 
+To schedule the whole campaign, add one `--at` value to both the preview and
+confirmed commands. The companion asks mxr to resolve that value once, then
+schedules every personalised draft for the same absolute instant:
+
+```bash
+mxr-mailmerge send campaign-20260729-140301 \
+  --at 2026-08-05T09:00:00+01:00 \
+  --dry-run
+mxr-mailmerge send campaign-20260729-140301 \
+  --at 2026-08-05T09:00:00+01:00 \
+  --yes
+```
+
+Check the resolved instant in the preview before confirming:
+
+```text
+Campaign campaign-20260729-140301 — dry run, nothing sent or scheduled
+  would schedule: 40 message(s)
+  delivery time:  2026-08-05T08:00:00Z
+  already scheduled: 0
+  already sent:      0
+```
+
+That example is 09:00 in London while British Summer Time is active. Natural
+forms accepted by `mxr send --at`, such as `tomorrow 9am`, also work. Use an
+RFC3339 offset when the time zone must be explicit.
+
+If mxr rejects the time, verify it through the same non-mutating parser before
+trying the campaign again:
+
+```bash
+mxr send-time person@example.com \
+  --account notto \
+  --at 2026-08-05T09:00:00+01:00 \
+  --format json
+```
+
+An invalid or past time stops the campaign before any draft is scheduled.
+
+Scheduling preserves the mail-merge privacy boundary: each recipient still
+has an independent, single-recipient draft. It never creates one shared or
+group-addressed email.
+
 Without `--yes`, both `draft` and `send` refuse and tell you the count they
 would have acted on. There is no flag combination that makes `draft` send.
 
@@ -152,8 +196,10 @@ Property values may be opaque access tokens, so they are treated as secrets:
 State lives in `.mxr-mailmerge/<campaign-id>.json`, written after every record.
 
 Rerunning `draft` with the same `--campaign-id` skips records that already have
-a draft, so an interrupted run resumes instead of duplicating. Sends are marked
-per record, so a crash mid-send cannot re-send anyone. After a partial failure:
+a draft, so an interrupted run resumes instead of duplicating. Sends and
+schedules are marked per record, so a crash mid-run cannot dispatch anyone
+twice. A scheduled record remains `scheduled` in the campaign manifest because
+mxr's daemon owns its eventual delivery. After a partial failure:
 
 ```bash
 mxr-mailmerge send <campaign-id> --retry-failed --yes

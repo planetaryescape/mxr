@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.16](https://github.com/planetaryescape/mxr/compare/v0.6.15...v0.6.16) (2026-08-04)
+
+
+### Features
+
+* schedule mail merge delivery ([555299c](https://github.com/planetaryescape/mxr/commit/555299c60ad6b5d4e8078008f4257867abec26a4))
+
+
+### Bug Fixes
+
+* install the mxr-mailmerge companion from the release archive ([c1ed03b](https://github.com/planetaryescape/mxr/commit/c1ed03b380f299633cac217fb80c13930699c25a))
+* install the mxr-mailmerge companion from the release archive ([#175](https://github.com/planetaryescape/mxr/issues/175)) ([f1e0d2b](https://github.com/planetaryescape/mxr/commit/f1e0d2be1c6cd732dbf68163c0b97e20ab23ff2f))
+* update postcss security patch ([5c8ced4](https://github.com/planetaryescape/mxr/commit/5c8ced4631cca695b5ac8e0f6429a170934a5624))
+
+
+### Documentation
+
+* document scheduled mail merge delivery ([06ed132](https://github.com/planetaryescape/mxr/commit/06ed132e194c762cfb8bf92c202bd4cde6ff70ea))
+* sharpen landing page call to action ([d15a412](https://github.com/planetaryescape/mxr/commit/d15a412a68c1d01141040f41bd051b913728fd99))
+
 ## [0.6.15](https://github.com/planetaryescape/mxr/compare/v0.6.14...v0.6.15) (2026-07-31)
 
 

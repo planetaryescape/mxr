@@ -2,7 +2,8 @@
 //!
 //! This is what makes a rerun safe. Each record is keyed by a hash of its
 //! properties; a record that already has a `draft_id` is skipped rather than
-//! drafted again, and a record already marked `sent` is never sent twice.
+//! drafted again, and a record already marked `sent` or `scheduled` is never
+//! dispatched twice.
 //!
 //! What the manifest deliberately does NOT contain: property values. A
 //! `product_definition_url` may carry an opaque access token, so only the hash
@@ -17,9 +18,11 @@ use std::path::{Path, PathBuf};
 pub enum RecordStatus {
     /// A local mxr draft exists for this record. Nothing has been sent.
     Drafted,
+    /// `mxr send --at` accepted this draft for later delivery.
+    Scheduled,
     /// `mxr send` reported success.
     Sent,
-    /// Draft creation or send failed; retryable.
+    /// Draft creation, send, or scheduling failed; retryable.
     Failed,
 }
 
@@ -34,16 +37,22 @@ pub enum RecordStatus {
 #[serde(rename_all = "snake_case")]
 pub enum FailureReason {
     /// `mxr compose` did not create a draft.
-    DraftRefused,
+    #[serde(rename = "draft_refused")]
+    Draft,
     /// `mxr send` did not send an existing draft.
-    SendRefused,
+    #[serde(rename = "send_refused")]
+    Send,
+    /// `mxr send --at` did not schedule an existing draft.
+    #[serde(rename = "schedule_refused")]
+    Schedule,
 }
 
 impl FailureReason {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::DraftRefused => "mxr refused to create the draft",
-            Self::SendRefused => "mxr refused to send the draft",
+            Self::Draft => "mxr refused to create the draft",
+            Self::Send => "mxr refused to send the draft",
+            Self::Schedule => "mxr refused to schedule the draft",
         }
     }
 }
@@ -202,13 +211,14 @@ mod tests {
     }
 
     #[test]
-    fn pending_send_excludes_sent_and_undrafted() {
+    fn pending_send_excludes_scheduled_sent_and_undrafted() {
         let mut manifest = Manifest::new("c1".into(), "notto".into());
         manifest.upsert(entry("h1", RecordStatus::Drafted, Some("d1")));
-        manifest.upsert(entry("h2", RecordStatus::Sent, Some("d2")));
-        manifest.upsert(entry("h3", RecordStatus::Failed, None));
+        manifest.upsert(entry("h2", RecordStatus::Scheduled, Some("d2")));
+        manifest.upsert(entry("h3", RecordStatus::Sent, Some("d3")));
+        manifest.upsert(entry("h4", RecordStatus::Failed, None));
         // Drafted but with no draft id: there is nothing for mxr to send.
-        manifest.upsert(entry("h4", RecordStatus::Drafted, None));
+        manifest.upsert(entry("h5", RecordStatus::Drafted, None));
 
         let pending: Vec<&str> = manifest
             .pending_send()
@@ -216,6 +226,17 @@ mod tests {
             .map(|entry| entry.record_hash.as_str())
             .collect();
         assert_eq!(pending, ["h1"]);
+    }
+
+    #[test]
+    fn scheduled_status_round_trips_through_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut manifest = Manifest::new("c1".into(), "notto@example.com".into());
+        manifest.upsert(entry("h1", RecordStatus::Scheduled, Some("d1")));
+        manifest.save(dir.path()).unwrap();
+
+        let loaded = Manifest::load(dir.path(), "c1").unwrap();
+        assert_eq!(loaded.entry("h1").unwrap().status, RecordStatus::Scheduled);
     }
 
     #[test]
@@ -240,7 +261,7 @@ mod tests {
         let mut manifest = Manifest::new("c1".into(), "notto@example.com".into());
         manifest.upsert(entry("h1", RecordStatus::Drafted, Some("d1")));
         manifest.upsert(RecordEntry {
-            error: Some(FailureReason::DraftRefused),
+            error: Some(FailureReason::Draft),
             ..entry("h2", RecordStatus::Failed, None)
         });
         manifest.save(dir.path()).unwrap();
@@ -255,7 +276,7 @@ mod tests {
         assert_eq!(loaded.entry("h2").unwrap().draft_id, None);
         assert_eq!(
             loaded.entry("h2").unwrap().error,
-            Some(FailureReason::DraftRefused)
+            Some(FailureReason::Draft)
         );
     }
 
@@ -284,7 +305,7 @@ mod tests {
         let mut manifest = Manifest::new("c1".into(), "notto".into());
         manifest.upsert(entry("h1", RecordStatus::Drafted, Some("d1")));
         manifest.upsert(RecordEntry {
-            error: Some(FailureReason::DraftRefused),
+            error: Some(FailureReason::Draft),
             ..entry("h2", RecordStatus::Failed, None)
         });
         manifest.save(dir.path()).unwrap();

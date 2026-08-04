@@ -39,7 +39,7 @@ struct Cli {
 enum Command {
     /// Render every record and create one local mxr draft each.
     Draft(DraftArgs),
-    /// Send the drafts of a campaign. Separate from drafting, and confirmed.
+    /// Send or schedule the drafts of a campaign. Separate from drafting, and confirmed.
     Send(SendArgs),
     /// Show per-record status for a campaign.
     Status(StatusArgs),
@@ -91,15 +91,20 @@ struct SendArgs {
     campaign_id: String,
     #[arg(long, default_value = ".mxr-mailmerge")]
     state_dir: PathBuf,
-    /// Show what would be sent, send nothing.
+    /// Show what would be sent or scheduled, dispatch nothing.
     #[arg(long, conflicts_with = "yes")]
     dry_run: bool,
-    /// Confirm the send.
+    /// Confirm the send or schedule.
     #[arg(long, conflicts_with = "dry_run")]
     yes: bool,
     /// Send only records that previously failed.
     #[arg(long)]
     retry_failed: bool,
+    /// Schedule every draft for one delivery time instead of sending now.
+    /// Same forms as `mxr send --at`; use RFC3339 with an offset for an
+    /// explicit time zone, for example `2026-08-05T09:00:00+01:00`.
+    #[arg(long, value_name = "TIME")]
+    at: Option<String>,
     #[arg(long, hide = true)]
     mxr_binary: Option<String>,
 }
@@ -295,7 +300,7 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
                     draft_id: None,
                     // A fixed reason: mxr's own words stay out of a file that
                     // ends up in the working tree.
-                    error: Some(FailureReason::DraftRefused),
+                    error: Some(FailureReason::Draft),
                     status: RecordStatus::Failed,
                 });
                 failed += 1;
@@ -339,7 +344,7 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
 fn run_send(args: SendArgs) -> anyhow::Result<()> {
     let mut manifest = Manifest::load(&args.state_dir, &args.campaign_id)?;
 
-    let targets: Vec<(String, String)> = if args.retry_failed {
+    let targets: Vec<(String, String, String)> = if args.retry_failed {
         manifest
             .failed()
             .into_iter()
@@ -347,7 +352,7 @@ fn run_send(args: SendArgs) -> anyhow::Result<()> {
                 entry
                     .draft_id
                     .as_ref()
-                    .map(|id| (entry.record_hash.clone(), id.clone()))
+                    .map(|id| (entry.record_hash.clone(), id.clone(), entry.to.clone()))
             })
             .collect()
     } else {
@@ -358,77 +363,145 @@ fn run_send(args: SendArgs) -> anyhow::Result<()> {
                 entry
                     .draft_id
                     .as_ref()
-                    .map(|id| (entry.record_hash.clone(), id.clone()))
+                    .map(|id| (entry.record_hash.clone(), id.clone(), entry.to.clone()))
             })
             .collect()
     };
 
     if targets.is_empty() {
-        println!("Campaign {} — nothing to send.", args.campaign_id);
-        println!("  sent already: {}", manifest.count(RecordStatus::Sent));
+        println!(
+            "Campaign {} — nothing to send or schedule.",
+            args.campaign_id
+        );
+        println!(
+            "  scheduled already: {}",
+            manifest.count(RecordStatus::Scheduled)
+        );
+        println!(
+            "  sent already:      {}",
+            manifest.count(RecordStatus::Sent)
+        );
         return Ok(());
     }
 
-    if args.dry_run {
-        println!("Campaign {} — dry run, nothing sent", args.campaign_id);
-        println!("  would send: {} message(s)", targets.len());
-        println!("  already sent: {}", manifest.count(RecordStatus::Sent));
-        return Ok(());
-    }
-
-    if !args.yes {
+    if !args.dry_run && !args.yes {
+        let action = if args.at.is_some() {
+            "schedule"
+        } else {
+            "send"
+        };
         bail!(
-            "refusing to send {} message(s) without --yes. This transmits real email. \
+            "refusing to {action} {} message(s) without --yes. This commits real email delivery. \
              Preview with --dry-run first.",
             targets.len()
         );
     }
 
-    println!("Sending {} message(s)…", targets.len());
-
     let client = mxr::Mxr::new(args.mxr_binary.clone());
-    client.preflight()?;
+    let resolved_at = match args.at.as_deref() {
+        Some(at) => {
+            client.preflight()?;
+            let recipient = &targets[0].2;
+            Some(client.resolve_send_time(&manifest.account, recipient, at)?)
+        }
+        None => None,
+    };
 
-    let mut sent = 0usize;
+    if args.dry_run {
+        println!(
+            "Campaign {} — dry run, nothing sent or scheduled",
+            args.campaign_id
+        );
+        match resolved_at.as_deref() {
+            Some(at) => {
+                println!("  would schedule: {} message(s)", targets.len());
+                println!("  delivery time:  {at}");
+            }
+            None => println!("  would send: {} message(s)", targets.len()),
+        }
+        println!(
+            "  already scheduled: {}",
+            manifest.count(RecordStatus::Scheduled)
+        );
+        println!(
+            "  already sent:      {}",
+            manifest.count(RecordStatus::Sent)
+        );
+        return Ok(());
+    }
+
+    if resolved_at.is_none() {
+        client.preflight()?;
+    }
+    match resolved_at.as_deref() {
+        Some(at) => println!("Scheduling {} message(s) for {at}…", targets.len()),
+        None => println!("Sending {} message(s)…", targets.len()),
+    }
+
+    let mut completed = 0usize;
     let mut failed = 0usize;
 
-    for (hash, draft_id) in targets {
+    for (hash, draft_id, _) in targets {
         let Some(entry) = manifest.entry(&hash).cloned() else {
             continue;
         };
 
-        match client.send_draft(&draft_id) {
+        match client.send_draft(&draft_id, resolved_at.as_deref()) {
             Ok(()) => {
                 manifest.upsert(RecordEntry {
-                    status: RecordStatus::Sent,
+                    status: if resolved_at.is_some() {
+                        RecordStatus::Scheduled
+                    } else {
+                        RecordStatus::Sent
+                    },
                     error: None,
                     ..entry
                 });
-                sent += 1;
+                completed += 1;
             }
             Err(error) => {
                 manifest.upsert(RecordEntry {
                     status: RecordStatus::Failed,
-                    error: Some(FailureReason::SendRefused),
+                    error: Some(if resolved_at.is_some() {
+                        FailureReason::Schedule
+                    } else {
+                        FailureReason::Send
+                    }),
                     ..entry
                 });
                 failed += 1;
-                eprintln!("send failed for draft {draft_id}: {error}");
+                let action = if resolved_at.is_some() {
+                    "schedule"
+                } else {
+                    "send"
+                };
+                eprintln!("{action} failed for draft {draft_id}: {error}");
             }
         }
 
-        // Persisted per message: a crash mid-run must not re-send anyone.
+        // Persisted per message: a crash mid-run must not dispatch anyone twice.
         manifest.save(&args.state_dir)?;
     }
 
-    println!("  sent:   {sent}");
+    let completed_label = if resolved_at.is_some() {
+        "scheduled"
+    } else {
+        "sent"
+    };
+    println!("  {completed_label}: {completed}");
     if failed > 0 {
         println!("  failed: {failed}");
         println!("Retry only the failures with:");
-        println!(
-            "  mxr-mailmerge send {} --retry-failed --yes",
-            args.campaign_id
-        );
+        match resolved_at.as_deref() {
+            Some(at) => println!(
+                "  mxr-mailmerge send {} --retry-failed --at {at} --yes",
+                args.campaign_id
+            ),
+            None => println!(
+                "  mxr-mailmerge send {} --retry-failed --yes",
+                args.campaign_id
+            ),
+        }
     }
     Ok(())
 }
@@ -445,11 +518,13 @@ fn run_status(args: StatusArgs) -> anyhow::Result<()> {
     println!("  account:  {}", manifest.account);
     println!("  created:  {}", manifest.created_at);
     println!("  drafted:  {}", manifest.count(RecordStatus::Drafted));
+    println!("  scheduled: {}", manifest.count(RecordStatus::Scheduled));
     println!("  sent:     {}", manifest.count(RecordStatus::Sent));
     println!("  failed:   {}", manifest.count(RecordStatus::Failed));
     for entry in &manifest.records {
         let status = match entry.status {
             RecordStatus::Drafted => "drafted",
+            RecordStatus::Scheduled => "scheduled",
             RecordStatus::Sent => "sent",
             RecordStatus::Failed => "failed",
         };
@@ -563,6 +638,7 @@ mod tests {
         assert!(!args.yes);
         assert!(!args.dry_run);
         assert!(!args.retry_failed);
+        assert!(args.at.is_none());
     }
 
     #[test]
@@ -588,6 +664,15 @@ mod tests {
         // Each flag alone still parses, or the conflict would be vacuous.
         assert!(Cli::try_parse_from(["mxr-mailmerge", "send", "c1", "--yes"]).is_ok());
         assert!(Cli::try_parse_from(["mxr-mailmerge", "send", "c1", "--dry-run"]).is_ok());
+        assert!(Cli::try_parse_from([
+            "mxr-mailmerge",
+            "send",
+            "c1",
+            "--at",
+            "2026-08-05T09:00:00+01:00",
+            "--dry-run",
+        ])
+        .is_ok());
     }
 
     #[test]
@@ -1042,6 +1127,19 @@ mod tests {
         }
 
         #[test]
+        fn a_scheduled_dry_run_resolves_time_but_dispatches_nothing() {
+            let campaign = Campaign::new(Stub::new());
+            campaign.draft(&["--yes"]).unwrap();
+            campaign
+                .send(&["--at", "tomorrow 9am", "--dry-run"])
+                .unwrap();
+
+            assert_eq!(campaign.stub.calls_to("send-time").len(), 1);
+            assert!(campaign.stub.calls_to("send").is_empty());
+            assert_eq!(campaign.manifest().count(RecordStatus::Scheduled), 0);
+        }
+
+        #[test]
         fn a_confirmed_send_sends_each_draft_once_and_never_again() {
             let campaign = Campaign::new(Stub::new());
             campaign.draft(&["--yes"]).unwrap();
@@ -1062,6 +1160,35 @@ mod tests {
                 2,
                 "--retry-failed resent a message that was already sent"
             );
+        }
+
+        #[test]
+        fn a_confirmed_schedule_uses_one_instant_and_never_dispatches_twice() {
+            let campaign = Campaign::new(Stub::new());
+            campaign.draft(&["--yes"]).unwrap();
+            campaign
+                .send(&["--at", "2026-08-05T09:00:00+01:00", "--yes"])
+                .unwrap();
+
+            assert_eq!(campaign.stub.calls_to("send-time").len(), 1);
+            let sends = campaign.stub.calls_to("send");
+            assert_eq!(sends.len(), 2);
+            let ids: BTreeSet<&str> = sends.iter().map(|argv| argv[1].as_str()).collect();
+            assert_eq!(
+                ids.len(),
+                2,
+                "the same draft was scheduled twice: {sends:?}"
+            );
+            assert!(sends.iter().all(|argv| {
+                campaign.stub.value_after(argv, "--at") == Some("2026-08-05T08:00:00Z")
+            }));
+            assert_eq!(campaign.manifest().count(RecordStatus::Scheduled), 2);
+            assert_eq!(campaign.manifest().count(RecordStatus::Sent), 0);
+
+            campaign
+                .send(&["--at", "2026-08-05T09:00:00+01:00", "--yes"])
+                .unwrap();
+            assert_eq!(campaign.stub.calls_to("send").len(), 2);
         }
 
         #[test]
@@ -1086,7 +1213,7 @@ mod tests {
             let failed_draft = failed.draft_id.clone().unwrap();
             manifest.upsert(RecordEntry {
                 status: RecordStatus::Failed,
-                error: Some(FailureReason::SendRefused),
+                error: Some(FailureReason::Send),
                 ..failed
             });
             manifest.save(&state).unwrap();
@@ -1117,6 +1244,19 @@ mod tests {
                 .failed()
                 .iter()
                 .all(|entry| entry.draft_id.is_some()));
+        }
+
+        #[test]
+        fn a_failed_schedule_is_recorded_separately_from_a_failed_send() {
+            let campaign = Campaign::new(Stub::send_fails("schedule said no"));
+            campaign.draft(&["--yes"]).unwrap();
+            campaign.send(&["--at", "tomorrow 9am", "--yes"]).unwrap();
+
+            let manifest = campaign.manifest();
+            assert_eq!(manifest.count(RecordStatus::Scheduled), 0);
+            assert!(manifest.failed().iter().all(|entry| {
+                entry.error == Some(FailureReason::Schedule) && entry.draft_id.is_some()
+            }));
         }
 
         #[test]

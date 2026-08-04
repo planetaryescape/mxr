@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.14"
+    "version": "0.6.15"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -397,6 +397,9 @@
           },
           "401": {
             "description": "Missing or invalid bridge token"
+          },
+          "409": {
+            "description": "The draft's body is a supplied HTML document, which the markdown compose editor cannot represent. Body carries `code: \"html_draft_not_editable\"` and `previewHtml` (the document verbatim, for read-only display). Retrying cannot succeed."
           }
         }
       }
@@ -5129,100 +5132,111 @@
         }
       },
       "Draft": {
-        "type": "object",
-        "required": [
-          "id",
-          "account_id",
-          "to",
-          "cc",
-          "bcc",
-          "subject",
-          "body_markdown",
-          "attachments",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "account_id": {
-            "$ref": "#/components/schemas/AccountId"
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DraftContentSchema",
+            "description": "The body, as either a markdown source or a supplied HTML document.\nFlattened so the JSON stays flat: `body_markdown`, or\n`body_html`+`body_text`."
           },
-          "attachments": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "bcc": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Address"
-            }
-          },
-          "body_markdown": {
-            "type": "string"
-          },
-          "cc": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Address"
-            }
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "from": {
-            "oneOf": [
-              {
-                "type": "null"
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "account_id",
+              "to",
+              "cc",
+              "bcc",
+              "subject",
+              "attachments",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
               },
-              {
-                "$ref": "#/components/schemas/Address",
-                "description": "Per-message From override. `None` sends from the account's primary\naddress (default). `Some(addr)` sends from a specific owned address\n(the primary or a registered alias); the daemon validates ownership at\nsend time and rejects a `from` the account does not own. The name falls\nback to the account's display name when the override carries none."
-              }
-            ]
-          },
-          "id": {
-            "$ref": "#/components/schemas/DraftId"
-          },
-          "inline_calendar_reply": {
-            "oneOf": [
-              {
-                "type": "null"
+              "attachments": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               },
-              {
-                "$ref": "#/components/schemas/InlineCalendarReply",
-                "description": "Set when this draft is the user-comment compose path for an iCal\ninvite REPLY. The outbound builder emits the special\n`multipart/alternative` (text/plain + text/calendar;method=REPLY)\nlayout when this is `Some`. The daemon's send-completion hook reads\n`source_message_id`+`partstat` to update the local store's PARTSTAT\nafter the email lands in Sent."
-              }
-            ]
-          },
-          "intent": {
-            "$ref": "#/components/schemas/DraftIntent"
-          },
-          "reply_headers": {
-            "oneOf": [
-              {
-                "type": "null"
+              "bcc": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Address"
+                }
               },
-              {
-                "$ref": "#/components/schemas/ReplyHeaders"
+              "cc": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Address"
+                }
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "from": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Address",
+                    "description": "Per-message From override. `None` sends from the account's primary\naddress (default). `Some(addr)` sends from a specific owned address\n(the primary or a registered alias); the daemon validates ownership at\nsend time and rejects a `from` the account does not own. The name falls\nback to the account's display name when the override carries none."
+                  }
+                ]
+              },
+              "id": {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              "inline_assets": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InlineAsset"
+                },
+                "description": "CID-referenced inline images for an HTML body. Always empty for a\nmarkdown draft."
+              },
+              "inline_calendar_reply": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/InlineCalendarReply",
+                    "description": "Set when this draft is the user-comment compose path for an iCal\ninvite REPLY. The outbound builder emits the special\n`multipart/alternative` (text/plain + text/calendar;method=REPLY)\nlayout when this is `Some`. The daemon's send-completion hook reads\n`source_message_id`+`partstat` to update the local store's PARTSTAT\nafter the email lands in Sent."
+                  }
+                ]
+              },
+              "intent": {
+                "$ref": "#/components/schemas/DraftIntent"
+              },
+              "reply_headers": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReplyHeaders"
+                  }
+                ]
+              },
+              "subject": {
+                "type": "string"
+              },
+              "to": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Address"
+                }
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
               }
-            ]
-          },
-          "subject": {
-            "type": "string"
-          },
-          "to": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Address"
             }
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
           }
-        }
+        ]
       },
       "DraftCommitmentCandidateData": {
         "type": "object",
@@ -5268,6 +5282,33 @@
           },
           "who_owes": {
             "type": "string"
+          }
+        }
+      },
+      "DraftContentSchema": {
+        "type": "object",
+        "description": "Documents the flattened [`DraftContent`] wire shape for OpenAPI.\n\n`DraftContent` hand-rolls its serde impls to stay backward compatible, so\na derived schema on the enum itself would describe the Rust shape rather\nthan the JSON. This mirrors what actually goes over the wire.",
+        "properties": {
+          "body_html": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Present on HTML drafts. Mutually exclusive with `body_markdown`."
+          },
+          "body_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Present on markdown drafts."
+          },
+          "body_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional `text/plain` alternative supplied alongside `body_html`."
           }
         }
       },
@@ -5991,6 +6032,23 @@
           "error",
           "repair_required"
         ]
+      },
+      "InlineAsset": {
+        "type": "object",
+        "description": "An image referenced from an HTML body by `<img src=\"cid:NAME\">`.\n\nOnly the path crosses IPC; the daemon reads the bytes at send time, the\nsame contract `Draft::attachments` uses. Keeping bytes off the wire matters\nbecause the IPC frame cap is 16 MiB.",
+        "required": [
+          "cid",
+          "path"
+        ],
+        "properties": {
+          "cid": {
+            "type": "string",
+            "description": "The `cid:` token the HTML references, without angle brackets."
+          },
+          "path": {
+            "type": "string"
+          }
+        }
       },
       "InlineCalendarReply": {
         "type": "object",

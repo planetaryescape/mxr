@@ -98,11 +98,14 @@ impl Mxr {
         })
     }
 
-    /// Send one already-created draft through mxr's normal send path.
-    pub fn send_draft(&self, draft_id: &str) -> anyhow::Result<()> {
-        let output = Command::new(&self.binary)
-            .arg("send")
-            .arg(draft_id)
+    /// Send or schedule one already-created draft through mxr's normal path.
+    pub fn send_draft(&self, draft_id: &str, at: Option<&str>) -> anyhow::Result<()> {
+        let mut command = Command::new(&self.binary);
+        command.arg("send").arg(draft_id);
+        if let Some(at) = at {
+            command.arg("--at").arg(at);
+        }
+        let output = command
             .arg("--format")
             .arg("json")
             .output()
@@ -115,6 +118,48 @@ impl Mxr {
             );
         }
         Ok(())
+    }
+
+    /// Ask mxr to parse a send time without mutating a draft, then return the
+    /// absolute UTC instant it reports. Resolving once keeps a batch-wide
+    /// relative value such as `in 2h` identical for every draft.
+    pub fn resolve_send_time(
+        &self,
+        account: &str,
+        recipient: &str,
+        at: &str,
+    ) -> anyhow::Result<String> {
+        let output = Command::new(&self.binary)
+            .arg("send-time")
+            .arg(recipient)
+            .arg("--account")
+            .arg(account)
+            .arg("--at")
+            .arg(at)
+            .arg("--format")
+            .arg("json")
+            .output()
+            .with_context(|| format!("running `{} send-time`", self.binary))?;
+
+        if !output.status.success() {
+            bail!(
+                "{}",
+                first_lines(&String::from_utf8_lossy(&output.stderr), 6)
+            );
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let value: serde_json::Value = serde_json::from_str(stdout.trim()).with_context(|| {
+            format!(
+                "parsing `mxr send-time` JSON output: {}",
+                first_lines(&stdout, 3)
+            )
+        })?;
+        value
+            .get("proposed_at")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+            .ok_or_else(|| anyhow::anyhow!("`mxr send-time` JSON had no proposed_at"))
     }
 
     /// Confirm the mxr binary is reachable before a run starts.
@@ -320,20 +365,51 @@ mod tests {
         fn send_hands_the_draft_id_back_to_mxr() {
             let stub = Stub::new();
             let mxr = Mxr::new(Some(stub.binary()));
-            mxr.send_draft("draft-7").unwrap();
+            mxr.send_draft("draft-7", None).unwrap();
 
             let argv = stub.calls().remove(0);
             assert_eq!(argv[0], "send");
             assert_eq!(argv[1], "draft-7");
+            assert!(!argv.contains(&"--at".to_string()));
+        }
+
+        #[test]
+        fn scheduled_send_hands_one_absolute_time_to_mxr() {
+            let stub = Stub::new();
+            let mxr = Mxr::new(Some(stub.binary()));
+            mxr.send_draft("draft-7", Some("2026-08-05T08:00:00Z"))
+                .unwrap();
+
+            let argv = stub.calls_to("send").remove(0);
+            assert_eq!(argv[1], "draft-7");
+            assert_eq!(
+                stub.value_after(&argv, "--at"),
+                Some("2026-08-05T08:00:00Z")
+            );
         }
 
         #[test]
         fn a_failing_send_is_an_error() {
             let stub = Stub::failing("smtp said no");
             let err = Mxr::new(Some(stub.binary()))
-                .send_draft("draft-7")
+                .send_draft("draft-7", None)
                 .unwrap_err();
             assert!(err.to_string().contains("smtp said no"), "{err}");
+        }
+
+        #[test]
+        fn send_time_is_resolved_once_through_mxr() {
+            let stub = Stub::new();
+            let mxr = Mxr::new(Some(stub.binary()));
+            let resolved = mxr
+                .resolve_send_time("notto", "a@example.com", "tomorrow 9am")
+                .unwrap();
+
+            assert_eq!(resolved, "2026-08-05T08:00:00Z");
+            let argv = stub.calls_to("send-time").remove(0);
+            assert_eq!(argv[1], "a@example.com");
+            assert_eq!(stub.value_after(&argv, "--account"), Some("notto"));
+            assert_eq!(stub.value_after(&argv, "--at"), Some("tomorrow 9am"));
         }
 
         #[test]

@@ -98,6 +98,9 @@ case "$1" in
   send)
 {send}
     ;;
+  send-time)
+    printf '%s\n' '{{"proposed_at":"2026-08-05T08:00:00Z"}}'; exit 0
+    ;;
 esac
 echo "stub got an unexpected command: $1" >&2
 exit 1

@@ -156,10 +156,14 @@ export function SearchResultsRoute() {
   }
 
   const tokens = parseSearchTokens(q);
-  const pages = results.data?.pages ?? [];
-  const groups = useMemo(() => mergeSearchGroups(pages.flatMap((page) => page.groups)), [pages]);
+  const pages = results.data?.pages;
+  const groups = useMemo(
+    () => mergeSearchGroups((pages ?? []).flatMap((page) => page.groups)),
+    [pages],
+  );
   const loadedCount = groups.reduce((sum, group) => sum + group.rows.length, 0);
-  const resultCount = pages[0]?.total ?? loadedCount;
+  const resultCount = pages?.[0]?.total ?? loadedCount;
+  const llmCalls = pages?.[0]?.llm_calls;
   const hasMore = results.hasNextPage;
 
   useEffect(() => {
@@ -392,8 +396,8 @@ export function SearchResultsRoute() {
           <div className="flex items-center justify-between px-4 py-2 text-2xs text-muted-foreground">
             <span>
               {loadedCount} of {resultCount} results · {mode} · {sort}
-              {scope === "triage" && typeof pages[0]?.llm_calls === "number"
-                ? ` · ${pages[0].llm_calls} LLM calls`
+              {scope === "triage" && typeof llmCalls === "number"
+                ? ` · ${llmCalls} LLM calls`
                 : ""}
             </span>
             <span>{savedSearches.data?.searches.length ?? 0} saved searches</span>

@@ -347,10 +347,10 @@ async function runMailActions(actions: SupportedRuleAction[], ids: string[]): Pr
   if (actions.length === 2 && actions[0]?.kind === "read" && actions[1]?.kind === "archive") {
     return readAndArchiveMessages(ids);
   }
-  let last: MutationResponse | null = null;
-  for (const action of actions) {
-    last = await runMailAction(action, ids);
-  }
+  const last = await actions.reduce<Promise<MutationResponse | null>>(
+    (previous, action) => previous.then(() => runMailAction(action, ids)),
+    Promise.resolve(null),
+  );
   if (!last) throw new Error("No actions to apply");
   return last;
 }

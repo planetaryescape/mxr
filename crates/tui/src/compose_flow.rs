@@ -877,10 +877,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(ready.account_id, account_id);
-        assert!(ready
-            .initial_content
-            .contains("to: alice@example.com, bob@example.com"));
-        assert!(ready.initial_content.contains("subject: Lunch"));
+        let (frontmatter, _) =
+            mxr_compose::frontmatter::parse_compose_file(&ready.initial_content).unwrap();
+        assert_eq!(frontmatter.to, "alice@example.com, bob@example.com");
+        assert_eq!(frontmatter.subject, "Lunch");
 
         let _ = std::fs::remove_file(ready.draft_path);
     }

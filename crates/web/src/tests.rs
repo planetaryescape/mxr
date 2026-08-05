@@ -3691,10 +3691,12 @@ async fn saving_a_restored_draft_to_server_updates_local_then_pushes_provider() 
     let local = store.snapshot();
     assert_eq!(local.len(), 1);
     assert_eq!(local[0].subject, "Quarterly plan v2");
-    let provider = provider_drafts.lock().unwrap();
-    assert_eq!(provider.len(), 1);
-    assert_eq!(provider[0].id, draft_id);
-    assert_eq!(provider[0].subject, "Quarterly plan v2");
+    {
+        let provider = provider_drafts.lock().unwrap();
+        assert_eq!(provider.len(), 1);
+        assert_eq!(provider[0].id, draft_id);
+        assert_eq!(provider[0].subject, "Quarterly plan v2");
+    }
 
     mxr_compose::delete_draft_file_async(Path::new(&draft_path))
         .await

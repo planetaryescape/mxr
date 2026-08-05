@@ -420,11 +420,28 @@ impl App {
         }
 
         if self.modals.drafts.visible {
+            if self.modals.drafts.operation_in_flight {
+                return match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') => Some(Action::CloseStoredDraftsModal),
+                    _ => None,
+                };
+            }
+            if self.modals.drafts.confirmation.is_some() {
+                return match key.code {
+                    KeyCode::Char('y') => Some(Action::StoredDraftsModalConfirm),
+                    KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('q') => {
+                        Some(Action::StoredDraftsModalCancelConfirmation)
+                    }
+                    _ => None,
+                };
+            }
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseStoredDraftsModal),
                 (KeyCode::Down | KeyCode::Char('j'), _) => Some(Action::StoredDraftsModalNext),
                 (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::StoredDraftsModalPrev),
                 (KeyCode::Enter | KeyCode::Char('e'), _) => Some(Action::StoredDraftsModalEdit),
+                (KeyCode::Char('d'), _) => Some(Action::StoredDraftsModalPreviewDelete),
+                (KeyCode::Char('p'), _) => Some(Action::StoredDraftsModalPreviewPush),
                 _ => None,
             };
         }

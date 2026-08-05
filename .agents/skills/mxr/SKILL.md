@@ -37,6 +37,9 @@ results, `cat`/`thread` views, summaries, exports).
 5. Commands auto-start the daemon; use `mxr restart` only when you need a fresh daemon after local code changes.
 6. Compose uses `$EDITOR` unless `--body` or `--body-stdin` is supplied.
 7. `mxr reset --hard` and `mxr burn` wipe local runtime state only unless `--including-config` is passed.
+8. Drafts are canonical in mxr's local store. `mxr drafts push <id>` makes a
+   one-way provider copy and preserves the local draft; preview first because
+   repeating it creates another provider draft.
 
 ## Common commands
 
@@ -48,6 +51,8 @@ mxr archive --search "from:noreply older:30d" --dry-run
 mxr archive --search "from:noreply older:30d" --yes
 mxr compose --to a@example.com --subject "Hi" --body "Hello" --dry-run
 mxr reply <message_id> --body "Thanks" --dry-run
+mxr drafts delete <draft_id> --dry-run --format json
+mxr drafts push <draft_id> --dry-run --format json
 mxr sync --status --format json
 mxr events --format jsonl
 mxr logs --level error --since 1h --format jsonl

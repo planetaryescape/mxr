@@ -3605,6 +3605,102 @@ async fn saving_a_restored_draft_updates_it_in_place_instead_of_storing_a_copy()
         .ok();
 }
 
+#[tokio::test]
+async fn saving_a_restored_draft_to_server_updates_local_then_pushes_provider() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &draft_id,
+        &account_id,
+        "Quarterly plan",
+        "First pass.",
+        Utc::now() - chrono::Duration::days(3),
+    )]);
+    let provider_drafts = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Draft>::new()));
+    let responder_store = store.clone();
+    let responder_provider_drafts = provider_drafts.clone();
+    let account = sample_account(&account_id);
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| {
+            let data = match request {
+                Request::ListDrafts => ResponseData::Drafts {
+                    drafts: responder_store.snapshot(),
+                },
+                Request::ListAccounts => ResponseData::Accounts {
+                    accounts: vec![account.clone()],
+                },
+                Request::UpdateDraft { draft } => match responder_store.update(draft) {
+                    Ok(()) => ResponseData::Ack,
+                    Err(message) => {
+                        return Some(Response::Error {
+                            message,
+                            kind: Default::default(),
+                            code: String::new(),
+                            retryable: false,
+                            details: None,
+                        });
+                    }
+                },
+                Request::SaveDraftToServer { draft } => {
+                    responder_provider_drafts.lock().unwrap().push(draft);
+                    ResponseData::Ack
+                }
+                _ => return None,
+            };
+            Some(Response::Ok { data })
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+
+    let draft_path = restore_session_path(&client, addr, &draft_id).await;
+    edit_session(
+        &client,
+        addr,
+        &draft_path,
+        "Quarterly plan v2",
+        "Second pass, with numbers.",
+    )
+    .await;
+
+    let response = client
+        .post(format!("http://{addr}/compose/session/save"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&json!({
+            "draft_path": draft_path,
+            "account_id": account_id.to_string(),
+            "draft_id": draft_id.to_string(),
+            "save_to_server": true,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    let local = store.snapshot();
+    assert_eq!(local.len(), 1);
+    assert_eq!(local[0].subject, "Quarterly plan v2");
+    let provider = provider_drafts.lock().unwrap();
+    assert_eq!(provider.len(), 1);
+    assert_eq!(provider[0].id, draft_id);
+    assert_eq!(provider[0].subject, "Quarterly plan v2");
+
+    mxr_compose::delete_draft_file_async(Path::new(&draft_path))
+        .await
+        .ok();
+}
+
 /// A compose session that was never restored from a stored draft has nothing
 /// to update, so it must still create one.
 #[tokio::test]

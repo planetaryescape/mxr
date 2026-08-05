@@ -1,5 +1,5 @@
 use super::centered_rect;
-use crate::app::DraftsModalState;
+use crate::app::{DraftsModalState, StoredDraftOperation};
 use crate::theme::Theme;
 use mxr_compose::draft_codec::format_addresses;
 use ratatui::layout::Margin;
@@ -17,7 +17,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
     let modal_area = centered_rect(MODAL_WIDTH_PERCENT, MODAL_HEIGHT_PERCENT, area);
     Clear.render(modal_area, frame.buffer_mut());
 
-    let title = " Drafts — ↑/↓ navigate · Enter/e edit · Esc close ";
+    let title = " Drafts — ↑/↓ navigate · Enter/e edit · d delete · p provider copy · Esc close ";
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
@@ -25,6 +25,19 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
         .style(Style::default().bg(theme.modal_bg));
     let inner = block.inner(modal_area);
     frame.render_widget(block, modal_area);
+
+    if let Some(operation) = &state.confirmation {
+        draw_confirmation(frame, inner, operation, theme);
+        return;
+    }
+
+    if state.operation_in_flight {
+        let paragraph = Paragraph::new("Applying draft operation...")
+            .style(Style::default().fg(theme.text_muted))
+            .alignment(Alignment::Center);
+        frame.render_widget(paragraph, inner.inner(Margin::new(1, 1)));
+        return;
+    }
 
     if let Some(message) = &state.error {
         let paragraph = Paragraph::new(format!("Failed to load drafts: {message}"))
@@ -143,6 +156,67 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
     }
 }
 
+fn draw_confirmation(
+    frame: &mut Frame,
+    area: Rect,
+    operation: &StoredDraftOperation,
+    theme: &Theme,
+) {
+    let (heading, explanation, draft, confirm_label) = match operation {
+        StoredDraftOperation::Delete { draft } => (
+            "Delete this local draft?",
+            "This permanently removes mxr's canonical copy.",
+            draft,
+            "[y] delete",
+        ),
+        StoredDraftOperation::Push { draft, provider } => (
+            "Copy this draft to the provider?",
+            "The local draft stays canonical. Repeating creates another provider draft.",
+            draft,
+            if provider.eq_ignore_ascii_case("gmail") {
+                "[y] copy to Gmail Drafts"
+            } else {
+                "[y] copy to provider Drafts"
+            },
+        ),
+    };
+
+    let subject = if draft.subject.trim().is_empty() {
+        "(no subject)"
+    } else {
+        draft.subject.as_str()
+    };
+    let mut lines = vec![
+        Line::from(Span::styled(
+            heading,
+            Style::default().fg(theme.warning).bold(),
+        )),
+        Line::from(""),
+        Line::from(format!("Subject: {subject}")),
+        Line::from(format!("To:      {}", format_addresses(&draft.to))),
+        Line::from(format!("Draft:   {}", draft.id)),
+    ];
+    if let StoredDraftOperation::Push { provider, .. } = operation {
+        lines.push(Line::from(format!("Provider: {provider}")));
+    }
+    lines.extend([
+        Line::from(""),
+        Line::from(explanation),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(confirm_label, Style::default().fg(theme.accent).bold()),
+            Span::raw("   [Esc/n] cancel"),
+        ]),
+    ]);
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().fg(theme.text_primary))
+            .wrap(Wrap { trim: false }),
+        area.inner(Margin::new(2, 1)),
+    );
+}
+
 /// Flatten a draft body into the text the detail pane shows.
 ///
 /// `DraftContent::analysis_text` is empty for an HTML draft that carries no
@@ -256,6 +330,45 @@ mod tests {
             snapshot.contains("Draft body text."),
             "detail pane must render body preview; got:\n{snapshot}",
         );
+    }
+
+    #[test]
+    fn delete_preview_names_the_exact_draft_and_requires_confirmation() {
+        let mut state = DraftsModalState::default();
+        state.open_loading();
+        let draft = draft("Q4 plan", "alice@example.com", "Draft body text.");
+        let draft_id = draft.id.clone();
+        state.set_drafts(vec![draft]);
+        assert!(state.preview_delete());
+
+        let snapshot = render_to_string(100, 20, |frame| {
+            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
+        });
+        assert!(snapshot.contains("Delete this local draft?"));
+        assert!(snapshot.contains("Q4 plan"));
+        assert!(snapshot.contains(&draft_id.to_string()));
+        assert!(snapshot.contains("[y] delete"));
+    }
+
+    #[test]
+    fn provider_copy_preview_explains_one_way_duplicate_semantics() {
+        let mut state = DraftsModalState::default();
+        state.open_loading();
+        state.set_drafts(vec![draft(
+            "Q4 plan",
+            "alice@example.com",
+            "Draft body text.",
+        )]);
+        assert!(state.preview_push("gmail".into()));
+
+        let snapshot = render_to_string(100, 20, |frame| {
+            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
+        });
+        assert!(snapshot.contains("Copy this draft to the provider?"));
+        assert!(snapshot.contains("Provider: gmail"));
+        assert!(snapshot.contains("local draft stays canonical"));
+        assert!(snapshot.contains("another provider draft"));
+        assert!(snapshot.contains("copy to Gmail Drafts"));
     }
 
     fn html_draft(subject: &str, html: &str, text: Option<&str>) -> Draft {

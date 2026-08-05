@@ -773,7 +773,7 @@ pub async fn drafts_recover(
                 }
                 println!();
                 println!("Resume any with: mxr drafts resume <draft-id>");
-                println!("Discard any with: mxr drafts discard <draft-id>");
+                println!("Delete any with: mxr drafts delete <draft-id>");
             }
         }
     }
@@ -805,13 +805,21 @@ pub async fn drafts_resume(draft_id: String, account: Option<String>) -> anyhow:
     }
 }
 
-/// CLI surface for `mxr drafts discard <id>`. Permanently deletes the
-/// draft. Use after `mxr drafts recover` when you don't want to retry.
-pub async fn drafts_discard(draft_id: String, account: Option<String>) -> anyhow::Result<()> {
+/// CLI surface for `mxr drafts delete <id>` (`discard` is a compatibility
+/// alias). Resolves the same draft for preview and deletion.
+pub async fn drafts_discard(
+    draft_id: String,
+    account: Option<String>,
+    dry_run: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     let parsed = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
-    get_draft_for_account(&mut client, &parsed, account_id.as_ref()).await?;
+    let draft = get_draft_for_account(&mut client, &parsed, account_id.as_ref()).await?;
+    if dry_run {
+        return print_draft_delete_result(&draft, true, format);
+    }
     let resp = client
         .request(Request::DeleteDraft {
             draft_id: parsed.clone(),
@@ -820,13 +828,158 @@ pub async fn drafts_discard(draft_id: String, account: Option<String>) -> anyhow
     match resp {
         Response::Ok {
             data: ResponseData::Ack,
-        } => {
-            println!("Discarded draft {parsed}");
-            Ok(())
-        }
+        } => print_draft_delete_result(&draft, false, format),
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
+}
+
+fn print_draft_delete_result(
+    draft: &Draft,
+    dry_run: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let payload = serde_json::json!({
+        "action": "delete_draft",
+        "dry_run": dry_run,
+        "deleted": !dry_run,
+        "draft_id": draft.id,
+        "account_id": draft.account_id,
+        "subject": draft.subject,
+        "to": draft.to.iter().map(|address| &address.email).collect::<Vec<_>>(),
+    });
+    match resolve_format(format) {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&payload)?),
+        OutputFormat::Jsonl => println!("{}", serde_json::to_string(&payload)?),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record(["action", "dry_run", "deleted", "draft_id", "subject"])?;
+            writer.write_record(vec![
+                "delete_draft".to_string(),
+                dry_run.to_string(),
+                (!dry_run).to_string(),
+                draft.id.to_string(),
+                draft.subject.clone(),
+            ])?;
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => println!("{}", draft.id),
+        OutputFormat::Table => {
+            if dry_run {
+                println!("Would delete draft {} — {}", draft.id, draft.subject);
+            } else {
+                println!("Deleted draft {}", draft.id);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Copy one local draft to a provider mailbox while preserving the canonical
+/// local row. Repeating this is intentionally another copy: mxr does not yet
+/// retain a provider draft id for update-in-place semantics.
+pub async fn drafts_push(
+    draft_id: String,
+    account: Option<String>,
+    dry_run: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let parsed = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
+    let mut client = IpcClient::connect().await?;
+    let selected_account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let draft = get_draft_for_account(&mut client, &parsed, selected_account_id.as_ref()).await?;
+    let provider = server_draft_provider(&mut client, &draft.account_id).await?;
+    if dry_run {
+        return print_draft_push_result(&draft, &provider, true, format);
+    }
+
+    expect_ack(
+        client
+            .request(Request::SaveDraftToServer {
+                draft: draft.clone(),
+            })
+            .await?,
+    )?;
+    print_draft_push_result(&draft, &provider, false, format)
+}
+
+async fn server_draft_provider(
+    client: &mut IpcClient,
+    account_id: &AccountId,
+) -> anyhow::Result<String> {
+    let accounts = crate::commands::expect_response(
+        client.request(Request::ListAccounts).await?,
+        |response| match response {
+            Response::Ok {
+                data: ResponseData::Accounts { accounts },
+            } => Some(accounts),
+            _ => None,
+        },
+    )?;
+    let account = accounts
+        .into_iter()
+        .find(|account| &account.account_id == account_id)
+        .ok_or_else(|| anyhow::anyhow!("Account {account_id} not found"))?;
+    if !account.capabilities.supports_server_drafts {
+        anyhow::bail!(
+            "Account '{}' ({}) does not support provider drafts; the local draft was not changed",
+            account.name,
+            account.provider_kind
+        );
+    }
+    Ok(account.provider_kind)
+}
+
+fn print_draft_push_result(
+    draft: &Draft,
+    provider: &str,
+    dry_run: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let payload = serde_json::json!({
+        "action": "copy_draft_to_provider",
+        "dry_run": dry_run,
+        "copied": !dry_run,
+        "draft_id": draft.id,
+        "account_id": draft.account_id,
+        "provider": provider,
+        "subject": draft.subject,
+        "to": draft.to.iter().map(|address| &address.email).collect::<Vec<_>>(),
+    });
+    match resolve_format(format) {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&payload)?),
+        OutputFormat::Jsonl => println!("{}", serde_json::to_string(&payload)?),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record([
+                "action", "dry_run", "copied", "draft_id", "provider", "subject",
+            ])?;
+            writer.write_record(vec![
+                "copy_draft_to_provider".to_string(),
+                dry_run.to_string(),
+                (!dry_run).to_string(),
+                draft.id.to_string(),
+                provider.to_string(),
+                draft.subject.clone(),
+            ])?;
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => println!("{}", draft.id),
+        OutputFormat::Table => {
+            if dry_run {
+                println!(
+                    "Would copy local draft {} — {} to {provider}",
+                    draft.id, draft.subject
+                );
+            } else {
+                println!(
+                    "Copied local draft {} to {provider}; local draft preserved",
+                    draft.id
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 /// CLI surface for `mxr drafts edit <id>`. Opens an existing stored draft

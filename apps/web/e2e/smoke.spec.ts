@@ -14,5 +14,6 @@ test("app shell renders against a real fake-provider daemon", async ({ page, req
   await expect(page).toHaveURL(/\/m\/inbox$/);
   // Sidebar and topbar are rendered with live bridge data.
   await expect(page.getByRole("button", { name: /compose/i })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Drafts" })).toBeVisible();
   await expect(page.getByText(/Fake Account|Demo/i).first()).toBeVisible();
 });

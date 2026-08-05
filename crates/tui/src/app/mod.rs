@@ -253,6 +253,9 @@ pub struct App {
     /// reports back via `AsyncResult::DraftEditReady` so `$EDITOR` can
     /// be opened on it.
     pub pending_draft_edit_request: Option<mxr_core::Draft>,
+    /// Confirmed delete/provider-copy operation captured from the stored-drafts
+    /// preview. The runtime drains this into the matching daemon request.
+    pub pending_draft_operation: Option<StoredDraftOperation>,
     /// Set when the Deliveries screen opens or its filter changes; the
     /// runtime drains this and dispatches a `Request::ListDeliveries`.
     pub pending_deliveries_refresh: bool,
@@ -398,6 +401,7 @@ impl App {
             pending_reply_queue_refresh: false,
             pending_drafts_refresh: false,
             pending_draft_edit_request: None,
+            pending_draft_operation: None,
             pending_deliveries_refresh: false,
             pending_delivery_resolve: None,
             pending_delivery_dismiss: None,
@@ -633,6 +637,8 @@ impl App {
     /// visible even when no pane-local loading indicator is active.
     pub fn has_in_flight_work(&self) -> bool {
         self.pending_mutation_count > 0
+            || self.modals.drafts.operation_in_flight
+            || self.pending_draft_operation.is_some()
             || self.search_is_pending()
             || self.mailbox.pending_thread_fetch.is_some()
             || self.mailbox.in_flight_thread_fetch.is_some()

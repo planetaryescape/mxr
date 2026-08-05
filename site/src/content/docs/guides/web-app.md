@@ -182,6 +182,16 @@ and the digit shortcut next to it.
 
 ## Compose: autocomplete and outbound undo
 
+The sidebar's **Drafts** entry is backed by mxr's canonical local draft store,
+not by a provider label. Drafts persisted in that store appear in one list.
+Each row opens the stored draft composer; deletion requires an explicit
+confirmation and permanently removes only the local draft.
+
+For accounts with provider-draft support (currently Gmail), the compose menu
+shows **Save to server draft**. It updates an opened local draft first, then
+copies that content to the provider. The local draft remains. This is not
+two-way sync: repeating the provider copy creates another provider draft.
+
 The compose pane fetches contact suggestions from
 `GET /api/v1/mail/contacts/autocomplete?q=...` with a 200 ms debounce.
 ArrowDown/ArrowUp move through the list, Enter commits the highlighted

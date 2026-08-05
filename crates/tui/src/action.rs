@@ -189,6 +189,14 @@ pub enum Action {
     /// round-trips through `Request::UpdateDraft`, preserving the
     /// draft's id instead of minting a new one.
     StoredDraftsModalEdit,
+    /// Preview permanent deletion of the selected local draft.
+    StoredDraftsModalPreviewDelete,
+    /// Preview a one-way copy of the selected local draft to its provider.
+    StoredDraftsModalPreviewPush,
+    /// Cancel the active stored-draft mutation preview.
+    StoredDraftsModalCancelConfirmation,
+    /// Commit the exact stored-draft operation shown in the preview.
+    StoredDraftsModalConfirm,
     ClearFilter,
     RefreshRules,
     ToggleRuleEnabled,

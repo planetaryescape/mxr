@@ -170,10 +170,14 @@ pub(super) struct ComposeSessionSendRequest {
     pub(super) account_id: String,
     /// The stored draft this session was restored from, when it was one — the
     /// same id the client passed to `ComposeSessionRestoreRequest`. Acted on by
-    /// the save handler only: with it, saving updates that draft in place;
-    /// without it, saving stores a new one.
+    /// the save handler only: with it, saving updates that local draft in
+    /// place before any requested provider copy.
     #[serde(default)]
     pub(super) draft_id: Option<String>,
+    /// Explicit provider-copy request. Ordinary saves keep a restored draft
+    /// local; this asks the daemon to persist the same content at the provider.
+    #[serde(default)]
+    pub(super) save_to_server: bool,
     /// Token from a prior safety-check report authorizing a send despite
     /// blockers. Forwarded to `SendDraft`; ignored by save/check handlers.
     #[serde(default)]

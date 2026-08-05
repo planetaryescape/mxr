@@ -858,6 +858,10 @@ impl MailSendProvider for GmailProvider {
         "gmail"
     }
 
+    fn supports_server_drafts(&self) -> bool {
+        true
+    }
+
     async fn send(
         &self,
         draft: &Draft,

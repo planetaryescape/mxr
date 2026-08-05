@@ -130,6 +130,12 @@ pub trait IdleWatcher: Send + Sync {
 #[async_trait]
 pub trait MailSendProvider: Send + Sync {
     fn name(&self) -> &str;
+
+    /// Whether this provider can persist drafts in the provider mailbox.
+    fn supports_server_drafts(&self) -> bool {
+        false
+    }
+
     async fn send(
         &self,
         draft: &Draft,

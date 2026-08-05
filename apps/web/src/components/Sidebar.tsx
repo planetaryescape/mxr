@@ -5,6 +5,7 @@ import {
   Calendar,
   ChevronsLeft,
   ChevronsRight,
+  FileText,
   Filter,
   History,
   Inbox,
@@ -45,6 +46,7 @@ interface NavItem {
 
 const primary: NavItem[] = [
   { to: "/m/inbox", label: "Mail", Icon: Mail, shortcut: "1" },
+  { to: "/drafts", label: "Drafts", Icon: FileText },
   { to: "/search", label: "Search", Icon: Search, shortcut: "2" },
   { to: "/analytics", label: "Analytics", Icon: Activity, shortcut: "3" },
   { to: "/rules", label: "Rules", Icon: Filter, shortcut: "4" },
@@ -60,7 +62,6 @@ const fallbackLenses: NavItem[] = [
   { to: "/m/inbox", label: "Inbox", Icon: Inbox },
   { to: "/m/starred", label: "Starred", Icon: Star },
   { to: "/m/snoozed", label: "Snoozed", Icon: Sparkles },
-  { to: "/m/drafts", label: "Drafts", Icon: Mail },
   { to: "/m/sent", label: "Sent", Icon: Send },
   { to: "/m/archive", label: "Archive", Icon: Archive },
   { to: "/m/trash", label: "Trash", Icon: Trash2 },

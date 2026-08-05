@@ -616,6 +616,50 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if let Some(operation) = app.pending_draft_operation.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                match operation {
+                    app::StoredDraftOperation::Delete { draft } => {
+                        let draft_id = draft.id.clone();
+                        let result = match ipc_call(
+                            &bg,
+                            Request::DeleteDraft { draft_id: draft.id },
+                        )
+                        .await
+                        {
+                            Ok(Response::Ok {
+                                data: ResponseData::Ack,
+                            }) => Ok(()),
+                            Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                            Err(error) => Err(error),
+                            _ => Err(MxrError::Ipc("unexpected response to DeleteDraft".into())),
+                        };
+                        AsyncResult::StoredDraftDeleted { draft_id, result }
+                    }
+                    app::StoredDraftOperation::Push { draft, provider } => {
+                        let draft_id = draft.id.clone();
+                        let result = match ipc_call(&bg, Request::SaveDraftToServer { draft }).await
+                        {
+                            Ok(Response::Ok {
+                                data: ResponseData::Ack,
+                            }) => Ok(()),
+                            Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                            Err(error) => Err(error),
+                            _ => Err(MxrError::Ipc(
+                                "unexpected response to SaveDraftToServer".into(),
+                            )),
+                        };
+                        AsyncResult::StoredDraftPushed {
+                            draft_id,
+                            provider,
+                            result,
+                        }
+                    }
+                }
+            });
+        }
+
         if app.pending_deliveries_refresh {
             app.pending_deliveries_refresh = false;
             let filter = app.deliveries.filter.as_str().to_string();
@@ -2077,6 +2121,39 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::StoredDraftsLoaded(Err(e)) => {
                             app.modals.drafts.set_error(e.to_string());
                             app.status_message = Some(format!("Drafts load failed: {e}"));
+                        }
+                        AsyncResult::StoredDraftDeleted { draft_id, result: Ok(()) } => {
+                            app.modals.drafts.finish_operation();
+                            app.modals.drafts.remove(&draft_id);
+                            app.status_message = Some(format!("Deleted local draft {draft_id}"));
+                            app.push_toast(crate::app::Toast::success("Draft deleted"));
+                        }
+                        AsyncResult::StoredDraftDeleted { result: Err(e), .. } => {
+                            app.modals.drafts.finish_operation();
+                            app.status_message = Some(format!("Draft delete failed: {e}"));
+                            app.push_toast(crate::app::Toast::error(format!(
+                                "Draft delete failed: {e}"
+                            )));
+                        }
+                        AsyncResult::StoredDraftPushed {
+                            draft_id,
+                            provider,
+                            result: Ok(()),
+                        } => {
+                            app.modals.drafts.finish_operation();
+                            app.status_message = Some(format!(
+                                "Copied draft {draft_id} to {provider}; local draft preserved"
+                            ));
+                            app.push_toast(crate::app::Toast::success(format!(
+                                "Draft copied to {provider}"
+                            )));
+                        }
+                        AsyncResult::StoredDraftPushed { result: Err(e), .. } => {
+                            app.modals.drafts.finish_operation();
+                            app.status_message = Some(format!("Provider draft copy failed: {e}"));
+                            app.push_toast(crate::app::Toast::error(format!(
+                                "Provider draft copy failed: {e}"
+                            )));
                         }
                         AsyncResult::DeliveriesList(Ok(rows)) => {
                             let count = rows.len();

@@ -142,6 +142,12 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 Some(Action::OpenAnalyticsScreen)
             }
+            (KeyState::WaitingForSecond { first: 'g', .. }, KeyCode::Char('E'), modifiers)
+                if plain_or_shift(modifiers) =>
+            {
+                self.state = KeyState::Normal;
+                Some(Action::OpenStoredDrafts)
+            }
             (
                 KeyState::WaitingForSecond { first: 'g', .. },
                 KeyCode::Char('y'),
@@ -370,6 +376,15 @@ mod tests {
         assert_eq!(first, None, "g alone must wait, not act");
         let second = input.handle_key(key_with(KeyCode::Char('A'), KeyModifiers::SHIFT));
         assert_eq!(second, Some(Action::OpenAnalyticsScreen));
+    }
+
+    #[test]
+    fn chord_g_then_capital_e_opens_local_drafts() {
+        let mut input = InputHandler::new();
+        let first = input.handle_key(key(KeyCode::Char('g')));
+        assert_eq!(first, None, "g alone must wait, not act");
+        let second = input.handle_key(key_with(KeyCode::Char('E'), KeyModifiers::SHIFT));
+        assert_eq!(second, Some(Action::OpenStoredDrafts));
     }
 
     /// Slice 1 / B1.5 (continued): lowercase `g a` must keep its

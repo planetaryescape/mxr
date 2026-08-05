@@ -706,6 +706,54 @@ impl App {
                 self.pending_draft_edit_request = Some(draft);
                 self.status_message = Some("Opening draft in editor...".into());
             }
+            Action::StoredDraftsModalPreviewDelete => {
+                if !self.modals.drafts.preview_delete() {
+                    self.status_message = Some("No draft selected".into());
+                }
+            }
+            Action::StoredDraftsModalPreviewPush => {
+                let Some(draft) = self.modals.drafts.selected() else {
+                    self.status_message = Some("No draft selected".into());
+                    return;
+                };
+                let Some(account) = self
+                    .accounts
+                    .page
+                    .accounts
+                    .iter()
+                    .find(|account| account.account_id == draft.account_id)
+                else {
+                    self.accounts.page.refresh_pending = true;
+                    self.status_message =
+                        Some("Account details are loading — try provider copy again".into());
+                    return;
+                };
+                if !account.capabilities.supports_server_drafts {
+                    self.status_message = Some(format!(
+                        "Account '{}' ({}) does not support provider drafts; the local draft was not changed",
+                        account.name, account.provider_kind
+                    ));
+                    return;
+                }
+                let provider = account.provider_kind.clone();
+                self.modals.drafts.preview_push(provider);
+            }
+            Action::StoredDraftsModalCancelConfirmation => {
+                self.modals.drafts.cancel_confirmation();
+            }
+            Action::StoredDraftsModalConfirm => {
+                let Some(operation) = self.modals.drafts.confirm() else {
+                    self.status_message = Some("No draft operation to confirm".into());
+                    return;
+                };
+                self.status_message = Some(match &operation {
+                    StoredDraftOperation::Delete { .. } => "Deleting local draft...".into(),
+                    StoredDraftOperation::Push { provider, .. } => {
+                        format!("Copying draft to {provider}...")
+                    }
+                });
+                self.pending_draft_operation = Some(operation);
+            }
             Action::SelectSavedSearch(query, mode) => {
                 self.mailbox.mailbox_view = MailboxView::Messages;
                 if self.screen == Screen::Search {

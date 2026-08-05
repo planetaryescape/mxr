@@ -27,6 +27,46 @@ mxr drafts
 mxr send DRAFT_ID
 ```
 
+## Local drafts and provider copies
+
+mxr's local draft store is canonical. The CLI, TUI, web app, and MCP all read
+the same rows. List or edit them with:
+
+```bash
+mxr drafts --format json
+mxr drafts edit DRAFT_ID
+```
+
+Delete uses the same draft selection for preview and commit. `discard` remains
+an alias for older scripts:
+
+```bash
+mxr drafts delete DRAFT_ID --dry-run --format json
+mxr drafts delete DRAFT_ID
+```
+
+Gmail accounts can also copy a local draft into Gmail Drafts:
+
+```bash
+mxr drafts push DRAFT_ID --dry-run --format json
+mxr drafts push DRAFT_ID
+```
+
+This is a one-way copy, not two-way draft sync. The mxr draft remains local and
+canonical. mxr does not retain the Gmail draft id yet, so repeating `push`
+creates another Gmail draft. Unsupported providers are refused without
+changing the local draft.
+
+In `mxr web`, **Drafts** in the sidebar opens this same local list. Open a row
+to edit it, use the confirmed trash action to delete it, or choose **Save to
+server draft** from the compose menu on an account that advertises provider
+draft support.
+
+In the TUI, open the command palette and choose **Drafts**, or press `gE`.
+The draft browser uses `e` to edit, `d` to preview and confirm local deletion,
+and `p` to preview and confirm a provider copy. Unsupported accounts are
+refused without changing the local draft.
+
 ## Save as a draft (don't send)
 
 `compose`, `reply`, `reply-all`, and `forward` each save a draft with

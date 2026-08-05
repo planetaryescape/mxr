@@ -51,6 +51,9 @@ pub(super) async fn list_runtime_accounts(
             .map(|provider| AccountCapabilitiesData::from(provider.capabilities()))
             .unwrap_or_default();
         capabilities.supports_send = send_kind.is_some();
+        capabilities.supports_server_drafts = state
+            .send_provider_for_account(&account.id)
+            .is_ok_and(|provider| provider.supports_server_drafts());
         let map_key = key.clone().unwrap_or_else(|| account.id.to_string());
 
         accounts.insert(
@@ -116,6 +119,17 @@ pub(super) async fn list_runtime_accounts(
             |provider| AccountCapabilitiesData::from(provider.capabilities()),
         );
         summary.capabilities.supports_send = summary.send_kind.is_some();
+        summary.capabilities.supports_server_drafts = state
+            .send_provider_for_account(&summary.account_id)
+            .map_or_else(
+                |_| {
+                    account
+                        .send
+                        .as_ref()
+                        .is_some_and(config_send_supports_server_drafts)
+                },
+                |provider| provider.supports_server_drafts(),
+            );
     }
 
     let mut accounts = accounts.into_values().collect::<Vec<_>>();
@@ -1282,7 +1296,18 @@ fn config_account_capabilities(account: &mxr_config::AccountConfig) -> AccountCa
         .map(config_sync_capabilities)
         .unwrap_or_default();
     capabilities.supports_send = account.send.is_some();
+    capabilities.supports_server_drafts = account
+        .send
+        .as_ref()
+        .is_some_and(config_send_supports_server_drafts);
     capabilities
+}
+
+fn config_send_supports_server_drafts(send: &mxr_config::SendProviderConfig) -> bool {
+    matches!(
+        send,
+        mxr_config::SendProviderConfig::Gmail | mxr_config::SendProviderConfig::Fake
+    )
 }
 
 fn config_sync_capabilities(sync: &mxr_config::SyncProviderConfig) -> AccountCapabilitiesData {
@@ -1704,5 +1729,30 @@ mod tests {
         });
 
         assert!(capabilities.push);
+    }
+
+    #[test]
+    fn gmail_send_config_advertises_server_drafts_but_smtp_does_not() {
+        let gmail = mxr_config::AccountConfig {
+            name: "Personal".into(),
+            email: "me@example.com".into(),
+            enabled: true,
+            sync: None,
+            send: Some(mxr_config::SendProviderConfig::Gmail),
+        };
+        let smtp = mxr_config::AccountConfig {
+            send: Some(mxr_config::SendProviderConfig::Smtp {
+                host: "smtp.example.com".into(),
+                port: 465,
+                username: "me@example.com".into(),
+                password_ref: "mxr/test".into(),
+                auth_required: true,
+                use_tls: true,
+            }),
+            ..gmail.clone()
+        };
+
+        assert!(config_account_capabilities(&gmail).supports_server_drafts);
+        assert!(!config_account_capabilities(&smtp).supports_server_drafts);
     }
 }

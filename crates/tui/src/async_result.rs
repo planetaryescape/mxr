@@ -200,6 +200,17 @@ pub(crate) enum AsyncResult {
     /// Snapshot of the user's locally-stored drafts (all accounts, most
     /// recently updated first), surfaced by the stored-drafts modal.
     StoredDraftsLoaded(Result<Vec<Draft>, MxrError>),
+    /// Completion of a confirmed local-draft deletion.
+    StoredDraftDeleted {
+        draft_id: mxr_core::DraftId,
+        result: Result<(), MxrError>,
+    },
+    /// Completion of a confirmed one-way provider draft copy.
+    StoredDraftPushed {
+        draft_id: mxr_core::DraftId,
+        provider: String,
+        result: Result<(), MxrError>,
+    },
     /// Editor-ready payload for editing a stored draft in place. Mirrors
     /// `ComposeReady`, but carries the *existing* `Draft` so the
     /// post-edit update preserves its id/account_id/created_at instead

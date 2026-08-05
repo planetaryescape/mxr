@@ -114,7 +114,8 @@ Core mail mutations accept either explicit message IDs as positional args, `--se
 | `mxr undo MUTATION_ID` | one mutation | ✓ | — | — |
 | `mxr send DRAFT_ID` | a draft | ✓ (`--at` conflicts) | — | — |
 | `mxr unsend DRAFT_ID` | a scheduled send | — | — | — |
-| `mxr drafts discard` | draft(s) | — | — | — |
+| `mxr drafts delete DRAFT_ID` | one local draft | ✓ | — | — |
+| `mxr drafts push DRAFT_ID` | one local draft + provider capability | ✓ | — | — |
 | `mxr rules dry-run` | a rule | n/a (always dry-run) | — | — |
 
 Account-scoped mutations use the same target set for preview and apply:

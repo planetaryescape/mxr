@@ -38,8 +38,9 @@ pub use modals::{
     PendingPlatformDispatch, PendingUnsubscribeAction, PendingUnsubscribeConfirm,
     PlatformModalState, ReplyQueueModalState, SaveAttachmentModalState, SavedSearchFormField,
     SavedSearchFormState, ScreenerModalState, SenderProfileModalState, SenderProfileTab,
-    SnippetsModalState, SnoozePanelState, SnoozePreset, ThreadSummaryModalState, UserError,
-    UserErrorSeverity, WhoisModalState, SNOOZE_PRESETS, USER_ERROR_LOG_CAPACITY, WARN_STATUS_TTL,
+    SnippetsModalState, SnoozePanelState, SnoozePreset, StoredDraftOperation,
+    ThreadSummaryModalState, UserError, UserErrorSeverity, WhoisModalState, SNOOZE_PRESETS,
+    USER_ERROR_LOG_CAPACITY, WARN_STATUS_TTL,
 };
 pub use rules::{RuleFormState, RulesPageState, RulesPanel, RulesState};
 pub use search::{

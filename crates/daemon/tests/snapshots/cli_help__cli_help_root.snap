@@ -73,7 +73,7 @@ Commands:
   reply               Reply to a message
   reply-all           Reply to all recipients
   forward             Forward a message
-  drafts              Manage drafts: list (default), recover orphaned in-flight sends, resume one for retry, or discard recovered drafts
+  drafts              Manage drafts: list (default), recover orphaned in-flight sends, resume one for retry, edit, delete, or copy drafts to a provider
   send                Send a draft by ID
   unsend              Cancel a previously-scheduled send. The draft itself is preserved
   archive             Archive a message (remove from inbox)

@@ -723,6 +723,30 @@ fn test_draft(subject: &str) -> Draft {
     }
 }
 
+fn test_draft_account(
+    account_id: AccountId,
+    supports_server_drafts: bool,
+) -> mxr_protocol::AccountSummaryData {
+    let mut capabilities = mxr_protocol::AccountCapabilitiesData::default();
+    capabilities.supports_server_drafts = supports_server_drafts;
+    mxr_protocol::AccountSummaryData {
+        account_id,
+        key: Some("work".into()),
+        name: "Work".into(),
+        email: "me@example.com".into(),
+        provider_kind: "gmail".into(),
+        sync_kind: Some("gmail".into()),
+        send_kind: Some("gmail".into()),
+        enabled: true,
+        is_default: true,
+        source: mxr_protocol::AccountSourceData::Runtime,
+        editable: mxr_protocol::AccountEditModeData::RuntimeOnly,
+        sync: None,
+        send: None,
+        capabilities,
+    }
+}
+
 #[test]
 fn open_stored_drafts_opens_modal_and_flags_refresh() {
     let mut app = App::new();
@@ -794,6 +818,91 @@ fn stored_drafts_edit_refuses_an_html_draft_and_says_why() {
         app.modals.drafts.visible,
         "nothing happened, so the drafts list must stay open for the user to pick another"
     );
+}
+
+#[test]
+fn stored_drafts_delete_previews_then_commits_the_captured_draft() {
+    let mut app = App::new();
+    let drafts = vec![test_draft("First"), test_draft("Second")];
+    let first_id = drafts[0].id.clone();
+    app.modals.drafts.open_loading();
+    app.modals.drafts.set_drafts(drafts);
+
+    let action = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    assert_eq!(action, Some(Action::StoredDraftsModalPreviewDelete));
+    app.apply(action.unwrap());
+    assert!(app.pending_draft_operation.is_none());
+
+    // Even if list state changes between preview and confirmation, commit must
+    // use the exact draft captured by the preview.
+    app.modals.drafts.selected_index = 1;
+    let action = app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+    assert_eq!(action, Some(Action::StoredDraftsModalConfirm));
+    app.apply(action.unwrap());
+
+    assert!(matches!(
+        app.pending_draft_operation,
+        Some(crate::app::StoredDraftOperation::Delete { ref draft }) if draft.id == first_id
+    ));
+}
+
+#[test]
+fn stored_drafts_delete_preview_can_be_cancelled_without_a_request() {
+    let mut app = App::new();
+    app.modals.drafts.open_loading();
+    app.modals.drafts.set_drafts(vec![test_draft("Keep me")]);
+    app.apply(Action::StoredDraftsModalPreviewDelete);
+
+    let action = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert_eq!(action, Some(Action::StoredDraftsModalCancelConfirmation));
+    app.apply(action.unwrap());
+
+    assert!(app.modals.drafts.confirmation.is_none());
+    assert!(app.pending_draft_operation.is_none());
+    assert_eq!(app.modals.drafts.drafts.len(), 1);
+}
+
+#[test]
+fn stored_drafts_provider_copy_previews_then_queues_same_draft() {
+    let mut app = App::new();
+    let draft = test_draft("Copy me");
+    let draft_id = draft.id.clone();
+    app.accounts.page.accounts = vec![test_draft_account(draft.account_id.clone(), true)];
+    app.modals.drafts.open_loading();
+    app.modals.drafts.set_drafts(vec![draft]);
+
+    app.apply(Action::StoredDraftsModalPreviewPush);
+    assert!(matches!(
+        app.modals.drafts.confirmation,
+        Some(crate::app::StoredDraftOperation::Push { ref draft, ref provider })
+            if draft.id == draft_id && provider == "gmail"
+    ));
+
+    app.apply(Action::StoredDraftsModalConfirm);
+    assert!(matches!(
+        app.pending_draft_operation,
+        Some(crate::app::StoredDraftOperation::Push { ref draft, ref provider })
+            if draft.id == draft_id && provider == "gmail"
+    ));
+}
+
+#[test]
+fn stored_drafts_provider_copy_refuses_unsupported_account() {
+    let mut app = App::new();
+    let draft = test_draft("Local only");
+    app.accounts.page.accounts = vec![test_draft_account(draft.account_id.clone(), false)];
+    app.modals.drafts.open_loading();
+    app.modals.drafts.set_drafts(vec![draft]);
+
+    app.apply(Action::StoredDraftsModalPreviewPush);
+
+    assert!(app.modals.drafts.confirmation.is_none());
+    assert!(app.pending_draft_operation.is_none());
+    assert!(app
+        .status_message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("does not support provider drafts"));
 }
 
 #[test]

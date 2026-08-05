@@ -12,6 +12,9 @@ This skill holds the context that used to bloat always-on agent files. Load it o
 - Local-first: SQLite is canonical, search indexes are rebuildable, and core mail works offline.
 - Daemon-backed: TUI, CLI, web, and scripts are clients over Unix-socket IPC.
 - CLI-first: new capabilities land in CLI at the same time as daemon support, with stable JSON/JSONL.
+- Client parity: a user-facing daemon capability is incomplete until CLI,
+  TUI, web, and MCP expose it. Interaction design may differ; capability may
+  not silently disappear in one client.
 - Provider-agnostic core: Gmail/IMAP/SMTP/Outlook behavior maps into the internal model in adapters.
 - Compose uses `$EDITOR` with YAML frontmatter plus markdown body.
 - Reader mode is plain text first; no inline images in the terminal rendering path.

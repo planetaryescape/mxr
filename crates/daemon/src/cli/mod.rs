@@ -1236,7 +1236,7 @@ pub enum Command {
         format: Option<OutputFormat>,
     },
     /// Manage drafts: list (default), recover orphaned in-flight sends,
-    /// resume one for retry, or discard recovered drafts.
+    /// resume one for retry, edit, delete, or copy drafts to a provider.
     Drafts {
         #[command(subcommand)]
         action: Option<DraftsAction>,
@@ -1804,11 +1804,24 @@ pub enum DraftsAction {
         /// Draft ID to resume.
         draft_id: String,
     },
-    /// Permanently delete a draft. Use this when a recovered draft is
-    /// no longer wanted instead of leaving it in the drafts list.
-    Discard {
+    /// Permanently delete a draft. `discard` remains as an alias for
+    /// compatibility with earlier mxr releases.
+    #[command(visible_alias = "discard")]
+    Delete {
         /// Draft ID to delete.
         draft_id: String,
+        /// Show the exact draft that would be deleted without deleting it.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Copy a local draft to the account's provider draft mailbox. The local
+    /// draft is preserved; repeating the command creates another provider copy.
+    Push {
+        /// Local draft ID to copy to the provider.
+        draft_id: String,
+        /// Show the exact draft and provider without creating the provider copy.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Open an existing draft in `$EDITOR` and re-save it in place under
     /// the same draft id. No new draft is created and nothing is
@@ -3071,6 +3084,48 @@ mod tests {
                 assert_eq!(message_id, "msg_1");
                 assert!(draft, "--draft should parse");
                 assert!(!yes);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn drafts_delete_is_primary_and_discard_remains_an_alias() {
+        let draft_id = uuid::Uuid::now_v7().to_string();
+        for action in ["delete", "discard"] {
+            let cli = Cli::parse_from(["mxr", "drafts", action, &draft_id, "--dry-run"]);
+            match cli.command {
+                Some(Command::Drafts {
+                    action:
+                        Some(DraftsAction::Delete {
+                            draft_id: parsed,
+                            dry_run,
+                        }),
+                    ..
+                }) => {
+                    assert_eq!(parsed, draft_id);
+                    assert!(dry_run);
+                }
+                other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+            }
+        }
+    }
+
+    #[test]
+    fn drafts_push_supports_dry_run() {
+        let draft_id = uuid::Uuid::now_v7().to_string();
+        let cli = Cli::parse_from(["mxr", "drafts", "push", &draft_id, "--dry-run"]);
+        match cli.command {
+            Some(Command::Drafts {
+                action:
+                    Some(DraftsAction::Push {
+                        draft_id: parsed,
+                        dry_run,
+                    }),
+                ..
+            }) => {
+                assert_eq!(parsed, draft_id);
+                assert!(dry_run);
             }
             other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
         }

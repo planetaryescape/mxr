@@ -6,6 +6,7 @@
 import {
   Archive,
   BarChart3,
+  FileText,
   Inbox,
   Mail,
   Search,
@@ -85,8 +86,9 @@ export const navigationActions: Action[] = [
     id: "nav.drafts",
     label: "Go to Drafts",
     group: "Navigate",
+    icon: FileText,
     shortcut: "g d",
-    run: go("/m/drafts"),
+    run: go("/drafts"),
   },
   {
     id: "nav.sent",

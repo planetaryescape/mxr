@@ -2,7 +2,7 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Manage drafts: list (default), recover orphaned in-flight sends, resume one for retry, or discard recovered drafts
+Manage drafts: list (default), recover orphaned in-flight sends, resume one for retry, edit, delete, or copy drafts to a provider
 
 Usage: mxr drafts [OPTIONS] [COMMAND]
 
@@ -10,7 +10,8 @@ Commands:
   list     Show all drafts (default if no subcommand)
   recover  Show drafts that look orphaned mid-send (status `'sending'`, stale heartbeat). The startup loop already auto-resets these after 1h; this surfaces them earlier so you can act now
   resume   Force-reset an orphaned draft to `'draft'` status so it can be re-sent via the normal pipeline. No-op if the draft is already in `'draft'`
-  discard  Permanently delete a draft. Use this when a recovered draft is no longer wanted instead of leaving it in the drafts list
+  delete   Permanently delete a draft. `discard` remains as an alias for compatibility with earlier mxr releases [alias: discard]
+  push     Copy a local draft to the account's provider draft mailbox. The local draft is preserved; repeating the command creates another provider copy
   edit     Open an existing draft in `$EDITOR` and re-save it in place under the same draft id. No new draft is created and nothing is discarded
   help     Print this message or the help of the given subcommand(s)
 

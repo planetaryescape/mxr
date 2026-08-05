@@ -912,16 +912,48 @@ async fn save_compose_session(
     let draft =
         compose_draft_from_file(&request.draft_path, &request.account_id, stored_draft_id).await?;
     let draft_id = draft.id.clone();
-    // A session opened from a stored draft edits that draft: `UpdateDraft`
-    // rewrites the row in place, keeps its `created_at`, and refuses when the
-    // draft has been discarded or is mid-send. Only a session with no stored
-    // draft behind it may create one.
-    let save_request = if editing_stored_draft {
-        Request::UpdateDraft { draft }
-    } else {
-        Request::SaveDraftToServer { draft }
-    };
-    match ipc_request_with_id(&state.config.socket_path, request_id, save_request).await {
+    // Persist an opened local draft before an optional provider copy. That
+    // keeps the local row current even if the provider request later fails.
+    if editing_stored_draft {
+        match ipc_request_with_id(
+            &state.config.socket_path,
+            request_id,
+            Request::UpdateDraft {
+                draft: draft.clone(),
+            },
+        )
+        .await
+        {
+            Ok(ResponseData::Ack) => {}
+            Ok(_) => return Err(BridgeError::UnexpectedResponse),
+            Err(error) => {
+                tracing::warn!(
+                    request_id,
+                    endpoint = "compose/save",
+                    account_id = %request.account_id,
+                    draft_file,
+                    error_kind = bridge_error_kind(&error),
+                    "bridge compose save failed"
+                );
+                return Err(error);
+            }
+        }
+    }
+
+    // A normal save of an opened draft stops at the local store. A new compose
+    // still uses the daemon's existing provider-or-local fallback; the explicit
+    // flag is what lets an opened local draft also be copied to Gmail Drafts.
+    if editing_stored_draft && !request.save_to_server {
+        return Ok(Json(json!({ "ok": true, "draft_id": draft_id })));
+    }
+
+    match ipc_request_with_id(
+        &state.config.socket_path,
+        request_id,
+        Request::SaveDraftToServer { draft },
+    )
+    .await
+    {
         Ok(ResponseData::Ack) => {
             tracing::info!(
                 request_id,

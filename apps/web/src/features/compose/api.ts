@@ -231,9 +231,9 @@ export function createScheduledSend(draftId: string, sendAt: Date): Promise<unkn
  * Store the compose session as a draft.
  *
  * `draftId` is the stored draft this session was restored from, when it was
- * one — passing it updates that draft in place, omitting it creates a new one.
- * Same rule as the scheduled-send path: reusing the id is what stops an edit
- * from becoming a second copy the user then has to tell apart.
+ * one — passing it updates that local draft in place before the provider copy.
+ * Reusing the id is what stops an edit from becoming a second local row the
+ * user then has to tell apart.
  */
 export function saveComposeSession(
   draftPath: string,
@@ -245,6 +245,7 @@ export function saveComposeSession(
     body: {
       draft_path: draftPath,
       account_id: accountId,
+      save_to_server: true,
       ...(draftId ? { draft_id: draftId } : {}),
     },
   });

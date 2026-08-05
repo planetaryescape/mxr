@@ -687,36 +687,51 @@ impl ReplyQueueModalState {
     }
 }
 
-/// Read-only state for the stored-drafts browser modal: locally-saved
-/// drafts across all accounts, most recently updated first. `visible`
-/// tracks whether the modal is open; `loading` gates the spinner
-/// between dispatch and the `Request::ListDrafts` response.
+/// A stored-draft mutation captured at preview time. The same `Draft` is
+/// carried into commit so changing the list selection cannot change the
+/// mutation target after the user has reviewed it.
+#[derive(Debug, Clone)]
+pub enum StoredDraftOperation {
+    Delete { draft: Draft },
+    Push { draft: Draft, provider: String },
+}
+
+/// State for the stored-drafts browser modal: locally-saved drafts across all
+/// accounts, most recently updated first. Mutations remain in this modal so
+/// their preview and confirmation target the same captured draft.
 #[derive(Debug, Clone, Default)]
 pub struct DraftsModalState {
     pub visible: bool,
     pub loading: bool,
+    pub operation_in_flight: bool,
     pub drafts: Vec<Draft>,
     pub selected_index: usize,
     pub error: Option<String>,
+    pub confirmation: Option<StoredDraftOperation>,
 }
 
 impl DraftsModalState {
     pub fn open_loading(&mut self) {
         self.visible = true;
         self.loading = true;
+        self.operation_in_flight = false;
         self.drafts.clear();
         self.selected_index = 0;
         self.error = None;
+        self.confirmation = None;
     }
 
     pub fn close(&mut self) {
         self.visible = false;
         self.loading = false;
+        self.operation_in_flight = false;
         self.error = None;
+        self.confirmation = None;
     }
 
     pub fn set_drafts(&mut self, drafts: Vec<Draft>) {
         self.loading = false;
+        self.operation_in_flight = false;
         self.error = None;
         self.drafts = drafts;
         self.selected_index = 0;
@@ -746,6 +761,41 @@ impl DraftsModalState {
 
     pub fn selected(&self) -> Option<&Draft> {
         self.drafts.get(self.selected_index)
+    }
+
+    pub fn preview_delete(&mut self) -> bool {
+        let Some(draft) = self.selected().cloned() else {
+            return false;
+        };
+        self.confirmation = Some(StoredDraftOperation::Delete { draft });
+        true
+    }
+
+    pub fn preview_push(&mut self, provider: String) -> bool {
+        let Some(draft) = self.selected().cloned() else {
+            return false;
+        };
+        self.confirmation = Some(StoredDraftOperation::Push { draft, provider });
+        true
+    }
+
+    pub fn cancel_confirmation(&mut self) {
+        self.confirmation = None;
+    }
+
+    pub fn confirm(&mut self) -> Option<StoredDraftOperation> {
+        let operation = self.confirmation.take()?;
+        self.operation_in_flight = true;
+        Some(operation)
+    }
+
+    pub fn finish_operation(&mut self) {
+        self.operation_in_flight = false;
+    }
+
+    pub fn remove(&mut self, draft_id: &mxr_core::DraftId) {
+        self.drafts.retain(|draft| &draft.id != draft_id);
+        self.selected_index = self.selected_index.min(self.drafts.len().saturating_sub(1));
     }
 }
 

@@ -15,8 +15,9 @@ import { Route as ScreenerRouteImport } from './routes/screener'
 import { Route as RulesRouteImport } from './routes/rules'
 import { Route as ReplyQueueRouteImport } from './routes/reply-queue'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
-import { Route as InvitesRouteImport } from './routes/invites'
 import { Route as JobsRouteImport } from './routes/jobs'
+import { Route as InvitesRouteImport } from './routes/invites'
+import { Route as DraftsRouteImport } from './routes/drafts'
 import { Route as DiagnosticsRouteImport } from './routes/diagnostics'
 import { Route as DevRouteImport } from './routes/dev'
 import { Route as DeliveriesRouteImport } from './routes/deliveries'
@@ -66,14 +67,19 @@ const OnboardingRoute = OnboardingRouteImport.update({
   path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JobsRoute = JobsRouteImport.update({
+  id: '/jobs',
+  path: '/jobs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InvitesRoute = InvitesRouteImport.update({
   id: '/invites',
   path: '/invites',
   getParentRoute: () => rootRouteImport,
 } as any)
-const JobsRoute = JobsRouteImport.update({
-  id: '/jobs',
-  path: '/jobs',
+const DraftsRoute = DraftsRouteImport.update({
+  id: '/drafts',
+  path: '/drafts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DiagnosticsRoute = DiagnosticsRouteImport.update({
@@ -175,6 +181,7 @@ export interface FileRoutesByFullPath {
   '/deliveries': typeof DeliveriesRoute
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
+  '/drafts': typeof DraftsRoute
   '/invites': typeof InvitesRoute
   '/jobs': typeof JobsRoute
   '/onboarding': typeof OnboardingRoute
@@ -203,6 +210,7 @@ export interface FileRoutesByTo {
   '/deliveries': typeof DeliveriesRoute
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
+  '/drafts': typeof DraftsRoute
   '/invites': typeof InvitesRoute
   '/jobs': typeof JobsRoute
   '/onboarding': typeof OnboardingRoute
@@ -232,6 +240,7 @@ export interface FileRoutesById {
   '/deliveries': typeof DeliveriesRoute
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
+  '/drafts': typeof DraftsRoute
   '/invites': typeof InvitesRoute
   '/jobs': typeof JobsRoute
   '/onboarding': typeof OnboardingRoute
@@ -262,6 +271,7 @@ export interface FileRouteTypes {
     | '/deliveries'
     | '/dev'
     | '/diagnostics'
+    | '/drafts'
     | '/invites'
     | '/jobs'
     | '/onboarding'
@@ -290,6 +300,7 @@ export interface FileRouteTypes {
     | '/deliveries'
     | '/dev'
     | '/diagnostics'
+    | '/drafts'
     | '/invites'
     | '/jobs'
     | '/onboarding'
@@ -318,6 +329,7 @@ export interface FileRouteTypes {
     | '/deliveries'
     | '/dev'
     | '/diagnostics'
+    | '/drafts'
     | '/invites'
     | '/jobs'
     | '/onboarding'
@@ -347,6 +359,7 @@ export interface RootRouteChildren {
   DeliveriesRoute: typeof DeliveriesRoute
   DevRoute: typeof DevRoute
   DiagnosticsRoute: typeof DiagnosticsRoute
+  DraftsRoute: typeof DraftsRoute
   InvitesRoute: typeof InvitesRoute
   JobsRoute: typeof JobsRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -408,6 +421,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/jobs': {
+      id: '/jobs'
+      path: '/jobs'
+      fullPath: '/jobs'
+      preLoaderRoute: typeof JobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/invites': {
       id: '/invites'
       path: '/invites'
@@ -415,11 +435,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvitesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/jobs': {
-      id: '/jobs'
-      path: '/jobs'
-      fullPath: '/jobs'
-      preLoaderRoute: typeof JobsRouteImport
+    '/drafts': {
+      id: '/drafts'
+      path: '/drafts'
+      fullPath: '/drafts'
+      preLoaderRoute: typeof DraftsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/diagnostics': {
@@ -605,6 +625,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeliveriesRoute: DeliveriesRoute,
   DevRoute: DevRoute,
   DiagnosticsRoute: DiagnosticsRoute,
+  DraftsRoute: DraftsRoute,
   InvitesRoute: InvitesRoute,
   JobsRoute: JobsRoute,
   OnboardingRoute: OnboardingRoute,

@@ -208,6 +208,10 @@ impl App {
             | Action::StoredDraftsModalNext
             | Action::StoredDraftsModalPrev
             | Action::StoredDraftsModalEdit
+            | Action::StoredDraftsModalPreviewDelete
+            | Action::StoredDraftsModalPreviewPush
+            | Action::StoredDraftsModalCancelConfirmation
+            | Action::StoredDraftsModalConfirm
             | Action::ClearFilter
             | Action::OpenMessageView
             | Action::CloseMessageView

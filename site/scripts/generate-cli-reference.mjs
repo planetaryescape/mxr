@@ -95,7 +95,14 @@ const COMMAND_EXAMPLES = {
   reply: { use: 'Reply to one message, interactively or from an agent-approved body. `--yes` sends; `--draft` saves a threaded draft to send later with `mxr send`.', examples: ["mxr reply MESSAGE_ID", "mxr reply MESSAGE_ID --body 'On it.' --yes", "mxr reply MESSAGE_ID --body 'Draft it.' --draft   # saves, never sends"] },
   'reply-all': { use: 'Reply to everyone on a thread. `--yes` sends; `--draft` saves a threaded draft to send later with `mxr send`.', examples: ["mxr reply-all MESSAGE_ID --body-stdin --dry-run", "mxr reply-all MESSAGE_ID --body 'Thanks all.' --draft   # saves, never sends"] },
   forward: { use: 'Forward a message with optional context. `--yes` sends; `--draft` saves the forward as a draft to send later with `mxr send`.', examples: ["mxr forward MESSAGE_ID --to teammate@example.com", "mxr forward MESSAGE_ID --to teammate@example.com --body 'FYI' --draft   # saves, never sends"] },
-  drafts: { use: 'List, recover, resume, or discard local drafts.', examples: ["mxr drafts --format json", "mxr drafts recover"] },
+  drafts: {
+    use: 'List and edit local drafts, preview deletion, or copy one to a supported provider draft mailbox.',
+    examples: [
+      "mxr drafts --format json",
+      "mxr drafts delete DRAFT_ID --dry-run",
+      "mxr drafts push DRAFT_ID --dry-run",
+    ],
+  },
   send: {
     use: 'Send or schedule a saved draft. Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) without sending; exit 2 on Blocker. Use `--override-safety <TOKEN>` to bypass a Blocker the previous `--check` minted.',
     examples: [

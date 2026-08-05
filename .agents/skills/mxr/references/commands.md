@@ -269,8 +269,19 @@ mxr drafts                # list (default)
 mxr drafts list
 mxr drafts recover        # Show orphaned 'sending' drafts (auto-reset after 1h)
 mxr drafts resume <id>    # Force-reset orphaned draft to 'draft'
-mxr drafts discard <id>   # Permanently delete
+mxr drafts edit <id>      # Edit a markdown draft in $EDITOR
+mxr drafts delete <id> --dry-run
+mxr drafts delete <id>    # Permanently delete (`discard` is an alias)
+mxr drafts push <id> --dry-run
+mxr drafts push <id>      # Copy to Gmail/provider Drafts; local copy remains
 ```
+
+mxr's local store is canonical. `push` is a one-way provider copy, not
+two-way draft sync: mxr does not retain the provider draft id yet, so repeating
+the command creates another provider draft. Accounts without provider-draft
+support are refused and the local draft is unchanged. In web, **Drafts** opens
+the same local list; deleting requires confirmation and **Save to server
+draft** performs the same explicit provider copy.
 
 ### `mxr send <DRAFT_ID> [OPTIONS]`
 ```

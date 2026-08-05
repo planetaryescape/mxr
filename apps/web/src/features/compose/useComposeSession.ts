@@ -310,9 +310,8 @@ export function useComposeSession(
     }) => sendComposeSession(draftPath, accountId, overrideToken),
   });
   const serverSave = useMutation({
-    // Editing an existing stored draft must save it in place; only a session
-    // that was never a stored draft may create one. Without the id the daemon
-    // stores a second copy the user then has to tell apart from the original.
+    // Carry the local id so the daemon updates that row before making the
+    // explicit provider copy. A new compose session has no local row to update.
     mutationFn: ({ draftPath, accountId }: { draftPath: string; accountId: string }) =>
       saveComposeSession(draftPath, accountId, intent.draftId),
   });
@@ -599,7 +598,9 @@ export function useComposeSession(
     const accountId = current.accountId;
     const draftPath = current.draftPath;
     await serverSave.mutateAsync({ draftPath, accountId });
-    toast.success("Draft saved to server");
+    toast.success("Draft copied to provider", {
+      description: "The local mxr draft was preserved.",
+    });
   }
 
   async function handleRefreshClick() {

@@ -727,8 +727,10 @@ fn test_draft_account(
     account_id: AccountId,
     supports_server_drafts: bool,
 ) -> mxr_protocol::AccountSummaryData {
-    let mut capabilities = mxr_protocol::AccountCapabilitiesData::default();
-    capabilities.supports_server_drafts = supports_server_drafts;
+    let capabilities = mxr_protocol::AccountCapabilitiesData {
+        supports_server_drafts,
+        ..Default::default()
+    };
     mxr_protocol::AccountSummaryData {
         account_id,
         key: Some("work".into()),

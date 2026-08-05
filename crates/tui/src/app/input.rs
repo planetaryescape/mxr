@@ -429,7 +429,7 @@ impl App {
             if self.modals.drafts.confirmation.is_some() {
                 return match key.code {
                     KeyCode::Char('y') => Some(Action::StoredDraftsModalConfirm),
-                    KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('q') => {
+                    KeyCode::Esc | KeyCode::Char('n' | 'q') => {
                         Some(Action::StoredDraftsModalCancelConfirmation)
                     }
                     _ => None,

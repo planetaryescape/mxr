@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.17](https://github.com/planetaryescape/mxr/compare/v0.6.16...v0.6.17) (2026-08-05)
+
+
+### Features
+
+* add draft parity across clients ([2db493f](https://github.com/planetaryescape/mxr/commit/2db493ff4ed0e32e04f87741303f0a283aa1a98e))
+
+
+### Bug Fixes
+
+* keep web lint gate green ([caaebf3](https://github.com/planetaryescape/mxr/commit/caaebf367d34fd75477944743e776da18341deb5))
+* release web draft lock before async cleanup ([0ef2abb](https://github.com/planetaryescape/mxr/commit/0ef2abb6b3c99cfe9eb6e32588917ec59a979502))
+* satisfy TUI draft clippy checks ([8fe8747](https://github.com/planetaryescape/mxr/commit/8fe8747bec9a3e80423e6a988a062bf737e81c8c))
+
 ## [0.6.16](https://github.com/planetaryescape/mxr/compare/v0.6.15...v0.6.16) (2026-08-04)
 
 

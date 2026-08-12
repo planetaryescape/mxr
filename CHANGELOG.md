@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.18](https://github.com/planetaryescape/mxr/compare/v0.6.17...v0.6.18) (2026-08-12)
+
+
+### Features
+
+* sync linked Gmail drafts in place ([0cf56ab](https://github.com/planetaryescape/mxr/commit/0cf56ab9ccd4807d0c258cef285a9b9e644d92eb))
+
+
+### Bug Fixes
+
+* keep fake provider inside crate boundary ([900f3db](https://github.com/planetaryescape/mxr/commit/900f3db5cb218f6435088a8c5665238ad807fa5d))
+
 ## [0.6.17](https://github.com/planetaryescape/mxr/compare/v0.6.16...v0.6.17) (2026-08-05)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.19](https://github.com/planetaryescape/mxr/compare/v0.6.18...v0.6.19) (2026-08-12)
+
+
+### Bug Fixes
+
+* keep release lockfile versions in sync ([7a7c9be](https://github.com/planetaryescape/mxr/commit/7a7c9be46f55652b530f05300ccef355fffc9c54))
+* sync release workspace lock versions ([268e6eb](https://github.com/planetaryescape/mxr/commit/268e6eb46a8768c57a0dc5da8e3e2ff857be6fd9))
+
 ## [0.6.18](https://github.com/planetaryescape/mxr/compare/v0.6.17...v0.6.18) (2026-08-12)
 
 

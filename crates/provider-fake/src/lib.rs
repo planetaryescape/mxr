@@ -9,6 +9,7 @@ pub mod conformance;
 pub mod fixtures;
 
 use async_trait::async_trait;
+use mail_builder::MessageBuilder;
 use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::{
@@ -465,15 +466,9 @@ impl MailSendProvider for FakeProvider {
             .get(provider_draft_id)
             .copied()
             .unwrap_or(1);
-        let from = draft.from.clone().unwrap_or_else(|| Address {
-            name: Some("Fake User".into()),
-            email: "fake@example.com".into(),
-        });
-        let message = mxr_outbound::email::build_message(&draft, &from, true)
-            .map_err(|error| MxrError::Provider(error.to_string()))?;
         Ok(Some(mxr_core::ServerDraftSnapshot {
             revision: revision.to_string(),
-            raw_rfc822: mxr_outbound::email::format_message_for_gmail(&message),
+            raw_rfc822: build_fake_draft_message(&draft)?,
         }))
     }
 
@@ -528,6 +523,48 @@ impl MailSendProvider for FakeProvider {
             rfc2822_message_id: rfc2822_message_id.to_string(),
         })
     }
+}
+
+fn build_fake_draft_message(draft: &Draft) -> Result<Vec<u8>, MxrError> {
+    let from = draft
+        .from
+        .as_ref()
+        .map_or("fake@example.com", |from| from.email.as_str());
+    let mut builder = MessageBuilder::new()
+        .from(from)
+        .subject(draft.subject.clone());
+    for address in &draft.to {
+        builder = builder.to(address.email.as_str());
+    }
+    for address in &draft.cc {
+        builder = builder.cc(address.email.as_str());
+    }
+    for address in &draft.bcc {
+        builder = builder.bcc(address.email.as_str());
+    }
+    builder = match &draft.content {
+        DraftContent::Markdown { source } => builder.text_body(source.clone()),
+        DraftContent::Html { html, text } => builder
+            .text_body(text.clone().unwrap_or_default())
+            .html_body(html.clone()),
+    };
+    for path in &draft.attachments {
+        let bytes = std::fs::read(path).map_err(|error| MxrError::Provider(error.to_string()))?;
+        let filename = path
+            .file_name()
+            .and_then(|filename| filename.to_str())
+            .unwrap_or("attachment")
+            .to_string();
+        builder = builder.attachment("application/octet-stream", filename, bytes);
+    }
+    for asset in &draft.inline_assets {
+        let bytes =
+            std::fs::read(&asset.path).map_err(|error| MxrError::Provider(error.to_string()))?;
+        builder = builder.inline("application/octet-stream", asset.cid.clone(), bytes);
+    }
+    builder
+        .write_to_vec()
+        .map_err(|error| MxrError::Provider(error.to_string()))
 }
 
 #[cfg(test)]

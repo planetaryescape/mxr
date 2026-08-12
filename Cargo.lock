@@ -4543,8 +4543,8 @@ version = "0.6.17"
 dependencies = [
  "async-trait",
  "chrono",
+ "mail-builder",
  "mxr-core",
- "mxr-outbound",
  "tokio",
  "uuid",
 ]

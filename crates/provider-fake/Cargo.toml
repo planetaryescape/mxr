@@ -14,9 +14,9 @@ workspace = true
 
 [dependencies]
 mxr-core = { workspace = true }
-mxr-outbound = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
+mail-builder = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 uuid = { workspace = true }
 

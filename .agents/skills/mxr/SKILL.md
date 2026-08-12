@@ -52,6 +52,7 @@ mxr archive --search "from:noreply older:30d" --dry-run
 mxr archive --search "from:noreply older:30d" --yes
 mxr compose --to a@example.com --subject "Hi" --body "Hello" --dry-run
 mxr reply <message_id> --body "Thanks" --dry-run
+mxr drafts edit <draft_id>
 mxr drafts delete <draft_id> --dry-run --format json
 mxr drafts push <draft_id> --dry-run --format json
 mxr sync --status --format json
@@ -59,6 +60,36 @@ mxr events --format jsonl
 mxr logs --level error --since 1h --format jsonl
 mxr doctor --check
 ```
+
+## Linked draft workflow
+
+Use one local UUID throughout. Do not create a replacement draft to edit a
+Gmail draft.
+
+```bash
+mxr drafts --format json
+mxr drafts push <draft_id> --dry-run --format json
+mxr drafts push <draft_id>
+mxr drafts edit <draft_id>
+mxr sync
+mxr drafts delete <draft_id> --dry-run --format json
+mxr drafts delete <draft_id>
+```
+
+- First `push` creates the Gmail draft and records the link. Later pushes and
+  local edits update the same Gmail draft.
+- `mxr sync` pulls Gmail edits into the same local row. A Gmail-side deletion
+  removes that linked local row.
+- Local deletion removes Gmail first, then local. Provider errors preserve the
+  local row.
+- Linked provider drafts currently require Gmail.
+
+For MCP, call `mxr_get_draft`, edit the complete returned object without
+dropping unchanged fields, especially `id`, `account_id`, `reply_headers`,
+`intent`, or body kind, then call `mxr_update_draft`. Preview
+`mxr_sync_draft_to_provider` and
+`mxr_delete_draft` with `confirm=false`; commit only after reviewing the
+returned draft.
 
 ## Reference
 

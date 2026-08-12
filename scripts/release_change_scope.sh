@@ -52,7 +52,7 @@ while IFS= read -r path; do
   case "${path}" in
     crates/*/Cargo.toml|Cargo.toml|Cargo.lock)
       ;;
-    .github/workflows/release.yml|scripts/release_change_scope.sh)
+    .github/workflows/release.yml|.github/workflows/release-please.yml|release-please-config.json|scripts/release_change_scope.sh)
       cli_changed=true
       ;;
     scripts/render_homebrew_formula.sh|scripts/publish_workspace_crates.sh)

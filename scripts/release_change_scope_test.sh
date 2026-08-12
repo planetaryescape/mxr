@@ -33,8 +33,10 @@ git init -q
 git config user.email "ci@example.test"
 git config user.name "CI"
 
-mkdir -p scripts src crates/web/src docs
+mkdir -p scripts src crates/web/src docs .github/workflows
 cp "${root}/scripts/release_change_scope.sh" scripts/release_change_scope.sh
+cp "${root}/release-please-config.json" release-please-config.json
+touch .github/workflows/release-please.yml
 cat > Cargo.toml <<'EOF'
 [workspace]
 members = ["crates/web"]
@@ -73,6 +75,13 @@ commit_all "chore: version bump"
 output="$(bash scripts/release_change_scope.sh "${baseline}" HEAD)"
 assert_output "${output}" "cli_changed=false"
 assert_output "${output}" "has_artifacts=false"
+
+reset_fixture
+echo " " >> release-please-config.json
+commit_all "fix: release configuration"
+output="$(bash scripts/release_change_scope.sh "${baseline}" HEAD)"
+assert_output "${output}" "cli_changed=true"
+assert_output "${output}" "has_artifacts=true"
 
 reset_fixture
 perl -0pi -e 's/version = "0.1.0"/version = "0.1.1"/g' Cargo.toml Cargo.lock

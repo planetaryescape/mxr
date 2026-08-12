@@ -159,4 +159,33 @@ pub trait MailSendProvider: Send + Sync {
     async fn save_draft(&self, _draft: &Draft, _from: &Address) -> Result<Option<String>> {
         Ok(None)
     }
+
+    /// Replace an existing server-side draft while preserving its provider
+    /// draft ID. Providers that support creating but not replacing drafts may
+    /// keep the default error.
+    async fn update_draft(
+        &self,
+        _provider_draft_id: &str,
+        _draft: &Draft,
+        _from: &Address,
+    ) -> Result<()> {
+        Err(MxrError::Provider(
+            "Server-side draft updates not supported by this provider".to_string(),
+        ))
+    }
+
+    /// Fetch the provider's current raw MIME draft plus its revision marker.
+    /// `Ok(None)` means the provider draft no longer exists.
+    async fn fetch_draft(&self, _provider_draft_id: &str) -> Result<Option<ServerDraftSnapshot>> {
+        Err(MxrError::Provider(
+            "Server-side draft retrieval not supported by this provider".to_string(),
+        ))
+    }
+
+    /// Permanently delete a linked server-side draft.
+    async fn delete_draft(&self, _provider_draft_id: &str) -> Result<()> {
+        Err(MxrError::Provider(
+            "Server-side draft deletion not supported by this provider".to_string(),
+        ))
+    }
 }

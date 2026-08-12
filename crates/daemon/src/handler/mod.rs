@@ -68,7 +68,7 @@ pub(crate) use account_config::{list_account_configs, repair_account_config};
 pub(crate) use helpers::{
     dir_size_sync, file_size_sync, recent_log_lines_sync, should_fallback_to_tantivy,
 };
-pub(crate) use mutations::send_stored_draft;
+pub(crate) use mutations::{reconcile_provider_drafts, send_stored_draft};
 pub(crate) use status_helpers::{
     build_doctor_findings, doctor_data_stats, latest_successful_sync_at, DoctorFindingInputs,
 };
@@ -1870,7 +1870,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListSavedActivityFilters
         | Request::GetSavedActivityFilter { .. } => Read,
 
-        // --- DraftOnly: local draft create/update/delete ---
+        // --- DraftOnly: logical draft create/update/delete (local plus an
+        // optional linked provider resource) ---
         Request::SaveDraft { .. } | Request::UpdateDraft { .. } | Request::DeleteDraft { .. } => {
             DraftOnly
         }

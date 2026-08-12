@@ -1596,6 +1596,14 @@ pub struct Draft {
     pub inline_calendar_reply: Option<InlineCalendarReply>,
 }
 
+/// Current provider representation of a linked server-side draft.
+/// `revision` changes whenever the provider replaces the nested message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerDraftSnapshot {
+    pub revision: String,
+    pub raw_rfc822: Vec<u8>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct InlineCalendarReply {

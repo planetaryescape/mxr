@@ -634,7 +634,8 @@ fn classify_request_keeps_send_and_destructive_gates() {
         allow_remote: true,
     }));
 
-    // Local draft delete is draft-only, not read and not send.
+    // Draft delete (including a linked provider draft) is draft-only, not read
+    // and not send.
     let del = Request::DeleteDraft {
         draft_id: mxr_core::DraftId::new(),
     };

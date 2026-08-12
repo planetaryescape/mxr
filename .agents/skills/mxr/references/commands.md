@@ -273,15 +273,15 @@ mxr drafts edit <id>      # Edit a markdown draft in $EDITOR
 mxr drafts delete <id> --dry-run
 mxr drafts delete <id>    # Permanently delete (`discard` is an alias)
 mxr drafts push <id> --dry-run
-mxr drafts push <id>      # Copy to Gmail/provider Drafts; local copy remains
+mxr drafts push <id>      # Link to Gmail/provider Drafts; repeated pushes update it
 ```
 
-mxr's local store is canonical. `push` is a one-way provider copy, not
-two-way draft sync: mxr does not retain the provider draft id yet, so repeating
-the command creates another provider draft. Accounts without provider-draft
-support are refused and the local draft is unchanged. In web, **Drafts** opens
-the same local list; deleting requires confirmation and **Save to server
-draft** performs the same explicit provider copy.
+mxr's local store is canonical. `push` records one provider link. Editing a
+linked local draft updates that provider draft in place; normal `mxr sync`
+pulls provider edits and removes the local row after provider-side deletion.
+Deleting a linked local draft deletes both copies. Provider errors preserve
+the local row. Accounts without provider-draft support are refused and the
+local draft is unchanged. CLI, TUI, web, and MCP share this lifecycle.
 
 ### `mxr send <DRAFT_ID> [OPTIONS]`
 ```

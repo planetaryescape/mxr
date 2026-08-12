@@ -27,7 +27,7 @@ mxr drafts
 mxr send DRAFT_ID
 ```
 
-## Local drafts and provider copies
+## Local and linked provider drafts
 
 mxr's local draft store is canonical. The CLI, TUI, web app, and MCP all read
 the same rows. List or edit them with:
@@ -37,34 +37,37 @@ mxr drafts --format json
 mxr drafts edit DRAFT_ID
 ```
 
-Delete uses the same draft selection for preview and commit. `discard` remains
-an alias for older scripts:
+Delete uses the same draft selection for preview and commit. For a linked
+draft, commit deletes the provider draft first and then the local row;
+provider failures preserve the local row. `discard` remains an alias for older
+scripts:
 
 ```bash
 mxr drafts delete DRAFT_ID --dry-run --format json
 mxr drafts delete DRAFT_ID
 ```
 
-Gmail accounts can also copy a local draft into Gmail Drafts:
+Gmail accounts can link a local draft to Gmail Drafts:
 
 ```bash
 mxr drafts push DRAFT_ID --dry-run --format json
 mxr drafts push DRAFT_ID
 ```
 
-This is a one-way copy, not two-way draft sync. The mxr draft remains local and
-canonical. mxr does not retain the Gmail draft id yet, so repeating `push`
-creates another Gmail draft. Unsupported providers are refused without
-changing the local draft.
+The first push creates one Gmail draft and records its stable draft id.
+Repeating `push`, or editing the linked draft from any mxr client, updates that
+same Gmail draft in place. Normal `mxr sync` uses Gmail's changing message id
+as a revision: Gmail-side edits replace the same local draft, and Gmail-side
+deletion removes it locally. No MIME diff is required. Unsupported providers
+are refused without changing the local draft.
 
 In `mxr web`, **Drafts** in the sidebar opens this same local list. Open a row
-to edit it, use the confirmed trash action to delete it, or choose **Save to
-server draft** from the compose menu on an account that advertises provider
-draft support.
+to edit it, use the confirmed trash action to delete both linked copies, or
+choose **Save to server draft** to create/update the provider link.
 
 In the TUI, open the command palette and choose **Drafts**, or press `gE`.
-The draft browser uses `e` to edit, `d` to preview and confirm local deletion,
-and `p` to preview and confirm a provider copy. Unsupported accounts are
+The draft browser uses `e` to edit, `d` to preview and confirm linked deletion,
+and `p` to preview and confirm provider sync. Unsupported accounts are
 refused without changing the local draft.
 
 ## Save as a draft (don't send)

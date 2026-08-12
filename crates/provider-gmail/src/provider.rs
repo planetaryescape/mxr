@@ -934,6 +934,40 @@ impl MailSendProvider for GmailProvider {
 
         Ok(Some(draft_id))
     }
+
+    async fn update_draft(
+        &self,
+        provider_draft_id: &str,
+        draft: &Draft,
+        from: &Address,
+    ) -> mxr_core::provider::Result<()> {
+        let rfc2822 = send::build_draft_rfc2822_async(draft, from)
+            .await
+            .map_err(|e| MxrError::Provider(e.to_string()))?;
+        let encoded = send::encode_for_gmail(&rfc2822);
+
+        self.client
+            .update_draft(provider_draft_id, &encoded)
+            .await
+            .map_err(MxrError::from)
+    }
+
+    async fn fetch_draft(
+        &self,
+        provider_draft_id: &str,
+    ) -> mxr_core::provider::Result<Option<mxr_core::ServerDraftSnapshot>> {
+        self.client
+            .fetch_draft(provider_draft_id)
+            .await
+            .map_err(MxrError::from)
+    }
+
+    async fn delete_draft(&self, provider_draft_id: &str) -> mxr_core::provider::Result<()> {
+        self.client
+            .delete_draft(provider_draft_id)
+            .await
+            .map_err(MxrError::from)
+    }
 }
 
 #[cfg(test)]
@@ -949,6 +983,7 @@ mod tests {
         messages: HashMap<String, GmailMessage>,
         labels: Vec<GmailLabel>,
         modified: Mutex<Vec<String>>,
+        drafts: Mutex<HashMap<String, mxr_core::ServerDraftSnapshot>>,
         stale_history: bool,
     }
 
@@ -1100,7 +1135,34 @@ mod tests {
         }
 
         async fn create_draft(&self, _raw_base64url: &str) -> Result<String, GmailError> {
+            self.drafts.lock().unwrap().insert(
+                "draft-1".into(),
+                mxr_core::ServerDraftSnapshot {
+                    revision: "message-1".into(),
+                    raw_rfc822: b"From: sender@example.com\r\nSubject: Draft\r\n\r\nBody".to_vec(),
+                },
+            );
             Ok("draft-1".into())
+        }
+
+        async fn update_draft(
+            &self,
+            _draft_id: &str,
+            _raw_base64url: &str,
+        ) -> Result<(), GmailError> {
+            Ok(())
+        }
+
+        async fn fetch_draft(
+            &self,
+            draft_id: &str,
+        ) -> Result<Option<mxr_core::ServerDraftSnapshot>, GmailError> {
+            Ok(self.drafts.lock().unwrap().get(draft_id).cloned())
+        }
+
+        async fn delete_draft(&self, draft_id: &str) -> Result<(), GmailError> {
+            self.drafts.lock().unwrap().remove(draft_id);
+            Ok(())
         }
 
         async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError> {
@@ -1197,6 +1259,7 @@ mod tests {
                     },
                 ],
                 modified: Mutex::new(Vec::new()),
+                drafts: Mutex::new(HashMap::new()),
                 stale_history,
             }),
         )
@@ -1409,6 +1472,25 @@ END:VCALENDAR\r\n";
         }
 
         async fn create_draft(&self, _raw_base64url: &str) -> Result<String, GmailError> {
+            unreachable!("drafts are not used in initial sync fan-out test")
+        }
+
+        async fn update_draft(
+            &self,
+            _draft_id: &str,
+            _raw_base64url: &str,
+        ) -> Result<(), GmailError> {
+            unreachable!("drafts are not used in initial sync fan-out test")
+        }
+
+        async fn fetch_draft(
+            &self,
+            _draft_id: &str,
+        ) -> Result<Option<mxr_core::ServerDraftSnapshot>, GmailError> {
+            unreachable!("drafts are not used in initial sync fan-out test")
+        }
+
+        async fn delete_draft(&self, _draft_id: &str) -> Result<(), GmailError> {
             unreachable!("drafts are not used in initial sync fan-out test")
         }
 

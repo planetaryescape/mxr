@@ -2,13 +2,13 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Copy a local draft to the account's provider draft mailbox. The local draft is preserved; repeating the command creates another provider copy
+Link a local draft to the account's provider draft mailbox. The first push creates it; later edits and pushes update the same provider draft
 
 Usage: mxr drafts push [OPTIONS] <DRAFT_ID>
 
 Arguments:
-  <DRAFT_ID>  Local draft ID to copy to the provider
+  <DRAFT_ID>  Local draft ID to link or update at the provider
 
 Options:
-      --dry-run  Show the exact draft and provider without creating the provider copy
+      --dry-run  Show the exact draft and provider without creating or updating it
   -h, --help     Print help

@@ -875,9 +875,8 @@ fn print_draft_delete_result(
     Ok(())
 }
 
-/// Copy one local draft to a provider mailbox while preserving the canonical
-/// local row. Repeating this is intentionally another copy: mxr does not yet
-/// retain a provider draft id for update-in-place semantics.
+/// Link one local draft to a provider mailbox while preserving its local row.
+/// The daemon retains the provider draft id, so later calls update in place.
 pub async fn drafts_push(
     draft_id: String,
     account: Option<String>,
@@ -938,6 +937,7 @@ fn print_draft_push_result(
 ) -> anyhow::Result<()> {
     let payload = serde_json::json!({
         "action": "copy_draft_to_provider",
+        "sync_mode": "create_or_update",
         "dry_run": dry_run,
         "copied": !dry_run,
         "draft_id": draft.id,
@@ -968,12 +968,12 @@ fn print_draft_push_result(
         OutputFormat::Table => {
             if dry_run {
                 println!(
-                    "Would copy local draft {} — {} to {provider}",
+                    "Would sync local draft {} — {} with {provider}",
                     draft.id, draft.subject
                 );
             } else {
                 println!(
-                    "Copied local draft {} to {provider}; local draft preserved",
+                    "Synced local draft {} with {provider}; future edits update the same provider draft",
                     draft.id
                 );
             }
@@ -1037,7 +1037,10 @@ pub async fn drafts_edit(draft_id: String, account: Option<String>) -> anyhow::R
     )?;
 
     let _ = std::fs::remove_file(&path);
-    println!("Draft updated: {}", updated.id);
+    println!(
+        "Draft updated: {} (linked provider draft synchronized if present)",
+        updated.id
+    );
     Ok(())
 }
 

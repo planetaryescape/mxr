@@ -1236,7 +1236,7 @@ pub enum Command {
         format: Option<OutputFormat>,
     },
     /// Manage drafts: list (default), recover orphaned in-flight sends,
-    /// resume one for retry, edit, delete, or copy drafts to a provider.
+    /// resume one for retry, edit, delete, or sync drafts with a provider.
     Drafts {
         #[command(subcommand)]
         action: Option<DraftsAction>,
@@ -1804,8 +1804,8 @@ pub enum DraftsAction {
         /// Draft ID to resume.
         draft_id: String,
     },
-    /// Permanently delete a draft. `discard` remains as an alias for
-    /// compatibility with earlier mxr releases.
+    /// Permanently delete a draft and its linked provider draft, if present.
+    /// `discard` remains as an alias for compatibility with earlier releases.
     #[command(visible_alias = "discard")]
     Delete {
         /// Draft ID to delete.
@@ -1814,12 +1814,12 @@ pub enum DraftsAction {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Copy a local draft to the account's provider draft mailbox. The local
-    /// draft is preserved; repeating the command creates another provider copy.
+    /// Link a local draft to the account's provider draft mailbox. The first
+    /// push creates it; later edits and pushes update the same provider draft.
     Push {
-        /// Local draft ID to copy to the provider.
+        /// Local draft ID to link or update at the provider.
         draft_id: String,
-        /// Show the exact draft and provider without creating the provider copy.
+        /// Show the exact draft and provider without creating or updating it.
         #[arg(long)]
         dry_run: bool,
     },

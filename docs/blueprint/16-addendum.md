@@ -261,6 +261,7 @@ mxr drafts                           # List all drafts
 mxr drafts show DRAFT_ID
 mxr drafts edit DRAFT_ID
 mxr drafts delete DRAFT_ID
+mxr drafts push DRAFT_ID              # Link/update provider draft
 mxr send DRAFT_ID [--yes]
 ```
 
@@ -805,6 +806,29 @@ the same.
 
 - **D093**: Runtime identity is a data boundary. Dev/prod/demo isolation
   includes credentials and bridge files, not just SQLite and socket paths.
+
+---
+
+## A013: Linked provider drafts share one lifecycle
+
+**Affects**: 02-data-model.md, 06-compose.md, CLI, TUI, web, MCP, agent skill
+
+**The rule**: Provider draft sync is opt-in and local-first. The first push
+stores the provider draft id and opaque revision beside the local draft.
+Subsequent edits update that provider resource in place. Normal account sync
+pulls changed provider MIME into the same local `DraftId`; provider deletion
+removes the linked local row. Local deletion removes the provider resource
+first. Provider failures preserve local data. Every client uses daemon IPC
+instead of implementing its own lifecycle.
+
+Gmail needs no content diff: its draft id identifies the stable resource and
+the nested message id identifies its current revision.
+
+### Decision record
+
+- **D094**: A linked local/provider draft is one logical resource. Provider
+  revision replacement and deletion reconcile through normal sync; local
+  mutation is provider-first when losing the local row would be destructive.
 
 ---
 

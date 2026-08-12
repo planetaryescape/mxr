@@ -37,9 +37,10 @@ results, `cat`/`thread` views, summaries, exports).
 5. Commands auto-start the daemon; use `mxr restart` only when you need a fresh daemon after local code changes.
 6. Compose uses `$EDITOR` unless `--body` or `--body-stdin` is supplied.
 7. `mxr reset --hard` and `mxr burn` wipe local runtime state only unless `--including-config` is passed.
-8. Drafts are canonical in mxr's local store. `mxr drafts push <id>` makes a
-   one-way provider copy and preserves the local draft; preview first because
-   repeating it creates another provider draft.
+8. Drafts are canonical in mxr's local store. `mxr drafts push <id>` links the
+   local draft to one provider draft; later local edits update that draft in
+   place. `mxr sync` pulls provider edits and removes the local row when the
+   linked provider draft was deleted. Preview push and delete first.
 
 ## Common commands
 

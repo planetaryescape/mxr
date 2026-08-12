@@ -912,8 +912,8 @@ async fn save_compose_session(
     let draft =
         compose_draft_from_file(&request.draft_path, &request.account_id, stored_draft_id).await?;
     let draft_id = draft.id.clone();
-    // Persist an opened local draft before an optional provider copy. That
-    // keeps the local row current even if the provider request later fails.
+    // Update an opened draft through the daemon. If it is already linked, the
+    // same request updates the provider draft before committing locally.
     if editing_stored_draft {
         match ipc_request_with_id(
             &state.config.socket_path,
@@ -940,9 +940,9 @@ async fn save_compose_session(
         }
     }
 
-    // A normal save of an opened draft stops at the local store. A new compose
-    // still uses the daemon's existing provider-or-local fallback; the explicit
-    // flag is what lets an opened local draft also be copied to Gmail Drafts.
+    // A local-only opened draft stays local unless explicitly linked. A linked
+    // draft was already synchronized by UpdateDraft above. A new compose still
+    // uses the daemon's provider-or-local fallback.
     if editing_stored_draft && !request.save_to_server {
         return Ok(Json(json!({ "ok": true, "draft_id": draft_id })));
     }

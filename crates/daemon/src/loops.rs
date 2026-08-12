@@ -193,6 +193,7 @@ async fn reap_detached_sync(
             )))
         }
     };
+    drop(provider_guard);
     let cursor = state
         .store
         .get_sync_cursor(&account_id)
@@ -202,6 +203,10 @@ async fn reap_detached_sync(
     let cursor_summary = describe_sync_cursor(provider.as_ref(), cursor.as_ref());
     match &result {
         Ok(outcome) => {
+            if let Err(error) = crate::handler::reconcile_provider_drafts(&state, &account_id).await
+            {
+                tracing::warn!(account = %account_id, %error, "provider draft reconciliation failed");
+            }
             if outcome.synced_count > 0 {
                 match state.warm_lexical_search(true).await {
                     Ok(true) => tracing::info!("Lexical search index warmed after detached sync"),
@@ -304,7 +309,6 @@ async fn reap_detached_sync(
             tracing::error!(account = %account_id, "detached sync failed: {err_str}");
         }
     }
-    drop(provider_guard);
 }
 
 /// Clear `sync_in_progress` rows left behind by a daemon that died
@@ -636,6 +640,11 @@ async fn sync_loop_for_account(
                         .await;
                 }
                 drop(provider_guard);
+                if let Err(error) =
+                    crate::handler::reconcile_provider_drafts(&state, &account_id).await
+                {
+                    tracing::warn!(account = %account_id, %error, "provider draft reconciliation failed");
+                }
                 let _ = state
                     .store
                     .insert_event(

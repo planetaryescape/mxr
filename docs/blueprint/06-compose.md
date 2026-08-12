@@ -198,7 +198,15 @@ Drafts persist in SQLite. If the user starts composing and quits $EDITOR without
 - `mxr drafts` — list all drafts
 - Command palette: "Resume draft" → select from list → opens $EDITOR with the draft file
 
-Drafts are local-only. They are not synced to the provider's drafts folder (Gmail Drafts, IMAP \Drafts). This is intentional: local drafts are faster and don't create noise on other devices. If we later want provider draft sync, it's an opt-in feature.
+Drafts remain local-first. Provider linking is explicit: `mxr drafts push
+DRAFT_ID` creates one provider draft and stores its provider id and revision.
+Later local edits update that resource in place. Normal sync compares provider
+revisions, pulls remote edits into the same local `DraftId`, and removes the
+local row after an explicit provider-side deletion. Deleting locally removes a
+linked provider draft first; provider failures preserve the local row.
+
+Gmail supports this through its stable draft resource id and changing nested
+message id. Providers without server-draft support keep drafts local-only.
 
 ## Editor integration details
 

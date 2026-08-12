@@ -270,7 +270,7 @@ emails from sender" and deep-link directly into the matching thread.
 | `POST` | `/mail/drafts/save-local` | Persist a draft row without compose session |
 | `POST` | `/mail/drafts/{draft_id}/reset-orphan` | Recover an orphaned send |
 | `POST` | `/mail/drafts/{draft_id}/send-stored` | Send a stored draft by id |
-| `DELETE` | `/mail/drafts/{draft_id}/stored` | Delete stored draft |
+| `DELETE` | `/mail/drafts/{draft_id}/stored` | Delete stored draft and its linked provider draft |
 
 ### Signatures
 
@@ -308,9 +308,9 @@ lives server-side until you send/save/discard.
 | `POST` | `/mail/compose/session` | Open new / reply / forward |
 | `POST` | `/mail/compose/session/refresh` | Refetch latest state |
 | `POST` | `/mail/compose/session/restore` | Resume saved draft |
-| `POST` | `/mail/compose/session/update` | Save current edits |
+| `POST` | `/mail/compose/session/update` | Save current edits locally and to a linked provider draft |
 | `POST` | `/mail/compose/session/send` | Send (calls provider) |
-| `POST` | `/mail/compose/session/save` | Save to drafts table only |
+| `POST` | `/mail/compose/session/save` | Save locally or create/update a linked provider draft |
 | `POST` | `/mail/compose/session/attachment` | Attach an uploaded file to the session |
 | `POST` | `/mail/compose/session/discard` | Throw away |
 

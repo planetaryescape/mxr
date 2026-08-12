@@ -2,7 +2,7 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Permanently delete a draft. `discard` remains as an alias for compatibility with earlier mxr releases
+Permanently delete a draft and its linked provider draft, if present. `discard` remains as an alias for compatibility with earlier releases
 
 Usage: mxr drafts delete [OPTIONS] <DRAFT_ID>
 

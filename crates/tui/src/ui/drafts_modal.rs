@@ -17,7 +17,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
     let modal_area = centered_rect(MODAL_WIDTH_PERCENT, MODAL_HEIGHT_PERCENT, area);
     Clear.render(modal_area, frame.buffer_mut());
 
-    let title = " Drafts — ↑/↓ navigate · Enter/e edit · d delete · p provider copy · Esc close ";
+    let title = " Drafts — ↑/↓ navigate · Enter/e edit · d delete · p provider sync · Esc close ";
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
@@ -164,19 +164,19 @@ fn draw_confirmation(
 ) {
     let (heading, explanation, draft, confirm_label) = match operation {
         StoredDraftOperation::Delete { draft } => (
-            "Delete this local draft?",
-            "This permanently removes mxr's canonical copy.",
+            "Delete this draft?",
+            "This permanently removes the local draft and its linked provider draft, if present.",
             draft,
             "[y] delete",
         ),
         StoredDraftOperation::Push { draft, provider } => (
-            "Copy this draft to the provider?",
-            "The local draft stays canonical. Repeating creates another provider draft.",
+            "Sync this draft with the provider?",
+            "The first sync creates a linked draft. Later edits update that same provider draft.",
             draft,
             if provider.eq_ignore_ascii_case("gmail") {
-                "[y] copy to Gmail Drafts"
+                "[y] sync with Gmail Drafts"
             } else {
-                "[y] copy to provider Drafts"
+                "[y] sync with provider Drafts"
             },
         ),
     };
@@ -344,14 +344,14 @@ mod tests {
         let snapshot = render_to_string(100, 20, |frame| {
             draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
         });
-        assert!(snapshot.contains("Delete this local draft?"));
+        assert!(snapshot.contains("Delete this draft?"));
         assert!(snapshot.contains("Q4 plan"));
         assert!(snapshot.contains(&draft_id.to_string()));
         assert!(snapshot.contains("[y] delete"));
     }
 
     #[test]
-    fn provider_copy_preview_explains_one_way_duplicate_semantics() {
+    fn provider_sync_preview_explains_linked_update_semantics() {
         let mut state = DraftsModalState::default();
         state.open_loading();
         state.set_drafts(vec![draft(
@@ -364,11 +364,10 @@ mod tests {
         let snapshot = render_to_string(100, 20, |frame| {
             draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
         });
-        assert!(snapshot.contains("Copy this draft to the provider?"));
+        assert!(snapshot.contains("Sync this draft with the provider?"));
         assert!(snapshot.contains("Provider: gmail"));
-        assert!(snapshot.contains("local draft stays canonical"));
-        assert!(snapshot.contains("another provider draft"));
-        assert!(snapshot.contains("copy to Gmail Drafts"));
+        assert!(snapshot.contains("Later edits update that same provider draft"));
+        assert!(snapshot.contains("sync with Gmail Drafts"));
     }
 
     fn html_draft(subject: &str, html: &str, text: Option<&str>) -> Draft {

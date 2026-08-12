@@ -11,6 +11,9 @@ use crate::auth::GmailAuth;
 use crate::error::GmailError;
 use crate::types::*;
 use async_trait::async_trait;
+use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
+use base64::Engine;
+use mxr_core::ServerDraftSnapshot;
 use std::time::Duration;
 use tracing::{debug, warn};
 
@@ -82,6 +85,9 @@ pub trait GmailApi: Send + Sync {
         attachment_id: &str,
     ) -> Result<Vec<u8>, GmailError>;
     async fn create_draft(&self, raw_base64url: &str) -> Result<String, GmailError>;
+    async fn update_draft(&self, draft_id: &str, raw_base64url: &str) -> Result<(), GmailError>;
+    async fn fetch_draft(&self, draft_id: &str) -> Result<Option<ServerDraftSnapshot>, GmailError>;
+    async fn delete_draft(&self, draft_id: &str) -> Result<(), GmailError>;
     async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError>;
     async fn create_label(&self, name: &str, color: Option<&str>)
         -> Result<GmailLabel, GmailError>;
@@ -417,6 +423,84 @@ impl GmailClient {
         Ok(draft_id)
     }
 
+    /// Replace a Gmail draft's message while preserving the stable draft ID.
+    pub async fn update_draft(
+        &self,
+        draft_id: &str,
+        raw_base64url: &str,
+    ) -> Result<(), GmailError> {
+        let url = format!("{}/drafts/{draft_id}", self.base_url);
+        let body = serde_json::json!({
+            "message": {
+                "raw": raw_base64url
+            }
+        });
+
+        let resp = self
+            .http
+            .put(&url)
+            .header("Authorization", self.auth_header().await?)
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(self.handle_error(resp).await);
+        }
+
+        Ok(())
+    }
+
+    pub async fn fetch_draft(
+        &self,
+        draft_id: &str,
+    ) -> Result<Option<ServerDraftSnapshot>, GmailError> {
+        let url = format!("{}/drafts/{draft_id}?format=raw", self.base_url);
+        let resp = self
+            .http
+            .get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send()
+            .await?;
+        if resp.status().as_u16() == 404 {
+            return Ok(None);
+        }
+        if !resp.status().is_success() {
+            return Err(self.handle_error(resp).await);
+        }
+
+        let json: serde_json::Value = resp.json().await?;
+        let revision = json["message"]["id"]
+            .as_str()
+            .ok_or_else(|| GmailError::Parse("draft response missing message.id".into()))?;
+        let encoded = json["message"]["raw"]
+            .as_str()
+            .ok_or_else(|| GmailError::Parse("draft response missing message.raw".into()))?;
+        let raw_rfc822 = URL_SAFE_NO_PAD
+            .decode(encoded)
+            .or_else(|_| URL_SAFE.decode(encoded))
+            .map_err(|error| GmailError::Parse(format!("invalid draft MIME encoding: {error}")))?;
+        Ok(Some(ServerDraftSnapshot {
+            revision: revision.to_string(),
+            raw_rfc822,
+        }))
+    }
+
+    pub async fn delete_draft(&self, draft_id: &str) -> Result<(), GmailError> {
+        let url = format!("{}/drafts/{draft_id}", self.base_url);
+        let resp = self
+            .http
+            .delete(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(self.handle_error(resp).await);
+        }
+        Ok(())
+    }
+
     pub async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError> {
         let url = format!("{}/labels", self.base_url);
 
@@ -582,6 +666,18 @@ impl GmailApi for GmailClient {
 
     async fn create_draft(&self, raw_base64url: &str) -> Result<String, GmailError> {
         Self::create_draft(self, raw_base64url).await
+    }
+
+    async fn update_draft(&self, draft_id: &str, raw_base64url: &str) -> Result<(), GmailError> {
+        Self::update_draft(self, draft_id, raw_base64url).await
+    }
+
+    async fn fetch_draft(&self, draft_id: &str) -> Result<Option<ServerDraftSnapshot>, GmailError> {
+        Self::fetch_draft(self, draft_id).await
+    }
+
+    async fn delete_draft(&self, draft_id: &str) -> Result<(), GmailError> {
+        Self::delete_draft(self, draft_id).await
     }
 
     async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError> {

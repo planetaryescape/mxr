@@ -1684,6 +1684,7 @@ async fn dispatch_save_draft_to_server() {
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     };
+    let draft_id = draft.id.clone();
 
     let msg = IpcMessage {
         id: 5,
@@ -1698,4 +1699,178 @@ async fn dispatch_save_draft_to_server() {
         }) => {}
         other => panic!("Expected Ack, got {other:?}"),
     }
+    assert!(
+        state.store.get_draft(&draft_id).await.unwrap().is_some(),
+        "saving to a server must also retain the canonical local draft"
+    );
+}
+
+#[tokio::test]
+async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() {
+    let account_id = mxr_core::AccountId::new();
+    let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+    let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+    let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake.clone();
+    let send_provider: Arc<dyn mxr_core::MailSendProvider> = fake.clone();
+    let state = Arc::new(
+        AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+            .await
+            .unwrap(),
+    );
+    let mut draft = mxr_core::types::Draft {
+        id: mxr_core::DraftId::new(),
+        account_id,
+        from: None,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![mxr_core::types::Address {
+            name: None,
+            email: "recipient@example.com".into(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "First version".into(),
+        content: mxr_core::types::DraftContent::markdown("Body"),
+        inline_assets: vec![],
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+    state.store.insert_draft(&draft).await.unwrap();
+
+    let first = handle_request(
+        &state,
+        &IpcMessage {
+            id: 51,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SaveDraftToServer {
+                draft: draft.clone(),
+            }),
+        },
+    )
+    .await;
+    assert!(matches!(
+        first.payload,
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack
+        })
+    ));
+    let provider_draft_id = state
+        .store
+        .get_provider_draft_id(&draft.id)
+        .await
+        .unwrap()
+        .expect("first push should retain the provider draft id");
+
+    draft.subject = "Edited version".into();
+    draft.updated_at = chrono::Utc::now();
+    let second = handle_request(
+        &state,
+        &IpcMessage {
+            id: 52,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::UpdateDraft {
+                draft: draft.clone(),
+            }),
+        },
+    )
+    .await;
+    assert!(matches!(
+        second.payload,
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack
+        })
+    ));
+    assert_eq!(
+        state.store.get_provider_draft_id(&draft.id).await.unwrap(),
+        Some(provider_draft_id.clone())
+    );
+    let server_drafts = fake.server_drafts();
+    assert_eq!(server_drafts.len(), 1, "second push must not create a copy");
+    assert_eq!(server_drafts[&provider_draft_id].subject, "Edited version");
+
+    let remote_edit = mxr_core::Draft {
+        subject: "Edited in Gmail".into(),
+        content: mxr_core::DraftContent::markdown("Remote body"),
+        updated_at: chrono::Utc::now(),
+        ..draft.clone()
+    };
+    assert!(fake.replace_server_draft(&provider_draft_id, remote_edit));
+    assert_eq!(
+        reconcile_provider_drafts(&state, &draft.account_id)
+            .await
+            .unwrap(),
+        0
+    );
+    let pulled = state.store.get_draft(&draft.id).await.unwrap().unwrap();
+    assert_eq!(pulled.subject, "Edited in Gmail");
+    assert_eq!(pulled.content.analysis_text(), "Remote body");
+
+    let locally_deleted = mxr_core::types::Draft {
+        id: mxr_core::DraftId::new(),
+        subject: "Delete from mxr".into(),
+        ..draft.clone()
+    };
+    state.store.insert_draft(&locally_deleted).await.unwrap();
+    let save_local_delete = handle_request(
+        &state,
+        &IpcMessage {
+            id: 53,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SaveDraftToServer {
+                draft: locally_deleted.clone(),
+            }),
+        },
+    )
+    .await;
+    assert!(matches!(
+        save_local_delete.payload,
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack
+        })
+    ));
+    let locally_deleted_provider_id = state
+        .store
+        .get_provider_draft_id(&locally_deleted.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let delete_local = handle_request(
+        &state,
+        &IpcMessage {
+            id: 54,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::DeleteDraft {
+                draft_id: locally_deleted.id.clone(),
+            }),
+        },
+    )
+    .await;
+    assert!(matches!(
+        delete_local.payload,
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack
+        })
+    ));
+    assert!(state
+        .store
+        .get_draft(&locally_deleted.id)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(!fake
+        .server_drafts()
+        .contains_key(&locally_deleted_provider_id));
+
+    mxr_core::MailSendProvider::delete_draft(fake.as_ref(), &provider_draft_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        reconcile_provider_drafts(&state, &draft.account_id)
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(state.store.get_draft(&draft.id).await.unwrap().is_none());
 }

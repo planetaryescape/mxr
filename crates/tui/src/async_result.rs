@@ -205,7 +205,7 @@ pub(crate) enum AsyncResult {
         draft_id: mxr_core::DraftId,
         result: Result<(), MxrError>,
     },
-    /// Completion of a confirmed one-way provider draft copy.
+    /// Completion of a confirmed provider draft create-or-update sync.
     StoredDraftPushed {
         draft_id: mxr_core::DraftId,
         provider: String,

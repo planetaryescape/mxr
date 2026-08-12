@@ -170,10 +170,24 @@ where
         "receipt timestamp should be recent"
     );
 
-    let _saved = provider
+    let saved = provider
         .save_draft(&draft, &from)
         .await
         .expect("save_draft should not fail");
+    if let Some(provider_draft_id) = saved.as_deref() {
+        assert!(
+            provider
+                .fetch_draft(provider_draft_id)
+                .await
+                .expect("draft lookup should not fail")
+                .is_some(),
+            "a newly saved provider draft should be fetchable"
+        );
+        provider
+            .update_draft(provider_draft_id, &draft, &from)
+            .await
+            .expect("a provider that returns a draft id should update that draft in place");
+    }
     if provider.name() != "smtp" {
         let saved = provider
             .save_draft(&draft, &from)
@@ -182,6 +196,20 @@ where
         assert!(
             saved.is_some(),
             "non-SMTP providers should return a provider draft id"
+        );
+    }
+    if let Some(provider_draft_id) = saved.as_deref() {
+        provider
+            .delete_draft(provider_draft_id)
+            .await
+            .expect("a linked provider draft should be deletable");
+        assert!(
+            provider
+                .fetch_draft(provider_draft_id)
+                .await
+                .expect("draft lookup after deletion should not fail")
+                .is_none(),
+            "a deleted provider draft should no longer be fetchable"
         );
     }
 }

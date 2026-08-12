@@ -1071,6 +1071,44 @@ async fn update_draft_edits_in_place_and_preserves_created_at() {
     assert!(!store.update_draft(&ghost).await.unwrap());
 }
 
+#[tokio::test]
+async fn provider_draft_id_survives_local_edits_and_can_be_relinked() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let mut draft = draft_with(&account.id, DraftContent::markdown("first"), 1_700_000_000);
+    store.insert_draft(&draft).await.unwrap();
+
+    assert_eq!(store.get_provider_draft_id(&draft.id).await.unwrap(), None);
+    assert!(store
+        .set_provider_draft_link(&draft.id, "gmail-draft-1", Some("message-1"))
+        .await
+        .unwrap());
+
+    draft.subject = "Edited locally".to_string();
+    draft.updated_at = chrono::DateTime::from_timestamp(1_700_000_500, 0).unwrap();
+    assert!(store.update_draft(&draft).await.unwrap());
+    assert_eq!(
+        store.get_provider_draft_id(&draft.id).await.unwrap(),
+        Some("gmail-draft-1".to_string())
+    );
+    assert_eq!(
+        store.list_provider_draft_links(&account.id).await.unwrap(),
+        vec![(
+            draft.id.clone(),
+            "gmail-draft-1".to_string(),
+            Some("message-1".to_string())
+        )]
+    );
+
+    store.clear_provider_draft_id(&draft.id).await.unwrap();
+    assert_eq!(store.get_provider_draft_id(&draft.id).await.unwrap(), None);
+    assert!(!store
+        .set_provider_draft_link(&DraftId::new(), "missing", None)
+        .await
+        .unwrap());
+}
+
 fn draft_with(account_id: &AccountId, content: DraftContent, at: i64) -> Draft {
     Draft {
         id: DraftId::new(),

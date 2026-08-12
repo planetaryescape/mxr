@@ -852,6 +852,26 @@ const MIGRATIONS: &[Migration] = &[
             },
         ]),
     },
+    Migration {
+        version: 50,
+        name: "provider_draft_id",
+        kind: MigrationKind::Composite(&[
+            MigrationStep::AddColumn {
+                table: "drafts",
+                column: "provider_draft_id",
+                // Stable provider draft resource ID. The provider's nested
+                // message ID may change whenever the draft content is replaced.
+                sql: "ALTER TABLE drafts ADD COLUMN provider_draft_id TEXT",
+            },
+            MigrationStep::AddColumn {
+                table: "drafts",
+                column: "provider_draft_revision",
+                // Gmail's nested message ID changes on every replacement and
+                // is therefore a cheap remote-edit revision marker.
+                sql: "ALTER TABLE drafts ADD COLUMN provider_draft_revision TEXT",
+            },
+        ]),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

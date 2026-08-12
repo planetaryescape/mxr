@@ -268,7 +268,7 @@ pub struct Draft {
 }
 ```
 
-Drafts are local-first. They exist in SQLite before they're sent. The compose flow creates a draft, opens `$EDITOR`, and updates the draft on save. `reply_headers` is the canonical threading surface for replies. Server-side drafts are optional provider capability, not the canonical draft model.
+Drafts are local-first. They exist in SQLite before they're sent. The compose flow creates a draft, opens `$EDITOR`, and updates the draft on save. `reply_headers` is the canonical threading surface for replies. A draft may carry a store-level `provider_draft_id` and `provider_draft_revision`; these link the local `DraftId` to one optional server draft without putting provider identity into the core `Draft` type. Sync uses the opaque revision to detect remote edits and deletion. Unlinked drafts remain local-only.
 
 ### SavedSearch
 
@@ -525,6 +525,8 @@ CREATE TABLE IF NOT EXISTS drafts (
     subject         TEXT NOT NULL DEFAULT '',
     body_markdown   TEXT NOT NULL DEFAULT '',
     attachments     TEXT NOT NULL DEFAULT '[]',
+    provider_draft_id TEXT,
+    provider_draft_revision TEXT,
     created_at      INTEGER NOT NULL,
     updated_at      INTEGER NOT NULL
 );

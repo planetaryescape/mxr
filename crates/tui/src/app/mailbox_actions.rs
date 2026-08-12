@@ -725,7 +725,7 @@ impl App {
                 else {
                     self.accounts.page.refresh_pending = true;
                     self.status_message =
-                        Some("Account details are loading — try provider copy again".into());
+                        Some("Account details are loading — try provider sync again".into());
                     return;
                 };
                 if !account.capabilities.supports_server_drafts {
@@ -747,9 +747,11 @@ impl App {
                     return;
                 };
                 self.status_message = Some(match &operation {
-                    StoredDraftOperation::Delete { .. } => "Deleting local draft...".into(),
+                    StoredDraftOperation::Delete { .. } => {
+                        "Deleting linked draft locally and at the provider...".into()
+                    }
                     StoredDraftOperation::Push { provider, .. } => {
-                        format!("Copying draft to {provider}...")
+                        format!("Syncing draft with {provider}...")
                     }
                 });
                 self.pending_draft_operation = Some(operation);

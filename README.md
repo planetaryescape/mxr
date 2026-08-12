@@ -110,6 +110,20 @@ mxr read-archive --search "from:noreply older_than:7d" --dry-run
 mxr read-archive --search "from:noreply older_than:7d" --yes
 ```
 
+Gmail drafts can stay available on every device without splitting into two
+copies. Push once to link the local and Gmail drafts; later edits update the
+same Gmail draft, and normal sync pulls Gmail edits or deletions back locally:
+
+```bash
+mxr drafts push DRAFT_ID --dry-run
+mxr drafts push DRAFT_ID
+mxr drafts edit DRAFT_ID
+mxr sync
+```
+
+The CLI, TUI, web app, MCP server, and agent skill all use this same linked
+draft lifecycle.
+
 An agent that can run shell commands can discover mxr with `mxr --help` and
 consume JSON from the CLI. MCP clients can use the first-party stdio server:
 

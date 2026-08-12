@@ -321,6 +321,95 @@ impl super::Store {
         Ok(())
     }
 
+    /// Return the stable provider draft resource ID linked to a local draft.
+    pub async fn get_provider_draft_id(&self, id: &DraftId) -> Result<Option<String>, sqlx::Error> {
+        let row: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT provider_draft_id FROM drafts WHERE id = ?")
+                .bind(id.as_str())
+                .fetch_optional(self.reader())
+                .await?;
+        Ok(row.and_then(|(provider_draft_id,)| provider_draft_id))
+    }
+
+    pub async fn get_provider_draft_link(
+        &self,
+        id: &DraftId,
+    ) -> Result<Option<(String, Option<String>)>, sqlx::Error> {
+        let row: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT provider_draft_id, provider_draft_revision FROM drafts WHERE id = ?",
+        )
+        .bind(id.as_str())
+        .fetch_optional(self.reader())
+        .await?;
+        Ok(row.and_then(|(provider_draft_id, revision)| {
+            provider_draft_id.map(|provider_draft_id| (provider_draft_id, revision))
+        }))
+    }
+
+    /// Link a canonical local draft to its stable provider resource and
+    /// current opaque revision. Returns false when no local row exists.
+    pub async fn set_provider_draft_link(
+        &self,
+        id: &DraftId,
+        provider_draft_id: &str,
+        revision: Option<&str>,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            "UPDATE drafts SET provider_draft_id = ?, provider_draft_revision = ? WHERE id = ?",
+        )
+        .bind(provider_draft_id)
+        .bind(revision)
+        .bind(id.as_str())
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    pub async fn set_provider_draft_revision(
+        &self,
+        id: &DraftId,
+        revision: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE drafts SET provider_draft_revision = ? WHERE id = ?")
+            .bind(revision)
+            .bind(id.as_str())
+            .execute(self.writer())
+            .await?;
+        Ok(())
+    }
+
+    /// Clear a stale link after the provider reports that the remote draft no
+    /// longer exists. A subsequent push may then create and link a new draft.
+    pub async fn clear_provider_draft_id(&self, id: &DraftId) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE drafts SET provider_draft_id = NULL, provider_draft_revision = NULL WHERE id = ?",
+        )
+            .bind(id.as_str())
+            .execute(self.writer())
+            .await?;
+        Ok(())
+    }
+
+    /// List linked local/provider draft IDs for one account. Provider-only and
+    /// local-only drafts are intentionally absent.
+    pub async fn list_provider_draft_links(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<Vec<(DraftId, String, Option<String>)>, sqlx::Error> {
+        let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
+            "SELECT id, provider_draft_id, provider_draft_revision FROM drafts \
+             WHERE account_id = ? AND provider_draft_id IS NOT NULL",
+        )
+        .bind(account_id.as_str())
+        .fetch_all(self.reader())
+        .await?;
+        rows.into_iter()
+            .map(|(id, provider_draft_id, revision)| {
+                Ok((decode_id(&id)?, provider_draft_id, revision))
+            })
+            .collect()
+    }
+
     /// Read the current send-pipeline status for a draft.
     pub async fn get_draft_status(&self, id: &DraftId) -> Result<Option<DraftStatus>, sqlx::Error> {
         let id_str = id.as_str();

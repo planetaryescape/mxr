@@ -1418,6 +1418,10 @@ pub(crate) async fn sync_now(
             .await;
     }
     drop(provider_guard);
+    if let Err(error) = crate::handler::reconcile_provider_drafts(state, &provider_account_id).await
+    {
+        tracing::warn!(account = %provider_account_id, %error, "provider draft reconciliation failed");
+    }
     if !outcome.upserted_message_ids.is_empty() {
         emit_operation_event(
             state,

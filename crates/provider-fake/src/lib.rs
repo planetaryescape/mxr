@@ -25,6 +25,8 @@ pub struct FakeProvider {
     bodies: HashMap<String, MessageBody>,
     labels: Mutex<Vec<Label>>,
     sent: Mutex<Vec<Draft>>,
+    server_drafts: Mutex<HashMap<String, Draft>>,
+    server_draft_revisions: Mutex<HashMap<String, u64>>,
     /// The resolved From `Address` handed to each `send`, in order — lets
     /// tests assert the daemon selected and forwarded the right sender
     /// (primary vs a per-message alias override).
@@ -89,6 +91,8 @@ impl FakeProvider {
             bodies,
             labels: Mutex::new(labels),
             sent: Mutex::new(Vec::new()),
+            server_drafts: Mutex::new(HashMap::new()),
+            server_draft_revisions: Mutex::new(HashMap::new()),
             sent_from: Mutex::new(Vec::new()),
             mutations: Mutex::new(Vec::new()),
             idle_trigger: None,
@@ -105,6 +109,32 @@ impl FakeProvider {
 
     pub fn sent_drafts(&self) -> Vec<Draft> {
         self.sent_guard().clone()
+    }
+
+    pub fn server_drafts(&self) -> HashMap<String, Draft> {
+        self.server_drafts
+            .lock()
+            .expect("fake provider server_drafts mutex should not be poisoned")
+            .clone()
+    }
+
+    /// Test seam for a provider-side edit that should be pulled locally on the
+    /// next draft reconciliation.
+    pub fn replace_server_draft(&self, provider_draft_id: &str, draft: Draft) -> bool {
+        let mut server_drafts = self
+            .server_drafts
+            .lock()
+            .expect("fake provider server_drafts mutex should not be poisoned");
+        let Some(stored) = server_drafts.get_mut(provider_draft_id) else {
+            return false;
+        };
+        *stored = draft;
+        let mut revisions = self
+            .server_draft_revisions
+            .lock()
+            .expect("fake provider server_draft_revisions mutex should not be poisoned");
+        *revisions.entry(provider_draft_id.to_string()).or_insert(1) += 1;
+        true
     }
 
     /// The resolved From `Address` passed to each `send`, in call order.
@@ -380,12 +410,89 @@ impl MailSendProvider for FakeProvider {
         })
     }
 
-    async fn save_draft(
+    async fn save_draft(&self, draft: &Draft, _from: &Address) -> Result<Option<String>, MxrError> {
+        let provider_draft_id = format!("fake-draft-{}", uuid::Uuid::now_v7());
+        self.server_drafts
+            .lock()
+            .expect("fake provider server_drafts mutex should not be poisoned")
+            .insert(provider_draft_id.clone(), draft.clone());
+        self.server_draft_revisions
+            .lock()
+            .expect("fake provider server_draft_revisions mutex should not be poisoned")
+            .insert(provider_draft_id.clone(), 1);
+        Ok(Some(provider_draft_id))
+    }
+
+    async fn update_draft(
         &self,
-        _draft: &Draft,
+        provider_draft_id: &str,
+        draft: &Draft,
         _from: &Address,
-    ) -> Result<Option<String>, MxrError> {
-        Ok(Some(format!("fake-draft-{}", uuid::Uuid::now_v7())))
+    ) -> Result<(), MxrError> {
+        let mut server_drafts = self
+            .server_drafts
+            .lock()
+            .expect("fake provider server_drafts mutex should not be poisoned");
+        let stored = server_drafts
+            .get_mut(provider_draft_id)
+            .ok_or_else(|| MxrError::NotFound(format!("provider draft {provider_draft_id}")))?;
+        *stored = draft.clone();
+        let mut revisions = self
+            .server_draft_revisions
+            .lock()
+            .expect("fake provider server_draft_revisions mutex should not be poisoned");
+        *revisions.entry(provider_draft_id.to_string()).or_insert(1) += 1;
+        Ok(())
+    }
+
+    async fn fetch_draft(
+        &self,
+        provider_draft_id: &str,
+    ) -> Result<Option<mxr_core::ServerDraftSnapshot>, MxrError> {
+        let draft = self
+            .server_drafts
+            .lock()
+            .expect("fake provider server_drafts mutex should not be poisoned")
+            .get(provider_draft_id)
+            .cloned();
+        let Some(draft) = draft else {
+            return Ok(None);
+        };
+        let revision = self
+            .server_draft_revisions
+            .lock()
+            .expect("fake provider server_draft_revisions mutex should not be poisoned")
+            .get(provider_draft_id)
+            .copied()
+            .unwrap_or(1);
+        let from = draft.from.clone().unwrap_or_else(|| Address {
+            name: Some("Fake User".into()),
+            email: "fake@example.com".into(),
+        });
+        let message = mxr_outbound::email::build_message(&draft, &from, true)
+            .map_err(|error| MxrError::Provider(error.to_string()))?;
+        Ok(Some(mxr_core::ServerDraftSnapshot {
+            revision: revision.to_string(),
+            raw_rfc822: mxr_outbound::email::format_message_for_gmail(&message),
+        }))
+    }
+
+    async fn delete_draft(&self, provider_draft_id: &str) -> Result<(), MxrError> {
+        let removed = self
+            .server_drafts
+            .lock()
+            .expect("fake provider server_drafts mutex should not be poisoned")
+            .remove(provider_draft_id);
+        self.server_draft_revisions
+            .lock()
+            .expect("fake provider server_draft_revisions mutex should not be poisoned")
+            .remove(provider_draft_id);
+        if removed.is_none() {
+            return Err(MxrError::NotFound(format!(
+                "provider draft {provider_draft_id}"
+            )));
+        }
+        Ok(())
     }
 
     async fn send_calendar_reply(

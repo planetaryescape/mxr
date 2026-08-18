@@ -1602,9 +1602,6 @@ pub struct Draft {
 pub struct ServerDraftSnapshot {
     pub revision: String,
     pub raw_rfc822: Vec<u8>,
-    /// Provider-native thread the draft sits on, when the provider threads
-    /// drafts (Gmail). `None` for providers without server-side threading.
-    pub thread_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

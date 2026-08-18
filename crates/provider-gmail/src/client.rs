@@ -501,9 +501,6 @@ impl GmailClient {
         Ok(Some(ServerDraftSnapshot {
             revision: revision.to_string(),
             raw_rfc822,
-            thread_id: json["message"]["threadId"]
-                .as_str()
-                .map(std::string::ToString::to_string),
         }))
     }
 

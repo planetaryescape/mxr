@@ -904,6 +904,13 @@ impl MailSendProvider for GmailProvider {
         true
     }
 
+    async fn resolve_reply_thread_id(
+        &self,
+        draft: &Draft,
+    ) -> mxr_core::provider::Result<Option<String>> {
+        Ok(self.reply_thread_id(draft).await)
+    }
+
     async fn send(
         &self,
         draft: &Draft,
@@ -1229,7 +1236,6 @@ mod tests {
                 mxr_core::ServerDraftSnapshot {
                     revision: "message-1".into(),
                     raw_rfc822: b"From: sender@example.com\r\nSubject: Draft\r\n\r\nBody".to_vec(),
-                    thread_id: thread_id.map(str::to_string),
                 },
             );
             Ok("draft-1".into())
@@ -1966,13 +1972,33 @@ END:VCALENDAR\r\n";
     }
 
     #[tokio::test]
-    async fn fetch_draft_reports_the_thread_the_server_draft_landed_on() {
-        let (provider, _, _) = threading_provider();
-        let draft = reply_draft("<msg-1@example.com>", None);
+    async fn resolve_reply_thread_id_answers_only_from_a_confirmed_parent_lookup() {
+        let (provider, queries, _) = threading_provider();
 
-        provider.save_draft(&draft, &sender()).await.unwrap();
-        let snapshot = provider.fetch_draft("draft-1").await.unwrap().unwrap();
+        let found = provider
+            .resolve_reply_thread_id(&reply_draft("<msg-1@example.com>", None))
+            .await
+            .unwrap();
+        let missing = provider
+            .resolve_reply_thread_id(&reply_draft("<gone@example.com>", None))
+            .await
+            .unwrap();
+        let cached = provider
+            .resolve_reply_thread_id(&reply_draft("<gone@example.com>", Some("thread-cached")))
+            .await
+            .unwrap();
+        let plain = provider
+            .resolve_reply_thread_id(&Draft {
+                reply_headers: None,
+                ..reply_draft("<msg-1@example.com>", None)
+            })
+            .await
+            .unwrap();
 
-        assert_eq!(snapshot.thread_id.as_deref(), Some("thread-1"));
+        assert_eq!(found.as_deref(), Some("thread-1"));
+        assert_eq!(missing, None, "a miss is unknown, not a thread to cache");
+        assert_eq!(cached.as_deref(), Some("thread-cached"));
+        assert_eq!(plain, None);
+        assert_eq!(rfc822msgid_lookups(&queries).len(), 2);
     }
 }

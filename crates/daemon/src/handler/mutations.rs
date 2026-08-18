@@ -11,13 +11,14 @@ use mxr_core::types::{
     MessageDirection, MessageFlags, MessageMetadata, ReplyHeaders, SendReceipt,
     ServerDraftSnapshot, UnsubscribeMethod,
 };
-use mxr_core::{AttachmentId, MxrError};
+use mxr_core::{AttachmentId, MailSendProvider, MxrError};
 use mxr_protocol::{
     AccountMutationResultData, DaemonEvent, DraftSafetyContextData, DraftSafetyModeData,
     ForwardContext, JobData, JobProgressData, JobStatusData, MutationCommand, MutationResultData,
     ReplyContext, ResponseData, UnsubscribePurgeResultData, UnsubscribePurgeStatusData,
 };
 use mxr_store::{EventLogRefs, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
@@ -366,6 +367,19 @@ async fn run_safety_pipeline(
     draft: &Draft,
     context: &DraftSafetyContextData,
 ) -> Result<DraftSafetyReport, String> {
+    // Clients pass an mxr `ThreadId` when they have one; a reply draft can
+    // always be tied to its thread through `In-Reply-To`, so fall back to that
+    // rather than run the thread-scoped checks against nothing.
+    let derived_context;
+    let context = if context.thread_id.is_none() && draft.reply_headers.is_some() {
+        derived_context = DraftSafetyContextData {
+            thread_id: reply_parent_thread_id(state, draft).await,
+            ..context.clone()
+        };
+        &derived_context
+    } else {
+        context
+    };
     let mut report = check_draft_safety_with_context(state, draft).await?;
     let safety_ctx = build_safety_context(state, draft, context).await?;
     let safety_cfg = mxr_safety::SafetyConfig::default();
@@ -1986,19 +2000,29 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
         ));
     }
 
-    let mut updated_provider_snapshot = None;
+    let mut draft = Cow::Borrowed(draft);
+    let mut updated_provider_revision = None;
     if let Some((provider_draft_id, _)) = state.store.get_provider_draft_link(&draft.id).await? {
         let sender = state.send_provider_for_account(&draft.account_id)?;
         let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
         let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
-        match sender.update_draft(&provider_draft_id, draft, &from).await {
+        draft = Cow::Owned(
+            with_reply_thread_id(state, sender.as_ref(), &draft)
+                .await
+                .into_owned(),
+        );
+        match sender.update_draft(&provider_draft_id, &draft, &from).await {
             Ok(()) => {
-                updated_provider_snapshot =
-                    sender.fetch_draft(&provider_draft_id).await.ok().flatten();
+                updated_provider_revision = sender
+                    .fetch_draft(&provider_draft_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|snapshot| snapshot.revision);
             }
             Err(MxrError::NotFound(_)) => {
                 let replacement_id = sender
-                    .save_draft(draft, &from)
+                    .save_draft(&draft, &from)
                     .await?
                     .ok_or_else(|| "Provider did not recreate the linked draft".to_string())?;
                 // Point at the replacement before touching the local content.
@@ -2008,8 +2032,12 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
                     .store
                     .set_provider_draft_link(&draft.id, &replacement_id, None)
                     .await?;
-                updated_provider_snapshot =
-                    sender.fetch_draft(&replacement_id).await.ok().flatten();
+                updated_provider_revision = sender
+                    .fetch_draft(&replacement_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|snapshot| snapshot.revision);
             }
             Err(error) => {
                 return Err(format!(
@@ -2019,13 +2047,12 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
             }
         }
     }
-    if state.store.update_draft(draft).await? {
-        if let Some(snapshot) = updated_provider_snapshot {
+    if state.store.update_draft(&draft).await? {
+        if let Some(revision) = updated_provider_revision {
             state
                 .store
-                .set_provider_draft_revision(&draft.id, &snapshot.revision)
+                .set_provider_draft_revision(&draft.id, &revision)
                 .await?;
-            cache_reply_thread_id(state, draft, &snapshot).await;
         }
         return Ok(ResponseData::Ack);
     }
@@ -2230,8 +2257,7 @@ async fn draft_from_server_snapshot(
         thread_id: existing
             .reply_headers
             .as_ref()
-            .and_then(|reply| reply.thread_id.clone())
-            .or_else(|| snapshot.thread_id.clone()),
+            .and_then(|reply| reply.thread_id.clone()),
     });
     Ok(Draft {
         id: existing.id.clone(),
@@ -3051,7 +3077,9 @@ async fn ingest_sent_message(
         id: message_id.clone(),
         account_id: draft.account_id.clone(),
         provider_id: provider_id_value,
-        thread_id: sent_thread_id(state, draft).await.unwrap_or_default(),
+        thread_id: reply_parent_thread_id(state, draft)
+            .await
+            .unwrap_or_default(),
         message_id_header: Some(receipt.rfc2822_message_id.clone()),
         in_reply_to: draft.reply_headers.as_ref().map(|h| h.in_reply_to.clone()),
         references: draft
@@ -3157,31 +3185,49 @@ async fn ingest_sent_message(
     Ok(message_id)
 }
 
-/// Cache the provider-native thread id a server draft landed on back onto the
-/// local reply draft, so later pushes and the eventual send do not resolve it
-/// again. Only reply drafts that don't already carry one are touched.
-/// Best-effort: threading is not worth failing a push that already succeeded.
-async fn cache_reply_thread_id(state: &AppState, draft: &Draft, snapshot: &ServerDraftSnapshot) {
-    let (Some(thread_id), Some(headers)) = (&snapshot.thread_id, &draft.reply_headers) else {
-        return;
+/// Give a reply draft its provider-native thread id before it goes to the
+/// provider, and cache a successful answer on the local row so later pushes
+/// and the send skip the lookup. Only a confirmed parent lookup is cached: a
+/// miss stays `None` so the next push retries instead of freezing the draft
+/// off-thread. Best-effort throughout; threading never blocks a push.
+async fn with_reply_thread_id<'a>(
+    state: &AppState,
+    sender: &dyn MailSendProvider,
+    draft: &'a Draft,
+) -> Cow<'a, Draft> {
+    let Some(headers) = draft.reply_headers.as_ref() else {
+        return Cow::Borrowed(draft);
     };
     if headers.thread_id.is_some() {
-        return;
+        return Cow::Borrowed(draft);
     }
-    let cached = ReplyHeaders {
-        thread_id: Some(thread_id.clone()),
+    let thread_id = match sender.resolve_reply_thread_id(draft).await {
+        Ok(Some(thread_id)) => thread_id,
+        Ok(None) => return Cow::Borrowed(draft),
+        Err(error) => {
+            tracing::warn!(draft_id = %draft.id, %error, "could not resolve provider thread for reply draft");
+            return Cow::Borrowed(draft);
+        }
+    };
+    let mut threaded = draft.clone();
+    let headers = ReplyHeaders {
+        thread_id: Some(thread_id),
         ..headers.clone()
     };
     if let Err(error) = state
         .store
-        .set_draft_reply_headers(&draft.id, &cached)
+        .set_draft_reply_headers(&draft.id, &headers)
         .await
     {
         tracing::warn!(draft_id = %draft.id, %error, "could not cache provider thread id on draft");
     }
+    threaded.reply_headers = Some(headers);
+    Cow::Owned(threaded)
 }
 
-async fn sent_thread_id(state: &AppState, draft: &Draft) -> Option<mxr_core::ThreadId> {
+/// The local thread a reply draft belongs to, found through its parent's
+/// `Message-ID`.
+async fn reply_parent_thread_id(state: &AppState, draft: &Draft) -> Option<mxr_core::ThreadId> {
     let in_reply_to = draft.reply_headers.as_ref()?.in_reply_to.as_str();
     state
         .store
@@ -3215,6 +3261,7 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
     // of issuing SaveDraft followed by SaveDraftToServer.
     state.store.insert_draft_if_absent(draft).await?;
     let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
+    let draft = &*with_reply_thread_id(state, sender.as_ref(), draft).await;
     if let Some(provider_draft_id) = state.store.get_provider_draft_id(&draft.id).await? {
         match sender.update_draft(&provider_draft_id, draft, &from).await {
             Ok(()) => {
@@ -3223,7 +3270,6 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
                         .store
                         .set_provider_draft_revision(&draft.id, &snapshot.revision)
                         .await?;
-                    cache_reply_thread_id(state, draft, &snapshot).await;
                 }
                 tracing::info!(provider_draft_id, "Draft updated on server");
                 return Ok(ResponseData::Ack);
@@ -3240,21 +3286,18 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
 
     match sender.save_draft(draft, &from).await {
         Ok(Some(draft_id)) => {
-            let snapshot = match sender.fetch_draft(&draft_id).await {
-                Ok(snapshot) => snapshot,
+            let revision = match sender.fetch_draft(&draft_id).await {
+                Ok(Some(snapshot)) => Some(snapshot.revision),
+                Ok(None) => None,
                 Err(error) => {
                     tracing::warn!(draft_id, %error, "could not read server draft revision after save");
                     None
                 }
             };
-            let revision = snapshot.as_ref().map(|snapshot| snapshot.revision.as_str());
             let linked = state
                 .store
-                .set_provider_draft_link(&draft.id, &draft_id, revision)
+                .set_provider_draft_link(&draft.id, &draft_id, revision.as_deref())
                 .await?;
-            if let Some(snapshot) = snapshot.as_ref() {
-                cache_reply_thread_id(state, draft, snapshot).await;
-            }
             tracing::info!(draft_id, linked, "Draft saved to server");
             Ok(ResponseData::Ack)
         }
@@ -4235,6 +4278,86 @@ mod safety_context_wiring_tests {
         assert!(
             reply_all_warns.is_empty(),
             "Sam is a thread participant; reply-all warning should be suppressed, got {reply_all_warns:?}"
+        );
+    }
+
+    /// A client that has no mxr `ThreadId` for the draft (the CLI's
+    /// `--check`, a pushed reply whose `reply_headers.thread_id` is now the
+    /// provider's id) still gets thread-scoped checks: the daemon ties the
+    /// reply to its thread through `In-Reply-To`.
+    #[tokio::test]
+    async fn reply_thread_is_derived_from_in_reply_to_when_context_has_none() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+
+        let envelope = mxr_core::types::Envelope {
+            id: MessageId::new(),
+            account_id: account_id.clone(),
+            provider_id: "sam-2".into(),
+            thread_id: ThreadId::new(),
+            message_id_header: Some("<sam-2@example.com>".into()),
+            in_reply_to: None,
+            references: vec![],
+            from: Address {
+                email: "sam@example.com".into(),
+                name: Some("Sam Carter".into()),
+            },
+            to: vec![Address {
+                email: "user@example.com".into(),
+                name: None,
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "let's sync".into(),
+            date: Utc::now(),
+            flags: mxr_core::types::MessageFlags::empty(),
+            snippet: "ping".into(),
+            has_attachments: false,
+            size_bytes: 256,
+            unsubscribe: mxr_core::types::UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 0,
+            label_provider_ids: vec![],
+            keywords: std::collections::BTreeSet::new(),
+        };
+        state
+            .store
+            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let mut draft = draft_to(
+            account_id.clone(),
+            vec![
+                addr("sam@example.com", Some("Sam Carter")),
+                addr("dave@example.com", Some("Dave")),
+                addr("eve@example.com", Some("Eve")),
+                addr("frank@example.com", Some("Frank")),
+            ],
+            "Hi Sam,\n\nThanks, that works.",
+        );
+        draft.reply_headers = Some(ReplyHeaders {
+            in_reply_to: "<sam-2@example.com>".into(),
+            references: vec![],
+            // A provider-native id, not an mxr ThreadId: must not be needed.
+            thread_id: Some("19fdc6a4f108c577".into()),
+        });
+        let mut context = check_context();
+        context.reply_all = true;
+        context.thread_id = None;
+
+        let resp = check_draft_safety_request(&state, &draft, &context)
+            .await
+            .expect("check_draft_safety_request");
+        let reply_all_warns: Vec<_> = report(resp)
+            .issues
+            .into_iter()
+            .filter(|i| i.code == DraftSafetyIssueCode::ReplyAll)
+            .collect();
+        assert!(
+            reply_all_warns.is_empty(),
+            "Sam is a thread participant via In-Reply-To; reply-all warning should be suppressed, got {reply_all_warns:?}"
         );
     }
 

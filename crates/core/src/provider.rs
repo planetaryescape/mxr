@@ -156,6 +156,15 @@ pub trait MailSendProvider: Send + Sync {
 
     /// Save a draft to the mail server. Returns the server-side draft ID if supported.
     /// Default: returns Ok(None) (provider doesn't support server drafts).
+    /// Provider-native thread id the given reply draft belongs on, when the
+    /// provider threads drafts server-side (Gmail) and the parent can be found.
+    /// The daemon caches a `Some` onto `reply_headers.thread_id` so later
+    /// pushes and the send skip the lookup. `None` means "unknown", never
+    /// "unthreaded": callers must not cache it.
+    async fn resolve_reply_thread_id(&self, _draft: &Draft) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     async fn save_draft(&self, _draft: &Draft, _from: &Address) -> Result<Option<String>> {
         Ok(None)
     }

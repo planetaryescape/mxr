@@ -70,6 +70,9 @@ The draft browser uses `e` to edit, `d` to preview and confirm linked deletion,
 and `p` to preview and confirm provider sync. Unsupported accounts are
 refused without changing the local draft.
 
+[Follow the linked Gmail draft workflow](/guides/linked-drafts/) for CLI and
+MCP examples, sync behavior, and failure handling.
+
 ## Save as a draft (don't send)
 
 `compose`, `reply`, `reply-all`, and `forward` each save a draft with

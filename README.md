@@ -122,7 +122,8 @@ mxr sync
 ```
 
 The CLI, TUI, web app, MCP server, and agent skill all use this same linked
-draft lifecycle.
+draft lifecycle. [Read the linked Gmail draft guide](https://mxr.sh/guides/linked-drafts/)
+for MCP calls, deletion behavior, and failure handling.
 
 An agent that can run shell commands can discover mxr with `mxr --help` and
 consume JSON from the CLI. MCP clients can use the first-party stdio server:

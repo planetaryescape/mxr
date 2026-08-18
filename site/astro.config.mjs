@@ -63,6 +63,7 @@ export default defineConfig({
             { label: 'Triage Flow', slug: 'guides/triage-flow' },
             { label: 'Unsubscribe', slug: 'guides/unsubscribe' },
             { label: 'Compose', slug: 'guides/compose' },
+            { label: 'Linked Gmail Drafts', slug: 'guides/linked-drafts' },
             { label: 'Mail Merge', slug: 'guides/mail-merge' },
             { label: 'Pre-send Safety', slug: 'guides/pre-send-safety' },
             { label: 'Calendar Invites', slug: 'guides/calendar-invites' },

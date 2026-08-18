@@ -466,9 +466,18 @@ impl MailSendProvider for FakeProvider {
             .get(provider_draft_id)
             .copied()
             .unwrap_or(1);
+        // Mirror Gmail: a reply draft is filed on its parent's thread, so the
+        // daemon's cache-back of the provider thread id is exercised in tests.
+        let thread_id = draft.reply_headers.as_ref().map(|headers| {
+            headers
+                .thread_id
+                .clone()
+                .unwrap_or_else(|| format!("fake-thread-{}", headers.in_reply_to))
+        });
         Ok(Some(mxr_core::ServerDraftSnapshot {
             revision: revision.to_string(),
             raw_rfc822: build_fake_draft_message(&draft)?,
+            thread_id,
         }))
     }
 

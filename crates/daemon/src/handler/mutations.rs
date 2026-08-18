@@ -1986,19 +1986,15 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
         ));
     }
 
-    let mut updated_provider_revision = None;
+    let mut updated_provider_snapshot = None;
     if let Some((provider_draft_id, _)) = state.store.get_provider_draft_link(&draft.id).await? {
         let sender = state.send_provider_for_account(&draft.account_id)?;
         let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
         let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
         match sender.update_draft(&provider_draft_id, draft, &from).await {
             Ok(()) => {
-                updated_provider_revision = sender
-                    .fetch_draft(&provider_draft_id)
-                    .await
-                    .ok()
-                    .flatten()
-                    .map(|snapshot| snapshot.revision);
+                updated_provider_snapshot =
+                    sender.fetch_draft(&provider_draft_id).await.ok().flatten();
             }
             Err(MxrError::NotFound(_)) => {
                 let replacement_id = sender
@@ -2012,12 +2008,8 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
                     .store
                     .set_provider_draft_link(&draft.id, &replacement_id, None)
                     .await?;
-                updated_provider_revision = sender
-                    .fetch_draft(&replacement_id)
-                    .await
-                    .ok()
-                    .flatten()
-                    .map(|snapshot| snapshot.revision);
+                updated_provider_snapshot =
+                    sender.fetch_draft(&replacement_id).await.ok().flatten();
             }
             Err(error) => {
                 return Err(format!(
@@ -2028,11 +2020,12 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
         }
     }
     if state.store.update_draft(draft).await? {
-        if let Some(revision) = updated_provider_revision {
+        if let Some(snapshot) = updated_provider_snapshot {
             state
                 .store
-                .set_provider_draft_revision(&draft.id, &revision)
+                .set_provider_draft_revision(&draft.id, &snapshot.revision)
                 .await?;
+            cache_reply_thread_id(state, draft, &snapshot).await;
         }
         return Ok(ResponseData::Ack);
     }
@@ -2237,7 +2230,8 @@ async fn draft_from_server_snapshot(
         thread_id: existing
             .reply_headers
             .as_ref()
-            .and_then(|reply| reply.thread_id.clone()),
+            .and_then(|reply| reply.thread_id.clone())
+            .or_else(|| snapshot.thread_id.clone()),
     });
     Ok(Draft {
         id: existing.id.clone(),
@@ -3163,6 +3157,30 @@ async fn ingest_sent_message(
     Ok(message_id)
 }
 
+/// Cache the provider-native thread id a server draft landed on back onto the
+/// local reply draft, so later pushes and the eventual send do not resolve it
+/// again. Only reply drafts that don't already carry one are touched.
+/// Best-effort: threading is not worth failing a push that already succeeded.
+async fn cache_reply_thread_id(state: &AppState, draft: &Draft, snapshot: &ServerDraftSnapshot) {
+    let (Some(thread_id), Some(headers)) = (&snapshot.thread_id, &draft.reply_headers) else {
+        return;
+    };
+    if headers.thread_id.is_some() {
+        return;
+    }
+    let cached = ReplyHeaders {
+        thread_id: Some(thread_id.clone()),
+        ..headers.clone()
+    };
+    if let Err(error) = state
+        .store
+        .set_draft_reply_headers(&draft.id, &cached)
+        .await
+    {
+        tracing::warn!(draft_id = %draft.id, %error, "could not cache provider thread id on draft");
+    }
+}
+
 async fn sent_thread_id(state: &AppState, draft: &Draft) -> Option<mxr_core::ThreadId> {
     let in_reply_to = draft.reply_headers.as_ref()?.in_reply_to.as_str();
     state
@@ -3205,6 +3223,7 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
                         .store
                         .set_provider_draft_revision(&draft.id, &snapshot.revision)
                         .await?;
+                    cache_reply_thread_id(state, draft, &snapshot).await;
                 }
                 tracing::info!(provider_draft_id, "Draft updated on server");
                 return Ok(ResponseData::Ack);
@@ -3221,18 +3240,21 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
 
     match sender.save_draft(draft, &from).await {
         Ok(Some(draft_id)) => {
-            let revision = match sender.fetch_draft(&draft_id).await {
-                Ok(Some(snapshot)) => Some(snapshot.revision),
-                Ok(None) => None,
+            let snapshot = match sender.fetch_draft(&draft_id).await {
+                Ok(snapshot) => snapshot,
                 Err(error) => {
                     tracing::warn!(draft_id, %error, "could not read server draft revision after save");
                     None
                 }
             };
+            let revision = snapshot.as_ref().map(|snapshot| snapshot.revision.as_str());
             let linked = state
                 .store
-                .set_provider_draft_link(&draft.id, &draft_id, revision.as_deref())
+                .set_provider_draft_link(&draft.id, &draft_id, revision)
                 .await?;
+            if let Some(snapshot) = snapshot.as_ref() {
+                cache_reply_thread_id(state, draft, snapshot).await;
+            }
             tracing::info!(draft_id, linked, "Draft saved to server");
             Ok(ResponseData::Ack)
         }

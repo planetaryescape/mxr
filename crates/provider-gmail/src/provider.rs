@@ -852,6 +852,48 @@ impl MailSyncProvider for GmailProvider {
     }
 }
 
+impl GmailProvider {
+    /// Gmail's native thread id for a reply draft.
+    ///
+    /// Gmail files drafts on a conversation only by `threadId`; the
+    /// In-Reply-To/References headers in the MIME are not enough for drafts
+    /// (they mostly are for sends). The compose path does not know the raw
+    /// Gmail thread id, so when the draft carries none the parent is looked up
+    /// by its RFC 5322 Message-ID. A miss or a lookup failure degrades to an
+    /// unthreaded draft: threading must never block a push or a send.
+    async fn reply_thread_id(&self, draft: &Draft) -> Option<String> {
+        let headers = draft.reply_headers.as_ref()?;
+        // `thread-id: ""` in hand-edited frontmatter reaches here as `Some("")`.
+        if let Some(thread_id) = headers.thread_id.as_deref().filter(|id| !id.is_empty()) {
+            return Some(thread_id.to_string());
+        }
+        let parent = send::normalize_message_id(&headers.in_reply_to);
+        if parent.is_empty() {
+            return None;
+        }
+        let query = format!("rfc822msgid:{parent}");
+        match self.client.list_messages(Some(&query), None, 1).await {
+            Ok(response) => {
+                let thread_id = response
+                    .messages
+                    .and_then(|messages| messages.into_iter().next())
+                    .map(|message| message.thread_id);
+                if thread_id.is_none() {
+                    debug!(
+                        parent,
+                        "reply parent not found in Gmail; draft will not be threaded"
+                    );
+                }
+                thread_id
+            }
+            Err(error) => {
+                warn!(parent, %error, "could not resolve Gmail thread for reply; continuing unthreaded");
+                None
+            }
+        }
+    }
+}
+
 #[async_trait]
 impl MailSendProvider for GmailProvider {
     fn name(&self) -> &str {
@@ -872,10 +914,11 @@ impl MailSendProvider for GmailProvider {
             .await
             .map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
+        let thread_id = self.reply_thread_id(draft).await;
 
         let result = self
             .client
-            .send_message(&encoded)
+            .send_message(&encoded, thread_id.as_deref())
             .await
             .map_err(MxrError::from)?;
 
@@ -905,7 +948,7 @@ impl MailSendProvider for GmailProvider {
 
         let result = self
             .client
-            .send_message(&encoded)
+            .send_message(&encoded, None)
             .await
             .map_err(MxrError::from)?;
 
@@ -925,10 +968,11 @@ impl MailSendProvider for GmailProvider {
             .await
             .map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
+        let thread_id = self.reply_thread_id(draft).await;
 
         let draft_id = self
             .client
-            .create_draft(&encoded)
+            .create_draft(&encoded, thread_id.as_deref())
             .await
             .map_err(MxrError::from)?;
 
@@ -945,9 +989,10 @@ impl MailSendProvider for GmailProvider {
             .await
             .map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
+        let thread_id = self.reply_thread_id(draft).await;
 
         self.client
-            .update_draft(provider_draft_id, &encoded)
+            .update_draft(provider_draft_id, &encoded, thread_id.as_deref())
             .await
             .map_err(MxrError::from)
     }
@@ -977,7 +1022,7 @@ mod tests {
     use crate::types::*;
     use serde_json::json;
     use std::collections::HashMap;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
     struct MockGmailApi {
         messages: HashMap<String, GmailMessage>,
@@ -985,16 +1030,53 @@ mod tests {
         modified: Mutex<Vec<String>>,
         drafts: Mutex<HashMap<String, mxr_core::ServerDraftSnapshot>>,
         stale_history: bool,
+        /// Every `list_messages` query string, so tests can assert on (or
+        /// assert the absence of) the `rfc822msgid:` reply-parent lookup.
+        list_queries: Arc<Mutex<Vec<Option<String>>>>,
+        /// `threadId` handed to `create_draft` / `update_draft` /
+        /// `send_message`, in call order.
+        thread_ids: Arc<Mutex<Vec<Option<String>>>>,
+    }
+
+    impl MockGmailApi {
+        fn record_thread_id(&self, thread_id: Option<&str>) {
+            self.thread_ids
+                .lock()
+                .unwrap()
+                .push(thread_id.map(str::to_string));
+        }
     }
 
     #[async_trait]
     impl GmailApi for MockGmailApi {
         async fn list_messages(
             &self,
-            _query: Option<&str>,
+            query: Option<&str>,
             page_token: Option<&str>,
             _max_results: u32,
         ) -> Result<GmailListResponse, GmailError> {
+            self.list_queries
+                .lock()
+                .unwrap()
+                .push(query.map(str::to_string));
+            if let Some(parent) = query.and_then(|q| q.strip_prefix("rfc822msgid:")) {
+                let hit = self
+                    .messages
+                    .values()
+                    .find(|message| {
+                        gmail_header(message, "Message-ID")
+                            .is_some_and(|value| send::normalize_message_id(value) == parent)
+                    })
+                    .map(|message| GmailMessageRef {
+                        id: message.id.clone(),
+                        thread_id: message.thread_id.clone(),
+                    });
+                return Ok(GmailListResponse {
+                    messages: hit.map(|hit| vec![hit]),
+                    next_page_token: None,
+                    result_size_estimate: None,
+                });
+            }
             Ok(match page_token {
                 Some("page-2") => GmailListResponse {
                     messages: Some(vec![GmailMessageRef {
@@ -1119,7 +1201,9 @@ mod tests {
         async fn send_message(
             &self,
             _raw_base64url: &str,
+            thread_id: Option<&str>,
         ) -> Result<serde_json::Value, GmailError> {
+            self.record_thread_id(thread_id);
             Ok(json!({"id": "sent-1"}))
         }
 
@@ -1134,12 +1218,18 @@ mod tests {
             Ok(b"Hello".to_vec())
         }
 
-        async fn create_draft(&self, _raw_base64url: &str) -> Result<String, GmailError> {
+        async fn create_draft(
+            &self,
+            _raw_base64url: &str,
+            thread_id: Option<&str>,
+        ) -> Result<String, GmailError> {
+            self.record_thread_id(thread_id);
             self.drafts.lock().unwrap().insert(
                 "draft-1".into(),
                 mxr_core::ServerDraftSnapshot {
                     revision: "message-1".into(),
                     raw_rfc822: b"From: sender@example.com\r\nSubject: Draft\r\n\r\nBody".to_vec(),
+                    thread_id: thread_id.map(str::to_string),
                 },
             );
             Ok("draft-1".into())
@@ -1149,7 +1239,9 @@ mod tests {
             &self,
             _draft_id: &str,
             _raw_base64url: &str,
+            thread_id: Option<&str>,
         ) -> Result<(), GmailError> {
+            self.record_thread_id(thread_id);
             Ok(())
         }
 
@@ -1213,7 +1305,22 @@ mod tests {
         gmail_provider_with_stale_history(false)
     }
 
+    fn gmail_header<'a>(message: &'a GmailMessage, name: &str) -> Option<&'a str> {
+        message
+            .payload
+            .as_ref()?
+            .headers
+            .as_ref()?
+            .iter()
+            .find(|header| header.name.eq_ignore_ascii_case(name))
+            .map(|header| header.value.as_str())
+    }
+
     fn gmail_provider_with_stale_history(stale_history: bool) -> GmailProvider {
+        GmailProvider::with_api(AccountId::new(), Box::new(mock_api(stale_history)))
+    }
+
+    fn mock_api(stale_history: bool) -> MockGmailApi {
         let mut messages = HashMap::new();
         for message in [
             serde_json::from_value::<GmailMessage>(gmail_message("msg-1", "thread-1", "Welcome"))
@@ -1236,33 +1343,32 @@ mod tests {
             messages.insert(message.id.clone(), message);
         }
 
-        GmailProvider::with_api(
-            AccountId::new(),
-            Box::new(MockGmailApi {
-                messages,
-                labels: vec![
-                    GmailLabel {
-                        id: "INBOX".into(),
-                        name: "INBOX".into(),
-                        label_type: Some("system".into()),
-                        messages_total: Some(2),
-                        messages_unread: Some(1),
-                        color: None,
-                    },
-                    GmailLabel {
-                        id: "Label_1".into(),
-                        name: "Projects".into(),
-                        label_type: Some("user".into()),
-                        messages_total: Some(1),
-                        messages_unread: Some(0),
-                        color: None,
-                    },
-                ],
-                modified: Mutex::new(Vec::new()),
-                drafts: Mutex::new(HashMap::new()),
-                stale_history,
-            }),
-        )
+        MockGmailApi {
+            messages,
+            labels: vec![
+                GmailLabel {
+                    id: "INBOX".into(),
+                    name: "INBOX".into(),
+                    label_type: Some("system".into()),
+                    messages_total: Some(2),
+                    messages_unread: Some(1),
+                    color: None,
+                },
+                GmailLabel {
+                    id: "Label_1".into(),
+                    name: "Projects".into(),
+                    label_type: Some("user".into()),
+                    messages_total: Some(1),
+                    messages_unread: Some(0),
+                    color: None,
+                },
+            ],
+            modified: Mutex::new(Vec::new()),
+            drafts: Mutex::new(HashMap::new()),
+            stale_history,
+            list_queries: Arc::default(),
+            thread_ids: Arc::default(),
+        }
     }
 
     fn gmail_message(id: &str, thread_id: &str, subject: &str) -> serde_json::Value {
@@ -1459,6 +1565,7 @@ END:VCALENDAR\r\n";
         async fn send_message(
             &self,
             _raw_base64url: &str,
+            _thread_id: Option<&str>,
         ) -> Result<serde_json::Value, GmailError> {
             unreachable!("send is not used in initial sync fan-out test")
         }
@@ -1471,7 +1578,11 @@ END:VCALENDAR\r\n";
             unreachable!("attachments are not used in initial sync fan-out test")
         }
 
-        async fn create_draft(&self, _raw_base64url: &str) -> Result<String, GmailError> {
+        async fn create_draft(
+            &self,
+            _raw_base64url: &str,
+            _thread_id: Option<&str>,
+        ) -> Result<String, GmailError> {
             unreachable!("drafts are not used in initial sync fan-out test")
         }
 
@@ -1479,6 +1590,7 @@ END:VCALENDAR\r\n";
             &self,
             _draft_id: &str,
             _raw_base64url: &str,
+            _thread_id: Option<&str>,
         ) -> Result<(), GmailError> {
             unreachable!("drafts are not used in initial sync fan-out test")
         }
@@ -1702,5 +1814,165 @@ END:VCALENDAR\r\n";
             }
             other => panic!("expected Provider error, got {other:?}"),
         }
+    }
+
+    // -- Reply threading -----------------------------------------------------
+    //
+    // Gmail files drafts on a conversation only by `threadId`; the mock
+    // resolves `rfc822msgid:` lookups against the `Message-ID` headers of its
+    // fixture messages (`<msg-1@example.com>` lives on `thread-1`).
+
+    fn reply_draft(in_reply_to: &str, thread_id: Option<&str>) -> Draft {
+        Draft {
+            id: mxr_core::DraftId::new(),
+            account_id: AccountId::new(),
+            from: None,
+            intent: mxr_core::DraftIntent::Reply,
+            reply_headers: Some(mxr_core::ReplyHeaders {
+                in_reply_to: in_reply_to.to_string(),
+                references: vec![in_reply_to.to_string()],
+                thread_id: thread_id.map(str::to_string),
+            }),
+            to: vec![Address {
+                name: Some("Alice".into()),
+                email: "alice@example.com".into(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Re: Welcome".into(),
+            content: mxr_core::DraftContent::markdown("Thanks!"),
+            attachments: vec![],
+            inline_assets: Vec::new(),
+            inline_calendar_reply: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    fn sender() -> Address {
+        Address {
+            name: Some("Me".into()),
+            email: "me@example.com".into(),
+        }
+    }
+
+    type Recorded = Arc<Mutex<Vec<Option<String>>>>;
+
+    fn threading_provider() -> (GmailProvider, Recorded, Recorded) {
+        let api = mock_api(false);
+        let queries = Arc::clone(&api.list_queries);
+        let thread_ids = Arc::clone(&api.thread_ids);
+        (
+            GmailProvider::with_api(AccountId::new(), Box::new(api)),
+            queries,
+            thread_ids,
+        )
+    }
+
+    fn rfc822msgid_lookups(queries: &Recorded) -> Vec<String> {
+        queries
+            .lock()
+            .unwrap()
+            .iter()
+            .flatten()
+            .filter(|query| query.starts_with("rfc822msgid:"))
+            .cloned()
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn save_draft_resolves_the_parent_thread_from_in_reply_to() {
+        let (provider, queries, thread_ids) = threading_provider();
+        let draft = reply_draft("<msg-1@example.com>", None);
+
+        let draft_id = provider.save_draft(&draft, &sender()).await.unwrap();
+
+        assert_eq!(draft_id.as_deref(), Some("draft-1"));
+        assert_eq!(
+            rfc822msgid_lookups(&queries),
+            vec!["rfc822msgid:msg-1@example.com".to_string()],
+            "the parent is looked up once by its Message-ID, without angle brackets"
+        );
+        assert_eq!(
+            *thread_ids.lock().unwrap(),
+            vec![Some("thread-1".to_string())],
+            "drafts.create carries the parent's threadId"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_known_thread_id_is_used_without_a_lookup() {
+        let (provider, queries, thread_ids) = threading_provider();
+        let draft = reply_draft("<msg-1@example.com>", Some("thread-cached"));
+
+        provider.save_draft(&draft, &sender()).await.unwrap();
+        provider
+            .update_draft("draft-1", &draft, &sender())
+            .await
+            .unwrap();
+        provider
+            .send(&draft, &sender(), "<new@example.com>")
+            .await
+            .unwrap();
+
+        assert!(rfc822msgid_lookups(&queries).is_empty());
+        assert_eq!(
+            *thread_ids.lock().unwrap(),
+            vec![Some("thread-cached".to_string()); 3],
+            "create, update and send all reuse the cached threadId"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_new_message_carries_no_thread_id_and_triggers_no_lookup() {
+        let (provider, queries, thread_ids) = threading_provider();
+        let mut draft = reply_draft("<msg-1@example.com>", None);
+        draft.reply_headers = None;
+        draft.intent = mxr_core::DraftIntent::New;
+
+        provider.save_draft(&draft, &sender()).await.unwrap();
+        provider
+            .send(&draft, &sender(), "<new@example.com>")
+            .await
+            .unwrap();
+
+        assert!(rfc822msgid_lookups(&queries).is_empty());
+        assert_eq!(*thread_ids.lock().unwrap(), vec![None, None]);
+    }
+
+    #[tokio::test]
+    async fn an_unknown_parent_still_pushes_and_sends_unthreaded() {
+        let (provider, queries, thread_ids) = threading_provider();
+        let draft = reply_draft("<gone@example.com>", None);
+
+        let draft_id = provider.save_draft(&draft, &sender()).await.unwrap();
+        provider
+            .update_draft("draft-1", &draft, &sender())
+            .await
+            .unwrap();
+        let receipt = provider
+            .send(&draft, &sender(), "<new@example.com>")
+            .await
+            .unwrap();
+
+        assert_eq!(draft_id.as_deref(), Some("draft-1"));
+        assert_eq!(receipt.provider_message_id.as_deref(), Some("sent-1"));
+        assert_eq!(rfc822msgid_lookups(&queries).len(), 3);
+        assert_eq!(
+            *thread_ids.lock().unwrap(),
+            vec![None, None, None],
+            "a miss never blocks the operation; it just goes out unthreaded"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_draft_reports_the_thread_the_server_draft_landed_on() {
+        let (provider, _, _) = threading_provider();
+        let draft = reply_draft("<msg-1@example.com>", None);
+
+        provider.save_draft(&draft, &sender()).await.unwrap();
+        let snapshot = provider.fetch_draft("draft-1").await.unwrap().unwrap();
+
+        assert_eq!(snapshot.thread_id.as_deref(), Some("thread-1"));
     }
 }

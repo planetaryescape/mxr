@@ -2178,8 +2178,8 @@ async fn draft_from_server_snapshot(
     let headers = mxr_mail_parse::parse_headers_from_raw(&raw_headers, None)
         .map_err(|error| error.to_string())?;
 
-    let text = parsed.body_text(0).map(|body| body.into_owned());
-    let html = parsed.body_html(0).map(|body| body.into_owned());
+    let text = parsed.body_text(0).map(std::borrow::Cow::into_owned);
+    let html = parsed.body_html(0).map(std::borrow::Cow::into_owned);
     let content = match (&existing.content, html, text) {
         (DraftContent::Html { .. }, Some(html), text) => DraftContent::html(html, text),
         (_, _, Some(text)) => DraftContent::markdown(text),
@@ -2209,8 +2209,7 @@ async fn draft_from_server_snapshot(
             AttachmentId::from_provider_id("provider-draft", &format!("{}:{index}", existing.id));
         let filename = part
             .attachment_name()
-            .map(str::to_string)
-            .unwrap_or_else(|| format!("attachment-{index}"));
+            .map_or_else(|| format!("attachment-{index}"), str::to_string);
         let path = revision_dir.join(super::sanitized_attachment_filename(
             &filename,
             &attachment_id,

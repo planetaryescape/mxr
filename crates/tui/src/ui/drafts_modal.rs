@@ -361,8 +361,10 @@ mod tests {
         )]);
         assert!(state.preview_push("gmail".into()));
 
-        let snapshot = render_to_string(100, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
+        // 120 cols: the modal is 80% wide minus border and margin, and the
+        // explanation sentence must not wrap for the substring asserts below.
+        let snapshot = render_to_string(120, 20, |frame| {
+            draw(frame, Rect::new(0, 0, 120, 20), &state, &Theme::default());
         });
         assert!(snapshot.contains("Sync this draft with the provider?"));
         assert!(snapshot.contains("Provider: gmail"));

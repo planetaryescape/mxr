@@ -8,7 +8,7 @@ The internal model is the most important design decision in mxr. All application
 
 1. **Provider-agnostic**: No Gmail-specific or IMAP-specific concepts in the core types.
 2. **Correctness over cleverness**: We store enough data to round-trip back to the provider without loss.
-3. **Eager body fetch**: Envelopes and bodies are always fetched together during sync. Opening a message is a pure SQLite read — no network call, no loading state.
+3. **Eager body fetch**: Envelopes and bodies are fetched together during sync. Normal TUI opens read cached SQLite rows; single-message `GetBody` may repair missing, legacy, or suspicious best-effort body rows through the provider.
 4. **Typed IDs**: Newtypes prevent mixing up account IDs with message IDs at compile time.
 5. **Time-sortable IDs**: UUIDv7 gives naturally ordered primary keys.
 
@@ -208,14 +208,14 @@ pub struct MessageBody {
 ```
 
 Bodies are fetched alongside envelopes during sync and then cached in SQLite. This means:
-- Opening a message is a pure SQLite read
+- Normal TUI opening reads cached SQLite rows through `ListBodies`
 - Full-text search can index body text immediately
 - Offline access works for all synced messages
 
 Current read-path boundary:
 
 - TUI preview/thread body loads use the bulk `ListBodies` IPC path, which reads cached SQLite rows only. If a row is missing, the daemon returns a per-message failure rather than repairing through the provider while the user waits.
-- Single-message `GetBody` may repair a missing or legacy body row by hydrating from the provider and persisting it. That is an explicit repair escape hatch, not the normal TUI open path.
+- Single-message `GetBody` may repair a missing, legacy, or suspicious best-effort body row by hydrating from the provider and persisting it. That is an explicit repair escape hatch, not the normal TUI open path.
 
 ### AttachmentMeta
 

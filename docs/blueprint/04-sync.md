@@ -124,6 +124,7 @@ Current repair paths:
 - bad Gmail cursor -> reset to `Initial` and retry once
 - label-capable account with messages but empty `message_labels` -> reset cursor and rebuild associations through full sync
 - lexical index drift on daemon startup -> rebuild Tantivy from SQLite
+- single-message `GetBody` on a missing, legacy, or suspicious best-effort body row -> provider hydrate and persist
 
 Note the boundary:
 
@@ -139,10 +140,11 @@ Envelopes and bodies are always fetched together during sync. The `SyncBatch` co
 
 When the user opens a message, the TUI batches body reads through `ListBodies`. That path reads SQLite only — no provider hydration, no network call, no normal loading state.
 
-`GetBody` remains an explicit repair-capable path for single-message reads such as CLI `mxr cat`: if a legacy or missing body row is detected, the daemon may hydrate from the provider and persist the repaired row. That repair behavior is intentionally outside the TUI bulk preview path.
+`GetBody` remains an explicit repair-capable path for single-message reads such as CLI `mxr cat`: if a missing, legacy, or suspicious best-effort body row is detected, the daemon may hydrate from the provider and persist the repaired row. That repair behavior is intentionally outside the TUI bulk preview path.
 
 This approach means:
 - Opening any correctly synced message is instant (pure SQLite read)
+- Single-message CLI reads can repair local body drift instead of treating the cached view as final truth
 - Full-text lexical search works immediately after sync (body text indexed at sync time)
 - Offline access works for all synced messages
 - Storage grows proportionally to mailbox size (all bodies stored)

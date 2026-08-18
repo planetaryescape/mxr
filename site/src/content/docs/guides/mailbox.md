@@ -74,10 +74,18 @@ mxr cat "$id" --view reader
 What you get: the same cached body content the TUI expects to render,
 with reader mode applied.
 
-If a body row is missing, that is local-store drift rather than the
-normal opening flow. The single-message CLI read path may repair a
-missing body, but the TUI preview path stays local so mailbox navigation
+If a body row is missing, legacy, or only a suspicious best-effort
+summary, that is local-store drift rather than the normal opening flow.
+The single-message CLI read path may call the provider and persist a
+repaired body, but the TUI preview path stays local so mailbox navigation
 does not turn into a hidden network repair job.
+
+For audit or receipt work, keep the surfaces separate:
+
+- `mxr attachments list` answers whether the message has attachments.
+- `mxr cat` answers what the current body view can render.
+- Provider IDs and raw provider payloads are the fallback when a cached
+  view is placeholder-only.
 
 ## Search in the TUI
 

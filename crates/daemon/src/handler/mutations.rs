@@ -2006,11 +2006,12 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
         let sender = state.send_provider_for_account(&draft.account_id)?;
         let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
         let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
-        draft = Cow::Owned(
-            with_reply_thread_id(state, sender.as_ref(), &draft)
-                .await
-                .into_owned(),
-        );
+        // Not persisted here: the trailing `store.update_draft` writes the
+        // whole draft on success, and an early return on provider failure
+        // leaves the stored row untouched.
+        if let Some(threaded) = resolved_reply_thread(sender.as_ref(), &draft).await {
+            draft = Cow::Owned(threaded);
+        }
         match sender.update_draft(&provider_draft_id, &draft, &from).await {
             Ok(()) => {
                 updated_provider_revision = sender
@@ -3185,44 +3186,47 @@ async fn ingest_sent_message(
     Ok(message_id)
 }
 
-/// Give a reply draft its provider-native thread id before it goes to the
-/// provider, and cache a successful answer on the local row so later pushes
-/// and the send skip the lookup. Only a confirmed parent lookup is cached: a
-/// miss stays `None` so the next push retries instead of freezing the draft
-/// off-thread. Best-effort throughout; threading never blocks a push.
-async fn with_reply_thread_id<'a>(
-    state: &AppState,
-    sender: &dyn MailSendProvider,
-    draft: &'a Draft,
-) -> Cow<'a, Draft> {
-    let Some(headers) = draft.reply_headers.as_ref() else {
-        return Cow::Borrowed(draft);
-    };
+/// The reply draft with its provider-native thread id filled in, or `None`
+/// when it already had one, is not a reply, or the parent could not be found.
+/// Pure: the caller persists with [`persist_reply_thread_id`] only once the
+/// provider has accepted the draft, so a failed push leaves the local row
+/// exactly as it was. Only a confirmed parent lookup produces a `Some`, so a
+/// transient miss cannot freeze the draft off-thread — the next push retries.
+async fn resolved_reply_thread(sender: &dyn MailSendProvider, draft: &Draft) -> Option<Draft> {
+    let headers = draft.reply_headers.as_ref()?;
     if headers.thread_id.is_some() {
-        return Cow::Borrowed(draft);
+        return None;
     }
     let thread_id = match sender.resolve_reply_thread_id(draft).await {
-        Ok(Some(thread_id)) => thread_id,
-        Ok(None) => return Cow::Borrowed(draft),
+        Ok(thread_id) => thread_id?,
         Err(error) => {
             tracing::warn!(draft_id = %draft.id, %error, "could not resolve provider thread for reply draft");
-            return Cow::Borrowed(draft);
+            return None;
         }
     };
-    let mut threaded = draft.clone();
-    let headers = ReplyHeaders {
-        thread_id: Some(thread_id),
-        ..headers.clone()
+    Some(Draft {
+        reply_headers: Some(ReplyHeaders {
+            thread_id: Some(thread_id),
+            ..headers.clone()
+        }),
+        ..draft.clone()
+    })
+}
+
+/// Cache a resolved thread id on the local row so later pushes and the send
+/// skip the lookup. Best-effort: the draft is already on the right thread at
+/// the provider, and losing the cache only costs one repeat lookup.
+async fn persist_reply_thread_id(state: &AppState, draft: &Draft) {
+    let Some(headers) = draft.reply_headers.as_ref() else {
+        return;
     };
     if let Err(error) = state
         .store
-        .set_draft_reply_headers(&draft.id, &headers)
+        .set_draft_reply_headers(&draft.id, headers)
         .await
     {
         tracing::warn!(draft_id = %draft.id, %error, "could not cache provider thread id on draft");
     }
-    threaded.reply_headers = Some(headers);
-    Cow::Owned(threaded)
 }
 
 /// The local thread a reply draft belongs to, found through its parent's
@@ -3261,10 +3265,14 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
     // of issuing SaveDraft followed by SaveDraftToServer.
     state.store.insert_draft_if_absent(draft).await?;
     let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
-    let draft = &*with_reply_thread_id(state, sender.as_ref(), draft).await;
+    let threaded = resolved_reply_thread(sender.as_ref(), draft).await;
+    let draft = threaded.as_ref().unwrap_or(draft);
     if let Some(provider_draft_id) = state.store.get_provider_draft_id(&draft.id).await? {
         match sender.update_draft(&provider_draft_id, draft, &from).await {
             Ok(()) => {
+                if threaded.is_some() {
+                    persist_reply_thread_id(state, draft).await;
+                }
                 if let Ok(Some(snapshot)) = sender.fetch_draft(&provider_draft_id).await {
                     state
                         .store
@@ -3286,6 +3294,9 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
 
     match sender.save_draft(draft, &from).await {
         Ok(Some(draft_id)) => {
+            if threaded.is_some() {
+                persist_reply_thread_id(state, draft).await;
+            }
             let revision = match sender.fetch_draft(&draft_id).await {
                 Ok(Some(snapshot)) => Some(snapshot.revision),
                 Ok(None) => None,

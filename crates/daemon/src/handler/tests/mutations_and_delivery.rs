@@ -2436,6 +2436,45 @@ async fn save_draft_to_server_caches_the_provider_thread_id_on_reply_drafts() {
     );
 }
 
+/// The provider-failure promise: a push that the provider rejects leaves the
+/// local draft exactly as it was, thread-id cache included. The id is only
+/// worth caching once the draft is actually filed on that thread.
+#[tokio::test]
+async fn a_failed_push_does_not_cache_the_thread_id() {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    let state = Arc::new(state);
+    fake.fail_server_drafts();
+
+    let mut draft = draft_from(account_id, None);
+    draft.intent = mxr_core::DraftIntent::Reply;
+    draft.reply_headers = Some(mxr_core::ReplyHeaders {
+        in_reply_to: "<parent@example.com>".to_string(),
+        references: vec!["<parent@example.com>".to_string()],
+        thread_id: None,
+    });
+
+    let resp = handle_request(
+        &state,
+        &from_request(Request::SaveDraftToServer {
+            draft: draft.clone(),
+        }),
+    )
+    .await;
+    assert!(
+        matches!(resp.payload, IpcPayload::Response(Response::Error { .. })),
+        "expected the provider failure to surface, got {:?}",
+        resp.payload
+    );
+
+    let stored = state.store.get_draft(&draft.id).await.unwrap().unwrap();
+    assert_eq!(
+        stored.reply_headers.unwrap().thread_id,
+        None,
+        "a rejected push must not leave a cached thread id behind"
+    );
+}
+
 #[tokio::test]
 async fn resolve_send_from_previews_and_validates_like_send() {
     let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();

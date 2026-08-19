@@ -133,6 +133,17 @@ pub async fn run(
         resolve_format(format.clone()),
         OutputFormat::Json | OutputFormat::Jsonl
     );
+    // Taken before the trigger: with the daemon acking up front, a sync that
+    // fails leaves the account idle-with-an-error, which is indistinguishable
+    // from an account that was already carrying an old error. The comparison
+    // is what makes `--wait` able to exit non-zero on a sync it started.
+    let before = if wait {
+        fetch_sync_statuses(&mut client, account_id.as_ref())
+            .await
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let progress = ProgressPrinter::new(json_mode);
     let resp = client
         .request_with_events(
@@ -168,19 +179,52 @@ pub async fn run(
     // the account's own sync loop may still have queued work. `--wait` is what
     // turns "a sync started" into "the account is idle".
     if wait {
-        wait_for_sync_quiescence(
+        let waited = wait_for_sync_quiescence(
             &mut client,
             account_id.as_ref(),
             Duration::from_secs(wait_timeout_secs),
             json_mode,
         )
-        .await?;
+        .await;
+        // The status is what a JSON caller asked for, and it is most worth
+        // having when the sync failed — so render it either way, then report.
         if json_mode {
-            let statuses = fetch_sync_statuses(&mut client, account_id.as_ref()).await?;
-            render_status(&statuses, format);
+            if let Ok(statuses) = fetch_sync_statuses(&mut client, account_id.as_ref()).await {
+                render_status(&statuses, format);
+            }
+        }
+        let after = waited?;
+        let failures = sync_failures(&before, &after);
+        if !failures.is_empty() {
+            anyhow::bail!("{}", failures.join("; "));
         }
     }
     Ok(())
+}
+
+/// Errors left by a sync that ran while we were waiting.
+///
+/// An account that is idle is not an account that succeeded: a failed sync
+/// clears `sync_in_progress` on its way out, so quiescence alone would have
+/// `mxr sync --wait` exit 0 on a sync that failed. An error only counts when
+/// the attempt carrying it is newer than the one we saw before triggering —
+/// otherwise every wait would fail on an error the account has been carrying
+/// since yesterday.
+fn sync_failures(before: &[AccountSyncStatus], after: &[AccountSyncStatus]) -> Vec<String> {
+    after
+        .iter()
+        .filter_map(|status| {
+            let error = status.last_error.as_deref()?;
+            let previous = before
+                .iter()
+                .find(|previous| previous.account_id == status.account_id);
+            let is_new = previous.is_none_or(|previous| {
+                previous.last_attempt_at != status.last_attempt_at
+                    || previous.last_error.as_deref() != Some(error)
+            });
+            is_new.then(|| format!("sync failed for {}: {error}", status.account_name))
+        })
+        .collect()
 }
 
 async fn fetch_sync_statuses(
@@ -223,7 +267,7 @@ async fn wait_for_sync_quiescence(
     account_id: Option<&AccountId>,
     timeout: Duration,
     json_mode: bool,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<AccountSyncStatus>> {
     let progress = ProgressPrinter::new(json_mode);
     let deadline = Instant::now() + timeout;
     let mut last_line: Option<String> = None;
@@ -236,7 +280,7 @@ async fn wait_for_sync_quiescence(
         match poll_sync_statuses(client, account_id).await {
             StatusPoll::Statuses(statuses) => {
                 if !statuses.iter().any(|status| status.sync_in_progress) {
-                    return Ok(());
+                    return Ok(statuses);
                 }
                 // Only when the line actually changes: the poll runs ten times
                 // a second and piped output gets one line per call, so an
@@ -494,5 +538,51 @@ mod tests {
         };
 
         assert_eq!(requested_account_id, Some(account_id));
+    }
+
+    fn status(name: &str, attempt: &str, error: Option<&str>) -> AccountSyncStatus {
+        AccountSyncStatus {
+            account_id: AccountId::from_provider_id("fake", name),
+            account_name: name.into(),
+            last_attempt_at: Some(attempt.into()),
+            last_success_at: None,
+            last_error: error.map(str::to_string),
+            failure_class: None,
+            consecutive_failures: 0,
+            backoff_until: None,
+            sync_in_progress: false,
+            current_cursor_summary: None,
+            last_synced_count: 0,
+            healthy: error.is_none(),
+            progress: None,
+        }
+    }
+
+    /// A failed sync goes idle on its way out, so quiescence alone would have
+    /// `--wait` report success on a sync that failed.
+    #[test]
+    fn sync_failures_reports_an_error_from_an_attempt_we_waited_on() {
+        let before = vec![status("personal", "t0", None)];
+        let after = vec![status("personal", "t1", Some("imap: connection refused"))];
+        assert_eq!(
+            sync_failures(&before, &after),
+            vec!["sync failed for personal: imap: connection refused".to_string()]
+        );
+    }
+
+    /// An account that was already carrying an error before we triggered, and
+    /// has not been attempted since, is not this command's failure to report.
+    #[test]
+    fn sync_failures_ignores_an_error_that_predates_the_trigger() {
+        let before = vec![status("personal", "t0", Some("stale auth failure"))];
+        let after = vec![status("personal", "t0", Some("stale auth failure"))];
+        assert!(sync_failures(&before, &after).is_empty());
+    }
+
+    #[test]
+    fn sync_failures_is_empty_when_the_sync_succeeded() {
+        let before = vec![status("personal", "t0", None)];
+        let after = vec![status("personal", "t1", None)];
+        assert!(sync_failures(&before, &after).is_empty());
     }
 }

@@ -1000,9 +1000,14 @@ async fn sync_loop_for_account(
                 }
             }
             Err(mxr_core::MxrError::RateLimited { retry_after_secs }) => {
-                backoff_secs = retry_after_secs.saturating_add(10);
-                let backoff_until =
-                    chrono::Utc::now() + chrono::Duration::seconds(backoff_secs as i64);
+                // Same ceiling as every other backoff arm. A provider is free
+                // to send a Retry-After measured in days, and honouring it
+                // literally parks the account until the daemon restarts — on
+                // top of overflowing the doubling and the i64 conversion
+                // below. Re-polling a still-limited provider costs one 429.
+                backoff_secs = retry_after_secs.saturating_add(10).clamp(30, 300);
+                let backoff_until = chrono::Utc::now()
+                    + chrono::Duration::seconds(i64::try_from(backoff_secs).unwrap_or(300));
                 let _ = state
                     .store
                     .upsert_sync_runtime_status(

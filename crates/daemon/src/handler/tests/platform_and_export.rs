@@ -2085,23 +2085,24 @@ async fn dispatch_background_sync_now_does_not_start_a_second_pass() {
         );
     }
 
-    // Wait for the account to settle, then count the sync-log rows: one pass
-    // opens exactly one. Two rows would mean the second request queued its own
-    // pass behind the first.
-    let mut logs = 0;
+    // Wait for the background sync to be over, then count the sync-log rows:
+    // one pass opens exactly one, and a second request that queued its own
+    // pass would leave two. The claim becoming free again is the signal that
+    // the spawned task has finished — the account itself stays
+    // `sync_in_progress` here, because the provider still has pages and no
+    // sync loop is running in a handler test to take them. Reading the count
+    // before that point would see one row while the first pass is still
+    // running and pass for the wrong reason.
+    let mut settled = None;
     for _ in 0..200 {
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-        let idle = state
-            .store
-            .get_sync_runtime_status(&account_id)
-            .await
-            .unwrap()
-            .is_some_and(|status| !status.sync_in_progress && status.last_success_at.is_some());
-        logs = state.store.collect_record_counts().await.unwrap().sync_log;
-        if idle {
+        if let Some(claim) = AppState::claim_background_sync(&state, &account_id) {
+            settled = Some(state.store.collect_record_counts().await.unwrap().sync_log);
+            drop(claim);
             break;
         }
     }
+    let logs = settled.expect("the background sync should finish well inside 5s");
     assert_eq!(
         logs, 1,
         "the joined request must not open a second sync pass"

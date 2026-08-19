@@ -470,9 +470,13 @@ impl super::Store {
             return Ok(Vec::new());
         }
 
-        let placeholders: Vec<String> = message_ids.iter().map(|_| "?".to_string()).collect();
-        let sql = format!(
-            r#"SELECT
+        // Chunked: sync hands this a whole provider page, which can be
+        // larger than SQLite's bind-parameter limit.
+        let mut by_id = std::collections::HashMap::with_capacity(message_ids.len());
+        for chunk in message_ids.chunks(crate::SQLITE_BIND_CHUNK) {
+            let placeholders: Vec<String> = chunk.iter().map(|_| "?".to_string()).collect();
+            let sql = format!(
+                r#"SELECT
                 m.id as id, m.account_id as account_id, m.provider_id as provider_id,
                 m.thread_id as thread_id, m.message_id_header, m.in_reply_to,
                 m.reference_headers, m.from_name, m.from_email as from_email,
@@ -488,21 +492,21 @@ impl super::Store {
                 ), '') as label_provider_ids
              FROM messages m
              WHERE m.id IN ({})"#,
-            placeholders.join(", ")
-        );
+                placeholders.join(", ")
+            );
 
-        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
-        for message_id in message_ids {
-            query = query.bind(message_id.as_str());
-        }
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
+            for message_id in chunk {
+                query = query.bind(message_id.as_str());
+            }
 
-        let started_at = std::time::Instant::now();
-        let rows = query.fetch_all(self.reader()).await?;
-        trace_query("message.list_envelopes_by_ids", started_at, rows.len());
-        let mut by_id = std::collections::HashMap::with_capacity(rows.len());
-        for row in rows {
-            let envelope = sqlite_row_to_envelope(&row)?;
-            by_id.insert(envelope.id.clone(), envelope);
+            let started_at = std::time::Instant::now();
+            let rows = query.fetch_all(self.reader()).await?;
+            trace_query("message.list_envelopes_by_ids", started_at, rows.len());
+            for row in rows {
+                let envelope = sqlite_row_to_envelope(&row)?;
+                by_id.insert(envelope.id.clone(), envelope);
+            }
         }
 
         let mut envelopes: Vec<Envelope> = message_ids

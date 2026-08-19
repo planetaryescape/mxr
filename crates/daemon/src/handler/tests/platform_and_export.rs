@@ -1917,6 +1917,36 @@ async fn dispatch_sync_now_wakes_the_sync_loop_while_the_backfill_has_more() {
     );
 }
 
+/// The status row must say the account is still syncing while pages
+/// remain: clients that wait for an initial sync (`mxr demo`, `mxr sync
+/// --wait`) read this flag, and a gap between pages would read as done.
+#[tokio::test]
+async fn dispatch_sync_now_keeps_sync_in_progress_while_the_backfill_has_more() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let account_id = state.default_provider().account_id().clone();
+    state.add_sync_provider_for_test(Arc::new(
+        mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), 40)
+            .with_page_size(10),
+    ));
+
+    let msg = IpcMessage {
+        id: 303,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::SyncNow {
+            account_id: Some(account_id.clone()),
+        }),
+    };
+    handle_request(&state, &msg).await;
+
+    let status = state
+        .store
+        .get_sync_runtime_status(&account_id)
+        .await
+        .unwrap()
+        .expect("sync status row");
+    assert!(status.sync_in_progress);
+}
+
 /// The mirror case: a sync that drained the provider must not leave the
 /// account marked as syncing.
 #[tokio::test]

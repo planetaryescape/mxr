@@ -30,7 +30,7 @@ use tokio::sync::Notify;
 /// the single SQLite writer, so pages are large enough that a 50,000
 /// message demo is a handful of them per account — and still far under the
 /// daemon's 50-page cap on consecutive `has_more` re-polls.
-pub const SYNC_PAGE_SIZE: usize = 10_000;
+const SYNC_PAGE_SIZE: usize = 10_000;
 
 /// Cursor for "resume the initial sync at this offset".
 const PAGE_CURSOR_PREFIX: &str = "fake-page:";

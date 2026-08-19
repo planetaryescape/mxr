@@ -86,7 +86,14 @@ impl SearchServiceHandle {
                             }
                             Err(error) => {
                                 // The index went down with the panicking
-                                // task; there is nothing left to serve.
+                                // task; there is nothing left to serve. Only
+                                // this one caller gets the error back, so log
+                                // it — every later request just sees the
+                                // channel closed.
+                                tracing::error!(
+                                    %error,
+                                    "search index worker died; search is unavailable until the daemon restarts"
+                                );
                                 let _ = resp.send(Err(MxrError::Search(format!(
                                     "search index task failed: {error}"
                                 ))));
@@ -277,12 +284,14 @@ fn apply_batch(index: &mut SearchIndex, batch: SearchUpdateBatch) -> Result<(), 
     }
 
     let mut since_commit = 0;
+    let mut indexed_any = false;
     for entry in batch.entries {
         if let Some(body) = entry.body.as_ref() {
             index.index_body_with_reply_later(&entry.envelope, body, entry.reply_later)?;
         } else {
             index.index_envelope_with_reply_later(&entry.envelope, entry.reply_later)?;
         }
+        indexed_any = true;
         since_commit += 1;
         if since_commit == COMMIT_CHUNK {
             index.commit()?;
@@ -290,7 +299,12 @@ fn apply_batch(index: &mut SearchIndex, batch: SearchUpdateBatch) -> Result<(), 
         }
     }
 
-    index.commit()
+    // A chunk commit may have already flushed everything. Still commit when
+    // the batch only removed documents — those deletes are uncommitted.
+    if since_commit > 0 || !indexed_any {
+        index.commit()?;
+    }
+    Ok(())
 }
 
 fn closed_error(error: mpsc::error::SendError<SearchCommand>) -> MxrError {

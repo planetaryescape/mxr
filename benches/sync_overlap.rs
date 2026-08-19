@@ -92,13 +92,22 @@ fn bench_sync_overlap(c: &mut Criterion) {
     });
 }
 
-/// End-to-end initial-sync throughput for the demo dataset: the real
-/// `SyncEngine` against a file-backed store, walking every provider page
-/// the way the daemon's sync loop does. Reports messages/second, which is
-/// the number `mxr demo` seeding time comes from.
+/// Initial-sync throughput for the demo dataset: the real `SyncEngine`
+/// against a file-backed store, driven page by page the way the daemon's
+/// sync loop drives it. Reports messages/second.
 ///
-/// Set `MXR_BENCH_SEED_MESSAGES` to size the dataset (default 2,000 so a
-/// plain `cargo bench` stays quick).
+/// This is the engine half of `mxr demo` seeding only. The daemon also
+/// runs a post-sync fan-out (rules, deliveries, analytics repair) per page
+/// that competes with the next page for the single SQLite writer, and that
+/// is not represented here — a real seed is slower than this number.
+///
+/// `MXR_BENCH_SEED_MESSAGES` sizes the dataset (default 2,000). The page
+/// size is pinned below rather than taken from the provider default, so
+/// the default run still crosses several pages.
+/// Pages per sync call in the bench. Small enough that the default
+/// 2,000-message run still exercises the paging path end to end.
+const BENCH_PAGE_SIZE: usize = 500;
+
 fn bench_demo_seed(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
     let messages: usize = std::env::var("MXR_BENCH_SEED_MESSAGES")
@@ -145,7 +154,8 @@ fn bench_demo_seed(c: &mut Criterion) {
                             email: "alex@demo.mxr.local".to_string(),
                         }),
                     );
-                    let provider = FakeProvider::with_demo_dataset(account_id, messages);
+                    let provider = FakeProvider::with_demo_dataset(account_id, messages)
+                        .with_page_size(BENCH_PAGE_SIZE);
                     (engine, provider, search_worker)
                 });
 

@@ -543,10 +543,11 @@ fn account_sync_status(
         .map(|dt| dt.to_rfc3339());
     let sync_in_progress = runtime.as_ref().is_some_and(|row| row.sync_in_progress);
     let consecutive_failures = runtime.as_ref().map_or(0, |row| row.consecutive_failures);
-    let healthy = !sync_in_progress
-        && last_error.is_none()
-        && backoff_until.is_none()
-        && last_success_at.is_some();
+    // A sync in flight is not a health problem: a multi-page backfill keeps
+    // `sync_in_progress` true from its first page to its last, and an
+    // account that is progressing through it is healthy. Health is about
+    // errors and backoff.
+    let healthy = last_error.is_none() && backoff_until.is_none() && last_success_at.is_some();
 
     AccountSyncStatus {
         account_id: account.id,

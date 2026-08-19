@@ -16,7 +16,10 @@ const DEMO_PERSONAL_EMAIL: &str = "alex@demo.mxr.local";
 const DEMO_WORK_EMAIL: &str = "alex@work.demo.mxr.local";
 const DEMO_INSTANCE: &str = mxr_config::DEMO_INSTANCE_NAME;
 const DEMO_COUNT_MARKER: &str = "demo-message-count";
-const DEMO_SEED_VERSION: u32 = 4;
+// 5: the fake provider derives message ids from the provider id instead of
+// generating random UUIDs, so a profile seeded by an older build has ids the
+// provider no longer produces. Reseed rather than mix the two.
+const DEMO_SEED_VERSION: u32 = 5;
 const DEMO_DEFAULT_MESSAGES: usize = 50_000;
 const DEMO_ACTIVE_MARKER: &str = "demo-active";
 

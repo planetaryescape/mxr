@@ -239,13 +239,20 @@ async fn reap_detached_sync(
                         failure_class: Some(None),
                         consecutive_failures: Some(0),
                         backoff_until: Some(None),
-                        sync_in_progress: Some(false),
+                        // Same invariant as the inline paths: a page that
+                        // reports `has_more` has not finished the backfill.
+                        sync_in_progress: Some(outcome.has_more),
                         current_cursor_summary: Some(Some(cursor_summary.clone())),
                         last_synced_count: Some(outcome.synced_count),
                         ..Default::default()
                     },
                 )
                 .await;
+            if outcome.has_more {
+                // The loop that started this sync gave up waiting on it, so
+                // wake it to take the next page.
+                state.idle_notify_for_account(&account_id).notify_one();
+            }
             if let Some(log_id) = sync_log_id {
                 let _ = state
                     .store

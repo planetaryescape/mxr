@@ -5,14 +5,10 @@
 //! the user expressed while triaging — currently just `reply_later`. A row
 //! exists only when at least one local flag is non-default.
 
-use crate::{decode_id, trace_query};
+use crate::{decode_id, trace_query, SQLITE_BIND_CHUNK};
 use chrono::{DateTime, Utc};
 use mxr_core::id::MessageId;
 use std::collections::HashSet;
-
-/// Ids per `IN (...)` query. SQLite's default bind-parameter limit is
-/// 32,766; this leaves plenty of headroom.
-const SQLITE_BIND_CHUNK: usize = 500;
 
 impl super::Store {
     /// Mark a message for "reply later". Idempotent — re-marking refreshes

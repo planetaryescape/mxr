@@ -220,6 +220,140 @@ mod tests {
         );
     }
 
+    /// The calendar invite's account lookup runs on the transaction's own
+    /// connection because the reader pool cannot see an uncommitted message
+    /// row. `Store::in_memory` shares one connection between reader and
+    /// writer, so only a file-backed store proves it.
+    #[tokio::test]
+    async fn calendar_invites_land_on_a_file_backed_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(&dir.path().join("store.db")).await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let upserts = vec![upsert(&account, 0, Vec::new())];
+        store.apply_sync_upserts(&upserts).await.unwrap();
+
+        let invite = store
+            .get_calendar_invite_for_message(&upserts[0].envelope.id)
+            .await
+            .unwrap()
+            .expect("calendar invite must be written inside the batch transaction");
+        assert_eq!(invite.metadata.uid.as_deref(), Some("invite-0"));
+    }
+
+    /// A re-sync that changes flags and shrinks the label and keyword sets
+    /// must leave the same rows as the per-message path: both are
+    /// delete-then-insert, so the removed entries have to disappear.
+    #[tokio::test]
+    async fn batched_upserts_match_the_per_message_path_on_a_shrinking_re_sync() {
+        let account = test_account();
+        let batched = Store::in_memory().await.unwrap();
+        let per_message = Store::in_memory().await.unwrap();
+        let work = label(&account, "work");
+        let travel = label(&account, "travel");
+
+        for store in [&batched, &per_message] {
+            store.insert_account(&account).await.unwrap();
+            store.upsert_label(&work).await.unwrap();
+            store.upsert_label(&travel).await.unwrap();
+        }
+
+        let mut first = upsert(&account, 0, vec![work.id.clone(), travel.id.clone()]);
+        first.envelope.keywords = BTreeSet::from(["$Forwarded".to_string(), "$Label1".to_string()]);
+
+        // Second pass: read flag set, one label dropped, keywords emptied.
+        let mut second = upsert(&account, 0, vec![work.id.clone()]);
+        second.envelope.flags = MessageFlags::READ | MessageFlags::STARRED;
+        second.envelope.subject = "Subject 0 edited".to_string();
+        second.envelope.keywords = BTreeSet::new();
+        second.body.attachments.clear();
+
+        for pass in [&first, &second] {
+            batched
+                .apply_sync_upserts(std::slice::from_ref(pass))
+                .await
+                .unwrap();
+            per_message
+                .upsert_envelope_with_direction(&pass.envelope, pass.direction)
+                .await
+                .unwrap();
+            per_message.insert_body(&pass.body).await.unwrap();
+            per_message
+                .set_message_labels(&pass.envelope.id, &pass.label_ids, EventSource::Sync)
+                .await
+                .unwrap();
+            per_message
+                .set_message_keywords(&pass.envelope.id, &pass.envelope.keywords)
+                .await
+                .unwrap();
+        }
+
+        let id = &second.envelope.id;
+        assert_eq!(
+            format!("{:?}", batched.get_envelope(id).await.unwrap()),
+            format!("{:?}", per_message.get_envelope(id).await.unwrap()),
+            "envelope rows differ after a re-sync"
+        );
+        assert_eq!(
+            format!("{:?}", batched.get_body(id).await.unwrap()),
+            format!("{:?}", per_message.get_body(id).await.unwrap()),
+            "body/attachment rows differ after a re-sync"
+        );
+        assert!(
+            batched.get_message_keywords(id).await.unwrap().is_empty(),
+            "an empty keyword set must clear the previous keywords"
+        );
+        assert_eq!(
+            batched.count_message_labels().await.unwrap(),
+            per_message.count_message_labels().await.unwrap(),
+        );
+        assert_eq!(batched.count_message_labels().await.unwrap(), 1);
+        let envelope = batched.get_envelope(id).await.unwrap().expect("envelope");
+        assert!(envelope.flags.contains(MessageFlags::STARRED));
+        assert_eq!(envelope.subject, "Subject 0 edited");
+    }
+
+    /// Documents a pre-existing hazard rather than a behaviour we want: a
+    /// row written before 0.4.52 lives under an unscoped id, so a re-sync
+    /// computes a different `MessageId` for the same
+    /// `(account_id, provider_id)`. `upsert_envelope_tx` keeps the stored
+    /// id (the natural key is UNIQUE), but the body is written against the
+    /// incoming id, which no `messages` row has — so the page fails on the
+    /// foreign key instead of silently splitting the message in two. The
+    /// per-message path fails the same way; the fix (resolve dependents
+    /// against the stored id) is deliberately out of scope here.
+    #[tokio::test]
+    async fn a_legacy_row_under_a_different_id_fails_the_page_rather_than_splitting_it() {
+        let account = test_account();
+        let store = Store::in_memory().await.unwrap();
+        store.insert_account(&account).await.unwrap();
+
+        let mut legacy = upsert(&account, 0, Vec::new());
+        legacy.envelope.id = MessageId::from_provider_id("fake", &legacy.envelope.provider_id);
+        legacy.body.message_id = legacy.envelope.id.clone();
+        legacy.body.attachments.clear();
+        store.apply_sync_upserts(&[legacy]).await.unwrap();
+
+        // Same provider id, id derived the way the current code derives it.
+        let current = upsert(&account, 0, Vec::new());
+        let error = store
+            .apply_sync_upserts(&[current])
+            .await
+            .expect_err("dependent writes use the incoming id, which has no message row");
+        assert!(
+            error
+                .to_string()
+                .to_ascii_lowercase()
+                .contains("foreign key"),
+            "expected a foreign-key failure, got: {error}"
+        );
+        assert_eq!(
+            store.count_messages_by_account(&account.id).await.unwrap(),
+            1
+        );
+    }
+
     /// Re-running a page (the provider resends it after a failed chunk) must
     /// replace rather than duplicate.
     #[tokio::test]

@@ -540,8 +540,9 @@ async fn collect_sync_statuses_from_store(store: &Store) -> anyhow::Result<Vec<A
                     .unwrap_or_else(|| describe_cursor(cursor.as_ref())),
             ),
             last_synced_count: runtime.as_ref().map_or(0, |row| row.last_synced_count),
-            healthy: !sync_in_progress
-                && backoff_until.is_none()
+            // Mirrors `status_helpers`: a backfill in flight is not
+            // unhealthy, only errors and backoff are.
+            healthy: backoff_until.is_none()
                 && last_success_at.is_some()
                 && runtime
                     .as_ref()

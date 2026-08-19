@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Address, MessageDirection};
 use sqlx::Row;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContactStyleRecord {
@@ -105,50 +105,65 @@ impl super::Store {
         row.map(row_to_contact_style).transpose()
     }
 
+    /// Counterparty addresses for a set of messages.
+    ///
+    /// Sync calls this with a whole provider page, so the rows come back in
+    /// chunked `IN (...)` queries and each account's owned addresses are
+    /// read once rather than once per message.
     pub async fn relationship_contacts_for_messages(
         &self,
         message_ids: &[MessageId],
     ) -> Result<Vec<(AccountId, String)>, sqlx::Error> {
         let mut contacts = BTreeSet::<(String, String)>::new();
-        for message_id in message_ids {
-            let Some(row) = sqlx::query(
+        let mut owned_by_account: HashMap<String, HashSet<String>> = HashMap::new();
+
+        for chunk in message_ids.chunks(crate::SQLITE_BIND_CHUNK) {
+            let placeholders: Vec<String> = chunk.iter().map(|_| "?".to_string()).collect();
+            let sql = format!(
                 r#"SELECT account_id, from_email, to_addrs, cc_addrs, bcc_addrs, direction
-                   FROM messages WHERE id = ?"#,
-            )
-            .bind(message_id.as_str())
-            .fetch_optional(self.reader())
-            .await?
-            else {
-                continue;
-            };
-            let account_id: AccountId = decode_id(row.get::<String, _>("account_id").as_str())?;
-            let owned = self
-                .list_account_addresses(&account_id)
-                .await?
-                .into_iter()
-                .map(|address| address.email.to_ascii_lowercase())
-                .collect::<HashSet<_>>();
-            let account_id_str = account_id.as_str();
-            let direction =
-                MessageDirection::from_db_str(row.get::<String, _>("direction").as_str())
-                    .unwrap_or(MessageDirection::Unknown);
-            if direction == MessageDirection::Outbound {
-                for address in parse_addresses(&row.get::<String, _>("to_addrs"))?
-                    .into_iter()
-                    .chain(parse_addresses(&row.get::<String, _>("cc_addrs"))?)
-                    .chain(parse_addresses(&row.get::<String, _>("bcc_addrs"))?)
-                {
-                    insert_contact(&mut contacts, &account_id_str, &owned, &address.email);
+                   FROM messages WHERE id IN ({})"#,
+                placeholders.join(", ")
+            );
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
+            for message_id in chunk {
+                query = query.bind(message_id.as_str());
+            }
+
+            for row in query.fetch_all(self.reader()).await? {
+                let account_id: AccountId = decode_id(row.get::<String, _>("account_id").as_str())?;
+                let account_id_str = account_id.as_str();
+                if !owned_by_account.contains_key(&account_id_str) {
+                    let owned = self
+                        .list_account_addresses(&account_id)
+                        .await?
+                        .into_iter()
+                        .map(|address| address.email.to_ascii_lowercase())
+                        .collect::<HashSet<_>>();
+                    owned_by_account.insert(account_id_str.clone(), owned);
                 }
-            } else {
-                insert_contact(
-                    &mut contacts,
-                    &account_id_str,
-                    &owned,
-                    &row.get::<String, _>("from_email"),
-                );
+                let owned = &owned_by_account[&account_id_str];
+                let direction =
+                    MessageDirection::from_db_str(row.get::<String, _>("direction").as_str())
+                        .unwrap_or(MessageDirection::Unknown);
+                if direction == MessageDirection::Outbound {
+                    for address in parse_addresses(&row.get::<String, _>("to_addrs"))?
+                        .into_iter()
+                        .chain(parse_addresses(&row.get::<String, _>("cc_addrs"))?)
+                        .chain(parse_addresses(&row.get::<String, _>("bcc_addrs"))?)
+                    {
+                        insert_contact(&mut contacts, &account_id_str, owned, &address.email);
+                    }
+                } else {
+                    insert_contact(
+                        &mut contacts,
+                        &account_id_str,
+                        owned,
+                        &row.get::<String, _>("from_email"),
+                    );
+                }
             }
         }
+
         contacts
             .into_iter()
             .map(|(account_id, email)| Ok((decode_id(&account_id)?, email)))

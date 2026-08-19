@@ -593,7 +593,10 @@ pub(crate) fn demo_message_count_from_env() -> Option<usize> {
     Some(requested.clamp(1, MAX_DEMO_MESSAGE_COUNT))
 }
 
-pub fn generate_demo_fixtures(
+/// Materialise the whole demo dataset. Only tests want this shape; the
+/// provider streams pages instead.
+#[cfg(test)]
+pub(crate) fn generate_demo_fixtures(
     account_id: &AccountId,
     target_count: usize,
 ) -> (Vec<Envelope>, HashMap<String, MessageBody>, Vec<Label>) {
@@ -686,7 +689,7 @@ const DELIVERY_DEMO_MESSAGE_COUNT: usize = 5;
 /// Ids are derived from the message's provider id rather than randomly
 /// generated so regenerating the same index — a later page, a
 /// `fetch_message` — yields the same message.
-pub struct DemoFixtureStream {
+pub(crate) struct DemoFixtureStream {
     account_id: AccountId,
     profile: DemoAccountProfile,
     labels: Vec<Label>,
@@ -756,10 +759,6 @@ impl DemoFixtureStream {
             Some(curated) => curated.len(),
             None => self.profile.target_count,
         }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 
     /// Generate `[offset, offset + limit)` of the dataset.
@@ -1572,12 +1571,9 @@ fn push_demo_msg(
     thread_id: &ThreadId,
     message: DemoMessage,
 ) -> String {
+    let header = demo_message_id_header(*msg_num);
     let (envelope, body) = build_demo_msg(*msg_num, account_id, thread_id, message);
     *msg_num += 1;
-    let header = envelope
-        .message_id_header
-        .clone()
-        .unwrap_or_else(|| demo_message_id_header(*msg_num - 1));
     bodies.insert(envelope.provider_id.clone(), body);
     envelopes.push(envelope);
     header

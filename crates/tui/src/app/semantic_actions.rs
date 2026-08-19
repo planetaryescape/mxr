@@ -16,7 +16,9 @@ impl App {
                 self.status_message = Some("Disabling semantic search...".into());
             }
             Action::ReindexSemantic => {
-                self.queue_semantic_request(mxr_protocol::Request::ReindexSemantic);
+                self.queue_semantic_request(mxr_protocol::Request::ReindexSemantic {
+                    force: false,
+                });
                 self.status_message = Some("Reindexing semantic search...".into());
             }
             Action::BackfillSemantic => {

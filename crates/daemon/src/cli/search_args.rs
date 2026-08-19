@@ -58,7 +58,12 @@ pub enum SemanticAction {
     /// Disable semantic search
     Disable,
     /// Reindex the active semantic profile
-    Reindex,
+    Reindex {
+        /// Re-embed every message, including ones whose stored vectors already
+        /// look current. Use this to recover a corrupt or half-migrated index.
+        #[arg(long)]
+        force: bool,
+    },
     /// Manage semantic profiles
     Profile {
         #[command(subcommand)]

@@ -1063,10 +1063,10 @@ pub(crate) async fn use_semantic_profile(
     semantic_status(state).await
 }
 
-pub(crate) async fn reindex_semantic(state: &AppState) -> HandlerResult {
+pub(crate) async fn reindex_semantic(state: &AppState, force: bool) -> HandlerResult {
     state
         .semantic
-        .reindex_active()
+        .reindex(force)
         .await
         .map_err(|e| e.to_string())?;
     semantic_status(state).await

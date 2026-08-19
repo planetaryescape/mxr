@@ -652,7 +652,7 @@ pub fn map_request(
         | Request::RefreshContacts
         | Request::RebuildAnalytics
         | Request::RecomputeLinkCounts
-        | Request::ReindexSemantic
+        | Request::ReindexSemantic { .. }
         | Request::BackfillSemantic
         | Request::RebuildRelationshipProfile { .. }
         | Request::RebuildUserVoice { .. }

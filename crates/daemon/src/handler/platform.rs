@@ -247,8 +247,8 @@ pub(super) async fn use_semantic_profile(
     diagnostics_impl::use_semantic_profile(state, profile).await
 }
 
-pub(super) async fn reindex_semantic(state: &AppState) -> HandlerResult {
-    diagnostics_impl::reindex_semantic(state).await
+pub(super) async fn reindex_semantic(state: &AppState, force: bool) -> HandlerResult {
+    diagnostics_impl::reindex_semantic(state, force).await
 }
 
 pub(super) async fn backfill_semantic(state: &AppState) -> HandlerResult {

@@ -188,25 +188,30 @@ impl super::Store {
     /// Deliberately narrower than [`Self::list_semantic_embeddings`]: it skips
     /// the content hash and timestamps and truncates the chunk text to the
     /// snippet length, so building an index over a large mailbox never holds
-    /// the full chunk corpus in memory.
+    /// the full chunk corpus in memory. Rows whose width does not match
+    /// `dimensions` are left out: they came from another model, and mixing
+    /// widths in one index makes the distance function panic.
     pub async fn list_semantic_index_rows_after(
         &self,
         profile_id: &SemanticProfileId,
+        dimensions: u32,
         after_chunk_id: Option<&SemanticChunkId>,
         snippet_chars: u32,
         limit: u32,
     ) -> Result<Vec<SemanticIndexRow>, sqlx::Error> {
         let rows = sqlx::query(
             r#"SELECT c.id, c.message_id, c.source_kind,
-                      substr(c.normalized, 1, ?3) AS snippet, e.vector_blob
+                      substr(c.normalized, 1, ?4) AS snippet, e.vector_blob
                FROM semantic_embeddings e
                JOIN semantic_chunks c ON c.id = e.chunk_id
                WHERE e.profile_id = ?1
-                 AND (?2 IS NULL OR c.id > ?2)
+                 AND e.dimensions = ?2
+                 AND (?3 IS NULL OR c.id > ?3)
                ORDER BY c.id ASC
-               LIMIT ?4"#,
+               LIMIT ?5"#,
         )
         .bind(profile_id.as_str())
+        .bind(i64::from(dimensions))
         .bind(after_chunk_id.map(SemanticChunkId::as_str))
         .bind(i64::from(snippet_chars))
         .bind(i64::from(limit))

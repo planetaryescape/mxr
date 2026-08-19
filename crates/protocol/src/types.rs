@@ -739,7 +739,13 @@ pub enum Request {
     UseSemanticProfile {
         profile: SemanticProfile,
     },
-    ReindexSemantic,
+    ReindexSemantic {
+        /// Re-embed every message even when its stored vectors already look
+        /// current. Defaults to false: an ordinary reindex skips messages
+        /// whose chunks and embeddings match the active profile.
+        #[serde(default)]
+        force: bool,
+    },
     BackfillSemantic,
     CreateSavedSearch {
         name: String,
@@ -1625,7 +1631,7 @@ impl Request {
             | Self::EnableSemantic { .. }
             | Self::InstallSemanticProfile { .. }
             | Self::UseSemanticProfile { .. }
-            | Self::ReindexSemantic
+            | Self::ReindexSemantic { .. }
             | Self::BackfillSemantic
             | Self::CreateSavedSearch { .. }
             | Self::DeleteSavedSearch { .. }

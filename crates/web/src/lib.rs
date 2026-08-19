@@ -3107,7 +3107,11 @@ async fn trigger_semantic_reindex(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    ack_request(&state.config.socket_path, Request::ReindexSemantic).await
+    ack_request(
+        &state.config.socket_path,
+        Request::ReindexSemantic { force: false },
+    )
+    .await
 }
 
 #[cfg(test)]

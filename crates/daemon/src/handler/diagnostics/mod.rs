@@ -1409,8 +1409,8 @@ pub(crate) async fn sync_now(
                 failure_class: Some(None),
                 consecutive_failures: Some(0),
                 backoff_until: Some(None),
-                // Mid-backfill pages leave the account still syncing: the
-                // account's sync loop picks the next page up immediately.
+                // Mid-backfill pages leave the account still syncing; the
+                // wake below hands the next page to the account's sync loop.
                 sync_in_progress: Some(outcome.has_more),
                 current_cursor_summary: Some(Some(crate::loops::describe_sync_cursor(
                     provider.as_ref(),
@@ -1421,6 +1421,16 @@ pub(crate) async fn sync_now(
             },
         )
         .await;
+    if outcome.has_more {
+        // A manual sync returns after one page. Without a wake, an idle
+        // account would sit at `sync_in_progress = true` until the sync
+        // loop's next tick (a full interval away); the loop only re-polls
+        // by itself when it is already mid-cycle. `notify_one` keeps a
+        // permit if the loop is busy, so the wake is never lost.
+        state
+            .idle_notify_for_account(&provider_account_id)
+            .notify_one();
+    }
     if let Some(log_id) = sync_log_id {
         let _ = state
             .store

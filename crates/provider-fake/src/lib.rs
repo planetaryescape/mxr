@@ -30,8 +30,6 @@ use tokio::sync::Notify;
 /// the single SQLite writer, so pages are large enough that a 50,000
 /// message demo is a handful of them per account — and still far under the
 /// daemon's 50-page cap on consecutive `has_more` re-polls.
-///
-/// `MXR_FAKE_PAGE_SIZE` overrides it for throughput experiments.
 pub const SYNC_PAGE_SIZE: usize = 10_000;
 
 /// Cursor for "resume the initial sync at this offset".
@@ -93,14 +91,6 @@ impl Dataset {
                 .map(|(envelope, body)| SyncedMessage { envelope, body }),
         }
     }
-}
-
-fn sync_page_size() -> usize {
-    std::env::var("MXR_FAKE_PAGE_SIZE")
-        .ok()
-        .and_then(|value| value.trim().parse::<usize>().ok())
-        .filter(|size| *size > 0)
-        .unwrap_or(SYNC_PAGE_SIZE)
 }
 
 /// Offset carried by a mid-backfill cursor, if this is one.
@@ -227,7 +217,7 @@ impl FakeProvider {
             mutations: Mutex::new(Vec::new()),
             idle_trigger: None,
             server_drafts_fail: AtomicBool::new(false),
-            page_size: sync_page_size(),
+            page_size: SYNC_PAGE_SIZE,
         }
     }
 
@@ -893,6 +883,34 @@ mod tests {
         let delta = provider.sync_messages(&cursor).await.unwrap();
         assert!(delta.upserted.is_empty());
         assert!(!delta.has_more);
+    }
+
+    /// A demo profile seeded before paging existed carries the old
+    /// one-shot cursor. The provider must read that as "initial sync
+    /// finished" rather than replaying the whole dataset over rows that
+    /// already exist.
+    #[tokio::test]
+    async fn legacy_cursors_are_treated_as_caught_up() {
+        let provider = FakeProvider::with_demo_dataset(AccountId::new(), 500).with_page_size(100);
+
+        for legacy in [
+            b"fake-synced".to_vec(),
+            b"some-older-opaque-cursor".to_vec(),
+        ] {
+            let cursor = SyncCursor::from_bytes(legacy.clone());
+            let batch = provider.sync_messages(&cursor).await.unwrap();
+            assert!(
+                batch.upserted.is_empty(),
+                "legacy cursor {legacy:?} must not replay the dataset"
+            );
+            assert!(!batch.has_more);
+            assert_eq!(
+                batch.next_cursor.as_bytes(),
+                cursor.as_bytes(),
+                "the cursor must be preserved"
+            );
+            assert!(!provider.is_backfill_cursor(&cursor));
+        }
     }
 
     /// A page resumed from a cursor must equal the same slice generated in

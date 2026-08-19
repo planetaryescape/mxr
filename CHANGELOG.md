@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.22](https://github.com/planetaryescape/mxr/compare/v0.6.21...v0.6.22) (2026-08-19)
+
+
+### Bug Fixes
+
+* stop mxr demo and mxr sync dying on the 120s IPC timeout ([#191](https://github.com/planetaryescape/mxr/issues/191)) ([f4e53e2](https://github.com/planetaryescape/mxr/commit/f4e53e22f4e95e1fe5042e4a0fe508a6e2566d6b))
+
 ## [0.6.21](https://github.com/planetaryescape/mxr/compare/v0.6.20...v0.6.21) (2026-08-19)
 
 

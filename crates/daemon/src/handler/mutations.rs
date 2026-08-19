@@ -3074,7 +3074,7 @@ async fn ingest_sent_message(
         .take(200)
         .collect();
 
-    let envelope = Envelope {
+    let mut envelope = Envelope {
         id: message_id.clone(),
         account_id: draft.account_id.clone(),
         provider_id: provider_id_value,
@@ -3106,11 +3106,17 @@ async fn ingest_sent_message(
     };
     let thread_id = envelope.thread_id.clone();
 
-    state
+    // The store resolves by `(account_id, provider_id)` and keeps the id an
+    // existing row already has, so a Sent copy the provider already handed us
+    // under a different derivation comes back under that row's id. The body,
+    // the labels and the search entry below — and the id this hands back to
+    // the caller — all follow what was written, not what we computed.
+    let message_id = state
         .store
         .upsert_envelope_with_direction(&envelope, MessageDirection::Outbound)
         .await
         .map_err(|e| e.to_string())?;
+    envelope.id = message_id.clone();
 
     let body = MessageBody {
         message_id: message_id.clone(),
@@ -4606,6 +4612,59 @@ mod sent_append_tests {
             .expect("stored envelope");
         assert_eq!(envelope.provider_id, "Sent:42");
         assert_eq!(envelope.label_provider_ids, vec!["Sent".to_string()]);
+    }
+
+    /// Same hazard as a synced page: the Sent copy's `(account_id,
+    /// provider_id)` may already name a row stored under an older id
+    /// derivation. The natural key is unique, so the store keeps that row —
+    /// and the body, labels and search entry have to land on it, or the
+    /// ingest dies on a foreign key instead of filing the sent message.
+    #[tokio::test]
+    async fn append_reuses_the_stored_id_when_the_sent_copy_already_exists() {
+        let account_id = AccountId::new();
+        let state = state_with_append_result(&account_id, Some("Sent:42".to_string())).await;
+        let sent_label = crate::test_fixtures::test_label(&account_id, "SENT", "Sent");
+        state.store.upsert_label(&sent_label).await.unwrap();
+
+        // A row for the same provider id under the pre-0.4.52 unscoped id.
+        let legacy_id = MessageId::from_provider_id("imap", "Sent:42");
+        let derived_id = MessageId::from_scoped_provider_id(&account_id, "imap", "Sent:42");
+        assert_ne!(legacy_id, derived_id, "the two derivations must differ");
+        let mut legacy = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .provider_id("Sent:42")
+            .subject("Filed by an older release")
+            .build();
+        legacy.id = legacy_id.clone();
+        state.store.upsert_envelope(&legacy).await.unwrap();
+
+        let draft = sent_draft(&account_id);
+        let receipt = SendReceipt {
+            provider_message_id: None,
+            sent_at: Utc::now(),
+            rfc2822_message_id: "<append-existing@example.com>".to_string(),
+        };
+
+        let message_id = ingest_sent_message(&state, &draft, &from_addr(), &receipt)
+            .await
+            .expect("ingest must reuse the stored row, not fail on its foreign keys");
+
+        assert_eq!(message_id, legacy_id);
+        assert!(state
+            .store
+            .get_envelope(&derived_id)
+            .await
+            .unwrap()
+            .is_none());
+        let envelope = state
+            .store
+            .get_envelope(&legacy_id)
+            .await
+            .unwrap()
+            .expect("stored envelope");
+        assert_eq!(envelope.subject, "hello");
+        assert_eq!(envelope.label_provider_ids, vec!["Sent".to_string()]);
+        assert!(state.store.get_body(&legacy_id).await.unwrap().is_some());
     }
 
     #[tokio::test]

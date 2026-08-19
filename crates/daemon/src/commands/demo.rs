@@ -652,27 +652,37 @@ async fn wait_for_demo_sync(
                 continue;
             }
         };
-        let completed_new_sync =
-            status.last_success_at.as_deref() != before || status.last_synced_count > 0;
+        // Rows land in the store page by page, so the stored message count is
+        // the signal that actually advances during a large seed —
+        // `last_synced_count` only reports the page that just landed.
+        if messages_checked_at.is_none_or(|at| at.elapsed() >= MESSAGE_COUNT_POLL_INTERVAL) {
+            messages_checked_at = Some(Instant::now());
+            // Any unusable reading just leaves the count as it was; the sync
+            // status below is still what decides a failure.
+            if let CountPoll::Count(count) = fetch_message_count(client).await {
+                messages = count;
+                progress.note(&seeded_progress_line(count, expected_messages));
+            }
+        }
+
+        // `last_success_at` is stored with one-second granularity, and the
+        // daemon auto-syncs every account the moment it starts. A seed that
+        // finishes inside that same second leaves this request's own sync
+        // indistinguishable from the startup one — and with the provider
+        // already drained it reports zero messages, so neither half of
+        // `completed_new_sync` fires and the wait would sit here until the
+        // next sync tick (a full `sync_interval`, 60s in the demo profile).
+        // The store having everything that was asked for is the other, unambiguous
+        // way to know the seed is done.
+        let completed_new_sync = status.last_success_at.as_deref() != before
+            || status.last_synced_count > 0
+            || (expected_messages > 0 && messages >= expected_messages);
         if completed_new_sync && !status.sync_in_progress {
             return Ok(());
         }
         if !status.sync_in_progress {
             if let Some(error) = status.last_error.as_deref() {
                 anyhow::bail!("demo sync failed: {error}");
-            }
-        }
-
-        // Rows land in the store page by page, so the stored message count is
-        // the signal that actually advances during a large seed —
-        // `last_synced_count` only reports the page that just landed.
-        if messages_checked_at.is_none_or(|at| at.elapsed() >= MESSAGE_COUNT_POLL_INTERVAL) {
-            messages_checked_at = Some(Instant::now());
-            // Display only here — this loop's authority is the sync status
-            // above — so any unusable reading just leaves the line as it was.
-            if let CountPoll::Count(count) = fetch_message_count(client).await {
-                messages = count;
-                progress.note(&seeded_progress_line(count, expected_messages));
             }
         }
 

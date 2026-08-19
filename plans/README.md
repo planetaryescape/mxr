@@ -80,3 +80,4 @@ REJECTED (with one-line rationale)
 | Plan | Title | Generated | Status |
 |------|-------|-----------|--------|
 | 009  | [Web app: bugs, CLI/TUI parity, UX overhaul](009-web-app-parity-and-ux.md) — 4-agent review + live session; phases 0–6, Phase 0 = 4 ship-stoppers (duplicate send, legacy 301s, optimistic no-op, first-session WS) | 2026-07-12 | TODO |
+| 010  | [`mxr demo` IPC timeout (#179): CLI waits, seed + semantic throughput, background sync](010-demo-seed-timeout.md) — 6 PRs (#189 #191 #193 #194 #196 #197), shipped v0.6.22–v0.6.24 | 2026-08-19 | SHIPPED (M3 release pending at time of writing) |

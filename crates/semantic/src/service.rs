@@ -1,4 +1,4 @@
-use crate::{SemanticEngine, SemanticHit, SemanticIndexJob};
+use crate::{BackfillStart, SemanticEngine, SemanticHit, SemanticIndexJob};
 use anyhow::{anyhow, Result};
 use mxr_config::SemanticConfig;
 use mxr_core::id::MessageId;
@@ -516,20 +516,10 @@ async fn handle_command(
             }
         }
         SemanticCommand::BackfillActive { resp } => {
-            let request = PassRequest::Backfill {
-                limit: DEFAULT_BACKFILL_LIMIT,
-            };
-            if let Some(resp) = claim_pass(pass, request, resp) {
-                let begun = engine.begin_backfill(DEFAULT_BACKFILL_LIMIT).await;
-                install_pass(pass, request, resp, begun);
-            }
+            begin_backfill(engine, pass, DEFAULT_BACKFILL_LIMIT, resp).await;
         }
         SemanticCommand::BackfillActiveLimited { limit, resp } => {
-            let request = PassRequest::Backfill { limit };
-            if let Some(resp) = claim_pass(pass, request, resp) {
-                let begun = engine.begin_backfill(limit).await;
-                install_pass(pass, request, resp, begun);
-            }
+            begin_backfill(engine, pass, limit, resp).await;
         }
         SemanticCommand::IngestMessages { message_ids, resp } => {
             // A synchronous ingest would write its own Ready status over the
@@ -581,6 +571,30 @@ async fn handle_command(
         }
     }
     Ok(())
+}
+
+/// Starts a backfill pass, or answers straight away when the profile has
+/// nothing missing: an empty pass would rewrite the profile row as `indexing`
+/// and queue an ANN rebuild for no gain.
+async fn begin_backfill(
+    engine: &mut SemanticEngine,
+    pass: &mut Option<ActivePass>,
+    limit: u32,
+    resp: oneshot::Sender<Result<SemanticProfileRecord>>,
+) {
+    let request = PassRequest::Backfill { limit };
+    let Some(resp) = claim_pass(pass, request, resp) else {
+        return;
+    };
+    let begun = match engine.begin_backfill(limit).await {
+        Ok(BackfillStart::Started(job)) => Ok(job),
+        Ok(BackfillStart::NothingToDo(record)) => {
+            let _ = resp.send(Ok(record));
+            return;
+        }
+        Err(error) => Err(error),
+    };
+    install_pass(pass, request, resp, begun);
 }
 
 /// Decides what to do with a pass request while another may be running.

@@ -97,6 +97,24 @@ const MAX_INDEX_BUILD_BACKOFF: Duration = Duration::from_secs(60);
 #[cfg(feature = "local")]
 const INDEX_SIZE_HINT: usize = 16_384;
 
+/// Floor on the ANN working set (`ef`), and so on the candidates a search
+/// retrieves. hnsw_rs explores a set this size to answer even a one-hit
+/// query, so asking it for fewer candidates than this saves nothing.
+#[cfg(feature = "local")]
+const SEARCH_EF: usize = 64;
+
+/// Over-fetch factor for a search: the number of source kinds a chunk can
+/// have, because a fielded query may admit only one of them and the filter
+/// runs after retrieval.
+#[cfg(feature = "local")]
+const SOURCE_KIND_COUNT: usize = 4;
+
+/// Ceiling on ANN candidates per search, so a huge `--limit` cannot ask the
+/// graph for a working set the size of the corpus. Past it the post-filter
+/// can return fewer than `limit` hits.
+#[cfg(feature = "local")]
+const MAX_SEARCH_CANDIDATES: usize = 2_048;
+
 /// Rows per ONNX session run inside one embedding call. Measured on a 2k
 /// message corpus: 16 and 64 rows are both ~5-15% slower than 32.
 #[cfg(feature = "local")]
@@ -126,6 +144,11 @@ struct IndexedChunk {
 struct SemanticIndex {
     hnsw: Hnsw<'static, f32, DistCosine>,
     chunks_by_id: HashMap<usize, IndexedChunk>,
+    /// Index passes finished for this profile when the build started. A
+    /// search compares it against the profile's current count to tell an
+    /// index that predates a finished pass from one that is merely behind on
+    /// ingest.
+    pass_epoch: u64,
 }
 
 #[cfg(feature = "local")]
@@ -169,6 +192,20 @@ enum IndexJobKind {
 pub(crate) struct SemanticIndexJob {
     #[cfg(feature = "local")]
     inner: IndexJobInner,
+}
+
+/// What asking for a backfill produced: a pass to step, or the profile record
+/// unchanged because nothing was missing.
+#[cfg_attr(
+    not(feature = "local"),
+    expect(
+        dead_code,
+        reason = "the stub build refuses every backfill before it can produce one"
+    )
+)]
+pub(crate) enum BackfillStart {
+    Started(SemanticIndexJob),
+    NothingToDo(SemanticProfileRecord),
 }
 
 #[cfg(feature = "local")]
@@ -238,6 +275,12 @@ pub struct SemanticEngine {
     /// Consecutive build failures and the earliest retry time, per profile.
     #[cfg(feature = "local")]
     index_build_failures: HashMap<SemanticProfile, IndexBuildFailure>,
+    /// Index passes that have finished per profile since this process
+    /// started. Stamped into each ANN build, so a search can tell an index
+    /// built before the last pass from one that only lacks the newest
+    /// ingests.
+    #[cfg(feature = "local")]
+    completed_index_passes: HashMap<SemanticProfile, u64>,
     #[cfg(feature = "local")]
     test_embedder: Option<TestEmbedder>,
 }
@@ -256,6 +299,7 @@ impl SemanticEngine {
             dirty_indexes: HashSet::new(),
             index_build: None,
             index_build_failures: HashMap::new(),
+            completed_index_passes: HashMap::new(),
             test_embedder: None,
         }
     }
@@ -348,8 +392,10 @@ impl SemanticEngine {
     }
 
     pub async fn backfill_active_limited(&mut self, limit: u32) -> Result<SemanticProfileRecord> {
-        let job = self.begin_backfill(limit).await?;
-        self.run_index_job(job).await
+        match self.begin_backfill(limit).await? {
+            BackfillStart::Started(job) => self.run_index_job(job).await,
+            BackfillStart::NothingToDo(record) => Ok(record),
+        }
     }
 
     /// Sync-time semantic ingest path.
@@ -429,11 +475,19 @@ impl SemanticEngine {
 
         let profile = self.config.active_profile;
         self.install_profile(profile).await?;
-        if !self.indexes.contains_key(&profile) {
-            // Nothing to answer from yet, so this first query has to wait for
-            // the build. Once an index exists a stale one keeps serving while
-            // the rebuild runs in the background.
-            self.dirty_indexes.insert(profile);
+        if self.index_predates_last_pass(profile) {
+            // An index older than the last finished pass cannot show what that
+            // pass indexed, so this query waits for the rebuild. An index that
+            // is merely behind on ingest keeps serving through its own rebuild.
+            let rebuilding = self
+                .index_build
+                .as_ref()
+                .is_some_and(|build| build.profile == profile);
+            // Otherwise nothing pending would fix it - unless the engine has
+            // already given up on rebuilding this profile.
+            if !rebuilding && self.index_build_retries_left(profile) {
+                self.dirty_indexes.insert(profile);
+            }
             self.settle_index_builds().await?;
         }
 
@@ -458,9 +512,17 @@ impl SemanticEngine {
             return Ok(Vec::new());
         }
 
-        let candidate_limit = limit.max(1);
-        let ef = candidate_limit.max(64);
-        let neighbours = index.hnsw.search(&query_embedding, candidate_limit, ef);
+        // Over-fetch, because two stages shrink the candidate set after the
+        // ANN returns it: chunks of a source kind the query excludes are
+        // dropped, and the survivors collapse to one hit per message. Asking
+        // for exactly `limit` neighbours meant a `limit = 1` fielded query
+        // could retrieve one chunk of the wrong kind and answer nothing.
+        let candidate_limit = limit
+            .saturating_mul(SOURCE_KIND_COUNT)
+            .clamp(SEARCH_EF, MAX_SEARCH_CANDIDATES);
+        let neighbours = index
+            .hnsw
+            .search(&query_embedding, candidate_limit, candidate_limit);
         Ok(best_hits_for_neighbours(
             index,
             neighbours
@@ -510,9 +572,15 @@ impl SemanticEngine {
     }
 
     /// Starts a pass over only the messages missing chunks or embeddings.
-    pub(crate) async fn begin_backfill(&mut self, limit: u32) -> Result<SemanticIndexJob> {
+    ///
+    /// A backfill with nothing to do must not start a pass at all: writing
+    /// `Indexing` for a profile that is already complete makes
+    /// `mxr semantic status` flicker `ready -> indexing -> ready` after every
+    /// idle sync, and finishing the empty pass would queue a pointless full
+    /// ANN rebuild on top of it.
+    pub(crate) async fn begin_backfill(&mut self, limit: u32) -> Result<BackfillStart> {
         let profile = self.config.active_profile;
-        let profile_id = self.install_profile(profile).await?.id;
+        let record = self.install_profile(profile).await?;
         let limit = limit.max(1);
         let missing_chunks = self
             .store
@@ -520,21 +588,26 @@ impl SemanticEngine {
             .await?;
         let mut targets = self
             .store
-            .list_message_ids_missing_semantic_embeddings(&profile_id, limit)
+            .list_message_ids_missing_semantic_embeddings(&record.id, limit)
             .await?;
         for message_id in missing_chunks {
             if !targets.contains(&message_id) {
                 targets.push(message_id);
             }
         }
-        self.begin_index_job(
-            profile,
-            targets,
-            ChunkSource::Stored,
-            IndexJobKind::Backfill,
-            false,
-        )
-        .await
+        if targets.is_empty() {
+            return Ok(BackfillStart::NothingToDo(record));
+        }
+        let job = self
+            .begin_index_job(
+                profile,
+                targets,
+                ChunkSource::Stored,
+                IndexJobKind::Backfill,
+                false,
+            )
+            .await?;
+        Ok(BackfillStart::Started(job))
     }
 
     /// Clears a profile left `Indexing` by a daemon that stopped mid-pass.
@@ -652,6 +725,7 @@ impl SemanticEngine {
             job.record.activated_at = Some(chrono::Utc::now());
         }
         self.store.upsert_semantic_profile(&job.record).await?;
+        *self.completed_index_passes.entry(profile).or_default() += 1;
         self.dirty_indexes.insert(profile);
         if matches!(job.kind, IndexJobKind::Backfill) {
             self.store
@@ -716,7 +790,8 @@ impl SemanticEngine {
             let terminator = stream_index_rows(&store, &profile_id, dimensions, &tx).await;
             let _ = tx.send(terminator).await;
         });
-        let handle = tokio::task::spawn_blocking(move || build_semantic_index(rx));
+        let pass_epoch = self.pass_epoch(profile);
+        let handle = tokio::task::spawn_blocking(move || build_semantic_index(rx, pass_epoch));
         self.index_build = Some(IndexBuild { profile, handle });
         Ok(true)
     }
@@ -756,6 +831,35 @@ impl SemanticEngine {
                 }
             }
         }
+    }
+
+    /// Index passes finished for `profile` since the process started.
+    fn pass_epoch(&self, profile: SemanticProfile) -> u64 {
+        self.completed_index_passes
+            .get(&profile)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Whether the in-memory index for `profile` is older than the last index
+    /// pass that finished for it - "no index at all" included.
+    ///
+    /// Such an index cannot reflect the reindex, activation or backfill the
+    /// caller was told had completed, so a search has to wait for the rebuild
+    /// rather than answer from it.
+    fn index_predates_last_pass(&self, profile: SemanticProfile) -> bool {
+        let epoch = self.pass_epoch(profile);
+        self.indexes
+            .get(&profile)
+            .is_none_or(|index| index.pass_epoch < epoch)
+    }
+
+    /// Whether a rebuild for `profile` is still worth asking for, or the
+    /// engine has already given up on it ([`MAX_INDEX_BUILD_ATTEMPTS`]).
+    fn index_build_retries_left(&self, profile: SemanticProfile) -> bool {
+        self.index_build_failures
+            .get(&profile)
+            .is_none_or(|failure| failure.attempts < MAX_INDEX_BUILD_ATTEMPTS)
     }
 
     /// Builds every dirty index and waits for it. Used by the run-to-completion
@@ -1150,7 +1254,7 @@ impl SemanticEngine {
         Err(semantic_unavailable_error())
     }
 
-    pub(crate) async fn begin_backfill(&mut self, _limit: u32) -> Result<SemanticIndexJob> {
+    pub(crate) async fn begin_backfill(&mut self, _limit: u32) -> Result<BackfillStart> {
         Err(semantic_unavailable_error())
     }
 
@@ -1390,6 +1494,7 @@ fn record_index_build_failure(
 #[cfg(feature = "local")]
 fn build_semantic_index(
     mut rows: tokio::sync::mpsc::Receiver<IndexRowBatch>,
+    pass_epoch: u64,
 ) -> Result<SemanticIndex> {
     let mut hnsw = Hnsw::<f32, DistCosine>::new(16, INDEX_SIZE_HINT, 16, 200, DistCosine {});
     let mut chunks_by_id: HashMap<usize, IndexedChunk> = HashMap::new();
@@ -1426,7 +1531,11 @@ fn build_semantic_index(
 
     hnsw.set_searching_mode(true);
     chunks_by_id.shrink_to_fit();
-    Ok(SemanticIndex { hnsw, chunks_by_id })
+    Ok(SemanticIndex {
+        hnsw,
+        chunks_by_id,
+        pass_epoch,
+    })
 }
 
 #[cfg(feature = "local")]
@@ -2154,6 +2263,22 @@ mod tests {
             .collect())
     }
 
+    /// Ranks texts by whether they mention "deployment": an exact match for
+    /// the query vector, or merely close. Ties would make which chunk the ANN
+    /// returns first depend on insertion order.
+    fn deployment_embedder(_profile: SemanticProfile, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        Ok(texts
+            .iter()
+            .map(|text| {
+                if text.contains("deployment") {
+                    vec![1.0, 0.0]
+                } else {
+                    vec![0.8, 0.6]
+                }
+            })
+            .collect())
+    }
+
     #[test]
     fn attachment_kind_uses_extension_when_mime_is_generic() {
         let dir = tempdir().unwrap();
@@ -2470,6 +2595,52 @@ mod tests {
         assert_eq!(hits[0].message_id, envelope.id);
     }
 
+    #[tokio::test]
+    async fn search_over_fetches_candidates_so_a_source_kind_filter_can_still_answer() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        // The header chunk mentions the query term and the body chunk does
+        // not, so the header is strictly the nearest neighbour.
+        let mut envelope = test_envelope(&account.id);
+        envelope.subject = "Deployment update".to_string();
+        envelope.snippet = "deployment rollout".to_string();
+        let body = test_body_with_text(
+            &envelope.id,
+            "The checklist lives in the message body.",
+            Vec::new(),
+        );
+        store.upsert_envelope(&envelope).await.unwrap();
+        store.insert_body(&body).await.unwrap();
+
+        let data_dir = tempdir().unwrap();
+        let mut engine = SemanticEngine::new(
+            store.clone(),
+            data_dir.path(),
+            SemanticConfig {
+                enabled: true,
+                ..SemanticConfig::default()
+            },
+        );
+        engine.set_test_embedder(Arc::new(deployment_embedder));
+        engine
+            .ingest_messages(std::slice::from_ref(&envelope.id))
+            .await
+            .unwrap();
+
+        // Retrieving one candidate and filtering it afterwards answered
+        // nothing here: the only candidate was the header chunk.
+        let hits = engine
+            .search("deployment", 1, &[SemanticChunkSourceKind::Body])
+            .await
+            .unwrap();
+
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].source_kind, SemanticChunkSourceKind::Body);
+        assert_eq!(hits[0].message_id, envelope.id);
+    }
+
     #[test]
     fn build_chunks_keeps_attachment_summary_but_skips_attachment_text_for_non_ocr_inputs() {
         let dir = tempdir().unwrap();
@@ -2507,6 +2678,7 @@ mod tests {
         let message_b = MessageId::new();
         let index = SemanticIndex {
             hnsw: Hnsw::<f32, DistCosine>::new(16, 1, 16, 200, DistCosine {}),
+            pass_epoch: 0,
             chunks_by_id: HashMap::from([
                 (
                     0,
@@ -2658,6 +2830,41 @@ mod tests {
                 chunk.id.as_str()
             );
         }
+    }
+
+    #[tokio::test]
+    async fn a_backfill_with_nothing_missing_leaves_the_profile_row_alone() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        seed_messages(&store, &account.id, 3).await;
+
+        let data_dir = tempdir().unwrap();
+        let (mut engine, _calls) =
+            engine_with_recording_embedder(store.clone(), data_dir.path()).await;
+        let indexed = engine.reindex_active().await.unwrap();
+        assert_eq!(indexed.status, SemanticProfileStatus::Ready);
+        assert_eq!(indexed.progress_completed, 3);
+        let before = store
+            .get_semantic_profile(SemanticProfile::BgeSmallEnV15)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let record = engine.backfill_active_limited(200).await.unwrap();
+        assert_eq!(record.status, SemanticProfileStatus::Ready);
+        assert_eq!(record.progress_completed, before.progress_completed);
+
+        let after = store
+            .get_semantic_profile(SemanticProfile::BgeSmallEnV15)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(after.status, SemanticProfileStatus::Ready);
+        assert_eq!(after.progress_completed, before.progress_completed);
+        assert_eq!(after.progress_total, before.progress_total);
+        assert_eq!(after.last_indexed_at, before.last_indexed_at);
+        assert_eq!(after.model_revision, before.model_revision);
     }
 
     #[tokio::test]
@@ -3032,7 +3239,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_truncated_row_stream_fails_the_index_build() {
         let (tx, rx) = tokio::sync::mpsc::channel::<IndexRowBatch>(1);
-        let build = tokio::task::spawn_blocking(move || build_semantic_index(rx));
+        let build = tokio::task::spawn_blocking(move || build_semantic_index(rx, 0));
         tx.send(IndexRowBatch::Page(vec![SemanticIndexRow {
             chunk_id: SemanticChunkId::new(),
             message_id: MessageId::new(),
@@ -3118,6 +3325,98 @@ mod tests {
             .await
             .unwrap();
         assert!(refreshed.iter().any(|hit| hit.message_id == second.id));
+    }
+
+    /// Switching profiles away and back runs a full pass whose ANN rebuild is
+    /// deferred, and the older in-memory index for that profile is still
+    /// loaded. Answering from it would report a mailbox the just-finished pass
+    /// says is indexed as missing.
+    #[tokio::test]
+    async fn a_search_after_a_finished_pass_waits_for_its_rebuild() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let first = test_envelope(&account.id);
+        store.upsert_envelope(&first).await.unwrap();
+        store
+            .insert_body(&test_body_with_text(
+                &first.id,
+                "Deployment checklist",
+                Vec::new(),
+            ))
+            .await
+            .unwrap();
+
+        let data_dir = tempdir().unwrap();
+        let mut engine = SemanticEngine::new(
+            store.clone(),
+            data_dir.path(),
+            SemanticConfig {
+                enabled: true,
+                active_profile: SemanticProfile::BgeSmallEnV15,
+                ..SemanticConfig::default()
+            },
+        );
+        engine.set_test_embedder(Arc::new(test_embedder));
+        engine
+            .use_profile(SemanticProfile::BgeSmallEnV15)
+            .await
+            .unwrap();
+
+        // Arrives after the first profile's index was built, and its ANN
+        // rebuild is deferred.
+        let second = Envelope {
+            provider_id: "fake-2".into(),
+            subject: "Roadmap notes".into(),
+            snippet: "Launch plan".into(),
+            ..test_envelope(&account.id)
+        };
+        store.upsert_envelope(&second).await.unwrap();
+        store
+            .insert_body(&test_body_with_text(
+                &second.id,
+                "Roadmap notes launch",
+                Vec::new(),
+            ))
+            .await
+            .unwrap();
+        engine
+            .ingest_messages(std::slice::from_ref(&second.id))
+            .await
+            .unwrap();
+
+        // Away to another profile and back, both stepped the way the semantic
+        // worker steps them: neither pass waits for its ANN build.
+        for profile in [
+            SemanticProfile::MultilingualE5Small,
+            SemanticProfile::BgeSmallEnV15,
+        ] {
+            engine.apply_config(SemanticConfig {
+                enabled: true,
+                active_profile: profile,
+                ..SemanticConfig::default()
+            });
+            let mut job = engine.begin_use_profile(profile).await.unwrap();
+            while engine.index_job_step(&mut job).await.unwrap() {}
+            engine.finish_index_job(job).await.unwrap();
+        }
+
+        let hits = engine
+            .search(
+                "roadmap notes launch",
+                5,
+                &[
+                    SemanticChunkSourceKind::Header,
+                    SemanticChunkSourceKind::Body,
+                ],
+            )
+            .await
+            .unwrap();
+        assert!(
+            hits.iter().any(|hit| hit.message_id == second.id),
+            "a search after the pass must not answer from the pre-pass index"
+        );
     }
 
     /// `all_message_ids` used to hydrate envelopes per account with a hard

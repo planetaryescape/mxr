@@ -69,8 +69,30 @@ impl SearchServiceHandle {
             while let Some(command) = rx.recv().await {
                 match command {
                     SearchCommand::ApplyBatch { batch, resp } => {
-                        let result = apply_batch(&mut index, batch);
-                        let _ = resp.send(result);
+                        // Indexing and committing are CPU-bound and, on an
+                        // initial sync, run for minutes. Doing that inline
+                        // parks a tokio worker thread for the whole run, so
+                        // hand it to the blocking pool and take the index
+                        // back afterwards.
+                        let handle = tokio::task::spawn_blocking(move || {
+                            let mut owned = index;
+                            let result = apply_batch(&mut owned, batch);
+                            (owned, result)
+                        });
+                        match handle.await {
+                            Ok((returned, result)) => {
+                                index = returned;
+                                let _ = resp.send(result);
+                            }
+                            Err(error) => {
+                                // The index went down with the panicking
+                                // task; there is nothing left to serve.
+                                let _ = resp.send(Err(MxrError::Search(format!(
+                                    "search index task failed: {error}"
+                                ))));
+                                break;
+                            }
+                        }
                     }
                     SearchCommand::Search {
                         query,
@@ -244,16 +266,27 @@ impl SearchServiceHandle {
     }
 }
 
+/// Documents indexed between commits. Bounds the writer's in-memory
+/// segment on a large batch; a full backfill batch would otherwise be
+/// held until the single commit at the end.
+const COMMIT_CHUNK: usize = 5_000;
+
 fn apply_batch(index: &mut SearchIndex, batch: SearchUpdateBatch) -> Result<(), MxrError> {
     for message_id in batch.removed_message_ids {
         index.remove_document(&message_id);
     }
 
+    let mut since_commit = 0;
     for entry in batch.entries {
         if let Some(body) = entry.body.as_ref() {
             index.index_body_with_reply_later(&entry.envelope, body, entry.reply_later)?;
         } else {
             index.index_envelope_with_reply_later(&entry.envelope, entry.reply_later)?;
+        }
+        since_commit += 1;
+        if since_commit == COMMIT_CHUNK {
+            index.commit()?;
+            since_commit = 0;
         }
     }
 

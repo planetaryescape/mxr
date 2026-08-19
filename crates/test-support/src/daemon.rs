@@ -197,6 +197,68 @@ pub fn run_with_env(bin: &Path, envs: &[(&str, &str)], args: &[&str]) -> CliOutp
     CliOutput { stdout, stderr }
 }
 
+/// Like [`run_with_env`], but also reports how long the command took to
+/// print its first line containing `marker`.
+///
+/// Lets a test put a wall-clock budget on one *phase* of a long-running
+/// command. `run_with_env` only sees the process after it exits, which for
+/// something like `mxr demo` bundles several unrelated phases into one
+/// number. Returns `None` when the marker never appeared.
+pub fn run_with_env_until_line(
+    bin: &Path,
+    envs: &[(&str, &str)],
+    args: &[&str],
+    marker: &str,
+) -> (CliOutput, Option<Duration>) {
+    let mut command = StdCommand::new(bin);
+    command
+        .env_remove("EDITOR")
+        .env_remove("VISUAL")
+        // Would override the socket the caller pinned.
+        .env_remove("MXR_DAEMON_ADDR")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let mut child = command.args(args).spawn().expect("spawn command");
+
+    // Both pipes have to be drained concurrently or a chatty stderr fills its
+    // buffer and deadlocks the child before it reaches the marker.
+    let mut child_stderr = child.stderr.take().expect("piped stderr");
+    let stderr_reader = std::thread::spawn(move || {
+        let mut buffer = String::new();
+        let _ = std::io::Read::read_to_string(&mut child_stderr, &mut buffer);
+        buffer
+    });
+
+    let started_at = std::time::Instant::now();
+    let mut marker_at = None;
+    let mut stdout = String::new();
+    {
+        let child_stdout = child.stdout.take().expect("piped stdout");
+        let reader = std::io::BufReader::new(child_stdout);
+        for line in std::io::BufRead::lines(reader) {
+            let line = line.expect("read stdout line");
+            if marker_at.is_none() && line.contains(marker) {
+                marker_at = Some(started_at.elapsed());
+            }
+            stdout.push_str(&line);
+            stdout.push('\n');
+        }
+    }
+
+    let status = child.wait().expect("wait for command");
+    let stderr = stderr_reader.join().expect("join stderr reader");
+    if !status.success() {
+        panic!(
+            "command {args:?} failed (exit {:?})\nstdout={stdout}\nstderr={stderr}",
+            status.code()
+        );
+    }
+    (CliOutput { stdout, stderr }, marker_at)
+}
+
 /// Like [`run_with_env`] but parses stdout as JSON.
 pub fn run_json_with_env(bin: &Path, envs: &[(&str, &str)], args: &[&str]) -> Value {
     let out = run_with_env(bin, envs, args);

@@ -18,10 +18,12 @@
     reason = "integration tests panic with command output when daemon-backed journeys fail"
 )]
 
-use mxr_test_support::daemon::{daemon_lock, link_mxr_binary, run_json_with_env, run_with_env};
+use mxr_test_support::daemon::{
+    daemon_lock, link_mxr_binary, run_json_with_env, run_with_env, run_with_env_until_line,
+};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
 
 /// Enough messages to span several sync batches and give the analytics and
@@ -35,6 +37,25 @@ const DEMO_MESSAGES: usize = 2_000;
 /// take seconds on a loaded CI runner, and the streamed-events assertion below
 /// is the guard that does not depend on timing at all.
 const IPC_TIMEOUT_SECS: &str = "60";
+
+/// Marker `mxr demo` prints once every message is in the store, i.e. the end
+/// of the seed phase.
+const SEED_DONE_MARKER: &str = "Demo mailbox contains";
+
+/// Wall budget for the seed phase — a regression tripwire, not a benchmark.
+///
+/// Provenance: on a 16-core dev Mac under load, a debug build reaches the
+/// marker in 5.5s for these 2,000 messages (daemon start, rules, one paged
+/// sync per account). Assuming a 4-vCPU CI runner is 3-5x slower, a healthy
+/// run there lands around 17-28s, so 60s trips on a 2-3x regression while
+/// still needing an ~11x slowdown to flake on a developer machine.
+///
+/// What it does not do: at 2,000 messages the pre-paging code was fast too,
+/// so this cannot stand in for the 50,000-message numbers the seeding work
+/// was measured against — it catches a catastrophic regression (the eager
+/// fixture materialisation or the per-message commit path coming back),
+/// while the paging and batched-write behaviour is pinned by unit tests.
+const SEED_BUDGET: Duration = Duration::from_secs(60);
 
 fn search_results<'a>(value: &'a Value, context: &str) -> &'a [Value] {
     value
@@ -198,12 +219,24 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
     };
 
     let started_at = Instant::now();
-    let demo = run_with_env(
+    let (demo, seed_elapsed) = run_with_env_until_line(
         &bin,
         &env,
         &["demo", "--no-tui", "--messages", messages.as_str()],
+        SEED_DONE_MARKER,
     );
     let elapsed = started_at.elapsed();
+    let seed_elapsed = seed_elapsed.unwrap_or_else(|| {
+        panic!(
+            "demo should report the seeded mailbox; stdout={}\nstderr={}",
+            demo.stdout, demo.stderr
+        )
+    });
+    assert!(
+        seed_elapsed <= SEED_BUDGET,
+        "seeding {DEMO_MESSAGES} messages took {seed_elapsed:?}, over the {SEED_BUDGET:?} budget; \
+         the demo seed has regressed (whole run {elapsed:?})"
+    );
     assert!(
         demo.stdout.contains("Demo mode is now active"),
         "demo should announce sticky mode; stdout={}\nstderr={}",

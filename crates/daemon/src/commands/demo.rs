@@ -256,7 +256,12 @@ pub async fn run(messages: usize, no_tui: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn prewarm_demo_runtime(force_semantic: bool) -> anyhow::Result<()> {
+/// `mailbox_was_seeded` says a sync actually brought messages in, so the
+/// semantic index has work waiting even if the profile still reads `Ready`
+/// from a previous run. It is unrelated to `ReindexSemantic { force }`, which
+/// asks the worker to re-embed chunks that already have vectors — a fresh seed
+/// wants the idempotent default, not that.
+async fn prewarm_demo_runtime(mailbox_was_seeded: bool) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
 
     println!("Precomputing demo analytics...");
@@ -299,7 +304,7 @@ async fn prewarm_demo_runtime(force_semantic: bool) -> anyhow::Result<()> {
     }
 
     let active_profile = semantic_snapshot.active_profile;
-    if semantic_is_warm(&semantic_snapshot) && !force_semantic {
+    if semantic_is_warm(&semantic_snapshot) && !mailbox_was_seeded {
         println!("  semantic vectors already warm");
         return Ok(());
     }

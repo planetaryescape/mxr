@@ -161,10 +161,24 @@ enum FrameSend {
 /// half-flushed one. `feed` performs only the encode step, so every error it
 /// returns provably came from `IpcCodec::encode`; the flush that follows is
 /// the only place transport errors can appear.
-async fn send_frame<Si>(sink: &mut Si, message: IpcMessage) -> FrameSend
+///
+/// That rests on two things, which is why this takes a concrete `FramedWrite`
+/// rather than any `Sink`. First, `FramedWrite::feed` encodes inline — a
+/// futures `SplitSink` instead parks the item and encodes during the *next*
+/// flush, which would put encode errors straight back on the flush path.
+/// Second, `FramedWrite::poll_ready` flushes when the write buffer is over its
+/// backpressure mark, and such a flush could report a transport error out of
+/// `feed`; that cannot happen here because this is the connection's only
+/// writer and it always flushes before returning, so the buffer is empty at
+/// every `feed`. The `debug_assert` keeps that invariant honest.
+async fn send_frame<W>(sink: &mut FramedWrite<W, IpcCodec>, message: IpcMessage) -> FrameSend
 where
-    Si: futures::Sink<IpcMessage, Error = std::io::Error> + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
 {
+    debug_assert!(
+        sink.write_buffer().is_empty(),
+        "send_frame must leave the write buffer empty, or feed's backpressure flush could report a transport error as an encode failure"
+    );
     if let Err(error) = sink.feed(message).await {
         return FrameSend::Unencodable(error);
     }

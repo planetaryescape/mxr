@@ -235,9 +235,9 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
     };
     let seed_started = marker_at(SEED_START_MARKER);
     let seed_elapsed = marker_at(SEED_DONE_MARKER).saturating_sub(seed_started);
-    // Printed on success too: a green CI run then carries the numbers, so the
-    // next regression can be compared against a real baseline instead of a
-    // remembered one.
+    // Emitted whichever way the assertion goes. nextest only surfaces a
+    // passing test's output under `--success-output immediate`, which is the
+    // flag to reach for when a green run's numbers are what you want.
     eprintln!(
         "demo timings: startup {seed_started:?}, seed {seed_elapsed:?}, whole run {elapsed:?}\n{}",
         timed.timeline()

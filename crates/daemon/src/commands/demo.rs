@@ -1,12 +1,14 @@
+use crate::commands::progress::{format_thousands, request_with_progress, ProgressPrinter};
 use crate::ipc_client::IpcClient;
 use chrono::{Datelike, TimeZone};
+use futures::FutureExt as _;
 use mxr_config::{AccountConfig, SendProviderConfig, SyncProviderConfig};
 use mxr_core::id::AccountId;
 use mxr_core::types::SemanticProfileStatus;
 use mxr_protocol::{AccountSyncStatus, Request, Response, ResponseData};
 use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, RuleId, StringMatch};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const DEMO_ACCOUNT_KEY: &str = "personal";
 const DEMO_WORK_ACCOUNT_KEY: &str = "work";
@@ -17,6 +19,34 @@ const DEMO_COUNT_MARKER: &str = "demo-message-count";
 const DEMO_SEED_VERSION: u32 = 4;
 const DEMO_DEFAULT_MESSAGES: usize = 50_000;
 const DEMO_ACTIVE_MARKER: &str = "demo-active";
+
+/// How long the seed may show no observable movement before the CLI stops
+/// waiting on it.
+///
+/// This replaces the demo's old fixed 180s seed deadline, which failed on any
+/// machine slower than the one it was tuned on — the bug in #179. A sync
+/// commits rows continuously, so "nothing changed for ten minutes" means
+/// wedged, not slow. Ten minutes also matches the daemon's own manual-sync
+/// ceiling (`handler::diagnostics::MANUAL_SYNC_TIMEOUT`), so we never give up
+/// before the daemon itself would.
+const PROGRESS_STALL_TIMEOUT: Duration = Duration::from_secs(600);
+const PROGRESS_POLL_INTERVAL: Duration = Duration::from_millis(500);
+/// `GetStatus` is heavier than a sync-status read (it counts messages and
+/// collects feature health), so the message-count progress line refreshes on
+/// its own slower cadence.
+const MESSAGE_COUNT_POLL_INTERVAL: Duration = Duration::from_secs(1);
+
+/// How long `mxr demo` watches semantic indexing before opening the demo
+/// anyway.
+///
+/// Unlike the seed, this one IS bounded by a wall clock, on purpose. Embedding
+/// runs at roughly 25 messages/second, so the default 50k mailbox needs about
+/// half an hour — and unlike the seed, the demo does not need it: the mailbox
+/// is fully searchable the moment lexical indexing commits, and semantic recall
+/// sharpens behind it. 90s covers the cases where waiting actually pays off (a
+/// warm profile flipping to `Ready`, a small `--messages` demo finishing
+/// outright) without holding a first-time user hostage to a progress bar.
+const SEMANTIC_PREWARM_BUDGET: Duration = Duration::from_secs(90);
 
 #[derive(Debug, Clone)]
 pub struct DemoPaths {
@@ -173,30 +203,41 @@ pub async fn run(messages: usize, no_tui: bool) -> anyhow::Result<()> {
     crate::server::ensure_daemon_running().await?;
     seed_demo_rules().await?;
     println!("Seeding demo mailbox...");
-    trigger_demo_sync_and_wait(Duration::from_secs(180)).await?;
-    let synced_count = fetch_demo_message_count().await?;
-    if messages > 0 && synced_count != messages {
-        anyhow::bail!(
-            "Demo sync finished with {synced_count} messages; expected {messages}. Run `mxr demo --reset` to try again."
-        );
-    }
+    sync_demo_accounts(messages).await?;
+    let synced_count = wait_for_seeded_count(messages).await?;
     if synced_count > 0 {
-        println!("Demo mailbox contains {synced_count} messages.");
+        println!(
+            "Demo mailbox contains {} messages.",
+            format_thousands(synced_count)
+        );
         write_demo_message_count(&paths, messages)?;
     } else {
         println!("Demo mailbox is already up to date.");
     }
     println!("Seeding demo surfaces (snippets, signatures, screener, drafts, ...)");
     seed_demo_surfaces().await?;
-    prewarm_demo_runtime(synced_count > 0).await?;
 
     // Sticky demo: every subsequent `mxr <cmd>` invocation should hit demo
     // data until the user runs `mxr demo stop`. Marker is written outside
     // the demo data dir so it survives independent of MXR_INSTANCE.
+    //
+    // The marker and this banner come BEFORE the prewarms on purpose: the
+    // mailbox is already usable here, and the prewarms (analytics, Wrapped,
+    // semantic vectors, LLM caches) can take minutes on a large seed. Writing
+    // the marker first means a Ctrl-C during a prewarm still leaves a working
+    // demo instead of a half-seeded profile the user can't reach.
     write_active_marker(messages)?;
     println!();
     println!("Demo mode is now active. All `mxr` commands target the demo profile.");
     println!("Run `mxr demo stop` to exit demo mode.");
+    println!();
+    println!("Precomputing analytics, Wrapped, and search vectors so the first click on");
+    println!("each surface is instant. Press Ctrl-C any time to start using the demo —");
+    println!("whatever the daemon has already started finishes on its own.");
+    if let Err(error) = prewarm_demo_runtime(synced_count > 0).await {
+        println!("  prewarm incomplete: {error}");
+        println!("  the demo still works; the daemon keeps indexing in the background.");
+    }
 
     if no_tui {
         println!();
@@ -215,11 +256,23 @@ pub async fn run(messages: usize, no_tui: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn prewarm_demo_runtime(force_semantic: bool) -> anyhow::Result<()> {
+/// `mailbox_was_seeded` says a sync actually brought messages in, so the
+/// semantic index has work waiting even if the profile still reads `Ready`
+/// from a previous run. It is unrelated to `ReindexSemantic { force }`, which
+/// asks the worker to re-embed chunks that already have vectors — a fresh seed
+/// wants the idempotent default, not that.
+async fn prewarm_demo_runtime(mailbox_was_seeded: bool) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
 
     println!("Precomputing demo analytics...");
-    match client.request(Request::RebuildAnalytics).await? {
+    match request_with_progress(
+        &mut client,
+        false,
+        "Rebuilding analytics",
+        Request::RebuildAnalytics,
+    )
+    .await?
+    {
         Response::Ok {
             data: ResponseData::AnalyticsRebuildSummary { .. },
         } => {}
@@ -251,14 +304,7 @@ async fn prewarm_demo_runtime(force_semantic: bool) -> anyhow::Result<()> {
     }
 
     let active_profile = semantic_snapshot.active_profile;
-    let active_record = semantic_snapshot
-        .profiles
-        .iter()
-        .find(|profile| profile.profile == active_profile);
-    let semantic_ready = active_record.is_some_and(|profile| {
-        profile.status == SemanticProfileStatus::Ready && profile.last_indexed_at.is_some()
-    });
-    if !force_semantic && semantic_ready {
+    if semantic_is_warm(&semantic_snapshot) && !mailbox_was_seeded {
         println!("  semantic vectors already warm");
         return Ok(());
     }
@@ -267,27 +313,25 @@ async fn prewarm_demo_runtime(force_semantic: bool) -> anyhow::Result<()> {
         "Precomputing semantic vectors for {}...",
         active_profile.as_str()
     );
-    match client
-        .request(Request::ReindexSemantic { force: false })
-        .await?
-    {
-        Response::Ok {
-            data: ResponseData::SemanticStatus { .. },
-        } => {}
-        Response::Error { message, .. } => {
-            println!("  semantic prewarm skipped: {message}");
-            return Ok(());
-        }
-        other => anyhow::bail!("Unexpected semantic prewarm response: {other:?}"),
-    }
-
-    // ReindexSemantic returns once the request is acknowledged; the worker
-    // keeps producing embeddings in the background while the profile sits
-    // in `Indexing`. Without this wait, `mxr search` after demo start would
-    // show "Indexing..." until the background work finished. Poll until the
-    // active profile transitions to `Ready`.
-    wait_for_semantic_ready(&mut client, active_profile, Duration::from_secs(600)).await?;
-    println!("  semantic vectors ready");
+    // `ReindexSemantic` embeds every message before it answers — around half
+    // an hour for the default 50k mailbox — so the demo kicks it off on its
+    // own connection and watches the profile's counters instead of waiting on
+    // the call. The daemon runs the request to completion whatever this
+    // process does next, and the post-sync ingest is already embedding in
+    // parallel. `force: false` is deliberate: the idempotent reindex skips
+    // chunks that already have vectors, which is exactly what a fresh seed
+    // needs when the post-sync ingest has been embedding the same messages
+    // alongside it. The handle is kept so a rejection (semantic disabled,
+    // model missing, store failure) is reported straight away instead of
+    // leaving the watcher to spend its whole budget on a reindex that never
+    // started.
+    let reindex = tokio::spawn(async move {
+        IpcClient::connect()
+            .await?
+            .request_with_events(Request::ReindexSemantic { force: false }, |_| {})
+            .await
+    });
+    await_semantic_prewarm(&mut client, active_profile, reindex).await;
 
     // Fill LLM-backed caches (voice, decisions) using the canned demo provider
     // so first-click on those surfaces shows pre-built content. Soft-fails
@@ -299,44 +343,160 @@ async fn prewarm_demo_runtime(force_semantic: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn wait_for_semantic_ready(
+/// What the active semantic profile currently reports.
+struct SemanticProgress {
+    status: SemanticProfileStatus,
+    completed: u32,
+    total: u32,
+    last_error: Option<String>,
+}
+
+/// Is the active profile indexed and usable — the state that stops `mxr search`
+/// rendering "Indexing..."?
+fn semantic_is_warm(snapshot: &mxr_core::types::SemanticStatusSnapshot) -> bool {
+    snapshot.profiles.iter().any(|profile| {
+        profile.profile == snapshot.active_profile
+            && profile.status == SemanticProfileStatus::Ready
+            && profile.last_indexed_at.is_some()
+    })
+}
+
+async fn fetch_semantic_progress(
     client: &mut IpcClient,
     active_profile: mxr_core::types::SemanticProfile,
-    timeout: Duration,
-) -> anyhow::Result<()> {
-    let deadline = std::time::Instant::now() + timeout;
+) -> anyhow::Result<Option<SemanticProgress>> {
+    let snapshot = match client.request(Request::GetSemanticStatus).await? {
+        Response::Ok {
+            data: ResponseData::SemanticStatus { snapshot },
+        } => snapshot,
+        Response::Error { message, .. } => anyhow::bail!(message),
+        other => anyhow::bail!("Unexpected semantic status response: {other:?}"),
+    };
+    Ok(snapshot
+        .profiles
+        .into_iter()
+        .find(|profile| profile.profile == active_profile)
+        .map(|profile| SemanticProgress {
+            status: profile.status,
+            completed: profile.progress_completed,
+            total: profile.progress_total,
+            last_error: profile.last_error,
+        }))
+}
+
+/// Watch semantic indexing for at most [`SEMANTIC_PREWARM_BUDGET`], then hand
+/// the demo over regardless.
+///
+/// Never fails the demo. The mailbox is already searchable — lexical search
+/// commits during the sync — and semantic recall sharpens as vectors land, so
+/// the honest move when the budget runs out is to say where indexing got to
+/// and get out of the user's way.
+async fn await_semantic_prewarm(
+    client: &mut IpcClient,
+    active_profile: mxr_core::types::SemanticProfile,
+    mut reindex: tokio::task::JoinHandle<anyhow::Result<Response>>,
+) {
+    let progress = ProgressPrinter::new(false);
+    let deadline = Instant::now() + SEMANTIC_PREWARM_BUDGET;
+    let mut latest = None;
     loop {
-        let snapshot = match client.request(Request::GetSemanticStatus).await? {
-            Response::Ok {
-                data: ResponseData::SemanticStatus { snapshot },
-            } => snapshot,
-            Response::Error { message, .. } => {
-                anyhow::bail!("semantic status query failed while waiting: {message}");
+        // If the reindex has already come back rejected there is nothing to
+        // wait for; say why rather than spending the budget in silence.
+        if let Some(outcome) = (&mut reindex).now_or_never() {
+            match outcome {
+                Ok(Ok(Response::Error { message, .. })) => {
+                    progress.finish();
+                    println!("  semantic prewarm skipped: {message}");
+                    return;
+                }
+                Ok(Err(error)) => {
+                    progress.finish();
+                    println!("  semantic prewarm skipped: {error}");
+                    return;
+                }
+                // Finished cleanly, or the task itself failed; either way the
+                // profile's own status below is the authority.
+                Ok(Ok(_)) | Err(_) => {}
             }
-            other => anyhow::bail!("Unexpected semantic status response: {other:?}"),
-        };
-        let active = snapshot
-            .profiles
-            .iter()
-            .find(|profile| profile.profile == active_profile);
-        match active.map(|profile| profile.status) {
-            Some(SemanticProfileStatus::Ready) => return Ok(()),
-            Some(SemanticProfileStatus::Error) => {
-                let message = active
-                    .and_then(|profile| profile.last_error.clone())
-                    .unwrap_or_else(|| "unknown error".to_string());
-                anyhow::bail!("semantic prewarm failed: {message}");
+        }
+        // A status poll can fail or stall transiently (the semantic worker
+        // rebuilds its ANN index on the same path). Keep watching rather than
+        // treating one bad poll as the answer.
+        if let Ok(Some(state)) = fetch_semantic_progress(client, active_profile).await {
+            match state.status {
+                SemanticProfileStatus::Ready => {
+                    progress.finish();
+                    println!("  semantic vectors ready");
+                    return;
+                }
+                SemanticProfileStatus::Error => {
+                    progress.finish();
+                    println!(
+                        "  semantic prewarm failed: {}",
+                        state
+                            .last_error
+                            .unwrap_or_else(|| "unknown error".to_string())
+                    );
+                    return;
+                }
+                _ => {}
             }
-            _ => {}
+            if state.total > 0 {
+                progress.note(&format!(
+                    "semantic vectors {}/{}",
+                    format_thousands(state.completed),
+                    format_thousands(state.total)
+                ));
+            }
+            latest = Some(state);
         }
-        if std::time::Instant::now() >= deadline {
-            anyhow::bail!(
-                "timed out after {}s waiting for semantic profile {} to reach Ready",
-                timeout.as_secs(),
-                active_profile.as_str()
-            );
+        if Instant::now() >= deadline {
+            break;
         }
-        tokio::time::sleep(Duration::from_millis(250)).await;
+        tokio::time::sleep(PROGRESS_POLL_INTERVAL).await;
+    }
+
+    progress.finish();
+    match latest {
+        Some(state) if state.total > 0 => println!(
+            "  Semantic vectors: {}/{} indexed — continuing in the background (`mxr semantic status`).",
+            format_thousands(state.completed),
+            format_thousands(state.total)
+        ),
+        _ => println!(
+            "  Semantic vectors are still indexing in the background (`mxr semantic status`)."
+        ),
+    }
+    println!("  Search works now; semantic results improve as indexing fills in.");
+}
+
+/// Progress-based waiting: give up only when nothing observable has moved for
+/// [`PROGRESS_STALL_TIMEOUT`], never on a fixed wall clock. The caller feeds a
+/// fingerprint of everything it can see; any change means the daemon is still
+/// working and resets the clock.
+struct StallWatch {
+    fingerprint: String,
+    last_change: Instant,
+    timeout: Duration,
+}
+
+impl StallWatch {
+    fn new(timeout: Duration) -> Self {
+        Self {
+            fingerprint: String::new(),
+            last_change: Instant::now(),
+            timeout,
+        }
+    }
+
+    /// Records what the caller can currently see; returns `false` once the
+    /// operation has looked frozen for longer than the configured timeout.
+    fn observe(&mut self, fingerprint: String) -> bool {
+        if fingerprint != self.fingerprint {
+            self.fingerprint = fingerprint;
+            self.last_change = Instant::now();
+        }
+        self.last_change.elapsed() < self.timeout
     }
 }
 
@@ -352,14 +512,22 @@ async fn prewarm_wrapped(
         return Ok(());
     };
     let label = format!("{} year-to-date", now.year());
-    match client
-        .request(Request::Wrapped {
+    let scope = account_id.as_ref().map_or_else(
+        || "Computing Wrapped (all accounts)".to_string(),
+        |account_id| format!("Computing Wrapped for {account_id}"),
+    );
+    match request_with_progress(
+        client,
+        false,
+        &scope,
+        Request::Wrapped {
             account_id,
             since_unix: start.timestamp(),
             until_unix: now.timestamp(),
             label,
-        })
-        .await?
+        },
+    )
+    .await?
     {
         Response::Ok {
             data: ResponseData::Wrapped { .. },
@@ -372,55 +540,99 @@ async fn prewarm_wrapped(
     Ok(())
 }
 
-async fn trigger_demo_sync_and_wait(timeout: Duration) -> anyhow::Result<Vec<AccountSyncStatus>> {
-    let mut statuses = Vec::new();
+async fn sync_demo_accounts(expected_messages: usize) -> anyhow::Result<()> {
     for account_id in demo_account_ids() {
-        statuses.push(trigger_demo_account_sync_and_wait(account_id, timeout).await?);
+        sync_demo_account(&account_id, expected_messages).await?;
     }
-    Ok(statuses)
+    Ok(())
 }
 
-async fn trigger_demo_account_sync_and_wait(
-    account_id: AccountId,
-    timeout: Duration,
-) -> anyhow::Result<AccountSyncStatus> {
+/// Seed one demo account and wait for it, however long that takes.
+///
+/// `SyncNow` runs in the daemon before it answers, so it goes over
+/// `request_with_events` (no deadline, streams the daemon's progress events).
+/// The old code used `request`, whose 120s cap is what killed `mxr demo` on a
+/// mailbox any bigger or a machine any slower than the developer's (#179), and
+/// then re-issued `SyncNow` on failure — which only queued a second sync
+/// behind the first and timed out again.
+///
+/// The `Ack` means the daemon finished a sync pass, not that the account is
+/// done: its own sync loop may still be working (further backfill pages, a
+/// queued tick). The account's status row is the authority, so the answer is
+/// only the cue to start watching it.
+async fn sync_demo_account(account_id: &AccountId, expected_messages: usize) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let before_status = match fetch_demo_sync_status(&mut client, &account_id).await {
-        Ok(status) => status,
+    let before = match fetch_demo_sync_status(&mut client, account_id).await {
+        Ok(status) => status.last_success_at,
         Err(error) => {
             client = reconnect_demo_client(&error).await?;
-            fetch_demo_sync_status(&mut client, &account_id).await?
-        }
-    };
-    let before = before_status.last_success_at;
-
-    let sync_response = match client
-        .request(Request::SyncNow {
-            account_id: Some(account_id.clone()),
-        })
-        .await
-    {
-        Ok(response) => response,
-        Err(error) => {
-            client = reconnect_demo_client(&error).await?;
-            client
-                .request(Request::SyncNow {
-                    account_id: Some(account_id.clone()),
-                })
+            fetch_demo_sync_status(&mut client, account_id)
                 .await?
+                .last_success_at
         }
     };
 
-    match sync_response {
-        Response::Ok {
+    let sync_response = request_with_progress(
+        &mut client,
+        false,
+        "Syncing demo account",
+        Request::SyncNow {
+            account_id: Some(account_id.clone()),
+        },
+    )
+    .await;
+
+    // A failure here does not mean the sync failed: past its own ceiling the
+    // daemon detaches the sync and answers with an error while the work keeps
+    // running. Ask the account whether it is still syncing rather than reading
+    // the error text — the sync itself is the authority, and a `SyncNow` retry
+    // would just queue a second sync behind the live one.
+    let failure = match sync_response {
+        Ok(Response::Ok {
             data: ResponseData::Ack,
-        } => {}
-        Response::Error { message, .. } => anyhow::bail!(message),
-        other => anyhow::bail!("Unexpected sync response: {other:?}"),
+        }) => None,
+        Ok(Response::Error { message, .. }) => Some(message),
+        Ok(other) => anyhow::bail!("Unexpected sync response: {other:?}"),
+        Err(error) => {
+            client = reconnect_demo_client(&error).await?;
+            Some(error.to_string())
+        }
+    };
+    if let Some(failure) = failure {
+        if !fetch_demo_sync_status(&mut client, account_id)
+            .await?
+            .sync_in_progress
+        {
+            anyhow::bail!(failure);
+        }
+        println!("  sync is still running in the daemon; following its progress");
     }
 
-    let deadline = std::time::Instant::now() + timeout;
+    wait_for_demo_sync(
+        &mut client,
+        account_id,
+        before.as_deref(),
+        expected_messages,
+    )
+    .await
+}
+
+/// Wait for `account_id` to report a finished sync, bounded by observable
+/// progress rather than a wall clock.
+async fn wait_for_demo_sync(
+    client: &mut IpcClient,
+    account_id: &AccountId,
+    before: Option<&str>,
+    expected_messages: usize,
+) -> anyhow::Result<()> {
+    let progress = ProgressPrinter::new(false);
+    let mut stall = StallWatch::new(PROGRESS_STALL_TIMEOUT);
+    let mut messages = 0usize;
+    let mut messages_checked_at: Option<Instant> = None;
     loop {
+        // A daemon-level error means the query itself is wrong (unknown
+        // account, store failure) and retrying it forever would spin; only a
+        // transport failure earns a reconnect.
         let status = match client
             .request(Request::GetSyncStatus {
                 account_id: account_id.clone(),
@@ -433,21 +645,102 @@ async fn trigger_demo_account_sync_and_wait(
             Ok(Response::Error { message, .. }) => anyhow::bail!(message),
             Ok(other) => anyhow::bail!("Unexpected sync status response: {other:?}"),
             Err(error) => {
-                client = reconnect_demo_client(&error).await?;
+                *client = reconnect_demo_client(&error).await?;
                 continue;
             }
         };
-        let completed_new_sync = status.last_success_at != before || status.last_synced_count > 0;
+        let completed_new_sync =
+            status.last_success_at.as_deref() != before || status.last_synced_count > 0;
         if completed_new_sync && !status.sync_in_progress {
-            return Ok(status);
+            return Ok(());
         }
-        if std::time::Instant::now() >= deadline {
+        if !status.sync_in_progress {
+            if let Some(error) = status.last_error.as_deref() {
+                anyhow::bail!("demo sync failed: {error}");
+            }
+        }
+
+        // Rows land in the store page by page, so the stored message count is
+        // the signal that actually advances during a large seed —
+        // `last_synced_count` only reports the page that just landed.
+        if messages_checked_at.is_none_or(|at| at.elapsed() >= MESSAGE_COUNT_POLL_INTERVAL) {
+            messages_checked_at = Some(Instant::now());
+            // Display only here — this loop's authority is the sync status
+            // above — so any unusable reading just leaves the line as it was.
+            if let CountPoll::Count(count) = fetch_message_count(client).await {
+                messages = count;
+                progress.note(&seeded_progress_line(count, expected_messages));
+            }
+        }
+
+        let fingerprint = format!(
+            "{}/{}/{}/{}/{messages}",
+            status.sync_in_progress,
+            status.last_synced_count,
+            status.last_success_at.as_deref().unwrap_or("-"),
+            status.current_cursor_summary.as_deref().unwrap_or("-"),
+        );
+        if !stall.observe(fingerprint) {
             anyhow::bail!(
-                "timed out after {}s waiting for demo sync to finish",
-                timeout.as_secs()
+                "demo sync made no progress for {}s; check `mxr sync --status` and `mxr logs`",
+                PROGRESS_STALL_TIMEOUT.as_secs()
             );
         }
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(PROGRESS_POLL_INTERVAL).await;
+    }
+}
+
+fn seeded_progress_line(count: usize, expected: usize) -> String {
+    if expected > 0 {
+        format!(
+            "seeded {}/{} messages",
+            format_thousands(count),
+            format_thousands(expected)
+        )
+    } else {
+        format!("seeded {} messages", format_thousands(count))
+    }
+}
+
+/// Wait until the store holds `expected` messages, then report the count.
+///
+/// The per-account waits above return when each account reports itself
+/// quiescent, but a paging provider can leave the last page still committing,
+/// and the daemon's own sync loop may still be walking pages it queued before
+/// the demo asked. Rather than compare the count once and fail the demo on a
+/// mailbox that is merely mid-flight, keep watching while it climbs and only
+/// give up when it stops moving short of the target.
+async fn wait_for_seeded_count(expected: usize) -> anyhow::Result<usize> {
+    let mut client = IpcClient::connect().await?;
+    let progress = ProgressPrinter::new(false);
+    let mut stall = StallWatch::new(PROGRESS_STALL_TIMEOUT);
+    loop {
+        match fetch_message_count(&mut client).await {
+            CountPoll::Count(count) => {
+                if expected == 0 || count >= expected {
+                    return Ok(count);
+                }
+                progress.note(&seeded_progress_line(count, expected));
+                if !stall.observe(count.to_string()) {
+                    anyhow::bail!(
+                        "Demo sync stalled at {count} of {expected} messages. Run `mxr demo --reset` to try again."
+                    );
+                }
+            }
+            // A degraded snapshot means the daemon is busy, which is exactly
+            // what a large seed does to it. Keep the connection and wait —
+            // reconnecting on every busy-daemon poll would churn a connection a
+            // second. The stall clock still runs, so a permanently degraded
+            // daemon is not waited on forever.
+            CountPoll::Degraded => {}
+            CountPoll::Rejected(message) => {
+                anyhow::bail!("demo message count query failed: {message}");
+            }
+            CountPoll::Disconnected(error) => {
+                client = reconnect_demo_client(&error).await?;
+            }
+        }
+        tokio::time::sleep(MESSAGE_COUNT_POLL_INTERVAL).await;
     }
 }
 
@@ -485,22 +778,47 @@ async fn fetch_demo_sync_status(
     }
 }
 
-async fn fetch_demo_message_count() -> anyhow::Result<usize> {
-    let mut client = IpcClient::connect().await?;
-    let response = match client.request(Request::GetStatus).await {
-        Ok(response) => response,
-        Err(error) => {
-            client = reconnect_demo_client(&error).await?;
-            client.request(Request::GetStatus).await?
-        }
-    };
+/// One `GetStatus` message-count poll, with the three failures its callers must
+/// treat differently kept apart.
+enum CountPoll {
+    Count(usize),
+    /// The daemon answered, but the reading is not usable. Retry on the same
+    /// connection.
+    Degraded,
+    /// The daemon rejected the query. Retrying will not help.
+    Rejected(String),
+    /// The connection failed. Reconnect before retrying.
+    Disconnected(anyhow::Error),
+}
 
-    match response {
-        Response::Ok {
-            data: ResponseData::Status { total_messages, .. },
-        } => Ok(total_messages as usize),
-        Response::Error { message, .. } => anyhow::bail!(message),
-        other => anyhow::bail!("Unexpected status response: {other:?}"),
+/// Read the store-wide message count from `GetStatus`.
+///
+/// `get_status` fast-fails its DB-backed snapshot after a couple of seconds so
+/// a saturated reader pool can't wedge status, and a degraded reading reports
+/// zero messages and zero accounts. During a large seed the pool is exactly
+/// that busy, so take an empty account list as "no reading" rather than letting
+/// the demo's progress counter jump back to zero — or, worse, letting the seed
+/// wait conclude that nothing has landed. A demo profile always has two
+/// accounts, so an empty list can only mean the snapshot degraded.
+async fn fetch_message_count(client: &mut IpcClient) -> CountPoll {
+    match client.request(Request::GetStatus).await {
+        Ok(Response::Ok {
+            data:
+                ResponseData::Status {
+                    accounts,
+                    total_messages,
+                    ..
+                },
+        }) => {
+            if accounts.is_empty() {
+                CountPoll::Degraded
+            } else {
+                CountPoll::Count(total_messages as usize)
+            }
+        }
+        Ok(Response::Error { message, .. }) => CountPoll::Rejected(message),
+        Ok(other) => CountPoll::Rejected(format!("Unexpected status response: {other:?}")),
+        Err(error) => CountPoll::Disconnected(error),
     }
 }
 
@@ -828,11 +1146,15 @@ async fn prewarm_llm_caches(client: &mut IpcClient) -> anyhow::Result<()> {
 }
 
 async fn prewarm_user_voice(client: &mut IpcClient, account_id: &AccountId) -> anyhow::Result<()> {
-    match client
-        .request(Request::RebuildUserVoice {
+    match request_with_progress(
+        client,
+        false,
+        &format!("Rebuilding voice profile for {account_id}"),
+        Request::RebuildUserVoice {
             account_id: account_id.clone(),
-        })
-        .await?
+        },
+    )
+    .await?
     {
         Response::Ok { .. } => Ok(()),
         Response::Error { message, .. } => anyhow::bail!(message),
@@ -843,12 +1165,16 @@ async fn prewarm_decision_log(
     client: &mut IpcClient,
     account_id: &AccountId,
 ) -> anyhow::Result<()> {
-    match client
-        .request(Request::RebuildDecisionLog {
+    match request_with_progress(
+        client,
+        false,
+        &format!("Rebuilding decision log for {account_id}"),
+        Request::RebuildDecisionLog {
             account_id: account_id.clone(),
             since_days: 365,
-        })
-        .await?
+        },
+    )
+    .await?
     {
         Response::Ok { .. } => Ok(()),
         Response::Error { message, .. } => anyhow::bail!(message),
@@ -1119,10 +1445,30 @@ mod tests {
     use super::{
         demo_account_ids, demo_paths, is_active, prepare_environment, read_active_marker,
         read_demo_message_count, remove_active_marker, write_active_marker,
-        write_demo_message_count, DemoPaths, DEMO_COUNT_MARKER, DEMO_INSTANCE, DEMO_PERSONAL_EMAIL,
-        DEMO_SEED_VERSION, DEMO_WORK_EMAIL,
+        write_demo_message_count, DemoPaths, StallWatch, DEMO_COUNT_MARKER, DEMO_INSTANCE,
+        DEMO_PERSONAL_EMAIL, DEMO_SEED_VERSION, DEMO_WORK_EMAIL,
     };
     use mxr_core::id::AccountId;
+    use std::time::Duration;
+
+    /// The seed wait gives up on a frozen daemon, but only on a frozen one:
+    /// any change in what the caller can see puts the clock back to zero. That
+    /// is the whole reason the demo no longer dies on a slow machine (#179).
+    #[test]
+    fn stall_watch_only_expires_when_nothing_changes() {
+        let mut stall = StallWatch::new(Duration::from_millis(40));
+        assert!(stall.observe("1000".to_string()));
+        std::thread::sleep(Duration::from_millis(25));
+
+        // Progress: still alive well past a single interval.
+        assert!(stall.observe("2000".to_string()));
+        std::thread::sleep(Duration::from_millis(25));
+        assert!(stall.observe("3000".to_string()));
+
+        // Frozen: the same reading twice, long enough to exhaust the window.
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(!stall.observe("3000".to_string()));
+    }
 
     #[test]
     fn demo_paths_are_namespaced() {

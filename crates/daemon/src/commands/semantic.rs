@@ -1,4 +1,5 @@
 use crate::cli::{OutputFormat, SemanticAction, SemanticProfileAction};
+use crate::commands::progress::request_with_progress;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::{Request, Response, ResponseData};
@@ -9,6 +10,10 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let action = action.unwrap_or(SemanticAction::Status);
     let mut client = IpcClient::connect().await?;
+    let json_mode = matches!(
+        resolve_format(format.clone()),
+        OutputFormat::Json | OutputFormat::Jsonl
+    );
 
     let response = match action {
         SemanticAction::Status => client.request(Request::GetSemanticStatus).await?,
@@ -22,17 +27,30 @@ pub async fn run(
                 .request(Request::EnableSemantic { enabled: false })
                 .await?
         }
+        // Re-embeds every message before answering; minutes on a large
+        // mailbox, so it must not run under the 120s request cap (#179).
         SemanticAction::Reindex { force } => {
-            client.request(Request::ReindexSemantic { force }).await?
+            request_with_progress(
+                &mut client,
+                json_mode,
+                "Embedding messages",
+                Request::ReindexSemantic { force },
+            )
+            .await?
         }
         SemanticAction::Profile { action } => match action.unwrap_or(SemanticProfileAction::List) {
             SemanticProfileAction::List => client.request(Request::GetSemanticStatus).await?,
+            // Downloads and verifies the model before answering.
             SemanticProfileAction::Install { profile } => {
-                client
-                    .request(Request::InstallSemanticProfile {
+                request_with_progress(
+                    &mut client,
+                    json_mode,
+                    "Installing model",
+                    Request::InstallSemanticProfile {
                         profile: profile.into(),
-                    })
-                    .await?
+                    },
+                )
+                .await?
             }
             SemanticProfileAction::Use { profile } => {
                 client

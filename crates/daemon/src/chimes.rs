@@ -254,6 +254,7 @@ mod tests {
     fn daemon_event_chime_maps_new_messages_to_new_mail() {
         let event = DaemonEvent::NewMessages {
             envelopes: Vec::new(),
+            total: 0,
         };
 
         assert_eq!(event_for_daemon_event(&event), Some(ChimeEvent::NewMail));

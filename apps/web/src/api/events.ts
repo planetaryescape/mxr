@@ -13,7 +13,13 @@
 export type DaemonEvent =
   | { type: "SyncCompleted"; event?: "SyncCompleted"; account_id: string; messages_synced: number }
   | { type: "SyncError"; event?: "SyncError"; account_id: string; error: string }
-  | { type: "NewMessages"; event?: "NewMessages"; envelopes: Array<Record<string, unknown>> }
+  | {
+      type: "NewMessages";
+      event?: "NewMessages";
+      envelopes: Array<Record<string, unknown>>;
+      /** Messages that arrived; `envelopes` is capped and may be a sample. */
+      total?: number;
+    }
   | { type: "MessageUnsnoozed"; event?: "MessageUnsnoozed"; message_id: string }
   | { type: "ReminderTriggered"; event?: "ReminderTriggered"; sent_message_id: string }
   | { type: "LabelCountsUpdated"; event?: "LabelCountsUpdated"; counts: unknown[] }

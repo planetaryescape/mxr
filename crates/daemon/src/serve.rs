@@ -41,7 +41,7 @@ use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{broadcast, watch, Semaphore};
 use tokio::task::JoinSet;
-use tokio_util::codec::Framed;
+use tokio_util::codec::{FramedRead, FramedWrite};
 
 /// Connection-scoped authentication state for the serve core (phase 5, token
 /// transports). Transports with implicit trust (UDS peer creds, in-process,
@@ -131,6 +131,76 @@ fn token_matches(expected: Option<&str>, presented: &str) -> bool {
     }
 }
 
+/// Point-to-point "you missed events, resync" signal for one client.
+fn events_lagged_frame(skipped: u64) -> IpcMessage {
+    IpcMessage {
+        id: 0,
+        source: ClientKind::default(),
+        payload: IpcPayload::Event(DaemonEvent::EventsLagged { skipped }),
+    }
+}
+
+/// What happened to one outbound frame.
+enum FrameSend {
+    Sent,
+    /// The frame could not be encoded. The connection is untouched: the
+    /// codec's length check and the JSON serialisation both fail before a byte
+    /// reaches the write buffer, so only this frame is lost.
+    Unencodable(std::io::Error),
+    /// The write failed. The connection is over.
+    Disconnected(std::io::Error),
+}
+
+/// Send one frame, telling an encode failure apart from a transport failure by
+/// construction rather than by sniffing `io::ErrorKind`.
+///
+/// `SinkExt::send` is ready + start_send + flush, so a transport error raised
+/// during its flush is indistinguishable from an encode error by kind alone —
+/// a TLS stack reporting `InvalidData` on a broken write would be mistaken for
+/// an oversized frame, and the recovery frame would be appended behind a
+/// half-flushed one. `feed` performs only the encode step, so every error it
+/// returns provably came from `IpcCodec::encode`; the flush that follows is
+/// the only place transport errors can appear.
+///
+/// That rests on two things, which is why this takes a concrete `FramedWrite`
+/// rather than any `Sink`. First, `FramedWrite::feed` encodes inline — a
+/// futures `SplitSink` instead parks the item and encodes during the *next*
+/// flush, which would put encode errors straight back on the flush path.
+/// Second, `FramedWrite::poll_ready` flushes when the write buffer is over its
+/// backpressure mark, and such a flush could report a transport error out of
+/// `feed`; that cannot happen here because this is the connection's only
+/// writer and it always flushes before returning, so the buffer is empty at
+/// every `feed`. The `debug_assert` keeps that invariant honest.
+async fn send_frame<W>(sink: &mut FramedWrite<W, IpcCodec>, message: IpcMessage) -> FrameSend
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    debug_assert!(
+        sink.write_buffer().is_empty(),
+        "send_frame must leave the write buffer empty, or feed's backpressure flush could report a transport error as an encode failure"
+    );
+    if let Err(error) = sink.feed(message).await {
+        return FrameSend::Unencodable(error);
+    }
+    match sink.flush().await {
+        Ok(()) => FrameSend::Sent,
+        Err(error) => FrameSend::Disconnected(error),
+    }
+}
+
+/// Explain an unencodable frame to the client that asked for it.
+///
+/// `InvalidInput` is the codec refusing a frame past its 16 MiB cap — the
+/// caller can act on that by asking for less. `InvalidData` is a serialisation
+/// failure, which is ours, not theirs.
+fn describe_unencodable(error: &std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::InvalidInput {
+        "response payload exceeded the IPC frame limit; narrow the request (for example a smaller --limit)".to_string()
+    } else {
+        format!("response could not be encoded: {error}")
+    }
+}
+
 fn response_frame(id: u64, response: Response) -> IpcMessage {
     IpcMessage {
         id,
@@ -172,8 +242,15 @@ pub(crate) async fn serve_client_connection<S>(
 ) where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let (mut sink, mut stream) = Framed::new(stream, IpcCodec::new()).split();
-    let mut request_tasks = JoinSet::new();
+    // Framed read/write halves rather than `Framed::split()`: a futures
+    // `SplitSink` buffers one item and defers the inner `start_send` — and so
+    // the codec's `encode` — until the next flush, which would put encode
+    // failures back on the flush path that `send_frame` exists to keep them
+    // off. `FramedWrite::feed` encodes inline.
+    let (reader, writer) = tokio::io::split(stream);
+    let mut sink = FramedWrite::new(writer, IpcCodec::new());
+    let mut stream = FramedRead::new(reader, IpcCodec::new());
+    let mut request_tasks: JoinSet<IpcMessage> = JoinSet::new();
     let mut accept_requests = true;
     let mut can_send = true;
     let mut shutdown_requested = false;
@@ -188,9 +265,32 @@ pub(crate) async fn serve_client_connection<S>(
             joined = request_tasks.join_next(), if !request_tasks.is_empty() => {
                 match joined {
                     Some(Ok(response)) if can_send => {
-                        match sink.send(response).await {
-                            Ok(()) => {}
-                            Err(_) => {
+                        let id = response.id;
+                        match send_frame(&mut sink, response).await {
+                            FrameSend::Sent => {}
+                            // The response could not be framed — almost always
+                            // a result set past the codec's cap. Nothing was
+                            // written, so the caller is still there waiting:
+                            // answer it instead of hanging up on it.
+                            FrameSend::Unencodable(error) => {
+                                tracing::warn!(%error, id, "response could not be framed; replying with an error");
+                                let replacement = response_frame(
+                                    id,
+                                    Response::error_kinded(
+                                        describe_unencodable(&error),
+                                        IpcErrorKind::Internal,
+                                    ),
+                                );
+                                if !matches!(
+                                    send_frame(&mut sink, replacement).await,
+                                    FrameSend::Sent
+                                ) {
+                                    can_send = false;
+                                    accept_requests = false;
+                                }
+                            }
+                            FrameSend::Disconnected(error) => {
+                                tracing::warn!(%error, "dropping client connection: response send failed");
                                 can_send = false;
                                 accept_requests = false;
                             }
@@ -302,9 +402,31 @@ pub(crate) async fn serve_client_connection<S>(
             event = event_rx.recv(), if accept_requests && can_send && !shutdown_requested && auth.is_authenticated() => {
                 match event {
                     Ok(event_msg) => {
-                        if sink.send(event_msg).await.is_err() {
-                            can_send = false;
-                            accept_requests = false;
+                        match send_frame(&mut sink, event_msg).await {
+                            FrameSend::Sent => {}
+                            // An event whose payload will not fit a frame is
+                            // the event's problem, not the connection's — and
+                            // dropping the connection over it also drops the
+                            // in-flight request's response, which is how a
+                            // 27k-envelope `NewMessages` used to kill
+                            // `mxr demo` (#179). Skip the event and tell the
+                            // client to resync: same contract as a lagged
+                            // stream, which is what this effectively is.
+                            FrameSend::Unencodable(error) => {
+                                tracing::warn!(%error, "daemon event could not be framed; dropped it and signalled resync");
+                                if !matches!(
+                                    send_frame(&mut sink, events_lagged_frame(1)).await,
+                                    FrameSend::Sent
+                                ) {
+                                    can_send = false;
+                                    accept_requests = false;
+                                }
+                            }
+                            FrameSend::Disconnected(error) => {
+                                tracing::warn!(%error, "dropping client connection: event send failed");
+                                can_send = false;
+                                accept_requests = false;
+                            }
                         }
                     }
                     Err(broadcast::error::RecvError::Lagged(skipped)) => {
@@ -314,12 +436,10 @@ pub(crate) async fn serve_client_connection<S>(
                         // than silently leaving its views stale. Sent only to
                         // this client — it is not a broadcast event.
                         tracing::debug!(skipped, "client event stream lagged; signalling resync");
-                        let lagged = IpcMessage {
-                            id: 0,
-                            source: mxr_protocol::ClientKind::default(),
-                            payload: IpcPayload::Event(DaemonEvent::EventsLagged { skipped }),
-                        };
-                        if sink.send(lagged).await.is_err() {
+                        if !matches!(
+                            send_frame(&mut sink, events_lagged_frame(skipped)).await,
+                            FrameSend::Sent
+                        ) {
                             can_send = false;
                             accept_requests = false;
                         }
@@ -566,6 +686,241 @@ mod tests {
             }
             other => panic!("expected EventsLagged resync signal, got {other:?}"),
         }
+
+        drop(client);
+        state_for_cleanup.request_shutdown();
+        let _ = tokio::time::timeout(Duration::from_secs(1), server).await;
+        state_for_cleanup
+            .shutdown_runtime_tasks(Duration::from_secs(1))
+            .await;
+    }
+
+    /// A request already running when the client walks away must run to
+    /// completion.
+    ///
+    /// `mxr demo` tells the user they can Ctrl-C during the prewarm phase and
+    /// "the daemon finishes the rest in the background". That promise is only
+    /// true if a disconnect does not abort the in-flight `RebuildAnalytics` /
+    /// `Wrapped` / voice + decision rebuilds, so pin it: with the request
+    /// parked inside the conformance gate, closing the connection must not end
+    /// the connection task — only releasing the request does.
+    #[tokio::test]
+    async fn disconnect_does_not_abort_an_in_flight_request() {
+        let gate = super::ipc_conformance::gate::install().await;
+        let state = Arc::new(AppState::in_memory().await.expect("in-memory state"));
+        let state_for_cleanup = state.clone();
+        let (server_stream, client_stream) = UnixStream::pair().expect("unix stream pair");
+        let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
+        let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
+        let event_rx = state.event_tx.subscribe();
+        let shutdown_rx = state.shutdown_receiver();
+
+        let mut server = tokio::spawn(async move {
+            serve_client_connection(
+                server_stream,
+                state,
+                request_semaphore,
+                bulk_semaphore,
+                mxr_transport::PeerInfo::local(),
+                None,
+                event_rx,
+                shutdown_rx,
+            )
+            .await;
+        });
+
+        let mut client = Framed::new(client_stream, IpcCodec::new());
+        client
+            .send(IpcMessage {
+                id: 12,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::RebuildAnalytics),
+            })
+            .await
+            .expect("send rebuild-analytics");
+        gate.wait_until_entered(1).await;
+
+        // The user's Ctrl-C.
+        drop(client);
+
+        // The connection task must still be alive: its request is running.
+        let still_running = tokio::time::timeout(Duration::from_millis(300), &mut server).await;
+        assert!(
+            still_running.is_err(),
+            "the connection task must not exit while its request is in flight"
+        );
+
+        gate.open();
+        tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .expect("connection task exits once the request finishes")
+            .expect("connection task join");
+
+        state_for_cleanup
+            .shutdown_runtime_tasks(Duration::from_secs(1))
+            .await;
+    }
+
+    /// Read frames until the connection goes quiet, reporting whether a
+    /// resync signal and a `Pong` were among them.
+    async fn drain_frames(client: &mut Framed<UnixStream, IpcCodec>) -> (bool, bool) {
+        let mut saw_resync = false;
+        let mut saw_pong = false;
+        while let Ok(Some(Ok(frame))) =
+            tokio::time::timeout(Duration::from_millis(500), client.next()).await
+        {
+            match frame.payload {
+                IpcPayload::Event(DaemonEvent::EventsLagged { .. }) => saw_resync = true,
+                IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Pong,
+                }) => saw_pong = true,
+                _ => {}
+            }
+        }
+        (saw_resync, saw_pong)
+    }
+
+    /// A response the codec cannot frame must reach the caller as an error.
+    ///
+    /// Sibling of the event case: nothing was written, so the client is still
+    /// there waiting for an answer to a request it sent. Silently closing the
+    /// connection turns "your query was too big" into "the daemon died".
+    #[tokio::test]
+    async fn oversized_response_answers_with_an_error() {
+        let _gate = super::ipc_conformance::gate::install_oversized_response().await;
+        let state = Arc::new(AppState::in_memory().await.expect("in-memory state"));
+        let state_for_cleanup = state.clone();
+        let (server_stream, client_stream) = UnixStream::pair().expect("unix stream pair");
+        let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
+        let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
+        let event_rx = state.event_tx.subscribe();
+        let shutdown_rx = state.shutdown_receiver();
+
+        let server = tokio::spawn(async move {
+            serve_client_connection(
+                server_stream,
+                state,
+                request_semaphore,
+                bulk_semaphore,
+                mxr_transport::PeerInfo::local(),
+                None,
+                event_rx,
+                shutdown_rx,
+            )
+            .await;
+        });
+
+        let mut client = Framed::new(client_stream, IpcCodec::new());
+        client
+            .send(IpcMessage {
+                id: 55,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::RebuildAnalytics),
+            })
+            .await
+            .expect("send rebuild-analytics");
+
+        let frame = tokio::time::timeout(Duration::from_secs(2), client.next())
+            .await
+            .expect("a frame should arrive")
+            .expect("connection must stay open")
+            .expect("frame decodes");
+        assert_eq!(frame.id, 55, "the replacement must answer the same request");
+        match frame.payload {
+            IpcPayload::Response(Response::Error { message, .. }) => {
+                assert!(
+                    message.contains("frame limit"),
+                    "the error should name the cause, got: {message}"
+                );
+            }
+            other => panic!("expected an error response, got {other:?}"),
+        }
+
+        // Still usable afterwards.
+        client
+            .send(IpcMessage {
+                id: 56,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::Ping),
+            })
+            .await
+            .expect("send ping");
+        let (_, saw_pong) = drain_frames(&mut client).await;
+        assert!(
+            saw_pong,
+            "the connection must survive the oversized response"
+        );
+
+        drop(client);
+        state_for_cleanup.request_shutdown();
+        let _ = tokio::time::timeout(Duration::from_secs(1), server).await;
+        state_for_cleanup
+            .shutdown_runtime_tasks(Duration::from_secs(1))
+            .await;
+    }
+
+    /// An event the codec cannot frame must cost the client that event, not
+    /// its connection.
+    ///
+    /// A `NewMessages` carrying every envelope of a 27k-message initial
+    /// backfill serialises past the 16 MiB frame cap. The daemon used to treat
+    /// the failed encode as a dead socket and tear the connection down, which
+    /// also threw away the in-flight request's response — the second way
+    /// `mxr demo --messages 50000` died in #179. The connection must survive
+    /// and the client must still get its answer.
+    #[tokio::test]
+    async fn oversized_event_is_dropped_without_closing_the_connection() {
+        let state = Arc::new(AppState::in_memory().await.expect("in-memory state"));
+        let state_for_cleanup = state.clone();
+        let (server_stream, client_stream) = UnixStream::pair().expect("unix stream pair");
+        let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
+        let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
+        let event_rx = state.event_tx.subscribe();
+        let shutdown_rx = state.shutdown_receiver();
+
+        let server = tokio::spawn(async move {
+            serve_client_connection(
+                server_stream,
+                state,
+                request_semaphore,
+                bulk_semaphore,
+                mxr_transport::PeerInfo::local(),
+                None,
+                event_rx,
+                shutdown_rx,
+            )
+            .await;
+        });
+
+        // Comfortably past the codec's 16 MiB cap, so `encode` refuses it.
+        let _ = state_for_cleanup.event_tx.send(IpcMessage {
+            id: 0,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Event(DaemonEvent::SyncError {
+                account_id: AccountId::new(),
+                error: "x".repeat(17 * 1024 * 1024),
+            }),
+        });
+
+        let mut client = Framed::new(client_stream, IpcCodec::new());
+        client
+            .send(IpcMessage {
+                id: 91,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::Ping),
+            })
+            .await
+            .expect("send ping");
+
+        // Drain everything the daemon has to say rather than stopping at the
+        // first frame of interest: the order of the resync signal and the
+        // response is an implementation detail of the select loop.
+        let (saw_resync, saw_pong) = drain_frames(&mut client).await;
+        assert!(saw_pong, "the request must still be answered");
+        assert!(
+            saw_resync,
+            "dropping an event must tell the client to resync"
+        );
 
         drop(client);
         state_for_cleanup.request_shutdown();

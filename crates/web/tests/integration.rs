@@ -262,7 +262,10 @@ async fn websocket_relays_every_daemon_event_variant() {
             account_id: account_id.clone(),
             error: "transient".into(),
         },
-        DaemonEvent::NewMessages { envelopes: vec![] },
+        DaemonEvent::NewMessages {
+            envelopes: vec![],
+            total: 0,
+        },
         DaemonEvent::MessageUnsnoozed {
             message_id: message_id.clone(),
         },

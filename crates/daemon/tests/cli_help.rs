@@ -282,6 +282,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ),
         ("cli_help_screener_clear", &["screener", "clear", "--help"]),
         ("cli_help_setup", &["setup", "--help"]),
+        ("cli_help_demo", &["demo", "--help"]),
         ("cli_help_summarize", &["summarize", "--help"]),
         ("cli_help_draft_assist", &["draft-assist", "--help"]),
         ("cli_help_llm", &["llm", "--help"]),
@@ -345,7 +346,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ),
     ];
 
-    assert_eq!(cases.len(), 190);
+    assert_eq!(cases.len(), 191);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

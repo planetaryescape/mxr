@@ -642,8 +642,25 @@ First-run wizard for demo / Gmail / IMAP / SMTP.
 --force                   Overwrite existing account
 ```
 
-### `mxr demo`
-Isolated 50k-message demo profile. Does not touch your real config.
+### `mxr demo [OPTIONS] [SUBCOMMAND]`
+Isolated demo profile (`mxr-demo` instance). Does not touch your real config.
+Sticky: once it finishes, every other `mxr` command targets the demo profile
+until `mxr demo stop`.
+```
+--messages <N>            Synthetic messages to seed (default 50000)
+--no-tui                  Seed and sync without opening the TUI
+--reset                   Wipe the profile first (same as `reset` then start)
+
+mxr demo status           Is demo active? where are its files?
+mxr demo stop             Leave demo mode; shut the demo daemon down
+mxr demo reset            Wipe demo config + data so the next run re-seeds
+```
+Seeding a large mailbox takes minutes. The CLI waits on the daemon with no
+wall-clock deadline and prints progress; it gives up only if nothing advances
+for ten minutes. The demo is marked active as soon as the mailbox is seeded —
+the analytics / Wrapped / semantic prewarms that follow are best-effort and
+interruptible. Semantic indexing is watched for 90s and then left to finish in
+the background (`mxr semantic status`); it never blocks the demo.
 
 ### `mxr daemon [--foreground]`
 Start the daemon explicitly. Usually auto-started by other commands.
@@ -655,10 +672,15 @@ Restart the daemon with the current binary.
 ```
 --account <NAME>
 --status                  Show sync state instead of triggering
---wait                    Block until the triggered sync finishes
---wait-timeout-secs <N>   Default 60
+--wait                    Wait until the account itself reports idle
+--wait-timeout-secs <N>   Bounds --wait only, not the sync. Default 60
 --format <FORMAT>         For --status output
 ```
+Triggering runs a sync pass in the daemon and waits on it with no client-side
+deadline, so a multi-minute pass is fine. The account can still be syncing
+afterwards: the daemon detaches a pass that outruns its own limit, and the
+account's sync loop may have further backfill pages queued. `--wait` waits for
+the account itself to go idle.
 
 ### `mxr doctor [OPTIONS]`
 ```

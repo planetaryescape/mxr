@@ -38,6 +38,14 @@ on a headless host. This setting does not change OAuth token storage.
 See [Security & Privacy](/guides/security-and-privacy/#where-credentials-live)
 for the storage model and its tradeoff.
 
+`MXR_IPC_TIMEOUT_SECS` overrides the CLI's 120-second cap on ordinary requests
+(status polls, reads, single mutations); `0` waits indefinitely. Long-running
+operations — sync, analytics rebuild, semantic reindex and model installs,
+delivery scans — are not capped by it at all: they stream progress and wait for
+the daemon however long it takes, so Ctrl-C is the only way out of one (a model
+download during `mxr semantic profile install`, for instance). Reach for this
+only when a short call on a slow host is genuinely timing out.
+
 `MXR_DAEMON_ADDR` selects which transport the `mxr` CLI dials:
 `unix://<path>` (default), `tcp://<host:port>`, or `cmd://<command>` (e.g.
 `cmd://ssh -T host mxr daemon dial-stdio`). `MXR_DAEMON_TOKEN` supplies the

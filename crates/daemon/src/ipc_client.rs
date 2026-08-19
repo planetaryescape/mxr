@@ -5,6 +5,41 @@ use tokio::time::Duration;
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// Wall-clock cap for ordinary (short) requests: status polls, list/read
+/// calls, single mutations.
+///
+/// Long-running operations must not use this path at all — they go through
+/// [`IpcClient::request_with_events`], which has no deadline and streams
+/// progress instead — no value of `MXR_IPC_TIMEOUT_SECS` bounds those, so
+/// Ctrl-C is the only way out of a long one.
+///
+/// `MXR_IPC_TIMEOUT_SECS` is the escape hatch for a host where even a short
+/// call needs longer (or `0` to wait indefinitely); an unparseable value warns
+/// and falls back to the default rather than failing the call.
+fn request_timeout() -> Option<Duration> {
+    // Resolved once: the value cannot change usefully mid-process, and every
+    // request would otherwise pay for a `getenv` plus a parse. `mxr demo` sets
+    // its own env before any request goes out, so first-use resolution is
+    // late enough.
+    static TIMEOUT: std::sync::OnceLock<Option<Duration>> = std::sync::OnceLock::new();
+    *TIMEOUT.get_or_init(|| {
+        let Ok(raw) = std::env::var("MXR_IPC_TIMEOUT_SECS") else {
+            return Some(DEFAULT_REQUEST_TIMEOUT);
+        };
+        match raw.trim().parse::<u64>() {
+            Ok(0) => None,
+            Ok(secs) => Some(Duration::from_secs(secs)),
+            Err(_) => {
+                eprintln!(
+                    "Ignoring MXR_IPC_TIMEOUT_SECS={raw}: expected whole seconds (0 waits indefinitely). Using {}s.",
+                    DEFAULT_REQUEST_TIMEOUT.as_secs()
+                );
+                Some(DEFAULT_REQUEST_TIMEOUT)
+            }
+        }
+    })
+}
+
 /// CLI / daemon-internal IPC client.
 ///
 /// A thin facade over [`mxr_client::IpcConnection`] that preserves this crate's
@@ -46,7 +81,7 @@ impl IpcClient {
 
     pub async fn request(&mut self, req: Request) -> anyhow::Result<Response> {
         self.conn
-            .request_response(req, |_| {}, Some(DEFAULT_REQUEST_TIMEOUT))
+            .request_response(req, |_| {}, request_timeout())
             .await
             .map_err(map_request_error)
     }

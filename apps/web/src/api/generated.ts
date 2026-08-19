@@ -2959,9 +2959,19 @@ export interface components {
             /** @enum {string} */
             event: "SyncError";
         } | {
+            /**
+             * @description The newest arrivals, capped so one event always fits an IPC frame.
+             *     A large initial backfill carries a sample, not the whole batch.
+             */
             envelopes: components["schemas"]["Envelope"][];
             /** @enum {string} */
             event: "NewMessages";
+            /**
+             * @description How many messages actually arrived. Equal to `envelopes.len()` for
+             *     an ordinary sync; larger when the batch was capped. Additive with a
+             *     serde default so an older client still decodes the event.
+             */
+            total?: number;
         } | {
             /** @enum {string} */
             event: "MessageUnsnoozed";

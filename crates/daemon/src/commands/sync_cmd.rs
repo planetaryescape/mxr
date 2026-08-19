@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::progress::ProgressPrinter;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_config::{load_config, AccountConfig, MxrConfig, SendProviderConfig, SyncProviderConfig};
@@ -120,29 +121,61 @@ pub async fn run(
         return Ok(());
     }
 
+    // The daemon runs a sync pass before it answers, so this can take as long
+    // as the mailbox needs. `request_with_events` waits without a deadline and
+    // streams the daemon's progress events; `request`'s 120s cap would kill a
+    // large or slow sync mid-flight while the daemon kept working (#179).
+    let json_mode = matches!(
+        resolve_format(format.clone()),
+        OutputFormat::Json | OutputFormat::Jsonl
+    );
+    let progress = ProgressPrinter::new(json_mode);
     let resp = client
-        .request(build_sync_request(account_id.clone()))
-        .await?;
-    match resp {
+        .request_with_events(
+            build_sync_request(account_id.clone()),
+            progress.event_callback(),
+        )
+        .await;
+    progress.finish();
+    match resp? {
         Response::Ok {
             data: ResponseData::Ack,
-        } => match resolve_format(format.clone()) {
-            OutputFormat::Json | OutputFormat::Jsonl if !wait => {
-                println!(
-                    "{}",
-                    serde_json::to_string(&serde_json::json!({
-                        "status": "triggered",
-                        "account_id": account_id.as_ref().map(std::string::ToString::to_string),
-                    }))?
-                );
-            }
-            OutputFormat::Json | OutputFormat::Jsonl => {}
-            _ => println!("Sync triggered"),
+        } => match (json_mode, wait) {
+            // With --wait the final status is printed after quiescence, so
+            // don't also emit a "triggered" line ahead of it.
+            (true, false) => println!(
+                "{}",
+                serde_json::to_string(&serde_json::json!({
+                    "status": "triggered",
+                    "account_id": account_id.as_ref().map(std::string::ToString::to_string),
+                }))?
+            ),
+            (true, true) => {}
+            (false, _) => println!("Sync triggered"),
         },
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        // An error here does not necessarily mean the sync failed: past its own
+        // ceiling the daemon detaches the pass and answers with an error while
+        // the work carries on. Ask the account which it was rather than reading
+        // the error text — the status row is the authority.
+        Response::Error { message, .. } => {
+            let statuses = fetch_sync_statuses(&mut client, account_id.as_ref()).await?;
+            if !statuses.iter().any(|status| status.sync_in_progress) {
+                anyhow::bail!("{message}");
+            }
+            if !json_mode {
+                println!("Sync is still running in the daemon; following its progress.");
+                if !wait {
+                    println!("Watch it with `mxr sync --status`.");
+                }
+            }
+        }
         _ => anyhow::bail!("Unexpected response"),
     }
 
+    // Answering does not mean the account is idle: the daemon may have
+    // detached a long pass, and the account's own sync loop may still be
+    // working (further backfill pages, a queued tick). `--wait` is what turns
+    // "a pass ran" into "the account is idle".
     if wait {
         wait_for_sync_quiescence(
             &mut client,
@@ -150,10 +183,7 @@ pub async fn run(
             Duration::from_secs(wait_timeout_secs),
         )
         .await?;
-        if matches!(
-            resolve_format(format.clone()),
-            OutputFormat::Json | OutputFormat::Jsonl
-        ) {
+        if json_mode {
             let statuses = fetch_sync_statuses(&mut client, account_id.as_ref()).await?;
             render_status(&statuses, format);
         }
@@ -203,10 +233,20 @@ async fn wait_for_sync_quiescence(
 ) -> anyhow::Result<()> {
     let deadline = Instant::now() + timeout;
     loop {
-        let statuses = fetch_sync_statuses(client, account_id).await?;
-        let any_in_progress = statuses.iter().any(|status| status.sync_in_progress);
-        if !any_in_progress {
-            return Ok(());
+        // Three outcomes, three responses: the daemon rejecting the query is
+        // fatal, a dropped connection earns a reconnect, and a status read that
+        // simply stalled while the daemon is busy with post-sync work says
+        // nothing about the sync — keep polling until the deadline.
+        match poll_sync_statuses(client, account_id).await {
+            StatusPoll::Statuses(statuses) => {
+                if !statuses.iter().any(|status| status.sync_in_progress) {
+                    return Ok(());
+                }
+            }
+            StatusPoll::Rejected(message) => anyhow::bail!("{message}"),
+            StatusPoll::Disconnected(error) => {
+                *client = reconnect_client(&error).await?;
+            }
         }
         if Instant::now() >= deadline {
             anyhow::bail!(
@@ -216,6 +256,53 @@ async fn wait_for_sync_quiescence(
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+}
+
+/// One sync-status poll, keeping "the daemon said no" apart from "the
+/// connection went away".
+enum StatusPoll {
+    Statuses(Vec<AccountSyncStatus>),
+    Rejected(String),
+    Disconnected(anyhow::Error),
+}
+
+async fn poll_sync_statuses(client: &mut IpcClient, account_id: Option<&AccountId>) -> StatusPoll {
+    match client.request(build_status_request(account_id)).await {
+        Ok(resp) => match (account_id, resp) {
+            (
+                Some(_),
+                Response::Ok {
+                    data: ResponseData::SyncStatus { sync },
+                },
+            ) => StatusPoll::Statuses(vec![sync]),
+            (
+                None,
+                Response::Ok {
+                    data: ResponseData::Status { sync_statuses, .. },
+                },
+            ) => StatusPoll::Statuses(sync_statuses),
+            (_, Response::Error { message, .. }) => StatusPoll::Rejected(message),
+            _ => StatusPoll::Rejected("Unexpected response from daemon".to_string()),
+        },
+        Err(error) => StatusPoll::Disconnected(error),
+    }
+}
+
+/// Reconnect after a dropped connection, giving up rather than hammering a
+/// daemon that is gone for good.
+async fn reconnect_client(cause: &anyhow::Error) -> anyhow::Result<IpcClient> {
+    let mut last_error = None;
+    for _ in 0..5 {
+        match IpcClient::connect().await {
+            Ok(client) => return Ok(client),
+            Err(error) => last_error = Some(error),
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    anyhow::bail!(
+        "Lost the daemon connection while waiting for sync: {cause}. Reconnecting also failed: {}",
+        last_error.map_or_else(|| "unknown error".to_string(), |error| error.to_string())
+    )
 }
 
 #[cfg(test)]

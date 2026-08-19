@@ -19,6 +19,7 @@ pub(super) async fn status(
             repair_required,
             semantic_runtime,
             feature_health,
+            degraded,
         } => Ok(Json(serde_json::json!({
             "uptime_secs": uptime_secs,
             "accounts": accounts,
@@ -31,6 +32,7 @@ pub(super) async fn status(
             "repair_required": repair_required,
             "semantic_runtime": semantic_runtime,
             "feature_health": feature_health,
+            "degraded": degraded,
             "instance": mxr_config::app_instance_name(),
             "is_demo": mxr_config::is_demo_instance(),
         }))),

@@ -517,36 +517,48 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
     }
     let sock_path = resolve_daemon_socket()?;
 
-    match inspect_socket_state(&sock_path).await {
-        SocketState::Reachable => {
-            ensure_current_daemon_matches_binary(&sock_path).await?;
-            return Ok(());
+    let socket_state = inspect_socket_state(&sock_path).await;
+    if matches!(socket_state, SocketState::Reachable) {
+        return ensure_current_daemon_matches_binary(&sock_path).await;
+    }
+
+    match recover_from_broken_socket(&sock_path).await {
+        BrokenSocketRecovery::SocketAlive => {
+            return ensure_current_daemon_matches_binary(&sock_path).await
         }
-        SocketState::Stale => {
-            if let Some(pid) = live_daemon_pid() {
-                return recover_broken_running_daemon(
-                    &sock_path,
-                    pid,
-                    "Restarting daemon to recover from a missing IPC socket...",
-                )
-                .await;
-            }
-            let _ = std::fs::remove_file(&sock_path);
-            clear_daemon_pid_file();
+        BrokenSocketRecovery::RestartDaemon(pid) => {
+            return recover_broken_running_daemon(
+                &sock_path,
+                pid,
+                "Restarting daemon to recover from a missing IPC socket...",
+            )
+            .await
         }
-        SocketState::Missing => {
-            if let Some(pid) = live_daemon_pid() {
-                return recover_broken_running_daemon(
-                    &sock_path,
-                    pid,
-                    "Restarting daemon to recover from a missing IPC socket...",
-                )
-                .await;
+        BrokenSocketRecovery::StartFresh => {
+            if matches!(socket_state, SocketState::Stale) {
+                let _ = std::fs::remove_file(&sock_path);
+                clear_daemon_pid_file();
             }
         }
     }
 
     spawn_daemon_process(&sock_path, "Starting daemon...").await
+}
+
+/// Work out how to recover a socket that just failed its liveness probe.
+///
+/// Asking the socket who owns it is the one authoritative identity check
+/// available — the daemon reports its own pid — so it runs before anything is
+/// signalled. It also closes the race where a daemon comes up between the
+/// probe and this decision.
+async fn recover_from_broken_socket(sock_path: &Path) -> BrokenSocketRecovery {
+    let candidate = live_daemon_pid();
+    let socket_owner_pid =
+        fetch_daemon_status_snapshot_from_path(sock_path, STATUS_REQUEST_TIMEOUT)
+            .await
+            .ok()
+            .and_then(|snapshot| snapshot.daemon_pid);
+    classify_broken_socket(candidate, socket_owner_pid)
 }
 
 pub async fn restart_daemon() -> anyhow::Result<()> {
@@ -759,9 +771,49 @@ fn process_is_alive(pid: u32) -> bool {
     }
 }
 
+/// What to do about a daemon that looked broken.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BrokenSocketRecovery {
+    /// The socket answered after all — whatever the earlier probe saw was
+    /// transient. Leave every process alone.
+    SocketAlive,
+    /// This profile's daemon, alive behind a socket it can no longer serve.
+    /// Restarting it is what rebuilds the socket.
+    RestartDaemon(u32),
+    /// Nothing provably ours is running. Start a fresh daemon rather than
+    /// signalling a process we cannot identify.
+    StartFresh,
+}
+
+/// Decide what a broken socket means, given the daemon we found (if any) and
+/// who — if anyone — answers on the socket right now.
+///
+/// A live answer wins outright, whatever pid it names: a daemon serving our
+/// socket is not something to kill, and a mismatched pid means the candidate
+/// was never ours. Only when nobody answers may a candidate be restarted, and
+/// only candidates whose identity we can prove ever reach here.
+fn classify_broken_socket(
+    candidate_pid: Option<u32>,
+    socket_owner_pid: Option<u32>,
+) -> BrokenSocketRecovery {
+    if socket_owner_pid.is_some() {
+        return BrokenSocketRecovery::SocketAlive;
+    }
+    match candidate_pid {
+        Some(pid) => BrokenSocketRecovery::RestartDaemon(pid),
+        None => BrokenSocketRecovery::StartFresh,
+    }
+}
+
+/// This profile's running daemon, if one can be identified. Only pids that
+/// survive identity verification come back: callers signal what they get.
 fn live_daemon_pid() -> Option<u32> {
     if let Some(pid) = read_daemon_pid_file() {
-        if process_is_alive(pid) {
+        // The pid file is written only by this profile's daemon, so the file
+        // establishes the profile. What it cannot rule out is the daemon
+        // having exited without clearing it and the OS having handed its pid
+        // to something else, so confirm the process is still an mxr daemon.
+        if process_is_alive(pid) && process_is_daemon_for_instance(pid) {
             return Some(pid);
         }
         clear_daemon_pid_file();
@@ -772,9 +824,51 @@ fn live_daemon_pid() -> Option<u32> {
     Some(pid)
 }
 
+/// Whether `pid` is still running a daemon for our instance.
+///
+/// Deliberately indifferent to *which* mxr binary: restarting a daemon left
+/// over from another build is the whole point of the recovery path. The pid
+/// file already established the profile; this only rules out the pid having
+/// been recycled by an unrelated process.
+fn process_is_daemon_for_instance(pid: u32) -> bool {
+    let Ok(output) = std::process::Command::new("ps")
+        .args(["-o", "command=", "-p", &pid.to_string()])
+        .output()
+    else {
+        return false;
+    };
+    output.status.success()
+        && daemon_command_exe(
+            &String::from_utf8_lossy(&output.stdout),
+            &mxr_config::app_instance_name(),
+        )
+        .is_some()
+}
+
+/// The executable named by a `ps` command line, if that command line is
+/// `<exe> daemon --instance <instance>` and nothing else.
+fn daemon_command_exe<'a>(command: &'a str, instance: &str) -> Option<&'a str> {
+    let mut parts = command.split_whitespace();
+    let exe = parts.next()?;
+    let matches = parts.next() == Some("daemon")
+        && parts.next() == Some("--instance")
+        && parts.next() == Some(instance)
+        && parts.next().is_none();
+    matches.then_some(exe)
+}
+
+/// Find this profile's daemon when the pid file is gone, by scanning `ps`.
+///
+/// `ps` tells us the command line and nothing about which mxr profile a
+/// process serves, so a bare command-line match is not identity: every mxr
+/// checkout on the machine runs a binary called `mxr`, and `mxr demo` pins the
+/// same instance name in every profile. Adopting on that match alone meant two
+/// checkouts (or two demo profiles) restarting and killing each other's
+/// daemons. Every match is therefore verified — same executable file, same
+/// profile — before it is returned, and an unverifiable match is treated as no
+/// daemon at all.
 fn fallback_live_daemon_pid_without_pid_file() -> Option<u32> {
-    let current_exe = std::env::current_exe().ok()?;
-    let current_name = current_exe.file_name()?.to_str()?;
+    let current_exe = std::fs::canonicalize(std::env::current_exe().ok()?).ok()?;
     let current_instance = mxr_config::app_instance_name();
     let output = std::process::Command::new("ps")
         .args(["-Ao", "pid=,command="])
@@ -784,49 +878,143 @@ fn fallback_live_daemon_pid_without_pid_file() -> Option<u32> {
         return None;
     }
 
+    let matches = scan_daemon_processes(
+        &String::from_utf8_lossy(&output.stdout),
+        std::process::id(),
+        &current_exe,
+        &current_instance,
+    );
+
+    // More than one match means we cannot tell which process serves this
+    // profile, and restarting the wrong one is exactly the failure being
+    // fixed here.
+    let &[pid] = matches.as_slice() else {
+        return None;
+    };
+    if !process_is_alive(pid) {
+        return None;
+    }
+    if !process_runs_our_profile(pid) {
+        tracing::info!(
+            pid,
+            "ignoring a `{current_instance}` daemon that runs this binary from another profile"
+        );
+        return None;
+    }
+    Some(pid)
+}
+
+/// Pick the pids in `ps` output that run *our* executable as
+/// `<exe> daemon --instance <instance>`.
+///
+/// The executable is matched by full path, not file name: two checkouts both
+/// build a binary called `mxr`, and only the path tells them apart. A process
+/// started through a `PATH` lookup can carry a bare `argv[0]`, which cannot be
+/// resolved back to a file from here — such a process is skipped rather than
+/// guessed at, and its daemon is found through the pid file instead.
+fn scan_daemon_processes(
+    ps_output: &str,
+    our_pid: u32,
+    our_exe: &Path,
+    instance: &str,
+) -> Vec<u32> {
     let mut matches = Vec::new();
-    for line in String::from_utf8_lossy(&output.stdout).lines() {
+    for line in ps_output.lines() {
         let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let mut parts = trimmed.split_whitespace();
-        let Some(pid) = parts.next().and_then(|value| value.parse::<u32>().ok()) else {
+        let Some((pid, command)) = trimmed.split_once(char::is_whitespace) else {
             continue;
         };
-        if pid == std::process::id() {
-            continue;
-        }
-
-        let Some(exe) = parts.next() else {
+        let Ok(pid) = pid.parse::<u32>() else {
             continue;
         };
-        let Some(arg1) = parts.next() else {
-            continue;
-        };
-        if arg1 != "daemon" {
+        if pid == our_pid {
             continue;
         }
-
-        let args = parts.collect::<Vec<_>>();
-        if args != ["--instance", current_instance.as_str()] {
-            continue;
-        }
-
-        let Some(exe_name) = Path::new(exe).file_name().and_then(|value| value.to_str()) else {
+        let Some(exe) = daemon_command_exe(command, instance) else {
             continue;
         };
-        if exe_name == current_name && process_is_alive(pid) {
+        // `canonicalize` also rejects a binary that has since been replaced or
+        // deleted, which is the common case in a rebuild loop.
+        if std::fs::canonicalize(exe).is_ok_and(|path| path == our_exe) {
             matches.push(pid);
         }
     }
+    matches
+}
 
-    if matches.len() == 1 {
-        matches.into_iter().next()
-    } else {
-        None
+/// Environment variables that select which mxr profile a process resolves:
+/// the explicit overrides, plus the OS directory roots the defaults are built
+/// from. A daemon inherits its environment from the client that spawned it, so
+/// a process serving our profile agrees with us on all of them.
+const PROFILE_ENV_KEYS: &[&str] = &[
+    "MXR_INSTANCE",
+    "MXR_CONFIG_DIR",
+    "MXR_DATA_DIR",
+    "MXR_SOCKET_PATH",
+    "HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_RUNTIME_DIR",
+];
+
+/// Whether `pid` resolves the same mxr profile as this process.
+///
+/// Unproven counts as "no": the environment of another process is best-effort
+/// (the platform may refuse it, and macOS truncates a long one), and every
+/// caller uses this to decide whether a process may be signalled.
+fn process_runs_our_profile(pid: u32) -> bool {
+    read_process_environment(pid)
+        .is_some_and(|environment| environment_selects_our_profile(&environment))
+}
+
+/// Whether a `KEY=VALUE` environment resolves the same profile as ours.
+fn environment_selects_our_profile(environment: &[String]) -> bool {
+    PROFILE_ENV_KEYS
+        .iter()
+        .all(|key| environment_value(environment, key) == std::env::var(key).ok().as_deref())
+}
+
+fn environment_value<'a>(environment: &'a [String], key: &str) -> Option<&'a str> {
+    environment.iter().find_map(|entry| {
+        entry
+            .split_once('=')
+            .filter(|(name, _)| *name == key)
+            .map(|(_, value)| value)
+    })
+}
+
+/// Read another process's environment as `KEY=VALUE` entries. Only works for
+/// processes owned by this user, which is all we ever ask about.
+#[cfg(target_os = "linux")]
+fn read_process_environment(pid: u32) -> Option<Vec<String>> {
+    let raw = std::fs::read(format!("/proc/{pid}/environ")).ok()?;
+    Some(
+        raw.split(|byte| *byte == 0)
+            .filter(|entry| !entry.is_empty())
+            .map(|entry| String::from_utf8_lossy(entry).into_owned())
+            .collect(),
+    )
+}
+
+/// macOS has no procfs; `ps -E` appends the environment to the command line.
+/// Values containing spaces come back split, so an entry can be truncated —
+/// which makes a comparison fail rather than wrongly succeed.
+#[cfg(not(target_os = "linux"))]
+fn read_process_environment(pid: u32) -> Option<Vec<String>> {
+    let output = std::process::Command::new("ps")
+        .args(["-Eww", "-o", "command=", "-p", &pid.to_string()])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
     }
+    Some(
+        String::from_utf8_lossy(&output.stdout)
+            .split_whitespace()
+            .filter(|token| token.contains('='))
+            .map(ToString::to_string)
+            .collect(),
+    )
 }
 
 async fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
@@ -1369,6 +1557,137 @@ mod tests {
     use tokio::net::UnixListener;
     use tokio_util::codec::Framed;
 
+    #[test]
+    fn broken_socket_leaves_processes_alone_while_the_socket_answers() {
+        use super::{classify_broken_socket, BrokenSocketRecovery};
+
+        // A daemon answering on our socket is not something to restart,
+        // whichever pid the earlier scan turned up.
+        assert_eq!(
+            classify_broken_socket(Some(4242), Some(4242)),
+            BrokenSocketRecovery::SocketAlive
+        );
+        assert_eq!(
+            classify_broken_socket(Some(4242), Some(99)),
+            BrokenSocketRecovery::SocketAlive
+        );
+        assert_eq!(
+            classify_broken_socket(None, Some(99)),
+            BrokenSocketRecovery::SocketAlive
+        );
+    }
+
+    #[test]
+    fn broken_socket_starts_fresh_rather_than_signalling_an_unidentified_process() {
+        use super::{classify_broken_socket, BrokenSocketRecovery};
+
+        assert_eq!(
+            classify_broken_socket(None, None),
+            BrokenSocketRecovery::StartFresh
+        );
+        assert_eq!(
+            classify_broken_socket(Some(4242), None),
+            BrokenSocketRecovery::RestartDaemon(4242)
+        );
+    }
+
+    #[test]
+    fn daemon_scan_matches_only_our_own_executable() {
+        use super::scan_daemon_processes;
+
+        let ours = std::env::current_exe().expect("current exe");
+        let ours_canonical = std::fs::canonicalize(&ours).expect("canonical exe");
+        let exe = ours.display();
+        // The line that used to be adopted: another checkout's build of the
+        // same binary name, same instance, different profile.
+        let neighbour = std::path::Path::new("/some/other/checkout/target/debug")
+            .join(ours.file_name().expect("exe file name"));
+        let neighbour = neighbour.display();
+        let ps_output = format!(
+            "\
+  100 {neighbour} daemon --instance mxr-dev
+  200 {exe} daemon --instance mxr-dev
+  300 {exe} daemon --instance mxr-demo
+  400 mxr daemon --instance mxr-dev
+  500 {exe} daemon
+  600 {exe} tui
+"
+        );
+
+        assert_eq!(
+            scan_daemon_processes(&ps_output, 999, &ours_canonical, "mxr-dev"),
+            vec![200],
+            "only this binary, run as a daemon for this instance, may be adopted"
+        );
+    }
+
+    #[test]
+    fn daemon_scan_skips_our_own_process() {
+        use super::scan_daemon_processes;
+
+        let ours = std::env::current_exe().expect("current exe");
+        let ours_canonical = std::fs::canonicalize(&ours).expect("canonical exe");
+        let ps_output = format!("  777 {} daemon --instance mxr-dev\n", ours.display());
+
+        assert!(
+            scan_daemon_processes(&ps_output, 777, &ours_canonical, "mxr-dev").is_empty(),
+            "the scanning process must never adopt itself"
+        );
+    }
+
+    #[test]
+    fn daemon_command_exe_accepts_only_the_exact_daemon_command_line() {
+        use super::daemon_command_exe;
+
+        assert_eq!(
+            daemon_command_exe("/opt/bin/mxr daemon --instance mxr", "mxr"),
+            Some("/opt/bin/mxr")
+        );
+        assert_eq!(
+            daemon_command_exe("/opt/bin/mxr daemon --instance mxr-demo", "mxr"),
+            None
+        );
+        assert_eq!(
+            daemon_command_exe("/opt/bin/mxr daemon --instance mxr --foreground", "mxr"),
+            None
+        );
+        assert_eq!(daemon_command_exe("/usr/bin/vim notes.txt", "mxr"), None);
+        assert_eq!(daemon_command_exe("", "mxr"), None);
+    }
+
+    #[test]
+    fn profile_check_accepts_our_own_environment_and_rejects_a_neighbour() {
+        use super::{environment_selects_our_profile, PROFILE_ENV_KEYS};
+
+        let ours: Vec<String> = PROFILE_ENV_KEYS
+            .iter()
+            .filter_map(|key| {
+                std::env::var(key)
+                    .ok()
+                    .map(|value| format!("{key}={value}"))
+            })
+            .collect();
+        assert!(environment_selects_our_profile(&ours));
+
+        // The case that bit: same binary, same instance, different profile.
+        let mut neighbour: Vec<String> = ours
+            .iter()
+            .filter(|entry| !entry.starts_with("MXR_DATA_DIR="))
+            .cloned()
+            .collect();
+        neighbour.push("MXR_DATA_DIR=/tmp/some-other-profile".to_string());
+        assert!(
+            !environment_selects_our_profile(&neighbour),
+            "a daemon pointed at another data dir must not be adoptable"
+        );
+
+        // And the reverse: an environment missing something ours sets.
+        assert!(
+            !environment_selects_our_profile(&["HOME=/nowhere".to_string()]),
+            "an environment that disagrees about HOME is another profile"
+        );
+    }
+
     #[tokio::test]
     async fn wait_for_process_exit_observes_an_unreaped_child() {
         use super::wait_for_process_exit;
@@ -1675,6 +1994,7 @@ mod tests {
                                 repair_required: false,
                                 semantic_runtime: None,
                                 feature_health: None,
+                                degraded: false,
                             },
                         }),
                     })

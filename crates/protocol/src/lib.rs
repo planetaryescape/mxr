@@ -769,6 +769,7 @@ mod tests {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
                 IpcCategory::AdminMaintenance,
             ),

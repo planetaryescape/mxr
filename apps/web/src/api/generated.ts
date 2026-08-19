@@ -3460,6 +3460,14 @@ export interface components {
             draft_assist: components["schemas"]["FeatureHealth"];
             humanizer: components["schemas"]["FeatureHealth"];
             relationship_profile: components["schemas"]["FeatureHealth"];
+            /**
+             * @description Lexical (tantivy) search. `Degraded` once the index worker has stopped:
+             *     search stays dead for the rest of the daemon's life, and nothing else
+             *     reports it. Defaulted so a daemon older than this field still
+             *     deserializes — such a daemon had no way to report the failure, which is
+             *     indistinguishable from healthy on the wire.
+             */
+            search?: components["schemas"]["FeatureHealth"];
             semantic: components["schemas"]["FeatureHealth"];
             summarize: components["schemas"]["FeatureHealth"];
             voice_match: components["schemas"]["FeatureHealth"];
@@ -5305,6 +5313,15 @@ export interface components {
             /** Format: int32 */
             daemon_pid?: number | null;
             daemon_version?: string | null;
+            /**
+             * @description The DB-backed part of this snapshot (`accounts`, `total_messages`,
+             *     `sync_statuses`) timed out and carries no reading: those three
+             *     fields are empty/zero because the daemon could not answer in time,
+             *     not because the store is empty or idle. Poll again rather than
+             *     concluding anything from them. The DB-free fields (versions,
+             *     `daemon_pid`, `feature_health`) are always a real reading.
+             */
+            degraded?: boolean;
             feature_health?: null | components["schemas"]["FeatureHealthReport"];
             /** @enum {string} */
             kind: "Status";

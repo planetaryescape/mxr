@@ -103,6 +103,7 @@ async fn status_endpoint_proxies_ipc_status() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             }),
             _ => None,
@@ -415,6 +416,7 @@ async fn auth_accepts_authorization_bearer_header() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             })
         },
@@ -739,6 +741,7 @@ async fn v1_status_endpoint_returns_same_payload_as_legacy() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             }),
             _ => None,
@@ -1145,6 +1148,7 @@ async fn mailbox_endpoint_lists_envelopes() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             }),
             Request::ListLabels { account_id: None } => Some(Response::Ok {
@@ -1240,6 +1244,7 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             }),
             Request::ListLabels { account_id: None } => Some(Response::Ok {
@@ -1354,6 +1359,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             }),
             Request::ListLabels { account_id: None } => Some(Response::Ok {

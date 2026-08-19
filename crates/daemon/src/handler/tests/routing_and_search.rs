@@ -1064,6 +1064,116 @@ async fn dispatch_status_does_not_block_when_search_is_busy() {
 }
 
 #[tokio::test]
+async fn status_flags_itself_degraded_when_the_db_snapshot_misses_its_budget() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+
+    let response = crate::handler::diagnostics_impl::get_status_within_budget(
+        &state,
+        std::time::Duration::ZERO,
+    )
+    .await
+    .expect("status should answer even when the snapshot times out");
+
+    match response {
+        ResponseData::Status {
+            degraded,
+            accounts,
+            total_messages,
+            sync_statuses,
+            daemon_pid,
+            daemon_version,
+            ..
+        } => {
+            assert!(degraded, "a snapshot that missed its budget must say so");
+            // The three fields the flag is about: empty because nothing was
+            // read, not because the store is empty.
+            assert!(accounts.is_empty());
+            assert_eq!(total_messages, 0);
+            assert!(sync_statuses.is_empty());
+            // The DB-free fields stay a real reading.
+            assert!(daemon_pid.is_some());
+            assert!(daemon_version.is_some());
+        }
+        other => panic!("Expected Status, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn status_is_not_degraded_when_the_db_snapshot_completes() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+
+    let msg = IpcMessage {
+        id: 11,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::GetStatus),
+    };
+
+    match handle_request(&state, &msg).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Status {
+                degraded, accounts, ..
+            },
+        }) => {
+            assert!(!degraded);
+            assert!(!accounts.is_empty());
+        }
+        other => panic!("Expected Status, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn status_and_doctor_report_a_stopped_search_worker() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    state.abort_search_worker().await;
+
+    let status = IpcMessage {
+        id: 12,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::GetStatus),
+    };
+    match handle_request(&state, &status).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data:
+                ResponseData::Status {
+                    feature_health: Some(feature_health),
+                    ..
+                },
+        }) => match feature_health.search {
+            FeatureHealth::Degraded { reason } => {
+                assert!(
+                    reason.contains("mxr daemon --restart"),
+                    "a dead search worker must carry the restart hint; got {reason:?}"
+                );
+            }
+            other => panic!("Expected degraded search health, got {other:?}"),
+        },
+        other => panic!("Expected Status with feature health, got {other:?}"),
+    }
+
+    let doctor = IpcMessage {
+        id: 13,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::GetDoctorReport),
+    };
+    match handle_request(&state, &doctor).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::DoctorReport { report },
+        }) => {
+            let finding = report
+                .findings
+                .iter()
+                .find(|finding| finding.message.contains("Search index worker stopped"))
+                .expect("doctor must surface a stopped search worker");
+            assert_eq!(
+                finding.remediation,
+                vec!["mxr daemon --restart".to_string()]
+            );
+        }
+        other => panic!("Expected DoctorReport, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn dispatch_shutdown_acknowledges_without_exiting() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 

@@ -29,6 +29,7 @@ struct StatusRender<'a> {
     feature_health: Option<&'a FeatureHealthReport>,
     restart_required: bool,
     health_class: DaemonHealthClass,
+    degraded: bool,
 }
 
 fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result<String> {
@@ -53,6 +54,7 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
         "feature_health": view.feature_health,
         "restart_required": view.restart_required,
         "health_class": view.health_class,
+        "degraded": view.degraded,
     });
     Ok(match format {
         OutputFormat::Json => serde_json::to_string_pretty(&data)?,
@@ -100,6 +102,12 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
                     ));
                 }
             }
+            if view.degraded {
+                lines.push(
+                    "Note: the daemon could not read the database within its status budget, so accounts, total messages and sync above are unknown — not empty. Rerun once the current sync or reindex settles."
+                        .to_string(),
+                );
+            }
             if view.restart_required {
                 lines.push(format!(
                     "Note: running daemon does not match this binary (protocol {}, client {}). Use `mxr restart`.",
@@ -139,6 +147,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                         repair_required,
                         semantic_runtime,
                         feature_health,
+                        degraded,
                     },
             } => {
                 let restart_required = crate::server::daemon_requires_restart(
@@ -168,6 +177,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                             feature_health: feature_health.as_ref(),
                             restart_required,
                             health_class,
+                            degraded,
                         },
                         fmt.clone(),
                     )?
@@ -233,6 +243,7 @@ mod tests {
                 feature_health: None,
                 restart_required: false,
                 health_class: DaemonHealthClass::Healthy,
+                degraded: false,
             },
             OutputFormat::Json,
         )
@@ -260,6 +271,7 @@ mod tests {
                 feature_health: None,
                 restart_required: false,
                 health_class: DaemonHealthClass::RepairRequired,
+                degraded: false,
             },
             OutputFormat::Table,
         )

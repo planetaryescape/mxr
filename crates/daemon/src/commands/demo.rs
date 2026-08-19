@@ -1,3 +1,4 @@
+use crate::commands::degraded_status_reading;
 use crate::commands::progress::{format_thousands, request_with_progress, ProgressPrinter};
 use crate::ipc_client::IpcClient;
 use chrono::{Datelike, TimeZone};
@@ -823,10 +824,9 @@ enum CountPoll {
 /// `get_status` fast-fails its DB-backed snapshot after a couple of seconds so
 /// a saturated reader pool can't wedge status, and a degraded reading reports
 /// zero messages and zero accounts. During a large seed the pool is exactly
-/// that busy, so take an empty account list as "no reading" rather than letting
-/// the demo's progress counter jump back to zero — or, worse, letting the seed
-/// wait conclude that nothing has landed. A demo profile always has two
-/// accounts, so an empty list can only mean the snapshot degraded.
+/// that busy, so honour the daemon's `degraded` flag rather than letting the
+/// demo's progress counter jump back to zero — or, worse, letting the seed
+/// wait conclude that nothing has landed.
 async fn fetch_message_count(client: &mut IpcClient) -> CountPoll {
     match client.request(Request::GetStatus).await {
         Ok(Response::Ok {
@@ -834,10 +834,11 @@ async fn fetch_message_count(client: &mut IpcClient) -> CountPoll {
                 ResponseData::Status {
                     accounts,
                     total_messages,
+                    degraded,
                     ..
                 },
         }) => {
-            if accounts.is_empty() {
+            if degraded_status_reading(degraded, &accounts) {
                 CountPoll::Degraded
             } else {
                 CountPoll::Count(total_messages as usize)

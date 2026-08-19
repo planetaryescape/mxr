@@ -1164,18 +1164,25 @@ pub(crate) async fn run_saved_search(
 const STATUS_SNAPSHOT_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
 
 pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
+    get_status_within_budget(state, STATUS_SNAPSHOT_BUDGET).await
+}
+
+pub(crate) async fn get_status_within_budget(
+    state: &AppState,
+    budget: std::time::Duration,
+) -> HandlerResult {
     // Fast-fail the DB-backed snapshot so a saturated pool can't wedge
     // status. On timeout we return a degraded (empty) snapshot but keep
     // the DB-free version/protocol fields populated.
     let (accounts, total_messages, sync_statuses, degraded) =
-        match tokio::time::timeout(STATUS_SNAPSHOT_BUDGET, collect_status_snapshot(state)).await {
+        match tokio::time::timeout(budget, collect_status_snapshot(state)).await {
             Ok(Ok((accounts, total_messages, sync_statuses))) => {
                 (accounts, total_messages, sync_statuses, false)
             }
             Ok(Err(e)) => return Err(crate::handler::HandlerError::Message(e)),
             Err(_elapsed) => {
                 tracing::warn!(
-                    budget_ms = STATUS_SNAPSHOT_BUDGET.as_millis(),
+                    budget_ms = budget.as_millis(),
                     "status snapshot timed out (reader pool saturated); returning degraded status"
                 );
                 (Vec::new(), 0, Vec::new(), true)
@@ -1191,21 +1198,17 @@ pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
     // can be mid-embed for seconds at a time, and `mxr status` (plus the
     // daemon-version-match check that gates every CLI call) must not hang on
     // it. Drop the runtime metrics rather than block.
-    let semantic_runtime = match tokio::time::timeout(
-        STATUS_SNAPSHOT_BUDGET,
-        state.semantic.status_snapshot(),
-    )
-    .await
-    {
-        Ok(result) => result.ok().map(|snapshot| snapshot.runtime),
-        Err(_elapsed) => {
-            tracing::warn!(
-                budget_ms = STATUS_SNAPSHOT_BUDGET.as_millis(),
-                "semantic status timed out; returning status without semantic runtime metrics"
-            );
-            None
-        }
-    };
+    let semantic_runtime =
+        match tokio::time::timeout(budget, state.semantic.status_snapshot()).await {
+            Ok(result) => result.ok().map(|snapshot| snapshot.runtime),
+            Err(_elapsed) => {
+                tracing::warn!(
+                    budget_ms = budget.as_millis(),
+                    "semantic status timed out; returning status without semantic runtime metrics"
+                );
+                None
+            }
+        };
     Ok(ResponseData::Status {
         uptime_secs: state.uptime_secs(),
         accounts,
@@ -1218,6 +1221,11 @@ pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
         repair_required,
         semantic_runtime,
         feature_health: Some(feature_health_report(state)),
+        // Only the DB snapshot budget sets this: it is the one that empties
+        // `accounts`/`total_messages`/`sync_statuses`. A dropped semantic
+        // runtime leaves every other field a real reading, and flagging it
+        // here would make clients discard good sync statuses.
+        degraded,
     })
 }
 

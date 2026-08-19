@@ -774,7 +774,8 @@ fn feature_health_lines(report: &FeatureHealthReport) -> Vec<String> {
     vec![
         "Feature health:".to_string(),
         format!(
-            "  semantic={} summarize={} relationship={}",
+            "  search={} semantic={} summarize={} relationship={}",
+            feature_health_label(&report.search),
             feature_health_label(&report.semantic),
             feature_health_label(&report.summarize),
             feature_health_label(&report.relationship_profile),
@@ -977,6 +978,7 @@ mod tests {
     fn status_pane_renders_feature_health() {
         let mut doctor = empty_doctor_with_findings(vec![]);
         doctor.feature_health = Some(FeatureHealthReport {
+            search: FeatureHealth::Healthy,
             semantic: FeatureHealth::Healthy,
             summarize: FeatureHealth::Disabled,
             relationship_profile: FeatureHealth::Healthy,

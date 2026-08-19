@@ -458,6 +458,11 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         repair_required,
         restart_required,
         semantic_enabled,
+        // Only the daemon can see its own search worker; this path builds the
+        // report client-side from whatever `GetStatus` returned.
+        search_worker_stopped: feature_health.as_ref().is_some_and(|health| {
+            matches!(health.search, mxr_protocol::FeatureHealth::Degraded { .. })
+        }),
         data_stats: &data_stats,
     });
 
@@ -743,6 +748,7 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
 
 fn print_feature_health(report: &FeatureHealthReport) {
     println!("\nFeature health:");
+    print_feature_health_row("search", &report.search);
     print_feature_health_row("semantic", &report.semantic);
     print_feature_health_row("summarize", &report.summarize);
     print_feature_health_row("relationship_profile", &report.relationship_profile);

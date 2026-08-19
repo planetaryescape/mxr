@@ -524,9 +524,20 @@ pub enum FeatureHealth {
     Disabled,
 }
 
+fn healthy_feature() -> FeatureHealth {
+    FeatureHealth::Healthy
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FeatureHealthReport {
+    /// Lexical (tantivy) search. `Degraded` once the index worker has stopped:
+    /// search stays dead for the rest of the daemon's life, and nothing else
+    /// reports it. Defaulted so a daemon older than this field still
+    /// deserializes — such a daemon had no way to report the failure, which is
+    /// indistinguishable from healthy on the wire.
+    #[serde(default = "healthy_feature")]
+    pub search: FeatureHealth,
     pub semantic: FeatureHealth,
     pub summarize: FeatureHealth,
     pub relationship_profile: FeatureHealth,

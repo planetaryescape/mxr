@@ -36,7 +36,9 @@ mxr demo
 Try local search and a safe batch mutation:
 
 ```bash
-mxr search "from:alice is:unread" --format json | jq .
+# cal@signal.example is one of the demo's senders. `from:` matches a whole
+# address, so use the full one here and in your own mail.
+mxr search "from:cal@signal.example is:unread" --format json | jq .
 mxr archive --search "label:newsletters older_than:30d" --dry-run
 ```
 
@@ -97,17 +99,17 @@ supports account scoping, and gives mutating commands a preview path.
 
 ```bash
 # Find mail
-mxr search "is:unread from:buildkite" --format json | jq '.results'
+mxr search "is:unread from:builds@buildkite.com" --format json | jq '.results'
 
 # Read the newest match
-mxr cat --search "from:alice" --first
+mxr cat --search "from:alice@example.com" --first
 
 # Draft with local relationship context
-mxr draft-assist --search "from:alice" --first "Propose Tuesday afternoon"
+mxr draft-assist --search "from:alice@example.com" --first "Propose Tuesday afternoon"
 
 # Preview, then apply a batch action
-mxr read-archive --search "from:noreply older_than:7d" --dry-run
-mxr read-archive --search "from:noreply older_than:7d" --yes
+mxr read-archive --search "from:noreply@example.com older_than:7d" --dry-run
+mxr read-archive --search "from:noreply@example.com older_than:7d" --yes
 ```
 
 Gmail drafts can stay available on every device without splitting into two

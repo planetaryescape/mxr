@@ -93,7 +93,7 @@ mxr
 
 ```bash
 # Search
-mxr search "from:alice is:unread" --format json | jq .
+mxr search "from:alice@example.com is:unread" --format json | jq .
 
 # Read the first match
 mxr cat <message-id>

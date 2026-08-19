@@ -488,21 +488,11 @@ impl SemanticEngine {
 
         let profile = self.config.active_profile;
         self.install_profile(profile).await?;
-        if self.index_predates_last_pass(profile) {
-            // An index older than the last finished pass cannot show what that
-            // pass indexed, so this query waits for the rebuild. An index that
-            // is merely behind on ingest keeps serving through its own rebuild.
-            let rebuilding = self
-                .index_build
-                .as_ref()
-                .is_some_and(|build| build.profile == profile);
-            // Otherwise nothing pending would fix it - unless the engine has
-            // already given up on rebuilding this profile.
-            if !rebuilding && self.index_build_retries_left(profile) {
-                self.dirty_indexes.insert(profile);
-            }
-            self.settle_index_builds().await?;
-        }
+        // An index older than the last finished pass cannot show what that
+        // pass indexed, so this query waits for its rebuild - or fails, rather
+        // than answer from it. An index that is merely behind on ingest keeps
+        // serving through its own rebuild.
+        self.settle_index_for(profile).await?;
 
         let query_texts = vec![prefixed_query(profile, query)];
         let query_embedding = self
@@ -530,6 +520,9 @@ impl SemanticEngine {
         // dropped, and the survivors collapse to one hit per message. Asking
         // for exactly `limit` neighbours meant a `limit = 1` fielded query
         // could retrieve one chunk of the wrong kind and answer nothing.
+        // One fixed round, not fetch-until-distinct: a corpus where the top
+        // candidates all belong to one message can still return fewer than
+        // `limit` hits.
         let candidate_limit = limit
             .saturating_mul(SOURCE_KIND_COUNT)
             .clamp(SEARCH_EF, MAX_SEARCH_CANDIDATES);
@@ -586,29 +579,42 @@ impl SemanticEngine {
 
     /// Starts a pass over only the messages missing chunks or embeddings.
     ///
-    /// A backfill with nothing to do must not start a pass at all: writing
-    /// `Indexing` for a profile that is already complete makes
-    /// `mxr semantic status` flicker `ready -> indexing -> ready` after every
-    /// idle sync, and finishing the empty pass would queue a pointless full
-    /// ANN rebuild on top of it.
+    /// A backfill with nothing to do must not touch the profile at all. It runs
+    /// from the idle sync loop, and both writes it would otherwise make are
+    /// lies: `Indexing` on a complete profile makes `mxr semantic status`
+    /// flicker `ready -> indexing -> ready`, and installing clears a recorded
+    /// `last_error`. Nothing is written until the target list says a pass will
+    /// really run - hence the stored row rather than `install_profile` here.
     pub(crate) async fn begin_backfill(&mut self, limit: u32) -> Result<BackfillStart> {
         let profile = self.config.active_profile;
-        let record = self.install_profile(profile).await?;
         let limit = limit.max(1);
-        let missing_chunks = self
+        let stored = self.store.get_semantic_profile(profile).await?;
+        let mut targets = match stored.as_ref() {
+            Some(record) => {
+                self.store
+                    .list_message_ids_missing_semantic_embeddings(&record.id, limit)
+                    .await?
+            }
+            // No profile row means no embeddings for it either, so every
+            // stored message is missing one.
+            None => self.store.list_message_ids_after(None, limit).await?,
+        };
+        for message_id in self
             .store
             .list_message_ids_missing_semantic_chunks(limit)
-            .await?;
-        let mut targets = self
-            .store
-            .list_message_ids_missing_semantic_embeddings(&record.id, limit)
-            .await?;
-        for message_id in missing_chunks {
+            .await?
+        {
             if !targets.contains(&message_id) {
                 targets.push(message_id);
             }
         }
         if targets.is_empty() {
+            // With no row yet there is no status or error to preserve, and the
+            // caller still needs a record to answer with.
+            let record = match stored {
+                Some(record) => record,
+                None => self.install_profile(profile).await?,
+            };
             return Ok(BackfillStart::NothingToDo(record));
         }
         let job = self
@@ -784,6 +790,12 @@ impl SemanticEngine {
         }) else {
             return Ok(false);
         };
+        self.start_index_build(profile).await?;
+        Ok(true)
+    }
+
+    /// Spawns the ANN build for one profile, whether or not it was queued.
+    async fn start_index_build(&mut self, profile: SemanticProfile) -> Result<()> {
         self.dirty_indexes.remove(&profile);
 
         let record = self
@@ -806,7 +818,7 @@ impl SemanticEngine {
         let pass_epoch = self.pass_epoch(profile);
         let handle = tokio::task::spawn_blocking(move || build_semantic_index(rx, pass_epoch));
         self.index_build = Some(IndexBuild { profile, handle });
-        Ok(true)
+        Ok(())
     }
 
     /// Resolves once the in-flight ANN build finishes and has been swapped in.
@@ -873,6 +885,37 @@ impl SemanticEngine {
         self.index_build_failures
             .get(&profile)
             .is_none_or(|failure| failure.attempts < MAX_INDEX_BUILD_ATTEMPTS)
+    }
+
+    /// Waits until `profile`'s index covers the last pass that finished for it.
+    ///
+    /// Only this profile's build is waited on. Draining every dirty profile
+    /// here would make a search for one profile block on rebuilds it has no
+    /// stake in - though an unrelated build already in flight still has to
+    /// finish, because a `spawn_blocking` build cannot be cancelled.
+    ///
+    /// Fails when the rebuild has burnt its attempts ([`MAX_INDEX_BUILD_ATTEMPTS`]):
+    /// answering from an index older than the pass would silently drop
+    /// everything that pass indexed, and callers can degrade explicitly (the
+    /// daemon falls back to lexical ranking and says so in the explain notes).
+    async fn settle_index_for(&mut self, profile: SemanticProfile) -> Result<()> {
+        while self.index_predates_last_pass(profile) {
+            if self.index_build.is_none() {
+                if !self.index_build_retries_left(profile) {
+                    return Err(anyhow!(
+                        "semantic index for profile {} is older than the last index pass and \
+                         its rebuild failed {MAX_INDEX_BUILD_ATTEMPTS} times; searching it \
+                         would silently miss indexed mail",
+                        profile.as_str()
+                    ));
+                }
+                // Ignores the retry backoff: the caller is waiting on this
+                // index now. The attempt cap still ends a failing build.
+                self.start_index_build(profile).await?;
+            }
+            self.index_build_ready().await;
+        }
+        Ok(())
     }
 
     /// Builds every dirty index and waits for it. Used by the run-to-completion
@@ -3429,6 +3472,136 @@ mod tests {
         assert!(
             hits.iter().any(|hit| hit.message_id == second.id),
             "a search after the pass must not answer from the pre-pass index"
+        );
+    }
+
+    /// The pass-epoch guard exists so a search cannot answer from an index
+    /// older than the last finished pass. Once the rebuild has burnt its
+    /// attempts nothing will fix that, so the search has to say so instead of
+    /// quietly serving the old index (or, with no index at all, nothing).
+    #[tokio::test]
+    async fn a_search_fails_when_the_rebuild_for_a_finished_pass_has_given_up() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        seed_messages(&store, &account.id, 2).await;
+
+        let data_dir = tempdir().unwrap();
+        let mut engine = SemanticEngine::new(
+            store.clone(),
+            data_dir.path(),
+            SemanticConfig {
+                enabled: true,
+                ..SemanticConfig::default()
+            },
+        );
+        engine.set_test_embedder(Arc::new(test_embedder));
+
+        let mut job = engine.begin_reindex(false).await.unwrap();
+        while engine.index_job_step(&mut job).await.unwrap() {}
+        engine.finish_index_job(job).await.unwrap();
+
+        engine.index_build_failures.insert(
+            SemanticProfile::BgeSmallEnV15,
+            IndexBuildFailure {
+                attempts: MAX_INDEX_BUILD_ATTEMPTS,
+                retry_after: Instant::now(),
+            },
+        );
+
+        let error = engine
+            .search("body text", 5, &[SemanticChunkSourceKind::Body])
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("older than the last index pass"),
+            "unexpected error: {error:#}"
+        );
+    }
+
+    /// Settling is per profile: a search may wait for its own index, never for
+    /// a rebuild queued against a profile it is not searching.
+    #[tokio::test]
+    async fn a_search_settles_its_own_profile_and_leaves_others_queued() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        seed_messages(&store, &account.id, 2).await;
+
+        let data_dir = tempdir().unwrap();
+        let mut engine = SemanticEngine::new(
+            store.clone(),
+            data_dir.path(),
+            SemanticConfig {
+                enabled: true,
+                ..SemanticConfig::default()
+            },
+        );
+        engine.set_test_embedder(Arc::new(test_embedder));
+
+        let mut job = engine.begin_reindex(false).await.unwrap();
+        while engine.index_job_step(&mut job).await.unwrap() {}
+        engine.finish_index_job(job).await.unwrap();
+
+        // Queued for a rebuild the search has no stake in - and one that could
+        // not succeed anyway, since the profile was never installed.
+        engine
+            .dirty_indexes
+            .insert(SemanticProfile::MultilingualE5Small);
+
+        let hits = engine
+            .search(
+                "body text",
+                5,
+                &[
+                    SemanticChunkSourceKind::Header,
+                    SemanticChunkSourceKind::Body,
+                ],
+            )
+            .await
+            .unwrap();
+
+        assert!(!hits.is_empty());
+        assert!(engine
+            .dirty_indexes
+            .contains(&SemanticProfile::MultilingualE5Small));
+        assert!(!engine
+            .indexes
+            .contains_key(&SemanticProfile::MultilingualE5Small));
+    }
+
+    /// The idle sync loop asks for a backfill every quiet half hour. On a
+    /// profile that has nothing missing it must not install over the row: that
+    /// clears a recorded failure the user still needs to see.
+    #[tokio::test]
+    async fn a_no_op_backfill_keeps_a_recorded_profile_error() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        seed_messages(&store, &account.id, 2).await;
+
+        let data_dir = tempdir().unwrap();
+        let (mut engine, _calls) =
+            engine_with_recording_embedder(store.clone(), data_dir.path()).await;
+        let mut record = engine.reindex_active().await.unwrap();
+
+        record.status = SemanticProfileStatus::Error;
+        record.last_error = Some("embedding backend went away".to_string());
+        store.upsert_semantic_profile(&record).await.unwrap();
+
+        let returned = engine.backfill_active_limited(200).await.unwrap();
+        assert_eq!(returned.status, SemanticProfileStatus::Error);
+
+        let stored = store
+            .get_semantic_profile(SemanticProfile::BgeSmallEnV15)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.status, SemanticProfileStatus::Error);
+        assert_eq!(
+            stored.last_error.as_deref(),
+            Some("embedding backend went away")
         );
     }
 

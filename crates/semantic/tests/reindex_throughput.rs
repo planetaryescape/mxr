@@ -145,6 +145,7 @@ async fn reindex_throughput() {
     let elapsed = reindex_started.elapsed();
 
     let chunks = store.collect_record_counts().await.unwrap().semantic_chunks;
+    print_chunk_word_histogram(&store, &record.id).await;
     println!(
         "reindex {count} messages / {chunks} chunks in {:.2}s => {:.1} msg/s, {:.1} chunks/s",
         elapsed.as_secs_f64(),
@@ -156,4 +157,30 @@ async fn reindex_throughput() {
     let rerun_started = std::time::Instant::now();
     engine.reindex_active().await.unwrap();
     println!("second reindex (no changes): {:?}", rerun_started.elapsed());
+}
+
+/// Chunk length distribution in words. The tokenizer pads each ONNX batch to
+/// the longest row in it (fastembed uses `PaddingStrategy::BatchLongest`), so
+/// this is what decides how much padding the batches carry.
+async fn print_chunk_word_histogram(store: &Store, profile_id: &mxr_core::id::SemanticProfileId) {
+    let rows = store.list_semantic_embeddings(profile_id).await.unwrap();
+    let mut words = rows
+        .iter()
+        .map(|(chunk, _)| chunk.normalized.split_whitespace().count())
+        .collect::<Vec<_>>();
+    if words.is_empty() {
+        return;
+    }
+    words.sort_unstable();
+    let percentile = |p: usize| words[(words.len() - 1) * p / 100];
+    println!(
+        "chunk words: n={} min={} p50={} p90={} p99={} max={} mean={:.1}",
+        words.len(),
+        words[0],
+        percentile(50),
+        percentile(90),
+        percentile(99),
+        words[words.len() - 1],
+        words.iter().sum::<usize>() as f64 / words.len() as f64,
+    );
 }

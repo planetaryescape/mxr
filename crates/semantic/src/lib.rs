@@ -60,6 +60,10 @@ const INDEX_PAGE_MESSAGES: usize = 64;
 #[cfg(feature = "local")]
 const EMBED_TEXTS_PER_CALL: usize = 512;
 
+/// Message ids read per keyset page when collecting the full id list.
+#[cfg(feature = "local")]
+const MESSAGE_ID_PAGE: u32 = 5_000;
+
 /// Rows per ONNX session run inside one embedding call. Measured on a 2k
 /// message corpus: 16 and 64 rows are both ~5-15% slower than 32.
 #[cfg(feature = "local")]
@@ -120,6 +124,12 @@ pub(crate) struct SemanticIndexJob {
 }
 
 #[cfg(feature = "local")]
+struct IndexBuild {
+    profile: SemanticProfile,
+    handle: tokio::task::JoinHandle<SemanticIndex>,
+}
+
+#[cfg(feature = "local")]
 struct IndexJobInner {
     record: SemanticProfileRecord,
     message_ids: Vec<MessageId>,
@@ -158,6 +168,9 @@ pub struct SemanticEngine {
     /// per message.
     #[cfg(feature = "local")]
     dirty_indexes: HashSet<SemanticProfile>,
+    /// The ANN rebuild currently running on a blocking thread, if any.
+    #[cfg(feature = "local")]
+    index_build: Option<IndexBuild>,
     #[cfg(feature = "local")]
     test_embedder: Option<TestEmbedder>,
 }
@@ -174,6 +187,7 @@ impl SemanticEngine {
             models: HashMap::new(),
             indexes: HashMap::new(),
             dirty_indexes: HashSet::new(),
+            index_build: None,
             test_embedder: None,
         }
     }
@@ -304,12 +318,12 @@ impl SemanticEngine {
         Ok(())
     }
 
-    /// Rebuilds any ANN index left stale by ingest. The semantic worker calls
-    /// this once its ingest backlog drains so searches stay warm.
-    pub async fn refresh_dirty_indexes(&mut self) -> Result<()> {
-        for profile in std::mem::take(&mut self.dirty_indexes) {
-            self.rebuild_index(profile).await?;
-        }
+    /// Starts a deferred ANN rebuild if one is pending and none is running.
+    ///
+    /// Returns as soon as the build is spawned; the worker loop learns it
+    /// finished through [`Self::index_build_ready`].
+    pub(crate) async fn poll_index_builds(&mut self) -> Result<()> {
+        self.start_next_index_build().await?;
         Ok(())
     }
 
@@ -329,8 +343,12 @@ impl SemanticEngine {
 
         let profile = self.config.active_profile;
         self.install_profile(profile).await?;
-        if self.dirty_indexes.remove(&profile) || !self.indexes.contains_key(&profile) {
-            self.rebuild_index(profile).await?;
+        if !self.indexes.contains_key(&profile) {
+            // Nothing to answer from yet, so this first query has to wait for
+            // the build. Once an index exists a stale one keeps serving while
+            // the rebuild runs in the background.
+            self.dirty_indexes.insert(profile);
+            self.settle_index_builds().await?;
         }
 
         let query_texts = vec![prefixed_query(profile, query)];
@@ -458,14 +476,15 @@ impl SemanticEngine {
             job.record.activated_at = Some(chrono::Utc::now());
         }
         self.store.upsert_semantic_profile(&job.record).await?;
-        self.dirty_indexes.remove(&profile);
-        self.rebuild_index(profile).await?;
+        self.dirty_indexes.insert(profile);
         Ok(job.record)
     }
 
     async fn run_index_job(&mut self, mut job: SemanticIndexJob) -> Result<SemanticProfileRecord> {
         while self.index_job_step(&mut job).await? {}
-        self.finish_index_job(job).await
+        let record = self.finish_index_job(job).await?;
+        self.settle_index_builds().await?;
+        Ok(record)
     }
 
     async fn reindex_all_for_profile(
@@ -539,53 +558,85 @@ impl SemanticEngine {
         Ok(record)
     }
 
-    async fn rebuild_index(&mut self, profile: SemanticProfile) -> Result<()> {
+    /// Starts the ANN rebuild for one dirty profile, if nothing is building.
+    ///
+    /// Returns `true` when a build was started. Building 100k+ vectors takes
+    /// tens of seconds, so it runs on a blocking thread and the current index
+    /// keeps serving searches until the new one is swapped in.
+    async fn start_next_index_build(&mut self) -> Result<bool> {
+        if self.index_build.is_some() {
+            return Ok(false);
+        }
+        let Some(profile) = self.dirty_indexes.iter().copied().next() else {
+            return Ok(false);
+        };
+        self.dirty_indexes.remove(&profile);
+
         let record = self
             .store
             .get_semantic_profile(profile)
             .await?
             .ok_or_else(|| anyhow!("semantic profile {} not installed", profile.as_str()))?;
         let rows = self.store.list_semantic_embeddings(&record.id).await?;
-        let max_elements = rows.len().max(1);
-        let mut hnsw = Hnsw::<f32, DistCosine>::new(16, max_elements, 16, 200, DistCosine {});
-        let mut chunks_by_id = HashMap::with_capacity(rows.len());
+        let handle = tokio::task::spawn_blocking(move || build_semantic_index(rows));
+        self.index_build = Some(IndexBuild { profile, handle });
+        Ok(true)
+    }
 
-        for (point_id, (chunk, embedding)) in rows.into_iter().enumerate() {
-            let vector = blob_to_f32s(&embedding.vector);
-            if vector.is_empty() {
-                continue;
+    /// Resolves once the in-flight ANN build finishes and has been swapped in.
+    ///
+    /// Never resolves when nothing is building, so it can sit in a `select!`
+    /// arm; polling it without completing it leaves the build untouched.
+    pub(crate) async fn index_build_ready(&mut self) {
+        let Some(build) = self.index_build.as_mut() else {
+            return std::future::pending::<()>().await;
+        };
+        let profile = build.profile;
+        let result = (&mut build.handle).await;
+        self.index_build = None;
+        match result {
+            Ok(index) => {
+                self.indexes.insert(profile, index);
             }
-            hnsw.insert((&vector, point_id));
-            chunks_by_id.insert(
-                point_id,
-                IndexedChunk {
-                    chunk_id: chunk.id,
-                    message_id: chunk.message_id,
-                    source_kind: chunk.source_kind,
-                    normalized: chunk.normalized,
-                },
-            );
+            Err(error) => {
+                tracing::error!(
+                    profile = profile.as_str(),
+                    "semantic index build task failed: {error}"
+                );
+                // Leave it dirty so the next idle pass retries.
+                self.dirty_indexes.insert(profile);
+            }
         }
-        hnsw.set_searching_mode(true);
+    }
 
-        self.indexes
-            .insert(profile, SemanticIndex { hnsw, chunks_by_id });
+    /// Builds every dirty index and waits for it. Used by the run-to-completion
+    /// paths (`use_profile`, `backfill`, `reindex_active`), which must leave a
+    /// searchable index behind; the worker loop uses the polled form instead.
+    async fn settle_index_builds(&mut self) -> Result<()> {
+        while self.start_next_index_build().await? || self.index_build.is_some() {
+            self.index_build_ready().await;
+        }
         Ok(())
     }
 
+    /// Every stored message id, paged on the primary key.
+    ///
+    /// This used to hydrate envelopes per account with a hard 10k limit, so a
+    /// reindex of a larger mailbox silently covered only the first 10k
+    /// messages per account and reported a truncated `progress_total`.
     async fn all_message_ids(&self) -> Result<Vec<MessageId>> {
-        let accounts = self.store.list_accounts().await?;
-        let mut message_ids = Vec::new();
-        for account in accounts {
-            message_ids.extend(
-                self.store
-                    .list_envelopes_by_account(&account.id, 10_000, 0)
-                    .await?
-                    .into_iter()
-                    .map(|envelope| envelope.id),
-            );
+        let mut message_ids: Vec<MessageId> = Vec::new();
+        loop {
+            let page = self
+                .store
+                .list_message_ids_after(message_ids.last(), MESSAGE_ID_PAGE)
+                .await?;
+            let exhausted = page.len() < MESSAGE_ID_PAGE as usize;
+            message_ids.extend(page);
+            if exhausted {
+                return Ok(message_ids);
+            }
         }
-        Ok(message_ids)
     }
 
     /// Extracts chunks from the messages themselves, rewriting stored chunks
@@ -907,8 +958,12 @@ impl SemanticEngine {
         self.ingest_messages(message_ids).await
     }
 
-    pub async fn refresh_dirty_indexes(&mut self) -> Result<()> {
+    pub(crate) async fn poll_index_builds(&mut self) -> Result<()> {
         Ok(())
+    }
+
+    pub(crate) async fn index_build_ready(&mut self) {
+        std::future::pending::<()>().await
     }
 
     pub(crate) async fn begin_reindex(&mut self) -> Result<SemanticIndexJob> {
@@ -1071,6 +1126,34 @@ fn build_message_chunk_batch(
         chunks,
         chunks_changed: false,
     }
+}
+
+#[cfg(feature = "local")]
+fn build_semantic_index(
+    rows: Vec<(SemanticChunkRecord, SemanticEmbeddingRecord)>,
+) -> SemanticIndex {
+    let max_elements = rows.len().max(1);
+    let mut hnsw = Hnsw::<f32, DistCosine>::new(16, max_elements, 16, 200, DistCosine {});
+    let mut chunks_by_id = HashMap::with_capacity(rows.len());
+
+    for (point_id, (chunk, embedding)) in rows.into_iter().enumerate() {
+        let vector = blob_to_f32s(&embedding.vector);
+        if vector.is_empty() {
+            continue;
+        }
+        hnsw.insert((&vector, point_id));
+        chunks_by_id.insert(
+            point_id,
+            IndexedChunk {
+                chunk_id: chunk.id,
+                message_id: chunk.message_id,
+                source_kind: chunk.source_kind,
+                normalized: chunk.normalized,
+            },
+        );
+    }
+    hnsw.set_searching_mode(true);
+    SemanticIndex { hnsw, chunks_by_id }
 }
 
 #[cfg(feature = "local")]
@@ -2245,6 +2328,20 @@ mod tests {
         ids
     }
 
+    /// Envelope-only seed: one header chunk per message and no body, which
+    /// keeps a 10k-message fixture cheap enough for a normal test run.
+    async fn seed_envelopes_only(store: &Store, account_id: &AccountId, count: usize) {
+        for index in 0..count {
+            let envelope = Envelope {
+                provider_id: format!("bulk-{index}"),
+                subject: format!("Bulk {index}"),
+                snippet: format!("Snippet {index}"),
+                ..test_envelope(account_id)
+            };
+            store.upsert_envelope(&envelope).await.unwrap();
+        }
+    }
+
     async fn engine_with_recording_embedder(
         store: Arc<Store>,
         data_dir: &StdPath,
@@ -2413,6 +2510,94 @@ mod tests {
 
         handle.request_shutdown().await.unwrap();
         worker.await.unwrap();
+    }
+
+    /// The ANN rebuild runs on a blocking thread, so a stale index has to keep
+    /// answering searches until the new one is swapped in — otherwise a 100k
+    /// vector rebuild would hide search for its whole duration.
+    #[tokio::test]
+    async fn a_pending_index_rebuild_keeps_serving_the_previous_index() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let first = test_envelope(&account.id);
+        let first_body = test_body_with_text(&first.id, "Deployment checklist", Vec::new());
+        store.upsert_envelope(&first).await.unwrap();
+        store.insert_body(&first_body).await.unwrap();
+
+        let second = Envelope {
+            provider_id: "fake-2".into(),
+            subject: "Roadmap notes".into(),
+            snippet: "Launch plan".into(),
+            ..test_envelope(&account.id)
+        };
+        let second_body = test_body_with_text(&second.id, "Roadmap notes launch", Vec::new());
+        store.upsert_envelope(&second).await.unwrap();
+        store.insert_body(&second_body).await.unwrap();
+
+        let data_dir = tempdir().unwrap();
+        let mut engine =
+            SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
+        engine.set_test_embedder(Arc::new(test_embedder));
+
+        let kinds = [
+            SemanticChunkSourceKind::Header,
+            SemanticChunkSourceKind::Body,
+        ];
+        engine
+            .ingest_messages(std::slice::from_ref(&first.id))
+            .await
+            .unwrap();
+        let hits = engine
+            .search("deployment checklist", 5, &kinds)
+            .await
+            .unwrap();
+        assert!(hits.iter().any(|hit| hit.message_id == first.id));
+
+        engine
+            .ingest_messages(std::slice::from_ref(&second.id))
+            .await
+            .unwrap();
+        let stale = engine
+            .search("roadmap notes launch", 5, &kinds)
+            .await
+            .unwrap();
+        assert!(
+            stale.iter().all(|hit| hit.message_id != second.id),
+            "search should answer from the previous index until the rebuild lands"
+        );
+
+        assert!(engine.start_next_index_build().await.unwrap());
+        engine.index_build_ready().await;
+        let refreshed = engine
+            .search("roadmap notes launch", 5, &kinds)
+            .await
+            .unwrap();
+        assert!(refreshed.iter().any(|hit| hit.message_id == second.id));
+    }
+
+    /// `all_message_ids` used to hydrate envelopes per account with a hard
+    /// 10k limit, so a mailbox past that size was silently only partly
+    /// indexed and reported a truncated `progress_total`.
+    #[tokio::test]
+    async fn reindex_covers_every_message_past_the_old_ten_thousand_cap() {
+        let message_count = 10_001;
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        seed_envelopes_only(&store, &account.id, message_count).await;
+
+        let data_dir = tempdir().unwrap();
+        let (mut engine, _calls) =
+            engine_with_recording_embedder(store.clone(), data_dir.path()).await;
+        let record = engine.reindex_active().await.unwrap();
+
+        assert_eq!(record.progress_total, message_count as u32);
+        assert_eq!(record.progress_completed, message_count as u32);
+        let counts = store.collect_record_counts().await.unwrap();
+        assert_eq!(counts.semantic_chunks, message_count as u32);
+        assert_eq!(counts.semantic_embeddings, message_count as u32);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

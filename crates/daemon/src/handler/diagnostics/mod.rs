@@ -1187,12 +1187,25 @@ pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
     } else {
         crate::server::search_requires_repair(state, total_messages).await
     };
-    let semantic_runtime = state
-        .semantic
-        .status_snapshot()
-        .await
-        .ok()
-        .map(|snapshot| snapshot.runtime);
+    // Same fast-fail reasoning as the DB snapshot above: the semantic worker
+    // can be mid-embed for seconds at a time, and `mxr status` (plus the
+    // daemon-version-match check that gates every CLI call) must not hang on
+    // it. Drop the runtime metrics rather than block.
+    let semantic_runtime = match tokio::time::timeout(
+        STATUS_SNAPSHOT_BUDGET,
+        state.semantic.status_snapshot(),
+    )
+    .await
+    {
+        Ok(result) => result.ok().map(|snapshot| snapshot.runtime),
+        Err(_elapsed) => {
+            tracing::warn!(
+                budget_ms = STATUS_SNAPSHOT_BUDGET.as_millis(),
+                "semantic status timed out; returning status without semantic runtime metrics"
+            );
+            None
+        }
+    };
     Ok(ResponseData::Status {
         uptime_secs: state.uptime_secs(),
         accounts,

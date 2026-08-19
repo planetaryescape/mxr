@@ -172,6 +172,31 @@ impl super::Store {
         rows.into_iter().map(row_to_semantic_chunk).collect()
     }
 
+    /// One keyset page of message ids for a semantic index pass.
+    ///
+    /// Lives here rather than in `message.rs` because it exists purely for the
+    /// semantic engine: it returns ids only (no envelope hydration) so a full
+    /// pass over a large mailbox stays cheap, and it pages on the primary key
+    /// so there is no per-account row cap.
+    pub async fn list_message_ids_after(
+        &self,
+        after: Option<&MessageId>,
+        limit: u32,
+    ) -> Result<Vec<MessageId>, sqlx::Error> {
+        let rows = sqlx::query_scalar::<_, String>(
+            r#"SELECT id
+               FROM messages
+               WHERE ?1 IS NULL OR id > ?1
+               ORDER BY id ASC
+               LIMIT ?2"#,
+        )
+        .bind(after.map(MessageId::as_str))
+        .bind(i64::from(limit))
+        .fetch_all(self.reader())
+        .await?;
+        rows.into_iter().map(|id| decode_id(&id)).collect()
+    }
+
     /// Stored chunk ids and content hashes for a message, in ordinal order.
     ///
     /// Callers use this to tell whether freshly extracted chunks differ from

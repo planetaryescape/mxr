@@ -222,13 +222,21 @@ impl SemanticServiceHandle {
                     continue;
                 }
 
-                // Backlog drained: pay the ANN rebuild once instead of once
-                // per ingested message.
-                if let Err(error) = engine.refresh_dirty_indexes().await {
-                    tracing::warn!("semantic index refresh failed: {error}");
+                // Backlog drained: this is when the deferred ANN rebuild
+                // starts. It runs on a blocking thread, so the loop keeps
+                // answering status and search while a large index is built.
+                if let Err(error) = engine.poll_index_builds().await {
+                    tracing::warn!("semantic index rebuild failed to start: {error}");
                 }
 
-                let Some(command) = rx.recv().await else {
+                let command = tokio::select! {
+                    biased;
+                    command = rx.recv() => command,
+                    // Swapping a finished index in is the loop's own work, so
+                    // it has to be woken for it even with no command pending.
+                    () = engine.index_build_ready() => continue,
+                };
+                let Some(command) = command else {
                     break;
                 };
                 if handle_command(
@@ -457,7 +465,18 @@ async fn handle_command(
             let _ = resp.send(engine.backfill_active_limited(limit).await);
         }
         SemanticCommand::IngestMessages { message_ids, resp } => {
-            let _ = resp.send(engine.ingest_messages(&message_ids).await);
+            // A synchronous ingest would write its own Ready status over the
+            // running pass's Indexing/progress, so refuse instead of lying.
+            // Callers that can wait should enqueue: the queue drains once the
+            // reindex finishes.
+            let result = if reindex.is_some() {
+                Err(anyhow!(
+                    "semantic reindex in progress; enqueue the ingest or retry when it finishes"
+                ))
+            } else {
+                engine.ingest_messages(&message_ids).await
+            };
+            let _ = resp.send(result);
         }
         SemanticCommand::EnqueueIngest { message_ids, resp } => {
             let enqueued_at = Instant::now();

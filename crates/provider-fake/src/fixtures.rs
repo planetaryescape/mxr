@@ -578,16 +578,9 @@ pub fn generate_fixtures(
     (envelopes, bodies, labels)
 }
 
-pub fn generate_env_selected_fixtures(
-    account_id: &AccountId,
-) -> (Vec<Envelope>, HashMap<String, MessageBody>, Vec<Label>) {
-    match demo_message_count_from_env() {
-        Some(count) => generate_demo_fixtures(account_id, count),
-        None => generate_fixtures(account_id),
-    }
-}
-
-fn demo_message_count_from_env() -> Option<usize> {
+/// Demo message count requested through the environment, or `None` when
+/// the provider should use the canonical (non-demo) fixture set.
+pub(crate) fn demo_message_count_from_env() -> Option<usize> {
     let dataset = std::env::var("MXR_FAKE_DATASET").ok()?;
     if dataset.trim() != "demo" {
         return None;
@@ -604,17 +597,389 @@ pub fn generate_demo_fixtures(
     account_id: &AccountId,
     target_count: usize,
 ) -> (Vec<Envelope>, HashMap<String, MessageBody>, Vec<Label>) {
-    let target_count = target_count.clamp(1, MAX_DEMO_MESSAGE_COUNT);
-    let profile = demo_account_profile(account_id, target_count);
-    let mut envelopes = Vec::with_capacity(profile.target_count);
-    let mut bodies = HashMap::with_capacity(profile.target_count);
-    let now = Utc::now();
-    let self_addr = Address {
-        name: Some(profile.display_name.to_string()),
-        email: profile.email.to_string(),
-    };
+    let stream = DemoFixtureStream::new(account_id, target_count);
+    let mut envelopes = Vec::with_capacity(stream.len());
+    let mut bodies = HashMap::with_capacity(stream.len());
+    for (envelope, body) in stream.page(0, stream.len()) {
+        bodies.insert(envelope.provider_id.clone(), body);
+        envelopes.push(envelope);
+    }
+    (envelopes, bodies, stream.labels().to_vec())
+}
 
-    let labels = vec![
+const DEMO_PEOPLE: [(&str, &str); 12] = [
+    ("Maya Ortiz", "maya@orbit.example"),
+    ("Theo Nash", "theo@northstar.example"),
+    ("Priya Raman", "priya@atlas.example"),
+    ("Jon Bell", "jon@papertrail.example"),
+    ("Nora Kim", "nora@foundry.example"),
+    ("Samir Patel", "samir@launchpad.example"),
+    ("Elena Wood", "elena@harbor.example"),
+    ("Ari Stone", "ari@fieldkit.example"),
+    ("Ruth Vega", "ruth@keystone.example"),
+    ("Cal Brooks", "cal@signal.example"),
+    ("Iris Chen", "iris@meridian.example"),
+    ("Leo Park", "leo@workbench.example"),
+];
+const DEMO_NEWSLETTER_SENDERS: [(&str, &str); 4] = [
+    ("Terminal Dispatch", "dispatch@lists.demo.mxr.local"),
+    ("Local First Weekly", "weekly@lists.demo.mxr.local"),
+    ("SQLite Notes", "notes@lists.demo.mxr.local"),
+    ("Ops Digest", "ops@lists.demo.mxr.local"),
+];
+const DEMO_ALERT_SENDERS: [(&str, &str); 3] = [
+    ("Build Watch", "builds@alerts.demo.mxr.local"),
+    ("Uptime Robot", "uptime@alerts.demo.mxr.local"),
+    ("Pager Relay", "pager@alerts.demo.mxr.local"),
+];
+const DEMO_PROMO_SENDERS: [(&str, &str); 4] = [
+    ("Cloud Deals", "offers@promo.demo.mxr.local"),
+    ("Desk Gear Outlet", "gear@promo.demo.mxr.local"),
+    ("Flight Fare Drop", "fares@promo.demo.mxr.local"),
+    ("Conference Passes", "events@promo.demo.mxr.local"),
+];
+const DEMO_SPAM_SENDERS: [(&str, &str); 3] = [
+    (
+        "Account Verification",
+        "verify@security-mail.demo.mxr.local",
+    ),
+    ("Prize Desk", "winner@claim-now.demo.mxr.local"),
+    ("Payroll Notice", "payroll@notice-demo.mxr.local"),
+];
+const DEMO_SUBJECT_TEMPLATES: [&str; 20] = [
+    "Launch checklist for Project Aurora",
+    "Canary rollout notes",
+    "Customer feedback from the design partner call",
+    "Draft positioning for the CLI-first release",
+    "Security review follow-up",
+    "QBR prep and open questions",
+    "Contract renewal details",
+    "Interview panel for Staff Engineer candidate",
+    "Receipt for workspace subscription",
+    "Flight options for the Portland demo day",
+    "Incident review: delayed sync jobs",
+    "Weekly local-first reading list",
+    "Build failed on release branch",
+    "Pricing page copy review",
+    "API migration plan",
+    "Research notes: terminal workflows",
+    "Action required: unusual sign-in attempt",
+    "Spring upgrade offer for your workspace",
+    "Limited-time launch bundle",
+    "Urgent password reset notice",
+];
+
+/// Number of messages `delivery_demo_messages` injects at the head of the
+/// personal demo account.
+const DELIVERY_DEMO_MESSAGE_COUNT: usize = 5;
+
+/// The demo dataset, generated on demand instead of held in memory.
+///
+/// A 50,000-message demo used to cost ~2.5 KB of resident memory per
+/// message for the whole life of the daemon, because the provider
+/// materialised every envelope and body up front. Generation is pure
+/// arithmetic and `format!` over `(thread_num, reply_idx, index)`, so a
+/// page can be produced from its index alone and nothing needs to be
+/// kept: `page()` walks thread lengths (cheap integer math) to reach the
+/// requested offset and only builds the messages it returns.
+///
+/// Ids are derived from the message's provider id rather than randomly
+/// generated so regenerating the same index — a later page, a
+/// `fetch_message` — yields the same message.
+pub struct DemoFixtureStream {
+    account_id: AccountId,
+    profile: DemoAccountProfile,
+    labels: Vec<Label>,
+    /// Pinned once so every page shares one "now" and message dates stay
+    /// consistent across pages of the same sync.
+    now: chrono::DateTime<Utc>,
+    self_addr: Address,
+    delivery_count: usize,
+    /// The 50-message dataset is hand-written rather than generated, so
+    /// it stays materialised. It is small by definition.
+    curated: Option<Vec<(Envelope, MessageBody)>>,
+}
+
+impl DemoFixtureStream {
+    pub fn new(account_id: &AccountId, target_count: usize) -> Self {
+        let target_count = target_count.clamp(1, MAX_DEMO_MESSAGE_COUNT);
+        let profile = demo_account_profile(account_id, target_count);
+        let now = Utc::now();
+        let self_addr = Address {
+            name: Some(profile.display_name.to_string()),
+            email: profile.email.to_string(),
+        };
+        let labels = demo_labels(account_id);
+
+        let curated = (target_count == CURATED_DEMO_MESSAGE_COUNT).then(|| {
+            let (envelopes, mut bodies, _) =
+                generate_curated_demo_fixtures(account_id, profile, labels.clone());
+            envelopes
+                .into_iter()
+                .map(|envelope| {
+                    let body = bodies
+                        .remove(&envelope.provider_id)
+                        .unwrap_or_else(|| empty_body(&envelope.id));
+                    (envelope, body)
+                })
+                .collect()
+        });
+
+        // Seed the personal account with shipping mail so the Deliveries
+        // surface is populated. These occupy the first indices; the
+        // generated threads top up to `target_count`, so the total
+        // message count is unchanged.
+        let delivery_count = if profile.email == "alex@demo.mxr.local" && profile.target_count >= 16
+        {
+            DELIVERY_DEMO_MESSAGE_COUNT
+        } else {
+            0
+        };
+
+        Self {
+            account_id: account_id.clone(),
+            profile,
+            labels,
+            now,
+            self_addr,
+            delivery_count,
+            curated,
+        }
+    }
+
+    pub fn labels(&self) -> &[Label] {
+        &self.labels
+    }
+
+    pub fn len(&self) -> usize {
+        match &self.curated {
+            Some(curated) => curated.len(),
+            None => self.profile.target_count,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Generate `[offset, offset + limit)` of the dataset.
+    pub fn page(&self, offset: usize, limit: usize) -> Vec<(Envelope, MessageBody)> {
+        let end = offset.saturating_add(limit).min(self.len());
+        if offset >= end {
+            return Vec::new();
+        }
+        if let Some(curated) = &self.curated {
+            return curated[offset..end].to_vec();
+        }
+
+        let mut page = Vec::with_capacity(end - offset);
+        if offset < self.delivery_count {
+            page.extend(
+                self.delivery_messages()
+                    .into_iter()
+                    .skip(offset)
+                    .take(end - offset),
+            );
+        }
+
+        let mut produced = self.delivery_count;
+        let mut thread_num = 0usize;
+        while produced < self.profile.target_count && produced < end {
+            // `thread_len` drives dates and the "last message in thread"
+            // rules, so the message builder always sees the thread's full
+            // length even when the target count truncates the tail.
+            let thread_len = demo_thread_len(thread_num);
+            let emitted = thread_len.min(self.profile.target_count - produced);
+            for reply_idx in 0..emitted {
+                let index = produced + reply_idx;
+                if index >= offset && index < end {
+                    page.push(self.thread_message(thread_num, reply_idx, thread_len, index));
+                }
+            }
+            produced += emitted;
+            thread_num += 1;
+        }
+        page
+    }
+
+    /// Look up one message by its provider id, regenerating it on the fly.
+    /// Walks thread lengths to reach the message, so it is a scan over
+    /// integers rather than over messages.
+    pub fn find(&self, provider_id: &str) -> Option<(Envelope, MessageBody)> {
+        if let Some(curated) = &self.curated {
+            return curated
+                .iter()
+                .find(|(envelope, _)| envelope.provider_id == provider_id)
+                .cloned();
+        }
+        let index = provider_id
+            .strip_prefix("demo-msg-")?
+            .parse::<usize>()
+            .ok()?
+            .checked_sub(1)?;
+        self.page(index, 1).pop()
+    }
+
+    fn delivery_messages(&self) -> Vec<(Envelope, MessageBody)> {
+        delivery_demo_messages(&self.account_id, &self.self_addr, self.now)
+    }
+
+    fn thread_message(
+        &self,
+        thread_num: usize,
+        reply_idx: usize,
+        thread_len: usize,
+        index: usize,
+    ) -> (Envelope, MessageBody) {
+        let category = thread_num % 13;
+        let root_subject = DEMO_SUBJECT_TEMPLATES[thread_num % DEMO_SUBJECT_TEMPLATES.len()];
+        let thread_offset_minutes = (thread_num as i64 * 37) % (365 * 24 * 60);
+
+        let sent = matches!(category, 0 | 1 | 5) && reply_idx % 3 == 1;
+        let (name, email) = match category {
+            2 => DEMO_NEWSLETTER_SENDERS[thread_num % DEMO_NEWSLETTER_SENDERS.len()],
+            7 => DEMO_ALERT_SENDERS[thread_num % DEMO_ALERT_SENDERS.len()],
+            10 | 12 => DEMO_SPAM_SENDERS[thread_num % DEMO_SPAM_SENDERS.len()],
+            11 => DEMO_PROMO_SENDERS[thread_num % DEMO_PROMO_SENDERS.len()],
+            _ => DEMO_PEOPLE[(thread_num + reply_idx) % DEMO_PEOPLE.len()],
+        };
+        let peer = Address {
+            name: Some(name.to_string()),
+            email: email.to_string(),
+        };
+        let observer = DEMO_PEOPLE[(thread_num + reply_idx + 3) % DEMO_PEOPLE.len()];
+        let observer = Address {
+            name: Some(observer.0.to_string()),
+            email: observer.1.to_string(),
+        };
+        let cc = if matches!(category, 0 | 3 | 4 | 8) && observer.email != peer.email {
+            vec![observer]
+        } else {
+            Vec::new()
+        };
+        let (from, to) = if sent {
+            (self.self_addr.clone(), vec![peer.clone()])
+        } else {
+            (peer.clone(), vec![self.self_addr.clone()])
+        };
+
+        let subject = if reply_idx == 0 {
+            root_subject.to_string()
+        } else {
+            format!("Re: {root_subject}")
+        };
+        let date = self.now
+            - Duration::minutes(thread_offset_minutes + (thread_len - reply_idx) as i64 * 47);
+        let old_enough_to_read = thread_offset_minutes > 24 * 60;
+        let unread = !sent && !old_enough_to_read && reply_idx + 1 == thread_len;
+        let starred = thread_num.is_multiple_of(29) || root_subject.contains("Security");
+        let mut flags = if unread {
+            MessageFlags::empty()
+        } else {
+            MessageFlags::READ
+        };
+        if sent {
+            flags |= MessageFlags::SENT | MessageFlags::READ;
+        }
+        if starred {
+            flags |= MessageFlags::STARRED;
+        }
+        if category == 10 {
+            flags |= MessageFlags::SPAM;
+        }
+        if category == 9 && thread_num.is_multiple_of(11) {
+            flags |= MessageFlags::ARCHIVED;
+        }
+
+        let mut provider_labels = Vec::new();
+        if sent {
+            provider_labels.push("SENT".to_string());
+        } else if flags.contains(MessageFlags::SPAM) {
+            provider_labels.push("SPAM".to_string());
+        } else if flags.contains(MessageFlags::ARCHIVED) {
+            provider_labels.push("ARCHIVE".to_string());
+        } else {
+            provider_labels.push("INBOX".to_string());
+        }
+        if unread {
+            provider_labels.push("UNREAD".to_string());
+        }
+        if starred {
+            provider_labels.push("STARRED".to_string());
+        }
+        match category {
+            0 | 1 | 3 | 9 => provider_labels.push("work".to_string()),
+            4 => provider_labels.push("product".to_string()),
+            2 => provider_labels.push("newsletters".to_string()),
+            5 => provider_labels.push("receipts".to_string()),
+            6 => provider_labels.push("travel".to_string()),
+            7 => provider_labels.push("alerts".to_string()),
+            8 => provider_labels.push("hiring".to_string()),
+            10 => provider_labels.push("potential_spam".to_string()),
+            11 => provider_labels.push("promotions".to_string()),
+            12 => provider_labels.push("potential_spam".to_string()),
+            _ => {}
+        }
+        if matches!(category, 0 | 3 | 8) && !sent && reply_idx + 1 == thread_len {
+            provider_labels.push("waiting".to_string());
+        }
+
+        let unsubscribe = match category {
+            2 if thread_num.is_multiple_of(2) => UnsubscribeMethod::OneClick {
+                url: format!("https://lists.demo.mxr.local/unsubscribe/{thread_num}"),
+            },
+            2 => UnsubscribeMethod::Mailto {
+                address: "unsubscribe@lists.demo.mxr.local".to_string(),
+                subject: Some(format!("unsubscribe-{thread_num}")),
+            },
+            11 => UnsubscribeMethod::OneClick {
+                url: format!("https://promo.demo.mxr.local/unsubscribe/{thread_num}"),
+            },
+            _ => UnsubscribeMethod::None,
+        };
+        let has_attachments = matches!(category, 5 | 6 | 8)
+            || (matches!(category, 2 | 11) && thread_num.is_multiple_of(8))
+            || thread_num.is_multiple_of(41);
+        let snippet = demo_snippet(root_subject, category, reply_idx, sent);
+        let body_text = demo_body(root_subject, category, reply_idx, sent, &peer.email);
+
+        // Messages of a thread occupy consecutive indices, so the parent
+        // and root headers follow from this message's own index.
+        let (in_reply_to, references) = if reply_idx == 0 {
+            (None, Vec::new())
+        } else {
+            (
+                Some(demo_message_id_header(index)),
+                vec![demo_message_id_header(index - reply_idx + 1)],
+            )
+        };
+
+        build_demo_msg(
+            index + 1,
+            &self.account_id,
+            &demo_thread_id(&self.account_id, thread_num),
+            DemoMessage {
+                from,
+                to,
+                cc,
+                subject,
+                snippet,
+                body_text,
+                date,
+                flags,
+                has_attachments,
+                category,
+                unsubscribe,
+                label_provider_ids: provider_labels,
+                in_reply_to,
+                references,
+            },
+        )
+    }
+}
+
+fn demo_labels(account_id: &AccountId) -> Vec<Label> {
+    vec![
         make_label(account_id, "Inbox", LabelKind::System, "INBOX"),
         make_label(account_id, "Sent", LabelKind::System, "SENT"),
         make_label(account_id, "Trash", LabelKind::System, "TRASH"),
@@ -635,248 +1000,38 @@ pub fn generate_demo_fixtures(
             LabelKind::User,
             "potential_spam",
         ),
-    ];
+    ]
+}
 
-    if target_count == CURATED_DEMO_MESSAGE_COUNT {
-        return generate_curated_demo_fixtures(account_id, profile, labels);
+fn demo_thread_len(thread_num: usize) -> usize {
+    match thread_num % 13 {
+        1 | 4 => 5,
+        2 | 7 | 10 | 11 | 12 => 1,
+        8 => 3,
+        _ => 2 + (thread_num % 4),
     }
+}
 
-    let people = [
-        ("Maya Ortiz", "maya@orbit.example"),
-        ("Theo Nash", "theo@northstar.example"),
-        ("Priya Raman", "priya@atlas.example"),
-        ("Jon Bell", "jon@papertrail.example"),
-        ("Nora Kim", "nora@foundry.example"),
-        ("Samir Patel", "samir@launchpad.example"),
-        ("Elena Wood", "elena@harbor.example"),
-        ("Ari Stone", "ari@fieldkit.example"),
-        ("Ruth Vega", "ruth@keystone.example"),
-        ("Cal Brooks", "cal@signal.example"),
-        ("Iris Chen", "iris@meridian.example"),
-        ("Leo Park", "leo@workbench.example"),
-    ];
-    let newsletter_senders = [
-        ("Terminal Dispatch", "dispatch@lists.demo.mxr.local"),
-        ("Local First Weekly", "weekly@lists.demo.mxr.local"),
-        ("SQLite Notes", "notes@lists.demo.mxr.local"),
-        ("Ops Digest", "ops@lists.demo.mxr.local"),
-    ];
-    let alert_senders = [
-        ("Build Watch", "builds@alerts.demo.mxr.local"),
-        ("Uptime Robot", "uptime@alerts.demo.mxr.local"),
-        ("Pager Relay", "pager@alerts.demo.mxr.local"),
-    ];
-    let promo_senders = [
-        ("Cloud Deals", "offers@promo.demo.mxr.local"),
-        ("Desk Gear Outlet", "gear@promo.demo.mxr.local"),
-        ("Flight Fare Drop", "fares@promo.demo.mxr.local"),
-        ("Conference Passes", "events@promo.demo.mxr.local"),
-    ];
-    let spam_senders = [
-        (
-            "Account Verification",
-            "verify@security-mail.demo.mxr.local",
-        ),
-        ("Prize Desk", "winner@claim-now.demo.mxr.local"),
-        ("Payroll Notice", "payroll@notice-demo.mxr.local"),
-    ];
-    let subject_templates = [
-        "Launch checklist for Project Aurora",
-        "Canary rollout notes",
-        "Customer feedback from the design partner call",
-        "Draft positioning for the CLI-first release",
-        "Security review follow-up",
-        "QBR prep and open questions",
-        "Contract renewal details",
-        "Interview panel for Staff Engineer candidate",
-        "Receipt for workspace subscription",
-        "Flight options for the Portland demo day",
-        "Incident review: delayed sync jobs",
-        "Weekly local-first reading list",
-        "Build failed on release branch",
-        "Pricing page copy review",
-        "API migration plan",
-        "Research notes: terminal workflows",
-        "Action required: unusual sign-in attempt",
-        "Spring upgrade offer for your workspace",
-        "Limited-time launch bundle",
-        "Urgent password reset notice",
-    ];
+fn demo_thread_id(account_id: &AccountId, thread_num: usize) -> ThreadId {
+    ThreadId::from_scoped_provider_id(account_id, "fake", &format!("demo-thread-{thread_num}"))
+}
 
-    let mut msg_num = 1usize;
-    let mut thread_num = 0usize;
-    // Seed the personal account with shipping mail so the Deliveries surface
-    // is populated. Injected before the filler loop, which then tops up to
-    // `target_count`, so the total message count is unchanged.
-    if profile.email == "alex@demo.mxr.local" && profile.target_count >= 16 {
-        push_delivery_demo_threads(
-            &mut envelopes,
-            &mut bodies,
-            &mut msg_num,
-            account_id,
-            &self_addr,
-            now,
-        );
+fn demo_message_id_header(msg_num: usize) -> String {
+    format!("<demo-{msg_num}@mxr.local>")
+}
+
+/// Placeholder for a message whose body is missing. Fixture bodies are
+/// always generated alongside their envelope, so this only guards the
+/// lookup, it is not a normal state.
+pub(crate) fn empty_body(message_id: &MessageId) -> MessageBody {
+    MessageBody {
+        message_id: message_id.clone(),
+        text_plain: None,
+        text_html: None,
+        attachments: vec![],
+        fetched_at: Utc::now(),
+        metadata: Default::default(),
     }
-    while envelopes.len() < profile.target_count {
-        let template_idx = thread_num % subject_templates.len();
-        let category = thread_num % 13;
-        let thread_len = match category {
-            1 | 4 => 5,
-            2 | 7 | 10 | 11 | 12 => 1,
-            8 => 3,
-            _ => 2 + (thread_num % 4),
-        };
-        let thread_id = ThreadId::new();
-        let root_subject = subject_templates[template_idx];
-        let thread_offset_minutes = (thread_num as i64 * 37) % (365 * 24 * 60);
-        let mut references = Vec::new();
-        let mut previous_message_id: Option<String> = None;
-
-        for reply_idx in 0..thread_len {
-            if envelopes.len() >= profile.target_count {
-                break;
-            }
-
-            let sent = matches!(category, 0 | 1 | 5) && reply_idx % 3 == 1;
-            let (name, email) = match category {
-                2 => newsletter_senders[thread_num % newsletter_senders.len()],
-                7 => alert_senders[thread_num % alert_senders.len()],
-                10 | 12 => spam_senders[thread_num % spam_senders.len()],
-                11 => promo_senders[thread_num % promo_senders.len()],
-                _ => people[(thread_num + reply_idx) % people.len()],
-            };
-            let peer = Address {
-                name: Some(name.to_string()),
-                email: email.to_string(),
-            };
-            let observer = people[(thread_num + reply_idx + 3) % people.len()];
-            let observer = Address {
-                name: Some(observer.0.to_string()),
-                email: observer.1.to_string(),
-            };
-            let cc = if matches!(category, 0 | 3 | 4 | 8) && observer.email != peer.email {
-                vec![observer]
-            } else {
-                Vec::new()
-            };
-            let (from, to) = if sent {
-                (self_addr.clone(), vec![peer.clone()])
-            } else {
-                (peer.clone(), vec![self_addr.clone()])
-            };
-
-            let subject = if reply_idx == 0 {
-                root_subject.to_string()
-            } else {
-                format!("Re: {root_subject}")
-            };
-            let date = now
-                - Duration::minutes(thread_offset_minutes + (thread_len - reply_idx) as i64 * 47);
-            let old_enough_to_read = thread_offset_minutes > 24 * 60;
-            let unread = !sent && !old_enough_to_read && reply_idx + 1 == thread_len;
-            let starred = thread_num.is_multiple_of(29) || root_subject.contains("Security");
-            let mut flags = if unread {
-                MessageFlags::empty()
-            } else {
-                MessageFlags::READ
-            };
-            if sent {
-                flags |= MessageFlags::SENT | MessageFlags::READ;
-            }
-            if starred {
-                flags |= MessageFlags::STARRED;
-            }
-            if category == 10 {
-                flags |= MessageFlags::SPAM;
-            }
-            if category == 9 && thread_num.is_multiple_of(11) {
-                flags |= MessageFlags::ARCHIVED;
-            }
-
-            let mut provider_labels = Vec::new();
-            if sent {
-                provider_labels.push("SENT".to_string());
-            } else if flags.contains(MessageFlags::SPAM) {
-                provider_labels.push("SPAM".to_string());
-            } else if flags.contains(MessageFlags::ARCHIVED) {
-                provider_labels.push("ARCHIVE".to_string());
-            } else {
-                provider_labels.push("INBOX".to_string());
-            }
-            if unread {
-                provider_labels.push("UNREAD".to_string());
-            }
-            if starred {
-                provider_labels.push("STARRED".to_string());
-            }
-            match category {
-                0 | 1 | 3 | 9 => provider_labels.push("work".to_string()),
-                4 => provider_labels.push("product".to_string()),
-                2 => provider_labels.push("newsletters".to_string()),
-                5 => provider_labels.push("receipts".to_string()),
-                6 => provider_labels.push("travel".to_string()),
-                7 => provider_labels.push("alerts".to_string()),
-                8 => provider_labels.push("hiring".to_string()),
-                10 => provider_labels.push("potential_spam".to_string()),
-                11 => provider_labels.push("promotions".to_string()),
-                12 => provider_labels.push("potential_spam".to_string()),
-                _ => {}
-            }
-            if matches!(category, 0 | 3 | 8) && !sent && reply_idx + 1 == thread_len {
-                provider_labels.push("waiting".to_string());
-            }
-
-            let unsubscribe = match category {
-                2 if thread_num.is_multiple_of(2) => UnsubscribeMethod::OneClick {
-                    url: format!("https://lists.demo.mxr.local/unsubscribe/{thread_num}"),
-                },
-                2 => UnsubscribeMethod::Mailto {
-                    address: "unsubscribe@lists.demo.mxr.local".to_string(),
-                    subject: Some(format!("unsubscribe-{thread_num}")),
-                },
-                11 => UnsubscribeMethod::OneClick {
-                    url: format!("https://promo.demo.mxr.local/unsubscribe/{thread_num}"),
-                },
-                _ => UnsubscribeMethod::None,
-            };
-            let has_attachments = matches!(category, 5 | 6 | 8)
-                || (matches!(category, 2 | 11) && thread_num.is_multiple_of(8))
-                || thread_num.is_multiple_of(41);
-            let snippet = demo_snippet(root_subject, category, reply_idx, sent);
-            let body = demo_body(root_subject, category, reply_idx, sent, &peer.email);
-            let current_header = push_demo_msg(
-                &mut envelopes,
-                &mut bodies,
-                &mut msg_num,
-                account_id,
-                &thread_id,
-                DemoMessage {
-                    from,
-                    to,
-                    cc,
-                    subject,
-                    snippet,
-                    body_text: body,
-                    date,
-                    flags,
-                    has_attachments,
-                    category,
-                    unsubscribe,
-                    label_provider_ids: provider_labels,
-                    in_reply_to: previous_message_id.clone(),
-                    references: references.clone(),
-                },
-            );
-            if previous_message_id.is_none() {
-                references.push(current_header.clone());
-            }
-            previous_message_id = Some(current_header);
-        }
-        thread_num += 1;
-    }
-
-    (envelopes, bodies, labels)
 }
 
 fn generate_curated_demo_fixtures(
@@ -1150,6 +1305,7 @@ fn curated_demo_senders() -> [CuratedDemoSender; 12] {
     ]
 }
 
+#[derive(Clone, Copy)]
 struct DemoAccountProfile {
     display_name: &'static str,
     email: &'static str,
@@ -1257,14 +1413,13 @@ struct DemoMessage {
 /// `tracking-numbers` crate accepts them. Bodies deliberately avoid
 /// review/survey phrasing ("rate your delivery") which the detector treats as
 /// post-delivery noise.
-fn push_delivery_demo_threads(
-    envelopes: &mut Vec<Envelope>,
-    bodies: &mut HashMap<String, MessageBody>,
-    msg_num: &mut usize,
+fn delivery_demo_messages(
     account_id: &AccountId,
     self_addr: &Address,
     now: chrono::DateTime<chrono::Utc>,
-) {
+) -> Vec<(Envelope, MessageBody)> {
+    let mut messages = Vec::with_capacity(DELIVERY_DEMO_MESSAGE_COUNT);
+
     // --- Amazon: full lifecycle in one thread → resolves to delivered. ---
     let order = "112-7480913-6624530";
     let tracking = "TBA619632698000"; // Amazon Logistics (valid format)
@@ -1272,7 +1427,7 @@ fn push_delivery_demo_threads(
         name: Some("Amazon.com".to_string()),
         email: "shipment-tracking@amazon.com".to_string(),
     };
-    let thread = ThreadId::new();
+    let thread = delivery_thread_id(account_id, "amazon");
     let lifecycle: [(i64, String, String, MessageFlags); 3] = [
         (
             6,
@@ -1299,12 +1454,17 @@ fn push_delivery_demo_threads(
             MessageFlags::empty(),
         ),
     ];
-    let mut references = Vec::new();
-    let mut previous_message_id: Option<String> = None;
-    for (days_ago, subject, body, flags) in lifecycle {
-        let header = push_demo_msg(
-            envelopes,
-            bodies,
+    for (reply_idx, (days_ago, subject, body, flags)) in lifecycle.into_iter().enumerate() {
+        let msg_num = reply_idx + 1;
+        let (in_reply_to, references) = if reply_idx == 0 {
+            (None, Vec::new())
+        } else {
+            (
+                Some(demo_message_id_header(msg_num - 1)),
+                vec![demo_message_id_header(1)],
+            )
+        };
+        messages.push(build_demo_msg(
             msg_num,
             account_id,
             &thread,
@@ -1321,23 +1481,17 @@ fn push_delivery_demo_threads(
                 category: 5,
                 unsubscribe: UnsubscribeMethod::None,
                 label_provider_ids: vec!["INBOX".to_string()],
-                in_reply_to: previous_message_id.clone(),
-                references: references.clone(),
+                in_reply_to,
+                references,
             },
-        );
-        if previous_message_id.is_none() {
-            references.push(header.clone());
-        }
-        previous_message_id = Some(header);
+        ));
     }
 
     // --- UPS: a single in-transit shipment from a boutique merchant. ---
-    push_demo_msg(
-        envelopes,
-        bodies,
-        msg_num,
+    messages.push(build_demo_msg(
+        4,
         account_id,
-        &ThreadId::new(),
+        &delivery_thread_id(account_id, "ups"),
         DemoMessage {
             from: Address {
                 name: Some("UPS".to_string()),
@@ -1359,15 +1513,13 @@ fn push_delivery_demo_threads(
             in_reply_to: None,
             references: Vec::new(),
         },
-    );
+    ));
 
     // --- USPS: a single out-for-delivery shipment. ---
-    push_demo_msg(
-        envelopes,
-        bodies,
-        msg_num,
+    messages.push(build_demo_msg(
+        5,
         account_id,
-        &ThreadId::new(),
+        &delivery_thread_id(account_id, "usps"),
         DemoMessage {
             from: Address {
                 name: Some("USPS Informed Delivery".to_string()),
@@ -1389,9 +1541,29 @@ fn push_delivery_demo_threads(
             in_reply_to: None,
             references: Vec::new(),
         },
-    );
+    ));
+
+    messages
 }
 
+/// Materialising variant used by the curated (hand-written) demo dataset,
+/// which builds its messages eagerly.
+fn push_delivery_demo_threads(
+    envelopes: &mut Vec<Envelope>,
+    bodies: &mut HashMap<String, MessageBody>,
+    msg_num: &mut usize,
+    account_id: &AccountId,
+    self_addr: &Address,
+    now: chrono::DateTime<chrono::Utc>,
+) {
+    for (envelope, body) in delivery_demo_messages(account_id, self_addr, now) {
+        bodies.insert(envelope.provider_id.clone(), body);
+        envelopes.push(envelope);
+        *msg_num += 1;
+    }
+}
+
+/// Materialising variant of [`build_demo_msg`] for the curated dataset.
 fn push_demo_msg(
     envelopes: &mut Vec<Envelope>,
     bodies: &mut HashMap<String, MessageBody>,
@@ -1400,6 +1572,27 @@ fn push_demo_msg(
     thread_id: &ThreadId,
     message: DemoMessage,
 ) -> String {
+    let (envelope, body) = build_demo_msg(*msg_num, account_id, thread_id, message);
+    *msg_num += 1;
+    let header = envelope
+        .message_id_header
+        .clone()
+        .unwrap_or_else(|| demo_message_id_header(*msg_num - 1));
+    bodies.insert(envelope.provider_id.clone(), body);
+    envelopes.push(envelope);
+    header
+}
+
+fn delivery_thread_id(account_id: &AccountId, carrier: &str) -> ThreadId {
+    ThreadId::from_scoped_provider_id(account_id, "fake", &format!("demo-delivery-{carrier}"))
+}
+
+fn build_demo_msg(
+    msg_num: usize,
+    account_id: &AccountId,
+    thread_id: &ThreadId,
+    message: DemoMessage,
+) -> (Envelope, MessageBody) {
     let DemoMessage {
         from,
         to,
@@ -1416,11 +1609,12 @@ fn push_demo_msg(
         in_reply_to,
         references,
     } = message;
-    let current_num = *msg_num;
-    let msg_id = MessageId::new();
+    let current_num = msg_num;
     let provider_id = format!("demo-msg-{current_num}");
-    let message_id_header = format!("<demo-{current_num}@mxr.local>");
-    *msg_num += 1;
+    // Derived, not random: the same index must regenerate the same message
+    // so a later page or a `fetch_message` sees identical ids.
+    let msg_id = MessageId::from_scoped_provider_id(account_id, "fake", &provider_id);
+    let message_id_header = demo_message_id_header(current_num);
 
     let attachments = demo_attachments(&msg_id, current_num, category, flags, has_attachments);
     let text_html = demo_html_body(&subject, &body_text, category, current_num);
@@ -1431,12 +1625,12 @@ fn push_demo_msg(
             .map(|attachment| attachment.size_bytes)
             .sum::<u64>()
         + 700;
-    envelopes.push(Envelope {
+    let envelope = Envelope {
         id: msg_id.clone(),
         account_id: account_id.clone(),
-        provider_id: provider_id.clone(),
+        provider_id,
         thread_id: thread_id.clone(),
-        message_id_header: Some(message_id_header.clone()),
+        message_id_header: Some(message_id_header),
         in_reply_to,
         references,
         from,
@@ -1456,21 +1650,18 @@ fn push_demo_msg(
         // Seed one fixture with a sample keyword so the keyword
         // round-trip is exercised by the conformance test path.
         keywords: std::collections::BTreeSet::from(["$Forwarded".to_string()]),
-    });
+    };
 
-    bodies.insert(
-        provider_id,
-        MessageBody {
-            message_id: msg_id,
-            text_plain: Some(body_text),
-            text_html: Some(text_html),
-            attachments,
-            fetched_at: chrono::Utc::now(),
-            metadata: Default::default(),
-        },
-    );
+    let body = MessageBody {
+        message_id: msg_id,
+        text_plain: Some(body_text),
+        text_html: Some(text_html),
+        attachments,
+        fetched_at: chrono::Utc::now(),
+        metadata: Default::default(),
+    };
 
-    message_id_header
+    (envelope, body)
 }
 
 fn demo_attachments(
@@ -1491,8 +1682,10 @@ fn demo_attachments(
                                disposition: AttachmentDisposition,
                                content_id: Option<String>| {
         let attachment_index = attachments.len() + 1;
+        let provider_id = format!("demo-att-{current_num}-{attachment_index}");
         attachments.push(AttachmentMeta {
-            id: AttachmentId::new(),
+            // Derived so regenerating a message yields the same attachment ids.
+            id: AttachmentId::from_provider_id("fake", &provider_id),
             message_id: message_id.clone(),
             filename,
             mime_type: mime_type.to_string(),
@@ -1501,7 +1694,7 @@ fn demo_attachments(
             content_location: None,
             size_bytes,
             local_path: None,
-            provider_id: format!("demo-att-{current_num}-{attachment_index}"),
+            provider_id,
         });
     };
 

@@ -39,10 +39,12 @@ pub(super) async fn collect_status_snapshot(
     for account in accounts {
         names.push(account.name.clone());
         total_messages += message_counts.get(&account.id).copied().unwrap_or(0);
+        let progress = state.sync_progress(&account.id);
         sync_statuses.push(account_sync_status(
             account.clone(),
             runtime_statuses.get(&account.id).cloned(),
             cursors.get(&account.id).cloned(),
+            progress,
         ));
     }
 
@@ -81,7 +83,12 @@ pub(super) async fn build_account_sync_status(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(account_sync_status(account, runtime, cursor))
+    Ok(account_sync_status(
+        account,
+        runtime,
+        cursor,
+        state.sync_progress(account_id),
+    ))
 }
 
 /// Fallback cursor summary for status reports built from the store alone
@@ -527,6 +534,7 @@ fn account_sync_status(
     account: Account,
     runtime: Option<SyncRuntimeStatus>,
     cursor: Option<mxr_core::types::SyncCursor>,
+    progress: Option<mxr_protocol::SyncProgressData>,
 ) -> AccountSyncStatus {
     let last_attempt_at = runtime
         .as_ref()
@@ -567,6 +575,7 @@ fn account_sync_status(
         ),
         last_synced_count: runtime.as_ref().map_or(0, |row| row.last_synced_count),
         healthy,
+        progress,
     }
 }
 

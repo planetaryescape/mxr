@@ -23,7 +23,7 @@ use mxr_protocol::{
     SearchExplainResult, SearchResultItem,
 };
 use mxr_search::{SearchPage, SearchResult};
-use mxr_store::{SyncRuntimeStatusUpdate, SyncStatus as StoreSyncStatus};
+use mxr_store::SyncRuntimeStatusUpdate;
 use std::collections::HashMap;
 
 #[cfg(not(test))]
@@ -1224,6 +1224,7 @@ pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
 pub(crate) async fn sync_now(
     state: &std::sync::Arc<AppState>,
     account_id: Option<&AccountId>,
+    background: bool,
 ) -> HandlerResult {
     let operation_id = uuid::Uuid::now_v7().to_string();
     let operation = "sync".to_string();
@@ -1255,76 +1256,26 @@ pub(crate) async fn sync_now(
         }
     };
 
-    emit_operation_event(
+    let sync_operation = crate::loops::SyncOperation {
+        operation_id: operation_id.clone(),
+        operation: operation.clone(),
+        account_id: account_id.clone(),
+    };
+
+    if background {
+        return start_background_sync(state, provider, sync_operation).await;
+    }
+
+    let pass = crate::loops::begin_sync_pass(
         state,
-        DaemonEvent::OperationProgress {
-            operation_id: operation_id.clone(),
-            operation: operation.clone(),
-            account_id: account_id.clone(),
-            current: 0,
-            total: None,
-            message: "Syncing provider".to_string(),
-        },
-    );
-
-    let provider_account_id = provider.account_id().clone();
-    let provider_guard = state.acquire_provider_operation(&provider_account_id).await;
-    let started_at = chrono::Utc::now();
-    let existing_status = state
-        .store
-        .get_sync_runtime_status(&provider_account_id)
-        .await
-        .ok()
-        .flatten();
-    let pre_sync_cursor = state
-        .store
-        .get_sync_cursor(&provider_account_id)
-        .await
-        .ok()
-        .flatten();
-    let sync_log_id = state
-        .store
-        .insert_sync_log(&provider_account_id, &StoreSyncStatus::Running)
-        .await
-        .ok();
-    let _ = state
-        .store
-        .upsert_sync_runtime_status(
-            &provider_account_id,
-            &SyncRuntimeStatusUpdate {
-                last_attempt_at: Some(started_at),
-                last_error: Some(None),
-                failure_class: Some(None),
-                sync_in_progress: Some(true),
-                current_cursor_summary: Some(Some(crate::loops::describe_sync_cursor(
-                    provider.as_ref(),
-                    pre_sync_cursor.as_ref(),
-                ))),
-                ..Default::default()
-            },
-        )
-        .await;
-
-    let wait = crate::loops::sync_with_detach_timeout(
-        crate::loops::DetachedSyncHandoff {
-            state: state.clone(),
-            account_id: provider_account_id.clone(),
-            provider: provider.clone(),
-            provider_guard,
-            sync_log_id,
-            prior_consecutive_failures: existing_status
-                .as_ref()
-                .map_or(0, |status| status.consecutive_failures),
-        },
-        MANUAL_SYNC_TIMEOUT,
+        provider,
+        Some(sync_operation),
+        crate::loops::SyncStarter::BlockingClient,
     )
     .await;
-    let (sync_result, provider_guard) = match wait {
-        crate::loops::SyncWait::Finished {
-            result,
-            provider_guard,
-        } => (result, provider_guard),
-        crate::loops::SyncWait::TimedOut => {
+    let (pass, result) = match crate::loops::run_sync_pass(pass, MANUAL_SYNC_TIMEOUT).await {
+        crate::loops::SyncWait::Finished { pass, result } => (pass, result),
+        crate::loops::SyncWait::Detached => {
             let error = format!(
                 "sync did not finish within {MANUAL_SYNC_TIMEOUT:?}; it is still running in the background — check `mxr sync status`"
             );
@@ -1341,173 +1292,84 @@ pub(crate) async fn sync_now(
             return Err(crate::handler::HandlerError::Message(error));
         }
     };
-    let outcome = match sync_result {
-        Ok(outcome) => outcome,
-        Err(error) => {
-            let error = error.to_string();
-            let failure_class = crate::loops::classify_sync_error(&error);
-            let consecutive_failures = existing_status
-                .as_ref()
-                .map_or(1, |status| status.consecutive_failures.saturating_add(1));
-            let post_error_cursor = state
-                .store
-                .get_sync_cursor(&provider_account_id)
-                .await
-                .ok()
-                .flatten();
-            let _ = state
-                .store
-                .upsert_sync_runtime_status(
-                    &provider_account_id,
-                    &SyncRuntimeStatusUpdate {
-                        last_error: Some(Some(error.clone())),
-                        failure_class: Some(Some(failure_class.to_string())),
-                        consecutive_failures: Some(consecutive_failures),
-                        backoff_until: Some(None),
-                        sync_in_progress: Some(false),
-                        current_cursor_summary: Some(Some(crate::loops::describe_sync_cursor(
-                            provider.as_ref(),
-                            post_error_cursor.as_ref(),
-                        ))),
-                        ..Default::default()
-                    },
-                )
-                .await;
-            if let Some(log_id) = sync_log_id {
-                let _ = state
-                    .store
-                    .complete_sync_log(log_id, &StoreSyncStatus::Error, 0, Some(&error))
-                    .await;
-            }
-            drop(provider_guard);
-            emit_operation_event(
-                state,
-                DaemonEvent::OperationFailed {
-                    operation_id,
-                    operation,
-                    account_id,
-                    error: error.clone(),
-                    retryable: true,
-                },
-            );
-            return Err(crate::handler::HandlerError::Message(error));
-        }
+    // `finalize_sync_pass` emits this pass's completion and failure events and
+    // runs the full post-sync fan-out; all that is left is turning its answer
+    // into a response.
+    match crate::loops::finalize_sync_pass(pass, result).await {
+        Ok(_) => Ok(ResponseData::Ack),
+        Err(error) => Err(crate::handler::HandlerError::Message(error.to_string())),
+    }
+}
+
+/// Start a sync and answer immediately.
+///
+/// The account is marked as syncing before the ack, and stays marked while the
+/// claim is queued, so a client that acks and then polls `GetSyncStatus`
+/// cannot read the account as idle before the spawned pass has taken the
+/// provider lock — nor be fooled by some other pass finishing in that window.
+/// A second background sync while one is outstanding joins it rather than
+/// queueing another pass behind the same lock.
+async fn start_background_sync(
+    state: &std::sync::Arc<AppState>,
+    provider: std::sync::Arc<dyn mxr_core::MailSyncProvider>,
+    operation: crate::loops::SyncOperation,
+) -> HandlerResult {
+    let account_id = provider.account_id().clone();
+    let Some(mut claim) = AppState::claim_background_sync(state, &account_id) else {
+        tracing::info!(account = %account_id, "background sync already running; joining it");
+        emit_operation_event(
+            state,
+            DaemonEvent::OperationCompleted {
+                operation_id: operation.operation_id,
+                operation: operation.operation,
+                account_id: operation.account_id,
+                message: "Sync already running".to_string(),
+            },
+        );
+        return Ok(ResponseData::Ack);
     };
-    let post_sync_cursor = state
-        .store
-        .get_sync_cursor(&provider_account_id)
-        .await
-        .ok()
-        .flatten();
     let _ = state
         .store
         .upsert_sync_runtime_status(
-            &provider_account_id,
+            &account_id,
             &SyncRuntimeStatusUpdate {
-                last_success_at: Some(chrono::Utc::now()),
-                last_error: Some(None),
-                failure_class: Some(None),
-                consecutive_failures: Some(0),
-                backoff_until: Some(None),
-                // Mid-backfill pages leave the account still syncing; the
-                // wake below hands the next page to the account's sync loop.
-                sync_in_progress: Some(outcome.has_more),
-                current_cursor_summary: Some(Some(crate::loops::describe_sync_cursor(
-                    provider.as_ref(),
-                    post_sync_cursor.as_ref(),
-                ))),
-                last_synced_count: Some(outcome.synced_count),
+                sync_in_progress: Some(true),
                 ..Default::default()
             },
         )
         .await;
-    if outcome.has_more {
-        // A manual sync returns after one page. Without a wake, an idle
-        // account would sit at `sync_in_progress = true` until the sync
-        // loop's next tick (a full interval away); the loop only re-polls
-        // by itself when it is already mid-cycle. `notify_one` keeps a
-        // permit if the loop is busy, so the wake is never lost.
-        state
-            .idle_notify_for_account(&provider_account_id)
-            .notify_one();
-    }
-    if let Some(log_id) = sync_log_id {
-        let _ = state
-            .store
-            .complete_sync_log(
-                log_id,
-                &StoreSyncStatus::Success,
-                outcome.synced_count,
-                None,
-            )
-            .await;
-    }
-    drop(provider_guard);
-    if let Err(error) = crate::handler::reconcile_provider_drafts(state, &provider_account_id).await
-    {
-        tracing::warn!(account = %provider_account_id, %error, "provider draft reconciliation failed");
-    }
-    if !outcome.upserted_message_ids.is_empty() {
-        emit_operation_event(
-            state,
-            DaemonEvent::OperationProgress {
-                operation_id: operation_id.clone(),
-                operation: operation.clone(),
-                account_id: account_id.clone(),
-                current: outcome.upserted_message_ids.len() as u32,
-                total: Some(outcome.upserted_message_ids.len() as u32),
-                message: "Queueing semantic ingest".to_string(),
-            },
-        );
-        if let Err(error) = state
-            .semantic
-            .enqueue_ingest_messages(&outcome.upserted_message_ids)
-            .await
-        {
-            tracing::warn!(error = %error, "semantic ingest enqueue failed after sync");
-            emit_operation_event(
-                state,
-                DaemonEvent::OperationProgress {
-                    operation_id: operation_id.clone(),
-                    operation: operation.clone(),
-                    account_id: account_id.clone(),
-                    current: outcome.upserted_message_ids.len() as u32,
-                    total: Some(outcome.upserted_message_ids.len() as u32),
-                    message: format!(
-                        "Sync complete; semantic ingest deferred after enqueue failure: {error}"
-                    ),
-                },
-            );
-        }
-        if let Some(account_id) = account_id.as_ref() {
-            if let Err(error) = state
-                .contacts_refresh
-                .enqueue_accounts(std::slice::from_ref(account_id))
-                .await
-            {
-                tracing::warn!(%account_id, "contacts refresh enqueue failed after sync: {error}");
+    let task_state = state.clone();
+    tokio::spawn(async move {
+        // `claim` is moved in and dropped when this task ends, however it
+        // ends: a panic in the pass, or the runtime dropping the task at
+        // shutdown, still releases the account. A leaked claim would have
+        // every later sync answer "already running" over an account whose
+        // `sync_in_progress` never clears.
+        let pass = crate::loops::begin_sync_pass(
+            &task_state,
+            provider,
+            Some(operation),
+            crate::loops::SyncStarter::BackgroundClient,
+        )
+        .await;
+        // The pass has the provider lock and has written its own status row,
+        // so the claim no longer has to stand in for it.
+        claim.mark_started();
+        match crate::loops::run_sync_pass(pass, MANUAL_SYNC_TIMEOUT).await {
+            crate::loops::SyncWait::Finished { pass, result } => {
+                let _ = crate::loops::finalize_sync_pass(pass, result).await;
             }
+            // The reaper owns the pass now and finalizes it the same way.
+            // Dropping the claim here is deliberate: a pass that has been
+            // running for ten minutes should not keep blocking a fresh manual
+            // sync, and the provider lock still serialises the two.
+            crate::loops::SyncWait::Detached => {}
         }
-        if let Err(error) = state
-            .relationship
-            .enqueue_contacts_from_messages(&outcome.upserted_message_ids)
-            .await
-        {
-            tracing::warn!("relationship profile enqueue failed after sync: {error}");
-        }
-    }
-    emit_operation_event(
-        state,
-        DaemonEvent::OperationCompleted {
-            operation_id,
-            operation,
-            account_id,
-            message: format!(
-                "Sync complete: {} message(s) updated",
-                outcome.upserted_message_ids.len()
-            ),
-        },
-    );
+        // Reached only if the pass was handed to a finalizer. A panic above
+        // skips this, and the claim's `Drop` then clears the in-progress flag
+        // this handler wrote before acking.
+        claim.mark_handed_off();
+    });
     Ok(ResponseData::Ack)
 }
 
@@ -1606,7 +1468,7 @@ pub(crate) async fn incremental_analytics_backfill(state: &AppState) -> Analytic
     report
 }
 
-fn emit_operation_event(state: &AppState, event: DaemonEvent) {
+pub(crate) fn emit_operation_event(state: &AppState, event: DaemonEvent) {
     let _ = state.event_tx.send(IpcMessage {
         id: 0,
         source: ::mxr_protocol::ClientKind::default(),
@@ -2039,7 +1901,7 @@ mod tests {
         config.search.semantic.enabled = false;
         state.set_config_for_test(config).await;
 
-        let response = sync_now(&state, None).await.unwrap();
+        let response = sync_now(&state, None, false).await.unwrap();
         assert!(matches!(response, ResponseData::Ack));
 
         let lexical_hits = state

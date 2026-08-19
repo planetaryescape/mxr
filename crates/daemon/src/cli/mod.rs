@@ -744,7 +744,7 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
-    /// Trigger or query sync. Triggering runs a sync pass in the daemon and waits on it with no client-side deadline; the account can still be syncing afterwards, because the daemon detaches a pass that outruns its own limit and the account's sync loop may have further backfill pages. Use --wait to wait for the account itself to go idle.
+    /// Trigger or query sync. Triggering starts a sync in the daemon and returns as soon as it has started; the account keeps syncing afterwards, through the rest of a backfill and any queued tick. Use --wait to wait for the account itself to go idle.
     Sync {
         #[arg(long)]
         account: Option<String>,
@@ -756,7 +756,8 @@ pub enum Command {
         /// Maximum seconds --wait spends waiting for the account to go idle; does not bound the sync itself. Default 60.
         #[arg(long, default_value_t = 60)]
         wait_timeout_secs: u64,
-        /// Output format. Honored by `--status`; ignored by trigger mode today.
+        /// Output format. JSON prints the trigger's acknowledgement, and with
+        /// --wait the account's final status.
         #[arg(long, value_enum)]
         format: Option<OutputFormat>,
     },

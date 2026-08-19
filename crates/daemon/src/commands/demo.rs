@@ -552,26 +552,19 @@ async fn sync_demo_accounts(expected_messages: usize) -> anyhow::Result<()> {
 
 /// Seed one demo account and wait for it, however long that takes.
 ///
-/// `SyncNow` runs in the daemon before it answers, so it goes over
-/// `request_with_events` (no deadline, streams the daemon's progress events).
-/// The old code used `request`, whose 120s cap is what killed `mxr demo` on a
-/// mailbox any bigger or a machine any slower than the developer's (#179), and
-/// then re-issued `SyncNow` on failure — which only queued a second sync
-/// behind the first and timed out again.
-///
-/// The `Ack` means the daemon finished a sync pass, not that the account is
-/// done: its own sync loop may still be working (further backfill pages, a
-/// queued tick). The account's status row is the authority, so the answer is
-/// only the cue to start watching it.
+/// The daemon acks a background `SyncNow` as soon as the sync has started, and
+/// marks the account as syncing before it answers — so the ack is the cue to
+/// start watching the status row, with no window in which the account looks
+/// idle because the pass has not taken the provider lock yet. The account's
+/// status row is the authority for when the seed is done: the sync loop walks
+/// the remaining backfill pages long after the first one lands.
 async fn sync_demo_account(account_id: &AccountId, expected_messages: usize) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let before = match fetch_demo_sync_status(&mut client, account_id).await {
-        Ok(status) => status.last_success_at,
+        Ok(status) => status,
         Err(error) => {
             client = reconnect_demo_client(&error).await?;
-            fetch_demo_sync_status(&mut client, account_id)
-                .await?
-                .last_success_at
+            fetch_demo_sync_status(&mut client, account_id).await?
         }
     };
 
@@ -581,43 +574,43 @@ async fn sync_demo_account(account_id: &AccountId, expected_messages: usize) -> 
         "Syncing demo account",
         Request::SyncNow {
             account_id: Some(account_id.clone()),
+            background: true,
         },
     )
     .await;
 
-    // A failure here does not mean the sync failed: past its own ceiling the
-    // daemon detaches the sync and answers with an error while the work keeps
-    // running. Ask the account whether it is still syncing rather than reading
-    // the error text — the sync itself is the authority, and a `SyncNow` retry
-    // would just queue a second sync behind the live one.
     let failure = match sync_response {
         Ok(Response::Ok {
             data: ResponseData::Ack,
         }) => None,
-        Ok(Response::Error { message, .. }) => Some(message),
+        // The daemon only rejects a sync it could not start; anything that
+        // goes wrong once it is running lands on the status row we watch next.
+        Ok(Response::Error { message, .. }) => anyhow::bail!(message),
         Ok(other) => anyhow::bail!("Unexpected sync response: {other:?}"),
         Err(error) => {
             client = reconnect_demo_client(&error).await?;
             Some(error.to_string())
         }
     };
+    // A transport failure leaves it genuinely unclear whether the daemon ever
+    // saw the request. Ask the account — but not by its instantaneous
+    // `sync_in_progress`: a small seed can be over before we reconnect, and
+    // "not syncing" would then read as "the trigger never landed". Compare it
+    // against the snapshot instead: any movement at all means the daemon acted
+    // on the request.
     if let Some(failure) = failure {
-        if !fetch_demo_sync_status(&mut client, account_id)
-            .await?
-            .sync_in_progress
-        {
+        let now = fetch_demo_sync_status(&mut client, account_id).await?;
+        let acted = now.sync_in_progress
+            || now.last_attempt_at != before.last_attempt_at
+            || now.last_success_at != before.last_success_at
+            || now.last_error != before.last_error;
+        if !acted {
             anyhow::bail!(failure);
         }
-        println!("  sync is still running in the daemon; following its progress");
+        println!("  sync is running in the daemon; following its progress");
     }
 
-    wait_for_demo_sync(
-        &mut client,
-        account_id,
-        before.as_deref(),
-        expected_messages,
-    )
-    .await
+    wait_for_demo_sync(&mut client, account_id, &before, expected_messages).await
 }
 
 /// Wait for `account_id` to report a finished sync, bounded by observable
@@ -625,7 +618,7 @@ async fn sync_demo_account(account_id: &AccountId, expected_messages: usize) -> 
 async fn wait_for_demo_sync(
     client: &mut IpcClient,
     account_id: &AccountId,
-    before: Option<&str>,
+    before: &AccountSyncStatus,
     expected_messages: usize,
 ) -> anyhow::Result<()> {
     let progress = ProgressPrinter::new(false);
@@ -665,33 +658,54 @@ async fn wait_for_demo_sync(
             }
         }
 
-        // `last_success_at` is stored with one-second granularity, and the
-        // daemon auto-syncs every account the moment it starts. A seed that
-        // finishes inside that same second leaves this request's own sync
-        // indistinguishable from the startup one — and with the provider
-        // already drained it reports zero messages, so neither half of
-        // `completed_new_sync` fires and the wait would sit here until the
-        // next sync tick (a full `sync_interval`, 60s in the demo profile).
-        // The store having everything that was asked for is the other, unambiguous
-        // way to know the seed is done.
-        let completed_new_sync = status.last_success_at.as_deref() != before
-            || status.last_synced_count > 0
-            || (expected_messages > 0 && messages >= expected_messages);
-        if completed_new_sync && !status.sync_in_progress {
-            return Ok(());
-        }
-        if !status.sync_in_progress {
-            if let Some(error) = status.last_error.as_deref() {
+        // Failure first. A background pass that fails still clears
+        // `sync_in_progress`, and `last_synced_count` keeps reporting the last
+        // page that *did* land — so checking completion first would call a
+        // seed that died after its second page a success. Only an error from
+        // an attempt newer than the snapshot counts; the account may have been
+        // carrying an old one before we asked for anything.
+        let attempted_since = status.last_attempt_at != before.last_attempt_at;
+        if let Some(error) = status.last_error.as_deref() {
+            if attempted_since || status.last_error != before.last_error {
                 anyhow::bail!("demo sync failed: {error}");
             }
         }
 
+        // `last_success_at` is stored with one-second granularity, and the
+        // daemon auto-syncs every account the moment it starts. A seed that
+        // finishes inside that same second leaves this request's own sync
+        // indistinguishable from the startup one — and with the provider
+        // already drained it reports zero messages, so neither of the first
+        // two signals fires and the wait would sit here until the next sync
+        // tick (a full `sync_interval`, 60s in the demo profile). The store
+        // having everything that was asked for is the other, unambiguous way
+        // to know the seed is done.
+        //
+        // `last_synced_count` only counts when the account has been attempted
+        // since the snapshot: it is left over from whatever page landed last,
+        // so on a re-run of `mxr demo` it is non-zero from the start.
+        let completed_new_sync = status.last_success_at != before.last_success_at
+            || (attempted_since && status.last_synced_count > 0)
+            || (expected_messages > 0 && messages >= expected_messages);
+        if completed_new_sync && !status.sync_in_progress {
+            return Ok(());
+        }
+
+        // The account's own progress advances within a page and costs nothing
+        // to read, so it joins the stall fingerprint: a seed that is still
+        // moving inside a page no longer looks stalled just because the
+        // store-wide count has not caught up.
+        let account_progress = status
+            .progress
+            .as_ref()
+            .map(|progress| format!("{}/{}", progress.current, progress.message));
         let fingerprint = format!(
-            "{}/{}/{}/{}/{messages}",
+            "{}/{}/{}/{}/{messages}/{}",
             status.sync_in_progress,
             status.last_synced_count,
             status.last_success_at.as_deref().unwrap_or("-"),
             status.current_cursor_summary.as_deref().unwrap_or("-"),
+            account_progress.as_deref().unwrap_or("-"),
         );
         if !stall.observe(fingerprint) {
             anyhow::bail!(

@@ -14,7 +14,7 @@ use mxr_core::{MailSyncProvider, MxrError};
 use mxr_protocol::*;
 use mxr_rules::{Rule, RuleAction, RuleEngine, RuleExecutionLog};
 use mxr_store::{SyncRuntimeStatusUpdate, SyncStatus as StoreSyncStatus};
-use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::watch;
 use tokio::time::{interval, timeout, Duration};
@@ -80,52 +80,204 @@ const DETACHED_SYNC_GRACE: Duration = Duration::from_secs(10 * 60);
 #[cfg(test)]
 const DETACHED_SYNC_GRACE: Duration = Duration::from_millis(500);
 
-/// Result of waiting on a detached sync task for up to a wall-clock
-/// limit.
-pub(crate) enum SyncWait {
-    /// The sync finished within the limit. The caller finalizes
-    /// runtime status, sync log, and provider guard exactly as if it
-    /// had run the sync inline.
-    Finished {
-        result: Result<mxr_sync::SyncOutcome, MxrError>,
-        provider_guard: tokio::sync::OwnedMutexGuard<()>,
-    },
-    /// The limit elapsed while the sync was still running. The sync
-    /// task keeps running; a reaper task now owns the provider guard,
-    /// sync log row, and runtime status row and finalizes all three
-    /// when the sync actually completes. The caller must not touch
-    /// any of them.
-    TimedOut,
-}
-
-/// Everything the reaper needs to finalize a sync that outlived its
-/// caller's wait limit.
-pub(crate) struct DetachedSyncHandoff {
+/// A sync pass in flight, with everything needed to finalize it — by the
+/// caller that started it, or by the reaper when it outlives the caller's
+/// patience. One value, one finalizer: before this existed the sync loop, the
+/// manual-sync handler, and the reaper each finalized their own way, and the
+/// reaper's way quietly skipped the whole post-sync fan-out.
+pub(crate) struct SyncPass {
     pub state: Arc<AppState>,
     pub account_id: AccountId,
     pub provider: Arc<dyn MailSyncProvider>,
     pub provider_guard: tokio::sync::OwnedMutexGuard<()>,
     pub sync_log_id: Option<i64>,
     pub prior_consecutive_failures: u32,
+    pub pre_sync_cursor: Option<SyncCursor>,
+    /// Set when a client is streaming this pass's progress events.
+    pub operation: Option<SyncOperation>,
+    pub started_by: SyncStarter,
+    /// Cleared as the pass is finalized. The engine runs on its own task, and
+    /// an aborted task keeps running until it reaches an await point — long
+    /// enough to report one more milestone and resurrect a run that has just
+    /// been wound up, leaving stale progress on the status row.
+    progress_live: Arc<AtomicBool>,
+    /// Set by the reaper so the log and the event trail say which pass this
+    /// was.
+    detached: bool,
 }
 
-/// Run `sync_account_with_outcome` on its own task and wait up to
-/// `limit`. Wrapping the sync future directly in
-/// `tokio::time::timeout` cancels it at an arbitrary await point on
-/// timeout — dropping an IMAP session mid-command and abandoning
-/// cursor/status writes partway through. Spawning means the sync
-/// always runs to completion; the limit only bounds how long the
-/// caller waits before handing finalization to a reaper task.
-pub(crate) async fn sync_with_detach_timeout(
-    handoff: DetachedSyncHandoff,
-    limit: Duration,
-) -> SyncWait {
-    let task_state = handoff.state.clone();
-    let task_provider = handoff.provider.clone();
+/// Who started a pass, and therefore who is still waiting on it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SyncStarter {
+    /// The account's own sync loop, which re-polls itself while pages remain.
+    AccountLoop,
+    /// A client holding its request open until the pass is done.
+    BlockingClient,
+    /// A client that has already been acked and is watching the status row.
+    BackgroundClient,
+}
+
+/// The client-visible operation a pass reports its progress under.
+#[derive(Clone)]
+pub(crate) struct SyncOperation {
+    pub operation_id: String,
+    pub operation: String,
+    pub account_id: Option<AccountId>,
+}
+
+/// What a caller needs back from a pass it finalized.
+pub(crate) struct SyncPassOutcome {
+    pub synced_count: u32,
+    pub has_more: bool,
+}
+
+/// Result of waiting on a sync pass for up to a wall-clock limit.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one of these exists per sync pass, and a pass runs for seconds to minutes; boxing would buy nothing but ceremony at the call sites"
+)]
+pub(crate) enum SyncWait {
+    /// The pass finished within the limit and is the caller's to finalize.
+    Finished {
+        pass: SyncPass,
+        result: Result<mxr_sync::SyncOutcome, MxrError>,
+    },
+    /// The limit elapsed while the sync was still running. The sync keeps
+    /// running and a reaper task now owns the pass — the caller must not
+    /// touch the provider guard, sync log row, or runtime status.
+    Detached,
+}
+
+/// Open a sync pass: take the account's provider lock, open its sync-log row,
+/// and mark the account as syncing. Shared by the sync loop and the manual
+/// sync handler so both accounts start identically bookkept.
+pub(crate) async fn begin_sync_pass(
+    state: &Arc<AppState>,
+    provider: Arc<dyn MailSyncProvider>,
+    operation: Option<SyncOperation>,
+    started_by: SyncStarter,
+) -> SyncPass {
+    let account_id = provider.account_id().clone();
+    let provider_guard = state.acquire_provider_operation(&account_id).await;
+    let existing_status = state
+        .store
+        .get_sync_runtime_status(&account_id)
+        .await
+        .ok()
+        .flatten();
+    let pre_sync_cursor = state
+        .store
+        .get_sync_cursor(&account_id)
+        .await
+        .ok()
+        .flatten();
+    let sync_log_id = state
+        .store
+        .insert_sync_log(&account_id, &StoreSyncStatus::Running)
+        .await
+        .ok();
+    let _ = state
+        .store
+        .upsert_sync_runtime_status(
+            &account_id,
+            &SyncRuntimeStatusUpdate {
+                last_attempt_at: Some(chrono::Utc::now()),
+                last_error: Some(None),
+                failure_class: Some(None),
+                sync_in_progress: Some(true),
+                current_cursor_summary: Some(Some(describe_sync_cursor(
+                    provider.as_ref(),
+                    pre_sync_cursor.as_ref(),
+                ))),
+                ..Default::default()
+            },
+        )
+        .await;
+    SyncPass {
+        state: state.clone(),
+        account_id,
+        provider,
+        provider_guard,
+        sync_log_id,
+        prior_consecutive_failures: existing_status
+            .as_ref()
+            .map_or(0, |status| status.consecutive_failures),
+        pre_sync_cursor,
+        operation,
+        started_by,
+        progress_live: Arc::new(AtomicBool::new(true)),
+        detached: false,
+    }
+}
+
+/// Turn the engine's milestones into live status and, when someone is
+/// listening, `OperationProgress` events. Only the "stored" milestone adds to
+/// the run's message count — the same page is reported three times, and
+/// counting each one would treble it.
+fn progress_sink(pass: &SyncPass) -> impl Fn(mxr_sync::SyncProgress) + Send + Sync + 'static {
+    let state = pass.state.clone();
+    let account_id = pass.account_id.clone();
+    let operation = pass.operation.clone();
+    let live = pass.progress_live.clone();
+    move |milestone| {
+        if !live.load(Ordering::Relaxed) {
+            return;
+        }
+        let (stored, message) = match milestone {
+            mxr_sync::SyncProgress::PageFetched { messages, has_more } => (
+                0,
+                if has_more {
+                    format!("Fetched {messages} messages; more pages to come")
+                } else {
+                    format!("Fetched {messages} messages")
+                },
+            ),
+            mxr_sync::SyncProgress::PageStored { messages } => {
+                (messages, format!("Stored {messages} messages"))
+            }
+            mxr_sync::SyncProgress::PageIndexed { messages } => {
+                (0, format!("Indexed {messages} messages"))
+            }
+            mxr_sync::SyncProgress::Restarted => {
+                state.reset_sync_progress(&account_id);
+                (0, "Rebuilding label associations".to_string())
+            }
+        };
+        state.record_sync_progress(&account_id, stored, message);
+        let Some(operation) = &operation else {
+            return;
+        };
+        let Some(progress) = state.sync_progress(&account_id) else {
+            return;
+        };
+        crate::handler::diagnostics_impl::emit_operation_event(
+            &state,
+            DaemonEvent::OperationProgress {
+                operation_id: operation.operation_id.clone(),
+                operation: operation.operation.clone(),
+                account_id: operation.account_id.clone(),
+                current: progress.current,
+                total: progress.total,
+                message: progress.message,
+            },
+        );
+    }
+}
+
+/// Run `pass` on its own task and wait up to `limit`. Wrapping the sync future
+/// directly in `tokio::time::timeout` cancels it at an arbitrary await point
+/// on timeout — dropping an IMAP session mid-command and abandoning
+/// cursor/status writes partway through. Spawning means the sync always runs
+/// to completion; the limit only bounds how long the caller waits before
+/// handing finalization to a reaper task.
+pub(crate) async fn run_sync_pass(mut pass: SyncPass, limit: Duration) -> SyncWait {
+    let task_state = pass.state.clone();
+    let task_provider = pass.provider.clone();
+    let sink = progress_sink(&pass);
     let mut task = tokio::spawn(async move {
         task_state
             .sync_engine
-            .sync_account_with_outcome(task_provider.as_ref())
+            .sync_account_reporting(task_provider.as_ref(), &sink)
             .await
     });
     match timeout(limit, &mut task).await {
@@ -135,164 +287,164 @@ pub(crate) async fn sync_with_detach_timeout(
                     "sync task failed: {join_error}"
                 )))
             });
-            SyncWait::Finished {
-                result,
-                provider_guard: handoff.provider_guard,
-            }
+            SyncWait::Finished { pass, result }
         }
         Err(_) => {
-            // Mark the row so `mxr sync status` is honest about the
-            // wedged-but-alive state. `sync_in_progress` stays true —
-            // the sync genuinely is still running.
-            let _ = handoff
-                .state
-                .store
-                .upsert_sync_runtime_status(
-                    &handoff.account_id,
-                    &SyncRuntimeStatusUpdate {
-                        last_error: Some(Some(format!(
-                            "sync still running after {limit:?}; continuing in background"
-                        ))),
-                        failure_class: Some(Some("timeout".to_string())),
-                        ..Default::default()
-                    },
-                )
-                .await;
-            tokio::spawn(reap_detached_sync(handoff, task));
-            SyncWait::TimedOut
+            // Tell whoever was waiting that their sync outlived the wait but
+            // is still alive. `sync_in_progress` stays true — it genuinely is.
+            //
+            // Only for a caller that *was* waiting: `last_error` is what makes
+            // an account read as unhealthy, and a background sync nobody is
+            // blocked on outrunning its limit is a long backfill, not a fault.
+            if pass.started_by != SyncStarter::BackgroundClient {
+                let _ = pass
+                    .state
+                    .store
+                    .upsert_sync_runtime_status(
+                        &pass.account_id,
+                        &SyncRuntimeStatusUpdate {
+                            last_error: Some(Some(format!(
+                                "sync still running after {limit:?}; continuing in background"
+                            ))),
+                            failure_class: Some(Some("timeout".to_string())),
+                            ..Default::default()
+                        },
+                    )
+                    .await;
+            }
+            // A blocking caller reports the detach to its own client itself;
+            // leaving the operation on the pass would have the reaper emit a
+            // second terminal event for the same operation id.
+            if pass.started_by == SyncStarter::BlockingClient {
+                pass.operation = None;
+            }
+            tokio::spawn(reap_detached_sync(pass, task));
+            SyncWait::Detached
         }
     }
 }
 
-/// Wait for a detached sync to finish, then finalize the runtime
-/// status row, the sync log row, and release the provider guard.
-/// The caller-side post-sync fan-out (semantic ingest, contacts and
-/// relationship refresh, `NewMessages` chime) is skipped on purpose:
-/// the data is in the store, and the next sync tick plus the startup
-/// analytics repair pick it up. `SyncCompleted` still fires so
-/// connected clients refresh.
+/// Wait for a detached sync to finish, then finalize it exactly as the caller
+/// would have.
+///
+/// Normally we let it run to completion — aborting at an arbitrary await point
+/// risks dropping a session mid-command. But a sync that never completes would
+/// hold the provider guard forever and wedge every later sync on the account,
+/// so it is aborted once it stops *reporting progress* for the grace period.
+/// Elapsed time is the wrong test: a 50k backfill legitimately takes longer
+/// than any grace we would want to give a wedged one.
 async fn reap_detached_sync(
-    handoff: DetachedSyncHandoff,
+    mut pass: SyncPass,
     mut task: tokio::task::JoinHandle<Result<mxr_sync::SyncOutcome, MxrError>>,
 ) {
-    let DetachedSyncHandoff {
+    pass.detached = true;
+    let state = pass.state.clone();
+    let account_id = pass.account_id.clone();
+    let result = loop {
+        let before = state.sync_progress_revision(&account_id);
+        match timeout(DETACHED_SYNC_GRACE, &mut task).await {
+            Ok(joined) => {
+                break joined.unwrap_or_else(|join_error| {
+                    Err(MxrError::Provider(format!(
+                        "sync task failed: {join_error}"
+                    )))
+                })
+            }
+            Err(_) if state.sync_progress_revision(&account_id) != before => {
+                tracing::info!(
+                    account = %account_id,
+                    "detached sync is still making progress; continuing to wait"
+                );
+            }
+            Err(_) => {
+                task.abort();
+                tracing::error!(
+                    account = %account_id,
+                    "detached sync reported no progress for {DETACHED_SYNC_GRACE:?}; aborting to release the provider lock"
+                );
+                // `abort` only takes effect when the task next reaches an
+                // await point, so joining it is what actually makes the engine
+                // stop. Skipping the join would release the provider guard
+                // below while the old sync was still writing, and the next
+                // sync would take the lock and run alongside it.
+                let _ = (&mut task).await;
+                break Err(MxrError::Provider(format!(
+                    "sync aborted: no progress for {DETACHED_SYNC_GRACE:?}"
+                )));
+            }
+        }
+    };
+    let _ = finalize_sync_pass(pass, result).await;
+}
+
+/// Re-assert the account as busy when a background sync was claimed while this
+/// pass was finalizing.
+///
+/// The finalizer reads the claim, then writes the status row. A claim taken in
+/// between is a client that has already been acked and whose own pre-ack
+/// `sync_in_progress = true` this write would silently undo, leaving the client
+/// waiting on a row that says idle. Re-checking after the write closes it: the
+/// claim outlives the window, so the later of the two writers always wins with
+/// "busy".
+async fn reassert_busy_if_background_sync_queued(state: &Arc<AppState>, account_id: &AccountId) {
+    if !state.background_sync_queued(account_id) {
+        return;
+    }
+    let _ = state
+        .store
+        .upsert_sync_runtime_status(
+            account_id,
+            &SyncRuntimeStatusUpdate {
+                sync_in_progress: Some(true),
+                ..Default::default()
+            },
+        )
+        .await;
+}
+
+/// Record a finished pass and fan out from it: runtime status, sync log,
+/// provider guard release, client events, and the detached post-sync work.
+///
+/// The pass's own error is handed back so the caller can decide what it means
+/// for its schedule (backoff, retry), which is the only part that differs
+/// between the sync loop, the manual handler, and the reaper.
+pub(crate) async fn finalize_sync_pass(
+    pass: SyncPass,
+    result: Result<mxr_sync::SyncOutcome, MxrError>,
+) -> Result<SyncPassOutcome, MxrError> {
+    let SyncPass {
         state,
         account_id,
         provider,
         provider_guard,
         sync_log_id,
         prior_consecutive_failures,
-    } = handoff;
-    // Normally we let the detached sync run to completion — aborting at an
-    // arbitrary await point risks dropping a session mid-command. But a
-    // sync that never completes would hold `provider_guard` forever and
-    // wedge every future sync on this account. Bound the wait: after the
-    // grace period, abort so the guard (dropped at the end of this fn) is
-    // released and the sync loop recovers on its next tick.
-    let result = match timeout(DETACHED_SYNC_GRACE, &mut task).await {
-        Ok(joined) => joined.unwrap_or_else(|join_error| {
-            Err(MxrError::Provider(format!(
-                "sync task failed: {join_error}"
-            )))
-        }),
-        Err(_) => {
-            task.abort();
-            tracing::error!(
-                account = %account_id,
-                "detached sync still unfinished after {DETACHED_SYNC_GRACE:?}; aborting to release the provider lock"
-            );
-            Err(MxrError::Provider(format!(
-                "sync aborted: unfinished after exceeding its wait limit by {DETACHED_SYNC_GRACE:?}"
-            )))
-        }
+        pre_sync_cursor,
+        operation,
+        started_by,
+        progress_live,
+        detached,
+    } = pass;
+    progress_live.store(false, Ordering::Relaxed);
+    let late_note = if detached {
+        " after exceeding its wait limit"
+    } else {
+        ""
     };
-    drop(provider_guard);
-    let cursor = state
-        .store
-        .get_sync_cursor(&account_id)
-        .await
-        .ok()
-        .flatten();
-    let cursor_summary = describe_sync_cursor(provider.as_ref(), cursor.as_ref());
-    match &result {
-        Ok(outcome) => {
-            if let Err(error) = crate::handler::reconcile_provider_drafts(&state, &account_id).await
-            {
-                tracing::warn!(account = %account_id, %error, "provider draft reconciliation failed");
-            }
-            if outcome.synced_count > 0 {
-                match state.warm_lexical_search(true).await {
-                    Ok(true) => tracing::info!("Lexical search index warmed after detached sync"),
-                    Ok(false) => {}
-                    Err(error) => {
-                        tracing::warn!(%error, "lexical search warm-up failed after detached sync");
-                    }
-                }
-            }
-            let _ = state
-                .store
-                .upsert_sync_runtime_status(
-                    &account_id,
-                    &SyncRuntimeStatusUpdate {
-                        last_success_at: Some(chrono::Utc::now()),
-                        last_error: Some(None),
-                        failure_class: Some(None),
-                        consecutive_failures: Some(0),
-                        backoff_until: Some(None),
-                        // Same invariant as the inline paths: a page that
-                        // reports `has_more` has not finished the backfill.
-                        sync_in_progress: Some(outcome.has_more),
-                        current_cursor_summary: Some(Some(cursor_summary.clone())),
-                        last_synced_count: Some(outcome.synced_count),
-                        ..Default::default()
-                    },
-                )
-                .await;
-            if outcome.has_more {
-                // The loop that started this sync gave up waiting on it, so
-                // wake it to take the next page.
-                state.idle_notify_for_account(&account_id).notify_one();
-            }
-            if let Some(log_id) = sync_log_id {
-                let _ = state
-                    .store
-                    .complete_sync_log(
-                        log_id,
-                        &StoreSyncStatus::Success,
-                        outcome.synced_count,
-                        None,
-                    )
-                    .await;
-            }
-            let _ = state
-                .store
-                .insert_event(
-                    "info",
-                    "sync",
-                    &format!("Sync completed for {account_id} after exceeding its wait limit"),
-                    Some(&account_id),
-                    Some(&format!(
-                        "messages_synced={}; cursor={cursor_summary}",
-                        outcome.synced_count
-                    )),
-                )
-                .await;
-            crate::chimes::emit_daemon_event(
-                &state,
-                DaemonEvent::SyncCompleted {
-                    account_id: account_id.clone(),
-                    messages_synced: outcome.synced_count,
-                },
-            );
-            tracing::info!(
-                account = %account_id,
-                "detached sync completed: {} messages",
-                outcome.synced_count
-            );
-        }
+
+    let outcome = match result {
+        Ok(outcome) => outcome,
         Err(error) => {
             let err_str = error.to_string();
             let failure_class = classify_sync_error(&err_str);
+            let post_error_cursor = state
+                .store
+                .get_sync_cursor(&account_id)
+                .await
+                .ok()
+                .flatten();
+            let cursor_summary =
+                describe_sync_cursor(provider.as_ref(), post_error_cursor.as_ref());
             let _ = state
                 .store
                 .upsert_sync_runtime_status(
@@ -302,7 +454,7 @@ async fn reap_detached_sync(
                         failure_class: Some(Some(failure_class.to_string())),
                         consecutive_failures: Some(prior_consecutive_failures.saturating_add(1)),
                         backoff_until: Some(None),
-                        sync_in_progress: Some(false),
+                        sync_in_progress: Some(state.background_sync_queued(&account_id)),
                         current_cursor_summary: Some(Some(cursor_summary.clone())),
                         ..Default::default()
                     },
@@ -314,21 +466,304 @@ async fn reap_detached_sync(
                     .complete_sync_log(log_id, &StoreSyncStatus::Error, 0, Some(&err_str))
                     .await;
             }
+            reassert_busy_if_background_sync_queued(&state, &account_id).await;
+            drop(provider_guard);
+            state.finish_sync_run(&account_id, false);
             let _ = state
                 .store
                 .insert_event(
                     "error",
                     "sync",
-                    &format!("Sync failed for {account_id} after exceeding its wait limit"),
+                    &format!("Sync failed for {account_id}{late_note}"),
                     Some(&account_id),
                     Some(&format!(
                         "class={failure_class}; error={err_str}; cursor={cursor_summary}"
                     )),
                 )
                 .await;
-            tracing::error!(account = %account_id, "detached sync failed: {err_str}");
+            tracing::error!(account = %account_id, "Sync error: {err_str}");
+            // Both events, always. `SyncError` is how a client that is not
+            // watching this particular operation hears about it — which now
+            // includes the client that asked for a background sync and got its
+            // ack long before this. `OperationFailed` carries the operation id
+            // so a client that *is* streaming can tie it to its request.
+            crate::chimes::emit_daemon_event(
+                &state,
+                DaemonEvent::SyncError {
+                    account_id: account_id.clone(),
+                    error: err_str.clone(),
+                },
+            );
+            if let Some(operation) = operation {
+                crate::handler::diagnostics_impl::emit_operation_event(
+                    &state,
+                    DaemonEvent::OperationFailed {
+                        operation_id: operation.operation_id,
+                        operation: operation.operation,
+                        account_id: operation.account_id,
+                        error: err_str,
+                        retryable: true,
+                    },
+                );
+            }
+            return Err(error);
+        }
+    };
+
+    let count = outcome.synced_count;
+    let post_sync_cursor = state
+        .store
+        .get_sync_cursor(&account_id)
+        .await
+        .ok()
+        .flatten();
+    let cursor_summary = describe_sync_cursor(provider.as_ref(), post_sync_cursor.as_ref());
+    let _ = state
+        .store
+        .upsert_sync_runtime_status(
+            &account_id,
+            &SyncRuntimeStatusUpdate {
+                last_success_at: Some(chrono::Utc::now()),
+                last_error: Some(None),
+                failure_class: Some(None),
+                consecutive_failures: Some(0),
+                backoff_until: Some(None),
+                // Two reasons the account is still busy. A batch that
+                // reports `has_more` is one page of a backfill, not a
+                // finished sync — the account keeps re-polling. And a
+                // background sync that has been acked but is still queued
+                // behind the provider lock is work the client is waiting for;
+                // this pass finishing says nothing about it. Reporting "idle"
+                // in either gap makes a waiting client (`mxr demo`, `mxr sync
+                // --wait`) stop short.
+                sync_in_progress: Some(
+                    outcome.has_more || state.background_sync_queued(&account_id),
+                ),
+                current_cursor_summary: Some(Some(cursor_summary.clone())),
+                last_synced_count: Some(count),
+                ..Default::default()
+            },
+        )
+        .await;
+    if let Some(log_id) = sync_log_id {
+        let _ = state
+            .store
+            .complete_sync_log(log_id, &StoreSyncStatus::Success, count, None)
+            .await;
+    }
+    reassert_busy_if_background_sync_queued(&state, &account_id).await;
+    drop(provider_guard);
+    state.finish_sync_run(&account_id, outcome.has_more);
+    // A pass returns after one page. Without a wake, the account would sit at
+    // `sync_in_progress = true` until the sync loop's next tick, a full
+    // interval away: the loop only re-polls by itself when it is still
+    // mid-cycle, which it is not once it has given up on a detached pass and
+    // gone to sleep on its backoff. `notify_one` keeps a permit if the loop is
+    // busy, so the wake is never lost.
+    if outcome.has_more && (detached || started_by != SyncStarter::AccountLoop) {
+        state.idle_notify_for_account(&account_id).notify_one();
+    }
+    if let Err(error) = crate::handler::reconcile_provider_drafts(&state, &account_id).await {
+        tracing::warn!(account = %account_id, %error, "provider draft reconciliation failed");
+    }
+    let _ = state
+        .store
+        .insert_event(
+            "info",
+            "sync",
+            &format!("Sync completed for {account_id}{late_note}"),
+            Some(&account_id),
+            Some(&format!("messages_synced={count}; cursor={cursor_summary}")),
+        )
+        .await;
+
+    let was_initial_backfill = pre_sync_cursor
+        .as_ref()
+        .is_some_and(|c| provider.is_backfill_cursor(c));
+    let initial_backfill_in_progress = post_sync_cursor
+        .as_ref()
+        .is_some_and(|c| provider.is_backfill_cursor(c));
+
+    // The whole-table analytics repair is settled per backfill, not per page,
+    // and the decision cannot live behind "this page carried messages": a
+    // provider ends a backfill by handing back an empty final page (Gmail when
+    // the page after a `nextPageToken` turns out empty, IMAP when the last UID
+    // chunk is all deleted), and that page is the one that owes the repair.
+    let analytics_due = if outcome.has_more || initial_backfill_in_progress {
+        if count > 0 {
+            state.owe_analytics_repair(&account_id);
+        }
+        false
+    } else {
+        // An idle tick that synced nothing and owes nothing has no reason to
+        // rescan the whole mailbox.
+        let owed = state.take_analytics_repair_debt(&account_id);
+        count > 0 || owed
+    };
+    if analytics_due {
+        let repair_state = state.clone();
+        let repair_account = account_id.clone();
+        tokio::spawn(async move {
+            run_analytics_repair(&repair_state, &repair_account).await;
+        });
+    }
+
+    let upserted_ids = outcome.upserted_message_ids;
+    if count > 0 {
+        let initial_backfill_finished = was_initial_backfill && !initial_backfill_in_progress;
+        match state.warm_lexical_search(initial_backfill_finished).await {
+            Ok(true) => tracing::info!(account = %account_id, "Lexical search index warmed"),
+            Ok(false) => {}
+            Err(error) => tracing::warn!(
+                account = %account_id,
+                %error,
+                "lexical search warm-up failed after sync"
+            ),
+        }
+
+        // Collect this page's contacts into the account's deferred set. The
+        // relationship worker does per-message reads, so running it per page
+        // during a backfill would put a query storm behind every page; the set
+        // is handed over in one go when the backfill ends.
+        if initial_backfill_in_progress
+            || was_initial_backfill
+            || state.has_deferred_relationship_contacts(&account_id)
+        {
+            match state
+                .store
+                .relationship_contacts_for_messages(&upserted_ids)
+                .await
+            {
+                Ok(contacts) => state.defer_relationship_contacts(
+                    &account_id,
+                    contacts.into_iter().map(|(_, email)| email),
+                ),
+                Err(error) => {
+                    tracing::warn!(account = %account_id, %error, "relationship backfill contact lookup failed");
+                }
+            }
+            if initial_backfill_in_progress {
+                tracing::debug!(account = %account_id, "relationship profile refresh deferred during initial backfill");
+            }
+        }
+
+        // Slice before the query, not after: an initial backfill upserts tens
+        // of thousands of ids and loading every envelope only to throw most
+        // away costs a large read for nothing. The sync engine appends ids in
+        // the order it processed the page, so the tail is the most recently
+        // handled; the loaded slice is then sorted newest-first so consumers
+        // that show `envelopes[0]` (the web app's new-mail notification) name
+        // the newest message.
+        let event_ids =
+            &upserted_ids[upserted_ids.len().saturating_sub(NEW_MESSAGES_EVENT_LIMIT)..];
+        match state.store.list_envelopes_by_ids(event_ids).await {
+            Ok(mut envelopes) if !envelopes.is_empty() => {
+                envelopes.sort_by_key(|envelope| std::cmp::Reverse(envelope.date));
+                crate::chimes::emit_daemon_event(
+                    &state,
+                    DaemonEvent::NewMessages {
+                        envelopes,
+                        total: upserted_ids.len(),
+                    },
+                );
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(account = %account_id, %error, "new-message event lookup failed");
+            }
         }
     }
+
+    // Hand the deferred contacts to the relationship worker on the same edge
+    // as the analytics repair, and outside `count > 0` for the same reason: a
+    // provider ends a backfill with an empty final page, and a handover gated
+    // on "this page carried messages" would never happen for it — leaving the
+    // whole backfill's contacts stranded in memory until the process exits.
+    let contacts_handed_over = if initial_backfill_in_progress {
+        false
+    } else {
+        let deferred = state.take_deferred_relationship_contacts(&account_id);
+        if deferred.is_empty() {
+            false
+        } else {
+            let contacts = deferred
+                .into_iter()
+                .map(|email| (account_id.clone(), email))
+                .collect::<Vec<_>>();
+            if let Err(error) = state.relationship.enqueue_contacts(contacts).await {
+                tracing::warn!(account = %account_id, %error, "relationship handover enqueue failed");
+            }
+            true
+        }
+    };
+
+    if count > 0 {
+        // Critical: the post-sync fan-out (semantic ingest, contacts refresh,
+        // relationship profile, rules engine, analytics backfill) used to run
+        // inline here. That kept the sync loop blocked until every downstream
+        // worker had ack'd the enqueue and any network call inside the rules
+        // engine had returned. On a busy mailbox that meant 10+ minutes
+        // between "Gmail has new mail" and "mxr shows new mail". Move the
+        // fan-out to a detached task so the loop returns immediately to its
+        // periodic sleep / IDLE wait. Each downstream worker has its own
+        // bounded channel; if a worker is slow, only that worker backs up.
+        //
+        // No automatic summary backfill: even gated by `llm.enabled`, that
+        // previously spawned unbounded tokio tasks (one per changed thread) on
+        // every sync tick. On a 100k-message initial backfill that saturates
+        // the tokio runtime + LLM and the TUI grinds to a halt. Summaries are
+        // generated strictly on demand when the user opens a thread.
+        let fanout_state = state.clone();
+        let fanout_account = account_id.clone();
+        let fanout_provider = provider.clone();
+        tokio::spawn(async move {
+            post_sync_fanout(
+                fanout_state,
+                fanout_account,
+                fanout_provider,
+                upserted_ids,
+                contacts_handed_over,
+                initial_backfill_in_progress,
+            )
+            .await;
+        });
+    }
+
+    tracing::info!(account = %account_id, "Sync completed: {count} messages");
+    crate::chimes::emit_daemon_event(
+        &state,
+        DaemonEvent::SyncCompleted {
+            account_id: account_id.clone(),
+            messages_synced: count,
+        },
+    );
+    if let Ok(labels) = state.store.list_labels_by_account(&account_id).await {
+        let counts: Vec<_> = labels
+            .iter()
+            .map(|l| LabelCount {
+                label_id: l.id.clone(),
+                unread_count: l.unread_count,
+                total_count: l.total_count,
+            })
+            .collect();
+        crate::chimes::emit_daemon_event(&state, DaemonEvent::LabelCountsUpdated { counts });
+    }
+    if let Some(operation) = operation {
+        crate::handler::diagnostics_impl::emit_operation_event(
+            &state,
+            DaemonEvent::OperationCompleted {
+                operation_id: operation.operation_id,
+                operation: operation.operation,
+                account_id: operation.account_id,
+                message: format!("Sync complete: {count} message(s) updated"),
+            },
+        );
+    }
+
+    Ok(SyncPassOutcome {
+        synced_count: count,
+        has_more: outcome.has_more,
+    })
 }
 
 /// Clear `sync_in_progress` rows left behind by a daemon that died
@@ -512,7 +947,6 @@ async fn sync_loop_for_account(
     let mut skip_sleep = true;
     let mut consecutive_has_more: u32 = 0;
     let mut last_message_sync_at = chrono::Utc::now();
-    let mut deferred_relationship_contacts = BTreeSet::<String>::new();
     // Phase 3.1: wake the sleep early when an IDLE watcher signals.
     let idle_notify = state.idle_notify_for_account(&account_id);
 
@@ -554,63 +988,10 @@ async fn sync_loop_for_account(
             }
         }
 
-        let provider_guard = state.acquire_provider_operation(&account_id).await;
-        let started_at = chrono::Utc::now();
-        let existing_status = state
-            .store
-            .get_sync_runtime_status(&account_id)
-            .await
-            .ok()
-            .flatten();
-        let pre_sync_cursor = state
-            .store
-            .get_sync_cursor(&account_id)
-            .await
-            .ok()
-            .flatten();
-        let sync_log_id = state
-            .store
-            .insert_sync_log(&account_id, &StoreSyncStatus::Running)
-            .await
-            .ok();
-        let _ = state
-            .store
-            .upsert_sync_runtime_status(
-                &account_id,
-                &SyncRuntimeStatusUpdate {
-                    last_attempt_at: Some(started_at),
-                    last_error: Some(None),
-                    failure_class: Some(None),
-                    sync_in_progress: Some(true),
-                    current_cursor_summary: Some(Some(describe_sync_cursor(
-                        provider.as_ref(),
-                        pre_sync_cursor.as_ref(),
-                    ))),
-                    ..Default::default()
-                },
-            )
-            .await;
-
-        let wait = sync_with_detach_timeout(
-            DetachedSyncHandoff {
-                state: state.clone(),
-                account_id: account_id.clone(),
-                provider: provider.clone(),
-                provider_guard,
-                sync_log_id,
-                prior_consecutive_failures: existing_status
-                    .as_ref()
-                    .map_or(0, |status| status.consecutive_failures),
-            },
-            SYNC_CYCLE_TIMEOUT,
-        )
-        .await;
-        let (sync_result, provider_guard) = match wait {
-            SyncWait::Finished {
-                result,
-                provider_guard,
-            } => (result, provider_guard),
-            SyncWait::TimedOut => {
+        let pass = begin_sync_pass(&state, provider.clone(), None, SyncStarter::AccountLoop).await;
+        let (pass, result) = match run_sync_pass(pass, SYNC_CYCLE_TIMEOUT).await {
+            SyncWait::Finished { pass, result } => (pass, result),
+            SyncWait::Detached => {
                 tracing::warn!(
                     account = %account_id,
                     "sync exceeded {SYNC_CYCLE_TIMEOUT:?}; leaving it to finish in background"
@@ -619,187 +1000,13 @@ async fn sync_loop_for_account(
                 continue;
             }
         };
-        match sync_result {
+        match finalize_sync_pass(pass, result).await {
             Ok(outcome) => {
                 let count = outcome.synced_count;
                 backoff_secs = 0;
                 let idle_for = chrono::Utc::now() - last_message_sync_at;
                 if count > 0 {
                     last_message_sync_at = chrono::Utc::now();
-                }
-                let post_sync_cursor = state
-                    .store
-                    .get_sync_cursor(&account_id)
-                    .await
-                    .ok()
-                    .flatten();
-                let _ = state
-                    .store
-                    .upsert_sync_runtime_status(
-                        &account_id,
-                        &SyncRuntimeStatusUpdate {
-                            last_success_at: Some(chrono::Utc::now()),
-                            last_error: Some(None),
-                            failure_class: Some(None),
-                            consecutive_failures: Some(0),
-                            backoff_until: Some(None),
-                            // A batch that reports `has_more` is one page of
-                            // a backfill, not a finished sync — the loop
-                            // re-polls immediately. Reporting "idle" in that
-                            // gap makes clients waiting for the initial sync
-                            // (`mxr demo`, `mxr sync status`) call it done
-                            // after the first page.
-                            sync_in_progress: Some(outcome.has_more),
-                            current_cursor_summary: Some(Some(describe_sync_cursor(
-                                provider.as_ref(),
-                                post_sync_cursor.as_ref(),
-                            ))),
-                            last_synced_count: Some(count),
-                            ..Default::default()
-                        },
-                    )
-                    .await;
-                if let Some(log_id) = sync_log_id {
-                    let _ = state
-                        .store
-                        .complete_sync_log(log_id, &StoreSyncStatus::Success, count, None)
-                        .await;
-                }
-                drop(provider_guard);
-                if let Err(error) =
-                    crate::handler::reconcile_provider_drafts(&state, &account_id).await
-                {
-                    tracing::warn!(account = %account_id, %error, "provider draft reconciliation failed");
-                }
-                let _ = state
-                    .store
-                    .insert_event(
-                        "info",
-                        "sync",
-                        &format!("Sync completed for {account_id}"),
-                        Some(&account_id),
-                        Some(&format!(
-                            "messages_synced={count}; cursor={}",
-                            describe_sync_cursor(provider.as_ref(), post_sync_cursor.as_ref())
-                        )),
-                    )
-                    .await;
-                if count > 0 {
-                    let was_initial_backfill = pre_sync_cursor
-                        .as_ref()
-                        .is_some_and(|c| provider.is_backfill_cursor(c));
-                    let initial_backfill_in_progress = post_sync_cursor
-                        .as_ref()
-                        .is_some_and(|c| provider.is_backfill_cursor(c));
-
-                    let initial_backfill_finished =
-                        was_initial_backfill && !initial_backfill_in_progress;
-                    match state.warm_lexical_search(initial_backfill_finished).await {
-                        Ok(true) => tracing::info!(
-                            account = %account_id,
-                            "Lexical search index warmed"
-                        ),
-                        Ok(false) => {}
-                        Err(error) => tracing::warn!(
-                            account = %account_id,
-                            %error,
-                            "lexical search warm-up failed after sync"
-                        ),
-                    }
-
-                    // Critical: the post-sync fan-out (semantic ingest,
-                    // contacts refresh, relationship profile, rules
-                    // engine, analytics backfill) used to run inline
-                    // here. That kept the sync loop blocked until every
-                    // downstream worker had ack'd the enqueue and any
-                    // network call inside the rules engine had
-                    // returned. On a busy mailbox that meant 10+
-                    // minutes between "Gmail has new mail" and "mxr
-                    // shows new mail". Move the fan-out to a detached
-                    // task so the loop returns immediately to its
-                    // periodic sleep / IDLE wait. Each downstream
-                    // worker has its own bounded channel; if a worker
-                    // is slow, only that worker backs up.
-                    let upserted_ids = outcome.upserted_message_ids.clone();
-                    let mut handover_relationship_contacts = Vec::new();
-                    if initial_backfill_in_progress
-                        || was_initial_backfill
-                        || !deferred_relationship_contacts.is_empty()
-                    {
-                        match state
-                            .store
-                            .relationship_contacts_for_messages(&upserted_ids)
-                            .await
-                        {
-                            Ok(contacts) => {
-                                deferred_relationship_contacts
-                                    .extend(contacts.into_iter().map(|(_, email)| email));
-                            }
-                            Err(error) => {
-                                tracing::warn!(account = %account_id, %error, "relationship backfill contact lookup failed");
-                            }
-                        }
-                        if initial_backfill_in_progress {
-                            tracing::debug!(account = %account_id, "relationship profile refresh deferred during initial backfill");
-                        } else {
-                            handover_relationship_contacts = deferred_relationship_contacts
-                                .iter()
-                                .cloned()
-                                .map(|email| (account_id.clone(), email))
-                                .collect::<Vec<_>>();
-                            deferred_relationship_contacts.clear();
-                        }
-                    }
-
-                    // Slice before the query, not after: an initial backfill
-                    // upserts tens of thousands of ids and loading every
-                    // envelope only to throw most away costs a large read for
-                    // nothing. The sync engine appends ids in the order it
-                    // processed the page, so the tail is the most recently
-                    // handled; the loaded slice is then sorted newest-first so
-                    // consumers that show `envelopes[0]` (the web app's
-                    // new-mail notification) name the newest message.
-                    let event_ids = &upserted_ids
-                        [upserted_ids.len().saturating_sub(NEW_MESSAGES_EVENT_LIMIT)..];
-                    match state.store.list_envelopes_by_ids(event_ids).await {
-                        Ok(mut envelopes) if !envelopes.is_empty() => {
-                            envelopes.sort_by_key(|envelope| std::cmp::Reverse(envelope.date));
-                            crate::chimes::emit_daemon_event(
-                                &state,
-                                DaemonEvent::NewMessages {
-                                    envelopes,
-                                    total: upserted_ids.len(),
-                                },
-                            );
-                        }
-                        Ok(_) => {}
-                        Err(error) => {
-                            tracing::warn!(account = %account_id, %error, "new-message event lookup failed");
-                        }
-                    }
-
-                    let fanout_state = state.clone();
-                    let fanout_account = account_id.clone();
-                    let fanout_provider = provider.clone();
-                    let fanout_initial_in_progress = initial_backfill_in_progress;
-                    tokio::spawn(async move {
-                        post_sync_fanout(
-                            fanout_state,
-                            fanout_account,
-                            fanout_provider,
-                            upserted_ids,
-                            handover_relationship_contacts,
-                            fanout_initial_in_progress,
-                        )
-                        .await;
-                    });
-                    // No automatic summary backfill: even gated by
-                    // `llm.enabled`, this previously spawned unbounded
-                    // tokio tasks (one per changed thread) on every sync
-                    // tick. On a 100k-message initial backfill that
-                    // saturates the tokio runtime + LLM and the TUI
-                    // grinds to a halt. Summaries are now generated
-                    // strictly on demand when the user opens a thread.
                 }
 
                 if count == 0
@@ -826,30 +1033,6 @@ async fn sync_loop_for_account(
                     last_message_sync_at = chrono::Utc::now();
                 }
 
-                tracing::info!(account = %account_id, "Sync completed: {count} messages");
-                crate::chimes::emit_daemon_event(
-                    &state,
-                    DaemonEvent::SyncCompleted {
-                        account_id: account_id.clone(),
-                        messages_synced: count,
-                    },
-                );
-
-                if let Ok(labels) = state.store.list_labels_by_account(&account_id).await {
-                    let counts: Vec<_> = labels
-                        .iter()
-                        .map(|l| LabelCount {
-                            label_id: l.id.clone(),
-                            unread_count: l.unread_count,
-                            total_count: l.total_count,
-                        })
-                        .collect();
-                    crate::chimes::emit_daemon_event(
-                        &state,
-                        DaemonEvent::LabelCountsUpdated { counts },
-                    );
-                }
-
                 if outcome.has_more {
                     consecutive_has_more = consecutive_has_more.saturating_add(1);
                     if consecutive_has_more >= 50 {
@@ -871,72 +1054,28 @@ async fn sync_loop_for_account(
                     consecutive_has_more = 0;
                 }
             }
-            Err(e) => {
-                let err_str = e.to_string();
-                let failure_class = classify_sync_error(&err_str);
-                let consecutive_failures = existing_status
-                    .as_ref()
-                    .map_or(1, |status| status.consecutive_failures.saturating_add(1));
-                let mut backoff_until = None;
-                if let mxr_core::MxrError::RateLimited { retry_after_secs } = &e {
-                    backoff_secs = retry_after_secs.saturating_add(10);
-                    backoff_until =
-                        Some(chrono::Utc::now() + chrono::Duration::seconds(backoff_secs as i64));
-                } else {
-                    backoff_secs = (backoff_secs * 2).clamp(30, 300);
-                }
-                let post_error_cursor = state
-                    .store
-                    .get_sync_cursor(&account_id)
-                    .await
-                    .ok()
-                    .flatten();
+            Err(mxr_core::MxrError::RateLimited { retry_after_secs }) => {
+                // Same ceiling as every other backoff arm. A provider is free
+                // to send a Retry-After measured in days, and honouring it
+                // literally parks the account until the daemon restarts — on
+                // top of overflowing the doubling and the i64 conversion
+                // below. Re-polling a still-limited provider costs one 429.
+                backoff_secs = retry_after_secs.saturating_add(10).clamp(30, 300);
+                let backoff_until = chrono::Utc::now()
+                    + chrono::Duration::seconds(i64::try_from(backoff_secs).unwrap_or(300));
                 let _ = state
                     .store
                     .upsert_sync_runtime_status(
                         &account_id,
                         &SyncRuntimeStatusUpdate {
-                            last_error: Some(Some(err_str.clone())),
-                            failure_class: Some(Some(failure_class.to_string())),
-                            consecutive_failures: Some(consecutive_failures),
-                            backoff_until: Some(backoff_until),
-                            sync_in_progress: Some(false),
-                            current_cursor_summary: Some(Some(describe_sync_cursor(
-                                provider.as_ref(),
-                                post_error_cursor.as_ref(),
-                            ))),
+                            backoff_until: Some(Some(backoff_until)),
                             ..Default::default()
                         },
                     )
                     .await;
-                if let Some(log_id) = sync_log_id {
-                    let _ = state
-                        .store
-                        .complete_sync_log(log_id, &StoreSyncStatus::Error, 0, Some(&err_str))
-                        .await;
-                }
-                drop(provider_guard);
-                let _ = state
-                    .store
-                    .insert_event(
-                        "error",
-                        "sync",
-                        &format!("Sync failed for {account_id}"),
-                        Some(&account_id),
-                        Some(&format!(
-                            "class={failure_class}; error={err_str}; cursor={}",
-                            describe_sync_cursor(provider.as_ref(), post_error_cursor.as_ref())
-                        )),
-                    )
-                    .await;
-                tracing::error!(account = %account_id, "Sync error: {err_str}");
-                crate::chimes::emit_daemon_event(
-                    &state,
-                    DaemonEvent::SyncError {
-                        account_id: account_id.clone(),
-                        error: err_str,
-                    },
-                );
+            }
+            Err(_) => {
+                backoff_secs = (backoff_secs * 2).clamp(30, 300);
             }
         }
     }
@@ -954,7 +1093,9 @@ async fn post_sync_fanout(
     account_id: AccountId,
     provider: Arc<dyn MailSyncProvider>,
     upserted_message_ids: Vec<mxr_core::MessageId>,
-    relationship_handover_contacts: Vec<(AccountId, String)>,
+    // The caller already enqueued the account's deferred backfill contacts, so
+    // this page's own contacts are part of that batch.
+    contacts_handed_over: bool,
     initial_backfill_in_progress: bool,
 ) {
     if let Err(error) = state
@@ -971,15 +1112,7 @@ async fn post_sync_fanout(
     {
         tracing::warn!(account = %account_id, %error, "contacts refresh enqueue failed");
     }
-    if !relationship_handover_contacts.is_empty() {
-        if let Err(error) = state
-            .relationship
-            .enqueue_contacts(relationship_handover_contacts)
-            .await
-        {
-            tracing::warn!(account = %account_id, %error, "relationship handover enqueue failed");
-        }
-    } else if !initial_backfill_in_progress {
+    if !contacts_handed_over && !initial_backfill_in_progress {
         if let Err(error) = state
             .relationship
             .enqueue_contacts_from_messages(&upserted_message_ids)
@@ -1031,12 +1164,21 @@ async fn post_sync_fanout(
             "post-sync delivery scan"
         );
     }
+}
 
-    // Self-heal analytics derived data. Each step is a `WHERE column IS
-    // NULL / = 'unknown'` filter so it costs near-zero on healthy data
-    // and silently backfills the rest. Runs in the fan-out task — not
-    // critical for next-tick sync responsiveness.
-    let backfill = crate::handler::diagnostics_impl::incremental_analytics_backfill(&state).await;
+/// Self-heal analytics derived data.
+///
+/// Every step is a whole-table `WHERE column IS NULL / = 'unknown'` scan, so
+/// its cost tracks the size of the mailbox and not the size of the page that
+/// triggered it: measured at 82-106s per call on a 50k database whether the
+/// page held 2,500 rows or 10,000. Running it after every page put ten minutes
+/// of writer contention behind a 26s seed, and a real Gmail account paging 500
+/// messages at a time paid it every page. Deferring costs nothing precisely
+/// because the steps filter the whole table: the run after the last page
+/// repairs every row the earlier pages left. `finalize_sync_pass` owns the
+/// decision of when that is.
+async fn run_analytics_repair(state: &Arc<AppState>, account_id: &AccountId) {
+    let backfill = crate::handler::diagnostics_impl::incremental_analytics_backfill(state).await;
     if backfill.did_work() || backfill.startup_repair_ran {
         tracing::info!(
             account = %account_id,
@@ -2374,37 +2516,16 @@ mod tests {
                 .unwrap(),
         );
 
-        let provider_guard = state.acquire_provider_operation(&account_id).await;
-        let sync_log_id = state
-            .store
-            .insert_sync_log(&account_id, &StoreSyncStatus::Running)
-            .await
-            .ok();
-        let _ = state
-            .store
-            .upsert_sync_runtime_status(
-                &account_id,
-                &SyncRuntimeStatusUpdate {
-                    sync_in_progress: Some(true),
-                    ..Default::default()
-                },
-            )
-            .await;
-
-        let wait = sync_with_detach_timeout(
-            DetachedSyncHandoff {
-                state: state.clone(),
-                account_id: account_id.clone(),
-                provider: provider as std::sync::Arc<dyn MailSyncProvider>,
-                provider_guard,
-                sync_log_id,
-                prior_consecutive_failures: 0,
-            },
-            Duration::from_millis(20),
+        let pass = begin_sync_pass(
+            &state,
+            provider as std::sync::Arc<dyn MailSyncProvider>,
+            None,
+            SyncStarter::BlockingClient,
         )
         .await;
+        let wait = run_sync_pass(pass, Duration::from_millis(20)).await;
         assert!(
-            matches!(wait, SyncWait::TimedOut),
+            matches!(wait, SyncWait::Detached),
             "200ms sync must outlive a 20ms wait"
         );
 
@@ -2455,37 +2576,16 @@ mod tests {
                 .unwrap(),
         );
 
-        let provider_guard = state.acquire_provider_operation(&account_id).await;
-        let sync_log_id = state
-            .store
-            .insert_sync_log(&account_id, &StoreSyncStatus::Running)
-            .await
-            .ok();
-        let _ = state
-            .store
-            .upsert_sync_runtime_status(
-                &account_id,
-                &SyncRuntimeStatusUpdate {
-                    sync_in_progress: Some(true),
-                    ..Default::default()
-                },
-            )
-            .await;
-
-        let wait = sync_with_detach_timeout(
-            DetachedSyncHandoff {
-                state: state.clone(),
-                account_id: account_id.clone(),
-                provider: provider as std::sync::Arc<dyn MailSyncProvider>,
-                provider_guard,
-                sync_log_id,
-                prior_consecutive_failures: 0,
-            },
-            Duration::from_millis(20),
+        let pass = begin_sync_pass(
+            &state,
+            provider as std::sync::Arc<dyn MailSyncProvider>,
+            None,
+            SyncStarter::BlockingClient,
         )
         .await;
+        let wait = run_sync_pass(pass, Duration::from_millis(20)).await;
         assert!(
-            matches!(wait, SyncWait::TimedOut),
+            matches!(wait, SyncWait::Detached),
             "a never-finishing sync must outlive the caller wait"
         );
 
@@ -2522,6 +2622,395 @@ mod tests {
         assert!(
             reacquired.is_ok(),
             "provider guard must be released after the reaper aborts a wedged sync"
+        );
+    }
+
+    /// Test double for a provider that ends a backfill with an empty page.
+    /// Gmail does this whenever the page after a `nextPageToken` turns out to
+    /// hold nothing, and IMAP when the last UID chunk is all deleted — the
+    /// case that used to leave the whole-table analytics repair unrun, because
+    /// the fan-out that owned it only ran for a page that carried messages.
+    struct PagesThenEmptySyncProvider {
+        account_id: AccountId,
+        pages_served: std::sync::atomic::AtomicU32,
+        pages: u32,
+    }
+
+    #[async_trait::async_trait]
+    impl MailSyncProvider for PagesThenEmptySyncProvider {
+        fn name(&self) -> &str {
+            "pages-then-empty-sync"
+        }
+
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities::default()
+        }
+
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(Vec::new())
+        }
+
+        /// Mid-backfill cursors are marked, so the daemon defers the
+        /// relationship refresh exactly as it does for a real provider.
+        fn is_backfill_cursor(&self, cursor: &SyncCursor) -> bool {
+            cursor.as_bytes().starts_with(b"page:")
+        }
+
+        async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            use std::sync::atomic::Ordering;
+            let served = self.pages_served.fetch_add(1, Ordering::SeqCst);
+            let has_more = served + 1 < self.pages;
+            let next_cursor = if has_more {
+                SyncCursor::from_bytes(format!("page:{}", served + 1).into_bytes())
+            } else {
+                SyncCursor::from_bytes(b"done".to_vec())
+            };
+            let upserted = if has_more {
+                let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+                    .account_id(self.account_id.clone())
+                    .provider_id(format!("page-{served}"))
+                    .build();
+                let body = crate::test_fixtures::make_empty_body(&envelope.id);
+                vec![mxr_core::types::SyncedMessage { envelope, body }]
+            } else {
+                // The empty final page: nothing synced, nothing left to page.
+                Vec::new()
+            };
+            let _ = cursor;
+            Ok(SyncBatch {
+                upserted,
+                deleted_provider_ids: Vec::new(),
+                label_changes: Vec::new(),
+                next_cursor,
+                has_more,
+                threads_changed: Vec::new(),
+            })
+        }
+
+        async fn fetch_attachment(
+            &self,
+            _provider_message_id: &str,
+            _provider_attachment_id: &str,
+        ) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+
+        async fn apply_mutation(
+            &self,
+            _mutation_id: &str,
+            _mutation: &mxr_core::Mutation,
+        ) -> Result<(), MxrError> {
+            Ok(())
+        }
+    }
+
+    /// Poll for the whole-table analytics repair having run.
+    /// `analytics_startup_repair_done` is the cheapest probe: the repair swaps
+    /// it on its first call and nothing else touches it. The repair is
+    /// spawned, so give it a moment.
+    async fn analytics_repair_ran(state: &Arc<AppState>) -> bool {
+        use std::sync::atomic::Ordering;
+        for _ in 0..100 {
+            if state.analytics_startup_repair_done.load(Ordering::SeqCst) {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        false
+    }
+
+    /// The repair is a whole-table scan, so it belongs at the end of a
+    /// backfill rather than after every page — but it must still happen when
+    /// the backfill's last page carries no messages at all. Nothing else in
+    /// the daemon runs it: there is no startup call, so a skipped repair is a
+    /// mailbox whose analytics stay wrong until the next sync that happens to
+    /// land messages.
+    #[tokio::test]
+    async fn analytics_repair_is_deferred_through_a_backfill_and_run_on_its_empty_last_page() {
+        let account_id = AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let provider = std::sync::Arc::new(PagesThenEmptySyncProvider {
+            account_id: account_id.clone(),
+            pages_served: std::sync::atomic::AtomicU32::new(0),
+            pages: 2,
+        });
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, provider.clone(), None)
+                .await
+                .unwrap(),
+        );
+        let provider = provider as std::sync::Arc<dyn MailSyncProvider>;
+
+        // Page one: one message, more to come. The repair waits.
+        let pass = begin_sync_pass(&state, provider.clone(), None, SyncStarter::AccountLoop).await;
+        let SyncWait::Finished { pass, result } = run_sync_pass(pass, Duration::from_secs(5)).await
+        else {
+            panic!("a fast sync must not detach");
+        };
+        let outcome = finalize_sync_pass(pass, result).await.unwrap();
+        assert!(outcome.has_more, "the first page has more to come");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(
+            !state
+                .analytics_startup_repair_done
+                .load(std::sync::atomic::Ordering::SeqCst),
+            "a page with more to come must not pay for the whole-table repair"
+        );
+        assert!(
+            state.has_deferred_relationship_contacts(&account_id),
+            "a mid-backfill page defers its contacts instead of enqueueing them"
+        );
+
+        // Page two: empty, and the end of the backfill. The debt falls due
+        // even though this page synced nothing.
+        let pass = begin_sync_pass(&state, provider, None, SyncStarter::AccountLoop).await;
+        let SyncWait::Finished { pass, result } = run_sync_pass(pass, Duration::from_secs(5)).await
+        else {
+            panic!("a fast sync must not detach");
+        };
+        let outcome = finalize_sync_pass(pass, result).await.unwrap();
+        assert_eq!(outcome.synced_count, 0, "the last page is empty");
+        assert!(!outcome.has_more);
+        assert!(
+            analytics_repair_ran(&state).await,
+            "the repair must run when the backfill ends, even on an empty page"
+        );
+        assert!(
+            !state.has_deferred_relationship_contacts(&account_id),
+            "the deferred contacts must be handed over when the backfill ends, \
+             even though the page that ended it carried no messages"
+        );
+    }
+
+    /// A background sync claimed while a pass is finalizing must survive that
+    /// pass's status write. The window is two lines wide, so rather than race
+    /// it this pins the repair: the finalizer re-checks after writing, and a
+    /// claim held across the check leaves the account marked busy.
+    #[tokio::test]
+    async fn a_claim_taken_during_finalization_leaves_the_account_marked_busy() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let account_id = state.default_provider().account_id().clone();
+        let _ = state
+            .store
+            .upsert_sync_runtime_status(
+                &account_id,
+                &SyncRuntimeStatusUpdate {
+                    sync_in_progress: Some(false),
+                    ..Default::default()
+                },
+            )
+            .await;
+
+        let claim = AppState::claim_background_sync(&state, &account_id)
+            .expect("the account starts unclaimed");
+        reassert_busy_if_background_sync_queued(&state, &account_id).await;
+        let status = state
+            .store
+            .get_sync_runtime_status(&account_id)
+            .await
+            .unwrap()
+            .expect("sync status row");
+        assert!(
+            status.sync_in_progress,
+            "a queued claim must be re-asserted over a finalizer's write"
+        );
+
+        drop(claim);
+        let _ = state
+            .store
+            .upsert_sync_runtime_status(
+                &account_id,
+                &SyncRuntimeStatusUpdate {
+                    sync_in_progress: Some(false),
+                    ..Default::default()
+                },
+            )
+            .await;
+        reassert_busy_if_background_sync_queued(&state, &account_id).await;
+        let status = state
+            .store
+            .get_sync_runtime_status(&account_id)
+            .await
+            .unwrap()
+            .expect("sync status row");
+        assert!(
+            !status.sync_in_progress,
+            "with no claim outstanding the account stays idle"
+        );
+    }
+
+    /// An idle tick that synced nothing and owes nothing has no reason to
+    /// rescan the whole mailbox — the mirror of the case above, and the reason
+    /// the debt is tracked rather than "run it whenever a pass ends".
+    #[tokio::test]
+    async fn analytics_repair_does_not_run_for_a_sync_that_owes_nothing() {
+        let account_id = AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let provider = std::sync::Arc::new(PagesThenEmptySyncProvider {
+            account_id: account_id.clone(),
+            pages_served: std::sync::atomic::AtomicU32::new(0),
+            pages: 1,
+        });
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, provider.clone(), None)
+                .await
+                .unwrap(),
+        );
+
+        let pass = begin_sync_pass(
+            &state,
+            provider as std::sync::Arc<dyn MailSyncProvider>,
+            None,
+            SyncStarter::AccountLoop,
+        )
+        .await;
+        let SyncWait::Finished { pass, result } = run_sync_pass(pass, Duration::from_secs(5)).await
+        else {
+            panic!("a fast sync must not detach");
+        };
+        finalize_sync_pass(pass, result).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(
+            !state
+                .analytics_startup_repair_done
+                .load(std::sync::atomic::Ordering::SeqCst),
+            "an empty tick with no deferred work must not rescan the mailbox"
+        );
+    }
+
+    /// A pass that finishes while a background sync is still queued behind the
+    /// provider lock must not report the account idle: the client that was
+    /// acked is waiting for its own sync, and `mxr sync --wait` would
+    /// otherwise return having waited for somebody else's.
+    #[tokio::test]
+    async fn a_pass_finishing_under_a_queued_background_sync_keeps_the_account_busy() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let account_id = state.default_provider().account_id().clone();
+        let claim = AppState::claim_background_sync(&state, &account_id)
+            .expect("the account starts unclaimed");
+
+        let pass = begin_sync_pass(
+            &state,
+            state.default_provider(),
+            None,
+            SyncStarter::AccountLoop,
+        )
+        .await;
+        let SyncWait::Finished { pass, result } = run_sync_pass(pass, Duration::from_secs(5)).await
+        else {
+            panic!("a fast sync must not detach");
+        };
+        let outcome = finalize_sync_pass(pass, result).await.unwrap();
+        assert!(!outcome.has_more, "the fake provider drains in one page");
+
+        let status = state
+            .store
+            .get_sync_runtime_status(&account_id)
+            .await
+            .unwrap()
+            .expect("sync status row");
+        assert!(
+            status.sync_in_progress,
+            "a queued background sync keeps the account busy"
+        );
+
+        // And once the claim goes, the next pass is free to report idle.
+        drop(claim);
+        let pass = begin_sync_pass(
+            &state,
+            state.default_provider(),
+            None,
+            SyncStarter::AccountLoop,
+        )
+        .await;
+        let SyncWait::Finished { pass, result } = run_sync_pass(pass, Duration::from_secs(5)).await
+        else {
+            panic!("a fast sync must not detach");
+        };
+        finalize_sync_pass(pass, result).await.unwrap();
+        let status = state
+            .store
+            .get_sync_runtime_status(&account_id)
+            .await
+            .unwrap()
+            .expect("sync status row");
+        assert!(!status.sync_in_progress);
+    }
+
+    /// A detached sync is aborted for being wedged, not for being slow.    /// A detached sync is aborted for being wedged, not for being slow. This
+    /// one runs for three grace periods while reporting progress throughout,
+    /// and must be allowed to finish: aborting on total elapsed time would
+    /// kill every large backfill.
+    #[tokio::test]
+    async fn detached_sync_that_keeps_reporting_progress_is_not_aborted() {
+        let account_id = AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let provider = std::sync::Arc::new(SlowThenEmptySyncProvider {
+            account_id: account_id.clone(),
+            delay: DETACHED_SYNC_GRACE * 3,
+        });
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, provider.clone(), None)
+                .await
+                .unwrap(),
+        );
+
+        let heartbeat_state = state.clone();
+        let heartbeat_account = account_id.clone();
+        let heartbeat = tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(DETACHED_SYNC_GRACE / 5).await;
+                heartbeat_state.record_sync_progress(
+                    &heartbeat_account,
+                    1,
+                    "still working".to_string(),
+                );
+            }
+        });
+
+        let pass = begin_sync_pass(
+            &state,
+            provider as std::sync::Arc<dyn MailSyncProvider>,
+            None,
+            SyncStarter::BlockingClient,
+        )
+        .await;
+        let wait = run_sync_pass(pass, Duration::from_millis(20)).await;
+        assert!(
+            matches!(wait, SyncWait::Detached),
+            "a slow sync must outlive a 20ms wait"
+        );
+
+        let mut finalized = None;
+        for _ in 0..200 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            let status = state
+                .store
+                .get_sync_runtime_status(&account_id)
+                .await
+                .unwrap();
+            if status.as_ref().is_some_and(|s| s.last_success_at.is_some()) {
+                finalized = status;
+                break;
+            }
+        }
+        heartbeat.abort();
+        let status = finalized.expect("a progressing detached sync must finish, not be aborted");
+        assert_eq!(
+            status.last_error, None,
+            "it must not be recorded as aborted"
         );
     }
 

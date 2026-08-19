@@ -496,7 +496,13 @@ mod tests {
                 },
                 IpcCategory::CoreMail,
             ),
-            (Request::SyncNow { account_id: None }, IpcCategory::CoreMail),
+            (
+                Request::SyncNow {
+                    account_id: None,
+                    background: false,
+                },
+                IpcCategory::CoreMail,
+            ),
             (
                 Request::GetSyncStatus {
                     account_id: AccountId::new(),
@@ -1013,6 +1019,7 @@ mod tests {
                         current_cursor_summary: None,
                         last_synced_count: 0,
                         healthy: true,
+                        progress: None,
                     },
                 },
                 IpcCategory::CoreMail,

@@ -182,6 +182,7 @@ expression: summary
     "StorageGroupBy",
     "SubscriptionSummary",
     "SuggestedRecipientData",
+    "SyncProgressData",
     "TextPlainFormat",
     "Thread",
     "ThreadBriefingData",

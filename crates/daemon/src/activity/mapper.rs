@@ -526,6 +526,7 @@ pub fn map_request(
         Request::CompleteAuthSession { .. } => ("account.signin", Some("account"), None, None),
         Request::SyncNow {
             account_id: account,
+            ..
         } => (
             "account.sync",
             Some("account"),

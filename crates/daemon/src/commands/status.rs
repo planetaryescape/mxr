@@ -216,6 +216,7 @@ mod tests {
                     current_cursor_summary: Some("initial".into()),
                     last_synced_count: 10,
                     healthy: true,
+                    progress: None,
                 }],
                 daemon_version: Some("0.4.6"),
                 daemon_build_id: Some("0.4.6:/tmp/mxr:1:1"),

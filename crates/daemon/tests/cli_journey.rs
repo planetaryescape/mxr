@@ -93,6 +93,17 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         "fake account should be configured with fake sync provider"
     );
 
+    // Without --wait the trigger returns as soon as the daemon has started the
+    // sync, rather than holding the CLI open for the whole pass. Run it before
+    // the wait, so the wait covers the sync it started too — a trigger left
+    // running would race the "a run completed" assertion below.
+    let triggered = run_json(&instance, &data_dir, &config_dir, &["sync"]);
+    assert_eq!(
+        triggered["status"].as_str(),
+        Some("triggered"),
+        "plain `mxr sync` should trigger and return; got: {triggered:#}"
+    );
+
     // Trigger sync and wait for it to complete.
     run_status_only(
         &instance,

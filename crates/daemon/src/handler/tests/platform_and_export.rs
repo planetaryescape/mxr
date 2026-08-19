@@ -1523,7 +1523,10 @@ async fn dispatch_sync_now_acknowledges() {
     let msg = IpcMessage {
         id: 300,
         source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::SyncNow { account_id: None }),
+        payload: IpcPayload::Request(Request::SyncNow {
+            account_id: None,
+            background: false,
+        }),
     };
     let resp = handle_request(&state, &msg).await;
 
@@ -1894,6 +1897,7 @@ async fn dispatch_sync_now_wakes_the_sync_loop_while_the_backfill_has_more() {
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SyncNow {
             account_id: Some(account_id.clone()),
+            background: false,
         }),
     };
     let resp = handle_request(&state, &msg).await;
@@ -1934,6 +1938,7 @@ async fn dispatch_sync_now_keeps_sync_in_progress_while_the_backfill_has_more() 
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SyncNow {
             account_id: Some(account_id.clone()),
+            background: false,
         }),
     };
     handle_request(&state, &msg).await;
@@ -1945,6 +1950,285 @@ async fn dispatch_sync_now_keeps_sync_in_progress_while_the_backfill_has_more() 
         .unwrap()
         .expect("sync status row");
     assert!(status.sync_in_progress);
+}
+
+/// A background sync answers before the work is done, and the account is
+/// already marked as syncing when it does — a client that acks and then polls
+/// `GetSyncStatus` must not catch a gap in which the account looks idle and
+/// conclude the sync is already over.
+#[tokio::test]
+async fn dispatch_background_sync_now_acks_with_the_account_already_marked_syncing() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let account_id = state.default_provider().account_id().clone();
+    state.add_sync_provider_for_test(Arc::new(
+        mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), 40)
+            .with_page_size(10),
+    ));
+
+    let msg = IpcMessage {
+        id: 310,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::SyncNow {
+            account_id: Some(account_id.clone()),
+            background: true,
+        }),
+    };
+    let resp = handle_request(&state, &msg).await;
+    assert!(
+        matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ),
+        "expected Ack, got {:?}",
+        resp.payload
+    );
+
+    let status = state
+        .store
+        .get_sync_runtime_status(&account_id)
+        .await
+        .unwrap()
+        .expect("sync status row");
+    assert!(
+        status.sync_in_progress,
+        "the ack must not arrive before the account is marked as syncing"
+    );
+}
+
+/// A background sync runs the same finalize and fan-out as every other sync
+/// path. `NewMessages` is the cheapest proof: the old handler-local sync never
+/// emitted it, so seeing it means the pass went through the shared finalizer.
+#[tokio::test]
+async fn dispatch_background_sync_now_runs_the_full_fan_out() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let account_id = state.default_provider().account_id().clone();
+    let mut events = state.event_tx.subscribe();
+
+    let msg = IpcMessage {
+        id: 311,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::SyncNow {
+            account_id: Some(account_id.clone()),
+            background: true,
+        }),
+    };
+    handle_request(&state, &msg).await;
+
+    let mut saw_new_messages = false;
+    let mut saw_completed = false;
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !(saw_new_messages && saw_completed) {
+        let event = tokio::time::timeout_at(deadline, events.recv())
+            .await
+            .expect("background sync must emit its events")
+            .expect("event stream stays open");
+        match event.payload {
+            IpcPayload::Event(::mxr_protocol::DaemonEvent::NewMessages { .. }) => {
+                saw_new_messages = true;
+            }
+            IpcPayload::Event(::mxr_protocol::DaemonEvent::SyncCompleted { .. }) => {
+                saw_completed = true;
+            }
+            _ => {}
+        }
+    }
+
+    let status = state
+        .store
+        .get_sync_runtime_status(&account_id)
+        .await
+        .unwrap()
+        .expect("sync status row");
+    assert!(
+        !status.sync_in_progress,
+        "the account must be idle once the drained background sync finishes"
+    );
+    assert!(status.last_success_at.is_some());
+}
+
+/// Provider double that parks inside `sync_messages` until the test lets it
+/// go. Without a barrier the "is a second sync deduplicated?" test depends on
+/// the first pass still being in flight when the second request lands, which
+/// on a fast machine it may not be.
+struct HeldPageSyncProvider {
+    account_id: mxr_core::AccountId,
+    entered: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+#[async_trait::async_trait]
+impl mxr_core::MailSyncProvider for HeldPageSyncProvider {
+    fn name(&self) -> &str {
+        "held-page-sync"
+    }
+
+    fn account_id(&self) -> &mxr_core::AccountId {
+        &self.account_id
+    }
+
+    fn capabilities(&self) -> mxr_core::SyncCapabilities {
+        mxr_core::SyncCapabilities::default()
+    }
+
+    async fn authenticate(&mut self) -> Result<(), mxr_core::MxrError> {
+        Ok(())
+    }
+
+    async fn refresh_auth(&mut self) -> Result<(), mxr_core::MxrError> {
+        Ok(())
+    }
+
+    async fn sync_labels(&self) -> Result<Vec<mxr_core::types::Label>, mxr_core::MxrError> {
+        Ok(Vec::new())
+    }
+
+    async fn sync_messages(
+        &self,
+        cursor: &mxr_core::types::SyncCursor,
+    ) -> Result<mxr_core::types::SyncBatch, mxr_core::MxrError> {
+        self.entered.notify_one();
+        self.release.notified().await;
+        Ok(mxr_core::types::SyncBatch {
+            upserted: Vec::new(),
+            deleted_provider_ids: Vec::new(),
+            label_changes: Vec::new(),
+            next_cursor: cursor.clone(),
+            has_more: false,
+            threads_changed: Vec::new(),
+        })
+    }
+
+    async fn fetch_attachment(
+        &self,
+        _provider_message_id: &str,
+        _provider_attachment_id: &str,
+    ) -> Result<Vec<u8>, mxr_core::MxrError> {
+        Err(mxr_core::MxrError::NotFound("no attachment".into()))
+    }
+
+    async fn apply_mutation(
+        &self,
+        _mutation_id: &str,
+        _mutation: &mxr_core::Mutation,
+    ) -> Result<(), mxr_core::MxrError> {
+        Ok(())
+    }
+}
+
+/// A second background sync while one is running joins it rather than queueing
+/// another pass behind the same provider lock: two acks, one sync.
+#[tokio::test]
+async fn dispatch_background_sync_now_does_not_start_a_second_pass() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let account_id = state.default_provider().account_id().clone();
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    state.add_sync_provider_for_test(Arc::new(HeldPageSyncProvider {
+        account_id: account_id.clone(),
+        entered: entered.clone(),
+        release: release.clone(),
+    }));
+
+    let request = |id: u64| IpcMessage {
+        id,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::SyncNow {
+            account_id: Some(account_id.clone()),
+            background: true,
+        }),
+    };
+
+    let first = handle_request(&state, &request(312)).await;
+    // The first pass is now parked inside the provider, so the second request
+    // lands while it is unambiguously in flight.
+    tokio::time::timeout(std::time::Duration::from_secs(5), entered.notified())
+        .await
+        .expect("the first background sync should reach the provider");
+    let second = handle_request(&state, &request(313)).await;
+    for (label, resp) in [("first", first), ("second", second)] {
+        assert!(
+            matches!(
+                resp.payload,
+                IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Ack
+                })
+            ),
+            "{label} background sync should ack, got {:?}",
+            resp.payload
+        );
+    }
+
+    release.notify_waiters();
+
+    // The claim becoming free again is the signal that the spawned task has
+    // finished. Only then is the sync-log count final: one pass opens exactly
+    // one row, and a second request that queued its own pass would leave two.
+    let mut settled = None;
+    for _ in 0..200 {
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        if let Some(claim) = AppState::claim_background_sync(&state, &account_id) {
+            settled = Some(state.store.collect_record_counts().await.unwrap().sync_log);
+            drop(claim);
+            break;
+        }
+    }
+    let logs = settled.expect("the background sync should finish well inside 5s");
+    assert_eq!(
+        logs, 1,
+        "the joined request must not open a second sync pass"
+    );
+}
+
+/// The status row carries live progress while a multi-page sync is running —
+/// the number `mxr demo` and `mxr sync --wait` render, and the one the
+/// detached-sync reaper uses to tell a slow sync from a wedged one.
+#[tokio::test]
+async fn get_sync_status_reports_live_progress_while_a_sync_runs() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let account_id = state.default_provider().account_id().clone();
+    state.add_sync_provider_for_test(Arc::new(
+        mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), 60)
+            .with_page_size(10),
+    ));
+
+    let msg = IpcMessage {
+        id: 314,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::SyncNow {
+            account_id: Some(account_id.clone()),
+            background: true,
+        }),
+    };
+    handle_request(&state, &msg).await;
+
+    let status_request = IpcMessage {
+        id: 315,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::GetSyncStatus {
+            account_id: account_id.clone(),
+        }),
+    };
+    let mut seen = None;
+    for _ in 0..400 {
+        if let IpcPayload::Response(Response::Ok {
+            data: ResponseData::SyncStatus { sync },
+        }) = handle_request(&state, &status_request).await.payload
+        {
+            if let Some(progress) = sync.progress {
+                seen = Some(progress);
+                break;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let progress = seen.expect("a running sync must report progress on the status row");
+    assert!(
+        progress.message.contains("messages"),
+        "progress should name what the pass is doing, got {:?}",
+        progress.message
+    );
 }
 
 /// The mirror case: a sync that drained the provider must not leave the
@@ -1959,6 +2243,7 @@ async fn dispatch_sync_now_clears_sync_in_progress_when_the_provider_is_drained(
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SyncNow {
             account_id: Some(account_id.clone()),
+            background: false,
         }),
     };
     handle_request(&state, &msg).await;

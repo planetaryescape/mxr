@@ -131,8 +131,16 @@ impl App {
             }
             // Command palette
             Action::SyncNow => {
+                // Background: the daemon acks as soon as the sync starts, so a
+                // backfill that runs longer than the client's 60s IPC timeout
+                // no longer times out the request. Progress arrives as
+                // `OperationProgress` events and the list refreshes on
+                // `SyncCompleted`.
                 self.queue_mutation(
-                    Request::SyncNow { account_id: None },
+                    Request::SyncNow {
+                        account_id: None,
+                        background: true,
+                    },
                     MutationEffect::RefreshList,
                     "Syncing...".into(),
                 );

@@ -2612,6 +2612,7 @@ export interface components {
             last_success_at?: string | null;
             /** Format: int32 */
             last_synced_count: number;
+            progress?: null | components["schemas"]["SyncProgressData"];
             sync_in_progress: boolean;
         };
         ActivityCursor: {
@@ -4206,6 +4207,12 @@ export interface components {
         } | {
             /** @enum {string} */
             cmd: "ReindexSemantic";
+            /**
+             * @description Re-embed every message even when its stored vectors already look
+             *     current. Defaults to false: an ordinary reindex skips messages
+             *     whose chunks and embeddings match the active profile.
+             */
+            force?: boolean;
         } | {
             /** @enum {string} */
             cmd: "BackfillSemantic";
@@ -4312,6 +4319,12 @@ export interface components {
             sort?: null | components["schemas"]["SortOrder"];
         } | {
             account_id?: null | components["schemas"]["AccountId"];
+            /**
+             * @description Answer as soon as the sync has started instead of after it
+             *     finishes. Defaults to the historical blocking behaviour so an
+             *     older client's wire bytes keep meaning what they used to.
+             */
+            background?: boolean;
             /** @enum {string} */
             cmd: "SyncNow";
         } | {
@@ -5878,6 +5891,22 @@ export interface components {
             email: string;
             evidence_msg_ids: string[];
             reason: string;
+        };
+        /**
+         * @description How far the sync pass running for an account has got.
+         *
+         *     `current` counts messages committed so far in this backfill run, carrying
+         *     across provider pages. `total` is the denominator when one is known — no
+         *     provider in the tree reports a batch total, so it is absent today; it
+         *     exists because this maps straight onto `DaemonEvent::OperationProgress`,
+         *     whose `total` has always been optional for exactly this reason.
+         */
+        SyncProgressData: {
+            /** Format: int32 */
+            current: number;
+            message: string;
+            /** Format: int32 */
+            total?: number | null;
         };
         TextPlainFormat: "Fixed" | {
             Flowed: {

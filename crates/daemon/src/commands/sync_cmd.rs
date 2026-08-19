@@ -1,5 +1,5 @@
 use crate::cli::OutputFormat;
-use crate::commands::progress::ProgressPrinter;
+use crate::commands::progress::{format_thousands, ProgressPrinter};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_config::{load_config, AccountConfig, MxrConfig, SendProviderConfig, SyncProviderConfig};
@@ -102,7 +102,10 @@ fn build_status_request(account_id: Option<&AccountId>) -> Request {
 }
 
 fn build_sync_request(account_id: Option<AccountId>) -> Request {
-    Request::SyncNow { account_id }
+    Request::SyncNow {
+        account_id,
+        background: true,
+    }
 }
 
 pub async fn run(
@@ -121,14 +124,34 @@ pub async fn run(
         return Ok(());
     }
 
-    // The daemon runs a sync pass before it answers, so this can take as long
-    // as the mailbox needs. `request_with_events` waits without a deadline and
-    // streams the daemon's progress events; `request`'s 120s cap would kill a
-    // large or slow sync mid-flight while the daemon kept working (#179).
+    // The daemon acks as soon as the sync has started, so the trigger itself is
+    // quick. It still goes over `request_with_events` for the events the daemon
+    // emits before it answers — the "starting sync" line — and nothing after
+    // that: the printer is finished the moment the ack lands, and `--wait`
+    // below renders its own status polls.
     let json_mode = matches!(
         resolve_format(format.clone()),
         OutputFormat::Json | OutputFormat::Jsonl
     );
+    // Taken before the trigger: with the daemon acking up front, a sync that
+    // fails leaves the account idle-with-an-error, which is indistinguishable
+    // from an account that was already carrying an old error. The comparison
+    // is what makes `--wait` able to exit non-zero on a sync it started.
+    //
+    // `None` means we never got a reading. An empty baseline would be worse
+    // than none: every pre-existing error would then look new, and `mxr sync`
+    // would fail over something it did not cause.
+    let before = if wait {
+        match fetch_sync_statuses(&mut client, account_id.as_ref()).await {
+            Ok(statuses) => Some(statuses),
+            Err(error) => {
+                tracing::debug!(%error, "could not read sync status before triggering");
+                None
+            }
+        }
+    } else {
+        None
+    };
     let progress = ProgressPrinter::new(json_mode);
     let resp = client
         .request_with_events(
@@ -153,42 +176,65 @@ pub async fn run(
             (true, true) => {}
             (false, _) => println!("Sync triggered"),
         },
-        // An error here does not necessarily mean the sync failed: past its own
-        // ceiling the daemon detaches the pass and answers with an error while
-        // the work carries on. Ask the account which it was rather than reading
-        // the error text — the status row is the authority.
-        Response::Error { message, .. } => {
-            let statuses = fetch_sync_statuses(&mut client, account_id.as_ref()).await?;
-            if !statuses.iter().any(|status| status.sync_in_progress) {
-                anyhow::bail!("{message}");
-            }
-            if !json_mode {
-                println!("Sync is still running in the daemon; following its progress.");
-                if !wait {
-                    println!("Watch it with `mxr sync --status`.");
-                }
-            }
-        }
+        // The daemon rejects a sync it could not start at all — an unknown
+        // account, no provider. Once started, failures show up on the status
+        // row instead, which is what `--wait` reports.
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
 
-    // Answering does not mean the account is idle: the daemon may have
-    // detached a long pass, and the account's own sync loop may still be
-    // working (further backfill pages, a queued tick). `--wait` is what turns
-    // "a pass ran" into "the account is idle".
+    // Starting is not finishing: a first backfill runs page after page, and
+    // the account's own sync loop may still have queued work. `--wait` is what
+    // turns "a sync started" into "the account is idle".
     if wait {
-        wait_for_sync_quiescence(
+        let waited = wait_for_sync_quiescence(
             &mut client,
             account_id.as_ref(),
             Duration::from_secs(wait_timeout_secs),
+            json_mode,
         )
-        .await?;
+        .await;
+        // The status is what a JSON caller asked for, and it is most worth
+        // having when the sync failed — so render it either way, then report.
         if json_mode {
-            let statuses = fetch_sync_statuses(&mut client, account_id.as_ref()).await?;
-            render_status(&statuses, format);
+            if let Ok(statuses) = fetch_sync_statuses(&mut client, account_id.as_ref()).await {
+                render_status(&statuses, format);
+            }
+        }
+        let after = waited?;
+        if let Some(before) = before.as_deref() {
+            let failures = sync_failures(before, &after);
+            if !failures.is_empty() {
+                anyhow::bail!("{}", failures.join("; "));
+            }
         }
     }
     Ok(())
+}
+
+/// Errors left by a sync that ran while we were waiting.
+///
+/// An account that is idle is not an account that succeeded: a failed sync
+/// clears `sync_in_progress` on its way out, so quiescence alone would have
+/// `mxr sync --wait` exit 0 on a sync that failed. An error only counts when
+/// the attempt carrying it is newer than the one we saw before triggering —
+/// otherwise every wait would fail on an error the account has been carrying
+/// since yesterday.
+fn sync_failures(before: &[AccountSyncStatus], after: &[AccountSyncStatus]) -> Vec<String> {
+    after
+        .iter()
+        .filter_map(|status| {
+            let error = status.last_error.as_deref()?;
+            let previous = before
+                .iter()
+                .find(|previous| previous.account_id == status.account_id);
+            let is_new = previous.is_none_or(|previous| {
+                previous.last_attempt_at != status.last_attempt_at
+                    || previous.last_error.as_deref() != Some(error)
+            });
+            is_new.then(|| format!("sync failed for {}: {error}", status.account_name))
+        })
+        .collect()
 }
 
 async fn fetch_sync_statuses(
@@ -230,19 +276,35 @@ async fn wait_for_sync_quiescence(
     client: &mut IpcClient,
     account_id: Option<&AccountId>,
     timeout: Duration,
-) -> anyhow::Result<()> {
+    json_mode: bool,
+) -> anyhow::Result<Vec<AccountSyncStatus>> {
+    let progress = ProgressPrinter::new(json_mode);
     let deadline = Instant::now() + timeout;
+    let mut last_line: Option<String> = None;
     loop {
-        // Three outcomes, three responses: the daemon rejecting the query is
-        // fatal, a dropped connection earns a reconnect, and a status read that
-        // simply stalled while the daemon is busy with post-sync work says
-        // nothing about the sync — keep polling until the deadline.
+        // Four outcomes, four responses: the daemon rejecting the query is
+        // fatal, a dropped connection earns a reconnect, a degraded snapshot
+        // is no reading at all, and a status read that simply stalled while
+        // the daemon is busy with post-sync work says nothing about the sync —
+        // keep polling until the deadline.
         match poll_sync_statuses(client, account_id).await {
             StatusPoll::Statuses(statuses) => {
                 if !statuses.iter().any(|status| status.sync_in_progress) {
-                    return Ok(());
+                    return Ok(statuses);
+                }
+                // Only when the line actually changes: the poll runs ten times
+                // a second and piped output gets one line per call, so an
+                // unthrottled note buries a five-minute backfill in thousands
+                // of identical lines.
+                let line = sync_progress_line(&statuses);
+                if line.is_some() && line != last_line {
+                    if let Some(line) = line.as_deref() {
+                        progress.note(line);
+                    }
+                    last_line = line;
                 }
             }
+            StatusPoll::Degraded => {}
             StatusPoll::Rejected(message) => anyhow::bail!("{message}"),
             StatusPoll::Disconnected(error) => {
                 *client = reconnect_client(&error).await?;
@@ -258,10 +320,37 @@ async fn wait_for_sync_quiescence(
     }
 }
 
+/// Render the live progress of whichever accounts are mid-sync, so `--wait`
+/// shows movement instead of a bare spinner.
+fn sync_progress_line(statuses: &[AccountSyncStatus]) -> Option<String> {
+    let parts = statuses
+        .iter()
+        .filter_map(|status| {
+            let progress = status.progress.as_ref()?;
+            let total = progress
+                .total
+                .map_or_else(String::new, |total| format!("/{}", format_thousands(total)));
+            Some(format!(
+                "{}: {}{total} — {}",
+                status.account_name,
+                format_thousands(progress.current),
+                progress.message
+            ))
+        })
+        .collect::<Vec<_>>();
+    (!parts.is_empty()).then(|| parts.join("; "))
+}
+
 /// One sync-status poll, keeping "the daemon said no" apart from "the
-/// connection went away".
+/// connection went away" and from "the daemon answered, but with nothing".
 enum StatusPoll {
     Statuses(Vec<AccountSyncStatus>),
+    /// `GetStatus` fast-fails its DB-backed snapshot when the reader pool is
+    /// saturated — which is exactly what a large sync does to it — and reports
+    /// zero accounts and no statuses rather than flagging itself on the wire.
+    /// Reading that as "no account is syncing" would end the wait on the
+    /// daemon's busiest moment, so treat it as no reading at all.
+    Degraded,
     Rejected(String),
     Disconnected(anyhow::Error),
 }
@@ -278,9 +367,23 @@ async fn poll_sync_statuses(client: &mut IpcClient, account_id: Option<&AccountI
             (
                 None,
                 Response::Ok {
-                    data: ResponseData::Status { sync_statuses, .. },
+                    data:
+                        ResponseData::Status {
+                            sync_statuses,
+                            accounts,
+                            ..
+                        },
                 },
-            ) => StatusPoll::Statuses(sync_statuses),
+            ) => {
+                // A daemon with no accounts configured still names one
+                // ("unknown"), so an empty account list can only mean the
+                // snapshot degraded.
+                if accounts.is_empty() {
+                    StatusPoll::Degraded
+                } else {
+                    StatusPoll::Statuses(sync_statuses)
+                }
+            }
             (_, Response::Error { message, .. }) => StatusPoll::Rejected(message),
             _ => StatusPoll::Rejected("Unexpected response from daemon".to_string()),
         },
@@ -436,6 +539,7 @@ mod tests {
 
         let requested_account_id = if let Request::SyncNow {
             account_id: Some(account_id),
+            ..
         } = build_sync_request(Some(account_id.clone()))
         {
             Some(account_id)
@@ -444,5 +548,51 @@ mod tests {
         };
 
         assert_eq!(requested_account_id, Some(account_id));
+    }
+
+    fn status(name: &str, attempt: &str, error: Option<&str>) -> AccountSyncStatus {
+        AccountSyncStatus {
+            account_id: AccountId::from_provider_id("fake", name),
+            account_name: name.into(),
+            last_attempt_at: Some(attempt.into()),
+            last_success_at: None,
+            last_error: error.map(str::to_string),
+            failure_class: None,
+            consecutive_failures: 0,
+            backoff_until: None,
+            sync_in_progress: false,
+            current_cursor_summary: None,
+            last_synced_count: 0,
+            healthy: error.is_none(),
+            progress: None,
+        }
+    }
+
+    /// A failed sync goes idle on its way out, so quiescence alone would have
+    /// `--wait` report success on a sync that failed.
+    #[test]
+    fn sync_failures_reports_an_error_from_an_attempt_we_waited_on() {
+        let before = vec![status("personal", "t0", None)];
+        let after = vec![status("personal", "t1", Some("imap: connection refused"))];
+        assert_eq!(
+            sync_failures(&before, &after),
+            vec!["sync failed for personal: imap: connection refused".to_string()]
+        );
+    }
+
+    /// An account that was already carrying an error before we triggered, and
+    /// has not been attempted since, is not this command's failure to report.
+    #[test]
+    fn sync_failures_ignores_an_error_that_predates_the_trigger() {
+        let before = vec![status("personal", "t0", Some("stale auth failure"))];
+        let after = vec![status("personal", "t0", Some("stale auth failure"))];
+        assert!(sync_failures(&before, &after).is_empty());
+    }
+
+    #[test]
+    fn sync_failures_is_empty_when_the_sync_succeeded() {
+        let before = vec![status("personal", "t0", None)];
+        let after = vec![status("personal", "t1", None)];
+        assert!(sync_failures(&before, &after).is_empty());
     }
 }

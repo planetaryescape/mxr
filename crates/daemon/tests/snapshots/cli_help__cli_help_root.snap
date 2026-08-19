@@ -54,7 +54,7 @@ Commands:
   wrapped             Year-in-review summary: volume, time patterns, top contacts, reply discipline, storage, newsletters, superlatives. Like Spotify Wrapped but for your inbox
   response-time       Reply-latency percentiles (clock + business-hours) per direction
   stale               List stale threads waiting for a reply (mine = my turn, theirs = theirs)
-  sync                Trigger or query sync. Triggering runs a sync pass in the daemon and waits on it with no client-side deadline; the account can still be syncing afterwards, because the daemon detaches a pass that outruns its own limit and the account's sync loop may have further backfill pages. Use --wait to wait for the account itself to go idle
+  sync                Trigger or query sync. Triggering starts a sync in the daemon and returns as soon as it has started; the account keeps syncing afterwards, through the rest of a backfill and any queued tick. Use --wait to wait for the account itself to go idle
   status              Show daemon status
   web                 Start or reopen the local HTTP/WebSocket bridge and open the web app in the default browser. Runs detached by default; use `mxr web stop` to stop the detached bridge
   events              Watch daemon events

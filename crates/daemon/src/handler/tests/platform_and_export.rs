@@ -2048,18 +2048,88 @@ async fn dispatch_background_sync_now_runs_the_full_fan_out() {
     assert!(status.last_success_at.is_some());
 }
 
+/// Provider double that parks inside `sync_messages` until the test lets it
+/// go. Without a barrier the "is a second sync deduplicated?" test depends on
+/// the first pass still being in flight when the second request lands, which
+/// on a fast machine it may not be.
+struct HeldPageSyncProvider {
+    account_id: mxr_core::AccountId,
+    entered: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+#[async_trait::async_trait]
+impl mxr_core::MailSyncProvider for HeldPageSyncProvider {
+    fn name(&self) -> &str {
+        "held-page-sync"
+    }
+
+    fn account_id(&self) -> &mxr_core::AccountId {
+        &self.account_id
+    }
+
+    fn capabilities(&self) -> mxr_core::SyncCapabilities {
+        mxr_core::SyncCapabilities::default()
+    }
+
+    async fn authenticate(&mut self) -> Result<(), mxr_core::MxrError> {
+        Ok(())
+    }
+
+    async fn refresh_auth(&mut self) -> Result<(), mxr_core::MxrError> {
+        Ok(())
+    }
+
+    async fn sync_labels(&self) -> Result<Vec<mxr_core::types::Label>, mxr_core::MxrError> {
+        Ok(Vec::new())
+    }
+
+    async fn sync_messages(
+        &self,
+        cursor: &mxr_core::types::SyncCursor,
+    ) -> Result<mxr_core::types::SyncBatch, mxr_core::MxrError> {
+        self.entered.notify_one();
+        self.release.notified().await;
+        Ok(mxr_core::types::SyncBatch {
+            upserted: Vec::new(),
+            deleted_provider_ids: Vec::new(),
+            label_changes: Vec::new(),
+            next_cursor: cursor.clone(),
+            has_more: false,
+            threads_changed: Vec::new(),
+        })
+    }
+
+    async fn fetch_attachment(
+        &self,
+        _provider_message_id: &str,
+        _provider_attachment_id: &str,
+    ) -> Result<Vec<u8>, mxr_core::MxrError> {
+        Err(mxr_core::MxrError::NotFound("no attachment".into()))
+    }
+
+    async fn apply_mutation(
+        &self,
+        _mutation_id: &str,
+        _mutation: &mxr_core::Mutation,
+    ) -> Result<(), mxr_core::MxrError> {
+        Ok(())
+    }
+}
+
 /// A second background sync while one is running joins it rather than queueing
 /// another pass behind the same provider lock: two acks, one sync.
 #[tokio::test]
 async fn dispatch_background_sync_now_does_not_start_a_second_pass() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let account_id = state.default_provider().account_id().clone();
-    // Several pages, so the first background sync is genuinely still running
-    // when the second request arrives.
-    state.add_sync_provider_for_test(Arc::new(
-        mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), 60)
-            .with_page_size(10),
-    ));
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    state.add_sync_provider_for_test(Arc::new(HeldPageSyncProvider {
+        account_id: account_id.clone(),
+        entered: entered.clone(),
+        release: release.clone(),
+    }));
 
     let request = |id: u64| IpcMessage {
         id,
@@ -2071,6 +2141,11 @@ async fn dispatch_background_sync_now_does_not_start_a_second_pass() {
     };
 
     let first = handle_request(&state, &request(312)).await;
+    // The first pass is now parked inside the provider, so the second request
+    // lands while it is unambiguously in flight.
+    tokio::time::timeout(std::time::Duration::from_secs(5), entered.notified())
+        .await
+        .expect("the first background sync should reach the provider");
     let second = handle_request(&state, &request(313)).await;
     for (label, resp) in [("first", first), ("second", second)] {
         assert!(
@@ -2085,14 +2160,11 @@ async fn dispatch_background_sync_now_does_not_start_a_second_pass() {
         );
     }
 
-    // Wait for the background sync to be over, then count the sync-log rows:
-    // one pass opens exactly one, and a second request that queued its own
-    // pass would leave two. The claim becoming free again is the signal that
-    // the spawned task has finished — the account itself stays
-    // `sync_in_progress` here, because the provider still has pages and no
-    // sync loop is running in a handler test to take them. Reading the count
-    // before that point would see one row while the first pass is still
-    // running and pass for the wrong reason.
+    release.notify_waiters();
+
+    // The claim becoming free again is the signal that the spawned task has
+    // finished. Only then is the sync-log count final: one pass opens exactly
+    // one row, and a second request that queued its own pass would leave two.
     let mut settled = None;
     for _ in 0..200 {
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;

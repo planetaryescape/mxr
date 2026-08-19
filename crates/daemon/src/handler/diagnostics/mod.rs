@@ -1365,6 +1365,10 @@ async fn start_background_sync(
             // sync, and the provider lock still serialises the two.
             crate::loops::SyncWait::Detached => {}
         }
+        // Reached only if the pass was handed to a finalizer. A panic above
+        // skips this, and the claim's `Drop` then clears the in-progress flag
+        // this handler wrote before acking.
+        claim.mark_handed_off();
     });
     Ok(ResponseData::Ack)
 }

@@ -158,8 +158,12 @@ impl ProgressPrinter {
 
     /// Report progress the client observed itself (a status poll), as opposed
     /// to a `DaemonEvent`. On a TTY it rewrites the spinner label in place so
-    /// a poll loop doesn't scroll the terminal; elsewhere it prints one plain
-    /// line so piped output still shows forward motion. Callers throttle.
+    /// a poll loop doesn't scroll the terminal; elsewhere it prints one line
+    /// so piped output still shows forward motion. Callers throttle.
+    ///
+    /// In JSON mode that line is JSON, like the daemon events beside it —
+    /// stderr is a JSON-Lines stream there and one prose line in the middle
+    /// breaks every consumer of it.
     pub(crate) fn note(&self, message: &str) {
         if let Ok(mut label) = self.label.lock() {
             message.clone_into(&mut label);
@@ -168,7 +172,16 @@ impl ProgressPrinter {
             return;
         }
         let mut stderr = std::io::stderr();
-        let _ = writeln!(stderr, "  {message}");
+        if self.json_mode {
+            if let Ok(line) = serde_json::to_string(&serde_json::json!({
+                "event": "Progress",
+                "message": message,
+            })) {
+                let _ = writeln!(stderr, "{line}");
+            }
+        } else {
+            let _ = writeln!(stderr, "  {message}");
+        }
         let _ = stderr.flush();
     }
 

@@ -362,6 +362,12 @@ async fn reap_detached_sync(
                     account = %account_id,
                     "detached sync reported no progress for {DETACHED_SYNC_GRACE:?}; aborting to release the provider lock"
                 );
+                // `abort` only takes effect when the task next reaches an
+                // await point, so joining it is what actually makes the engine
+                // stop. Skipping the join would release the provider guard
+                // below while the old sync was still writing, and the next
+                // sync would take the lock and run alongside it.
+                let _ = (&mut task).await;
                 break Err(MxrError::Provider(format!(
                     "sync aborted: no progress for {DETACHED_SYNC_GRACE:?}"
                 )));
@@ -369,6 +375,31 @@ async fn reap_detached_sync(
         }
     };
     let _ = finalize_sync_pass(pass, result).await;
+}
+
+/// Re-assert the account as busy when a background sync was claimed while this
+/// pass was finalizing.
+///
+/// The finalizer reads the claim, then writes the status row. A claim taken in
+/// between is a client that has already been acked and whose own pre-ack
+/// `sync_in_progress = true` this write would silently undo, leaving the client
+/// waiting on a row that says idle. Re-checking after the write closes it: the
+/// claim outlives the window, so the later of the two writers always wins with
+/// "busy".
+async fn reassert_busy_if_background_sync_queued(state: &Arc<AppState>, account_id: &AccountId) {
+    if !state.background_sync_queued(account_id) {
+        return;
+    }
+    let _ = state
+        .store
+        .upsert_sync_runtime_status(
+            account_id,
+            &SyncRuntimeStatusUpdate {
+                sync_in_progress: Some(true),
+                ..Default::default()
+            },
+        )
+        .await;
 }
 
 /// Record a finished pass and fan out from it: runtime status, sync log,
@@ -435,6 +466,7 @@ pub(crate) async fn finalize_sync_pass(
                     .complete_sync_log(log_id, &StoreSyncStatus::Error, 0, Some(&err_str))
                     .await;
             }
+            reassert_busy_if_background_sync_queued(&state, &account_id).await;
             drop(provider_guard);
             state.finish_sync_run(&account_id, false);
             let _ = state
@@ -519,6 +551,7 @@ pub(crate) async fn finalize_sync_pass(
             .complete_sync_log(log_id, &StoreSyncStatus::Success, count, None)
             .await;
     }
+    reassert_busy_if_background_sync_queued(&state, &account_id).await;
     drop(provider_guard);
     state.finish_sync_run(&account_id, outcome.has_more);
     // A pass returns after one page. Without a wake, the account would sit at
@@ -575,6 +608,7 @@ pub(crate) async fn finalize_sync_pass(
         });
     }
 
+    let upserted_ids = outcome.upserted_message_ids;
     if count > 0 {
         let initial_backfill_finished = was_initial_backfill && !initial_backfill_in_progress;
         match state.warm_lexical_search(initial_backfill_finished).await {
@@ -587,8 +621,10 @@ pub(crate) async fn finalize_sync_pass(
             ),
         }
 
-        let upserted_ids = outcome.upserted_message_ids;
-        let mut handover_relationship_contacts = Vec::new();
+        // Collect this page's contacts into the account's deferred set. The
+        // relationship worker does per-message reads, so running it per page
+        // during a backfill would put a query storm behind every page; the set
+        // is handed over in one go when the backfill ends.
         if initial_backfill_in_progress
             || was_initial_backfill
             || state.has_deferred_relationship_contacts(&account_id)
@@ -608,12 +644,6 @@ pub(crate) async fn finalize_sync_pass(
             }
             if initial_backfill_in_progress {
                 tracing::debug!(account = %account_id, "relationship profile refresh deferred during initial backfill");
-            } else {
-                handover_relationship_contacts = state
-                    .take_deferred_relationship_contacts(&account_id)
-                    .into_iter()
-                    .map(|email| (account_id.clone(), email))
-                    .collect::<Vec<_>>();
             }
         }
 
@@ -642,7 +672,32 @@ pub(crate) async fn finalize_sync_pass(
                 tracing::warn!(account = %account_id, %error, "new-message event lookup failed");
             }
         }
+    }
 
+    // Hand the deferred contacts to the relationship worker on the same edge
+    // as the analytics repair, and outside `count > 0` for the same reason: a
+    // provider ends a backfill with an empty final page, and a handover gated
+    // on "this page carried messages" would never happen for it — leaving the
+    // whole backfill's contacts stranded in memory until the process exits.
+    let contacts_handed_over = if initial_backfill_in_progress {
+        false
+    } else {
+        let deferred = state.take_deferred_relationship_contacts(&account_id);
+        if deferred.is_empty() {
+            false
+        } else {
+            let contacts = deferred
+                .into_iter()
+                .map(|email| (account_id.clone(), email))
+                .collect::<Vec<_>>();
+            if let Err(error) = state.relationship.enqueue_contacts(contacts).await {
+                tracing::warn!(account = %account_id, %error, "relationship handover enqueue failed");
+            }
+            true
+        }
+    };
+
+    if count > 0 {
         // Critical: the post-sync fan-out (semantic ingest, contacts refresh,
         // relationship profile, rules engine, analytics backfill) used to run
         // inline here. That kept the sync loop blocked until every downstream
@@ -667,7 +722,7 @@ pub(crate) async fn finalize_sync_pass(
                 fanout_account,
                 fanout_provider,
                 upserted_ids,
-                handover_relationship_contacts,
+                contacts_handed_over,
                 initial_backfill_in_progress,
             )
             .await;
@@ -1038,7 +1093,9 @@ async fn post_sync_fanout(
     account_id: AccountId,
     provider: Arc<dyn MailSyncProvider>,
     upserted_message_ids: Vec<mxr_core::MessageId>,
-    relationship_handover_contacts: Vec<(AccountId, String)>,
+    // The caller already enqueued the account's deferred backfill contacts, so
+    // this page's own contacts are part of that batch.
+    contacts_handed_over: bool,
     initial_backfill_in_progress: bool,
 ) {
     if let Err(error) = state
@@ -1055,15 +1112,7 @@ async fn post_sync_fanout(
     {
         tracing::warn!(account = %account_id, %error, "contacts refresh enqueue failed");
     }
-    if !relationship_handover_contacts.is_empty() {
-        if let Err(error) = state
-            .relationship
-            .enqueue_contacts(relationship_handover_contacts)
-            .await
-        {
-            tracing::warn!(account = %account_id, %error, "relationship handover enqueue failed");
-        }
-    } else if !initial_backfill_in_progress {
+    if !contacts_handed_over && !initial_backfill_in_progress {
         if let Err(error) = state
             .relationship
             .enqueue_contacts_from_messages(&upserted_message_ids)
@@ -2613,10 +2662,21 @@ mod tests {
             Ok(Vec::new())
         }
 
+        /// Mid-backfill cursors are marked, so the daemon defers the
+        /// relationship refresh exactly as it does for a real provider.
+        fn is_backfill_cursor(&self, cursor: &SyncCursor) -> bool {
+            cursor.as_bytes().starts_with(b"page:")
+        }
+
         async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
             use std::sync::atomic::Ordering;
             let served = self.pages_served.fetch_add(1, Ordering::SeqCst);
             let has_more = served + 1 < self.pages;
+            let next_cursor = if has_more {
+                SyncCursor::from_bytes(format!("page:{}", served + 1).into_bytes())
+            } else {
+                SyncCursor::from_bytes(b"done".to_vec())
+            };
             let upserted = if has_more {
                 let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
                     .account_id(self.account_id.clone())
@@ -2628,11 +2688,12 @@ mod tests {
                 // The empty final page: nothing synced, nothing left to page.
                 Vec::new()
             };
+            let _ = cursor;
             Ok(SyncBatch {
                 upserted,
                 deleted_provider_ids: Vec::new(),
                 label_changes: Vec::new(),
-                next_cursor: cursor.clone(),
+                next_cursor,
                 has_more,
                 threads_changed: Vec::new(),
             })
@@ -2707,6 +2768,10 @@ mod tests {
                 .load(std::sync::atomic::Ordering::SeqCst),
             "a page with more to come must not pay for the whole-table repair"
         );
+        assert!(
+            state.has_deferred_relationship_contacts(&account_id),
+            "a mid-backfill page defers its contacts instead of enqueueing them"
+        );
 
         // Page two: empty, and the end of the backfill. The debt falls due
         // even though this page synced nothing.
@@ -2721,6 +2786,68 @@ mod tests {
         assert!(
             analytics_repair_ran(&state).await,
             "the repair must run when the backfill ends, even on an empty page"
+        );
+        assert!(
+            !state.has_deferred_relationship_contacts(&account_id),
+            "the deferred contacts must be handed over when the backfill ends, \
+             even though the page that ended it carried no messages"
+        );
+    }
+
+    /// A background sync claimed while a pass is finalizing must survive that
+    /// pass's status write. The window is two lines wide, so rather than race
+    /// it this pins the repair: the finalizer re-checks after writing, and a
+    /// claim held across the check leaves the account marked busy.
+    #[tokio::test]
+    async fn a_claim_taken_during_finalization_leaves_the_account_marked_busy() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let account_id = state.default_provider().account_id().clone();
+        let _ = state
+            .store
+            .upsert_sync_runtime_status(
+                &account_id,
+                &SyncRuntimeStatusUpdate {
+                    sync_in_progress: Some(false),
+                    ..Default::default()
+                },
+            )
+            .await;
+
+        let claim = AppState::claim_background_sync(&state, &account_id)
+            .expect("the account starts unclaimed");
+        reassert_busy_if_background_sync_queued(&state, &account_id).await;
+        let status = state
+            .store
+            .get_sync_runtime_status(&account_id)
+            .await
+            .unwrap()
+            .expect("sync status row");
+        assert!(
+            status.sync_in_progress,
+            "a queued claim must be re-asserted over a finalizer's write"
+        );
+
+        drop(claim);
+        let _ = state
+            .store
+            .upsert_sync_runtime_status(
+                &account_id,
+                &SyncRuntimeStatusUpdate {
+                    sync_in_progress: Some(false),
+                    ..Default::default()
+                },
+            )
+            .await;
+        reassert_busy_if_background_sync_queued(&state, &account_id).await;
+        let status = state
+            .store
+            .get_sync_runtime_status(&account_id)
+            .await
+            .unwrap()
+            .expect("sync status row");
+        assert!(
+            !status.sync_in_progress,
+            "with no claim outstanding the account stays idle"
         );
     }
 

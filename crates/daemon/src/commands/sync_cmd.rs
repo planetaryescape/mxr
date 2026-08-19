@@ -137,12 +137,20 @@ pub async fn run(
     // fails leaves the account idle-with-an-error, which is indistinguishable
     // from an account that was already carrying an old error. The comparison
     // is what makes `--wait` able to exit non-zero on a sync it started.
+    //
+    // `None` means we never got a reading. An empty baseline would be worse
+    // than none: every pre-existing error would then look new, and `mxr sync`
+    // would fail over something it did not cause.
     let before = if wait {
-        fetch_sync_statuses(&mut client, account_id.as_ref())
-            .await
-            .unwrap_or_default()
+        match fetch_sync_statuses(&mut client, account_id.as_ref()).await {
+            Ok(statuses) => Some(statuses),
+            Err(error) => {
+                tracing::debug!(%error, "could not read sync status before triggering");
+                None
+            }
+        }
     } else {
-        Vec::new()
+        None
     };
     let progress = ProgressPrinter::new(json_mode);
     let resp = client
@@ -194,9 +202,11 @@ pub async fn run(
             }
         }
         let after = waited?;
-        let failures = sync_failures(&before, &after);
-        if !failures.is_empty() {
-            anyhow::bail!("{}", failures.join("; "));
+        if let Some(before) = before.as_deref() {
+            let failures = sync_failures(before, &after);
+            if !failures.is_empty() {
+                anyhow::bail!("{}", failures.join("; "));
+            }
         }
     }
     Ok(())

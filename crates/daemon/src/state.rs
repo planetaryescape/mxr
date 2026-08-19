@@ -510,6 +510,7 @@ pub(crate) struct BackgroundSyncClaim {
     state: Arc<AppState>,
     account_id: AccountId,
     started: bool,
+    handed_off: bool,
 }
 
 impl BackgroundSyncClaim {
@@ -526,22 +527,59 @@ impl BackgroundSyncClaim {
             run.background_syncs_running = run.background_syncs_running.saturating_add(1);
         }
     }
+
+    /// The pass reached an owner that will finalize it — either it finished
+    /// and was finalized inline, or it was detached and the reaper has it.
+    /// Either way the status row is somebody's responsibility now, and this
+    /// claim must not clear it on the way out.
+    pub(crate) fn mark_handed_off(&mut self) {
+        self.handed_off = true;
+    }
 }
 
 impl Drop for BackgroundSyncClaim {
     fn drop(&mut self) {
-        let mut runs = self.state.sync_runs.lock();
-        let Some(run) = runs.get_mut(&self.account_id) else {
+        {
+            let mut runs = self.state.sync_runs.lock();
+            if let Some(run) = runs.get_mut(&self.account_id) {
+                if self.started {
+                    run.background_syncs_running = run.background_syncs_running.saturating_sub(1);
+                } else {
+                    run.background_syncs_queued = run.background_syncs_queued.saturating_sub(1);
+                }
+                if run.is_idle() {
+                    runs.remove(&self.account_id);
+                }
+            }
+        }
+        if self.handed_off {
+            return;
+        }
+        // Nobody finalized this pass: the task panicked, or the runtime
+        // dropped it at shutdown. The `sync_in_progress = true` written before
+        // the ack is still in the store and nothing is left to clear it, so
+        // every later client would read the account as permanently syncing.
+        // Best effort — `Drop` cannot await, and there may be no runtime left
+        // to spawn on during shutdown, in which case the startup reconciler
+        // (`reconcile_interrupted_syncs`) clears it in the next process.
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
             return;
         };
-        if self.started {
-            run.background_syncs_running = run.background_syncs_running.saturating_sub(1);
-        } else {
-            run.background_syncs_queued = run.background_syncs_queued.saturating_sub(1);
-        }
-        if run.is_idle() {
-            runs.remove(&self.account_id);
-        }
+        let state = Arc::clone(&self.state);
+        let account_id = self.account_id.clone();
+        handle.spawn(async move {
+            tracing::warn!(account = %account_id, "background sync ended without finalizing; clearing its in-progress flag");
+            let _ = state
+                .store
+                .upsert_sync_runtime_status(
+                    &account_id,
+                    &mxr_store::SyncRuntimeStatusUpdate {
+                        sync_in_progress: Some(false),
+                        ..Default::default()
+                    },
+                )
+                .await;
+        });
     }
 }
 
@@ -1201,7 +1239,11 @@ impl AppState {
         let Some(run) = runs.get_mut(account_id) else {
             return BTreeSet::new();
         };
-        std::mem::take(&mut run.deferred_relationship_contacts)
+        let taken = std::mem::take(&mut run.deferred_relationship_contacts);
+        if run.is_idle() {
+            runs.remove(account_id);
+        }
+        taken
     }
 
     pub(crate) fn has_deferred_relationship_contacts(&self, account_id: &AccountId) -> bool {
@@ -1230,6 +1272,7 @@ impl AppState {
             state: Arc::clone(state),
             account_id: account_id.clone(),
             started: false,
+            handed_off: false,
         })
     }
 

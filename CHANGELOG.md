@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.24](https://github.com/planetaryescape/mxr/compare/v0.6.23...v0.6.24) (2026-08-19)
+
+
+### Features
+
+* run sync in the background with live progress ([#197](https://github.com/planetaryescape/mxr/issues/197)) ([5d47cba](https://github.com/planetaryescape/mxr/commit/5d47cba2130ed5720e70b51909ced28aaf09f421))
+
+
+### Documentation
+
+* record the [#179](https://github.com/planetaryescape/mxr/issues/179) demo-timeout fix plan, results and follow-ups ([#198](https://github.com/planetaryescape/mxr/issues/198)) ([9155662](https://github.com/planetaryescape/mxr/commit/91556621529b11f43835652642614e37cab6d407))
+
 ## [0.6.23](https://github.com/planetaryescape/mxr/compare/v0.6.22...v0.6.23) (2026-08-19)
 
 

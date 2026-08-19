@@ -1431,6 +1431,7 @@ mod tests {
             current_cursor_summary: Some("initial".into()),
             last_synced_count: 1,
             healthy: true,
+            progress: None,
         }];
 
         assert_eq!(

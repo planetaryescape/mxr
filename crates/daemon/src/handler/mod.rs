@@ -974,7 +974,10 @@ async fn dispatch(
             .await
         }
         Request::GetHeaders { message_id } => runtime::get_headers(state, message_id).await,
-        Request::SyncNow { account_id } => runtime::sync_now(state, account_id.as_ref()).await,
+        Request::SyncNow {
+            account_id,
+            background,
+        } => runtime::sync_now(state, account_id.as_ref(), *background).await,
         Request::ExportThread { thread_id, format } => {
             runtime::export_thread(state, thread_id, format).await
         }
@@ -1569,7 +1572,9 @@ async fn request_account_scope(
         | Request::ListLargestMessages {
             account_id: None, ..
         }
-        | Request::SyncNow { account_id: None }
+        | Request::SyncNow {
+            account_id: None, ..
+        }
         | Request::UnsubscribePurge {
             account_id: None, ..
         }
@@ -2225,7 +2230,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListContactAsymmetry { account_id, .. }
         | Request::ListContactDecay { account_id, .. }
         | Request::ListResponseTime { account_id, .. }
-        | Request::SyncNow { account_id } => account_id.as_ref(),
+        | Request::SyncNow { account_id, .. } => account_id.as_ref(),
         Request::ListAccountAddresses { account_id }
         | Request::AddAccountAddress { account_id, .. }
         | Request::RemoveAccountAddress { account_id, .. }

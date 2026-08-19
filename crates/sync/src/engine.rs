@@ -21,6 +21,37 @@ pub struct SyncOutcome {
     pub threads_changed: Vec<Thread>,
 }
 
+/// A milestone reached part-way through a sync pass.
+///
+/// The engine reports these so a caller can show movement during a long
+/// backfill; it stays free of IPC and daemon types, and the daemon maps them
+/// onto `AccountSyncStatus.progress` and `OperationProgress` events. Each
+/// variant is a point the pass has actually reached, not an estimate, and
+/// reporting one costs a function call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncProgress {
+    /// The provider handed back a page, before any of it is stored.
+    PageFetched { messages: u32, has_more: bool },
+    /// The page's envelopes and bodies are committed to SQLite.
+    PageStored { messages: u32 },
+    /// The page is committed to the lexical index; the pass is wrapping up.
+    PageIndexed { messages: u32 },
+    /// The pass is starting over from an empty cursor — the label junction
+    /// table was found empty and the account has to be re-paged to rebuild it.
+    /// Everything reported for this pass so far describes rows the restart
+    /// will report again, so a caller counting messages must discard it.
+    Restarted,
+}
+
+/// Where a caller receives [`SyncProgress`] milestones.
+///
+/// `Send + Sync` because the sync future is spawned onto the runtime and holds
+/// the sink across await points.
+pub type ProgressSink<'a> = &'a (dyn Fn(SyncProgress) + Send + Sync);
+
+/// Discards every milestone. Used by callers that only want the outcome.
+fn ignore_progress(_: SyncProgress) {}
+
 /// No-op lookup used when the engine is constructed without an explicit
 /// address source. Reports `is_loaded=false` so direction stays `Unknown`
 /// rather than being misclassified as inbound.
@@ -249,6 +280,18 @@ impl SyncEngine {
         &self,
         provider: &dyn MailSyncProvider,
     ) -> Result<SyncOutcome, MxrError> {
+        self.sync_account_reporting(provider, &ignore_progress)
+            .await
+    }
+
+    /// Run one sync pass, reporting [`SyncProgress`] milestones to `progress`
+    /// as it goes. A pass covers a single provider page; a backfill is many
+    /// passes, and the caller accumulates across them.
+    pub async fn sync_account_reporting(
+        &self,
+        provider: &dyn MailSyncProvider,
+        progress: ProgressSink<'_>,
+    ) -> Result<SyncOutcome, MxrError> {
         let account_id = provider.account_id();
         let mut recovered_expired_cursor = false;
         // Phase F: accumulate thread_ids touched this sync run. Populated
@@ -308,6 +351,10 @@ impl SyncEngine {
             };
             let synced_count = batch.upserted.len() as u32;
             let has_more = batch.has_more;
+            progress(SyncProgress::PageFetched {
+                messages: synced_count,
+                has_more,
+            });
             let upserted_message_ids = batch
                 .upserted
                 .iter()
@@ -374,6 +421,9 @@ impl SyncEngine {
                 .apply_sync_upserts(&upserts)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
+            progress(SyncProgress::PageStored {
+                messages: synced_count,
+            });
 
             // Reply pairs resolve against committed rows, so they run after
             // the batch: a reply whose parent arrived in the same batch now
@@ -501,6 +551,9 @@ impl SyncEngine {
                     "lexical batch applied"
                 );
             }
+            progress(SyncProgress::PageIndexed {
+                messages: synced_count,
+            });
 
             // Recalculate label counts every batch (including during backfill)
             self.store
@@ -542,6 +595,7 @@ impl SyncEngine {
                     .set_sync_cursor(account_id, &SyncCursor::empty())
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
+                progress(SyncProgress::Restarted);
                 continue;
             }
 

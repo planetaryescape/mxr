@@ -8,7 +8,7 @@
 
 mod engine;
 pub mod links;
-pub use engine::{SyncEngine, SyncOutcome};
+pub use engine::{ProgressSink, SyncEngine, SyncOutcome, SyncProgress};
 
 #[cfg(test)]
 mod tests {

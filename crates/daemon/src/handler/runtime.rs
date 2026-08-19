@@ -45,8 +45,9 @@ pub(super) async fn get_headers(state: &AppState, message_id: &MessageId) -> Han
 pub(super) async fn sync_now(
     state: &std::sync::Arc<AppState>,
     account_id: Option<&AccountId>,
+    background: bool,
 ) -> HandlerResult {
-    diagnostics_impl::sync_now(state, account_id).await
+    diagnostics_impl::sync_now(state, account_id, background).await
 }
 
 pub(super) async fn export_thread(

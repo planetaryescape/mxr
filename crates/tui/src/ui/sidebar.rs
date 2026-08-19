@@ -568,6 +568,7 @@ mod tests {
             current_cursor_summary: None,
             last_synced_count: 0,
             healthy,
+            progress: None,
         }
     }
 

@@ -548,6 +548,9 @@ async fn collect_sync_statuses_from_store(store: &Store) -> anyhow::Result<Vec<A
                     .as_ref()
                     .and_then(|row| row.last_error.as_ref())
                     .is_none(),
+            // Read straight from the store, with no daemon in scope to ask
+            // for the live progress of a pass in flight.
+            progress: None,
         });
     }
 

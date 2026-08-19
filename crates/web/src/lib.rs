@@ -3038,9 +3038,15 @@ async fn trigger_sync(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    // Background: the HTTP handler answers as soon as the daemon has started
+    // the sync instead of holding the request open for the whole pass, which
+    // on a first backfill is minutes.
     ack_request(
         &state.config.socket_path,
-        Request::SyncNow { account_id: None },
+        Request::SyncNow {
+            account_id: None,
+            background: true,
+        },
     )
     .await
 }

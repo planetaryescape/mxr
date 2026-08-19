@@ -646,6 +646,7 @@ fn diagnostics_page_snapshot() {
             current_cursor_summary: Some("gmail history_id=4242".into()),
             last_synced_count: 12,
             healthy: true,
+            progress: None,
         }],
         doctor: Some(DoctorReport {
             healthy: true,

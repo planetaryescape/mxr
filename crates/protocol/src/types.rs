@@ -846,6 +846,11 @@ pub enum Request {
     },
     SyncNow {
         account_id: Option<AccountId>,
+        /// Answer as soon as the sync has started instead of after it
+        /// finishes. Defaults to the historical blocking behaviour so an
+        /// older client's wire bytes keep meaning what they used to.
+        #[serde(default)]
+        background: bool,
     },
     GetSyncStatus {
         account_id: AccountId,
@@ -2796,6 +2801,28 @@ pub struct AccountSyncStatus {
     pub current_cursor_summary: Option<String>,
     pub last_synced_count: u32,
     pub healthy: bool,
+    /// Live progress of the pass currently running, when one is. Held in
+    /// daemon memory rather than the status row: it changes far too often to
+    /// be worth a write per step, and it means nothing once the daemon that
+    /// reported it is gone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<SyncProgressData>,
+}
+
+/// How far the sync pass running for an account has got.
+///
+/// `current` counts messages committed so far in this backfill run, carrying
+/// across provider pages. `total` is the denominator when one is known — no
+/// provider in the tree reports a batch total, so it is absent today; it
+/// exists because this maps straight onto `DaemonEvent::OperationProgress`,
+/// whose `total` has always been optional for exactly this reason.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SyncProgressData {
+    pub current: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total: Option<u32>,
+    pub message: String,
 }
 
 /// Default limit for `TriageSearch`.

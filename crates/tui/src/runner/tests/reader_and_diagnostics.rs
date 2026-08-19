@@ -1438,3 +1438,29 @@ fn refresh_analytics_action_clears_error_and_marks_pending() {
     assert!(app.analytics.refresh_pending);
     assert!(app.analytics.error.is_none());
 }
+
+/// The TUI's own IPC timeout is 60s, so a manual sync must not be the kind of
+/// request the daemon answers only when the sync is over — a first backfill
+/// runs far longer than that and used to time the request out (and reconnect)
+/// while the sync carried on.
+#[test]
+fn sync_now_action_asks_the_daemon_to_sync_in_the_background() {
+    let mut app = App::new();
+
+    app.apply(Action::SyncNow);
+
+    let queued = app
+        .pending_mutation_queue
+        .first()
+        .expect("SyncNow should queue a request");
+    match &queued.request {
+        Request::SyncNow {
+            account_id,
+            background,
+        } => {
+            assert_eq!(account_id, &None);
+            assert!(background, "the TUI must not block on the sync");
+        }
+        other => panic!("Expected SyncNow request, got {other:?}"),
+    }
+}

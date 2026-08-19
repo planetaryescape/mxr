@@ -1,13 +1,15 @@
 use mxr_core::id::AccountId;
 use mxr_core::*;
-use mxr_protocol::{AccountConfigData, AuthSessionData, AuthSessionId, IpcMessage};
+use mxr_protocol::{
+    AccountConfigData, AuthSessionData, AuthSessionId, IpcMessage, SyncProgressData,
+};
 use mxr_relationship::RelationshipServiceHandle;
 use mxr_search::{SearchIndex, SearchServiceHandle};
 use mxr_semantic::{SemanticEngine, SemanticServiceHandle};
 use mxr_store::{ContactsRefreshHandle, Store};
 use mxr_sync::SyncEngine;
 use parking_lot::{Mutex as ParkingMutex, RwLock};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{
@@ -451,6 +453,96 @@ pub struct AppState {
     runtime_tasks: RuntimeTasks,
     admin_blocking: Arc<Semaphore>,
     pub(crate) auth_sessions: ParkingMutex<HashMap<AuthSessionId, AuthSessionRuntime>>,
+    /// Live progress of the sync pass running for each account, plus the
+    /// contacts a mid-backfill account still owes the relationship worker.
+    /// Both are per-run state that dies with the process, so neither belongs
+    /// in the store.
+    sync_runs: ParkingMutex<HashMap<AccountId, SyncRun>>,
+}
+
+/// In-memory state of one account's sync run — a run being the whole backfill,
+/// not the single provider page a pass covers.
+#[derive(Default)]
+struct SyncRun {
+    /// Messages committed so far across this run's pages.
+    synced: u32,
+    message: String,
+    /// Bumped on every reported milestone. The detached-sync reaper compares
+    /// it across grace windows to tell a slow sync from a wedged one.
+    revision: u64,
+    /// Contacts whose relationship profile refresh was deferred because the
+    /// account is mid-backfill; handed over in one batch when it finishes.
+    deferred_relationship_contacts: BTreeSet<String>,
+    /// Background syncs that have been acked but whose pass has not begun —
+    /// they are queued behind the provider lock. The account counts as syncing
+    /// while any are outstanding, otherwise another pass finishing in that
+    /// window would report the account idle and a waiting client would stop
+    /// short of the sync it actually asked for.
+    background_syncs_queued: u32,
+    /// Background passes between `begin` and `finalize`.
+    background_syncs_running: u32,
+    /// A pass deferred the whole-table analytics repair because the backfill
+    /// was still going. The debt is settled by the first pass that finds the
+    /// backfill over — including one that synced nothing, which is how a
+    /// provider signals the end of a backfill when its last page comes back
+    /// empty.
+    analytics_repair_owed: bool,
+}
+
+impl SyncRun {
+    /// Whether the entry still carries anything worth remembering.
+    fn is_idle(&self) -> bool {
+        self.revision == 0
+            && self.deferred_relationship_contacts.is_empty()
+            && self.background_syncs_queued == 0
+            && self.background_syncs_running == 0
+            && !self.analytics_repair_owed
+    }
+}
+
+/// One client's claim on running a background sync for an account.
+///
+/// Held from the ack until the pass it started has been finalized, and
+/// released on drop — so a panic inside the spawned task, or the runtime
+/// dropping that task at shutdown, cannot leave an account permanently
+/// "already syncing" with `sync_in_progress` stuck true.
+pub(crate) struct BackgroundSyncClaim {
+    state: Arc<AppState>,
+    account_id: AccountId,
+    started: bool,
+}
+
+impl BackgroundSyncClaim {
+    /// The pass has taken the provider lock and written its own status row, so
+    /// the claim stops standing in for it.
+    pub(crate) fn mark_started(&mut self) {
+        if self.started {
+            return;
+        }
+        self.started = true;
+        let mut runs = self.state.sync_runs.lock();
+        if let Some(run) = runs.get_mut(&self.account_id) {
+            run.background_syncs_queued = run.background_syncs_queued.saturating_sub(1);
+            run.background_syncs_running = run.background_syncs_running.saturating_add(1);
+        }
+    }
+}
+
+impl Drop for BackgroundSyncClaim {
+    fn drop(&mut self) {
+        let mut runs = self.state.sync_runs.lock();
+        let Some(run) = runs.get_mut(&self.account_id) else {
+            return;
+        };
+        if self.started {
+            run.background_syncs_running = run.background_syncs_running.saturating_sub(1);
+        } else {
+            run.background_syncs_queued = run.background_syncs_queued.saturating_sub(1);
+        }
+        if run.is_idle() {
+            runs.remove(&self.account_id);
+        }
+    }
 }
 
 /// Background-worker DB concurrency cap. Held below the reader pool's
@@ -568,6 +660,7 @@ impl AppState {
             runtime_tasks,
             admin_blocking,
             auth_sessions: ParkingMutex::new(HashMap::new()),
+            sync_runs: ParkingMutex::new(HashMap::new()),
         })
     }
 
@@ -997,6 +1090,159 @@ impl AppState {
         lock.lock_owned().await
     }
 
+    /// Record a sync milestone for `account_id`, adding `synced` to the run's
+    /// running total. Creates the run entry if this is its first milestone.
+    pub(crate) fn record_sync_progress(
+        &self,
+        account_id: &AccountId,
+        synced: u32,
+        message: String,
+    ) {
+        let mut runs = self.sync_runs.lock();
+        let run = runs.entry(account_id.clone()).or_default();
+        run.synced = run.synced.saturating_add(synced);
+        run.message = message;
+        run.revision = run.revision.wrapping_add(1);
+    }
+
+    /// Void the message count reported for the current pass. The sync engine
+    /// restarts a pass from an empty cursor when it has to rebuild label
+    /// associations; without this the page it already reported is counted
+    /// twice.
+    pub(crate) fn reset_sync_progress(&self, account_id: &AccountId) {
+        let mut runs = self.sync_runs.lock();
+        if let Some(run) = runs.get_mut(account_id) {
+            run.synced = 0;
+        }
+    }
+
+    /// Progress to report for `account_id`, or `None` when no pass has
+    /// reported anything since the last run finished.
+    pub(crate) fn sync_progress(&self, account_id: &AccountId) -> Option<SyncProgressData> {
+        let runs = self.sync_runs.lock();
+        let run = runs.get(account_id)?;
+        (run.revision > 0).then(|| SyncProgressData {
+            current: run.synced,
+            total: None,
+            message: run.message.clone(),
+        })
+    }
+
+    /// Milestone counter for `account_id`. Two equal readings taken a grace
+    /// period apart mean the sync reported nothing in between.
+    pub(crate) fn sync_progress_revision(&self, account_id: &AccountId) -> u64 {
+        self.sync_runs
+            .lock()
+            .get(account_id)
+            .map_or(0, |run| run.revision)
+    }
+
+    /// Drop the run's progress once the backfill it was tracking is over.
+    /// A `has_more` page is not the end of a backfill, so the totals are kept
+    /// and the next page carries on counting from them.
+    pub(crate) fn finish_sync_run(&self, account_id: &AccountId, has_more: bool) {
+        if has_more {
+            return;
+        }
+        let mut runs = self.sync_runs.lock();
+        let Some(run) = runs.get_mut(account_id) else {
+            return;
+        };
+        run.synced = 0;
+        run.message.clear();
+        run.revision = 0;
+        if run.is_idle() {
+            runs.remove(account_id);
+        }
+    }
+
+    /// Note that a pass deferred the whole-table analytics repair.
+    pub(crate) fn owe_analytics_repair(&self, account_id: &AccountId) {
+        self.sync_runs
+            .lock()
+            .entry(account_id.clone())
+            .or_default()
+            .analytics_repair_owed = true;
+    }
+
+    /// Clear and report the account's analytics debt.
+    pub(crate) fn take_analytics_repair_debt(&self, account_id: &AccountId) -> bool {
+        let mut runs = self.sync_runs.lock();
+        let Some(run) = runs.get_mut(account_id) else {
+            return false;
+        };
+        let owed = std::mem::take(&mut run.analytics_repair_owed);
+        if run.is_idle() {
+            runs.remove(account_id);
+        }
+        owed
+    }
+
+    /// Add contacts the relationship worker should refresh once the account's
+    /// backfill finishes.
+    pub(crate) fn defer_relationship_contacts(
+        &self,
+        account_id: &AccountId,
+        contacts: impl IntoIterator<Item = String>,
+    ) {
+        let mut runs = self.sync_runs.lock();
+        runs.entry(account_id.clone())
+            .or_default()
+            .deferred_relationship_contacts
+            .extend(contacts);
+    }
+
+    /// Take everything deferred for `account_id` so far.
+    pub(crate) fn take_deferred_relationship_contacts(
+        &self,
+        account_id: &AccountId,
+    ) -> BTreeSet<String> {
+        let mut runs = self.sync_runs.lock();
+        let Some(run) = runs.get_mut(account_id) else {
+            return BTreeSet::new();
+        };
+        std::mem::take(&mut run.deferred_relationship_contacts)
+    }
+
+    pub(crate) fn has_deferred_relationship_contacts(&self, account_id: &AccountId) -> bool {
+        self.sync_runs
+            .lock()
+            .get(account_id)
+            .is_some_and(|run| !run.deferred_relationship_contacts.is_empty())
+    }
+
+    /// Claim the right to run a background sync for `account_id`, or `None`
+    /// when one is already claimed — the caller then acks without starting a
+    /// second pass behind the same provider lock.
+    pub(crate) fn claim_background_sync(
+        state: &Arc<Self>,
+        account_id: &AccountId,
+    ) -> Option<BackgroundSyncClaim> {
+        {
+            let mut runs = state.sync_runs.lock();
+            let run = runs.entry(account_id.clone()).or_default();
+            if run.background_syncs_queued > 0 || run.background_syncs_running > 0 {
+                return None;
+            }
+            run.background_syncs_queued = 1;
+        }
+        Some(BackgroundSyncClaim {
+            state: Arc::clone(state),
+            account_id: account_id.clone(),
+            started: false,
+        })
+    }
+
+    /// Whether a background sync has been acked for `account_id` but has not
+    /// yet begun its pass. A pass finishing in that window must not report the
+    /// account idle: the queued sync is the one the client is waiting for.
+    pub(crate) fn background_sync_queued(&self, account_id: &AccountId) -> bool {
+        self.sync_runs
+            .lock()
+            .get(account_id)
+            .is_some_and(|run| run.background_syncs_queued > 0)
+    }
+
     pub fn shutdown_receiver(&self) -> watch::Receiver<bool> {
         self.shutdown_tx.subscribe()
     }
@@ -1394,6 +1640,7 @@ impl AppState {
             runtime_tasks,
             admin_blocking,
             auth_sessions: ParkingMutex::new(HashMap::new()),
+            sync_runs: ParkingMutex::new(HashMap::new()),
         })
     }
 
@@ -1462,6 +1709,7 @@ impl AppState {
             runtime_tasks,
             admin_blocking,
             auth_sessions: ParkingMutex::new(HashMap::new()),
+            sync_runs: ParkingMutex::new(HashMap::new()),
         })
     }
 
@@ -1556,6 +1804,7 @@ impl AppState {
                 runtime_tasks,
                 admin_blocking,
                 auth_sessions: ParkingMutex::new(HashMap::new()),
+                sync_runs: ParkingMutex::new(HashMap::new()),
             },
             fake,
         ))

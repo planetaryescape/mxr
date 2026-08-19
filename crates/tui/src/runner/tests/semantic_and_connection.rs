@@ -1016,6 +1016,7 @@ fn account_unhealthy_reflects_diagnostics_sync_status() {
         current_cursor_summary: None,
         last_synced_count: 0,
         healthy: false,
+        progress: None,
     }];
     assert!(
         app.account_unhealthy(&summary),

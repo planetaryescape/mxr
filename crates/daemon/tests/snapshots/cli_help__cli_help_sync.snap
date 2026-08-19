@@ -2,7 +2,7 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Trigger or query sync. Triggering blocks until the daemon finishes the sync, however long that takes
+Trigger or query sync. Triggering runs a sync pass in the daemon and returns when that pass finishes, however long it takes; an account still backfilling may have further pages to go
 
 Usage: mxr sync [OPTIONS]
 
@@ -12,9 +12,9 @@ Options:
       --status
 
       --wait
-          Also wait for the account to report quiescent, and print the resulting status in JSON mode
+          Keep waiting until the account reports idle (no further pages), then print its status in JSON mode
       --wait-timeout-secs <WAIT_TIMEOUT_SECS>
-          Maximum seconds --wait spends waiting for quiescence; does not bound the sync itself. Default 60 [default: 60]
+          Maximum seconds --wait spends waiting for the account to go idle; does not bound the sync pass itself. Default 60 [default: 60]
       --format <FORMAT>
           Output format. Honored by `--status`; ignored by trigger mode today [possible values: table, json, jsonl, csv, ids]
   -h, --help

@@ -70,22 +70,28 @@ impl Drop for ShortSocket {
     }
 }
 
-/// Pre-create the demo profile's config with model downloads off.
+/// Pre-create the demo profile's config with semantic search off.
 ///
 /// `mxr demo` merges its account/LLM settings into whatever config already
 /// exists, so this survives the demo's own rewrite. On a `semantic-local`
 /// build the daemon would otherwise fetch a ~130 MB embedding model into the
 /// throwaway HOME and embed every seeded message — a network dependency and
 /// minutes of work that say nothing about the timeout this test guards.
-/// Semantic itself stays enabled so the daemon's ingest queue still drains.
-fn write_demo_config_without_model_downloads(config_home: &Path) {
-    let dir = config_home.join("mxr-demo");
-    std::fs::create_dir_all(&dir).expect("demo config dir");
-    std::fs::write(
-        dir.join("config.toml"),
-        "[search.semantic]\nauto_download_models = false\n\n[bridge]\nenabled = false\n",
-    )
-    .expect("write demo config");
+///
+/// Written to both candidate roots because `dirs::config_dir()` resolves to
+/// `$XDG_CONFIG_HOME` on Linux and `$HOME/Library/Application Support` on
+/// macOS. Writing only the XDG path leaves the file unread on a developer's
+/// Mac, so the test would quietly measure something different from CI.
+fn write_demo_config_without_semantic(home: &Path, config_home: &Path) {
+    let contents = "[search.semantic]\nenabled = false\nauto_download_models = false\n\n[bridge]\nenabled = false\n";
+    for root in [
+        config_home.to_path_buf(),
+        home.join("Library").join("Application Support"),
+    ] {
+        let dir = root.join("mxr-demo");
+        std::fs::create_dir_all(&dir).expect("demo config dir");
+        std::fs::write(dir.join("config.toml"), contents).expect("write demo config");
+    }
 }
 
 #[test]
@@ -99,7 +105,7 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
     for dir in [&home, &config_home, &data_home, &runtime_dir] {
         std::fs::create_dir_all(dir).expect("create isolated dir");
     }
-    write_demo_config_without_model_downloads(&config_home);
+    write_demo_config_without_semantic(&home, &config_home);
 
     // `mxr demo` is pinned to the `mxr-demo` instance, and the daemon's
     // pid-file fallback finds a running demo daemon by scanning `ps` for

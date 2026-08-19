@@ -121,8 +121,8 @@ pub async fn run(
         return Ok(());
     }
 
-    // The daemon runs the sync before it answers, so this can take as long as
-    // the mailbox needs. `request_with_events` waits without a deadline and
+    // The daemon runs a sync pass before it answers, so this can take as long
+    // as the mailbox needs. `request_with_events` waits without a deadline and
     // streams the daemon's progress events; `request`'s 120s cap would kill a
     // large or slow sync mid-flight while the daemon kept working (#179).
     let json_mode = matches!(
@@ -157,11 +157,11 @@ pub async fn run(
         _ => anyhow::bail!("Unexpected response"),
     }
 
-    // `SyncNow` has already run the sync to completion by the time we get
-    // here, so this normally returns on its first poll. It still earns its
-    // keep in the one case where the daemon answered early: past its own
-    // ceiling it detaches a long sync and reports an error while the work
-    // continues, and a background sync loop can also pick the account up.
+    // The `Ack` above means one sync pass finished, not that the account is
+    // done: a paging provider leaves `sync_in_progress` set and the account's
+    // own loop walks the remaining pages. The daemon also detaches a pass that
+    // outruns its ceiling. So `--wait` is what turns "a pass ran" into "the
+    // account is idle".
     if wait {
         wait_for_sync_quiescence(
             &mut client,

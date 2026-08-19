@@ -744,17 +744,16 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
-    /// Trigger or query sync. Triggering blocks until the daemon finishes the
-    /// sync, however long that takes.
+    /// Trigger or query sync. Triggering runs a sync pass in the daemon and returns when that pass finishes, however long it takes; an account still backfilling may have further pages to go.
     Sync {
         #[arg(long)]
         account: Option<String>,
         #[arg(long)]
         status: bool,
-        /// Also wait for the account to report quiescent, and print the resulting status in JSON mode.
+        /// Keep waiting until the account reports idle (no further pages), then print its status in JSON mode.
         #[arg(long)]
         wait: bool,
-        /// Maximum seconds --wait spends waiting for quiescence; does not bound the sync itself. Default 60.
+        /// Maximum seconds --wait spends waiting for the account to go idle; does not bound the sync pass itself. Default 60.
         #[arg(long, default_value_t = 60)]
         wait_timeout_secs: u64,
         /// Output format. Honored by `--status`; ignored by trigger mode today.

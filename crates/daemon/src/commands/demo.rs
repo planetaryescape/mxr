@@ -232,7 +232,7 @@ pub async fn run(messages: usize, no_tui: bool) -> anyhow::Result<()> {
     println!();
     println!("Precomputing analytics, Wrapped, and search vectors so the first click on");
     println!("each surface is instant. Press Ctrl-C any time to start using the demo —");
-    println!("the daemon finishes the rest in the background.");
+    println!("whatever the daemon has already started finishes on its own.");
     if let Err(error) = prewarm_demo_runtime(synced_count > 0).await {
         println!("  prewarm incomplete: {error}");
         println!("  the demo still works; the daemon keeps indexing in the background.");
@@ -338,15 +338,18 @@ struct SemanticProgress {
     status: SemanticProfileStatus,
     completed: u32,
     total: u32,
-    /// Messages the background ingest still has queued or in flight. Vectors
-    /// are only fully warm once this is empty too.
-    backlog: u32,
     last_error: Option<String>,
 }
 
+/// `Ready` with an index behind it is the whole test.
+///
+/// Deliberately not "and the ingest queue is empty": the post-sync ingest
+/// re-embeds messages the reindex already covered, so its queue stays deep for
+/// minutes after the profile is usable. Waiting on it means waiting on
+/// duplicated work, which is what made this hold the demo for its full budget
+/// with vectors already at 2,000/2,000.
 fn semantic_is_warm(snapshot: &mxr_core::types::SemanticStatusSnapshot) -> bool {
-    let idle = snapshot.runtime.queue_depth == 0 && snapshot.runtime.in_flight == 0;
-    idle && snapshot.profiles.iter().any(|profile| {
+    snapshot.profiles.iter().any(|profile| {
         profile.profile == snapshot.active_profile
             && profile.status == SemanticProfileStatus::Ready
             && profile.last_indexed_at.is_some()
@@ -364,7 +367,6 @@ async fn fetch_semantic_progress(
         Response::Error { message, .. } => anyhow::bail!(message),
         other => anyhow::bail!("Unexpected semantic status response: {other:?}"),
     };
-    let backlog = snapshot.runtime.queue_depth + snapshot.runtime.in_flight;
     Ok(snapshot
         .profiles
         .into_iter()
@@ -373,7 +375,6 @@ async fn fetch_semantic_progress(
             status: profile.status,
             completed: profile.progress_completed,
             total: profile.progress_total,
-            backlog,
             last_error: profile.last_error,
         }))
 }
@@ -398,7 +399,7 @@ async fn await_semantic_prewarm(
         // treating one bad poll as the answer.
         if let Ok(Some(state)) = fetch_semantic_progress(client, active_profile).await {
             match state.status {
-                SemanticProfileStatus::Ready if state.backlog == 0 => {
+                SemanticProfileStatus::Ready => {
                     progress.finish();
                     println!("  semantic vectors ready");
                     return;
@@ -743,11 +744,30 @@ async fn fetch_demo_sync_status(
     }
 }
 
+/// Read the store-wide message count from `GetStatus`.
+///
+/// `get_status` fast-fails its DB-backed snapshot after a couple of seconds so
+/// a saturated reader pool can't wedge status, and a degraded reading reports
+/// zero messages and zero accounts. During a large seed the pool is exactly
+/// that busy, so take an empty account list as "no reading" rather than
+/// letting the demo's progress counter jump back to zero — or, worse, letting
+/// the seed wait conclude that nothing has landed. Callers treat an error as a
+/// missed poll and keep waiting.
 async fn fetch_message_count(client: &mut IpcClient) -> anyhow::Result<usize> {
     match client.request(Request::GetStatus).await? {
         Response::Ok {
-            data: ResponseData::Status { total_messages, .. },
-        } => Ok(total_messages as usize),
+            data:
+                ResponseData::Status {
+                    accounts,
+                    total_messages,
+                    ..
+                },
+        } => {
+            if accounts.is_empty() {
+                anyhow::bail!("daemon returned a degraded status snapshot");
+            }
+            Ok(total_messages as usize)
+        }
         Response::Error { message, .. } => anyhow::bail!(message),
         other => anyhow::bail!("Unexpected status response: {other:?}"),
     }

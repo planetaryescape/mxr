@@ -956,6 +956,21 @@ impl SemanticEngine {
                 embeddings.len()
             ));
         }
+        // Width matters as much as count: a zero-length or wrong-width vector
+        // would be stored with a `dimensions` the index query filters on, so
+        // the chunk would vanish from search instead of failing loudly here.
+        let width = record.dimensions as usize;
+        for embedding in &embeddings {
+            if embedding.len() != width {
+                return Err(anyhow!(
+                    "embedding backend returned a {}-dimension vector for the \
+                     {}-dimension profile {}",
+                    embedding.len(),
+                    width,
+                    record.profile.as_str()
+                ));
+            }
+        }
         let mut restored = vec![Vec::new(); expected];
         for (slot, embedding) in order.into_iter().zip(embeddings) {
             restored[slot] = embedding;
@@ -1011,7 +1026,7 @@ impl SemanticEngine {
             return embedder(profile, &texts);
         }
 
-        let model = self.ensure_model(profile, allow_download)?;
+        let model = self.ensure_model(profile, allow_download).await?;
         // ONNX inference is CPU-bound for the length of a whole batch; running
         // it inline would park an async runtime worker for seconds at a time.
         tokio::task::spawn_blocking(move || {
@@ -1023,7 +1038,7 @@ impl SemanticEngine {
         .await?
     }
 
-    fn ensure_model(
+    async fn ensure_model(
         &mut self,
         profile: SemanticProfile,
         allow_download: bool,
@@ -1038,13 +1053,20 @@ impl SemanticEngine {
             ));
         }
 
-        std::fs::create_dir_all(&self.cache_dir)?;
-        let model = TextEmbedding::try_new(
-            TextInitOptions::new(embedding_model(profile))
-                .with_cache_dir(self.cache_dir.clone())
-                .with_show_download_progress(false),
-        )
-        .with_context(|| format!("load semantic profile {}", profile.as_str()))?;
+        // The first load reads ~130 MB off disk and may fetch it over the
+        // network first, all synchronously - the same reason inference runs on
+        // a blocking thread.
+        let cache_dir = self.cache_dir.clone();
+        let model = tokio::task::spawn_blocking(move || {
+            std::fs::create_dir_all(&cache_dir)?;
+            TextEmbedding::try_new(
+                TextInitOptions::new(embedding_model(profile))
+                    .with_cache_dir(cache_dir)
+                    .with_show_download_progress(false),
+            )
+            .with_context(|| format!("load semantic profile {}", profile.as_str()))
+        })
+        .await??;
         let model = Arc::new(Mutex::new(model));
         self.models.insert(profile, model.clone());
         Ok(model)
@@ -2755,6 +2777,49 @@ mod tests {
 
         handle.request_shutdown().await.unwrap();
         worker.await.unwrap();
+    }
+
+    /// A vector of the wrong width would be stored with a `dimensions` the
+    /// index query filters on, so the chunk would silently disappear from
+    /// search instead of the pass failing.
+    #[tokio::test]
+    async fn embedding_of_the_wrong_width_fails_the_pass_instead_of_being_stored() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        seed_messages(&store, &account.id, 3).await;
+
+        let data_dir = tempdir().unwrap();
+        let mut engine =
+            SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
+        // Three dimensions for the warmup, then a truncated vector for the
+        // chunks - the shape a half-migrated model would produce.
+        let warmed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        engine.set_test_embedder(Arc::new(move |_profile, texts: &[String]| {
+            let width = if warmed.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                2
+            } else {
+                3
+            };
+            Ok(texts.iter().map(|_| vec![0.5; width]).collect())
+        }));
+
+        let error = engine
+            .reindex_active()
+            .await
+            .err()
+            .map(|error| error.to_string());
+        assert!(
+            error
+                .as_deref()
+                .is_some_and(|error| error.contains("2-dimension vector")),
+            "expected a width mismatch error, got {error:?}"
+        );
+        let counts = store.collect_record_counts().await.unwrap();
+        assert_eq!(
+            counts.semantic_embeddings, 0,
+            "no embedding should have been persisted"
+        );
     }
 
     /// A backfill arriving mid-reindex must not touch the profile row: both

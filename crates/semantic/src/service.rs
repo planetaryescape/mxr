@@ -91,9 +91,16 @@ struct ActivePass {
 /// refused.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum PassRequest {
-    Reindex { force: bool },
+    Reindex {
+        force: bool,
+    },
     UseProfile(SemanticProfile),
-    Backfill,
+    /// The limit is part of the identity: a caller asking for 200 messages
+    /// must not be handed the result of a 10,000-message pass it did not ask
+    /// for, so only an identical request joins.
+    Backfill {
+        limit: u32,
+    },
 }
 
 impl PassRequest {
@@ -101,7 +108,7 @@ impl PassRequest {
         match self {
             Self::Reindex { .. } => "reindex",
             Self::UseProfile(_) => "profile activation",
-            Self::Backfill => "backfill",
+            Self::Backfill { .. } => "backfill",
         }
     }
 }
@@ -119,23 +126,29 @@ fn pass_busy_error(active: PassRequest, requested: PassRequest) -> anyhow::Error
 /// each iteration short enough to stay responsive to commands.
 const INGEST_BATCH_MESSAGES: usize = 64;
 
-/// Fans one reindex outcome out to every caller waiting on it. `anyhow::Error`
-/// does not clone, so extra waiters (only produced by a concurrent reindex
-/// request) receive the rendered message instead of the original error.
+/// Messages an unbounded `BackfillActive` covers.
+const DEFAULT_BACKFILL_LIMIT: u32 = 10_000;
+
+/// Fans one pass outcome out to every caller waiting on it.
+///
+/// `anyhow::Error` does not clone, so only one waiter can be handed the
+/// original. That goes to the first - the caller whose request started the
+/// pass; anyone who joined it later gets the rendered message.
 fn respond_all(
-    mut waiters: Vec<oneshot::Sender<Result<SemanticProfileRecord>>>,
+    waiters: Vec<oneshot::Sender<Result<SemanticProfileRecord>>>,
     result: Result<SemanticProfileRecord>,
 ) {
-    let original = waiters.pop();
+    let mut waiters = waiters.into_iter();
+    let Some(starter) = waiters.next() else {
+        return;
+    };
     for waiter in waiters {
         let _ = waiter.send(match &result {
             Ok(record) => Ok(record.clone()),
             Err(error) => Err(anyhow!("{error:#}")),
         });
     }
-    if let Some(waiter) = original {
-        let _ = waiter.send(result);
-    }
+    let _ = starter.send(result);
 }
 
 impl SemanticServiceHandle {
@@ -503,14 +516,16 @@ async fn handle_command(
             }
         }
         SemanticCommand::BackfillActive { resp } => {
-            let request = PassRequest::Backfill;
+            let request = PassRequest::Backfill {
+                limit: DEFAULT_BACKFILL_LIMIT,
+            };
             if let Some(resp) = claim_pass(pass, request, resp) {
-                let begun = engine.begin_backfill(10_000).await;
+                let begun = engine.begin_backfill(DEFAULT_BACKFILL_LIMIT).await;
                 install_pass(pass, request, resp, begun);
             }
         }
         SemanticCommand::BackfillActiveLimited { limit, resp } => {
-            let request = PassRequest::Backfill;
+            let request = PassRequest::Backfill { limit };
             if let Some(resp) = claim_pass(pass, request, resp) {
                 let begun = engine.begin_backfill(limit).await;
                 install_pass(pass, request, resp, begun);

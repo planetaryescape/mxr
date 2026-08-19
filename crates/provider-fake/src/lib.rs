@@ -21,10 +21,97 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::sync::Notify;
 
+/// Messages per `sync_messages` page.
+///
+/// Paging keeps the demo seed observable (the cursor and `sync_log` advance
+/// while it runs) and keeps peak memory proportional to a page rather than
+/// to the whole dataset. Every page also costs the daemon a post-sync
+/// fan-out (rules, deliveries, analytics) that competes with the sync for
+/// the single SQLite writer, so pages are large enough that a 50,000
+/// message demo is a handful of them per account — and still far under the
+/// daemon's 50-page cap on consecutive `has_more` re-polls.
+const SYNC_PAGE_SIZE: usize = 10_000;
+
+/// Cursor for "resume the initial sync at this offset".
+const PAGE_CURSOR_PREFIX: &str = "fake-page:";
+/// Cursor for "initial sync finished"; every later call is a no-op delta.
+const COMPLETE_CURSOR: &[u8] = b"fake-synced";
+
+/// Where a provider's messages come from.
+///
+/// The demo dataset is generated per page instead of materialised: 50,000
+/// synthetic messages cost ~2.5 KB each and used to sit in memory for the
+/// daemon's whole life.
+enum Dataset {
+    Materialised {
+        messages: Vec<Envelope>,
+        bodies: HashMap<String, MessageBody>,
+    },
+    Demo(fixtures::DemoFixtureStream),
+}
+
+impl Dataset {
+    fn len(&self) -> usize {
+        match self {
+            Self::Materialised { messages, .. } => messages.len(),
+            Self::Demo(stream) => stream.len(),
+        }
+    }
+
+    fn page(&self, offset: usize, limit: usize) -> Vec<SyncedMessage> {
+        match self {
+            Self::Materialised { messages, bodies } => messages
+                .iter()
+                .skip(offset)
+                .take(limit)
+                .map(|envelope| SyncedMessage {
+                    body: body_for(bodies, envelope),
+                    envelope: envelope.clone(),
+                })
+                .collect(),
+            Self::Demo(stream) => stream
+                .page(offset, limit)
+                .into_iter()
+                .map(|(envelope, body)| SyncedMessage { envelope, body })
+                .collect(),
+        }
+    }
+
+    fn find(&self, provider_message_id: &str) -> Option<SyncedMessage> {
+        match self {
+            Self::Materialised { messages, bodies } => messages
+                .iter()
+                .find(|message| message.provider_id == provider_message_id)
+                .map(|envelope| SyncedMessage {
+                    body: body_for(bodies, envelope),
+                    envelope: envelope.clone(),
+                }),
+            Self::Demo(stream) => stream
+                .find(provider_message_id)
+                .map(|(envelope, body)| SyncedMessage { envelope, body }),
+        }
+    }
+}
+
+/// Offset carried by a mid-backfill cursor, if this is one.
+fn page_offset(cursor: &SyncCursor) -> Option<usize> {
+    std::str::from_utf8(cursor.as_bytes())
+        .ok()?
+        .strip_prefix(PAGE_CURSOR_PREFIX)?
+        .parse()
+        .ok()
+}
+
+fn body_for(bodies: &HashMap<String, MessageBody>, envelope: &Envelope) -> MessageBody {
+    bodies
+        .get(&envelope.provider_id)
+        .cloned()
+        .unwrap_or_else(|| fixtures::empty_body(&envelope.id))
+}
+
 pub struct FakeProvider {
     account_id: AccountId,
-    messages: Vec<Envelope>,
-    bodies: HashMap<String, MessageBody>,
+    dataset: Dataset,
     labels: Mutex<Vec<Label>>,
     sent: Mutex<Vec<Draft>>,
     server_drafts: Mutex<HashMap<String, Draft>>,
@@ -42,6 +129,7 @@ pub struct FakeProvider {
     /// daemon's provider-failure branches, where the promise is that the local
     /// draft is left exactly as it was.
     server_drafts_fail: AtomicBool,
+    page_size: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -89,12 +177,38 @@ impl FakeProvider {
     }
 
     pub fn new(account_id: AccountId) -> Self {
-        let (messages, bodies, labels) =
-            crate::fixtures::generate_env_selected_fixtures(&account_id);
+        match crate::fixtures::demo_message_count_from_env() {
+            Some(count) => Self::with_demo_dataset(account_id, count),
+            None => {
+                let (messages, bodies, labels) = crate::fixtures::generate_fixtures(&account_id);
+                Self::with_dataset(
+                    account_id,
+                    Dataset::Materialised { messages, bodies },
+                    labels,
+                )
+            }
+        }
+    }
+
+    /// Build a provider backed by the generated demo dataset, without
+    /// reading `MXR_FAKE_DATASET` / `MXR_FAKE_MESSAGE_COUNT`.
+    pub fn with_demo_dataset(account_id: AccountId, message_count: usize) -> Self {
+        let stream = fixtures::DemoFixtureStream::new(&account_id, message_count);
+        let labels = stream.labels().to_vec();
+        Self::with_dataset(account_id, Dataset::Demo(stream), labels)
+    }
+
+    /// Page `sync_messages` at `page_size` instead of the default. Lets a
+    /// test walk several pages without a large dataset.
+    pub fn with_page_size(mut self, page_size: usize) -> Self {
+        self.page_size = page_size.max(1);
+        self
+    }
+
+    fn with_dataset(account_id: AccountId, dataset: Dataset, labels: Vec<Label>) -> Self {
         Self {
             account_id,
-            messages,
-            bodies,
+            dataset,
             labels: Mutex::new(labels),
             sent: Mutex::new(Vec::new()),
             server_drafts: Mutex::new(HashMap::new()),
@@ -103,6 +217,7 @@ impl FakeProvider {
             mutations: Mutex::new(Vec::new()),
             idle_trigger: None,
             server_drafts_fail: AtomicBool::new(false),
+            page_size: SYNC_PAGE_SIZE,
         }
     }
 
@@ -200,80 +315,64 @@ impl MailSyncProvider for FakeProvider {
         Ok(self.labels_guard().clone())
     }
 
-    async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
-        if cursor.is_empty() {
-            let synced = self
-                .messages
-                .iter()
-                .map(|env| {
-                    let body = self
-                        .bodies
-                        .get(&env.provider_id)
-                        .cloned()
-                        .unwrap_or_else(|| MessageBody {
-                            message_id: env.id.clone(),
-                            text_plain: None,
-                            text_html: None,
-                            attachments: vec![],
-                            fetched_at: chrono::Utc::now(),
-                            metadata: Default::default(),
-                        });
-                    SyncedMessage {
-                        envelope: env.clone(),
-                        body,
-                    }
-                })
-                .collect();
-            // Any non-empty cursor signals "initial sync complete";
-            // subsequent calls take the steady-state branch below and
-            // return empty batches.
-            Ok(SyncBatch {
-                upserted: synced,
-                deleted_provider_ids: vec![],
-                label_changes: vec![],
-                next_cursor: SyncCursor::from_bytes(b"fake-synced".to_vec()),
-                has_more: false,
-                threads_changed: vec![],
-            })
-        } else {
-            Ok(SyncBatch {
-                upserted: vec![],
-                deleted_provider_ids: vec![],
-                label_changes: vec![],
-                next_cursor: cursor.clone(),
-                has_more: false,
-                threads_changed: vec![],
-            })
+    fn is_backfill_cursor(&self, cursor: &SyncCursor) -> bool {
+        page_offset(cursor).is_some()
+    }
+
+    fn describe_cursor(&self, cursor: &SyncCursor) -> String {
+        match page_offset(cursor) {
+            Some(offset) => format!("backfill offset={offset}/{}", self.dataset.len()),
+            None if cursor.is_empty() => "initial".to_string(),
+            None => "synced".to_string(),
         }
+    }
+
+    async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+        let offset = if cursor.is_empty() {
+            0
+        } else {
+            match page_offset(cursor) {
+                Some(offset) => offset,
+                // Any other non-empty cursor means the initial sync
+                // already finished: steady state returns empty batches.
+                None => {
+                    return Ok(SyncBatch {
+                        upserted: vec![],
+                        deleted_provider_ids: vec![],
+                        label_changes: vec![],
+                        next_cursor: cursor.clone(),
+                        has_more: false,
+                        threads_changed: vec![],
+                    })
+                }
+            }
+        };
+
+        let total = self.dataset.len();
+        let upserted = self.dataset.page(offset, self.page_size);
+        let next_offset = offset.saturating_add(upserted.len());
+        let has_more = next_offset < total;
+        let next_cursor = if has_more {
+            SyncCursor::from_bytes(format!("{PAGE_CURSOR_PREFIX}{next_offset}").into_bytes())
+        } else {
+            SyncCursor::from_bytes(COMPLETE_CURSOR.to_vec())
+        };
+
+        Ok(SyncBatch {
+            upserted,
+            deleted_provider_ids: vec![],
+            label_changes: vec![],
+            next_cursor,
+            has_more,
+            threads_changed: vec![],
+        })
     }
 
     async fn fetch_message(
         &self,
         provider_message_id: &str,
     ) -> Result<Option<SyncedMessage>, MxrError> {
-        let Some(envelope) = self
-            .messages
-            .iter()
-            .find(|message| message.provider_id == provider_message_id)
-            .cloned()
-        else {
-            return Ok(None);
-        };
-
-        let body = self
-            .bodies
-            .get(provider_message_id)
-            .cloned()
-            .unwrap_or_else(|| MessageBody {
-                message_id: envelope.id.clone(),
-                text_plain: None,
-                text_html: None,
-                attachments: vec![],
-                fetched_at: chrono::Utc::now(),
-                metadata: Default::default(),
-            });
-
-        Ok(Some(SyncedMessage { envelope, body }))
+        Ok(self.dataset.find(provider_message_id))
     }
 
     async fn fetch_attachment(
@@ -729,8 +828,167 @@ mod tests {
         let provider = FakeProvider::new(AccountId::new());
         let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
         assert_eq!(batch.upserted.len(), 55);
+        assert!(!batch.has_more);
         // Bodies are eagerly fetched during sync
         assert!(batch.upserted[0].body.text_plain.is_some());
+    }
+
+    /// Walking the pages must yield every message exactly once, in order,
+    /// and only the last page may report `has_more == false`.
+    #[tokio::test]
+    async fn demo_dataset_pages_until_complete() {
+        // A non-demo account id keeps the whole target on one provider
+        // (the two known demo accounts split it 45/55).
+        const PAGE: usize = 200;
+        let total = PAGE * 2 + 37;
+        let provider =
+            FakeProvider::with_demo_dataset(AccountId::new(), total).with_page_size(PAGE);
+
+        let mut cursor = SyncCursor::empty();
+        let mut provider_ids = Vec::new();
+        let mut pages = 0;
+        loop {
+            let batch = provider.sync_messages(&cursor).await.unwrap();
+            pages += 1;
+            assert!(pages <= 4, "paging should terminate");
+            provider_ids.extend(
+                batch
+                    .upserted
+                    .iter()
+                    .map(|synced| synced.envelope.provider_id.clone()),
+            );
+            assert_eq!(batch.has_more, provider_ids.len() < total);
+            assert_eq!(
+                provider.is_backfill_cursor(&batch.next_cursor),
+                batch.has_more
+            );
+            cursor = batch.next_cursor;
+            if !batch.has_more {
+                break;
+            }
+        }
+
+        assert_eq!(pages, 3);
+        assert_eq!(provider_ids.len(), total);
+        let unique: HashSet<&String> = provider_ids.iter().collect();
+        assert_eq!(unique.len(), total, "pages must not overlap");
+        assert_eq!(
+            provider_ids,
+            (1..=total)
+                .map(|num| format!("demo-msg-{num}"))
+                .collect::<Vec<_>>()
+        );
+
+        // Steady state: the completed cursor yields empty batches.
+        let delta = provider.sync_messages(&cursor).await.unwrap();
+        assert!(delta.upserted.is_empty());
+        assert!(!delta.has_more);
+    }
+
+    /// Both demo accounts number their messages from 1, so an attachment id
+    /// derived from the message number alone is the same string in both.
+    /// `attachments.id` is the primary key and the sync path upserts by it,
+    /// so a collision would hand one account's attachment row to the other
+    /// account's message.
+    #[tokio::test]
+    async fn demo_attachment_ids_do_not_collide_across_accounts() {
+        let personal = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+        let work = AccountId::from_provider_id("fake", "alex@work.demo.mxr.local");
+
+        let attachments_for = |account_id: AccountId| async move {
+            let provider = FakeProvider::with_demo_dataset(account_id, 400);
+            let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+            batch
+                .upserted
+                .into_iter()
+                .flat_map(|synced| {
+                    synced
+                        .body
+                        .attachments
+                        .into_iter()
+                        .map(move |attachment| (attachment.id, synced.envelope.id.clone()))
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let personal_attachments = attachments_for(personal).await;
+        let work_attachments = attachments_for(work).await;
+        assert!(
+            !personal_attachments.is_empty() && !work_attachments.is_empty(),
+            "both demo accounts should produce attachments to compare"
+        );
+
+        let personal_ids: HashSet<_> = personal_attachments.iter().map(|(id, _)| id).collect();
+        let shared: Vec<_> = work_attachments
+            .iter()
+            .map(|(id, _)| id)
+            .filter(|id| personal_ids.contains(*id))
+            .collect();
+        assert!(
+            shared.is_empty(),
+            "attachment ids must be account-scoped; shared: {shared:?}"
+        );
+    }
+
+    /// A demo profile seeded before paging existed carries the old
+    /// one-shot cursor. The provider must read that as "initial sync
+    /// finished" rather than replaying the whole dataset over rows that
+    /// already exist.
+    #[tokio::test]
+    async fn legacy_cursors_are_treated_as_caught_up() {
+        let provider = FakeProvider::with_demo_dataset(AccountId::new(), 500).with_page_size(100);
+
+        for legacy in [
+            b"fake-synced".to_vec(),
+            b"some-older-opaque-cursor".to_vec(),
+        ] {
+            let cursor = SyncCursor::from_bytes(legacy.clone());
+            let batch = provider.sync_messages(&cursor).await.unwrap();
+            assert!(
+                batch.upserted.is_empty(),
+                "legacy cursor {legacy:?} must not replay the dataset"
+            );
+            assert!(!batch.has_more);
+            assert_eq!(
+                batch.next_cursor.as_bytes(),
+                cursor.as_bytes(),
+                "the cursor must be preserved"
+            );
+            assert!(!provider.is_backfill_cursor(&cursor));
+        }
+    }
+
+    /// A page resumed from a cursor must equal the same slice generated in
+    /// one pass — that is what makes a restarted seed idempotent.
+    #[tokio::test]
+    async fn demo_pages_are_stable_across_resume() {
+        const PAGE: usize = 200;
+        let provider =
+            FakeProvider::with_demo_dataset(AccountId::new(), PAGE * 2).with_page_size(PAGE);
+
+        let first = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+        let second = provider.sync_messages(&first.next_cursor).await.unwrap();
+        let resumed = provider.sync_messages(&first.next_cursor).await.unwrap();
+
+        let ids = |batch: &SyncBatch| {
+            batch
+                .upserted
+                .iter()
+                .map(|synced| (synced.envelope.id.clone(), synced.envelope.subject.clone()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&second), ids(&resumed));
+
+        // And a single message fetched by provider id matches its page copy.
+        let sample = &second.upserted[7];
+        let fetched = provider
+            .fetch_message(&sample.envelope.provider_id)
+            .await
+            .unwrap()
+            .expect("message should be fetchable");
+        assert_eq!(fetched.envelope.id, sample.envelope.id);
+        assert_eq!(fetched.envelope.thread_id, sample.envelope.thread_id);
+        assert_eq!(fetched.body.text_plain, sample.body.text_plain);
     }
 
     #[tokio::test]

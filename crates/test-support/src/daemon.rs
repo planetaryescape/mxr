@@ -197,6 +197,146 @@ pub fn run_with_env(bin: &Path, envs: &[(&str, &str)], args: &[&str]) -> CliOutp
     CliOutput { stdout, stderr }
 }
 
+/// One line a child process wrote, and when.
+pub struct TimedLine {
+    pub at: Duration,
+    /// "out" or "err".
+    pub stream: &'static str,
+    pub text: String,
+}
+
+/// A finished command plus the arrival time of every line it wrote.
+pub struct TimedOutput {
+    pub output: CliOutput,
+    /// Both streams, merged in arrival order.
+    pub lines: Vec<TimedLine>,
+    /// Total wall time of the child process.
+    pub elapsed: Duration,
+}
+
+impl TimedOutput {
+    /// When the first stdout line containing `marker` arrived.
+    pub fn first_line_containing(&self, marker: &str) -> Option<Duration> {
+        self.lines
+            .iter()
+            .find(|line| line.stream == "out" && line.text.contains(marker))
+            .map(|line| line.at)
+    }
+
+    /// The merged timeline, one `+1.234s out| line` per row. Goes in a
+    /// failure message so a CI run says where the time went instead of just
+    /// how much of it there was.
+    pub fn timeline(&self) -> String {
+        self.lines
+            .iter()
+            .map(|line| {
+                format!(
+                    "  +{:>7.3}s {}| {}",
+                    line.at.as_secs_f64(),
+                    line.stream,
+                    line.text
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+/// Read `source` to EOF, timestamping each line as it arrives.
+///
+/// Splits on `\r` as well as `\n`: progress printers rewrite one line with a
+/// carriage return, and waiting for a newline would collapse a whole run's
+/// progress into one entry with the wrong timestamp.
+fn read_timed_lines(
+    mut source: impl std::io::Read,
+    stream: &'static str,
+    started_at: std::time::Instant,
+) -> (String, Vec<TimedLine>) {
+    let mut raw = String::new();
+    let mut lines = Vec::new();
+    let mut pending = Vec::new();
+    let mut byte = [0u8; 1];
+    loop {
+        match source.read(&mut byte) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        raw.push(byte[0] as char);
+        if byte[0] == b'\n' || byte[0] == b'\r' {
+            if !pending.is_empty() {
+                lines.push(TimedLine {
+                    at: started_at.elapsed(),
+                    stream,
+                    text: String::from_utf8_lossy(&pending).trim_end().to_string(),
+                });
+                pending.clear();
+            }
+        } else {
+            pending.push(byte[0]);
+        }
+    }
+    if !pending.is_empty() {
+        lines.push(TimedLine {
+            at: started_at.elapsed(),
+            stream,
+            text: String::from_utf8_lossy(&pending).trim_end().to_string(),
+        });
+    }
+    (raw, lines)
+}
+
+/// Like [`run_with_env`], but timestamps every line the child writes, on
+/// both streams.
+///
+/// Lets a test put a wall-clock budget on one *phase* of a long-running
+/// command and report the whole timeline when that budget is missed.
+/// `run_with_env` only sees the process after it exits, which for something
+/// like `mxr demo` bundles several unrelated phases into one number.
+pub fn run_with_env_timed(bin: &Path, envs: &[(&str, &str)], args: &[&str]) -> TimedOutput {
+    let mut command = StdCommand::new(bin);
+    command
+        .env_remove("EDITOR")
+        .env_remove("VISUAL")
+        // Would override the socket the caller pinned.
+        .env_remove("MXR_DAEMON_ADDR")
+        // Matches `Command::output()`, which the untimed helper goes through:
+        // an inherited stdin would let the child block on the test harness's
+        // terminal.
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let started_at = std::time::Instant::now();
+    let mut child = command.args(args).spawn().expect("spawn command");
+
+    // Both pipes have to be drained concurrently or a chatty stream fills its
+    // buffer and deadlocks the child.
+    let child_stderr = child.stderr.take().expect("piped stderr");
+    let stderr_reader =
+        std::thread::spawn(move || read_timed_lines(child_stderr, "err", started_at));
+    let child_stdout = child.stdout.take().expect("piped stdout");
+    let (stdout, mut lines) = read_timed_lines(child_stdout, "out", started_at);
+
+    let status = child.wait().expect("wait for command");
+    let elapsed = started_at.elapsed();
+    let (stderr, stderr_lines) = stderr_reader.join().expect("join stderr reader");
+    lines.extend(stderr_lines);
+    lines.sort_by_key(|line| line.at);
+    if !status.success() {
+        panic!(
+            "command {args:?} failed (exit {:?})\nstdout={stdout}\nstderr={stderr}",
+            status.code()
+        );
+    }
+    TimedOutput {
+        output: CliOutput { stdout, stderr },
+        lines,
+        elapsed,
+    }
+}
+
 /// Like [`run_with_env`] but parses stdout as JSON.
 pub fn run_json_with_env(bin: &Path, envs: &[(&str, &str)], args: &[&str]) -> Value {
     let out = run_with_env(bin, envs, args);

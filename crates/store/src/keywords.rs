@@ -18,21 +18,8 @@ impl super::Store {
         message_id: &MessageId,
         keywords: &BTreeSet<String>,
     ) -> Result<(), sqlx::Error> {
-        let mid = message_id.as_str().clone();
         let mut tx = self.writer().begin().await?;
-        sqlx::query("DELETE FROM message_keywords WHERE message_id = ?")
-            .bind(&mid)
-            .execute(&mut *tx)
-            .await?;
-        for keyword in keywords {
-            sqlx::query(
-                "INSERT OR IGNORE INTO message_keywords (message_id, keyword) VALUES (?, ?)",
-            )
-            .bind(&mid)
-            .bind(keyword)
-            .execute(&mut *tx)
-            .await?;
-        }
+        replace_message_keywords_tx(&mut tx, message_id, keywords).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -85,28 +72,54 @@ impl super::Store {
         if message_ids.is_empty() {
             return Ok(out);
         }
-        let placeholders = std::iter::repeat_n("?", message_ids.len())
-            .collect::<Vec<_>>()
-            .join(",");
-        let sql = format!(
-            "SELECT message_id, keyword FROM message_keywords WHERE message_id IN ({placeholders})"
-        );
-        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
-        for id in message_ids {
-            query = query.bind(id.as_str());
-        }
-        let rows = query.fetch_all(self.reader()).await?;
         let by_id: HashMap<String, MessageId> = message_ids
             .iter()
             .map(|id| (id.as_str().clone(), id.clone()))
             .collect();
-        for row in rows {
-            let mid_str: String = row.try_get("message_id")?;
-            let keyword: String = row.try_get("keyword")?;
-            if let Some(mid) = by_id.get(&mid_str) {
-                out.entry(mid.clone()).or_default().insert(keyword);
+        // Chunked: sync asks for a whole page of ids at a time, which can
+        // exceed SQLite's bind-parameter limit.
+        for chunk in message_ids.chunks(crate::SQLITE_BIND_CHUNK) {
+            let placeholders = std::iter::repeat_n("?", chunk.len())
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!(
+                "SELECT message_id, keyword FROM message_keywords \
+                 WHERE message_id IN ({placeholders})"
+            );
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
+            for id in chunk {
+                query = query.bind(id.as_str());
+            }
+            for row in query.fetch_all(self.reader()).await? {
+                let mid_str: String = row.try_get("message_id")?;
+                let keyword: String = row.try_get("keyword")?;
+                if let Some(mid) = by_id.get(&mid_str) {
+                    out.entry(mid.clone()).or_default().insert(keyword);
+                }
             }
         }
         Ok(out)
     }
+}
+
+/// Keyword replacement against an open connection so a page of synced
+/// messages can share one transaction.
+pub(crate) async fn replace_message_keywords_tx(
+    conn: &mut sqlx::SqliteConnection,
+    message_id: &MessageId,
+    keywords: &BTreeSet<String>,
+) -> Result<(), sqlx::Error> {
+    let mid = message_id.as_str();
+    sqlx::query("DELETE FROM message_keywords WHERE message_id = ?")
+        .bind(&mid)
+        .execute(&mut *conn)
+        .await?;
+    for keyword in keywords {
+        sqlx::query("INSERT OR IGNORE INTO message_keywords (message_id, keyword) VALUES (?, ?)")
+            .bind(&mid)
+            .bind(keyword)
+            .execute(&mut *conn)
+            .await?;
+    }
+    Ok(())
 }

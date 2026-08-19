@@ -1874,3 +1874,100 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
     );
     assert!(state.store.get_draft(&draft.id).await.unwrap().is_none());
 }
+
+/// A manual sync returns after one page. When the provider still has
+/// pages, the account's sync loop has to be woken or the backfill stalls
+/// until its next tick — and the status row would sit at
+/// `sync_in_progress = true` the whole time.
+#[tokio::test]
+async fn dispatch_sync_now_wakes_the_sync_loop_while_the_backfill_has_more() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let account_id = state.default_provider().account_id().clone();
+    state.add_sync_provider_for_test(Arc::new(
+        mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), 40)
+            .with_page_size(10),
+    ));
+    let notify = state.idle_notify_for_account(&account_id);
+
+    let msg = IpcMessage {
+        id: 301,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::SyncNow {
+            account_id: Some(account_id.clone()),
+        }),
+    };
+    let resp = handle_request(&state, &msg).await;
+    assert!(
+        matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ),
+        "expected Ack, got {:?}",
+        resp.payload
+    );
+
+    let woken = tokio::time::timeout(std::time::Duration::from_secs(2), notify.notified())
+        .await
+        .is_ok();
+    assert!(
+        woken,
+        "a mid-backfill sync must wake the account's sync loop"
+    );
+}
+
+/// The status row must say the account is still syncing while pages
+/// remain: clients that wait for an initial sync (`mxr demo`, `mxr sync
+/// --wait`) read this flag, and a gap between pages would read as done.
+#[tokio::test]
+async fn dispatch_sync_now_keeps_sync_in_progress_while_the_backfill_has_more() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let account_id = state.default_provider().account_id().clone();
+    state.add_sync_provider_for_test(Arc::new(
+        mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), 40)
+            .with_page_size(10),
+    ));
+
+    let msg = IpcMessage {
+        id: 303,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::SyncNow {
+            account_id: Some(account_id.clone()),
+        }),
+    };
+    handle_request(&state, &msg).await;
+
+    let status = state
+        .store
+        .get_sync_runtime_status(&account_id)
+        .await
+        .unwrap()
+        .expect("sync status row");
+    assert!(status.sync_in_progress);
+}
+
+/// The mirror case: a sync that drained the provider must not leave the
+/// account marked as syncing.
+#[tokio::test]
+async fn dispatch_sync_now_clears_sync_in_progress_when_the_provider_is_drained() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let account_id = state.default_provider().account_id().clone();
+
+    let msg = IpcMessage {
+        id: 302,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::SyncNow {
+            account_id: Some(account_id.clone()),
+        }),
+    };
+    handle_request(&state, &msg).await;
+
+    let status = state
+        .store
+        .get_sync_runtime_status(&account_id)
+        .await
+        .unwrap()
+        .expect("sync status row");
+    assert!(!status.sync_in_progress);
+}

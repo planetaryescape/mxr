@@ -5,9 +5,10 @@
 //! the user expressed while triaging — currently just `reply_later`. A row
 //! exists only when at least one local flag is non-default.
 
-use crate::trace_query;
+use crate::{decode_id, trace_query, SQLITE_BIND_CHUNK};
 use chrono::{DateTime, Utc};
 use mxr_core::id::MessageId;
+use std::collections::HashSet;
 
 impl super::Store {
     /// Mark a message for "reply later". Idempotent — re-marking refreshes
@@ -74,6 +75,33 @@ impl super::Store {
         .fetch_optional(self.reader())
         .await?;
         Ok(row.is_some_and(|r| r.reply_later == 1))
+    }
+
+    /// Reply-later flags for a set of messages, in one query.
+    ///
+    /// Sync asks this for a whole page; `is_reply_later` per message would
+    /// be one round trip each. Ids are chunked to stay under SQLite's
+    /// bind-parameter limit.
+    pub async fn reply_later_message_ids(
+        &self,
+        message_ids: &[MessageId],
+    ) -> Result<HashSet<MessageId>, sqlx::Error> {
+        let mut flagged = HashSet::new();
+        for chunk in message_ids.chunks(SQLITE_BIND_CHUNK) {
+            let placeholders = vec!["?"; chunk.len()].join(", ");
+            let sql = format!(
+                "SELECT message_id FROM message_flags
+                 WHERE reply_later = 1 AND message_id IN ({placeholders})"
+            );
+            let mut query = sqlx::query_scalar::<_, String>(sqlx::AssertSqlSafe(sql.as_str()));
+            for message_id in chunk {
+                query = query.bind(message_id.as_str());
+            }
+            for id in query.fetch_all(self.reader()).await? {
+                flagged.insert(decode_id(&id)?);
+            }
+        }
+        Ok(flagged)
     }
 
     /// List message IDs currently flagged for reply-later, ordered by

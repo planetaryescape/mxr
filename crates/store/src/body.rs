@@ -71,69 +71,87 @@ impl super::Store {
     }
 
     pub async fn insert_body(&self, body: &MessageBody) -> Result<(), sqlx::Error> {
-        let fetched_at = body.fetched_at.timestamp();
-        let mid = body.message_id.as_str();
-        let metadata_json = encode_json(&body.metadata)?;
-
-        sqlx::query(
-            "INSERT OR REPLACE INTO bodies (message_id, text_plain, text_html, fetched_at, metadata_json) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(&mid)
-        .bind(&body.text_plain)
-        .bind(&body.text_html)
-        .bind(fetched_at)
-        .bind(metadata_json)
-        .execute(self.writer())
-        .await?;
-
-        // Promote List-Id from body metadata to the indexed `messages.list_id`
-        // column. Cheap upsert; runs once per body and is overwritten if the
-        // sender's headers change. Powers `mxr unsub --rank` grouping.
-        if let Some(list_id) = body.metadata.list_id.as_ref() {
-            sqlx::query("UPDATE messages SET list_id = ? WHERE id = ?")
-                .bind(list_id)
-                .bind(&mid)
-                .execute(self.writer())
-                .await?;
-        }
-
-        sqlx::query("DELETE FROM attachments WHERE message_id = ?")
-            .bind(&mid)
-            .execute(self.writer())
-            .await?;
-
-        for att in &body.attachments {
-            let att_id = att.id.as_str();
-            let att_mid = att.message_id.as_str();
-            let local_path = att
-                .local_path
-                .as_ref()
-                .map(|p| p.to_string_lossy().to_string());
-            let size_bytes = att.size_bytes as i64;
-            let disposition = encode_attachment_disposition(att.disposition);
-            sqlx::query(
-                "INSERT OR REPLACE INTO attachments (id, message_id, filename, mime_type, disposition, content_id, content_location, size_bytes, local_path, provider_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            )
-            .bind(att_id)
-            .bind(att_mid)
-            .bind(&att.filename)
-            .bind(&att.mime_type)
-            .bind(disposition)
-            .bind(&att.content_id)
-            .bind(&att.content_location)
-            .bind(size_bytes)
-            .bind(local_path)
-            .bind(&att.provider_id)
-            .execute(self.writer())
-                .await?;
-        }
-
-        self.replace_calendar_invite_for_body(&body.message_id, body.metadata.calendar.as_ref())
-            .await?;
-
+        let mut tx = self.writer().begin().await?;
+        insert_body_tx(&mut tx, body).await?;
+        tx.commit().await?;
         Ok(())
     }
+}
+
+/// Body, attachment, and calendar writes against an open connection so a
+/// page of synced messages can share one transaction. Reads go through the
+/// same connection: inside an uncommitted transaction the reader pool
+/// cannot see the message row this body belongs to.
+pub(crate) async fn insert_body_tx(
+    conn: &mut sqlx::SqliteConnection,
+    body: &MessageBody,
+) -> Result<(), sqlx::Error> {
+    let fetched_at = body.fetched_at.timestamp();
+    let mid = body.message_id.as_str();
+    let metadata_json = encode_json(&body.metadata)?;
+
+    sqlx::query(
+        "INSERT OR REPLACE INTO bodies (message_id, text_plain, text_html, fetched_at, metadata_json) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&mid)
+    .bind(&body.text_plain)
+    .bind(&body.text_html)
+    .bind(fetched_at)
+    .bind(metadata_json)
+    .execute(&mut *conn)
+    .await?;
+
+    // Promote List-Id from body metadata to the indexed `messages.list_id`
+    // column. Cheap upsert; runs once per body and is overwritten if the
+    // sender's headers change. Powers `mxr unsub --rank` grouping.
+    if let Some(list_id) = body.metadata.list_id.as_ref() {
+        sqlx::query("UPDATE messages SET list_id = ? WHERE id = ?")
+            .bind(list_id)
+            .bind(&mid)
+            .execute(&mut *conn)
+            .await?;
+    }
+
+    sqlx::query("DELETE FROM attachments WHERE message_id = ?")
+        .bind(&mid)
+        .execute(&mut *conn)
+        .await?;
+
+    for att in &body.attachments {
+        let att_id = att.id.as_str();
+        let att_mid = att.message_id.as_str();
+        let local_path = att
+            .local_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+        let size_bytes = att.size_bytes as i64;
+        let disposition = encode_attachment_disposition(att.disposition);
+        sqlx::query(
+            "INSERT OR REPLACE INTO attachments (id, message_id, filename, mime_type, disposition, content_id, content_location, size_bytes, local_path, provider_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(att_id)
+        .bind(att_mid)
+        .bind(&att.filename)
+        .bind(&att.mime_type)
+        .bind(disposition)
+        .bind(&att.content_id)
+        .bind(&att.content_location)
+        .bind(size_bytes)
+        .bind(local_path)
+        .bind(&att.provider_id)
+        .execute(&mut *conn)
+        .await?;
+    }
+
+    crate::calendar::replace_calendar_invite_for_body_tx(
+        conn,
+        &body.message_id,
+        body.metadata.calendar.as_ref(),
+    )
+    .await?;
+
+    Ok(())
 }
 
 fn encode_attachment_disposition(disposition: AttachmentDisposition) -> &'static str {

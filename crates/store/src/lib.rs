@@ -50,6 +50,7 @@ mod snooze;
 mod sync_cursor;
 mod sync_log;
 mod sync_runtime_status;
+mod sync_upsert;
 #[cfg(test)]
 mod test_fixtures;
 mod thread;
@@ -88,6 +89,12 @@ pub use signatures::{Signature, SignatureDefault, SignatureKind, SignatureScope}
 pub use snippets::Snippet;
 pub use sync_log::{SyncLogEntry, SyncStatus};
 pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
+pub use sync_upsert::SyncUpsert;
+
+/// Bind parameters per `IN (...)` query. SQLite's default limit is 32,766;
+/// this leaves room for the query's other binds and keeps a page-sized id
+/// list from silently outgrowing it.
+pub(crate) const SQLITE_BIND_CHUNK: usize = 500;
 pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use triage::TriageCacheRecord;
 pub use undo::{UndoEntry, UndoEntrySnapshot, UndoableMutationKind};

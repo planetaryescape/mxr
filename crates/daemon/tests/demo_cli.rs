@@ -18,10 +18,12 @@
     reason = "integration tests panic with command output when daemon-backed journeys fail"
 )]
 
-use mxr_test_support::daemon::{daemon_lock, link_mxr_binary, run_json_with_env, run_with_env};
+use mxr_test_support::daemon::{
+    daemon_lock, link_mxr_binary, run_json_with_env, run_with_env, run_with_env_timed,
+};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
 
 /// Enough messages to span several sync batches and give the analytics and
@@ -35,6 +37,25 @@ const DEMO_MESSAGES: usize = 2_000;
 /// take seconds on a loaded CI runner, and the streamed-events assertion below
 /// is the guard that does not depend on timing at all.
 const IPC_TIMEOUT_SECS: &str = "60";
+
+/// The stdout lines that bracket the seed phase.
+const SEED_START_MARKER: &str = "Seeding demo mailbox";
+const SEED_DONE_MARKER: &str = "Demo mailbox contains";
+
+/// Wall budget for the seed phase — a regression tripwire, not a benchmark.
+///
+/// Measured between the two markers above rather than from process start, so
+/// it covers the part this bounds (rules seeding, the paged sync, the wait
+/// for it) and not daemon start-up, which is dominated by process launch and
+/// the autostart probe and is the noisiest thing on a loaded CI runner.
+///
+/// Provenance: that window is ~1s on a 16-core dev Mac for these 2,000
+/// messages (debug build, machine under load). Allowing a 4-vCPU CI runner
+/// to be 5x slower still lands under 5s, so 30s trips well before anything a
+/// contended runner does on its own — and it does catch the failure modes
+/// that have actually happened here: a wait that stalls until the next sync
+/// tick (60s) or a seed that regresses onto per-message commits.
+const SEED_BUDGET: Duration = Duration::from_secs(30);
 
 fn search_results<'a>(value: &'a Value, context: &str) -> &'a [Value] {
     value
@@ -197,13 +218,38 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
         socket: socket.path.clone(),
     };
 
-    let started_at = Instant::now();
-    let demo = run_with_env(
+    let timed = run_with_env_timed(
         &bin,
         &env,
         &["demo", "--no-tui", "--messages", messages.as_str()],
     );
-    let elapsed = started_at.elapsed();
+    let elapsed = timed.elapsed;
+    let demo = &timed.output;
+    let marker_at = |marker: &str| {
+        timed.first_line_containing(marker).unwrap_or_else(|| {
+            panic!(
+                "demo should print {marker:?}; stdout={}\nstderr={}",
+                demo.stdout, demo.stderr
+            )
+        })
+    };
+    let seed_started = marker_at(SEED_START_MARKER);
+    let seed_elapsed = marker_at(SEED_DONE_MARKER).saturating_sub(seed_started);
+    // Emitted whichever way the assertion goes. nextest only surfaces a
+    // passing test's output under `--success-output immediate`, which is the
+    // flag to reach for when a green run's numbers are what you want.
+    eprintln!(
+        "demo timings: startup {seed_started:?}, seed {seed_elapsed:?}, whole run {elapsed:?}\n{}",
+        timed.timeline()
+    );
+    assert!(
+        seed_elapsed <= SEED_BUDGET,
+        "seeding {DEMO_MESSAGES} messages took {seed_elapsed:?}, over the {SEED_BUDGET:?} budget \
+         (daemon start-up {seed_started:?}, whole run {elapsed:?}). stdout timeline:\n{}\n\
+         stderr tail:\n{}",
+        timed.timeline(),
+        stderr_tail(&demo.stderr, 40),
+    );
     assert!(
         demo.stdout.contains("Demo mode is now active"),
         "demo should announce sticky mode; stdout={}\nstderr={}",
@@ -282,4 +328,10 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
         "demo should be inactive after stop; got: {}",
         after_stop.stdout
     );
+}
+
+/// Last `lines` lines of a captured stderr stream, for failure messages.
+fn stderr_tail(stderr: &str, lines: usize) -> String {
+    let all: Vec<&str> = stderr.lines().collect();
+    all[all.len().saturating_sub(lines)..].join("\n")
 }

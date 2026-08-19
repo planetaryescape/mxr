@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use mxr_core::id::AccountId;
-use mxr_core::types::{Account, BackendRef, ProviderKind, SyncCursor};
+use mxr_core::types::{Account, AccountAddressLookup, BackendRef, ProviderKind, SyncCursor};
 use mxr_provider_fake::FakeProvider;
 use mxr_provider_imap::config::ImapConfig;
 use mxr_provider_imap::session::{ImapSession, ImapSessionFactory};
@@ -90,6 +90,111 @@ fn bench_sync_overlap(c: &mut Criterion) {
             });
         });
     });
+}
+
+/// Initial-sync throughput for the demo dataset: the real `SyncEngine`
+/// against a file-backed store, driven page by page the way the daemon's
+/// sync loop drives it. Reports messages/second.
+///
+/// This is the engine half of `mxr demo` seeding only. The daemon also
+/// runs a post-sync fan-out (rules, deliveries, analytics repair) per page
+/// that competes with the next page for the single SQLite writer, and that
+/// is not represented here — a real seed is slower than this number.
+///
+/// `MXR_BENCH_SEED_MESSAGES` sizes the dataset (default 2,000). The page
+/// size is pinned below rather than taken from the provider default, so
+/// the default run still crosses several pages.
+/// Pages per sync call in the bench. Small enough that the default
+/// 2,000-message run still exercises the paging path end to end.
+const BENCH_PAGE_SIZE: usize = 500;
+
+fn bench_demo_seed(c: &mut Criterion) {
+    let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+    // Clamped the way the provider clamps, so the throughput denominator is
+    // the number of messages it will really generate.
+    let messages: usize = std::env::var("MXR_BENCH_SEED_MESSAGES")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(2_000)
+        .clamp(1, mxr_provider_fake::fixtures::MAX_DEMO_MESSAGE_COUNT);
+
+    let mut group = c.benchmark_group("demo_seed");
+    group.sample_size(10);
+    group.throughput(Throughput::Elements(messages as u64));
+    group.bench_function(format!("initial_sync_{messages}_messages"), |b| {
+        b.iter_custom(|iterations| {
+            let mut elapsed = std::time::Duration::ZERO;
+            for _ in 0..iterations {
+                let db_dir = tempfile::tempdir().expect("temp dir");
+                let (engine, provider, _search_worker) = runtime.block_on(async {
+                    let store = Arc::new(
+                        Store::new(&db_dir.path().join("bench.db"))
+                            .await
+                            .expect("store"),
+                    );
+                    let (search, search_worker) =
+                        SearchServiceHandle::start(SearchIndex::in_memory().expect("search"));
+                    let account_id = AccountId::new();
+                    store
+                        .insert_account(&Account {
+                            id: account_id.clone(),
+                            name: "Bench Demo".into(),
+                            email: "alex@demo.mxr.local".into(),
+                            sync_backend: Some(BackendRef {
+                                provider_kind: ProviderKind::Fake,
+                                config_key: "bench-demo".into(),
+                            }),
+                            send_backend: None,
+                            enabled: true,
+                        })
+                        .await
+                        .expect("insert account");
+                    let engine = SyncEngine::with_address_lookup(
+                        store,
+                        search,
+                        Arc::new(BenchAddressLookup {
+                            account_id: account_id.clone(),
+                            email: "alex@demo.mxr.local".to_string(),
+                        }),
+                    );
+                    let provider = FakeProvider::with_demo_dataset(account_id, messages)
+                        .with_page_size(BENCH_PAGE_SIZE);
+                    (engine, provider, search_worker)
+                });
+
+                let started_at = std::time::Instant::now();
+                runtime.block_on(async {
+                    loop {
+                        let outcome = engine
+                            .sync_account_with_outcome(&provider)
+                            .await
+                            .expect("sync page");
+                        if !outcome.has_more {
+                            break;
+                        }
+                    }
+                });
+                elapsed += started_at.elapsed();
+            }
+            elapsed
+        });
+    });
+    group.finish();
+}
+
+struct BenchAddressLookup {
+    account_id: AccountId,
+    email: String,
+}
+
+impl AccountAddressLookup for BenchAddressLookup {
+    fn is_account_address(&self, account_id: &AccountId, email: &str) -> bool {
+        *account_id == self.account_id && email.eq_ignore_ascii_case(&self.email)
+    }
+
+    fn is_loaded(&self) -> bool {
+        true
+    }
 }
 
 fn bench_imap_provider() -> ImapProvider {
@@ -300,5 +405,5 @@ impl ImapSession for BenchImapSession {
     }
 }
 
-criterion_group!(benches, bench_sync_overlap);
+criterion_group!(benches, bench_sync_overlap, bench_demo_seed);
 criterion_main!(benches);

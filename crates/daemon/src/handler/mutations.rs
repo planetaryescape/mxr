@@ -3861,6 +3861,7 @@ mod mutation_dedup_invariant_tests {
                 next_cursor: SyncCursor::empty(),
                 has_more: false,
                 threads_changed: Vec::new(),
+                remaining_estimate: None,
             })
         }
 
@@ -4021,6 +4022,7 @@ mod safety_context_wiring_tests {
                 next_cursor: SyncCursor::empty(),
                 has_more: false,
                 threads_changed: Vec::new(),
+                remaining_estimate: None,
             })
         }
 
@@ -4498,6 +4500,7 @@ mod sent_append_tests {
                 next_cursor: SyncCursor::empty(),
                 has_more: false,
                 threads_changed: Vec::new(),
+                remaining_estimate: None,
             })
         }
 

@@ -31,7 +31,16 @@ pub struct SyncOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncProgress {
     /// The provider handed back a page, before any of it is stored.
-    PageFetched { messages: u32, has_more: bool },
+    ///
+    /// `remaining_estimate` is [`SyncBatch::remaining_estimate`]: how many
+    /// messages this sync still has to deliver counting this page, or `None`
+    /// when the provider cannot say. A caller that tracks a running total
+    /// gets the denominator by adding it to what it has already stored.
+    PageFetched {
+        messages: u32,
+        has_more: bool,
+        remaining_estimate: Option<u32>,
+    },
     /// The page's envelopes and bodies are committed to SQLite.
     PageStored { messages: u32 },
     /// The page is committed to the lexical index; the pass is wrapping up.
@@ -187,14 +196,21 @@ impl SyncEngine {
 
         let direction =
             self.classify_direction(&synced.envelope.account_id, &synced.envelope.from.email);
-        let envelope = self
+        let mut envelope = self
             .apply_screener_decision(synced.envelope.clone(), direction)
             .await?;
 
-        self.store
+        // The store keeps the id an existing row already has, so everything
+        // written after this — body, labels, search index — has to follow it.
+        let stored_id = self
+            .store
             .upsert_envelope_with_direction(&envelope, direction)
             .await
             .map_err(|e| MxrError::Store(e.to_string()))?;
+        if stored_id != envelope.id {
+            envelope.id = stored_id.clone();
+            body.set_message_id(stored_id);
+        }
 
         // Slice 9: forward-populate `reply_pairs`. If the parent isn't in the
         // store yet (out-of-order delivery), park the reply for the
@@ -354,12 +370,8 @@ impl SyncEngine {
             progress(SyncProgress::PageFetched {
                 messages: synced_count,
                 has_more,
+                remaining_estimate: batch.remaining_estimate,
             });
-            let upserted_message_ids = batch
-                .upserted
-                .iter()
-                .map(|synced| synced.envelope.id.clone())
-                .collect::<Vec<_>>();
             let mut lexical_batch = SearchUpdateBatch::default();
 
             // Core sync guarantee: after this batch, SQLite has the
@@ -418,12 +430,21 @@ impl SyncEngine {
             }
 
             self.store
-                .apply_sync_upserts(&upserts)
+                .apply_sync_upserts(&mut upserts)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
             progress(SyncProgress::PageStored {
                 messages: synced_count,
             });
+
+            // Read the ids back off the page rather than off what the provider
+            // handed us: the store keeps the id an existing row already has,
+            // and the search index, reply pairs and everything the daemon does
+            // with this list must name the same id the rows are under.
+            let upserted_message_ids = upserts
+                .iter()
+                .map(|upsert| upsert.envelope.id.clone())
+                .collect::<Vec<_>>();
 
             // Reply pairs resolve against committed rows, so they run after
             // the batch: a reply whose parent arrived in the same batch now

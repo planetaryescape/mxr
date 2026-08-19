@@ -1017,6 +1017,21 @@ fn demo_thread_id(account_id: &AccountId, thread_num: usize) -> ThreadId {
     ThreadId::from_scoped_provider_id(account_id, "fake", &format!("demo-thread-{thread_num}"))
 }
 
+/// Thread ids for the curated 50-message dataset.
+///
+/// Derived rather than random so a persisted demo profile re-syncs into the
+/// threads it already has. Keyed apart from [`demo_thread_id`] because the
+/// two generators number their threads from zero independently: sharing a key
+/// would put a curated thread and a generated one under the same id if the
+/// profile's message count ever changed.
+fn curated_demo_thread_id(account_id: &AccountId, thread_num: usize) -> ThreadId {
+    ThreadId::from_scoped_provider_id(
+        account_id,
+        "fake",
+        &format!("demo-curated-thread-{thread_num}"),
+    )
+}
+
 fn demo_message_id_header(msg_num: usize) -> String {
     format!("<demo-{msg_num}@mxr.local>")
 }
@@ -1083,7 +1098,7 @@ fn generate_curated_demo_fixtures(
         let sender = senders[thread_num % senders.len()];
         let root_subject = subjects[thread_num % subjects.len()];
         let thread_len = thread_lengths[thread_num % thread_lengths.len()];
-        let thread_id = ThreadId::new();
+        let thread_id = curated_demo_thread_id(account_id, thread_num);
         let mut references = Vec::new();
         let mut previous_message_id = None;
 
@@ -2014,6 +2029,58 @@ mod tests {
             .iter()
             .any(|env| env.unsubscribe != UnsubscribeMethod::None));
         assert!(bodies.values().any(|body| body.text_html.is_some()));
+    }
+
+    /// The demo profile is persisted, so the provider is rebuilt on every
+    /// daemon start. Ids that change between constructions re-sync the same
+    /// mail into different threads.
+    #[test]
+    fn curated_demo_seed_regenerates_identical_ids() {
+        for email in ["alex@demo.mxr.local", "alex@work.demo.mxr.local"] {
+            let account_id = AccountId::from_provider_id("fake", email);
+            let (first, _, _) = generate_demo_fixtures(&account_id, CURATED_DEMO_MESSAGE_COUNT);
+            let (second, _, _) = generate_demo_fixtures(&account_id, CURATED_DEMO_MESSAGE_COUNT);
+
+            let ids = |envelopes: &[Envelope]| {
+                envelopes
+                    .iter()
+                    .map(|env| {
+                        (
+                            env.provider_id.clone(),
+                            env.id.clone(),
+                            env.thread_id.clone(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(ids(&first), ids(&second), "{email} ids must be derived");
+            assert!(
+                first
+                    .iter()
+                    .map(|env| env.thread_id.clone())
+                    .collect::<HashSet<_>>()
+                    .len()
+                    > 1,
+                "{email} should span several threads"
+            );
+        }
+    }
+
+    /// Both demo accounts sync into one store, so an id keyed only by the
+    /// thread's index would put the work account's first thread and the
+    /// personal account's first thread under the same `ThreadId`.
+    #[test]
+    fn curated_demo_thread_ids_do_not_collide_across_accounts_or_generators() {
+        let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+        let other_id = AccountId::from_provider_id("fake", "alex@work.demo.mxr.local");
+        assert_ne!(
+            curated_demo_thread_id(&account_id, 0),
+            curated_demo_thread_id(&other_id, 0)
+        );
+        assert_ne!(
+            curated_demo_thread_id(&account_id, 0),
+            demo_thread_id(&account_id, 0)
+        );
     }
 
     fn counterparty_emails(envelope: &Envelope) -> Vec<String> {

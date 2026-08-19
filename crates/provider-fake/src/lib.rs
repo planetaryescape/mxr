@@ -343,12 +343,17 @@ impl MailSyncProvider for FakeProvider {
                         next_cursor: cursor.clone(),
                         has_more: false,
                         threads_changed: vec![],
+                        remaining_estimate: Some(0),
                     })
                 }
             }
         };
 
         let total = self.dataset.len();
+        // Exact, not an estimate: the dataset size is known up front and pages
+        // are taken by offset. The clamp only stops the count wrapping —
+        // `MAX_DEMO_MESSAGE_COUNT` is far below `u32::MAX`.
+        let remaining_estimate = u32::try_from(total.saturating_sub(offset)).unwrap_or(u32::MAX);
         let upserted = self.dataset.page(offset, self.page_size);
         let next_offset = offset.saturating_add(upserted.len());
         let has_more = next_offset < total;
@@ -365,6 +370,7 @@ impl MailSyncProvider for FakeProvider {
             next_cursor,
             has_more,
             threads_changed: vec![],
+            remaining_estimate: Some(remaining_estimate),
         })
     }
 
@@ -956,6 +962,32 @@ mod tests {
             );
             assert!(!provider.is_backfill_cursor(&cursor));
         }
+    }
+
+    /// The dataset size is known up front, so every page can say exactly how
+    /// many messages are left to deliver — counted from the cursor, which is
+    /// what makes the number right for a resumed backfill too.
+    #[tokio::test]
+    async fn demo_pages_report_what_is_left_to_deliver() {
+        const PAGE: usize = 100;
+        const TOTAL: usize = 250;
+        let provider =
+            FakeProvider::with_demo_dataset(AccountId::new(), TOTAL).with_page_size(PAGE);
+
+        let mut cursor = SyncCursor::empty();
+        let mut remaining = Vec::new();
+        loop {
+            let batch = provider.sync_messages(&cursor).await.unwrap();
+            remaining.push(batch.remaining_estimate);
+            cursor = batch.next_cursor;
+            if !batch.has_more {
+                break;
+            }
+        }
+
+        assert_eq!(remaining, vec![Some(250), Some(150), Some(50)]);
+        let caught_up = provider.sync_messages(&cursor).await.unwrap();
+        assert_eq!(caught_up.remaining_estimate, Some(0));
     }
 
     /// A page resumed from a cursor must equal the same slice generated in

@@ -14,7 +14,7 @@ impl super::Store {
     /// insert. Sync paths that know the account's owned addresses should call
     /// `upsert_envelope_with_direction` instead so direction lands correctly
     /// the first time.
-    pub async fn upsert_envelope(&self, envelope: &Envelope) -> Result<(), sqlx::Error> {
+    pub async fn upsert_envelope(&self, envelope: &Envelope) -> Result<MessageId, sqlx::Error> {
         self.upsert_envelope_with_direction(envelope, MessageDirection::Unknown)
             .await
     }
@@ -26,15 +26,21 @@ impl super::Store {
     /// non-Unknown classification — preserving Slice 8's invariant that a
     /// concrete inbound/outbound classification, once recorded, is sticky.
     /// (Re-syncs that pass `Unknown` shouldn't downgrade a known direction.)
+    ///
+    /// Returns the id the row actually lives under, which is not always
+    /// `envelope.id`: an existing row resolved by the natural key
+    /// `(account_id, provider_id)` keeps its own id. Callers that go on to
+    /// write dependent rows (body, labels, keywords, search index) must key
+    /// them off the returned id.
     pub async fn upsert_envelope_with_direction(
         &self,
         envelope: &Envelope,
         direction: MessageDirection,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<MessageId, sqlx::Error> {
         let mut tx = self.writer().begin().await?;
-        upsert_envelope_tx(&mut tx, envelope, direction).await?;
+        let stored_id = upsert_envelope_tx(&mut tx, envelope, direction).await?;
         tx.commit().await?;
-        Ok(())
+        Ok(stored_id)
     }
 }
 
@@ -65,11 +71,18 @@ pub(crate) async fn replace_message_labels_tx(
 
 /// Envelope upsert against an open connection so a page of synced
 /// messages can share one transaction.
+///
+/// Returns the `MessageId` the row is stored under. That is `envelope.id`
+/// for an insert, but an existing row resolved by the natural key keeps its
+/// own id: `messages.id` is referenced by bodies, attachments, labels,
+/// keywords, reply pairs and the search index, so rewriting it would mean
+/// re-keying every dependent row inside the sync transaction. The stored id
+/// wins, and callers rewrite what they are about to write to match it.
 pub(crate) async fn upsert_envelope_tx(
     conn: &mut sqlx::SqliteConnection,
     envelope: &Envelope,
     direction: MessageDirection,
-) -> Result<(), sqlx::Error> {
+) -> Result<MessageId, sqlx::Error> {
     let id = envelope.id.as_str();
     let account_id = envelope.account_id.as_str();
     let thread_id = envelope.thread_id.as_str();
@@ -155,10 +168,10 @@ pub(crate) async fn upsert_envelope_tx(
         .bind(body_word_count_persist)
         .bind(direction_str)
         .bind(direction_str)
-        .bind(existing_id)
+        .bind(&existing_id)
         .execute(&mut *conn)
         .await?;
-        return Ok(());
+        return decode_id(&existing_id);
     }
 
     sqlx::query(
@@ -194,7 +207,7 @@ pub(crate) async fn upsert_envelope_tx(
     .execute(&mut *conn)
     .await?;
 
-    Ok(())
+    Ok(envelope.id.clone())
 }
 
 impl super::Store {

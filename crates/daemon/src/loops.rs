@@ -223,8 +223,19 @@ fn progress_sink(pass: &SyncPass) -> impl Fn(mxr_sync::SyncProgress) + Send + Sy
         if !live.load(Ordering::Relaxed) {
             return;
         }
+        // A page that knows how much is left turns into the run's
+        // denominator, added to what the run has already stored.
+        if let mxr_sync::SyncProgress::PageFetched {
+            remaining_estimate: Some(remaining),
+            ..
+        } = milestone
+        {
+            state.record_sync_remaining(&account_id, remaining);
+        }
         let (stored, message) = match milestone {
-            mxr_sync::SyncProgress::PageFetched { messages, has_more } => (
+            mxr_sync::SyncProgress::PageFetched {
+                messages, has_more, ..
+            } => (
                 0,
                 if has_more {
                     format!("Fetched {messages} messages; more pages to come")
@@ -2155,6 +2166,7 @@ mod tests {
                 next_cursor: cursor.clone(),
                 has_more: false,
                 threads_changed: Vec::new(),
+                remaining_estimate: None,
             })
         }
 
@@ -2242,6 +2254,7 @@ mod tests {
                 next_cursor: cursor.clone(),
                 has_more: false,
                 threads_changed: Vec::new(),
+                remaining_estimate: None,
             })
         }
 
@@ -2696,6 +2709,7 @@ mod tests {
                 next_cursor,
                 has_more,
                 threads_changed: Vec::new(),
+                remaining_estimate: None,
             })
         }
 

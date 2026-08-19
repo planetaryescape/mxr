@@ -565,3 +565,15 @@ Superseded by D049. Bodies and body text are now indexed at sync time.
 **Trade-offs accepted**: `mxr sync` without `--wait` now reports only that a sync started; failures after that point show on the status row rather than in the command's exit code. That is what `--wait` is for, and it is the honest shape for an operation that runs for minutes.
 
 **Two states, not one, for "the account is busy"**: `sync_in_progress` is now `has_more || a background sync is queued`. A background `SyncNow` is acked before its pass has taken the provider lock, and in that window another pass can finish and would otherwise write "idle" over a client's live request. The claim that keeps that flag true is an RAII guard, released on drop, so a panic in the spawned pass or the runtime dropping it at shutdown cannot leave an account permanently "already syncing".
+
+---
+
+## D059: On a natural-key match the STORED `MessageId` wins, and the whole page follows it (issue #179 follow-up)
+
+**Chosen**: `upsert_envelope_tx` returns the `MessageId` the row is actually stored under, and the sync path rewrites its in-memory copy to match. `messages` has a `UNIQUE (account_id, provider_id)` natural key, so an envelope whose id derivation changed between releases (the 0.4.52 `from_provider_id` → `from_scoped_provider_id` switch, and any future change) resolves to a row that already exists under a different id. That row keeps its id; `Store::apply_sync_upserts` takes the page by `&mut` and points the envelope, the body, and the body's attachments at the stored id before writing them, and `SyncEngine` reads `upserted_message_ids` back off the page after storing it — so the lexical index entry, reply pairs, `NewMessages`, and semantic ingest all name the same id as the rows.
+
+**Considered**: re-keying the stored row to the incoming id. Rejected — `messages.id` is referenced by bodies, attachments, labels, keywords, reply pairs, snoozes, semantic chunks, and the search index; rewriting it means re-keying every dependent row inside the sync transaction, and any table missed leaves an orphan. Keeping the stored id touches nothing already on disk.
+
+**Why it mattered**: dependents were written against the *incoming* id, which no `messages` row had, so the page failed on a foreign key — pinned by a test that asserted the failure. Reachable in practice as soon as a demo or fake profile's cursor is reset, and by design for anyone upgrading across an id-derivation change.
+
+**Trade-offs accepted**: `Store::upsert_envelope`/`upsert_envelope_with_direction` now return the stored `MessageId`. Callers that write dependent rows afterwards must use it; callers writing a genuinely new message can ignore it.

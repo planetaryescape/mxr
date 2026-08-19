@@ -11,7 +11,7 @@
 use crate::body::insert_body_tx;
 use crate::keywords::replace_message_keywords_tx;
 use crate::message::{replace_message_labels_tx, upsert_envelope_tx};
-use mxr_core::id::LabelId;
+use mxr_core::id::{LabelId, MessageId};
 use mxr_core::types::{Envelope, MessageBody, MessageDirection};
 
 /// One synced message, with everything the store needs to persist it.
@@ -27,6 +27,25 @@ pub struct SyncUpsert {
     pub label_ids: Vec<LabelId>,
 }
 
+impl SyncUpsert {
+    /// Point this message's in-memory ids at `stored_id`.
+    ///
+    /// The store resolves an envelope by `(account_id, provider_id)` and keeps
+    /// the id already on disk, so a message whose id derivation changed
+    /// between releases comes back under its old id. Everything written after
+    /// the envelope — body, attachments, labels, keywords — and everything the
+    /// caller does with the envelope afterwards (search index, reply pairs,
+    /// the upserted-id list) has to use that id, or it writes against a
+    /// `messages` row that does not exist.
+    fn retarget(&mut self, stored_id: MessageId) {
+        if self.envelope.id == stored_id {
+            return;
+        }
+        self.envelope.id = stored_id.clone();
+        self.body.set_message_id(stored_id);
+    }
+}
+
 /// Messages per transaction. Bounds how long one commit holds the writer
 /// lock (other writers — mutations, contacts refresh — queue behind it)
 /// while still amortising the commit cost over hundreds of messages.
@@ -38,11 +57,19 @@ impl super::Store {
     /// Equivalent to calling the per-message store functions in order, but
     /// batched. A chunk is all-or-nothing: a failure leaves the sync cursor
     /// unadvanced and the page is re-synced.
-    pub async fn apply_sync_upserts(&self, upserts: &[SyncUpsert]) -> Result<(), sqlx::Error> {
-        for chunk in upserts.chunks(UPSERT_CHUNK) {
+    ///
+    /// Takes the page by mutable reference because the store decides each
+    /// message's id: an envelope that matches an existing row by
+    /// `(account_id, provider_id)` keeps the stored id, and the entry is
+    /// rewritten in place so the caller's own follow-up work — search index,
+    /// reply pairs, semantic ingest — uses the same id the rows are under.
+    pub async fn apply_sync_upserts(&self, upserts: &mut [SyncUpsert]) -> Result<(), sqlx::Error> {
+        for chunk in upserts.chunks_mut(UPSERT_CHUNK) {
             let mut tx = self.writer().begin().await?;
             for upsert in chunk {
-                upsert_envelope_tx(&mut tx, &upsert.envelope, upsert.direction).await?;
+                let stored_id =
+                    upsert_envelope_tx(&mut tx, &upsert.envelope, upsert.direction).await?;
+                upsert.retarget(stored_id);
                 insert_body_tx(&mut tx, &upsert.body).await?;
                 replace_message_labels_tx(&mut tx, &upsert.envelope.id, &upsert.label_ids).await?;
                 replace_message_keywords_tx(
@@ -162,11 +189,11 @@ mod tests {
             store.upsert_label(&work).await.unwrap();
         }
 
-        let upserts: Vec<SyncUpsert> = (0..3)
+        let mut upserts: Vec<SyncUpsert> = (0..3)
             .map(|index| upsert(&account, index, vec![work.id.clone()]))
             .collect();
 
-        batched.apply_sync_upserts(&upserts).await.unwrap();
+        batched.apply_sync_upserts(&mut upserts).await.unwrap();
         for item in &upserts {
             per_message
                 .upsert_envelope_with_direction(&item.envelope, item.direction)
@@ -231,8 +258,8 @@ mod tests {
         let account = test_account();
         store.insert_account(&account).await.unwrap();
 
-        let upserts = vec![upsert(&account, 0, Vec::new())];
-        store.apply_sync_upserts(&upserts).await.unwrap();
+        let mut upserts = vec![upsert(&account, 0, Vec::new())];
+        store.apply_sync_upserts(&mut upserts).await.unwrap();
 
         let invite = store
             .get_calendar_invite_for_message(&upserts[0].envelope.id)
@@ -269,9 +296,9 @@ mod tests {
         second.envelope.keywords = BTreeSet::new();
         second.body.attachments.clear();
 
-        for pass in [&first, &second] {
+        for pass in [&mut first, &mut second] {
             batched
-                .apply_sync_upserts(std::slice::from_ref(pass))
+                .apply_sync_upserts(std::slice::from_mut(pass))
                 .await
                 .unwrap();
             per_message
@@ -314,44 +341,66 @@ mod tests {
         assert_eq!(envelope.subject, "Subject 0 edited");
     }
 
-    /// Documents a pre-existing hazard rather than a behaviour we want: a
-    /// row written before 0.4.52 lives under an unscoped id, so a re-sync
+    /// A row written before 0.4.52 lives under an unscoped id, so a re-sync
     /// computes a different `MessageId` for the same
-    /// `(account_id, provider_id)`. `upsert_envelope_tx` keeps the stored
-    /// id (the natural key is UNIQUE), but the body is written against the
-    /// incoming id, which no `messages` row has — so the page fails on the
-    /// foreign key instead of silently splitting the message in two. The
-    /// per-message path fails the same way; the fix (resolve dependents
-    /// against the stored id) is deliberately out of scope here.
+    /// `(account_id, provider_id)`. The natural key is UNIQUE, so the stored
+    /// id wins: the page must land under the id already on disk, with every
+    /// dependent row attached to it, and nothing left under the incoming id.
     #[tokio::test]
-    async fn a_legacy_row_under_a_different_id_fails_the_page_rather_than_splitting_it() {
+    async fn a_legacy_row_under_a_different_id_keeps_its_id_and_takes_the_new_page() {
         let account = test_account();
+        let work = label(&account, "work");
         let store = Store::in_memory().await.unwrap();
         store.insert_account(&account).await.unwrap();
+        store.upsert_label(&work).await.unwrap();
 
-        let mut legacy = upsert(&account, 0, Vec::new());
-        legacy.envelope.id = MessageId::from_provider_id("fake", &legacy.envelope.provider_id);
-        legacy.body.message_id = legacy.envelope.id.clone();
-        legacy.body.attachments.clear();
-        store.apply_sync_upserts(&[legacy]).await.unwrap();
+        let mut legacy = vec![upsert(&account, 0, Vec::new())];
+        let legacy_id = MessageId::from_provider_id("fake", &legacy[0].envelope.provider_id);
+        legacy[0].envelope.id = legacy_id.clone();
+        legacy[0].body.message_id = legacy_id.clone();
+        legacy[0].body.attachments.clear();
+        store.apply_sync_upserts(&mut legacy).await.unwrap();
 
         // Same provider id, id derived the way the current code derives it.
-        let current = upsert(&account, 0, Vec::new());
-        let error = store
-            .apply_sync_upserts(&[current])
-            .await
-            .expect_err("dependent writes use the incoming id, which has no message row");
-        assert!(
-            error
-                .to_string()
-                .to_ascii_lowercase()
-                .contains("foreign key"),
-            "expected a foreign-key failure, got: {error}"
-        );
+        let mut current = vec![upsert(&account, 0, vec![work.id.clone()])];
+        let incoming_id = current[0].envelope.id.clone();
+        assert_ne!(incoming_id, legacy_id, "the two derivations must differ");
+        current[0].envelope.subject = "Subject 0 resynced".to_string();
+        store.apply_sync_upserts(&mut current).await.unwrap();
+
         assert_eq!(
             store.count_messages_by_account(&account.id).await.unwrap(),
-            1
+            1,
+            "the re-sync must update the legacy row, not add a second one"
         );
+        // The caller reads the ids back off the page it handed in — that is
+        // how sync learns which id its search index and reply pairs must use.
+        assert_eq!(current[0].envelope.id, legacy_id);
+        assert_eq!(current[0].body.message_id, legacy_id);
+        assert!(current[0]
+            .body
+            .attachments
+            .iter()
+            .all(|attachment| attachment.message_id == legacy_id));
+
+        assert!(store.get_envelope(&incoming_id).await.unwrap().is_none());
+        let envelope = store
+            .get_envelope(&legacy_id)
+            .await
+            .unwrap()
+            .expect("legacy row");
+        assert_eq!(envelope.subject, "Subject 0 resynced");
+        let body = store.get_body(&legacy_id).await.unwrap().expect("body");
+        assert_eq!(body.text_plain.as_deref(), Some("Body 0"));
+        assert_eq!(body.attachments.len(), 1);
+        assert_eq!(body.attachments[0].message_id, legacy_id);
+        assert_eq!(store.count_message_labels().await.unwrap(), 1);
+        assert!(!store
+            .get_message_keywords(&legacy_id)
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(store.get_body(&incoming_id).await.unwrap().is_none());
     }
 
     /// Re-running a page (the provider resends it after a failed chunk) must
@@ -364,11 +413,11 @@ mod tests {
         let work = label(&account, "work");
         store.upsert_label(&work).await.unwrap();
 
-        let upserts: Vec<SyncUpsert> = (0..2)
+        let mut upserts: Vec<SyncUpsert> = (0..2)
             .map(|index| upsert(&account, index, vec![work.id.clone()]))
             .collect();
-        store.apply_sync_upserts(&upserts).await.unwrap();
-        store.apply_sync_upserts(&upserts).await.unwrap();
+        store.apply_sync_upserts(&mut upserts).await.unwrap();
+        store.apply_sync_upserts(&mut upserts).await.unwrap();
 
         assert_eq!(
             store.count_messages_by_account(&account.id).await.unwrap(),

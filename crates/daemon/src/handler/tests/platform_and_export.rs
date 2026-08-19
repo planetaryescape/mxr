@@ -2097,6 +2097,7 @@ impl mxr_core::MailSyncProvider for HeldPageSyncProvider {
             next_cursor: cursor.clone(),
             has_more: false,
             threads_changed: Vec::new(),
+            remaining_estimate: None,
         })
     }
 

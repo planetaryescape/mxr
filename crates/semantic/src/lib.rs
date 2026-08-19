@@ -29,6 +29,8 @@ use mxr_core::types::{
 };
 #[cfg(feature = "local")]
 use mxr_reader::{clean, ReaderConfig};
+#[cfg(feature = "local")]
+use mxr_store::SemanticIndexRow;
 use mxr_store::Store;
 #[cfg(feature = "local")]
 use sha2::{Digest, Sha256};
@@ -64,6 +66,23 @@ const EMBED_TEXTS_PER_CALL: usize = 512;
 #[cfg(feature = "local")]
 const MESSAGE_ID_PAGE: u32 = 5_000;
 
+/// Chunks streamed into an ANN build per page. Caps how much of the chunk
+/// corpus is resident while the index is built.
+#[cfg(feature = "local")]
+const INDEX_ROW_PAGE: u32 = 4_096;
+
+/// Characters of chunk text kept per indexed vector, and the length of a
+/// search hit's snippet.
+#[cfg(feature = "local")]
+const SNIPPET_CHARS: u32 = 240;
+
+/// Starting capacity hint for a streamed ANN build. hnsw_rs only uses this to
+/// reserve its per-layer vectors and grows past it, and the reservation is
+/// eight bytes per point, so a fixed guess costs nothing and saves counting
+/// the rows up front.
+#[cfg(feature = "local")]
+const INDEX_SIZE_HINT: usize = 16_384;
+
 /// Rows per ONNX session run inside one embedding call. Measured on a 2k
 /// message corpus: 16 and 64 rows are both ~5-15% slower than 32.
 #[cfg(feature = "local")]
@@ -83,7 +102,10 @@ struct IndexedChunk {
     chunk_id: SemanticChunkId,
     message_id: MessageId,
     source_kind: SemanticChunkSourceKind,
-    normalized: String,
+    /// Already cut to [`SNIPPET_CHARS`]. The index holds one of these per
+    /// vector, so keeping whole chunk bodies here would cost more memory than
+    /// the vectors do.
+    snippet: String,
 }
 
 #[cfg(feature = "local")]
@@ -126,7 +148,16 @@ pub(crate) struct SemanticIndexJob {
 #[cfg(feature = "local")]
 struct IndexBuild {
     profile: SemanticProfile,
-    handle: tokio::task::JoinHandle<SemanticIndex>,
+    handle: tokio::task::JoinHandle<Result<SemanticIndex>>,
+}
+
+/// One page of index rows, or the end of the stream. `Done` is explicit so a
+/// pump that dies mid-stream cannot be mistaken for a complete index.
+#[cfg(feature = "local")]
+enum IndexRowBatch {
+    Page(Vec<SemanticIndexRow>),
+    Done,
+    Failed(String),
 }
 
 #[cfg(feature = "local")]
@@ -577,8 +608,16 @@ impl SemanticEngine {
             .get_semantic_profile(profile)
             .await?
             .ok_or_else(|| anyhow!("semantic profile {} not installed", profile.as_str()))?;
-        let rows = self.store.list_semantic_embeddings(&record.id).await?;
-        let handle = tokio::task::spawn_blocking(move || build_semantic_index(rows));
+        // Rows are paged in and inserted as they arrive, so peak memory is the
+        // index itself plus one page - not the whole chunk corpus on top of it.
+        let (tx, rx) = tokio::sync::mpsc::channel::<IndexRowBatch>(1);
+        let store = self.store.clone();
+        let profile_id = record.id.clone();
+        tokio::spawn(async move {
+            let terminator = stream_index_rows(&store, &profile_id, &tx).await;
+            let _ = tx.send(terminator).await;
+        });
+        let handle = tokio::task::spawn_blocking(move || build_semantic_index(rx));
         self.index_build = Some(IndexBuild { profile, handle });
         Ok(true)
     }
@@ -594,14 +633,14 @@ impl SemanticEngine {
         let profile = build.profile;
         let result = (&mut build.handle).await;
         self.index_build = None;
-        match result {
+        match result.map_err(anyhow::Error::new).and_then(|built| built) {
             Ok(index) => {
                 self.indexes.insert(profile, index);
             }
             Err(error) => {
                 tracing::error!(
                     profile = profile.as_str(),
-                    "semantic index build task failed: {error}"
+                    "semantic index build failed: {error:#}"
                 );
                 // Leave it dirty so the next idle pass retries.
                 self.dirty_indexes.insert(profile);
@@ -1128,32 +1167,79 @@ fn build_message_chunk_batch(
     }
 }
 
+/// Pages every indexed row for a profile into `tx`, returning the terminator
+/// the caller should send once the stream ends.
+#[cfg(feature = "local")]
+async fn stream_index_rows(
+    store: &Store,
+    profile_id: &SemanticProfileId,
+    tx: &tokio::sync::mpsc::Sender<IndexRowBatch>,
+) -> IndexRowBatch {
+    let mut after: Option<SemanticChunkId> = None;
+    loop {
+        let page = match store
+            .list_semantic_index_rows_after(
+                profile_id,
+                after.as_ref(),
+                SNIPPET_CHARS,
+                INDEX_ROW_PAGE,
+            )
+            .await
+        {
+            Ok(page) => page,
+            Err(error) => return IndexRowBatch::Failed(error.to_string()),
+        };
+        let exhausted = page.len() < INDEX_ROW_PAGE as usize;
+        after = page.last().map(|row| row.chunk_id.clone());
+        if !page.is_empty() && tx.send(IndexRowBatch::Page(page)).await.is_err() {
+            return IndexRowBatch::Failed("semantic index build stopped listening".to_string());
+        }
+        if exhausted {
+            return IndexRowBatch::Done;
+        }
+    }
+}
+
 #[cfg(feature = "local")]
 fn build_semantic_index(
-    rows: Vec<(SemanticChunkRecord, SemanticEmbeddingRecord)>,
-) -> SemanticIndex {
-    let max_elements = rows.len().max(1);
-    let mut hnsw = Hnsw::<f32, DistCosine>::new(16, max_elements, 16, 200, DistCosine {});
-    let mut chunks_by_id = HashMap::with_capacity(rows.len());
+    mut rows: tokio::sync::mpsc::Receiver<IndexRowBatch>,
+) -> Result<SemanticIndex> {
+    let mut hnsw = Hnsw::<f32, DistCosine>::new(16, INDEX_SIZE_HINT, 16, 200, DistCosine {});
+    let mut chunks_by_id: HashMap<usize, IndexedChunk> = HashMap::new();
+    let mut point_id = 0usize;
 
-    for (point_id, (chunk, embedding)) in rows.into_iter().enumerate() {
-        let vector = blob_to_f32s(&embedding.vector);
-        if vector.is_empty() {
-            continue;
+    loop {
+        match rows.blocking_recv() {
+            Some(IndexRowBatch::Page(page)) => {
+                for row in page {
+                    let vector = blob_to_f32s(&row.vector);
+                    if vector.is_empty() {
+                        continue;
+                    }
+                    hnsw.insert((&vector, point_id));
+                    chunks_by_id.insert(
+                        point_id,
+                        IndexedChunk {
+                            chunk_id: row.chunk_id,
+                            message_id: row.message_id,
+                            source_kind: row.source_kind,
+                            snippet: row.snippet,
+                        },
+                    );
+                    point_id += 1;
+                }
+            }
+            Some(IndexRowBatch::Done) => break,
+            Some(IndexRowBatch::Failed(error)) => {
+                return Err(anyhow!("semantic index rows failed: {error}"));
+            }
+            None => return Err(anyhow!("semantic index row stream ended early")),
         }
-        hnsw.insert((&vector, point_id));
-        chunks_by_id.insert(
-            point_id,
-            IndexedChunk {
-                chunk_id: chunk.id,
-                message_id: chunk.message_id,
-                source_kind: chunk.source_kind,
-                normalized: chunk.normalized,
-            },
-        );
     }
+
     hnsw.set_searching_mode(true);
-    SemanticIndex { hnsw, chunks_by_id }
+    chunks_by_id.shrink_to_fit();
+    Ok(SemanticIndex { hnsw, chunks_by_id })
 }
 
 #[cfg(feature = "local")]
@@ -1534,7 +1620,7 @@ where
             score: similarity,
             chunk_id: chunk.chunk_id.clone(),
             source_kind: chunk.source_kind,
-            snippet: semantic_hit_snippet(&chunk.normalized),
+            snippet: chunk.snippet.clone(),
         };
         best_by_message
             .entry(chunk.message_id.clone())
@@ -1552,16 +1638,6 @@ where
         hits.truncate(limit);
     }
     hits
-}
-
-#[cfg(feature = "local")]
-fn semantic_hit_snippet(normalized: &str) -> String {
-    const MAX_CHARS: usize = 240;
-    let mut snippet = String::new();
-    for ch in normalized.chars().take(MAX_CHARS) {
-        snippet.push(ch);
-    }
-    snippet
 }
 
 #[cfg(all(test, feature = "local"))]
@@ -2251,7 +2327,7 @@ mod tests {
                         chunk_id: SemanticChunkId::new(),
                         message_id: message_a.clone(),
                         source_kind: SemanticChunkSourceKind::Header,
-                        normalized: "header chunk".to_string(),
+                        snippet: "header chunk".to_string(),
                     },
                 ),
                 (
@@ -2260,7 +2336,7 @@ mod tests {
                         chunk_id: SemanticChunkId::new(),
                         message_id: message_a.clone(),
                         source_kind: SemanticChunkSourceKind::Body,
-                        normalized: "body chunk for message a".to_string(),
+                        snippet: "body chunk for message a".to_string(),
                     },
                 ),
                 (
@@ -2269,7 +2345,7 @@ mod tests {
                         chunk_id: SemanticChunkId::new(),
                         message_id: message_b.clone(),
                         source_kind: SemanticChunkSourceKind::Body,
-                        normalized: "body chunk for message b".to_string(),
+                        snippet: "body chunk for message b".to_string(),
                     },
                 ),
             ]),
@@ -2512,6 +2588,34 @@ mod tests {
         worker.await.unwrap();
     }
 
+    /// A row pump that dies mid-stream must fail the build rather than install
+    /// a silently truncated index that would drop search hits forever.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_truncated_row_stream_fails_the_index_build() {
+        let (tx, rx) = tokio::sync::mpsc::channel::<IndexRowBatch>(1);
+        let build = tokio::task::spawn_blocking(move || build_semantic_index(rx));
+        tx.send(IndexRowBatch::Page(vec![SemanticIndexRow {
+            chunk_id: SemanticChunkId::new(),
+            message_id: MessageId::new(),
+            source_kind: SemanticChunkSourceKind::Body,
+            snippet: "body chunk".into(),
+            vector: f32s_to_blob(&[0.1, 0.2, 0.3]),
+        }]))
+        .await
+        .unwrap();
+        drop(tx);
+
+        let outcome = build.await.unwrap();
+        let message = outcome
+            .err()
+            .map(|error| error.to_string())
+            .unwrap_or_default();
+        assert!(
+            message.contains("ended early"),
+            "expected an early-end error, got: {message:?}"
+        );
+    }
+
     /// The ANN rebuild runs on a blocking thread, so a stale index has to keep
     /// answering searches until the new one is swapped in — otherwise a 100k
     /// vector rebuild would hide search for its whole duration.
@@ -2598,6 +2702,15 @@ mod tests {
         let counts = store.collect_record_counts().await.unwrap();
         assert_eq!(counts.semantic_chunks, message_count as u32);
         assert_eq!(counts.semantic_embeddings, message_count as u32);
+
+        // The ANN index is streamed in keyset pages, so this also covers the
+        // page boundaries: every chunk must land exactly once.
+        assert!(message_count > INDEX_ROW_PAGE as usize);
+        let indexed = engine
+            .indexes
+            .get(&SemanticProfile::BgeSmallEnV15)
+            .expect("index built");
+        assert_eq!(indexed.chunks_by_id.len(), message_count);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

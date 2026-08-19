@@ -78,14 +78,27 @@ pub trait GmailApi: Send + Sync {
         remove_labels: &[&str],
     ) -> Result<(), GmailError>;
     async fn trash_message(&self, message_id: &str) -> Result<(), GmailError>;
-    async fn send_message(&self, raw_base64url: &str) -> Result<serde_json::Value, GmailError>;
+    async fn send_message(
+        &self,
+        raw_base64url: &str,
+        thread_id: Option<&str>,
+    ) -> Result<serde_json::Value, GmailError>;
     async fn get_attachment(
         &self,
         message_id: &str,
         attachment_id: &str,
     ) -> Result<Vec<u8>, GmailError>;
-    async fn create_draft(&self, raw_base64url: &str) -> Result<String, GmailError>;
-    async fn update_draft(&self, draft_id: &str, raw_base64url: &str) -> Result<(), GmailError>;
+    async fn create_draft(
+        &self,
+        raw_base64url: &str,
+        thread_id: Option<&str>,
+    ) -> Result<String, GmailError>;
+    async fn update_draft(
+        &self,
+        draft_id: &str,
+        raw_base64url: &str,
+        thread_id: Option<&str>,
+    ) -> Result<(), GmailError>;
     async fn fetch_draft(&self, draft_id: &str) -> Result<Option<ServerDraftSnapshot>, GmailError>;
     async fn delete_draft(&self, draft_id: &str) -> Result<(), GmailError>;
     async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError>;
@@ -346,11 +359,16 @@ impl GmailClient {
         Ok(())
     }
 
-    /// Send a message via Gmail API.
-    pub async fn send_message(&self, raw_base64url: &str) -> Result<serde_json::Value, GmailError> {
+    /// Send a message via Gmail API. `thread_id` is Gmail's native thread id;
+    /// when set, the sent message is filed on that conversation.
+    pub async fn send_message(
+        &self,
+        raw_base64url: &str,
+        thread_id: Option<&str>,
+    ) -> Result<serde_json::Value, GmailError> {
         let url = format!("{}/messages/send", self.base_url);
 
-        let body = serde_json::json!({ "raw": raw_base64url });
+        let body = message_body(raw_base64url, thread_id);
 
         let resp = self
             .http
@@ -397,14 +415,17 @@ impl GmailClient {
     }
 
     /// Create a draft in Gmail. Returns the draft ID.
-    pub async fn create_draft(&self, raw_base64url: &str) -> Result<String, GmailError> {
+    ///
+    /// Gmail files drafts on a conversation only by `threadId`; unlike sends,
+    /// the In-Reply-To/References headers inside `raw` are not enough.
+    pub async fn create_draft(
+        &self,
+        raw_base64url: &str,
+        thread_id: Option<&str>,
+    ) -> Result<String, GmailError> {
         let url = format!("{}/drafts", self.base_url);
 
-        let body = serde_json::json!({
-            "message": {
-                "raw": raw_base64url
-            }
-        });
+        let body = draft_body(raw_base64url, thread_id);
 
         let resp = self
             .http
@@ -428,13 +449,10 @@ impl GmailClient {
         &self,
         draft_id: &str,
         raw_base64url: &str,
+        thread_id: Option<&str>,
     ) -> Result<(), GmailError> {
         let url = format!("{}/drafts/{draft_id}", self.base_url);
-        let body = serde_json::json!({
-            "message": {
-                "raw": raw_base64url
-            }
-        });
+        let body = draft_body(raw_base64url, thread_id);
 
         let resp = self
             .http
@@ -594,6 +612,21 @@ impl GmailClient {
     }
 }
 
+/// Body for `messages.send`: `{"raw": ..}` plus `threadId` when known.
+fn message_body(raw_base64url: &str, thread_id: Option<&str>) -> serde_json::Value {
+    let mut body = serde_json::json!({ "raw": raw_base64url });
+    if let Some(thread_id) = thread_id {
+        body["threadId"] = serde_json::Value::String(thread_id.to_string());
+    }
+    body
+}
+
+/// Body for `drafts.create` / `drafts.update`: the message nested under
+/// `"message"`, with `threadId` alongside `raw` when known.
+fn draft_body(raw_base64url: &str, thread_id: Option<&str>) -> serde_json::Value {
+    serde_json::json!({ "message": message_body(raw_base64url, thread_id) })
+}
+
 fn decode_attachment_data(data: &str) -> Result<Vec<u8>, GmailError> {
     use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
     use base64::Engine;
@@ -652,8 +685,12 @@ impl GmailApi for GmailClient {
         Self::trash_message(self, message_id).await
     }
 
-    async fn send_message(&self, raw_base64url: &str) -> Result<serde_json::Value, GmailError> {
-        Self::send_message(self, raw_base64url).await
+    async fn send_message(
+        &self,
+        raw_base64url: &str,
+        thread_id: Option<&str>,
+    ) -> Result<serde_json::Value, GmailError> {
+        Self::send_message(self, raw_base64url, thread_id).await
     }
 
     async fn get_attachment(
@@ -664,12 +701,21 @@ impl GmailApi for GmailClient {
         Self::get_attachment(self, message_id, attachment_id).await
     }
 
-    async fn create_draft(&self, raw_base64url: &str) -> Result<String, GmailError> {
-        Self::create_draft(self, raw_base64url).await
+    async fn create_draft(
+        &self,
+        raw_base64url: &str,
+        thread_id: Option<&str>,
+    ) -> Result<String, GmailError> {
+        Self::create_draft(self, raw_base64url, thread_id).await
     }
 
-    async fn update_draft(&self, draft_id: &str, raw_base64url: &str) -> Result<(), GmailError> {
-        Self::update_draft(self, draft_id, raw_base64url).await
+    async fn update_draft(
+        &self,
+        draft_id: &str,
+        raw_base64url: &str,
+        thread_id: Option<&str>,
+    ) -> Result<(), GmailError> {
+        Self::update_draft(self, draft_id, raw_base64url, thread_id).await
     }
 
     async fn fetch_draft(&self, draft_id: &str) -> Result<Option<ServerDraftSnapshot>, GmailError> {
@@ -963,6 +1009,26 @@ mod tests {
 
             Ok(resp.json().await?)
         }
+    }
+
+    #[test]
+    fn send_and_draft_bodies_carry_thread_id_only_when_known() {
+        assert_eq!(
+            message_body("cmF3", None),
+            serde_json::json!({ "raw": "cmF3" })
+        );
+        assert_eq!(
+            message_body("cmF3", Some("t-1")),
+            serde_json::json!({ "raw": "cmF3", "threadId": "t-1" })
+        );
+        assert_eq!(
+            draft_body("cmF3", None),
+            serde_json::json!({ "message": { "raw": "cmF3" } })
+        );
+        assert_eq!(
+            draft_body("cmF3", Some("t-1")),
+            serde_json::json!({ "message": { "raw": "cmF3", "threadId": "t-1" } })
+        );
     }
 
     #[tokio::test]

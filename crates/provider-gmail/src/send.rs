@@ -190,7 +190,7 @@ fn address_with_name<'x>(
     }
 }
 
-fn normalize_message_id(value: &str) -> String {
+pub(crate) fn normalize_message_id(value: &str) -> String {
     value
         .trim()
         .trim_start_matches('<')

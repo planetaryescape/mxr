@@ -378,6 +378,24 @@ impl super::Store {
         Ok(())
     }
 
+    /// Overwrite a draft's reply headers in place. Used to cache the
+    /// provider-native thread id after a push so later pushes and sends do not
+    /// have to resolve it again. Editable rows only, like `update_draft`.
+    pub async fn set_draft_reply_headers(
+        &self,
+        id: &DraftId,
+        headers: &ReplyHeaders,
+    ) -> Result<bool, sqlx::Error> {
+        let encoded = encode_json(headers)?;
+        let result =
+            sqlx::query("UPDATE drafts SET in_reply_to = ? WHERE id = ? AND status = 'draft'")
+                .bind(encoded)
+                .bind(id.as_str())
+                .execute(self.writer())
+                .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     /// Clear a stale link after the provider reports that the remote draft no
     /// longer exists. A subsequent push may then create and link a new draft.
     pub async fn clear_provider_draft_id(&self, id: &DraftId) -> Result<(), sqlx::Error> {

@@ -34,6 +34,13 @@ mxr drafts push DRAFT_ID
 The first push creates the Gmail draft and stores the link. Repeating the
 command updates that same Gmail draft.
 
+A reply draft (`mxr reply MESSAGE_ID --draft`) lands on the parent's
+conversation in Gmail, not as a standalone draft. Gmail threads drafts only by
+Gmail's own thread id, so mxr resolves that id from the parent's `Message-ID`
+on the first push and remembers it for later pushes and the send. If the parent
+is no longer in the mailbox, the push still succeeds unthreaded, and the next
+push tries again.
+
 ## Edit from mxr
 
 ```bash

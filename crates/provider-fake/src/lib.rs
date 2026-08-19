@@ -16,6 +16,7 @@ use mxr_core::{
     IdleWatcher, MailSendProvider, MailSyncProvider, MxrError, SendReceipt, SyncCapabilities,
 };
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::sync::Notify;
@@ -37,6 +38,10 @@ pub struct FakeProvider {
     /// notification each time `idle_trigger.notify_one()` is called.
     /// Tests use this to simulate server-pushed EXISTS / EXPUNGE events.
     idle_trigger: Option<Arc<Notify>>,
+    /// When set, `save_draft` and `update_draft` fail. Lets tests drive the
+    /// daemon's provider-failure branches, where the promise is that the local
+    /// draft is left exactly as it was.
+    server_drafts_fail: AtomicBool,
 }
 
 #[derive(Debug, Clone)]
@@ -97,7 +102,13 @@ impl FakeProvider {
             sent_from: Mutex::new(Vec::new()),
             mutations: Mutex::new(Vec::new()),
             idle_trigger: None,
+            server_drafts_fail: AtomicBool::new(false),
         }
+    }
+
+    /// Make every subsequent server-draft write fail.
+    pub fn fail_server_drafts(&self) {
+        self.server_drafts_fail.store(true, Ordering::SeqCst);
     }
 
     /// Enable IDLE watching. Returns the Notify handle test code uses
@@ -383,6 +394,15 @@ impl IdleWatcher for FakeIdleWatcher {
     }
 }
 
+impl FakeProvider {
+    fn fail_if_requested(&self) -> Result<(), MxrError> {
+        if self.server_drafts_fail.load(Ordering::SeqCst) {
+            return Err(MxrError::Provider("fake: server draft write failed".into()));
+        }
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl MailSendProvider for FakeProvider {
     fn name(&self) -> &str {
@@ -411,7 +431,19 @@ impl MailSendProvider for FakeProvider {
         })
     }
 
+    /// Mirror Gmail: a reply draft is filed on its parent's thread, so the
+    /// daemon's cache-back of the provider thread id is exercised in tests.
+    async fn resolve_reply_thread_id(&self, draft: &Draft) -> Result<Option<String>, MxrError> {
+        Ok(draft.reply_headers.as_ref().map(|headers| {
+            headers
+                .thread_id
+                .clone()
+                .unwrap_or_else(|| format!("fake-thread-{}", headers.in_reply_to))
+        }))
+    }
+
     async fn save_draft(&self, draft: &Draft, _from: &Address) -> Result<Option<String>, MxrError> {
+        self.fail_if_requested()?;
         let provider_draft_id = format!("fake-draft-{}", uuid::Uuid::now_v7());
         self.server_drafts
             .lock()
@@ -430,6 +462,7 @@ impl MailSendProvider for FakeProvider {
         draft: &Draft,
         _from: &Address,
     ) -> Result<(), MxrError> {
+        self.fail_if_requested()?;
         let mut server_drafts = self
             .server_drafts
             .lock()

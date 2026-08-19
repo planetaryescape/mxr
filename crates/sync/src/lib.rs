@@ -1192,6 +1192,114 @@ mod tests {
         assert!(results.results.iter().all(|r| r.score >= 0.0));
     }
 
+    /// A paged provider must land every message exactly once, with its
+    /// body, labels, keywords, and lexical index entry — the engine drives
+    /// one page per call and the caller re-polls while `has_more`.
+    #[tokio::test]
+    async fn paged_sync_stores_every_page_once() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search.clone());
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+
+        const TOTAL: usize = 250;
+        let provider =
+            mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), TOTAL)
+                .with_page_size(100);
+
+        let mut pages = 0;
+        let mut synced = 0u32;
+        loop {
+            let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
+            pages += 1;
+            synced += outcome.synced_count;
+            assert!(pages <= 5, "paging should terminate");
+            if !outcome.has_more {
+                break;
+            }
+        }
+
+        assert_eq!(pages, 3);
+        assert_eq!(synced as usize, TOTAL);
+        assert_eq!(
+            store.count_messages_by_account(&account_id).await.unwrap() as usize,
+            TOTAL
+        );
+        assert_eq!(search.num_docs().await.unwrap() as usize, TOTAL);
+
+        // Spot-check a message from the last page: body, keywords and
+        // labels all landed with it.
+        let envelopes = store
+            .list_envelopes_by_account(&account_id, TOTAL as u32, 0)
+            .await
+            .unwrap();
+        let last = envelopes
+            .iter()
+            .find(|envelope| envelope.provider_id == format!("demo-msg-{TOTAL}"))
+            .expect("last message stored");
+        assert!(store.get_body(&last.id).await.unwrap().is_some());
+        assert!(store
+            .get_message_keywords(&last.id)
+            .await
+            .unwrap()
+            .contains("$Forwarded"));
+        assert!(!last.label_provider_ids.is_empty());
+
+        // Re-syncing on the completed cursor is a no-op.
+        let steady = engine.sync_account_with_outcome(&provider).await.unwrap();
+        assert_eq!(steady.synced_count, 0);
+        assert!(!steady.has_more);
+        assert_eq!(
+            store.count_messages_by_account(&account_id).await.unwrap() as usize,
+            TOTAL
+        );
+    }
+
+    /// Resuming from a persisted mid-backfill cursor continues where the
+    /// last page stopped instead of restarting or skipping.
+    #[tokio::test]
+    async fn paged_sync_resumes_from_persisted_cursor() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+
+        const TOTAL: usize = 250;
+        let provider =
+            mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), TOTAL)
+                .with_page_size(100);
+
+        let first = SyncEngine::new(store.clone(), search.clone());
+        let outcome = first.sync_account_with_outcome(&provider).await.unwrap();
+        assert!(outcome.has_more);
+        assert_eq!(
+            store.count_messages_by_account(&account_id).await.unwrap(),
+            100
+        );
+
+        // A fresh engine (as after a daemon restart) picks the backfill up
+        // from the stored cursor.
+        let resumed = SyncEngine::new(store.clone(), search.clone());
+        loop {
+            let outcome = resumed.sync_account_with_outcome(&provider).await.unwrap();
+            if !outcome.has_more {
+                break;
+            }
+        }
+        assert_eq!(
+            store.count_messages_by_account(&account_id).await.unwrap() as usize,
+            TOTAL
+        );
+    }
+
     #[tokio::test]
     async fn bodies_stored_eagerly_during_sync() {
         let store = Arc::new(Store::in_memory().await.unwrap());

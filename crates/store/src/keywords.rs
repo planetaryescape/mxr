@@ -18,21 +18,8 @@ impl super::Store {
         message_id: &MessageId,
         keywords: &BTreeSet<String>,
     ) -> Result<(), sqlx::Error> {
-        let mid = message_id.as_str().clone();
         let mut tx = self.writer().begin().await?;
-        sqlx::query("DELETE FROM message_keywords WHERE message_id = ?")
-            .bind(&mid)
-            .execute(&mut *tx)
-            .await?;
-        for keyword in keywords {
-            sqlx::query(
-                "INSERT OR IGNORE INTO message_keywords (message_id, keyword) VALUES (?, ?)",
-            )
-            .bind(&mid)
-            .bind(keyword)
-            .execute(&mut *tx)
-            .await?;
-        }
+        replace_message_keywords_tx(&mut tx, message_id, keywords).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -109,4 +96,26 @@ impl super::Store {
         }
         Ok(out)
     }
+}
+
+/// Keyword replacement against an open connection so a page of synced
+/// messages can share one transaction.
+pub(crate) async fn replace_message_keywords_tx(
+    conn: &mut sqlx::SqliteConnection,
+    message_id: &MessageId,
+    keywords: &BTreeSet<String>,
+) -> Result<(), sqlx::Error> {
+    let mid = message_id.as_str();
+    sqlx::query("DELETE FROM message_keywords WHERE message_id = ?")
+        .bind(&mid)
+        .execute(&mut *conn)
+        .await?;
+    for keyword in keywords {
+        sqlx::query("INSERT OR IGNORE INTO message_keywords (message_id, keyword) VALUES (?, ?)")
+            .bind(&mid)
+            .bind(keyword)
+            .execute(&mut *conn)
+            .await?;
+    }
+    Ok(())
 }

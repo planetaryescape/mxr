@@ -228,75 +228,89 @@ impl super::Store {
         message_id: &MessageId,
         calendar: Option<&CalendarMetadata>,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("DELETE FROM calendar_invites WHERE message_id = ?")
-            .bind(message_id.as_str())
-            .execute(self.writer())
-            .await?;
-
-        let Some(calendar) = calendar else {
-            return Ok(());
-        };
-
-        let account_id: Option<String> =
-            sqlx::query_scalar("SELECT account_id FROM messages WHERE id = ?")
-                .bind(message_id.as_str())
-                .fetch_optional(self.reader())
-                .await?;
-        let Some(account_id) = account_id else {
-            return Ok(());
-        };
-
-        let id = CalendarInviteId::from_provider_id(
-            "calendar",
-            &format!(
-                "{}:{}:{}:{}:{}",
-                account_id,
-                message_id,
-                calendar.uid.as_deref().unwrap_or(""),
-                calendar.recurrence_id.as_deref().unwrap_or(""),
-                calendar.method.as_deref().unwrap_or("")
-            ),
-        );
-        let metadata_json = encode_json(calendar)?;
-        let now = Utc::now().timestamp();
-        let organizer_email = calendar
-            .organizer
-            .as_ref()
-            .map(|organizer| organizer.email.clone());
-        let current_partstat = calendar
-            .attendees
-            .iter()
-            .find_map(|attendee| attendee.partstat.clone());
-
-        sqlx::query(
-            "INSERT INTO calendar_invites (
-                 id, account_id, message_id, method, uid, recurrence_id, sequence,
-                 summary, starts_at, ends_at, organizer_email, current_partstat,
-                 rsvp_requested, metadata_json, raw_ics, created_at, updated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(id.as_str())
-        .bind(account_id)
-        .bind(message_id.as_str())
-        .bind(&calendar.method)
-        .bind(&calendar.uid)
-        .bind(&calendar.recurrence_id)
-        .bind(calendar.sequence)
-        .bind(&calendar.summary)
-        .bind(&calendar.starts_at)
-        .bind(&calendar.ends_at)
-        .bind(organizer_email)
-        .bind(current_partstat)
-        .bind(calendar.rsvp_requested)
-        .bind(metadata_json)
-        .bind(&calendar.raw_ics)
-        .bind(now)
-        .bind(now)
-        .execute(self.writer())
-        .await?;
-
+        let mut tx = self.writer().begin().await?;
+        replace_calendar_invite_for_body_tx(&mut tx, message_id, calendar).await?;
+        tx.commit().await?;
         Ok(())
     }
+}
+
+/// Calendar-invite replacement against an open connection. The account
+/// lookup runs on that same connection so it sees a message row inserted
+/// earlier in the caller's transaction.
+pub(crate) async fn replace_calendar_invite_for_body_tx(
+    conn: &mut sqlx::SqliteConnection,
+    message_id: &MessageId,
+    calendar: Option<&CalendarMetadata>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM calendar_invites WHERE message_id = ?")
+        .bind(message_id.as_str())
+        .execute(&mut *conn)
+        .await?;
+
+    let Some(calendar) = calendar else {
+        return Ok(());
+    };
+
+    let account_id: Option<String> =
+        sqlx::query_scalar("SELECT account_id FROM messages WHERE id = ?")
+            .bind(message_id.as_str())
+            .fetch_optional(&mut *conn)
+            .await?;
+    let Some(account_id) = account_id else {
+        return Ok(());
+    };
+
+    let id = CalendarInviteId::from_provider_id(
+        "calendar",
+        &format!(
+            "{}:{}:{}:{}:{}",
+            account_id,
+            message_id,
+            calendar.uid.as_deref().unwrap_or(""),
+            calendar.recurrence_id.as_deref().unwrap_or(""),
+            calendar.method.as_deref().unwrap_or("")
+        ),
+    );
+    let metadata_json = encode_json(calendar)?;
+    let now = Utc::now().timestamp();
+    let organizer_email = calendar
+        .organizer
+        .as_ref()
+        .map(|organizer| organizer.email.clone());
+    let current_partstat = calendar
+        .attendees
+        .iter()
+        .find_map(|attendee| attendee.partstat.clone());
+
+    sqlx::query(
+        "INSERT INTO calendar_invites (
+             id, account_id, message_id, method, uid, recurrence_id, sequence,
+             summary, starts_at, ends_at, organizer_email, current_partstat,
+             rsvp_requested, metadata_json, raw_ics, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(id.as_str())
+    .bind(account_id)
+    .bind(message_id.as_str())
+    .bind(&calendar.method)
+    .bind(&calendar.uid)
+    .bind(&calendar.recurrence_id)
+    .bind(calendar.sequence)
+    .bind(&calendar.summary)
+    .bind(&calendar.starts_at)
+    .bind(&calendar.ends_at)
+    .bind(organizer_email)
+    .bind(current_partstat)
+    .bind(calendar.rsvp_requested)
+    .bind(metadata_json)
+    .bind(&calendar.raw_ics)
+    .bind(now)
+    .bind(now)
+    .execute(&mut *conn)
+    .await?;
+
+    Ok(())
 }
 
 fn row_to_calendar_invite_record(

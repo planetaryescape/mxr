@@ -31,111 +31,110 @@ impl super::Store {
         envelope: &Envelope,
         direction: MessageDirection,
     ) -> Result<(), sqlx::Error> {
-        let id = envelope.id.as_str();
-        let account_id = envelope.account_id.as_str();
-        let thread_id = envelope.thread_id.as_str();
-        let from_name = envelope.from.name.as_deref();
-        let to_addrs = encode_json(&envelope.to)?;
-        let cc_addrs = encode_json(&envelope.cc)?;
-        let bcc_addrs = encode_json(&envelope.bcc)?;
-        let refs = encode_json(&envelope.references)?;
-        let date = envelope.date.timestamp();
-        let flags = envelope.flags.bits() as i64;
-        let unsub = encode_json(&envelope.unsubscribe)?;
-        let has_attachments = envelope.has_attachments;
-        let size_bytes = envelope.size_bytes as i64;
-        let direction_str = direction.as_db_str();
-
         let mut tx = self.writer().begin().await?;
+        upsert_envelope_tx(&mut tx, envelope, direction).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+}
 
-        // The 0.4.52 release changed `MessageId` derivation from
-        // `from_provider_id` to `from_scoped_provider_id`, which means a fresh
-        // sync can compute a different `id` for a message that already exists
-        // under its old unscoped UUID. The natural key `(account_id, provider_id)`
-        // is `UNIQUE`, so a plain `INSERT ... ON CONFLICT(id)` would hit
-        // SQLITE_CONSTRAINT (2067). Resolve by id when present, otherwise resolve
-        // by the natural key and update in place.
-        let existing_id: Option<String> =
-            sqlx::query_scalar("SELECT id FROM messages WHERE account_id = ? AND provider_id = ?")
-                .bind(&account_id)
-                .bind(&envelope.provider_id)
-                .fetch_optional(&mut *tx)
-                .await?;
+/// Label replacement against an open connection so a page of synced
+/// messages can share one transaction.
+pub(crate) async fn replace_message_labels_tx(
+    conn: &mut sqlx::SqliteConnection,
+    message_id: &MessageId,
+    label_ids: &[LabelId],
+) -> Result<(), sqlx::Error> {
+    let mid = message_id.as_str();
+    sqlx::query!("DELETE FROM message_labels WHERE message_id = ?", mid)
+        .execute(&mut *conn)
+        .await?;
 
-        let link_count = envelope.link_count as i64;
-        let body_word_count_persist: Option<i64> = if envelope.body_word_count == 0 {
-            // Preserve prior body_word_count (populated by analytics) instead
-            // of clobbering with zero when sync code path didn't compute it.
-            None
-        } else {
-            Some(envelope.body_word_count as i64)
-        };
-
-        if let Some(existing_id) = existing_id {
-            sqlx::query(
-                "UPDATE messages SET
-                    thread_id = ?,
-                    message_id_header = ?,
-                    in_reply_to = ?,
-                    reference_headers = ?,
-                    from_name = ?,
-                    from_email = ?,
-                    to_addrs = ?,
-                    cc_addrs = ?,
-                    bcc_addrs = ?,
-                    subject = ?,
-                    date = ?,
-                    flags = ?,
-                    snippet = ?,
-                    has_attachments = ?,
-                    size_bytes = ?,
-                    unsubscribe_method = ?,
-                    link_count = ?,
-                    body_word_count = COALESCE(?, body_word_count),
-                    direction = CASE
-                        WHEN ? = 'unknown' THEN direction
-                        ELSE ?
-                    END
-                 WHERE id = ?",
-            )
-            .bind(thread_id)
-            .bind(&envelope.message_id_header)
-            .bind(&envelope.in_reply_to)
-            .bind(&refs)
-            .bind(from_name)
-            .bind(&envelope.from.email)
-            .bind(&to_addrs)
-            .bind(&cc_addrs)
-            .bind(&bcc_addrs)
-            .bind(&envelope.subject)
-            .bind(date)
-            .bind(flags)
-            .bind(&envelope.snippet)
-            .bind(has_attachments)
-            .bind(size_bytes)
-            .bind(&unsub)
-            .bind(link_count)
-            .bind(body_word_count_persist)
-            .bind(direction_str)
-            .bind(direction_str)
-            .bind(existing_id)
-            .execute(&mut *tx)
-            .await?;
-            tx.commit().await?;
-            return Ok(());
-        }
-
-        sqlx::query(
-            "INSERT INTO messages
-             (id, account_id, provider_id, thread_id, message_id_header, in_reply_to,
-              reference_headers, from_name, from_email, to_addrs, cc_addrs, bcc_addrs,
-              subject, date, flags, snippet, has_attachments, size_bytes,
-              unsubscribe_method, link_count, body_word_count, direction)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    for label_id in label_ids {
+        let lid = label_id.as_str();
+        sqlx::query!(
+            "INSERT INTO message_labels (message_id, label_id) VALUES (?, ?)",
+            mid,
+            lid,
         )
-        .bind(id)
-        .bind(account_id)
-        .bind(&envelope.provider_id)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
+/// Envelope upsert against an open connection so a page of synced
+/// messages can share one transaction.
+pub(crate) async fn upsert_envelope_tx(
+    conn: &mut sqlx::SqliteConnection,
+    envelope: &Envelope,
+    direction: MessageDirection,
+) -> Result<(), sqlx::Error> {
+    let id = envelope.id.as_str();
+    let account_id = envelope.account_id.as_str();
+    let thread_id = envelope.thread_id.as_str();
+    let from_name = envelope.from.name.as_deref();
+    let to_addrs = encode_json(&envelope.to)?;
+    let cc_addrs = encode_json(&envelope.cc)?;
+    let bcc_addrs = encode_json(&envelope.bcc)?;
+    let refs = encode_json(&envelope.references)?;
+    let date = envelope.date.timestamp();
+    let flags = envelope.flags.bits() as i64;
+    let unsub = encode_json(&envelope.unsubscribe)?;
+    let has_attachments = envelope.has_attachments;
+    let size_bytes = envelope.size_bytes as i64;
+    let direction_str = direction.as_db_str();
+
+    // The 0.4.52 release changed `MessageId` derivation from
+    // `from_provider_id` to `from_scoped_provider_id`, which means a fresh
+    // sync can compute a different `id` for a message that already exists
+    // under its old unscoped UUID. The natural key `(account_id, provider_id)`
+    // is `UNIQUE`, so a plain `INSERT ... ON CONFLICT(id)` would hit
+    // SQLITE_CONSTRAINT (2067). Resolve by id when present, otherwise resolve
+    // by the natural key and update in place.
+    let existing_id: Option<String> =
+        sqlx::query_scalar("SELECT id FROM messages WHERE account_id = ? AND provider_id = ?")
+            .bind(&account_id)
+            .bind(&envelope.provider_id)
+            .fetch_optional(&mut *conn)
+            .await?;
+
+    let link_count = envelope.link_count as i64;
+    let body_word_count_persist: Option<i64> = if envelope.body_word_count == 0 {
+        // Preserve prior body_word_count (populated by analytics) instead
+        // of clobbering with zero when sync code path didn't compute it.
+        None
+    } else {
+        Some(envelope.body_word_count as i64)
+    };
+
+    if let Some(existing_id) = existing_id {
+        sqlx::query(
+            "UPDATE messages SET
+                thread_id = ?,
+                message_id_header = ?,
+                in_reply_to = ?,
+                reference_headers = ?,
+                from_name = ?,
+                from_email = ?,
+                to_addrs = ?,
+                cc_addrs = ?,
+                bcc_addrs = ?,
+                subject = ?,
+                date = ?,
+                flags = ?,
+                snippet = ?,
+                has_attachments = ?,
+                size_bytes = ?,
+                unsubscribe_method = ?,
+                link_count = ?,
+                body_word_count = COALESCE(?, body_word_count),
+                direction = CASE
+                    WHEN ? = 'unknown' THEN direction
+                    ELSE ?
+                END
+             WHERE id = ?",
+        )
         .bind(thread_id)
         .bind(&envelope.message_id_header)
         .bind(&envelope.in_reply_to)
@@ -155,13 +154,50 @@ impl super::Store {
         .bind(link_count)
         .bind(body_word_count_persist)
         .bind(direction_str)
-        .execute(&mut *tx)
+        .bind(direction_str)
+        .bind(existing_id)
+        .execute(&mut *conn)
         .await?;
-
-        tx.commit().await?;
-        Ok(())
+        return Ok(());
     }
 
+    sqlx::query(
+        "INSERT INTO messages
+         (id, account_id, provider_id, thread_id, message_id_header, in_reply_to,
+          reference_headers, from_name, from_email, to_addrs, cc_addrs, bcc_addrs,
+          subject, date, flags, snippet, has_attachments, size_bytes,
+          unsubscribe_method, link_count, body_word_count, direction)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(id)
+    .bind(account_id)
+    .bind(&envelope.provider_id)
+    .bind(thread_id)
+    .bind(&envelope.message_id_header)
+    .bind(&envelope.in_reply_to)
+    .bind(&refs)
+    .bind(from_name)
+    .bind(&envelope.from.email)
+    .bind(&to_addrs)
+    .bind(&cc_addrs)
+    .bind(&bcc_addrs)
+    .bind(&envelope.subject)
+    .bind(date)
+    .bind(flags)
+    .bind(&envelope.snippet)
+    .bind(has_attachments)
+    .bind(size_bytes)
+    .bind(&unsub)
+    .bind(link_count)
+    .bind(body_word_count_persist)
+    .bind(direction_str)
+    .execute(&mut *conn)
+    .await?;
+
+    Ok(())
+}
+
+impl super::Store {
     pub async fn get_envelope(&self, id: &MessageId) -> Result<Option<Envelope>, sqlx::Error> {
         let id_str = id.as_str();
         let started_at = std::time::Instant::now();
@@ -544,24 +580,8 @@ impl super::Store {
         label_ids: &[LabelId],
         _source: EventSource,
     ) -> Result<(), sqlx::Error> {
-        let mid = message_id.as_str();
         let mut tx = self.writer().begin().await?;
-
-        sqlx::query!("DELETE FROM message_labels WHERE message_id = ?", mid)
-            .execute(&mut *tx)
-            .await?;
-
-        for label_id in label_ids {
-            let lid = label_id.as_str();
-            sqlx::query!(
-                "INSERT INTO message_labels (message_id, label_id) VALUES (?, ?)",
-                mid,
-                lid,
-            )
-            .execute(&mut *tx)
-            .await?;
-        }
-
+        replace_message_labels_tx(&mut tx, message_id, label_ids).await?;
         tx.commit().await?;
         Ok(())
     }

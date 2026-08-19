@@ -3,7 +3,7 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::{MailSyncProvider, MxrError};
 use mxr_search::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};
-use mxr_store::{ScreenerDisposition, Store};
+use mxr_store::{ScreenerDisposition, Store, SyncUpsert};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -80,13 +80,32 @@ impl SyncEngine {
         }
     }
 
+    /// Account labels keyed by provider id, read once per batch instead of
+    /// once per message.
+    async fn label_ids_by_provider_id(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<HashMap<String, LabelId>, MxrError> {
+        let labels = self
+            .store
+            .list_labels_by_account(account_id)
+            .await
+            .map_err(|e| MxrError::Store(e.to_string()))?;
+        Ok(labels
+            .into_iter()
+            .map(|label| (label.provider_id, label.id))
+            .collect())
+    }
+
+    /// Takes the envelope by value: sync routes a whole page at a time and
+    /// a clone per message doubles the page's peak memory.
     async fn apply_screener_decision(
         &self,
-        envelope: &Envelope,
+        envelope: Envelope,
         direction: MessageDirection,
     ) -> Result<Envelope, MxrError> {
         if direction != MessageDirection::Inbound {
-            return Ok(envelope.clone());
+            return Ok(envelope);
         }
 
         let Some(decision) = self
@@ -95,10 +114,10 @@ impl SyncEngine {
             .await
             .map_err(|e| MxrError::Store(e.to_string()))?
         else {
-            return Ok(envelope.clone());
+            return Ok(envelope);
         };
 
-        let mut routed = envelope.clone();
+        let mut routed = envelope;
         match decision.disposition {
             ScreenerDisposition::Allow => {
                 add_route_label(
@@ -138,7 +157,7 @@ impl SyncEngine {
         let direction =
             self.classify_direction(&synced.envelope.account_id, &synced.envelope.from.email);
         let envelope = self
-            .apply_screener_decision(&synced.envelope, direction)
+            .apply_screener_decision(synced.envelope.clone(), direction)
             .await?;
 
         self.store
@@ -261,7 +280,7 @@ impl SyncEngine {
 
             // Sync messages
             tracing::info!(cursor = ?cursor, "sync_account: dispatching with cursor");
-            let batch = match provider.sync_messages(&cursor).await {
+            let mut batch = match provider.sync_messages(&cursor).await {
                 Ok(batch) => batch,
                 Err(MxrError::SyncCursorExpired { reason }) if !recovered_expired_cursor => {
                     tracing::warn!(
@@ -296,79 +315,96 @@ impl SyncEngine {
                 .collect::<Vec<_>>();
             let mut lexical_batch = SearchUpdateBatch::default();
 
-            // Core sync guarantee: after this loop, SQLite has the envelope/body
-            // pair and Tantivy has the same message's lexical corpus.
-            // Semantic chunk prep is intentionally deferred to the daemon's
-            // post-sync platform step so mail sync/read/search correctness does
-            // not depend on semantic enablement.
-            // Apply upserts — store envelope + body, index with body text
-            for synced in &batch.upserted {
-                let mut normalized_body = synced.body.clone();
-                normalized_body.ensure_best_effort_readable();
+            // Core sync guarantee: after this batch, SQLite has the
+            // envelope/body pair and Tantivy has the same message's lexical
+            // corpus. Semantic chunk prep is intentionally deferred to the
+            // daemon's post-sync platform step so mail sync/read/search
+            // correctness does not depend on semantic enablement.
+            //
+            // The writes go through the store's batched path: one
+            // transaction per chunk of messages rather than ~8 commits per
+            // message through the single writer connection.
+            let label_ids_by_provider_id = if batch.upserted.is_empty() {
+                HashMap::new()
+            } else {
+                self.label_ids_by_provider_id(account_id).await?
+            };
+            // Consumed, not borrowed: holding the provider's page alongside
+            // the upserts would keep two copies of every body alive.
+            let mut upserts = Vec::with_capacity(batch.upserted.len());
+            for synced in std::mem::take(&mut batch.upserted) {
+                let mut body = synced.body;
+                body.ensure_best_effort_readable();
 
                 let direction = self
                     .classify_direction(&synced.envelope.account_id, &synced.envelope.from.email);
                 let mut envelope = self
-                    .apply_screener_decision(&synced.envelope, direction)
+                    .apply_screener_decision(synced.envelope, direction)
                     .await?;
 
                 // Derive link-density inputs from the normalized body so the
                 // tri-state link indicator and `has:link*` search filters work.
-                let link_metrics = crate::links::body_link_metrics(&normalized_body);
+                let link_metrics = crate::links::body_link_metrics(&body);
                 envelope.link_count = link_metrics.link_count;
                 envelope.body_word_count = link_metrics.body_word_count;
 
-                self.store
-                    .upsert_envelope_with_direction(&envelope, direction)
-                    .await
-                    .map_err(|e| MxrError::Store(e.to_string()))?;
-                if synced.envelope.in_reply_to.is_some() {
-                    let resolved = self
-                        .store
-                        .try_create_reply_pair(&envelope, direction)
-                        .await
-                        .map_err(|e| MxrError::Store(e.to_string()))?;
-                    if !resolved {
-                        self.store
-                            .enqueue_reply_pair_pending(&envelope)
-                            .await
-                            .map_err(|e| MxrError::Store(e.to_string()))?;
+                // Deduplicated: `message_labels` has a composite primary key,
+                // and a provider is free to repeat a label id.
+                let mut label_ids: Vec<LabelId> = Vec::new();
+                for provider_id in &envelope.label_provider_ids {
+                    if let Some(label_id) = label_ids_by_provider_id.get(provider_id) {
+                        if !label_ids.contains(label_id) {
+                            label_ids.push(label_id.clone());
+                        }
                     }
                 }
-                self.store
-                    .insert_body(&normalized_body)
-                    .await
-                    .map_err(|e| MxrError::Store(e.to_string()))?;
-                let label_ids = if envelope.label_provider_ids.is_empty() {
-                    Vec::new()
-                } else {
-                    self.store
-                        .find_labels_by_provider_ids(account_id, &envelope.label_provider_ids)
-                        .await
-                        .map_err(|e| MxrError::Store(e.to_string()))?
-                };
-                self.store
-                    .set_message_labels(&envelope.id, &label_ids, EventSource::Sync)
-                    .await
-                    .map_err(|e| MxrError::Store(e.to_string()))?;
-                // Phase E: persist the keyword set alongside labels.
-                // Empty sets are handled by the store (delete-then-insert).
-                self.store
-                    .set_message_keywords(&envelope.id, &envelope.keywords)
-                    .await
-                    .map_err(|e| MxrError::Store(e.to_string()))?;
+
                 // Phase F: record the touched thread so the outcome's
                 // `threads_changed` list reflects this upsert.
                 touched_threads.insert(envelope.thread_id.clone());
-                let reply_later = self
+                upserts.push(SyncUpsert {
+                    envelope,
+                    direction,
+                    body,
+                    label_ids,
+                });
+            }
+
+            self.store
+                .apply_sync_upserts(&upserts)
+                .await
+                .map_err(|e| MxrError::Store(e.to_string()))?;
+
+            // Reply pairs resolve against committed rows, so they run after
+            // the batch: a reply whose parent arrived in the same batch now
+            // pairs up directly instead of going through the pending queue.
+            for upsert in &upserts {
+                if upsert.envelope.in_reply_to.is_none() {
+                    continue;
+                }
+                let resolved = self
                     .store
-                    .is_reply_later(&envelope.id)
+                    .try_create_reply_pair(&upsert.envelope, upsert.direction)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
+                if !resolved {
+                    self.store
+                        .enqueue_reply_pair_pending(&upsert.envelope)
+                        .await
+                        .map_err(|e| MxrError::Store(e.to_string()))?;
+                }
+            }
+
+            let reply_later_ids = self
+                .store
+                .reply_later_message_ids(&upserted_message_ids)
+                .await
+                .map_err(|e| MxrError::Store(e.to_string()))?;
+            for upsert in upserts {
                 lexical_batch.entries.push(SearchIndexEntry {
-                    envelope,
-                    body: Some(normalized_body),
-                    reply_later,
+                    reply_later: reply_later_ids.contains(&upsert.envelope.id),
+                    envelope: upsert.envelope,
+                    body: Some(upsert.body),
                 });
             }
 

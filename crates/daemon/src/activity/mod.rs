@@ -316,6 +316,46 @@ pub fn current_unix_ms() -> i64 {
         .map_or(0, |d| d.as_millis() as i64)
 }
 
+/// Wait until the worker has published `expected` as its paused state.
+///
+/// The worker takes channel messages one at a time and finishes the store
+/// write for each one before receiving the next, and it publishes the paused
+/// flag from inside that same loop. A *change* of the flag therefore proves
+/// every entry queued ahead of the pause/resume has already landed, which is
+/// what makes this a barrier rather than a sleep.
+///
+/// Wait for the edge you are creating, not for a level you already hold: the
+/// flag starts `false`, so waiting for `false` before anything has paused
+/// returns instantly and proves nothing.
+///
+/// This depends on `Pause`/`Resume` staying ordered work inside the worker
+/// loop. If either ever moves off that path, the barrier silently weakens —
+/// a `#[cfg(test)]` `Ack` message would make it true by construction.
+#[cfg(test)]
+pub(crate) async fn wait_for_pause_state(rec: &Recorder, expected: bool) {
+    for _ in 0..200 {
+        if rec.pause_status().0 == expected {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert_eq!(
+        rec.pause_status().0,
+        expected,
+        "activity recorder never reached the expected paused state"
+    );
+}
+
+/// Barrier for a running (unpaused) recorder: flip pause on and off and wait
+/// for both edges. Writes no rows of its own.
+#[cfg(test)]
+pub(crate) async fn settle(rec: &Recorder) {
+    rec.pause(None);
+    wait_for_pause_state(rec, true).await;
+    rec.resume();
+    wait_for_pause_state(rec, false).await;
+}
+
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -346,38 +386,8 @@ mod tests {
         }
     }
 
-    /// Wait until the worker has published `expected` as its paused state.
-    ///
-    /// The worker handles channel messages strictly in order and writes each
-    /// entry to the store before taking the next one, so a *change* of this
-    /// flag also proves every entry queued ahead of the pause/resume has
-    /// already landed. Tests use that as a barrier instead of sleeping.
-    async fn wait_for_pause_state(rec: &Recorder, expected: bool) {
-        for _ in 0..200 {
-            if rec.pause_status().0 == expected {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
-        assert_eq!(
-            rec.pause_status().0,
-            expected,
-            "activity recorder never reached the expected paused state"
-        );
-    }
-
-    /// Barrier for a running (unpaused) recorder: flip pause on and off and
-    /// wait for both edges. Cheaper and far more reliable than a fixed sleep,
-    /// and it writes no rows of its own.
-    async fn settle(rec: &Recorder) {
-        rec.pause(None);
-        wait_for_pause_state(rec, true).await;
-        rec.resume();
-        wait_for_pause_state(rec, false).await;
-    }
-
     async fn wait_for_actions(store: &Store, expected: &[&str]) -> Vec<String> {
-        for _ in 0..50 {
+        for _ in 0..200 {
             let page = store
                 .list_activity(&ActivityFilter::default(), 10, None)
                 .await
@@ -389,7 +399,7 @@ mod tests {
             {
                 return actions;
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            tokio::time::sleep(Duration::from_millis(25)).await;
         }
         let page = store
             .list_activity(&ActivityFilter::default(), 10, None)

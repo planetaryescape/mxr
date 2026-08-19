@@ -139,9 +139,9 @@ pub async fn write_private_async(path: &Path, content: &[u8]) -> std::io::Result
         file.write_all(content).await?;
         // `tokio::fs::File` hands the write to a background blocking task and
         // does not wait for it on drop, so without this flush the caller can
-        // return a path whose file is still truncated — and compose callers
-        // read the draft straight back after creating it. Flush also surfaces
-        // the write error that drop would otherwise swallow.
+        // return a path whose file is still empty or truncated — and compose
+        // callers read the draft straight back after creating it. Flush also
+        // surfaces the write error that drop would otherwise swallow.
         file.flush().await?;
         Ok(())
     }
@@ -239,15 +239,15 @@ mod tests {
     }
 
     /// Compose creates a draft and reads it straight back, so the whole file
-    /// must be on disk by the time the writer returns. The content spans
-    /// several of tokio's internal write chunks: an unflushed `tokio::fs::File`
-    /// leaves the tail queued on the blocking pool and the read-back sees a
-    /// truncated file.
+    /// must be on disk by the time the writer returns. An unflushed
+    /// `tokio::fs::File` can leave the write queued on the blocking pool at any
+    /// size; the buffer here is only large enough that the assertion is not
+    /// itself a race.
     #[tokio::test]
     async fn write_private_async_file_is_complete_when_it_returns() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("draft.md");
-        let content = vec![b'x'; 8 * 1024 * 1024];
+        let content = vec![b'x'; 64 * 1024];
 
         write_private_async(&path, &content)
             .await

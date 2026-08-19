@@ -25,14 +25,18 @@ const TEST_AUTH_TOKEN: &str = "test-token";
 ///
 /// The bridge answers a failed compose start with an error object, so a bare
 /// `unwrap` on the missing field reports "unwrap on None" and hides the reason.
-/// Failing with the whole body keeps the diagnosis in the failure output.
+/// Failing with the whole body keeps the diagnosis in the failure output, and
+/// a present-but-empty path is a different bug from a missing one.
 fn compose_draft_path(response: &serde_json::Value) -> String {
-    let path = response["session"]["draftPath"]
-        .as_str()
-        .unwrap_or_default();
+    let field = &response["session"]["draftPath"];
+    assert!(
+        field.is_string(),
+        "compose session response carried no session.draftPath: {response}"
+    );
+    let path = field.as_str().unwrap_or_default();
     assert!(
         !path.is_empty(),
-        "compose session response carried no session.draftPath: {response}"
+        "compose session response carried an empty session.draftPath: {response}"
     );
     path.to_string()
 }

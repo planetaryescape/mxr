@@ -328,6 +328,28 @@ Use reindex when:
 - attachment extraction behavior changes
 - profile content needs a full rebuild
 
+A reindex re-extracts chunks for every message, but it only re-embeds a message
+when the work is not already done: it skips messages whose stored chunks still
+match the freshly extracted ones **and** already have embeddings for the active
+profile at its current dimensions. That is what makes a reindex safe to run
+after a sync has already indexed most of the mailbox, and what stops the
+post-sync ingest queue and an explicit reindex from doing the same work twice.
+A model revision change invalidates every stored vector, so the next reindex
+re-embeds everything; the new revision is only recorded once the pass finishes,
+which means an interrupted migration is retried rather than half-applied.
+
+`mxr semantic reindex --force` skips that check and re-embeds every message. Use
+it when the vectors themselves are suspect — a half-applied model migration, or
+an index that returns nonsense — since the default pass has no way to tell a
+wrong vector from a current one.
+
+A reindex reports progress as it runs: `mxr semantic status --format json`
+returns `status`, `progress_completed` and `progress_total` for the active
+profile, updated every page, plus `runtime.queue_depth` for the background
+ingest backlog. Only one index pass runs at a time; a profile switch or backfill
+requested while one is running is refused rather than allowed to overwrite its
+progress.
+
 ## Profiles and local models
 
 Current local profiles:

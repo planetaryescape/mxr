@@ -426,7 +426,10 @@ mod tests {
                 },
                 IpcCategory::MxrPlatform,
             ),
-            (Request::ReindexSemantic, IpcCategory::MxrPlatform),
+            (
+                Request::ReindexSemantic { force: false },
+                IpcCategory::MxrPlatform,
+            ),
             (Request::BackfillSemantic, IpcCategory::MxrPlatform),
             (
                 Request::CreateSavedSearch {

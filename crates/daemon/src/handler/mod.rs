@@ -397,7 +397,7 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::RecomputeLinkCounts
         | Request::RefreshContacts
         | Request::BackfillCalendarInvites { .. }
-        | Request::ReindexSemantic
+        | Request::ReindexSemantic { .. }
         | Request::BackfillSemantic
         | Request::InstallSemanticProfile { .. }
         | Request::UseSemanticProfile { .. }
@@ -773,7 +773,7 @@ async fn dispatch(
         Request::UseSemanticProfile { profile } => {
             platform::use_semantic_profile(state, *profile).await
         }
-        Request::ReindexSemantic => platform::reindex_semantic(state).await,
+        Request::ReindexSemantic { force } => platform::reindex_semantic(state, *force).await,
         Request::BackfillSemantic => platform::backfill_semantic(state).await,
         Request::CreateSavedSearch {
             name,
@@ -1933,7 +1933,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::EnableSemantic { .. }
         | Request::InstallSemanticProfile { .. }
         | Request::UseSemanticProfile { .. }
-        | Request::ReindexSemantic
+        | Request::ReindexSemantic { .. }
         | Request::BackfillSemantic
         | Request::CreateSavedSearch { .. }
         | Request::DeleteSavedSearch { .. }
@@ -2079,7 +2079,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::EnableSemantic { .. } => "enable_semantic",
         Request::InstallSemanticProfile { .. } => "install_semantic_profile",
         Request::UseSemanticProfile { .. } => "use_semantic_profile",
-        Request::ReindexSemantic => "reindex_semantic",
+        Request::ReindexSemantic { .. } => "reindex_semantic",
         Request::BackfillSemantic => "backfill_semantic",
         Request::CreateSavedSearch { .. } => "create_saved_search",
         Request::DeleteSavedSearch { .. } => "delete_saved_search",

@@ -22,7 +22,9 @@ pub async fn run(
                 .request(Request::EnableSemantic { enabled: false })
                 .await?
         }
-        SemanticAction::Reindex => client.request(Request::ReindexSemantic).await?,
+        SemanticAction::Reindex { force } => {
+            client.request(Request::ReindexSemantic { force }).await?
+        }
         SemanticAction::Profile { action } => match action.unwrap_or(SemanticProfileAction::List) {
             SemanticProfileAction::List => client.request(Request::GetSemanticStatus).await?,
             SemanticProfileAction::Install { profile } => {

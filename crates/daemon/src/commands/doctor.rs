@@ -176,7 +176,7 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
         let request = if options.backfill_semantic {
             Request::BackfillSemantic
         } else if options.reindex_semantic {
-            Request::ReindexSemantic
+            Request::ReindexSemantic { force: false }
         } else {
             Request::GetSemanticStatus
         };

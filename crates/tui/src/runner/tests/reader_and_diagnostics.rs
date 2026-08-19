@@ -989,7 +989,10 @@ fn reindex_semantic_action_queues_reindex_request() {
     let queue = app.take_pending_semantic_dispatch();
     assert_eq!(queue.len(), 1);
     assert!(
-        matches!(queue[0], mxr_protocol::Request::ReindexSemantic),
+        matches!(
+            queue[0],
+            mxr_protocol::Request::ReindexSemantic { force: false }
+        ),
         "expected ReindexSemantic, got {:?}",
         queue[0]
     );

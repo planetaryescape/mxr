@@ -267,7 +267,10 @@ async fn prewarm_demo_runtime(force_semantic: bool) -> anyhow::Result<()> {
         "Precomputing semantic vectors for {}...",
         active_profile.as_str()
     );
-    match client.request(Request::ReindexSemantic).await? {
+    match client
+        .request(Request::ReindexSemantic { force: false })
+        .await?
+    {
         Response::Ok {
             data: ResponseData::SemanticStatus { .. },
         } => {}

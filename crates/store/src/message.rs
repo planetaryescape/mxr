@@ -1170,27 +1170,29 @@ impl super::Store {
         if envelopes.is_empty() {
             return Ok(());
         }
-        let placeholders: Vec<&str> = envelopes.iter().map(|_| "?").collect();
-        let sql = format!(
-            "SELECT id, link_count, COALESCE(body_word_count, 0) AS body_word_count \
-             FROM messages WHERE id IN ({})",
-            placeholders.join(",")
-        );
-        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
-        for envelope in envelopes.iter() {
-            query = query.bind(envelope.id.as_str());
-        }
-        let rows = query.fetch_all(self.reader()).await?;
-        let mut by_id: std::collections::HashMap<String, (i64, i64)> = rows
-            .iter()
-            .map(|row| {
+        // Chunked for the same reason the envelope query is: callers hand
+        // this a whole sync page, which can exceed SQLite's bind limit.
+        let mut by_id: std::collections::HashMap<String, (i64, i64)> =
+            std::collections::HashMap::with_capacity(envelopes.len());
+        for chunk in envelopes.chunks(crate::SQLITE_BIND_CHUNK) {
+            let placeholders: Vec<&str> = chunk.iter().map(|_| "?").collect();
+            let sql = format!(
+                "SELECT id, link_count, COALESCE(body_word_count, 0) AS body_word_count \
+                 FROM messages WHERE id IN ({})",
+                placeholders.join(",")
+            );
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
+            for envelope in chunk {
+                query = query.bind(envelope.id.as_str());
+            }
+            for row in query.fetch_all(self.reader()).await? {
                 use sqlx::Row;
                 let id: String = row.try_get("id").unwrap_or_default();
                 let link_count: i64 = row.try_get("link_count").unwrap_or(0);
                 let body_word_count: i64 = row.try_get("body_word_count").unwrap_or(0);
-                (id, (link_count, body_word_count))
-            })
-            .collect();
+                by_id.insert(id, (link_count, body_word_count));
+            }
+        }
         for envelope in envelopes {
             if let Some((link_count, body_word_count)) = by_id.remove(&envelope.id.as_str()) {
                 envelope.link_count = link_count.max(0) as u32;

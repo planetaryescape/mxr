@@ -5,7 +5,9 @@ use std::collections::HashMap;
 
 pub const CURATED_DEMO_MESSAGE_COUNT: usize = 50;
 pub const DEFAULT_DEMO_MESSAGE_COUNT: usize = 50_000;
-const MAX_DEMO_MESSAGE_COUNT: usize = 200_000;
+/// Upper bound the demo generator clamps to. Public so callers sizing a
+/// dataset (benches) report the count the provider will actually produce.
+pub const MAX_DEMO_MESSAGE_COUNT: usize = 200_000;
 
 #[derive(Debug, Clone)]
 pub struct FixtureDataset {
@@ -1612,7 +1614,14 @@ fn build_demo_msg(
     let msg_id = MessageId::from_scoped_provider_id(account_id, "fake", &provider_id);
     let message_id_header = demo_message_id_header(current_num);
 
-    let attachments = demo_attachments(&msg_id, current_num, category, flags, has_attachments);
+    let attachments = demo_attachments(
+        account_id,
+        &msg_id,
+        current_num,
+        category,
+        flags,
+        has_attachments,
+    );
     let text_html = demo_html_body(&subject, &body_text, category, current_num);
 
     let size_bytes = body_text.len() as u64
@@ -1661,6 +1670,7 @@ fn build_demo_msg(
 }
 
 fn demo_attachments(
+    account_id: &AccountId,
     message_id: &MessageId,
     current_num: usize,
     category: usize,
@@ -1680,8 +1690,12 @@ fn demo_attachments(
         let attachment_index = attachments.len() + 1;
         let provider_id = format!("demo-att-{current_num}-{attachment_index}");
         attachments.push(AttachmentMeta {
-            // Derived so regenerating a message yields the same attachment ids.
-            id: AttachmentId::from_provider_id("fake", &provider_id),
+            // Derived so regenerating a message yields the same attachment
+            // ids, and scoped to the account because both demo accounts
+            // number their messages from 1: an unscoped id would collide
+            // across accounts, and `attachments.id` is the primary key, so
+            // the second account to sync would steal the first's row.
+            id: AttachmentId::from_scoped_provider_id(account_id, "fake", &provider_id),
             message_id: message_id.clone(),
             filename,
             mime_type: mime_type.to_string(),

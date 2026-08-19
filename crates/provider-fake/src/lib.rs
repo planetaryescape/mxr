@@ -885,6 +885,51 @@ mod tests {
         assert!(!delta.has_more);
     }
 
+    /// Both demo accounts number their messages from 1, so an attachment id
+    /// derived from the message number alone is the same string in both.
+    /// `attachments.id` is the primary key and the sync path upserts by it,
+    /// so a collision would hand one account's attachment row to the other
+    /// account's message.
+    #[tokio::test]
+    async fn demo_attachment_ids_do_not_collide_across_accounts() {
+        let personal = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+        let work = AccountId::from_provider_id("fake", "alex@work.demo.mxr.local");
+
+        let attachments_for = |account_id: AccountId| async move {
+            let provider = FakeProvider::with_demo_dataset(account_id, 400);
+            let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+            batch
+                .upserted
+                .into_iter()
+                .flat_map(|synced| {
+                    synced
+                        .body
+                        .attachments
+                        .into_iter()
+                        .map(move |attachment| (attachment.id, synced.envelope.id.clone()))
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let personal_attachments = attachments_for(personal).await;
+        let work_attachments = attachments_for(work).await;
+        assert!(
+            !personal_attachments.is_empty() && !work_attachments.is_empty(),
+            "both demo accounts should produce attachments to compare"
+        );
+
+        let personal_ids: HashSet<_> = personal_attachments.iter().map(|(id, _)| id).collect();
+        let shared: Vec<_> = work_attachments
+            .iter()
+            .map(|(id, _)| id)
+            .filter(|id| personal_ids.contains(*id))
+            .collect();
+        assert!(
+            shared.is_empty(),
+            "attachment ids must be account-scoped; shared: {shared:?}"
+        );
+    }
+
     /// A demo profile seeded before paging existed carries the old
     /// one-shot cursor. The provider must read that as "initial sync
     /// finished" rather than replaying the whole dataset over rows that

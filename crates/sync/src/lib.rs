@@ -1260,6 +1260,62 @@ mod tests {
         );
     }
 
+    /// Both demo accounts sync into one store. Attachment rows are keyed by
+    /// `attachments.id`, and the body write is a delete-then-`INSERT OR
+    /// REPLACE`, so an id that repeats across accounts silently moves the
+    /// first account's attachment row onto the second account's message —
+    /// the first account just loses it. Counting per account against what
+    /// the provider delivered is what catches that; reading a message's
+    /// attachments back can't, since the query filters by message id.
+    #[tokio::test]
+    async fn attachments_stay_with_their_own_account_when_both_demo_accounts_sync() {
+        const MESSAGES: usize = 400;
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search);
+
+        let personal = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+        let work = AccountId::from_provider_id("fake", "alex@work.demo.mxr.local");
+        let mut expected = Vec::new();
+        for account_id in [personal.clone(), work.clone()] {
+            store
+                .insert_account(&test_account(account_id.clone()))
+                .await
+                .unwrap();
+            let provider =
+                mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), MESSAGES);
+            let delivered =
+                mxr_core::MailSyncProvider::sync_messages(&provider, &SyncCursor::empty())
+                    .await
+                    .unwrap()
+                    .upserted
+                    .iter()
+                    .map(|synced| synced.body.attachments.len())
+                    .sum::<usize>();
+            engine.sync_account(&provider).await.unwrap();
+            expected.push(delivered);
+        }
+
+        for (account_id, delivered) in [personal, work].into_iter().zip(expected) {
+            let envelopes = store
+                .list_envelopes_by_account(&account_id, MESSAGES as u32, 0)
+                .await
+                .unwrap();
+            let mut stored = 0;
+            for envelope in &envelopes {
+                let Some(body) = store.get_body(&envelope.id).await.unwrap() else {
+                    continue;
+                };
+                stored += body.attachments.len();
+            }
+            assert!(delivered > 0, "the fixture should produce attachments");
+            assert_eq!(
+                stored, delivered,
+                "account {account_id} lost attachment rows to the other account"
+            );
+        }
+    }
+
     /// Resuming from a persisted mid-backfill cursor continues where the
     /// last page stopped instead of restarting or skipping.
     #[tokio::test]

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.21](https://github.com/planetaryescape/mxr/compare/v0.6.20...v0.6.21) (2026-08-19)
+
+
+### Bug Fixes
+
+* make semantic reindex fast, idempotent and observable ([#189](https://github.com/planetaryescape/mxr/issues/189)) ([d051d6c](https://github.com/planetaryescape/mxr/commit/d051d6c5cc062ba0ea786ea048663153be4c66c7))
+
 ## [0.6.20](https://github.com/planetaryescape/mxr/compare/v0.6.19...v0.6.20) (2026-08-19)
 
 

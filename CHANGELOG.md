@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.23](https://github.com/planetaryescape/mxr/compare/v0.6.22...v0.6.23) (2026-08-19)
+
+
+### Bug Fixes
+
+* make the demo seed fast and memory-bounded ([#193](https://github.com/planetaryescape/mxr/issues/193)) ([f3e9402](https://github.com/planetaryescape/mxr/commit/f3e940221de370e14d3dd1b3deaff551f1859afc))
+
 ## [0.6.22](https://github.com/planetaryescape/mxr/compare/v0.6.21...v0.6.22) (2026-08-19)
 
 

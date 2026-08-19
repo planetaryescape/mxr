@@ -1,0 +1,86 @@
+# Runs the real `mxr demo` end to end on a Linux runner at the shipping
+# message count. This is the proof for issue #179 ("mxr demo: IPC request
+# timed out after 120 seconds" on Ubuntu): the demo must seed, prewarm and
+# report ready within the budget, on a 4-vCPU box, with no macOS in the loop.
+# Manual trigger only — it is a ~10 minute job and the per-PR `demo_cli` e2e
+# already guards the flow at 2,000 messages.
+name: Demo E2E (Linux)
+
+on:
+  workflow_dispatch:
+    inputs:
+      messages:
+        description: Synthetic messages to seed
+        default: "50000"
+        required: true
+      budget_secs:
+        description: Fail if `mxr demo --no-tui` takes longer than this (seconds)
+        default: "900"
+        required: true
+      features:
+        description: Cargo features for the mxr binary (the release ships semantic-local,web-ui)
+        default: "semantic-local"
+        required: true
+
+jobs:
+  demo:
+    name: mxr demo --messages ${{ inputs.messages }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
+      - name: Build mxr (release)
+        run: cargo build --release -p mxr --features "${{ inputs.features }}"
+      - name: Run the demo end to end
+        env:
+          MESSAGES: ${{ inputs.messages }}
+          BUDGET_SECS: ${{ inputs.budget_secs }}
+        run: |
+          set -euo pipefail
+          # Isolated profile: the demo resolves its config/data through XDG on
+          # Linux and writes its sticky marker under the config home; the
+          # socket gets a short path of its own. A uniquely named binary keeps
+          # the daemon's pid fallback (exe name + instance) from matching
+          # anything else.
+          ISO="$RUNNER_TEMP/demo-e2e"
+          mkdir -p "$ISO/config" "$ISO/data" "$ISO/run" "$ISO/bin"
+          cp target-cli/release/mxr "$ISO/bin/mxr-demo-e2e" 2>/dev/null || cp target/release/mxr "$ISO/bin/mxr-demo-e2e"
+          export HOME="$ISO" XDG_CONFIG_HOME="$ISO/config" XDG_DATA_HOME="$ISO/data" XDG_RUNTIME_DIR="$ISO/run"
+          export MXR_SOCKET_PATH="/tmp/mxr-demo-e2e.sock" MXR_KEYCHAIN=off
+          # The release ships with semantic-local; a fresh runner has no model
+          # cache and no network policy for a 130 MB download in this job, so
+          # keep semantic enabled but let the prewarm skip cleanly if the model
+          # is not there — the bounded wait is part of what this proves.
+          BIN="$ISO/bin/mxr-demo-e2e"
+          echo "mxr version: $($BIN version)"
+          start=$(date +%s)
+          set +e
+          timeout "$BUDGET_SECS" "$BIN" demo --no-tui --messages "$MESSAGES" 2>&1 \
+            | while IFS= read -r line; do printf '[%5ds] %s\n' $(( $(date +%s) - start )) "$line"; done \
+            | tee "$ISO/demo.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          elapsed=$(( $(date +%s) - start ))
+          echo "demo exit=$status elapsed=${elapsed}s budget=${BUDGET_SECS}s"
+          echo "--- status ---"
+          "$BIN" status --format json | tee "$ISO/status.json" | head -c 2000; echo
+          total=$(jq -r .total_messages "$ISO/status.json")
+          echo "--- demo status / search / stop ---"
+          "$BIN" demo status
+          "$BIN" search "label:inbox" --format json --limit 3 | jq -c '{total: .paging.total, first: .results[0].subject}'
+          "$BIN" demo stop
+          echo "--- summary ---"
+          grep -E "Demo mailbox contains|Demo mode is now active|semantic|Demo is ready" "$ISO/demo.log" || true
+          test "$status" -eq 0 || { echo "::error::mxr demo exited $status"; exit 1; }
+          test "$total" -eq "$MESSAGES" || { echo "::error::expected $MESSAGES messages, got $total"; exit 1; }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: demo-e2e-log
+          path: |
+            ${{ runner.temp }}/demo-e2e/demo.log
+            ${{ runner.temp }}/demo-e2e/status.json
+          if-no-files-found: ignore

@@ -99,6 +99,11 @@ pub(crate) mod gate {
     struct GateShared {
         open_rx: watch::Receiver<bool>,
         entered_tx: watch::Sender<usize>,
+        /// Answer with a response too large for the codec to frame, so a test
+        /// can drive the serve loop's unencodable-response path. No request in
+        /// the protocol produces one from in-memory state, and a client cannot
+        /// send an oversized request either — its own encoder refuses it.
+        oversized: bool,
     }
 
     static GATE: Lazy<Mutex<Option<GateShared>>> = Lazy::new(|| Mutex::new(None));
@@ -115,6 +120,13 @@ pub(crate) mod gate {
         // Record entry so the test can wait for the lane to be saturated
         // before releasing the gate.
         shared.entered_tx.send_modify(|count| *count += 1);
+        if shared.oversized {
+            return Some(IpcMessage {
+                id: msg.id,
+                source: ClientKind::default(),
+                payload: IpcPayload::Response(Response::error("x".repeat(17 * 1024 * 1024))),
+            });
+        }
         let mut open_rx = shared.open_rx;
         loop {
             if *open_rx.borrow_and_update() {
@@ -174,12 +186,23 @@ pub(crate) mod gate {
 
     /// Install a fresh gate, serializing against any other gate-using test.
     pub(crate) async fn install() -> GateHandle {
+        install_with(false).await
+    }
+
+    /// Like [`install`] but every gated request is answered immediately with a
+    /// response the codec cannot frame.
+    pub(crate) async fn install_oversized_response() -> GateHandle {
+        install_with(true).await
+    }
+
+    async fn install_with(oversized: bool) -> GateHandle {
         let serial = SERIAL.clone().lock_owned().await;
         let (open_tx, open_rx) = watch::channel(false);
         let (entered_tx, entered_rx) = watch::channel(0usize);
         *GATE.lock() = Some(GateShared {
             open_rx,
             entered_tx,
+            oversized,
         });
         GateHandle {
             open_tx,

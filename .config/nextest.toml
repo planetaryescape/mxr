@@ -1,0 +1,9 @@
+# `demo_cli` is the only test that drives a real daemon through a full seed, so
+# it is also the only one that can hang for minutes when something wedges: its
+# waits are progress-based on purpose and carry no short deadline. Bound it
+# here instead — a run past five minutes is a failure worth surfacing rather
+# than waiting out. `cargo test` ignores this file; the CI test jobs use
+# nextest, which is where the bound matters.
+[[profile.default.overrides]]
+filter = 'test(demo_seeds_a_usable_mailbox_and_stops_cleanly)'
+slow-timeout = { period = "60s", terminate-after = 5 }

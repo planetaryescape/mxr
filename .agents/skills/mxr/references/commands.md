@@ -672,13 +672,15 @@ Restart the daemon with the current binary.
 ```
 --account <NAME>
 --status                  Show sync state instead of triggering
---wait                    Wait until the account reports idle (no further pages)
---wait-timeout-secs <N>   Bounds --wait only, not the sync pass. Default 60
+--wait                    Wait until the account itself reports idle
+--wait-timeout-secs <N>   Bounds --wait only, not the sync. Default 60
 --format <FORMAT>         For --status output
 ```
-Triggering runs a sync pass in the daemon and returns when that pass finishes —
-there is no client-side deadline, so a multi-minute pass is fine. An account
-still backfilling may have further pages queued; `--wait` waits for those too.
+Triggering runs a sync pass in the daemon and waits on it with no client-side
+deadline, so a multi-minute pass is fine. The account can still be syncing
+afterwards: the daemon detaches a pass that outruns its own limit, and the
+account's sync loop may have further backfill pages queued. `--wait` waits for
+the account itself to go idle.
 
 ### `mxr doctor [OPTIONS]`
 ```

@@ -55,8 +55,10 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
             DaemonEvent::SyncError { account_id, error } => {
                 format!("error account={account_id} {error}")
             }
-            DaemonEvent::NewMessages { envelopes } => {
-                format!("message new_messages={}", envelopes.len())
+            DaemonEvent::NewMessages { envelopes, total } => {
+                // `total` is what arrived; `envelopes` is the capped sample the
+                // frame could carry.
+                format!("message new_messages={total} shown={}", envelopes.len())
             }
             DaemonEvent::MessageUnsnoozed { message_id } => {
                 format!("snooze message_unsnoozed={message_id}")

@@ -41,7 +41,7 @@ use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{broadcast, watch, Semaphore};
 use tokio::task::JoinSet;
-use tokio_util::codec::Framed;
+use tokio_util::codec::{FramedRead, FramedWrite};
 
 /// Connection-scoped authentication state for the serve core (phase 5, token
 /// transports). Transports with implicit trust (UDS peer creds, in-process,
@@ -140,20 +140,51 @@ fn events_lagged_frame(skipped: u64) -> IpcMessage {
     }
 }
 
-/// Does this send failure mean "this frame is unsendable" rather than "the
-/// connection is gone"?
+/// What happened to one outbound frame.
+enum FrameSend {
+    Sent,
+    /// The frame could not be encoded. The connection is untouched: the
+    /// codec's length check and the JSON serialisation both fail before a byte
+    /// reaches the write buffer, so only this frame is lost.
+    Unencodable(std::io::Error),
+    /// The write failed. The connection is over.
+    Disconnected(std::io::Error),
+}
+
+/// Send one frame, telling an encode failure apart from a transport failure by
+/// construction rather than by sniffing `io::ErrorKind`.
 ///
-/// `IpcCodec` fails encoding with `InvalidData` (the value would not
-/// serialise) or `InvalidInput` (the frame is past the codec's 16 MiB cap).
-/// Both are raised before a single byte reaches the write buffer, so the
-/// stream stays coherent and the peer is still there — the frame is the only
-/// casualty. Every other kind is a real transport failure and the connection
-/// is over.
-fn is_encode_failure(error: &std::io::Error) -> bool {
-    matches!(
-        error.kind(),
-        std::io::ErrorKind::InvalidData | std::io::ErrorKind::InvalidInput
-    )
+/// `SinkExt::send` is ready + start_send + flush, so a transport error raised
+/// during its flush is indistinguishable from an encode error by kind alone —
+/// a TLS stack reporting `InvalidData` on a broken write would be mistaken for
+/// an oversized frame, and the recovery frame would be appended behind a
+/// half-flushed one. `feed` performs only the encode step, so every error it
+/// returns provably came from `IpcCodec::encode`; the flush that follows is
+/// the only place transport errors can appear.
+async fn send_frame<Si>(sink: &mut Si, message: IpcMessage) -> FrameSend
+where
+    Si: futures::Sink<IpcMessage, Error = std::io::Error> + Unpin,
+{
+    if let Err(error) = sink.feed(message).await {
+        return FrameSend::Unencodable(error);
+    }
+    match sink.flush().await {
+        Ok(()) => FrameSend::Sent,
+        Err(error) => FrameSend::Disconnected(error),
+    }
+}
+
+/// Explain an unencodable frame to the client that asked for it.
+///
+/// `InvalidInput` is the codec refusing a frame past its 16 MiB cap — the
+/// caller can act on that by asking for less. `InvalidData` is a serialisation
+/// failure, which is ours, not theirs.
+fn describe_unencodable(error: &std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::InvalidInput {
+        "response payload exceeded the IPC frame limit; narrow the request (for example a smaller --limit)".to_string()
+    } else {
+        format!("response could not be encoded: {error}")
+    }
 }
 
 fn response_frame(id: u64, response: Response) -> IpcMessage {
@@ -197,7 +228,14 @@ pub(crate) async fn serve_client_connection<S>(
 ) where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let (mut sink, mut stream) = Framed::new(stream, IpcCodec::new()).split();
+    // Framed read/write halves rather than `Framed::split()`: a futures
+    // `SplitSink` buffers one item and defers the inner `start_send` — and so
+    // the codec's `encode` — until the next flush, which would put encode
+    // failures back on the flush path that `send_frame` exists to keep them
+    // off. `FramedWrite::feed` encodes inline.
+    let (reader, writer) = tokio::io::split(stream);
+    let mut sink = FramedWrite::new(writer, IpcCodec::new());
+    let mut stream = FramedRead::new(reader, IpcCodec::new());
     let mut request_tasks: JoinSet<IpcMessage> = JoinSet::new();
     let mut accept_requests = true;
     let mut can_send = true;
@@ -214,27 +252,30 @@ pub(crate) async fn serve_client_connection<S>(
                 match joined {
                     Some(Ok(response)) if can_send => {
                         let id = response.id;
-                        match sink.send(response).await {
-                            Ok(()) => {}
+                        match send_frame(&mut sink, response).await {
+                            FrameSend::Sent => {}
                             // The response could not be framed — almost always
-                            // a result set past the codec's frame cap. Nothing
-                            // was written, so the caller is still there
-                            // waiting: answer it instead of hanging up on it.
-                            Err(error) if is_encode_failure(&error) => {
-                                tracing::warn!(%error, id, "response too large to frame; replying with an error");
+                            // a result set past the codec's cap. Nothing was
+                            // written, so the caller is still there waiting:
+                            // answer it instead of hanging up on it.
+                            FrameSend::Unencodable(error) => {
+                                tracing::warn!(%error, id, "response could not be framed; replying with an error");
                                 let replacement = response_frame(
                                     id,
                                     Response::error_kinded(
-                                        "response payload exceeded the IPC frame limit; narrow the request (for example a smaller --limit)",
+                                        describe_unencodable(&error),
                                         IpcErrorKind::Internal,
                                     ),
                                 );
-                                if sink.send(replacement).await.is_err() {
+                                if !matches!(
+                                    send_frame(&mut sink, replacement).await,
+                                    FrameSend::Sent
+                                ) {
                                     can_send = false;
                                     accept_requests = false;
                                 }
                             }
-                            Err(error) => {
+                            FrameSend::Disconnected(error) => {
                                 tracing::warn!(%error, "dropping client connection: response send failed");
                                 can_send = false;
                                 accept_requests = false;
@@ -347,8 +388,8 @@ pub(crate) async fn serve_client_connection<S>(
             event = event_rx.recv(), if accept_requests && can_send && !shutdown_requested && auth.is_authenticated() => {
                 match event {
                     Ok(event_msg) => {
-                        match sink.send(event_msg).await {
-                            Ok(()) => {}
+                        match send_frame(&mut sink, event_msg).await {
+                            FrameSend::Sent => {}
                             // An event whose payload will not fit a frame is
                             // the event's problem, not the connection's — and
                             // dropping the connection over it also drops the
@@ -357,14 +398,17 @@ pub(crate) async fn serve_client_connection<S>(
                             // `mxr demo` (#179). Skip the event and tell the
                             // client to resync: same contract as a lagged
                             // stream, which is what this effectively is.
-                            Err(error) if is_encode_failure(&error) => {
-                                tracing::warn!(%error, "daemon event too large to frame; dropped it and signalled resync");
-                                if sink.send(events_lagged_frame(1)).await.is_err() {
+                            FrameSend::Unencodable(error) => {
+                                tracing::warn!(%error, "daemon event could not be framed; dropped it and signalled resync");
+                                if !matches!(
+                                    send_frame(&mut sink, events_lagged_frame(1)).await,
+                                    FrameSend::Sent
+                                ) {
                                     can_send = false;
                                     accept_requests = false;
                                 }
                             }
-                            Err(error) => {
+                            FrameSend::Disconnected(error) => {
                                 tracing::warn!(%error, "dropping client connection: event send failed");
                                 can_send = false;
                                 accept_requests = false;
@@ -378,7 +422,10 @@ pub(crate) async fn serve_client_connection<S>(
                         // than silently leaving its views stale. Sent only to
                         // this client — it is not a broadcast event.
                         tracing::debug!(skipped, "client event stream lagged; signalling resync");
-                        if sink.send(events_lagged_frame(skipped)).await.is_err() {
+                        if !matches!(
+                            send_frame(&mut sink, events_lagged_frame(skipped)).await,
+                            FrameSend::Sent
+                        ) {
                             can_send = false;
                             accept_requests = false;
                         }
@@ -700,6 +747,104 @@ mod tests {
             .await;
     }
 
+    /// Read frames until the connection goes quiet, reporting whether a
+    /// resync signal and a `Pong` were among them.
+    async fn drain_frames(client: &mut Framed<UnixStream, IpcCodec>) -> (bool, bool) {
+        let mut saw_resync = false;
+        let mut saw_pong = false;
+        while let Ok(Some(Ok(frame))) =
+            tokio::time::timeout(Duration::from_millis(500), client.next()).await
+        {
+            match frame.payload {
+                IpcPayload::Event(DaemonEvent::EventsLagged { .. }) => saw_resync = true,
+                IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Pong,
+                }) => saw_pong = true,
+                _ => {}
+            }
+        }
+        (saw_resync, saw_pong)
+    }
+
+    /// A response the codec cannot frame must reach the caller as an error.
+    ///
+    /// Sibling of the event case: nothing was written, so the client is still
+    /// there waiting for an answer to a request it sent. Silently closing the
+    /// connection turns "your query was too big" into "the daemon died".
+    #[tokio::test]
+    async fn oversized_response_answers_with_an_error() {
+        let _gate = super::ipc_conformance::gate::install_oversized_response().await;
+        let state = Arc::new(AppState::in_memory().await.expect("in-memory state"));
+        let state_for_cleanup = state.clone();
+        let (server_stream, client_stream) = UnixStream::pair().expect("unix stream pair");
+        let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
+        let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
+        let event_rx = state.event_tx.subscribe();
+        let shutdown_rx = state.shutdown_receiver();
+
+        let server = tokio::spawn(async move {
+            serve_client_connection(
+                server_stream,
+                state,
+                request_semaphore,
+                bulk_semaphore,
+                mxr_transport::PeerInfo::local(),
+                None,
+                event_rx,
+                shutdown_rx,
+            )
+            .await;
+        });
+
+        let mut client = Framed::new(client_stream, IpcCodec::new());
+        client
+            .send(IpcMessage {
+                id: 55,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::RebuildAnalytics),
+            })
+            .await
+            .expect("send rebuild-analytics");
+
+        let frame = tokio::time::timeout(Duration::from_secs(2), client.next())
+            .await
+            .expect("a frame should arrive")
+            .expect("connection must stay open")
+            .expect("frame decodes");
+        assert_eq!(frame.id, 55, "the replacement must answer the same request");
+        match frame.payload {
+            IpcPayload::Response(Response::Error { message, .. }) => {
+                assert!(
+                    message.contains("frame limit"),
+                    "the error should name the cause, got: {message}"
+                );
+            }
+            other => panic!("expected an error response, got {other:?}"),
+        }
+
+        // Still usable afterwards.
+        client
+            .send(IpcMessage {
+                id: 56,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::Ping),
+            })
+            .await
+            .expect("send ping");
+        let (_, saw_pong) = drain_frames(&mut client).await;
+        assert!(
+            saw_pong,
+            "the connection must survive the oversized response"
+        );
+
+        drop(client);
+        state_for_cleanup.request_shutdown();
+        let _ = tokio::time::timeout(Duration::from_secs(1), server).await;
+        state_for_cleanup
+            .shutdown_runtime_tasks(Duration::from_secs(1))
+            .await;
+    }
+
     /// An event the codec cannot frame must cost the client that event, not
     /// its connection.
     ///
@@ -753,25 +898,10 @@ mod tests {
             .await
             .expect("send ping");
 
-        let mut saw_resync = false;
-        let mut saw_pong = false;
-        for _ in 0..8 {
-            let frame = tokio::time::timeout(Duration::from_secs(2), client.next())
-                .await
-                .expect("a frame should arrive")
-                .expect("connection must stay open")
-                .expect("frame decodes");
-            match frame.payload {
-                IpcPayload::Event(DaemonEvent::EventsLagged { .. }) => saw_resync = true,
-                IpcPayload::Response(Response::Ok {
-                    data: ResponseData::Pong,
-                }) => {
-                    saw_pong = true;
-                    break;
-                }
-                _ => {}
-            }
-        }
+        // Drain everything the daemon has to say rather than stopping at the
+        // first frame of interest: the order of the resync signal and the
+        // response is an implementation detail of the select loop.
+        let (saw_resync, saw_pong) = drain_frames(&mut client).await;
         assert!(saw_pong, "the request must still be answered");
         assert!(
             saw_resync,

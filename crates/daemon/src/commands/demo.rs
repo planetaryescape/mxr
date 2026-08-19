@@ -1,6 +1,7 @@
 use crate::commands::progress::{format_thousands, request_with_progress, ProgressPrinter};
 use crate::ipc_client::IpcClient;
 use chrono::{Datelike, TimeZone};
+use futures::FutureExt as _;
 use mxr_config::{AccountConfig, SendProviderConfig, SyncProviderConfig};
 use mxr_core::id::AccountId;
 use mxr_core::types::SemanticProfileStatus;
@@ -26,8 +27,8 @@ const DEMO_ACTIVE_MARKER: &str = "demo-active";
 /// machine slower than the one it was tuned on — the bug in #179. A sync
 /// commits rows continuously, so "nothing changed for ten minutes" means
 /// wedged, not slow. Ten minutes also matches the daemon's own manual-sync
-/// ceiling (`loops::MANUAL_SYNC_TIMEOUT`), so we never give up before the
-/// daemon itself would.
+/// ceiling (`handler::diagnostics::MANUAL_SYNC_TIMEOUT`), so we never give up
+/// before the daemon itself would.
 const PROGRESS_STALL_TIMEOUT: Duration = Duration::from_secs(600);
 const PROGRESS_POLL_INTERVAL: Duration = Duration::from_millis(500);
 /// `GetStatus` is heavier than a sync-status read (it counts messages and
@@ -313,15 +314,19 @@ async fn prewarm_demo_runtime(force_semantic: bool) -> anyhow::Result<()> {
     // the call. The daemon runs the request to completion whatever this
     // process does next, and the post-sync ingest is already embedding in
     // parallel. `force: false` is deliberate: the idempotent reindex skips
-    // chunks that already have vectors, which is exactly right when the
-    // post-sync ingest has been embedding the same messages in parallel.
-    let mut reindex_client = IpcClient::connect().await?;
-    tokio::spawn(async move {
-        let _ = reindex_client
+    // chunks that already have vectors, which is exactly what a fresh seed
+    // needs when the post-sync ingest has been embedding the same messages
+    // alongside it. The handle is kept so a rejection (semantic disabled,
+    // model missing, store failure) is reported straight away instead of
+    // leaving the watcher to spend its whole budget on a reindex that never
+    // started.
+    let reindex = tokio::spawn(async move {
+        IpcClient::connect()
+            .await?
             .request_with_events(Request::ReindexSemantic { force: false }, |_| {})
-            .await;
+            .await
     });
-    await_semantic_prewarm(&mut client, active_profile).await;
+    await_semantic_prewarm(&mut client, active_profile, reindex).await;
 
     // Fill LLM-backed caches (voice, decisions) using the canned demo provider
     // so first-click on those surfaces shows pre-built content. Soft-fails
@@ -341,13 +346,8 @@ struct SemanticProgress {
     last_error: Option<String>,
 }
 
-/// `Ready` with an index behind it is the whole test.
-///
-/// Deliberately not "and the ingest queue is empty": the post-sync ingest
-/// re-embeds messages the reindex already covered, so its queue stays deep for
-/// minutes after the profile is usable. Waiting on it means waiting on
-/// duplicated work, which is what made this hold the demo for its full budget
-/// with vectors already at 2,000/2,000.
+/// Is the active profile indexed and usable — the state that stops `mxr search`
+/// rendering "Indexing..."?
 fn semantic_is_warm(snapshot: &mxr_core::types::SemanticStatusSnapshot) -> bool {
     snapshot.profiles.iter().any(|profile| {
         profile.profile == snapshot.active_profile
@@ -389,11 +389,31 @@ async fn fetch_semantic_progress(
 async fn await_semantic_prewarm(
     client: &mut IpcClient,
     active_profile: mxr_core::types::SemanticProfile,
+    mut reindex: tokio::task::JoinHandle<anyhow::Result<Response>>,
 ) {
     let progress = ProgressPrinter::new(false);
     let deadline = Instant::now() + SEMANTIC_PREWARM_BUDGET;
     let mut latest = None;
     loop {
+        // If the reindex has already come back rejected there is nothing to
+        // wait for; say why rather than spending the budget in silence.
+        if let Some(outcome) = (&mut reindex).now_or_never() {
+            match outcome {
+                Ok(Ok(Response::Error { message, .. })) => {
+                    progress.finish();
+                    println!("  semantic prewarm skipped: {message}");
+                    return;
+                }
+                Ok(Err(error)) => {
+                    progress.finish();
+                    println!("  semantic prewarm skipped: {error}");
+                    return;
+                }
+                // Finished cleanly, or the task itself failed; either way the
+                // profile's own status below is the authority.
+                Ok(Ok(_)) | Err(_) => {}
+            }
+        }
         // A status poll can fail or stall transiently (the semantic worker
         // rebuilds its ANN index on the same path). Keep watching rather than
         // treating one bad poll as the answer.
@@ -452,24 +472,26 @@ async fn await_semantic_prewarm(
 struct StallWatch {
     fingerprint: String,
     last_change: Instant,
+    timeout: Duration,
 }
 
 impl StallWatch {
-    fn new() -> Self {
+    fn new(timeout: Duration) -> Self {
         Self {
             fingerprint: String::new(),
             last_change: Instant::now(),
+            timeout,
         }
     }
 
     /// Records what the caller can currently see; returns `false` once the
-    /// operation has looked frozen for longer than [`PROGRESS_STALL_TIMEOUT`].
+    /// operation has looked frozen for longer than the configured timeout.
     fn observe(&mut self, fingerprint: String) -> bool {
         if fingerprint != self.fingerprint {
             self.fingerprint = fingerprint;
             self.last_change = Instant::now();
         }
-        self.last_change.elapsed() < PROGRESS_STALL_TIMEOUT
+        self.last_change.elapsed() < self.timeout
     }
 }
 
@@ -529,10 +551,10 @@ async fn sync_demo_accounts(expected_messages: usize) -> anyhow::Result<()> {
 /// then re-issued `SyncNow` on failure — which only queued a second sync
 /// behind the first and timed out again.
 ///
-/// The `Ack` means one provider page finished, not that the account is done:
-/// a paging provider leaves `sync_in_progress` set and the account's sync loop
-/// picks up the next page. So the answer is only the cue to start watching the
-/// account's status.
+/// The `Ack` means the daemon finished a sync pass, not that the account is
+/// done: its own sync loop may still be working (further backfill pages, a
+/// queued tick). The account's status row is the authority, so the answer is
+/// only the cue to start watching it.
 async fn sync_demo_account(account_id: &AccountId, expected_messages: usize) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let before = match fetch_demo_sync_status(&mut client, account_id).await {
@@ -599,7 +621,7 @@ async fn wait_for_demo_sync(
     expected_messages: usize,
 ) -> anyhow::Result<()> {
     let progress = ProgressPrinter::new(false);
-    let mut stall = StallWatch::new();
+    let mut stall = StallWatch::new(PROGRESS_STALL_TIMEOUT);
     let mut messages = 0usize;
     let mut messages_checked_at: Option<Instant> = None;
     loop {
@@ -638,7 +660,9 @@ async fn wait_for_demo_sync(
         // `last_synced_count` only reports the page that just landed.
         if messages_checked_at.is_none_or(|at| at.elapsed() >= MESSAGE_COUNT_POLL_INTERVAL) {
             messages_checked_at = Some(Instant::now());
-            if let Ok(count) = fetch_message_count(client).await {
+            // Display only here — this loop's authority is the sync status
+            // above — so any unusable reading just leaves the line as it was.
+            if let CountPoll::Count(count) = fetch_message_count(client).await {
                 messages = count;
                 progress.note(&seeded_progress_line(count, expected_messages));
             }
@@ -683,28 +707,33 @@ fn seeded_progress_line(count: usize, expected: usize) -> String {
 /// give up when it stops moving short of the target.
 async fn wait_for_seeded_count(expected: usize) -> anyhow::Result<usize> {
     let mut client = IpcClient::connect().await?;
-    if expected == 0 {
-        return fetch_message_count(&mut client).await;
-    }
-
     let progress = ProgressPrinter::new(false);
-    let mut stall = StallWatch::new();
+    let mut stall = StallWatch::new(PROGRESS_STALL_TIMEOUT);
     loop {
-        let count = match fetch_message_count(&mut client).await {
-            Ok(count) => count,
-            Err(error) => {
-                client = reconnect_demo_client(&error).await?;
-                continue;
+        match fetch_message_count(&mut client).await {
+            CountPoll::Count(count) => {
+                if expected == 0 || count >= expected {
+                    return Ok(count);
+                }
+                progress.note(&seeded_progress_line(count, expected));
+                if !stall.observe(count.to_string()) {
+                    anyhow::bail!(
+                        "Demo sync stalled at {count} of {expected} messages. Run `mxr demo --reset` to try again."
+                    );
+                }
             }
-        };
-        if count >= expected {
-            return Ok(count);
-        }
-        progress.note(&seeded_progress_line(count, expected));
-        if !stall.observe(count.to_string()) {
-            anyhow::bail!(
-                "Demo sync stalled at {count} of {expected} messages. Run `mxr demo --reset` to try again."
-            );
+            // A degraded snapshot means the daemon is busy, which is exactly
+            // what a large seed does to it. Keep the connection and wait —
+            // reconnecting on every busy-daemon poll would churn a connection a
+            // second. The stall clock still runs, so a permanently degraded
+            // daemon is not waited on forever.
+            CountPoll::Degraded => {}
+            CountPoll::Rejected(message) => {
+                anyhow::bail!("demo message count query failed: {message}");
+            }
+            CountPoll::Disconnected(error) => {
+                client = reconnect_demo_client(&error).await?;
+            }
         }
         tokio::time::sleep(MESSAGE_COUNT_POLL_INTERVAL).await;
     }
@@ -744,32 +773,47 @@ async fn fetch_demo_sync_status(
     }
 }
 
+/// One `GetStatus` message-count poll, with the three failures its callers must
+/// treat differently kept apart.
+enum CountPoll {
+    Count(usize),
+    /// The daemon answered, but the reading is not usable. Retry on the same
+    /// connection.
+    Degraded,
+    /// The daemon rejected the query. Retrying will not help.
+    Rejected(String),
+    /// The connection failed. Reconnect before retrying.
+    Disconnected(anyhow::Error),
+}
+
 /// Read the store-wide message count from `GetStatus`.
 ///
 /// `get_status` fast-fails its DB-backed snapshot after a couple of seconds so
 /// a saturated reader pool can't wedge status, and a degraded reading reports
 /// zero messages and zero accounts. During a large seed the pool is exactly
-/// that busy, so take an empty account list as "no reading" rather than
-/// letting the demo's progress counter jump back to zero — or, worse, letting
-/// the seed wait conclude that nothing has landed. Callers treat an error as a
-/// missed poll and keep waiting.
-async fn fetch_message_count(client: &mut IpcClient) -> anyhow::Result<usize> {
-    match client.request(Request::GetStatus).await? {
-        Response::Ok {
+/// that busy, so take an empty account list as "no reading" rather than letting
+/// the demo's progress counter jump back to zero — or, worse, letting the seed
+/// wait conclude that nothing has landed. A demo profile always has two
+/// accounts, so an empty list can only mean the snapshot degraded.
+async fn fetch_message_count(client: &mut IpcClient) -> CountPoll {
+    match client.request(Request::GetStatus).await {
+        Ok(Response::Ok {
             data:
                 ResponseData::Status {
                     accounts,
                     total_messages,
                     ..
                 },
-        } => {
+        }) => {
             if accounts.is_empty() {
-                anyhow::bail!("daemon returned a degraded status snapshot");
+                CountPoll::Degraded
+            } else {
+                CountPoll::Count(total_messages as usize)
             }
-            Ok(total_messages as usize)
         }
-        Response::Error { message, .. } => anyhow::bail!(message),
-        other => anyhow::bail!("Unexpected status response: {other:?}"),
+        Ok(Response::Error { message, .. }) => CountPoll::Rejected(message),
+        Ok(other) => CountPoll::Rejected(format!("Unexpected status response: {other:?}")),
+        Err(error) => CountPoll::Disconnected(error),
     }
 }
 
@@ -1396,10 +1440,30 @@ mod tests {
     use super::{
         demo_account_ids, demo_paths, is_active, prepare_environment, read_active_marker,
         read_demo_message_count, remove_active_marker, write_active_marker,
-        write_demo_message_count, DemoPaths, DEMO_COUNT_MARKER, DEMO_INSTANCE, DEMO_PERSONAL_EMAIL,
-        DEMO_SEED_VERSION, DEMO_WORK_EMAIL,
+        write_demo_message_count, DemoPaths, StallWatch, DEMO_COUNT_MARKER, DEMO_INSTANCE,
+        DEMO_PERSONAL_EMAIL, DEMO_SEED_VERSION, DEMO_WORK_EMAIL,
     };
     use mxr_core::id::AccountId;
+    use std::time::Duration;
+
+    /// The seed wait gives up on a frozen daemon, but only on a frozen one:
+    /// any change in what the caller can see puts the clock back to zero. That
+    /// is the whole reason the demo no longer dies on a slow machine (#179).
+    #[test]
+    fn stall_watch_only_expires_when_nothing_changes() {
+        let mut stall = StallWatch::new(Duration::from_millis(40));
+        assert!(stall.observe("1000".to_string()));
+        std::thread::sleep(Duration::from_millis(25));
+
+        // Progress: still alive well past a single interval.
+        assert!(stall.observe("2000".to_string()));
+        std::thread::sleep(Duration::from_millis(25));
+        assert!(stall.observe("3000".to_string()));
+
+        // Frozen: the same reading twice, long enough to exhaust the window.
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(!stall.observe("3000".to_string()));
+    }
 
     #[test]
     fn demo_paths_are_namespaced() {

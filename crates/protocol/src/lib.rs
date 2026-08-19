@@ -1305,6 +1305,7 @@ mod tests {
             (
                 DaemonEvent::NewMessages {
                     envelopes: Vec::new(),
+                    total: 0,
                 },
                 IpcCategory::CoreMail,
             ),

@@ -3364,7 +3364,14 @@ pub enum DaemonEvent {
         error: String,
     },
     NewMessages {
+        /// The newest arrivals, capped so one event always fits an IPC frame.
+        /// A large initial backfill carries a sample, not the whole batch.
         envelopes: Vec<Envelope>,
+        /// How many messages actually arrived. Equal to `envelopes.len()` for
+        /// an ordinary sync; larger when the batch was capped. Additive with a
+        /// serde default so an older client still decodes the event.
+        #[serde(default)]
+        total: usize,
     },
     MessageUnsnoozed {
         message_id: MessageId,

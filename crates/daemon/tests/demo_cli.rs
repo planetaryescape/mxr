@@ -18,9 +18,7 @@
     reason = "integration tests panic with command output when daemon-backed journeys fail"
 )]
 
-use mxr_test_support::daemon::{
-    daemon_lock, link_mxr_binary, run_json_with_env, run_with_env, DaemonGuard,
-};
+use mxr_test_support::daemon::{daemon_lock, link_mxr_binary, run_json_with_env, run_with_env};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -67,6 +65,59 @@ impl ShortSocket {
 impl Drop for ShortSocket {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Shuts the demo daemon down however the test ends.
+///
+/// Built before the demo is started, not after: `mxr demo` leaves a detached
+/// daemon behind, and a panic in any assertion below would otherwise leak it
+/// for the lifetime of the CI job. `Drop` runs on a panicking unwind, which is
+/// what the ordinary failure path here is.
+struct DemoTeardown {
+    bin: PathBuf,
+    env: Vec<(String, String)>,
+    data_dir: PathBuf,
+    socket: PathBuf,
+}
+
+impl Drop for DemoTeardown {
+    fn drop(&mut self) {
+        let mut stop = std::process::Command::new(&self.bin);
+        for (key, value) in &self.env {
+            stop.env(key, value);
+        }
+        let _ = stop
+            .args(["demo", "stop"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+
+        // `demo stop` needs a reachable daemon; fall back to the pid file it
+        // leaves behind so a wedged daemon still gets cleaned up.
+        if self.socket.exists() {
+            if let Ok(raw) = std::fs::read_to_string(self.data_dir.join("daemon.pid")) {
+                if let Ok(pid) = raw.trim().parse::<u32>() {
+                    let _ = std::process::Command::new("kill")
+                        .arg(pid.to_string())
+                        .status();
+                }
+            }
+        }
+        let _ = std::fs::remove_file(&self.socket);
+    }
+}
+
+/// Where the demo profile's runtime files land, which is not the same place on
+/// every OS: `dirs::data_dir()` is `$XDG_DATA_HOME` on Linux and
+/// `$HOME/Library/Application Support` on macOS.
+fn demo_data_dir(home: &Path, data_home: &Path) -> PathBuf {
+    if cfg!(target_os = "macos") {
+        home.join("Library")
+            .join("Application Support")
+            .join("mxr-demo")
+    } else {
+        data_home.join("mxr-demo")
     }
 }
 
@@ -134,6 +185,18 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
     ];
     let messages = DEMO_MESSAGES.to_string();
 
+    // Armed before the demo starts, so every exit path below tears the daemon
+    // down — including a panic inside the demo run itself.
+    let _teardown = DemoTeardown {
+        bin: bin.clone(),
+        env: env
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+            .collect(),
+        data_dir: demo_data_dir(&home, &data_home),
+        socket: socket.path.clone(),
+    };
+
     let started_at = Instant::now();
     let demo = run_with_env(
         &bin,
@@ -157,15 +220,9 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
         demo.stderr
     );
 
-    // Kill the demo daemon even if an assertion below panics.
     let status = run_json_with_env(&bin, &env, &["status", "--format", "json"]);
-    let mut daemon = DaemonGuard {
-        socket_path: socket.path.clone(),
-        pid_path: data_home.join("mxr-demo").join("daemon.pid"),
-        pid: status["daemon_pid"].as_u64(),
-    };
     assert!(
-        daemon.pid.is_some(),
+        status["daemon_pid"].as_u64().is_some(),
         "demo daemon should be running: {status:#}"
     );
 
@@ -225,7 +282,4 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
         "demo should be inactive after stop; got: {}",
         after_stop.stdout
     );
-
-    // `demo stop` already shut the daemon down; nothing left for the guard.
-    daemon.pid = None;
 }

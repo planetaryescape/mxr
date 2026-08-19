@@ -153,15 +153,29 @@ pub async fn run(
             (true, true) => {}
             (false, _) => println!("Sync triggered"),
         },
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        // An error here does not necessarily mean the sync failed: past its own
+        // ceiling the daemon detaches the pass and answers with an error while
+        // the work carries on. Ask the account which it was rather than reading
+        // the error text — the status row is the authority.
+        Response::Error { message, .. } => {
+            let statuses = fetch_sync_statuses(&mut client, account_id.as_ref()).await?;
+            if !statuses.iter().any(|status| status.sync_in_progress) {
+                anyhow::bail!("{message}");
+            }
+            if !json_mode {
+                println!("Sync is still running in the daemon; following its progress.");
+                if !wait {
+                    println!("Watch it with `mxr sync --status`.");
+                }
+            }
+        }
         _ => anyhow::bail!("Unexpected response"),
     }
 
-    // The `Ack` above means one sync pass finished, not that the account is
-    // done: a paging provider leaves `sync_in_progress` set and the account's
-    // own loop walks the remaining pages. The daemon also detaches a pass that
-    // outruns its ceiling. So `--wait` is what turns "a pass ran" into "the
-    // account is idle".
+    // Answering does not mean the account is idle: the daemon may have
+    // detached a long pass, and the account's own sync loop may still be
+    // working (further backfill pages, a queued tick). `--wait` is what turns
+    // "a pass ran" into "the account is idle".
     if wait {
         wait_for_sync_quiescence(
             &mut client,
@@ -219,13 +233,19 @@ async fn wait_for_sync_quiescence(
 ) -> anyhow::Result<()> {
     let deadline = Instant::now() + timeout;
     loop {
-        // A status read can stall or fail while the daemon is busy with
-        // post-sync work (semantic ingest, analytics backfill). That says
-        // nothing about the sync, so keep polling until the deadline instead
-        // of reporting the poll's failure as the sync's.
-        if let Ok(statuses) = fetch_sync_statuses(client, account_id).await {
-            if !statuses.iter().any(|status| status.sync_in_progress) {
-                return Ok(());
+        // Three outcomes, three responses: the daemon rejecting the query is
+        // fatal, a dropped connection earns a reconnect, and a status read that
+        // simply stalled while the daemon is busy with post-sync work says
+        // nothing about the sync — keep polling until the deadline.
+        match poll_sync_statuses(client, account_id).await {
+            StatusPoll::Statuses(statuses) => {
+                if !statuses.iter().any(|status| status.sync_in_progress) {
+                    return Ok(());
+                }
+            }
+            StatusPoll::Rejected(message) => anyhow::bail!("{message}"),
+            StatusPoll::Disconnected(error) => {
+                *client = reconnect_client(&error).await?;
             }
         }
         if Instant::now() >= deadline {
@@ -236,6 +256,53 @@ async fn wait_for_sync_quiescence(
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+}
+
+/// One sync-status poll, keeping "the daemon said no" apart from "the
+/// connection went away".
+enum StatusPoll {
+    Statuses(Vec<AccountSyncStatus>),
+    Rejected(String),
+    Disconnected(anyhow::Error),
+}
+
+async fn poll_sync_statuses(client: &mut IpcClient, account_id: Option<&AccountId>) -> StatusPoll {
+    match client.request(build_status_request(account_id)).await {
+        Ok(resp) => match (account_id, resp) {
+            (
+                Some(_),
+                Response::Ok {
+                    data: ResponseData::SyncStatus { sync },
+                },
+            ) => StatusPoll::Statuses(vec![sync]),
+            (
+                None,
+                Response::Ok {
+                    data: ResponseData::Status { sync_statuses, .. },
+                },
+            ) => StatusPoll::Statuses(sync_statuses),
+            (_, Response::Error { message, .. }) => StatusPoll::Rejected(message),
+            _ => StatusPoll::Rejected("Unexpected response from daemon".to_string()),
+        },
+        Err(error) => StatusPoll::Disconnected(error),
+    }
+}
+
+/// Reconnect after a dropped connection, giving up rather than hammering a
+/// daemon that is gone for good.
+async fn reconnect_client(cause: &anyhow::Error) -> anyhow::Result<IpcClient> {
+    let mut last_error = None;
+    for _ in 0..5 {
+        match IpcClient::connect().await {
+            Ok(client) => return Ok(client),
+            Err(error) => last_error = Some(error),
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    anyhow::bail!(
+        "Lost the daemon connection while waiting for sync: {cause}. Reconnecting also failed: {}",
+        last_error.map_or_else(|| "unknown error".to_string(), |error| error.to_string())
+    )
 }
 
 #[cfg(test)]

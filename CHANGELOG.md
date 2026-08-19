@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.20](https://github.com/planetaryescape/mxr/compare/v0.6.19...v0.6.20) (2026-08-19)
+
+
+### Features
+
+* add linked draft MCP workflow ([#185](https://github.com/planetaryescape/mxr/issues/185)) ([e7e975d](https://github.com/planetaryescape/mxr/commit/e7e975df0a65d3ac409991434f7225a0c8de21c8))
+
+
+### Bug Fixes
+
+* thread Gmail reply drafts on the parent conversation ([#186](https://github.com/planetaryescape/mxr/issues/186)) ([026c846](https://github.com/planetaryescape/mxr/commit/026c8463ae1419aa6b852b03c524a8e1f0627bad))
+
 ## [0.6.19](https://github.com/planetaryescape/mxr/compare/v0.6.18...v0.6.19) (2026-08-12)
 
 

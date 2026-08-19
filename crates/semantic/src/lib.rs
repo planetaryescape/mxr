@@ -107,7 +107,20 @@ const SEARCH_EF: usize = 64;
 /// have, because a fielded query may admit only one of them and the filter
 /// runs after retrieval.
 #[cfg(feature = "local")]
-const SOURCE_KIND_COUNT: usize = 4;
+const SOURCE_KIND_COUNT: usize = source_kind_count();
+
+/// Counts the variants of [`SemanticChunkSourceKind`] through an exhaustive
+/// match, so adding one fails to compile here instead of silently leaving
+/// searches under-fetching candidates.
+#[cfg(feature = "local")]
+const fn source_kind_count() -> usize {
+    match SemanticChunkSourceKind::Header {
+        SemanticChunkSourceKind::Header
+        | SemanticChunkSourceKind::Body
+        | SemanticChunkSourceKind::AttachmentSummary
+        | SemanticChunkSourceKind::AttachmentText => 4,
+    }
+}
 
 /// Ceiling on ANN candidates per search, so a huge `--limit` cannot ask the
 /// graph for a working set the size of the corpus. Past it the post-filter

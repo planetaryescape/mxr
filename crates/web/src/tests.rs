@@ -21,6 +21,22 @@ use tokio_util::codec::Framed;
 
 const TEST_AUTH_TOKEN: &str = "test-token";
 
+/// Read `session.draftPath` out of a compose-session response.
+///
+/// The bridge answers a failed compose start with an error object, so a bare
+/// `unwrap` on the missing field reports "unwrap on None" and hides the reason.
+/// Failing with the whole body keeps the diagnosis in the failure output.
+fn compose_draft_path(response: &serde_json::Value) -> String {
+    let path = response["session"]["draftPath"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        !path.is_empty(),
+        "compose session response carried no session.draftPath: {response}"
+    );
+    path.to_string()
+}
+
 async fn spawn_fake_ipc_server<F>(
     socket_path: &std::path::Path,
     responder: F,
@@ -2250,10 +2266,7 @@ async fn compose_session_update_refresh_and_discard_round_trip_draft() {
         .await
         .unwrap();
 
-    let draft_path = started["session"]["draftPath"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let draft_path = compose_draft_path(&started);
 
     let updated: serde_json::Value = client
         .post(format!("http://{addr}/compose/session/update"))
@@ -2310,7 +2323,7 @@ async fn compose_session_update_refresh_and_discard_round_trip_draft() {
         .await
         .unwrap();
     assert_eq!(discard_response.status(), reqwest::StatusCode::OK);
-    assert!(!std::path::Path::new(refreshed["session"]["draftPath"].as_str().unwrap()).exists());
+    assert!(!std::path::Path::new(&compose_draft_path(&refreshed)).exists());
 }
 
 #[tokio::test]
@@ -2351,10 +2364,7 @@ async fn compose_attachment_upload_writes_local_file_and_discard_cleans_it() {
         .json()
         .await
         .unwrap();
-    let draft_path = started["session"]["draftPath"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let draft_path = compose_draft_path(&started);
 
     let uploaded: serde_json::Value = client
         .post(format!(
@@ -2437,10 +2447,7 @@ async fn compose_session_send_forwards_draft_account_id() {
         .json()
         .await
         .unwrap();
-    let draft_path = started["session"]["draftPath"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let draft_path = compose_draft_path(&started);
     let account_id = started["session"]["accountId"]
         .as_str()
         .unwrap()
@@ -2531,10 +2538,7 @@ async fn compose_session_send_propagates_daemon_error() {
         .json()
         .await
         .unwrap();
-    let draft_path = started["session"]["draftPath"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let draft_path = compose_draft_path(&started);
     let account_id = started["session"]["accountId"]
         .as_str()
         .unwrap()
@@ -3736,10 +3740,7 @@ async fn a_compose_session_that_was_not_restored_still_creates_a_stored_draft() 
         .json()
         .await
         .unwrap();
-    let draft_path = session["session"]["draftPath"]
-        .as_str()
-        .expect("a new compose session must carry a draft path")
-        .to_string();
+    let draft_path = compose_draft_path(&session);
     edit_session(&client, addr, &draft_path, "Hello", "A brand new message.").await;
 
     let response = client
@@ -3857,10 +3858,7 @@ async fn restore_session_path(
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body: serde_json::Value = response.json().await.unwrap();
-    body["session"]["draftPath"]
-        .as_str()
-        .expect("a restored session must carry a draft path")
-        .to_string()
+    compose_draft_path(&body)
 }
 
 /// Rewrite the session the way the composer's own autosave does.

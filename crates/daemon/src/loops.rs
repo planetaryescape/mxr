@@ -636,7 +636,13 @@ async fn sync_loop_for_account(
                             failure_class: Some(None),
                             consecutive_failures: Some(0),
                             backoff_until: Some(None),
-                            sync_in_progress: Some(false),
+                            // A batch that reports `has_more` is one page of
+                            // a backfill, not a finished sync — the loop
+                            // re-polls immediately. Reporting "idle" in that
+                            // gap makes clients waiting for the initial sync
+                            // (`mxr demo`, `mxr sync status`) call it done
+                            // after the first page.
+                            sync_in_progress: Some(outcome.has_more),
                             current_cursor_summary: Some(Some(describe_sync_cursor(
                                 provider.as_ref(),
                                 post_sync_cursor.as_ref(),

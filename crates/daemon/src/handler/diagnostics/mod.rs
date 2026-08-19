@@ -1409,7 +1409,9 @@ pub(crate) async fn sync_now(
                 failure_class: Some(None),
                 consecutive_failures: Some(0),
                 backoff_until: Some(None),
-                sync_in_progress: Some(false),
+                // Mid-backfill pages leave the account still syncing: the
+                // account's sync loop picks the next page up immediately.
+                sync_in_progress: Some(outcome.has_more),
                 current_cursor_summary: Some(Some(crate::loops::describe_sync_cursor(
                     provider.as_ref(),
                     post_sync_cursor.as_ref(),

@@ -172,6 +172,64 @@ impl super::Store {
         rows.into_iter().map(row_to_semantic_chunk).collect()
     }
 
+    /// Stored chunk ids and content hashes for a message, in ordinal order.
+    ///
+    /// Callers use this to tell whether freshly extracted chunks differ from
+    /// what is stored, so an unchanged message can skip a chunk rewrite (which
+    /// would cascade its embeddings away) and a re-embed.
+    pub async fn list_semantic_chunk_fingerprints(
+        &self,
+        message_id: &MessageId,
+    ) -> Result<Vec<(SemanticChunkId, String)>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"SELECT id, content_hash
+               FROM semantic_chunks
+               WHERE message_id = ?
+               ORDER BY ordinal ASC"#,
+        )
+        .bind(message_id.as_str())
+        .fetch_all(self.reader())
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                Ok((
+                    decode_id(&row.get::<String, _>("id"))?,
+                    row.get::<String, _>("content_hash"),
+                ))
+            })
+            .collect()
+    }
+
+    /// Chunks of a message that have no embedding for `profile_id` at the
+    /// profile's current `dimensions`. Zero means the message is already
+    /// indexed for that profile and can be skipped.
+    pub async fn count_semantic_chunks_missing_embeddings(
+        &self,
+        message_id: &MessageId,
+        profile_id: &SemanticProfileId,
+        dimensions: u32,
+    ) -> Result<u32, sqlx::Error> {
+        Ok(sqlx::query_scalar::<_, i64>(
+            r#"SELECT COUNT(*)
+               FROM semantic_chunks c
+               WHERE c.message_id = ?
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM semantic_embeddings e
+                     WHERE e.chunk_id = c.id
+                       AND e.profile_id = ?
+                       AND e.dimensions = ?
+                 )"#,
+        )
+        .bind(message_id.as_str())
+        .bind(profile_id.as_str())
+        .bind(i64::from(dimensions))
+        .fetch_one(self.reader())
+        .await?
+        .max(0) as u32)
+    }
+
     pub async fn list_semantic_embeddings(
         &self,
         profile_id: &SemanticProfileId,

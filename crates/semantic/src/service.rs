@@ -1,4 +1,4 @@
-use crate::{SemanticEngine, SemanticHit};
+use crate::{SemanticEngine, SemanticHit, SemanticIndexJob};
 use anyhow::{anyhow, Result};
 use mxr_config::SemanticConfig;
 use mxr_core::id::MessageId;
@@ -77,11 +77,42 @@ struct PendingIngest {
     enqueued_at: Instant,
 }
 
+/// A reindex the worker is stepping through, plus everyone waiting on it.
+struct ActiveReindex {
+    job: SemanticIndexJob,
+    waiters: Vec<oneshot::Sender<Result<SemanticProfileRecord>>>,
+}
+
+/// Messages pulled off the ingest queue per iteration. Batching them lets the
+/// engine fill embedding calls with chunks from many messages while keeping
+/// each iteration short enough to stay responsive to commands.
+const INGEST_BATCH_MESSAGES: usize = 64;
+
+/// Fans one reindex outcome out to every caller waiting on it. `anyhow::Error`
+/// does not clone, so extra waiters (only produced by a concurrent reindex
+/// request) receive the rendered message instead of the original error.
+fn respond_all(
+    mut waiters: Vec<oneshot::Sender<Result<SemanticProfileRecord>>>,
+    result: Result<SemanticProfileRecord>,
+) {
+    let original = waiters.pop();
+    for waiter in waiters {
+        let _ = waiter.send(match &result {
+            Ok(record) => Ok(record.clone()),
+            Err(error) => Err(anyhow!("{error:#}")),
+        });
+    }
+    if let Some(waiter) = original {
+        let _ = waiter.send(result);
+    }
+}
+
 impl SemanticServiceHandle {
     /// `background_db` gates this worker's DB-touching work below the
     /// reader-pool size so background ingest can never starve
-    /// interactive/status queries of connections. A permit is held
-    /// across each per-message ingest unit (embedding compute + writes).
+    /// interactive/status queries of connections. A permit is held across
+    /// each unit of work (embedding compute + writes) the worker runs: one
+    /// ingest batch, or one page of a reindex.
     pub fn start(engine: SemanticEngine, background_db: Arc<Semaphore>) -> (Self, JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel::<SemanticCommand>(32);
         let runtime_metrics = Arc::new(Mutex::new(SemanticRuntimeMetrics::default()));
@@ -90,6 +121,7 @@ impl SemanticServiceHandle {
             let mut engine = engine;
             let mut pending = VecDeque::<PendingIngest>::new();
             let mut pending_ids = HashSet::<MessageId>::new();
+            let mut reindex: Option<ActiveReindex> = None;
 
             loop {
                 while let Ok(command) = rx.try_recv() {
@@ -97,6 +129,7 @@ impl SemanticServiceHandle {
                         &mut engine,
                         &mut pending,
                         &mut pending_ids,
+                        &mut reindex,
                         &worker_metrics,
                         command,
                     )
@@ -107,12 +140,55 @@ impl SemanticServiceHandle {
                     }
                 }
 
-                if let Some(next) = pending.pop_front() {
-                    pending_ids.remove(&next.message_id);
-                    let queue_wait = next.enqueued_at.elapsed();
+                // One page of an in-flight reindex, then back to the command
+                // drain: a full pass would otherwise hide status and search
+                // for its whole duration. Ingest waits until it finishes so
+                // the two paths never fight over the profile record.
+                let step = if let Some(active) = reindex.as_mut() {
+                    let _bg_permit = background_db.acquire().await;
+                    Some(engine.index_job_step(&mut active.job).await)
+                } else {
+                    None
+                };
+                if let Some(step) = step {
+                    match step {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            if let Some(active) = reindex.take() {
+                                let result = engine.finish_index_job(active.job).await;
+                                respond_all(active.waiters, result);
+                            }
+                        }
+                        Err(error) => {
+                            tracing::error!("semantic reindex failed: {error}");
+                            if let Some(active) = reindex.take() {
+                                engine.fail_index_job(active.job, &error).await;
+                                respond_all(active.waiters, Err(error));
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                if !pending.is_empty() {
+                    let batch = pending
+                        .drain(..INGEST_BATCH_MESSAGES.min(pending.len()))
+                        .collect::<Vec<_>>();
+                    let queue_wait = batch
+                        .iter()
+                        .map(|item| item.enqueued_at.elapsed())
+                        .max()
+                        .unwrap_or_default();
+                    let message_ids = batch
+                        .into_iter()
+                        .map(|item| {
+                            pending_ids.remove(&item.message_id);
+                            item.message_id
+                        })
+                        .collect::<Vec<_>>();
                     if let Ok(mut metrics) = worker_metrics.lock() {
                         metrics.queue_depth = pending.len() as u32;
-                        metrics.in_flight = 1;
+                        metrics.in_flight = message_ids.len() as u32;
                         metrics.last_queue_wait_ms = Some(queue_wait.as_millis() as u64);
                     }
                     let started_at = Instant::now();
@@ -120,9 +196,7 @@ impl SemanticServiceHandle {
                     // the ingest unit so concurrent background work can't
                     // exhaust the reader pool and starve interactive queries.
                     let _bg_permit = background_db.acquire().await;
-                    let result = engine
-                        .ingest_messages(std::slice::from_ref(&next.message_id))
-                        .await;
+                    let result = engine.ingest_messages(&message_ids).await;
                     if let Ok(mut metrics) = worker_metrics.lock() {
                         metrics.queue_depth = pending.len() as u32;
                         metrics.in_flight = 0;
@@ -130,7 +204,7 @@ impl SemanticServiceHandle {
                     match result {
                         Ok(()) => {
                             tracing::trace!(
-                                message_id = %next.message_id,
+                                messages = message_ids.len(),
                                 queue_wait_ms = queue_wait.as_secs_f64() * 1000.0,
                                 elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
                                 "semantic background ingest processed"
@@ -138,7 +212,7 @@ impl SemanticServiceHandle {
                         }
                         Err(error) => {
                             tracing::error!(
-                                message_id = %next.message_id,
+                                messages = message_ids.len(),
                                 queue_wait_ms = queue_wait.as_secs_f64() * 1000.0,
                                 elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
                                 "semantic background ingest failed: {error}"
@@ -148,6 +222,12 @@ impl SemanticServiceHandle {
                     continue;
                 }
 
+                // Backlog drained: pay the ANN rebuild once instead of once
+                // per ingested message.
+                if let Err(error) = engine.refresh_dirty_indexes().await {
+                    tracing::warn!("semantic index refresh failed: {error}");
+                }
+
                 let Some(command) = rx.recv().await else {
                     break;
                 };
@@ -155,6 +235,7 @@ impl SemanticServiceHandle {
                     &mut engine,
                     &mut pending,
                     &mut pending_ids,
+                    &mut reindex,
                     &worker_metrics,
                     command,
                 )
@@ -335,6 +416,7 @@ async fn handle_command(
     engine: &mut SemanticEngine,
     pending: &mut VecDeque<PendingIngest>,
     pending_ids: &mut HashSet<MessageId>,
+    reindex: &mut Option<ActiveReindex>,
     runtime_metrics: &Arc<Mutex<SemanticRuntimeMetrics>>,
     command: SemanticCommand,
 ) -> Result<()> {
@@ -352,9 +434,22 @@ async fn handle_command(
         SemanticCommand::InstallProfile { profile, resp } => {
             let _ = resp.send(engine.install_profile(profile).await);
         }
-        SemanticCommand::ReindexActive { resp } => {
-            let _ = resp.send(engine.reindex_active().await);
-        }
+        SemanticCommand::ReindexActive { resp } => match reindex.as_mut() {
+            // A concurrent request joins the running pass instead of starting
+            // a second one over the same messages.
+            Some(active) => active.waiters.push(resp),
+            None => match engine.begin_reindex().await {
+                Ok(job) => {
+                    *reindex = Some(ActiveReindex {
+                        job,
+                        waiters: vec![resp],
+                    });
+                }
+                Err(error) => {
+                    let _ = resp.send(Err(error));
+                }
+            },
+        },
         SemanticCommand::BackfillActive { resp } => {
             let _ = resp.send(engine.backfill_active().await);
         }

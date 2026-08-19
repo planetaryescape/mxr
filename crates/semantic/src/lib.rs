@@ -33,16 +33,37 @@ use mxr_store::Store;
 #[cfg(feature = "local")]
 use sha2::{Digest, Sha256};
 #[cfg(feature = "local")]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 #[cfg(feature = "local")]
 use std::path::{Path as StdPath, PathBuf};
 use std::sync::Arc;
+#[cfg(feature = "local")]
+use std::sync::Mutex;
+#[cfg(feature = "local")]
+use std::time::{Duration, Instant};
 
 pub use service::SemanticServiceHandle;
 
 #[cfg(feature = "local")]
 const FASTEMBED_REVISION: &str = "fastembed-5.13.0";
+
+/// Messages an index job processes per step. Bounds peak memory (envelopes,
+/// bodies and chunks for one page) and how long the semantic worker can go
+/// without draining status/search commands.
+#[cfg(feature = "local")]
+const INDEX_PAGE_MESSAGES: usize = 64;
+
+/// Chunk texts handed to one embedding call. One message yields ~2-3 chunks,
+/// and an ONNX run that narrow is dominated by per-run overhead, so calls are
+/// filled with chunks spanning many messages.
+#[cfg(feature = "local")]
+const EMBED_TEXTS_PER_CALL: usize = 512;
+
+/// Rows per ONNX session run inside one embedding call. Measured on a 2k
+/// message corpus: 16 and 64 rows are both ~5-15% slower than 32.
+#[cfg(feature = "local")]
+const EMBED_MODEL_BATCH: usize = 32;
 
 #[derive(Debug, Clone)]
 pub struct SemanticHit {
@@ -71,7 +92,42 @@ struct SemanticIndex {
 struct MessageChunkBatch {
     message_id: MessageId,
     chunks: Vec<SemanticChunkRecord>,
-    extract_elapsed: std::time::Duration,
+    /// Whether the stored chunk rows had to be rewritten. A rewrite cascades
+    /// away the message's embeddings, so it always forces a re-embed.
+    chunks_changed: bool,
+}
+
+/// Where an index job takes chunk text from.
+#[cfg(feature = "local")]
+#[derive(Clone, Copy)]
+enum ChunkSource {
+    /// Re-extract from the message and rewrite chunks that drifted.
+    Message,
+    /// Reuse stored chunks; only extract for messages that have none. Chunks
+    /// are profile-independent, so switching or backfilling a profile does not
+    /// need to redo extraction.
+    Stored,
+}
+
+/// A resumable full-profile indexing pass.
+///
+/// Stepping it one page at a time lets the semantic worker answer status and
+/// search commands between pages instead of disappearing for the length of a
+/// whole reindex.
+pub(crate) struct SemanticIndexJob {
+    #[cfg(feature = "local")]
+    inner: IndexJobInner,
+}
+
+#[cfg(feature = "local")]
+struct IndexJobInner {
+    record: SemanticProfileRecord,
+    message_ids: Vec<MessageId>,
+    chunk_source: ChunkSource,
+    cursor: usize,
+    /// False when the stored embeddings cannot be trusted (model revision
+    /// changed), which forces every message to be re-embedded.
+    reuse_existing: bool,
 }
 
 #[cfg(feature = "local")]
@@ -91,10 +147,17 @@ pub struct SemanticEngine {
     runtime_metrics: SemanticRuntimeMetrics,
     #[cfg(feature = "local")]
     cpu_executor: CpuExecutor,
+    /// Shared so embedding runs can move off the async runtime onto a blocking
+    /// thread; `TextEmbedding::embed` needs `&mut self`, hence the mutex.
     #[cfg(feature = "local")]
-    models: HashMap<SemanticProfile, TextEmbedding>,
+    models: HashMap<SemanticProfile, Arc<Mutex<TextEmbedding>>>,
     #[cfg(feature = "local")]
     indexes: HashMap<SemanticProfile, SemanticIndex>,
+    /// Profiles whose ANN index no longer matches the stored embeddings.
+    /// Rebuilding is deferred so a burst of ingests costs one rebuild, not one
+    /// per message.
+    #[cfg(feature = "local")]
+    dirty_indexes: HashSet<SemanticProfile>,
     #[cfg(feature = "local")]
     test_embedder: Option<TestEmbedder>,
 }
@@ -110,6 +173,7 @@ impl SemanticEngine {
             cpu_executor: CpuExecutor::new(),
             models: HashMap::new(),
             indexes: HashMap::new(),
+            dirty_indexes: HashSet::new(),
             test_embedder: None,
         }
     }
@@ -142,21 +206,33 @@ impl SemanticEngine {
         &mut self,
         profile: SemanticProfile,
     ) -> Result<SemanticProfileRecord> {
-        let dimensions = {
-            let warmup = vec![prefixed_document(profile, "warmup document")];
-            let embeddings =
-                self.embed_texts(profile, &warmup, Some(1), true, "embed warmup document")?;
-            embeddings
-                .first()
-                .map(|embedding| embedding.len() as u32)
-                .ok_or_else(|| anyhow!("embedding backend returned no vector"))?
+        let stored = self.store.get_semantic_profile(profile).await?;
+        // The warmup embed exists to load the model and learn its dimensions.
+        // Once the model is loaded in this process the stored dimensions are
+        // authoritative, and repeating it would cost a full inference on every
+        // ingest.
+        let known_dimensions = stored.as_ref().and_then(|record| {
+            (record.dimensions > 0
+                && record.model_revision == FASTEMBED_REVISION
+                && self.test_embedder.is_none()
+                && self.models.contains_key(&profile))
+            .then_some(record.dimensions)
+        });
+        let dimensions = match known_dimensions {
+            Some(dimensions) => dimensions,
+            None => {
+                let warmup = vec![prefixed_document(profile, "warmup document")];
+                let embeddings = self
+                    .embed_texts(profile, warmup, Some(1), true, "embed warmup document")
+                    .await?;
+                embeddings
+                    .first()
+                    .map(|embedding| embedding.len() as u32)
+                    .ok_or_else(|| anyhow!("embedding backend returned no vector"))?
+            }
         };
 
-        let mut record = self
-            .store
-            .get_semantic_profile(profile)
-            .await?
-            .unwrap_or_else(|| default_profile_record(profile, dimensions));
+        let mut record = stored.unwrap_or_else(|| default_profile_record(profile, dimensions));
         record.dimensions = dimensions;
         record.status = SemanticProfileStatus::Ready;
         if record.installed_at.is_none() {
@@ -195,7 +271,7 @@ impl SemanticEngine {
     /// semantic enablement can reuse stored normalized text. Embedding generation
     /// and ANN refresh stay feature-gated behind `config.enabled`.
     pub async fn ingest_messages(&mut self, message_ids: &[MessageId]) -> Result<()> {
-        let ingest_started = std::time::Instant::now();
+        let ingest_started = Instant::now();
         if message_ids.is_empty() {
             self.runtime_metrics.last_ingest_ms = Some(ingest_started.elapsed().as_millis() as u64);
             return Ok(());
@@ -210,16 +286,30 @@ impl SemanticEngine {
 
         let profile = self.config.active_profile;
         let record = self.install_profile(profile).await?;
-        self.reindex_batches_for_profile(&record, &batches, now)
+        let stale = self
+            .batches_needing_embeddings(&record, &batches, true)
             .await?;
+        if !stale.is_empty() {
+            self.embed_and_store(&record, &stale, now).await?;
+            // Deferred: rebuilding per ingest makes a backlog drain quadratic.
+            self.dirty_indexes.insert(profile);
+        }
 
         let mut ready_record = record;
         ready_record.status = SemanticProfileStatus::Ready;
         ready_record.last_indexed_at = Some(chrono::Utc::now());
         ready_record.last_error = None;
         self.store.upsert_semantic_profile(&ready_record).await?;
-        self.rebuild_index(profile).await?;
         self.runtime_metrics.last_ingest_ms = Some(ingest_started.elapsed().as_millis() as u64);
+        Ok(())
+    }
+
+    /// Rebuilds any ANN index left stale by ingest. The semantic worker calls
+    /// this once its ingest backlog drains so searches stay warm.
+    pub async fn refresh_dirty_indexes(&mut self) -> Result<()> {
+        for profile in std::mem::take(&mut self.dirty_indexes) {
+            self.rebuild_index(profile).await?;
+        }
         Ok(())
     }
 
@@ -239,20 +329,20 @@ impl SemanticEngine {
 
         let profile = self.config.active_profile;
         self.install_profile(profile).await?;
-        if !self.indexes.contains_key(&profile) {
+        if self.dirty_indexes.remove(&profile) || !self.indexes.contains_key(&profile) {
             self.rebuild_index(profile).await?;
         }
 
-        let query_text = prefixed_query(profile, query);
-        let query_texts = vec![query_text];
+        let query_texts = vec![prefixed_query(profile, query)];
         let query_embedding = self
             .embed_texts(
                 profile,
-                &query_texts,
+                query_texts,
                 Some(1),
                 self.config.auto_download_models,
                 "embed query",
-            )?
+            )
+            .await?
             .into_iter()
             .next()
             .ok_or_else(|| anyhow!("embedding backend returned no query vector"))?;
@@ -277,76 +367,127 @@ impl SemanticEngine {
         ))
     }
 
+    /// Starts a reindex of every stored message for the active profile.
+    ///
+    /// The caller drives it with [`Self::index_job_step`] so long passes stay
+    /// interruptible; [`Self::reindex_active`] is the run-to-completion form.
+    pub(crate) async fn begin_reindex(&mut self) -> Result<SemanticIndexJob> {
+        let profile = self.config.active_profile;
+        let message_ids = self.all_message_ids().await?;
+        self.begin_index_job(profile, message_ids, ChunkSource::Message)
+            .await
+    }
+
+    /// Records a failed pass so status stops reporting `indexing` forever.
+    pub(crate) async fn fail_index_job(&mut self, job: SemanticIndexJob, error: &anyhow::Error) {
+        let mut record = job.inner.record;
+        record.status = SemanticProfileStatus::Error;
+        // `{:#}` keeps the anyhow cause chain; `last_error` is what the user
+        // sees in `mxr semantic status`.
+        record.last_error = Some(format!("{error:#}"));
+        if let Err(store_error) = self.store.upsert_semantic_profile(&record).await {
+            tracing::warn!("failed to record semantic index failure: {store_error}");
+        }
+    }
+
+    async fn begin_index_job(
+        &mut self,
+        profile: SemanticProfile,
+        message_ids: Vec<MessageId>,
+        chunk_source: ChunkSource,
+    ) -> Result<SemanticIndexJob> {
+        let stored = self.store.get_semantic_profile(profile).await?;
+        // A model revision change silently invalidates every stored vector for
+        // the profile, so nothing may be treated as already current.
+        let reuse_existing =
+            stored.is_none_or(|stored| stored.model_revision == FASTEMBED_REVISION);
+
+        let mut record = self.install_profile(profile).await?;
+        record.model_revision = FASTEMBED_REVISION.to_string();
+        record.status = SemanticProfileStatus::Indexing;
+        record.progress_completed = 0;
+        record.progress_total = message_ids.len() as u32;
+        record.last_error = None;
+        self.store.upsert_semantic_profile(&record).await?;
+
+        Ok(SemanticIndexJob {
+            inner: IndexJobInner {
+                record,
+                message_ids,
+                chunk_source,
+                cursor: 0,
+                reuse_existing,
+            },
+        })
+    }
+
+    /// Processes one page. Returns `true` while work remains.
+    pub(crate) async fn index_job_step(&mut self, job: &mut SemanticIndexJob) -> Result<bool> {
+        let job = &mut job.inner;
+        let end = (job.cursor + INDEX_PAGE_MESSAGES).min(job.message_ids.len());
+        let page = job.message_ids[job.cursor..end].to_vec();
+        let now = chrono::Utc::now();
+
+        let batches = match job.chunk_source {
+            ChunkSource::Message => self.prepare_message_chunks(&page, now).await?,
+            ChunkSource::Stored => self.load_or_prepare_chunks(&page, now).await?,
+        };
+        let stale = self
+            .batches_needing_embeddings(&job.record, &batches, job.reuse_existing)
+            .await?;
+        self.embed_and_store(&job.record, &stale, now).await?;
+
+        job.cursor = end;
+        job.record.progress_completed = job.cursor as u32;
+        // One row upsert per page is what makes `GetSemanticStatus` show live
+        // progress instead of 0/N until the pass ends.
+        self.store.upsert_semantic_profile(&job.record).await?;
+        Ok(job.cursor < job.message_ids.len())
+    }
+
+    pub(crate) async fn finish_index_job(
+        &mut self,
+        job: SemanticIndexJob,
+    ) -> Result<SemanticProfileRecord> {
+        let mut job = job.inner;
+        let profile = job.record.profile;
+        job.record.status = SemanticProfileStatus::Ready;
+        job.record.last_indexed_at = Some(chrono::Utc::now());
+        job.record.last_error = None;
+        if job.record.activated_at.is_none() && self.config.active_profile == profile {
+            job.record.activated_at = Some(chrono::Utc::now());
+        }
+        self.store.upsert_semantic_profile(&job.record).await?;
+        self.dirty_indexes.remove(&profile);
+        self.rebuild_index(profile).await?;
+        Ok(job.record)
+    }
+
+    async fn run_index_job(&mut self, mut job: SemanticIndexJob) -> Result<SemanticProfileRecord> {
+        while self.index_job_step(&mut job).await? {}
+        self.finish_index_job(job).await
+    }
+
     async fn reindex_all_for_profile(
         &mut self,
         profile: SemanticProfile,
     ) -> Result<SemanticProfileRecord> {
-        let mut record = self.install_profile(profile).await?;
-        record.status = SemanticProfileStatus::Indexing;
-        record.progress_completed = 0;
-        record.progress_total = 0;
-        record.last_error = None;
-        self.store.upsert_semantic_profile(&record).await?;
-
         let message_ids = self.all_message_ids().await?;
-        record.progress_total = message_ids.len() as u32;
-        self.store.upsert_semantic_profile(&record).await?;
-        let now = chrono::Utc::now();
-        let batches = self.prepare_message_chunks(&message_ids, now).await?;
-        for batch in &batches {
-            let embeddings = self
-                .build_embedding_records(&record, &batch.chunks, now)
-                .await?;
-            self.store
-                .replace_semantic_embeddings(&batch.message_id, &record.id, &embeddings)
-                .await?;
-            record.progress_completed += 1;
-        }
-
-        record.status = SemanticProfileStatus::Ready;
-        record.last_indexed_at = Some(chrono::Utc::now());
-        record.last_error = None;
-        if record.activated_at.is_none() && self.config.active_profile == profile {
-            record.activated_at = Some(chrono::Utc::now());
-        }
-        self.store.upsert_semantic_profile(&record).await?;
-        self.rebuild_index(profile).await?;
-        Ok(record)
+        let job = self
+            .begin_index_job(profile, message_ids, ChunkSource::Message)
+            .await?;
+        self.run_index_job(job).await
     }
 
     async fn activate_profile(
         &mut self,
         profile: SemanticProfile,
     ) -> Result<SemanticProfileRecord> {
-        let mut record = self.install_profile(profile).await?;
-        record.status = SemanticProfileStatus::Indexing;
-        record.progress_completed = 0;
-        record.progress_total = 0;
-        record.last_error = None;
-        self.store.upsert_semantic_profile(&record).await?;
-
         let message_ids = self.all_message_ids().await?;
-        record.progress_total = message_ids.len() as u32;
-        self.store.upsert_semantic_profile(&record).await?;
-
-        let now = chrono::Utc::now();
-        self.backfill_missing_chunks(&message_ids, now).await?;
-
-        for message_id in &message_ids {
-            let chunks = self.store.list_semantic_chunks(message_id).await?;
-            let embeddings = self.build_embedding_records(&record, &chunks, now).await?;
-            self.store
-                .replace_semantic_embeddings(message_id, &record.id, &embeddings)
-                .await?;
-            record.progress_completed += 1;
-        }
-
-        record.status = SemanticProfileStatus::Ready;
-        record.last_indexed_at = Some(chrono::Utc::now());
-        record.last_error = None;
-        self.store.upsert_semantic_profile(&record).await?;
-        self.rebuild_index(profile).await?;
-        Ok(record)
+        let job = self
+            .begin_index_job(profile, message_ids, ChunkSource::Stored)
+            .await?;
+        self.run_index_job(job).await
     }
 
     async fn backfill_missing_for_profile(
@@ -362,52 +503,26 @@ impl SemanticEngine {
         profile: SemanticProfile,
         limit: u32,
     ) -> Result<SemanticProfileRecord> {
-        let mut record = self.install_profile(profile).await?;
-        record.status = SemanticProfileStatus::Indexing;
-        record.progress_completed = 0;
-        record.last_error = None;
-
-        let now = chrono::Utc::now();
+        let profile_id = self.install_profile(profile).await?.id;
         let limit = limit.max(1);
         let missing_chunks = self
             .store
             .list_message_ids_missing_semantic_chunks(limit)
             .await?;
-        self.prepare_message_chunks(&missing_chunks, now).await?;
-
-        let mut missing_embeddings = self
+        let mut targets = self
             .store
-            .list_message_ids_missing_semantic_embeddings(&record.id, limit)
+            .list_message_ids_missing_semantic_embeddings(&profile_id, limit)
             .await?;
         for message_id in missing_chunks {
-            if !missing_embeddings.contains(&message_id) {
-                missing_embeddings.push(message_id);
+            if !targets.contains(&message_id) {
+                targets.push(message_id);
             }
         }
 
-        record.progress_total = missing_embeddings.len() as u32;
-        self.store.upsert_semantic_profile(&record).await?;
-
-        for message_id in &missing_embeddings {
-            let chunks = self.store.list_semantic_chunks(message_id).await?;
-            let embeddings = self.build_embedding_records(&record, &chunks, now).await?;
-            self.store
-                .replace_semantic_embeddings(message_id, &record.id, &embeddings)
-                .await?;
-            record.progress_completed += 1;
-            if record.progress_completed % 100 == 0 {
-                self.store.upsert_semantic_profile(&record).await?;
-            }
-        }
-
-        record.status = SemanticProfileStatus::Ready;
-        record.last_indexed_at = Some(chrono::Utc::now());
-        record.last_error = None;
-        if record.activated_at.is_none() && self.config.active_profile == profile {
-            record.activated_at = Some(chrono::Utc::now());
-        }
-        self.store.upsert_semantic_profile(&record).await?;
-        self.rebuild_index(profile).await?;
+        let job = self
+            .begin_index_job(profile, targets, ChunkSource::Stored)
+            .await?;
+        let record = self.run_index_job(job).await?;
         self.store
             .insert_event(
                 "info",
@@ -473,30 +588,15 @@ impl SemanticEngine {
         Ok(message_ids)
     }
 
-    async fn backfill_missing_chunks(
-        &mut self,
-        message_ids: &[MessageId],
-        now: chrono::DateTime<chrono::Utc>,
-    ) -> Result<()> {
-        for message_id in message_ids {
-            if self
-                .store
-                .list_semantic_chunks(message_id)
-                .await?
-                .is_empty()
-            {
-                let _ = self.prepare_message_chunk(message_id, now).await?;
-            }
-        }
-        Ok(())
-    }
-
+    /// Extracts chunks from the messages themselves, rewriting stored chunks
+    /// only where the extracted text drifted. Skipping the rewrite matters:
+    /// replacing chunk rows cascades the message's embeddings away.
     async fn prepare_message_chunks(
         &mut self,
         message_ids: &[MessageId],
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<Vec<MessageChunkBatch>> {
-        let extract_started = std::time::Instant::now();
+        let extract_started = Instant::now();
         let mut inputs = Vec::with_capacity(message_ids.len());
         for message_id in message_ids {
             if let Some(input) = self.load_chunk_preparation_input(message_id).await? {
@@ -504,114 +604,186 @@ impl SemanticEngine {
             }
         }
 
-        let batches = self
+        let mut batches = self
             .cpu_executor
             .map(inputs, move |input| {
                 Ok(build_message_chunk_batch(input, now))
             })
             .await?;
-        for batch in &batches {
-            tracing::trace!(
-                message_id = %batch.message_id,
-                elapsed_ms = batch.extract_elapsed.as_secs_f64() * 1000.0,
-                "semantic chunk extraction complete"
-            );
-            self.store
-                .replace_semantic_chunks(&batch.message_id, &batch.chunks)
+        for batch in &mut batches {
+            let stored = self
+                .store
+                .list_semantic_chunk_fingerprints(&batch.message_id)
                 .await?;
+            batch.chunks_changed = !chunks_match(&stored, &batch.chunks);
+            if batch.chunks_changed {
+                self.store
+                    .replace_semantic_chunks(&batch.message_id, &batch.chunks)
+                    .await?;
+            }
         }
         self.runtime_metrics.last_extract_ms = Some(extract_started.elapsed().as_millis() as u64);
         Ok(batches)
     }
 
-    async fn prepare_message_chunk(
+    /// Reuses stored chunks and only extracts for messages that have none.
+    /// Chunks are profile-independent, so switching or backfilling a profile
+    /// never needs extraction redone.
+    async fn load_or_prepare_chunks(
         &mut self,
-        message_id: &MessageId,
+        message_ids: &[MessageId],
         now: chrono::DateTime<chrono::Utc>,
-    ) -> Result<Option<MessageChunkBatch>> {
-        let extract_started = std::time::Instant::now();
-        let Some(input) = self.load_chunk_preparation_input(message_id).await? else {
-            return Ok(None);
-        };
-        let mut batches = self
-            .cpu_executor
-            .map(vec![input], move |input| {
-                Ok(build_message_chunk_batch(input, now))
-            })
-            .await?;
-        let Some(batch) = batches.pop() else {
-            return Ok(None);
-        };
-        tracing::trace!(
-            message_id = %batch.message_id,
-            elapsed_ms = batch.extract_elapsed.as_secs_f64() * 1000.0,
-            "semantic chunk extraction complete"
-        );
-        self.store
-            .replace_semantic_chunks(&batch.message_id, &batch.chunks)
-            .await?;
-        self.runtime_metrics.last_extract_ms = Some(extract_started.elapsed().as_millis() as u64);
-        Ok(Some(batch))
+    ) -> Result<Vec<MessageChunkBatch>> {
+        let mut batches = Vec::with_capacity(message_ids.len());
+        let mut without_chunks = Vec::new();
+        for message_id in message_ids {
+            let chunks = self.store.list_semantic_chunks(message_id).await?;
+            if chunks.is_empty() {
+                without_chunks.push(message_id.clone());
+            } else {
+                batches.push(MessageChunkBatch {
+                    message_id: message_id.clone(),
+                    chunks,
+                    chunks_changed: false,
+                });
+            }
+        }
+        batches.extend(self.prepare_message_chunks(&without_chunks, now).await?);
+        Ok(batches)
     }
 
-    async fn reindex_batches_for_profile(
+    /// Filters out messages whose stored embeddings are already current for
+    /// the profile, so a repeated reindex or a re-enqueued ingest costs a
+    /// lookup instead of an inference.
+    async fn batches_needing_embeddings<'a>(
+        &self,
+        record: &SemanticProfileRecord,
+        batches: &'a [MessageChunkBatch],
+        reuse_existing: bool,
+    ) -> Result<Vec<&'a MessageChunkBatch>> {
+        let mut stale = Vec::new();
+        for batch in batches {
+            if batch.chunks.is_empty() {
+                continue;
+            }
+            if !reuse_existing || batch.chunks_changed {
+                stale.push(batch);
+                continue;
+            }
+            let missing = self
+                .store
+                .count_semantic_chunks_missing_embeddings(
+                    &batch.message_id,
+                    &record.id,
+                    record.dimensions,
+                )
+                .await?;
+            if missing > 0 {
+                stale.push(batch);
+            }
+        }
+        Ok(stale)
+    }
+
+    /// Embeds and persists chunks for many messages, filling each embedding
+    /// call with chunks spanning as many messages as fit.
+    async fn embed_and_store(
         &mut self,
-        profile: &SemanticProfileRecord,
-        batches: &[MessageChunkBatch],
+        record: &SemanticProfileRecord,
+        batches: &[&MessageChunkBatch],
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
-        for batch in batches {
-            let embeddings = self
-                .build_embedding_records(profile, &batch.chunks, now)
-                .await?;
-            self.store
-                .replace_semantic_embeddings(&batch.message_id, &profile.id, &embeddings)
-                .await?;
+        let mut start = 0;
+        while start < batches.len() {
+            // Take whole messages until the next one would overflow the call,
+            // so a message's chunks never straddle two embedding calls.
+            let mut end = start;
+            let mut texts = 0;
+            while end < batches.len()
+                && (end == start || texts + batches[end].chunks.len() <= EMBED_TEXTS_PER_CALL)
+            {
+                texts += batches[end].chunks.len();
+                end += 1;
+            }
+            self.embed_group(record, &batches[start..end], now).await?;
+            start = end;
         }
         Ok(())
     }
 
-    async fn build_embedding_records(
+    async fn embed_group(
         &mut self,
-        profile: &SemanticProfileRecord,
-        chunks: &[SemanticChunkRecord],
+        record: &SemanticProfileRecord,
+        group: &[&MessageChunkBatch],
         now: chrono::DateTime<chrono::Utc>,
-    ) -> Result<Vec<SemanticEmbeddingRecord>> {
-        if chunks.is_empty() {
-            return Ok(Vec::new());
+    ) -> Result<()> {
+        let texts = group
+            .iter()
+            .flat_map(|batch| {
+                batch
+                    .chunks
+                    .iter()
+                    .map(|chunk| prefixed_document(record.profile, &chunk.normalized))
+            })
+            .collect::<Vec<_>>();
+        if texts.is_empty() {
+            return Ok(());
         }
 
-        let texts = chunks
-            .iter()
-            .map(|chunk| prefixed_document(profile.profile, &chunk.normalized))
-            .collect::<Vec<_>>();
-        let embeddings = self.embed_texts(
-            profile.profile,
-            &texts,
-            Some(32),
-            self.config.auto_download_models,
-            "embed message chunks",
-        )?;
-        let profile_id = profile.id.clone();
-        let chunk_embeddings = chunks.iter().cloned().zip(embeddings).collect::<Vec<_>>();
-        let embed_prep_started = std::time::Instant::now();
-        let embedding_records = self
-            .cpu_executor
-            .map(chunk_embeddings, move |(chunk, embedding)| {
-                Ok(SemanticEmbeddingRecord {
-                    chunk_id: chunk.id,
-                    profile_id: profile_id.clone(),
+        let expected = texts.len();
+        // The tokenizer pads every row of an ONNX batch to the longest row in
+        // it, so mixing short header chunks with full-window body chunks pays
+        // for padding. Grouping similar lengths together keeps the batches
+        // tight; the original order is restored below.
+        let mut indexed = texts.into_iter().enumerate().collect::<Vec<_>>();
+        indexed.sort_unstable_by_key(|(_, text)| std::cmp::Reverse(text.len()));
+        let (order, sorted): (Vec<usize>, Vec<String>) = indexed.into_iter().unzip();
+
+        let embeddings = self
+            .embed_texts(
+                record.profile,
+                sorted,
+                Some(EMBED_MODEL_BATCH),
+                self.config.auto_download_models,
+                "embed message chunks",
+            )
+            .await?;
+        if embeddings.len() != expected {
+            return Err(anyhow!(
+                "embedding backend returned {} vectors for {expected} chunks",
+                embeddings.len()
+            ));
+        }
+        let mut restored = vec![Vec::new(); expected];
+        for (slot, embedding) in order.into_iter().zip(embeddings) {
+            restored[slot] = embedding;
+        }
+
+        let mut embeddings = restored.into_iter();
+        let mut prep_elapsed = Duration::ZERO;
+        for batch in group {
+            let prep_started = Instant::now();
+            let records = batch
+                .chunks
+                .iter()
+                .zip(embeddings.by_ref())
+                .map(|(chunk, embedding)| SemanticEmbeddingRecord {
+                    chunk_id: chunk.id.clone(),
+                    profile_id: record.id.clone(),
                     dimensions: embedding.len() as u32,
                     vector: f32s_to_blob(&embedding),
                     status: SemanticEmbeddingStatus::Ready,
                     created_at: now,
                     updated_at: now,
                 })
-            })
-            .await?;
-        self.runtime_metrics.last_embedding_prep_ms =
-            Some(embed_prep_started.elapsed().as_millis() as u64);
-        Ok(embedding_records)
+                .collect::<Vec<_>>();
+            prep_elapsed += prep_started.elapsed();
+            self.store
+                .replace_semantic_embeddings(&batch.message_id, &record.id, &records)
+                .await?;
+        }
+        self.runtime_metrics.last_embedding_prep_ms = Some(prep_elapsed.as_millis() as u64);
+        Ok(())
     }
 
     async fn load_chunk_preparation_input(
@@ -625,48 +797,55 @@ impl SemanticEngine {
         Ok(Some(ChunkPreparationInput { envelope, body }))
     }
 
-    fn embed_texts(
+    async fn embed_texts(
         &mut self,
         profile: SemanticProfile,
-        texts: &[String],
+        texts: Vec<String>,
         batch_size: Option<usize>,
         allow_download: bool,
         context_label: &'static str,
     ) -> Result<Vec<Vec<f32>>> {
         if let Some(embedder) = &self.test_embedder {
-            return embedder(profile, texts);
+            return embedder(profile, &texts);
         }
 
-        self.ensure_model(profile, allow_download)?
-            .embed(texts, batch_size)
-            .context(context_label)
+        let model = self.ensure_model(profile, allow_download)?;
+        // ONNX inference is CPU-bound for the length of a whole batch; running
+        // it inline would park an async runtime worker for seconds at a time.
+        tokio::task::spawn_blocking(move || {
+            let mut model = model
+                .lock()
+                .map_err(|_| anyhow!("semantic embedding model lock poisoned"))?;
+            model.embed(texts, batch_size).context(context_label)
+        })
+        .await?
     }
 
     fn ensure_model(
         &mut self,
         profile: SemanticProfile,
         allow_download: bool,
-    ) -> Result<&mut TextEmbedding> {
-        if !self.models.contains_key(&profile) {
-            if !allow_download {
-                return Err(anyhow!(
-                    "semantic profile {} is not installed locally",
-                    profile.as_str()
-                ));
-            }
-            std::fs::create_dir_all(&self.cache_dir)?;
-            let model = TextEmbedding::try_new(
-                TextInitOptions::new(embedding_model(profile))
-                    .with_cache_dir(self.cache_dir.clone())
-                    .with_show_download_progress(false),
-            )
-            .with_context(|| format!("load semantic profile {}", profile.as_str()))?;
-            self.models.insert(profile, model);
+    ) -> Result<Arc<Mutex<TextEmbedding>>> {
+        if let Some(model) = self.models.get(&profile) {
+            return Ok(model.clone());
+        }
+        if !allow_download {
+            return Err(anyhow!(
+                "semantic profile {} is not installed locally",
+                profile.as_str()
+            ));
         }
 
-        self.models
-            .get_mut(&profile)
-            .ok_or_else(|| anyhow!("semantic profile {} not loaded", profile.as_str()))
+        std::fs::create_dir_all(&self.cache_dir)?;
+        let model = TextEmbedding::try_new(
+            TextInitOptions::new(embedding_model(profile))
+                .with_cache_dir(self.cache_dir.clone())
+                .with_show_download_progress(false),
+        )
+        .with_context(|| format!("load semantic profile {}", profile.as_str()))?;
+        let model = Arc::new(Mutex::new(model));
+        self.models.insert(profile, model.clone());
+        Ok(model)
     }
 }
 
@@ -727,6 +906,27 @@ impl SemanticEngine {
     pub async fn reindex_messages(&mut self, message_ids: &[MessageId]) -> Result<()> {
         self.ingest_messages(message_ids).await
     }
+
+    pub async fn refresh_dirty_indexes(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    pub(crate) async fn begin_reindex(&mut self) -> Result<SemanticIndexJob> {
+        Err(semantic_unavailable_error())
+    }
+
+    pub(crate) async fn index_job_step(&mut self, _job: &mut SemanticIndexJob) -> Result<bool> {
+        Err(semantic_unavailable_error())
+    }
+
+    pub(crate) async fn finish_index_job(
+        &mut self,
+        _job: SemanticIndexJob,
+    ) -> Result<SemanticProfileRecord> {
+        Err(semantic_unavailable_error())
+    }
+
+    pub(crate) async fn fail_index_job(&mut self, _job: SemanticIndexJob, _error: &anyhow::Error) {}
 
     pub async fn search(
         &mut self,
@@ -858,14 +1058,28 @@ fn build_message_chunk_batch(
     input: ChunkPreparationInput,
     now: chrono::DateTime<chrono::Utc>,
 ) -> MessageChunkBatch {
-    let started_at = std::time::Instant::now();
+    let started_at = Instant::now();
     let message_id = input.envelope.id.clone();
     let chunks = build_chunk_records(&input.envelope, input.body.as_ref(), now);
+    tracing::trace!(
+        %message_id,
+        elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+        "semantic chunk extraction complete"
+    );
     MessageChunkBatch {
         message_id,
         chunks,
-        extract_elapsed: started_at.elapsed(),
+        chunks_changed: false,
     }
+}
+
+#[cfg(feature = "local")]
+fn chunks_match(stored: &[(SemanticChunkId, String)], built: &[SemanticChunkRecord]) -> bool {
+    stored.len() == built.len()
+        && stored
+            .iter()
+            .zip(built)
+            .all(|((id, hash), chunk)| *id == chunk.id && *hash == chunk.content_hash)
 }
 
 #[cfg(feature = "local")]
@@ -1991,5 +2205,269 @@ mod tests {
         assert!(hits[0].score > hits[1].score);
         assert_eq!(hits[0].source_kind, SemanticChunkSourceKind::Body);
         assert!(hits[0].snippet.contains("message b"));
+    }
+
+    fn fingerprint_vector(text: &str) -> Vec<f32> {
+        let checksum = text.bytes().map(u32::from).sum::<u32>();
+        vec![text.len() as f32, checksum as f32, 1.0]
+    }
+
+    /// Test embedder that records the size of every call so tests can assert
+    /// how chunks were batched, and returns a vector derived from the text so
+    /// they can assert each chunk got its own vector.
+    fn recording_embedder(calls: Arc<std::sync::Mutex<Vec<usize>>>) -> TestEmbedder {
+        Arc::new(move |_profile: SemanticProfile, texts: &[String]| {
+            if let Ok(mut calls) = calls.lock() {
+                calls.push(texts.len());
+            }
+            Ok(texts.iter().map(|text| fingerprint_vector(text)).collect())
+        })
+    }
+
+    async fn seed_messages(store: &Store, account_id: &AccountId, count: usize) -> Vec<MessageId> {
+        let mut ids = Vec::with_capacity(count);
+        for index in 0..count {
+            let envelope = Envelope {
+                provider_id: format!("fake-{index}"),
+                subject: format!("Subject {index}"),
+                snippet: format!("Snippet {index}"),
+                ..test_envelope(account_id)
+            };
+            let body = test_body_with_text(
+                &envelope.id,
+                &format!("Body text number {index}"),
+                Vec::new(),
+            );
+            store.upsert_envelope(&envelope).await.unwrap();
+            store.insert_body(&body).await.unwrap();
+            ids.push(envelope.id);
+        }
+        ids
+    }
+
+    async fn engine_with_recording_embedder(
+        store: Arc<Store>,
+        data_dir: &StdPath,
+    ) -> (SemanticEngine, Arc<std::sync::Mutex<Vec<usize>>>) {
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut engine = SemanticEngine::new(store, data_dir, SemanticConfig::default());
+        engine.set_test_embedder(recording_embedder(calls.clone()));
+        (engine, calls)
+    }
+
+    fn embed_call_sizes(calls: &Arc<std::sync::Mutex<Vec<usize>>>) -> Vec<usize> {
+        calls.lock().unwrap().clone()
+    }
+
+    #[tokio::test]
+    async fn reindex_fills_embed_calls_with_chunks_from_many_messages() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        seed_messages(&store, &account.id, 40).await;
+
+        let data_dir = tempdir().unwrap();
+        let (mut engine, calls) =
+            engine_with_recording_embedder(store.clone(), data_dir.path()).await;
+        let record = engine.reindex_active().await.unwrap();
+
+        let sizes = embed_call_sizes(&calls);
+        let largest = sizes.iter().copied().max().unwrap_or_default();
+        assert!(
+            largest > 8,
+            "expected embed calls spanning many messages, saw {sizes:?}"
+        );
+        assert!(
+            sizes.iter().all(|size| *size <= EMBED_TEXTS_PER_CALL),
+            "embed calls must respect the per-call cap, saw {sizes:?}"
+        );
+
+        let stored = store.list_semantic_embeddings(&record.id).await.unwrap();
+        assert_eq!(stored.len(), 80);
+        for (chunk, embedding) in stored {
+            let expected =
+                fingerprint_vector(&prefixed_document(record.profile, &chunk.normalized));
+            assert_eq!(
+                blob_to_f32s(&embedding.vector),
+                expected,
+                "chunk {} got another chunk's vector",
+                chunk.id.as_str()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn reindex_persists_progress_between_pages() {
+        let message_count = INDEX_PAGE_MESSAGES + 6;
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        seed_messages(&store, &account.id, message_count).await;
+
+        let data_dir = tempdir().unwrap();
+        let (mut engine, _calls) =
+            engine_with_recording_embedder(store.clone(), data_dir.path()).await;
+
+        let mut job = engine.begin_reindex().await.unwrap();
+        assert!(engine.index_job_step(&mut job).await.unwrap());
+
+        let mid = store
+            .get_semantic_profile(SemanticProfile::BgeSmallEnV15)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(mid.status, SemanticProfileStatus::Indexing);
+        assert_eq!(mid.progress_total, message_count as u32);
+        assert_eq!(mid.progress_completed, INDEX_PAGE_MESSAGES as u32);
+
+        assert!(!engine.index_job_step(&mut job).await.unwrap());
+        let record = engine.finish_index_job(job).await.unwrap();
+        assert_eq!(record.status, SemanticProfileStatus::Ready);
+        assert_eq!(record.progress_completed, message_count as u32);
+    }
+
+    #[tokio::test]
+    async fn reindex_reuses_current_embeddings_and_re_embeds_changed_messages() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let ids = seed_messages(&store, &account.id, 12).await;
+
+        let data_dir = tempdir().unwrap();
+        let (mut engine, calls) =
+            engine_with_recording_embedder(store.clone(), data_dir.path()).await;
+        let record = engine.reindex_active().await.unwrap();
+        let first_pass = store.list_semantic_embeddings(&record.id).await.unwrap();
+        calls.lock().unwrap().clear();
+
+        engine.reindex_active().await.unwrap();
+        assert!(
+            embed_call_sizes(&calls).iter().all(|size| *size <= 1),
+            "an unchanged reindex must not re-embed message chunks, saw {:?}",
+            embed_call_sizes(&calls)
+        );
+        let second_pass = store.list_semantic_embeddings(&record.id).await.unwrap();
+        assert_eq!(second_pass.len(), first_pass.len());
+
+        let changed = ids[3].clone();
+        let body = test_body_with_text(&changed, "Completely different body text", Vec::new());
+        store.insert_body(&body).await.unwrap();
+        calls.lock().unwrap().clear();
+
+        engine.reindex_active().await.unwrap();
+        let embedded_texts = embed_call_sizes(&calls).iter().sum::<usize>();
+        assert!(
+            (1..=3).contains(&embedded_texts),
+            "only the changed message should be re-embedded, saw {embedded_texts} texts"
+        );
+        let chunks = store.list_semantic_chunks(&changed).await.unwrap();
+        assert!(chunks
+            .iter()
+            .any(|chunk| chunk.normalized.contains("completely different")));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn status_stays_responsive_while_a_reindex_runs() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        seed_messages(&store, &account.id, INDEX_PAGE_MESSAGES * 3).await;
+
+        let data_dir = tempdir().unwrap();
+        let engine = SemanticEngine::new(store, data_dir.path(), SemanticConfig::default());
+        let (handle, worker) =
+            SemanticServiceHandle::start(engine, Arc::new(tokio::sync::Semaphore::new(4)));
+        handle
+            .set_test_embedder(|_profile, texts: &[String]| {
+                // Slow enough that the pass spans several status polls.
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                Ok(texts.iter().map(|text| fingerprint_vector(text)).collect())
+            })
+            .await
+            .unwrap();
+
+        let reindex = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.reindex_active().await }
+        });
+
+        let mut saw_live_progress = false;
+        while !reindex.is_finished() {
+            let snapshot =
+                tokio::time::timeout(std::time::Duration::from_secs(10), handle.status_snapshot())
+                    .await
+                    .expect("status query blocked behind the reindex")
+                    .unwrap();
+            saw_live_progress |= snapshot.profiles.iter().any(|profile| {
+                profile.status == SemanticProfileStatus::Indexing && profile.progress_completed > 0
+            });
+            tokio::task::yield_now().await;
+        }
+
+        let record = reindex.await.unwrap().unwrap();
+        assert_eq!(record.status, SemanticProfileStatus::Ready);
+        assert!(
+            saw_live_progress,
+            "status never reported progress while the reindex was running"
+        );
+
+        handle.request_shutdown().await.unwrap();
+        worker.await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn queued_ingest_batches_across_messages_and_skips_already_indexed_ones() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let ids = seed_messages(&store, &account.id, 40).await;
+
+        let data_dir = tempdir().unwrap();
+        let engine = SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
+        let (handle, worker) =
+            SemanticServiceHandle::start(engine, Arc::new(tokio::sync::Semaphore::new(4)));
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorder = calls.clone();
+        handle
+            .set_test_embedder(move |_profile, texts: &[String]| {
+                if let Ok(mut calls) = recorder.lock() {
+                    calls.push(texts.len());
+                }
+                Ok(texts.iter().map(|text| fingerprint_vector(text)).collect())
+            })
+            .await
+            .unwrap();
+
+        handle.enqueue_ingest_messages(&ids).await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            while store
+                .collect_record_counts()
+                .await
+                .unwrap()
+                .semantic_embeddings
+                < 80
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("queued ingest did not finish");
+
+        let sizes = embed_call_sizes(&calls);
+        assert!(
+            sizes.iter().copied().max().unwrap_or_default() > 8,
+            "queued ingest should batch chunks across messages, saw {sizes:?}"
+        );
+
+        calls.lock().unwrap().clear();
+        handle.ingest_messages(&ids).await.unwrap();
+        assert!(
+            embed_call_sizes(&calls).iter().all(|size| *size <= 1),
+            "re-ingesting unchanged messages must not re-embed, saw {:?}",
+            embed_call_sizes(&calls)
+        );
+
+        handle.request_shutdown().await.unwrap();
+        worker.await.unwrap();
     }
 }

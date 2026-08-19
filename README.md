@@ -99,7 +99,7 @@ supports account scoping, and gives mutating commands a preview path.
 
 ```bash
 # Find mail
-mxr search "is:unread from:builds@buildkite.com" --format json | jq '.results'
+mxr search "is:unread from:notifications@buildkite.com" --format json | jq '.results'
 
 # Read the newest match
 mxr cat --search "from:alice@example.com" --first

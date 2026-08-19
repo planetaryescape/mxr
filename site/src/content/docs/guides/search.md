@@ -10,13 +10,13 @@ mxr treats search as navigation, not a bolt-on filter. Search results drive the 
 ## Common patterns
 
 ```bash
-mxr search "from:alice unread"
+mxr search "from:alice@example.com unread"
 mxr search "label:work has:attachment"
 mxr search "subject:\"quarterly review\" after:2026-01-01"
 mxr search "unsubscribe"
 mxr search "label:inbox" --format ids
 mxr search "adrian in:inbox" --limit 1000
-mxr search "{from:amy from:david} subject:(dinner movie)"
+mxr search "{from:amy@example.com from:david@example.com} subject:(dinner movie)"
 mxr search "holiday AROUND 10 vacation"
 mxr search "body:house of cards" --mode hybrid --explain
 mxr search "is:owed-reply"
@@ -42,6 +42,12 @@ Likewise `+word` is preserved in the AST as a no-stemming hint, but the
 current Tantivy schema executes it like a normal text term until mxr grows
 a non-stemmed mirror field.
 
+The same gap applies to address operators, and it bites harder because the
+query still parses and simply returns nothing: `from:`, `to:`, `cc:`, `bcc:`
+and `delivered-to:` are indexed as whole addresses, so `from:alice` and
+`from:github.com` match nothing where Gmail would match on the local part or
+the domain. Pass the whole address (`from:alice@example.com`).
+
 ## Search modes
 
 - `lexical`: exact BM25/Tantivy retrieval
@@ -55,7 +61,7 @@ Embeddings stay local. OCR is not used for semantic indexing.
 ## Account-scoped search
 
 ```bash
-mxr search "from:github.com is:unread" --account work --format json
+mxr search "from:notifications@github.com is:unread" --account work --format json
 mxr search "subject:invoice newer_than:30d" --account billing@example.com --format ids
 mxr count "has:calendar" --account personal
 ```
@@ -75,7 +81,7 @@ returns up to 50 work-account hits, not "50 global hits, then filter to
 work".
 
 ```bash
-mxr search "from:github.com is:unread" --account work --limit 50 --format json
+mxr search "from:notifications@github.com is:unread" --account work --limit 50 --format json
 ```
 
 ## Dedicated search page
@@ -168,10 +174,10 @@ mxr saved run urgent
 - **Quick "did I miss anything important today":** `mxr search 'is:unread label:inbox newer_than:1d' --format json | jq '.results | group_by(.from) | map({sender: .[0].from, count: length})'`
 - **Find that one PDF you were sent last quarter:** `mxr search 'has:attachment filename:pricing.pdf older_than:90d' --mode hybrid`
 - **Bulk-archive every receipt 30 days old:** `mxr search 'label:receipts older_than:30d' --format ids | mxr archive --yes`
-- **Build a digest before a 1:1:** `mxr search 'from:sarah newer_than:7d' --format json | jq -r '.results[].subject'`
+- **Build a digest before a 1:1:** `mxr search 'from:sarah@example.com newer_than:7d' --format json | jq -r '.results[].subject'`
 - **Pull only real conversations, hide newsletters:** `mxr search 'is:unread has:link-none'` — strips link-heavy promotional/transactional mail in one filter.
 - **Triage the newsletter pile in bulk:** `mxr search 'has:link-heavy older_than:7d' --format ids | mxr archive --yes` — auto-archives newsletter-shaped mail older than a week.
-- **Find a shared doc someone sent you:** `mxr search 'from:alice has:link newer_than:14d'` — `has:link` excludes trackers/unsubscribe URLs, so it surfaces real link-bearing replies.
+- **Find a shared doc someone sent you:** `mxr search 'from:alice@example.com has:link newer_than:14d'` — `has:link` excludes trackers/unsubscribe URLs, so it surfaces real link-bearing replies.
 - **Work the owed-reply backlog:** `mxr search 'is:owed-reply' --format ids | mxr remind --when 'friday 16:00'` — pin a Friday-afternoon nudge on every thread you owe a reply on.
 - **Owed within the last two weeks only:** `mxr search 'is:owed-reply newer_than:14d'` — skip ancient threads you've implicitly already ignored.
 - **Review recent meeting invites:** `mxr search 'has:calendar newer_than:30d' --format ids | xargs -I{} mxr invite show {}` — inspect invite details before deciding whether to RSVP.
@@ -188,7 +194,7 @@ newer_than:7d' --format json` and `mxr summarize` for any thread with
 ```text
 "What did Bob email me about pricing in Q1? Use hybrid search and
 `--explain` so I can see why each result matched: `mxr search
-'from:bob pricing after:2026-01-01 before:2026-04-01' --mode hybrid
+'from:bob@example.com pricing after:2026-01-01 before:2026-04-01' --mode hybrid
 --explain`."
 ```
 

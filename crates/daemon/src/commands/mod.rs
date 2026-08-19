@@ -33,6 +33,7 @@ pub mod mutations;
 pub mod notify;
 pub mod owed;
 pub mod profile;
+pub mod progress;
 pub mod remind;
 pub mod replies;
 pub mod reset;

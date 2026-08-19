@@ -190,7 +190,8 @@ pub(crate) async fn serve_client_connection<S>(
                     Some(Ok(response)) if can_send => {
                         match sink.send(response).await {
                             Ok(()) => {}
-                            Err(_) => {
+                            Err(error) => {
+                                tracing::warn!(%error, "dropping client connection: response send failed");
                                 can_send = false;
                                 accept_requests = false;
                             }
@@ -302,7 +303,14 @@ pub(crate) async fn serve_client_connection<S>(
             event = event_rx.recv(), if accept_requests && can_send && !shutdown_requested && auth.is_authenticated() => {
                 match event {
                     Ok(event_msg) => {
-                        if sink.send(event_msg).await.is_err() {
+                        // A send failure here is usually the peer going away,
+                        // but it is also how an over-large event frame
+                        // presents (the codec refuses to encode past its
+                        // length cap). That used to tear the connection down
+                        // silently, taking an in-flight request's response
+                        // with it; log which it was.
+                        if let Err(error) = sink.send(event_msg).await {
+                            tracing::warn!(%error, "dropping client connection: event send failed");
                             can_send = false;
                             accept_requests = false;
                         }

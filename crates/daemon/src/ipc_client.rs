@@ -5,6 +5,25 @@ use tokio::time::Duration;
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// Wall-clock cap for ordinary (short) requests: status polls, list/read
+/// calls, single mutations.
+///
+/// Long-running operations must not use this path at all — they go through
+/// [`IpcClient::request_with_events`], which has no deadline and streams
+/// progress instead. `MXR_IPC_TIMEOUT_SECS` is the escape hatch for a host
+/// where even a short call needs longer (or `0` to wait indefinitely); an
+/// unparseable value falls back to the default rather than failing the call.
+fn request_timeout() -> Option<Duration> {
+    match std::env::var("MXR_IPC_TIMEOUT_SECS") {
+        Ok(raw) => match raw.trim().parse::<u64>() {
+            Ok(0) => None,
+            Ok(secs) => Some(Duration::from_secs(secs)),
+            Err(_) => Some(DEFAULT_REQUEST_TIMEOUT),
+        },
+        Err(_) => Some(DEFAULT_REQUEST_TIMEOUT),
+    }
+}
+
 /// CLI / daemon-internal IPC client.
 ///
 /// A thin facade over [`mxr_client::IpcConnection`] that preserves this crate's
@@ -46,7 +65,7 @@ impl IpcClient {
 
     pub async fn request(&mut self, req: Request) -> anyhow::Result<Response> {
         self.conn
-            .request_response(req, |_| {}, Some(DEFAULT_REQUEST_TIMEOUT))
+            .request_response(req, |_| {}, request_timeout())
             .await
             .map_err(map_request_error)
     }

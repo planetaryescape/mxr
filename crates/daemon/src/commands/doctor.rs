@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::progress::{format_thousands, request_with_progress, ProgressPrinter};
 use crate::handler::{
     build_doctor_findings, dir_size_sync, doctor_data_stats, file_size_sync, recent_log_lines_sync,
     DoctorFindingInputs,
@@ -6,15 +7,12 @@ use crate::handler::{
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::{
-    AccountSyncStatus, DaemonEvent, DaemonHealthClass, DoctorDataStats, DoctorReport,
-    EventLogEntry, FeatureHealth, FeatureHealthReport, Request, Response, ResponseData,
+    AccountSyncStatus, DaemonHealthClass, DoctorDataStats, DoctorReport, EventLogEntry,
+    FeatureHealth, FeatureHealthReport, Request, Response, ResponseData,
 };
 use mxr_search::SearchIndex;
 use mxr_store::Store;
 use mxr_transport::Connector as _;
-use std::io::{IsTerminal, Write};
-use std::sync::{Arc, Mutex};
-use tokio::time::{interval, Duration};
 
 pub struct DoctorRunOptions {
     pub reindex: bool,
@@ -33,6 +31,7 @@ pub struct DoctorRunOptions {
 
 pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
     let fmt = resolve_format(options.format);
+    let json_mode = matches!(fmt, OutputFormat::Json | OutputFormat::Jsonl);
 
     if options.rebuild_analytics
         || options.refresh_contacts
@@ -67,7 +66,6 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
 
     if options.rebuild_analytics {
         let mut client = IpcClient::connect().await?;
-        let json_mode = matches!(fmt, OutputFormat::Json | OutputFormat::Jsonl);
         let progress = ProgressPrinter::new(json_mode);
         let on_event = progress.event_callback();
         let started_at = std::time::Instant::now();
@@ -173,14 +171,28 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
 
     if options.semantic_status || options.reindex_semantic || options.backfill_semantic {
         let mut client = IpcClient::connect().await?;
-        let request = if options.backfill_semantic {
-            Request::BackfillSemantic
+        // The two rebuild requests embed every message before answering and
+        // must not run under the 120s request cap (#179); the status read is
+        // a plain fast query.
+        let response = if options.backfill_semantic {
+            request_with_progress(
+                &mut client,
+                json_mode,
+                "Backfilling embeddings",
+                Request::BackfillSemantic,
+            )
+            .await?
         } else if options.reindex_semantic {
-            Request::ReindexSemantic { force: false }
+            request_with_progress(
+                &mut client,
+                json_mode,
+                "Embedding messages",
+                Request::ReindexSemantic { force: false },
+            )
+            .await?
         } else {
-            Request::GetSemanticStatus
+            client.request(Request::GetSemanticStatus).await?
         };
-        let response = client.request(request).await?;
         match response {
             Response::Ok {
                 data: ResponseData::SemanticStatus { snapshot },
@@ -977,157 +989,6 @@ fn format_duration(d: std::time::Duration) -> String {
     }
 }
 
-fn format_thousands(n: u32) -> String {
-    let s = n.to_string();
-    let bytes = s.as_bytes();
-    let len = bytes.len();
-    let mut out = String::with_capacity(len + len / 3);
-    for (i, b) in bytes.iter().enumerate() {
-        if i > 0 && (len - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(*b as char);
-    }
-    out
-}
-
-/// Prints a live spinner on stderr for long-running operations and
-/// surfaces `OperationProgress` events as they arrive. Spinner runs
-/// only on a TTY and only for human (non-JSON) output, so piped
-/// output stays parseable. JSON callers get the events on stderr in
-/// JSON-Lines so scripts can still see progress without polluting
-/// stdout.
-struct ProgressPrinter {
-    json_mode: bool,
-    tty: bool,
-    label: Arc<Mutex<String>>,
-    spinner_handle: tokio::task::JoinHandle<()>,
-}
-
-impl ProgressPrinter {
-    fn new(json_mode: bool) -> Self {
-        let tty = std::io::stderr().is_terminal();
-        let label = Arc::new(Mutex::new("Working".to_string()));
-        // The spinner only paints when we're on a TTY and not in
-        // JSON mode. Otherwise the JoinHandle holds an idle task that
-        // we abort on `finish` — cheap and avoids two code paths.
-        let label_for_task = label.clone();
-        let active = tty && !json_mode;
-        let spinner_handle = tokio::spawn(async move {
-            if !active {
-                return;
-            }
-            let frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-            let mut idx = 0usize;
-            let mut tick = interval(Duration::from_millis(100));
-            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-            loop {
-                tick.tick().await;
-                let label = label_for_task.lock().map(|s| s.clone()).unwrap_or_default();
-                let mut stderr = std::io::stderr();
-                let _ = write!(stderr, "\r\x1b[K{} {}", frames[idx % frames.len()], label);
-                let _ = stderr.flush();
-                idx = idx.wrapping_add(1);
-            }
-        });
-        Self {
-            json_mode,
-            tty,
-            label,
-            spinner_handle,
-        }
-    }
-
-    fn event_callback(&self) -> impl FnMut(DaemonEvent) + 'static {
-        let json_mode = self.json_mode;
-        let tty = self.tty;
-        let label = self.label.clone();
-        move |event: DaemonEvent| {
-            let mut stderr = std::io::stderr();
-            // Clear the spinner line before printing so the event
-            // doesn't end up appended to the spinner glyph.
-            if tty && !json_mode {
-                let _ = write!(stderr, "\r\x1b[K");
-            }
-            match &event {
-                DaemonEvent::OperationStarted { message, .. } => {
-                    if json_mode {
-                        if let Ok(s) = serde_json::to_string(&event) {
-                            let _ = writeln!(stderr, "{s}");
-                        }
-                    } else {
-                        let _ = writeln!(stderr, "▶ {message}");
-                    }
-                    if let Ok(mut l) = label.lock() {
-                        *l = message.clone();
-                    }
-                }
-                DaemonEvent::OperationProgress {
-                    current,
-                    total,
-                    message,
-                    ..
-                } => {
-                    let total_str = total.map_or_else(|| "?".into(), |t| t.to_string());
-                    if json_mode {
-                        if let Ok(s) = serde_json::to_string(&event) {
-                            let _ = writeln!(stderr, "{s}");
-                        }
-                    } else {
-                        let _ = writeln!(stderr, "  [{current}/{total_str}] {message}");
-                    }
-                    if let Ok(mut l) = label.lock() {
-                        *l = format!("[{current}/{total_str}] {message}");
-                    }
-                }
-                DaemonEvent::OperationCompleted { message, .. } => {
-                    if json_mode {
-                        if let Ok(s) = serde_json::to_string(&event) {
-                            let _ = writeln!(stderr, "{s}");
-                        }
-                    } else {
-                        let _ = writeln!(stderr, "✓ {message}");
-                    }
-                }
-                DaemonEvent::OperationFailed {
-                    error, retryable, ..
-                } => {
-                    if json_mode {
-                        if let Ok(s) = serde_json::to_string(&event) {
-                            let _ = writeln!(stderr, "{s}");
-                        }
-                    } else {
-                        let _ = writeln!(
-                            stderr,
-                            "✗ {error}{}",
-                            if *retryable { " (retryable)" } else { "" }
-                        );
-                    }
-                }
-                _ => {}
-            }
-            let _ = stderr.flush();
-        }
-    }
-
-    /// Stops the spinner and clears the spinner line so the final
-    /// stdout output isn't preceded by a stale glyph. Idempotent.
-    fn finish(&self) {
-        self.spinner_handle.abort();
-        if self.tty && !self.json_mode {
-            let mut stderr = std::io::stderr();
-            let _ = write!(stderr, "\r\x1b[K");
-            let _ = stderr.flush();
-        }
-    }
-}
-
-impl Drop for ProgressPrinter {
-    fn drop(&mut self) {
-        self.spinner_handle.abort();
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1147,20 +1008,6 @@ mod tests {
             steps,
             vec!["mxr restart".to_string(), "mxr status".to_string()]
         );
-    }
-
-    /// `format_thousands` injects commas every three digits so the
-    /// `contacts_rows: 10673` row displays as `10,673` — much more
-    /// scannable on a populated mailbox where this number is in the
-    /// tens of thousands.
-    #[test]
-    fn format_thousands_inserts_commas_every_three_digits() {
-        assert_eq!(format_thousands(0), "0");
-        assert_eq!(format_thousands(42), "42");
-        assert_eq!(format_thousands(999), "999");
-        assert_eq!(format_thousands(1_000), "1,000");
-        assert_eq!(format_thousands(10_673), "10,673");
-        assert_eq!(format_thousands(1_234_567), "1,234,567");
     }
 
     /// `format_duration` switches units across thresholds so the

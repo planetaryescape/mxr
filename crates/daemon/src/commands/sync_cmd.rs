@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::progress::ProgressPrinter;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_config::{load_config, AccountConfig, MxrConfig, SendProviderConfig, SyncProviderConfig};
@@ -120,29 +121,47 @@ pub async fn run(
         return Ok(());
     }
 
+    // The daemon runs the sync before it answers, so this can take as long as
+    // the mailbox needs. `request_with_events` waits without a deadline and
+    // streams the daemon's progress events; `request`'s 120s cap would kill a
+    // large or slow sync mid-flight while the daemon kept working (#179).
+    let json_mode = matches!(
+        resolve_format(format.clone()),
+        OutputFormat::Json | OutputFormat::Jsonl
+    );
+    let progress = ProgressPrinter::new(json_mode);
     let resp = client
-        .request(build_sync_request(account_id.clone()))
-        .await?;
-    match resp {
+        .request_with_events(
+            build_sync_request(account_id.clone()),
+            progress.event_callback(),
+        )
+        .await;
+    progress.finish();
+    match resp? {
         Response::Ok {
             data: ResponseData::Ack,
-        } => match resolve_format(format.clone()) {
-            OutputFormat::Json | OutputFormat::Jsonl if !wait => {
-                println!(
-                    "{}",
-                    serde_json::to_string(&serde_json::json!({
-                        "status": "triggered",
-                        "account_id": account_id.as_ref().map(std::string::ToString::to_string),
-                    }))?
-                );
-            }
-            OutputFormat::Json | OutputFormat::Jsonl => {}
-            _ => println!("Sync triggered"),
+        } => match (json_mode, wait) {
+            // With --wait the final status is printed after quiescence, so
+            // don't also emit a "triggered" line ahead of it.
+            (true, false) => println!(
+                "{}",
+                serde_json::to_string(&serde_json::json!({
+                    "status": "triggered",
+                    "account_id": account_id.as_ref().map(std::string::ToString::to_string),
+                }))?
+            ),
+            (true, true) => {}
+            (false, _) => println!("Sync triggered"),
         },
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
 
+    // `SyncNow` has already run the sync to completion by the time we get
+    // here, so this normally returns on its first poll. It still earns its
+    // keep in the one case where the daemon answered early: past its own
+    // ceiling it detaches a long sync and reports an error while the work
+    // continues, and a background sync loop can also pick the account up.
     if wait {
         wait_for_sync_quiescence(
             &mut client,
@@ -150,10 +169,7 @@ pub async fn run(
             Duration::from_secs(wait_timeout_secs),
         )
         .await?;
-        if matches!(
-            resolve_format(format.clone()),
-            OutputFormat::Json | OutputFormat::Jsonl
-        ) {
+        if json_mode {
             let statuses = fetch_sync_statuses(&mut client, account_id.as_ref()).await?;
             render_status(&statuses, format);
         }
@@ -203,10 +219,14 @@ async fn wait_for_sync_quiescence(
 ) -> anyhow::Result<()> {
     let deadline = Instant::now() + timeout;
     loop {
-        let statuses = fetch_sync_statuses(client, account_id).await?;
-        let any_in_progress = statuses.iter().any(|status| status.sync_in_progress);
-        if !any_in_progress {
-            return Ok(());
+        // A status read can stall or fail while the daemon is busy with
+        // post-sync work (semantic ingest, analytics backfill). That says
+        // nothing about the sync, so keep polling until the deadline instead
+        // of reporting the poll's failure as the sync's.
+        if let Ok(statuses) = fetch_sync_statuses(client, account_id).await {
+            if !statuses.iter().any(|status| status.sync_in_progress) {
+                return Ok(());
+            }
         }
         if Instant::now() >= deadline {
             anyhow::bail!(

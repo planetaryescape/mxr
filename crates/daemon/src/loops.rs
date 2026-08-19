@@ -24,6 +24,20 @@ const SYNC_CYCLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 #[cfg(test)]
 const SYNC_CYCLE_TIMEOUT: Duration = Duration::from_millis(50);
 
+/// Upper bound on the envelopes a single `NewMessages` event carries.
+///
+/// The event is a notification: every client refetches on it (the web app
+/// invalidates its queries, the TUI reloads its views) rather than treating the
+/// payload as the source of truth. An initial backfill, though, upserts tens of
+/// thousands of messages at once, and one event carrying all of them serialises
+/// past the codec's 16 MB frame cap. That does not degrade gracefully — the
+/// encode fails, the daemon tears the client's connection down mid-request, and
+/// the client sees "Connection closed". It is what killed `mxr demo --messages
+/// 50000` on a fresh profile. Chunking instead of capping would fire one
+/// new-mail chime per chunk, so cap it: 500 covers any realistic incremental
+/// sync and keeps the frame in the low megabytes.
+const NEW_MESSAGES_EVENT_LIMIT: usize = 500;
+
 /// Test-only scheduler seam for the IDLE loop's provider-read → reload-snapshot
 /// race window. The IDLE loop calls [`idle_race_hook::fire`] immediately after
 /// reading the provider; a test installs a hook keyed by account to inject a
@@ -726,7 +740,8 @@ async fn sync_loop_for_account(
                     }
 
                     match state.store.list_envelopes_by_ids(&upserted_ids).await {
-                        Ok(envelopes) if !envelopes.is_empty() => {
+                        Ok(mut envelopes) if !envelopes.is_empty() => {
+                            envelopes.truncate(NEW_MESSAGES_EVENT_LIMIT);
                             crate::chimes::emit_daemon_event(
                                 &state,
                                 DaemonEvent::NewMessages { envelopes },

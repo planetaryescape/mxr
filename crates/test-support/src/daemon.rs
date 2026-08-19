@@ -148,6 +148,68 @@ pub fn run_status_only(
     CliOutput { stdout, stderr }
 }
 
+/// Place a copy of the `mxr` binary at `dst` under a distinct file name.
+///
+/// The daemon's pid-file fallback finds a running daemon by scanning `ps` for
+/// `<exe file name> daemon --instance <instance>`
+/// (`server::fallback_live_daemon_pid_without_pid_file`). `mxr demo` always
+/// uses the fixed `mxr-demo` instance, so a test driving the stock `mxr`
+/// binary can adopt — and then restart or shut down — a developer's real demo
+/// daemon, or another checkout's. Running under a unique file name keeps the
+/// scan from matching anything but this test's own daemon.
+///
+/// Hard-links when the temp dir shares a filesystem with the build output and
+/// copies otherwise; either way the name is what matters.
+pub fn link_mxr_binary(dst: &Path) -> PathBuf {
+    let src = assert_cmd::cargo::cargo_bin("mxr");
+    if std::fs::hard_link(&src, dst).is_err() {
+        std::fs::copy(&src, dst).expect("copy mxr binary");
+    }
+    dst.to_path_buf()
+}
+
+/// Run `<bin> <args>` with an explicit environment. Panics on non-zero exit.
+///
+/// The instance-scoped helpers above cover commands that accept
+/// `MXR_INSTANCE` / `MXR_DATA_DIR` / `MXR_CONFIG_DIR`. `mxr demo` sets those
+/// three itself and derives its profile from the OS config/data dirs, so its
+/// tests have to isolate through `HOME` / `XDG_*`, pin the socket, and run a
+/// uniquely-named binary (see [`link_mxr_binary`]).
+pub fn run_with_env(bin: &Path, envs: &[(&str, &str)], args: &[&str]) -> CliOutput {
+    let mut command = Command::new(bin);
+    command
+        .env_remove("EDITOR")
+        .env_remove("VISUAL")
+        // Would override the socket the caller pinned.
+        .env_remove("MXR_DAEMON_ADDR");
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let output = command.args(args).assert().get_output().clone();
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    if !output.status.success() {
+        panic!(
+            "command {args:?} failed (exit {:?})\nstdout={stdout}\nstderr={stderr}",
+            output.status.code()
+        );
+    }
+    CliOutput { stdout, stderr }
+}
+
+/// Like [`run_with_env`] but parses stdout as JSON.
+pub fn run_json_with_env(bin: &Path, envs: &[(&str, &str)], args: &[&str]) -> Value {
+    let out = run_with_env(bin, envs, args);
+    serde_json::from_str(out.stdout.trim()).unwrap_or_else(|err| {
+        panic!(
+            "expected JSON output for `mxr {}`; parse error: {err}\nstdout={}\nstderr={}",
+            args.join(" "),
+            out.stdout,
+            out.stderr
+        )
+    })
+}
+
 /// Run `mxr <args>` and parse stdout as JSON. Panics on non-zero
 /// exit OR JSON parse failure.
 pub fn run_json(instance: &str, data_dir: &Path, config_dir: &Path, args: &[&str]) -> Value {

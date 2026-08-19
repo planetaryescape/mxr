@@ -1,0 +1,30 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Launch an isolated, realistic demo inbox without touching your real config.
+
+Once started, demo mode is sticky: every subsequent `mxr` command (search, cat, archive, web, etc.) operates on the demo profile until you run `mxr demo stop`.
+
+Usage: mxr demo [OPTIONS] [COMMAND]
+
+Commands:
+  stop    Exit demo mode: shut down the demo daemon and remove the active marker. Real-profile commands resume on the next invocation
+  status  Show whether demo mode is active and where its profile lives
+  reset   Wipe the demo profile (config + data) so the next `mxr demo` re-seeds from scratch
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --reset
+          Reset the demo profile before launching. Equivalent to `mxr demo reset` followed by `mxr demo`, kept as a flag for backward compatibility
+
+      --messages <MESSAGES>
+          Number of synthetic demo messages to seed. Defaults to a large mailbox so search, analytics, and video demos feel real
+
+          [default: 50000]
+
+      --no-tui
+          Seed and sync the demo profile, but do not open the TUI
+
+  -h, --help
+          Print help (see a summary with '-h')

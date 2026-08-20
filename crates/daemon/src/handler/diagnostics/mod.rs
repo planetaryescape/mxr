@@ -6,7 +6,7 @@ use search_execute::execute_search;
 
 use super::status_helpers::{
     build_account_sync_status, collect_doctor_report, collect_status_snapshot,
-    feature_health_report,
+    feature_health_report, StatusSnapshotFields,
 };
 use super::{
     handle_export_search, handle_export_thread, helpers::protocol_event_entry, HandlerResult,
@@ -1164,18 +1164,31 @@ pub(crate) async fn run_saved_search(
 const STATUS_SNAPSHOT_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
 
 pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
-    get_status_within_budget(state, STATUS_SNAPSHOT_BUDGET).await
+    get_status_within_budget(
+        state,
+        STATUS_SNAPSHOT_BUDGET,
+        collect_status_snapshot(state),
+    )
+    .await
 }
 
+/// The body of `get_status`, with the DB-backed snapshot passed in.
+///
+/// Taking the future rather than building it means a test can decide whether
+/// it resolves. Racing a real store against a tiny budget does not: the
+/// snapshot may well finish on the timeout's first poll, and then the test
+/// asserts the opposite of what it meant to — which is exactly how the
+/// degraded-path test came to fail only on CI.
 pub(crate) async fn get_status_within_budget(
     state: &AppState,
     budget: std::time::Duration,
+    snapshot: impl std::future::Future<Output = Result<StatusSnapshotFields, String>>,
 ) -> HandlerResult {
     // Fast-fail the DB-backed snapshot so a saturated pool can't wedge
     // status. On timeout we return a degraded (empty) snapshot but keep
     // the DB-free version/protocol fields populated.
     let (accounts, total_messages, sync_statuses, degraded) =
-        match tokio::time::timeout(budget, collect_status_snapshot(state)).await {
+        match tokio::time::timeout(budget, snapshot).await {
             Ok(Ok((accounts, total_messages, sync_statuses))) => {
                 (accounts, total_messages, sync_statuses, false)
             }

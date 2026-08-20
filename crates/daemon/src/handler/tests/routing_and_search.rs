@@ -1067,9 +1067,15 @@ async fn dispatch_status_does_not_block_when_search_is_busy() {
 async fn status_flags_itself_degraded_when_the_db_snapshot_misses_its_budget() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
+    // A snapshot that never resolves, so the budget always wins. Racing a real
+    // store against a zero budget does not settle it: `timeout` polls the
+    // future before enforcing the deadline, so an in-memory snapshot that
+    // finishes on the first poll makes the assertion below fail — which is how
+    // this test passed 15 times locally and failed on CI.
     let response = crate::handler::diagnostics_impl::get_status_within_budget(
         &state,
-        std::time::Duration::ZERO,
+        std::time::Duration::from_millis(10),
+        std::future::pending(),
     )
     .await
     .expect("status should answer even when the snapshot times out");
@@ -1102,20 +1108,30 @@ async fn status_flags_itself_degraded_when_the_db_snapshot_misses_its_budget() {
 async fn status_is_not_degraded_when_the_db_snapshot_completes() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
-    let msg = IpcMessage {
-        id: 11,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::GetStatus),
-    };
+    // The mirror of the degraded test, and deterministic for the same reason:
+    // a snapshot that is already resolved cannot miss any budget, so this can
+    // never flip the other way under load.
+    let response = crate::handler::diagnostics_impl::get_status_within_budget(
+        &state,
+        std::time::Duration::from_millis(10),
+        std::future::ready(Ok((vec!["personal".to_string()], 4_242, Vec::new()))),
+    )
+    .await
+    .expect("status should answer");
 
-    match handle_request(&state, &msg).await.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Status {
-                degraded, accounts, ..
-            },
-        }) => {
+    match response {
+        ResponseData::Status {
+            degraded,
+            accounts,
+            total_messages,
+            ..
+        } => {
             assert!(!degraded);
-            assert!(!accounts.is_empty());
+            assert_eq!(accounts, vec!["personal".to_string()]);
+            assert_eq!(
+                total_messages, 4_242,
+                "a completed snapshot must reach the reply unchanged"
+            );
         }
         other => panic!("Expected Status, got {other:?}"),
     }

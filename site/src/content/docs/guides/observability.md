@@ -22,6 +22,23 @@ mxr doctor --check --format json
 
 What you get: a single object with daemon uptime, account sync status, lexical/semantic index freshness, and any active findings.
 
+`mxr doctor --check` exits 0 only when the report carries no Error-severity finding, so it works as a CI or cron gate:
+
+```bash
+mxr doctor --check --format json >/tmp/mxr-doctor.json \
+  || jq '.findings[] | select(.severity == "error")' /tmp/mxr-doctor.json
+```
+
+### When the daemon says `degraded`
+
+`mxr status` reads its account and message counts out of SQLite. A large sync can saturate the reader pool, and rather than block, the daemon answers with `degraded: true` and no snapshot. That is "the daemon did not say", not "there are no accounts":
+
+```bash
+mxr status --format json | jq '{degraded, accounts, total_messages}'
+```
+
+The table output prints `unknown` for the fields it has no reading for, instead of a zero that reads like an empty mailbox. Poll again once the sync settles — nothing needs fixing. The version, PID, and feature-health fields are always a real reading.
+
 ## Read past logs without `tail -f`
 
 The new `mxr logs` accepts `--level`, `--search`, `--limit`, and `--since` together, so you can replay past incidents without grepping the raw file.

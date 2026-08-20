@@ -56,7 +56,7 @@ Account-scoped reads:
 
 ```bash
 mxr search "is:unread" --account work --format ids
-mxr cat --search "from:alice" --account personal --first
+mxr cat --search "from:alice@example.com" --account personal --first
 mxr deliveries --account work --format json
 ```
 
@@ -121,8 +121,8 @@ Core mail mutations accept either explicit message IDs as positional args, `--se
 Account-scoped mutations use the same target set for preview and apply:
 
 ```bash
-mxr archive --account work --search "from:noreply older_than:30d" --dry-run
-mxr archive --account work --search "from:noreply older_than:30d" --yes
+mxr archive --account work --search "from:noreply@example.com older_than:30d" --dry-run
+mxr archive --account work --search "from:noreply@example.com older_than:30d" --yes
 ```
 
 ## What's _not_ scriptable
@@ -152,9 +152,9 @@ The loop is the same whether the agent is `claude`, `cursor`, `aider`, or a hand
 When the user names an account, keep that selector on every step:
 
 ```bash
-mxr search 'from:noreply older_than:30d' --account work --format json
-mxr archive --search 'from:noreply older_than:30d' --account work --dry-run
-mxr archive --search 'from:noreply older_than:30d' --account work --yes
+mxr search 'from:noreply@example.com older_than:30d' --account work --format json
+mxr archive --search 'from:noreply@example.com older_than:30d' --account work --dry-run
+mxr archive --search 'from:noreply@example.com older_than:30d' --account work --yes
 ```
 
 ## Idempotency

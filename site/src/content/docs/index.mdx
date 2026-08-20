@@ -88,7 +88,7 @@ hero:
 
 ```bash wrap
 # search your whole mailbox from the local index
-mxr search "from:supplier has:attachment after:2019"
+mxr search "from:supplier@example.com has:attachment after:2019"
 
 # rank newsletters by how little you read them, then leave
 mxr subscriptions --rank --format json
@@ -98,7 +98,7 @@ mxr unsubscribe newsletter@example.com --dry-run
 mxr owed --since 7 --format json
 
 # give an agent structured results
-mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
+mxr search "from:sarah@example.com after:2026-04-23" --format json | jq '.results[0]'
 ```
 
 <p class="tryit-contract">Most reads can return JSON. Core mail mutations support <code>{`--dry-run`}</code>, so scripts and agents can show their work before changing your mailbox. <a href="/examples/">Browse more examples →</a></p>
@@ -136,7 +136,7 @@ mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
 
 <div class="search-event">
   <span class="search-prompt">$</span>
-  <span><span class="search-cmd">mxr search </span><span class="search-string">{`"from:supplier subject:contract has:attachment after:2019"`}</span></span>
+  <span><span class="search-cmd">mxr search </span><span class="search-string">{`"from:supplier@example.com subject:contract has:attachment after:2019"`}</span></span>
 </div>
 
 <div class="search-results">
@@ -193,7 +193,7 @@ mxr search "subject:invoice" --format json | jq -r '.results[].from' | sort -u
     <div class="agent-label">◈ prompt</div>
     <div class="agent-prompt">Find the latest thread with Sarah. Look at how I normally write to her, then draft a short reply in the same tone. Do not send it.</div>
     <div class="agent-runs">
-      <code>{`mxr search "from:sarah OR to:sarah" --format json`}</code>
+      <code>{`mxr search "from:sarah@example.com OR to:sarah@example.com" --format json`}</code>
       <code>{`mxr sender sarah@example.com --format json`}</code>
       <code>{`mxr draft-assist <thread-id> "short reply in my usual tone"`}</code>
     </div>
@@ -218,7 +218,7 @@ mxr search "subject:invoice" --format json | jq -r '.results[].from' | sort -u
   <div class="agent-json-label">◈ what your agent sees</div>
 
 ```bash wrap
-mxr search "from:sarah after:2026-04-23" \
+mxr search "from:sarah@example.com after:2026-04-23" \
   --mode lexical --sort relevance --format json | jq '.results[0]'
 ```
 
@@ -301,7 +301,7 @@ mxr search "from:sarah after:2026-04-23" \
     </div>
     <div class="surface-body">
       <p>Search, read, draft, send, and manage mail from scripts or one-off commands. Pipe JSON through jq, xargs, or anything else in your shell.</p>
-      <pre class="surface-snippet" tabindex="0"><code>{`mxr archive --search "from:noreply older_than:30d" --dry-run
+      <pre class="surface-snippet" tabindex="0"><code>{`mxr archive --search "from:noreply@example.com older_than:30d" --dry-run
 would archive 142 messages.`}</code></pre>
     </div>
   </div>

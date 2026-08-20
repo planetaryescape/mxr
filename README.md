@@ -84,10 +84,14 @@ can take a while on the first run. You can use mail as it arrives, wait for the
 full sync, or watch its progress:
 
 ```bash
-mxr sync --wait
+mxr sync --wait --wait-timeout-secs 900
 mxr sync --status
 mxr status --watch
 ```
+
+`mxr sync` returns as soon as the sync has started. `--wait` holds until the
+account reports idle and prints a live `3,000/50,000` progress line;
+`--wait-timeout-secs` (default 60) bounds the wait, not the sync.
 
 Later syncs are incremental. Search reads the local Tantivy index, opening mail
 reads SQLite, and queued changes sync when the provider is available again.

@@ -114,7 +114,14 @@ const COMMAND_EXAMPLES = {
   },
   unsend: { use: 'Cancel a scheduled send while keeping the draft.', examples: ["mxr unsend DRAFT_ID"] },
   accounts: { use: 'Add, test, repair, disable, or inspect accounts and aliases.', examples: ["mxr accounts add gmail", "mxr accounts addresses add --account work alias@example.com"] },
-  sync: { use: 'Trigger sync or wait for sync completion in scripts.', examples: ["mxr sync --wait", "mxr sync --status --format json"] },
+  sync: {
+    use: 'Trigger a sync and return, or hold until the account goes idle. The trigger acks as soon as the sync has started; `--wait` polls for idle and prints live progress. `--wait-timeout-secs` bounds the wait, not the sync.',
+    examples: [
+      "mxr sync",
+      "mxr sync --wait --wait-timeout-secs 900   # a first backfill outlasts the 60s default",
+      "mxr sync --status --format json | jq '.[] | {account_name, sync_in_progress, progress}'",
+    ],
+  },
   status: { use: 'Check daemon health from a shell, status bar, or agent.', examples: ["mxr status --format json", "mxr status --watch"] },
   doctor: { use: 'Diagnose broken sync, search, semantic index, or daemon state.', examples: ["mxr doctor --format json", "mxr doctor --reindex --semantic-status"] },
   logs: {
@@ -295,7 +302,15 @@ const COMMAND_EXAMPLES = {
   },
   config: { use: 'Inspect or edit resolved config without hunting for the file.', examples: ["mxr config path", "mxr config show --format json"] },
   llm: { use: 'Check which LLM provider the daemon is using.', examples: ["mxr llm status", "mxr llm status --format json"] },
-  semantic: { use: 'Manage local semantic search profiles and indexing.', examples: ["mxr semantic status", "mxr semantic profile install bge-small-en-v1.5"] },
+  semantic: {
+    use: 'Manage local semantic search profiles and indexing. `reindex` is resumable and skips what is already embedded; `reindex --force` re-embeds everything.',
+    examples: [
+      "mxr semantic status",
+      "mxr semantic profile install bge-small-en-v1.5",
+      "mxr semantic reindex",
+      "mxr semantic reindex --force   # recover a corrupt or half-migrated index",
+    ],
+  },
   open: { use: 'Open message URLs in your browser from CLI selection.', examples: ["mxr open MESSAGE_ID", "mxr open --search 'from:github subject:PR' --first"] },
   web: { use: 'Run the HTTP bridge directly for local app/API work.', examples: ["mxr web --print-url", "mxr web --auto-port --print-url"] },
   daemon: { use: 'Start the daemon explicitly for debugging or process managers.', examples: ["mxr daemon --foreground", "mxr daemon --no-bridge"] },

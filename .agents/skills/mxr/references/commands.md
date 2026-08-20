@@ -211,7 +211,10 @@ Export thread(s) or search results.
 List labels with unread/total counts.
 
 ### `mxr status [--watch] [--format <FMT>]`
-Daemon status: uptime, accounts, message count, sync state.
+Daemon status: uptime, accounts, message count, sync state. `degraded: true`
+means the DB-backed part of the snapshot was skipped (reader pool saturated,
+typically mid-sync) — accounts, message count, and sync rows are absent, not
+zero. Poll again rather than concluding the mailbox is empty.
 
 ---
 
@@ -437,7 +440,8 @@ Local dense retrieval layered on top of lexical BM25. Embeddings stay local.
 mxr semantic status
 mxr semantic enable
 mxr semantic disable
-mxr semantic reindex
+mxr semantic reindex                  # Resumable; skips what is already embedded
+mxr semantic reindex --force          # Re-embed everything (corrupt/half-migrated index)
 mxr semantic profile list
 mxr semantic profile install <name>
 mxr semantic profile use <name>       # Switch + rebuild index
@@ -680,11 +684,13 @@ Restart the daemon with the current binary.
 --wait-timeout-secs <N>   Bounds --wait only, not the sync. Default 60
 --format <FORMAT>         For --status output
 ```
-Triggering runs a sync pass in the daemon and waits on it with no client-side
-deadline, so a multi-minute pass is fine. The account can still be syncing
-afterwards: the daemon detaches a pass that outruns its own limit, and the
-account's sync loop may have further backfill pages queued. `--wait` waits for
-the account itself to go idle.
+Triggering starts a sync in the daemon and returns as soon as it has started;
+the account keeps syncing afterwards, through the rest of a backfill and any
+queued tick. A second trigger while one is running joins it. `--wait` polls
+until the account itself reports idle, printing a progress line on stderr
+(`personal: 3,000/50,000 — Stored 3000 messages`) and exiting non-zero on a
+sync failure newer than the trigger. `--status --format json` carries the same
+counter as a `progress` object per account.
 
 ### `mxr doctor [OPTIONS]`
 ```

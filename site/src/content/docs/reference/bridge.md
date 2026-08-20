@@ -128,7 +128,7 @@ Response:
 ```bash
 curl -G -H "Authorization: Bearer $MXR_TOKEN" \
   "$MXR_BASE/api/v1/mail/search" \
-  --data-urlencode 'q=is:unread from:billing' \
+  --data-urlencode 'q=is:unread from:billing@example.com' \
   --data-urlencode 'mode=lexical' \
   --data-urlencode 'limit=20'
 ```

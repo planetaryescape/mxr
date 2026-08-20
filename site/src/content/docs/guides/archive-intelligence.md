@@ -65,7 +65,7 @@ What you get: every cited message rendered with reader mode, in order, so you ca
 
 ```bash
 # Equivalent retrieval surface without synthesis:
-mxr search 'from:alice "pricing" newer_than:90d' --format json
+mxr search 'from:alice@example.com "pricing" newer_than:90d' --format json
 ```
 
 ## The decision log — `mxr decisions`

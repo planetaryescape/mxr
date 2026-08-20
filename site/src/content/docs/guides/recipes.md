@@ -23,8 +23,8 @@ is an account key, email address, account id, or unambiguous display
 name. Keep the same selector on search, dry-run, and apply:
 
 ```bash
-mxr archive --account work --search 'from:no-reply older_than:30d' --dry-run
-mxr archive --account work --search 'from:no-reply older_than:30d' --yes
+mxr archive --account work --search 'from:no-reply@example.com older_than:30d' --dry-run
+mxr archive --account work --search 'from:no-reply@example.com older_than:30d' --yes
 ```
 :::
 
@@ -33,11 +33,11 @@ For mxr-on-mxr chaining, the read commands that resolve a target by ID (`cat`, `
 
 ```bash
 # Pipeline form (works with any partner tool: jq, fzf, xargs, parallel, ...)
-mxr search 'from:alice' --format ids | xargs -I{} mxr cat {} --view reader
+mxr search 'from:alice@example.com' --format ids | xargs -I{} mxr cat {} --view reader
 
 # --search form (mxr-on-mxr; resolves once inside the daemon)
-mxr cat --search 'from:alice' --first
-mxr summarize --search 'from:alice newer_than:7d' --limit 5
+mxr cat --search 'from:alice@example.com' --first
+mxr summarize --search 'from:alice@example.com newer_than:7d' --limit 5
 ```
 
 The recipes below use whichever form reads better. When the partner tool is mxr itself, prefer `--search`. When it's anything else, the pipeline form is canonical.
@@ -47,10 +47,10 @@ The recipes below use whichever form reads better. When the partner tool is mxr 
 
 ### Pick a thread to read
 
-Situation: too many unread messages to scroll, but you know it's "from someone at acme".
+Situation: too many unread messages to scroll, but you know it's "from Dana at acme.com".
 
 ```bash
-mxr search 'is:unread from:acme' --format jsonl \
+mxr search 'is:unread from:dana@acme.com' --format jsonl \
   | jq -r '"\(.message_id)\t\(.from)\t\(.subject)"' \
   | fzf --delimiter='\t' --with-nth=2,3 \
   | cut -f1 \
@@ -130,7 +130,7 @@ default 7 days when no history). Same set as `mxr search
 ### Extract all attachment filenames from a query
 
 ```bash
-mxr search 'has:attachment from:billing' --format ids \
+mxr search 'has:attachment from:billing@example.com' --format ids \
   | while IFS= read -r id; do
       mxr attachments list "$id"
     done
@@ -146,7 +146,7 @@ Tell an agent
 ### Archive everything matching a search
 
 ```bash
-mxr search 'from:no-reply@*.example.com older_than:30d' --format ids \
+mxr search 'from:no-reply@example.com older_than:30d' --format ids \
   | mxr archive --yes
 ```
 
@@ -162,7 +162,7 @@ mxr search 'from:spam@example.com' --format ids \
 ### Apply a label to a query, in parallel
 
 ```bash
-mxr search 'from:billing@*.example.com' --format ids \
+mxr search 'from:billing@example.com' --format ids \
   | mxr label billing --yes
 ```
 
@@ -173,7 +173,7 @@ For mxr-on-mxr bulk actions, prefer piping IDs directly into the mutation. Use G
 Always preview when piping into mutations:
 
 ```bash
-mxr search 'from:no-reply' --format ids \
+mxr search 'from:no-reply@example.com' --format ids \
   | mxr archive --dry-run
 ```
 
@@ -313,7 +313,7 @@ Tell an agent
 ```ini
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'mxr search "from:no-reply older_than:90d" --format ids | mxr archive --yes'
+ExecStart=/bin/sh -c 'mxr search "from:no-reply@example.com older_than:90d" --format ids | mxr archive --yes'
 ```
 
 `~/.config/systemd/user/mxr-cleanup.timer`:
@@ -341,7 +341,7 @@ Tell an agent
 ### Reply to a search result interactively
 
 ```bash
-mxr search 'from:alice' --format ids \
+mxr search 'from:alice@example.com' --format ids \
   | xargs -I{} mxr cat {} --view reader \
   | $EDITOR -                       # paste content into editor as scratch
 ```
@@ -392,7 +392,7 @@ The second form is ~100× faster because it stays inside the search index. Use t
 ### Fetch bodies for many threads concurrently
 
 ```bash
-mxr search 'from:billing' --format ids \
+mxr search 'from:billing@example.com' --format ids \
   | parallel -j8 mxr cat {} --view reader \
   | rg -i 'amount due|invoice' \
   | head
@@ -437,8 +437,8 @@ mxr doctor --format json               # daemon health
 
 ```bash
 mxr archive ID --dry-run               # preview
-mxr archive --search 'from:noreply older_than:30d' --dry-run
-mxr archive --search 'from:noreply older_than:30d' --yes
+mxr archive --search 'from:noreply@example.com older_than:30d' --dry-run
+mxr archive --search 'from:noreply@example.com older_than:30d' --yes
 mxr label <name> ID --dry-run
 mxr snooze ID --until '...' --dry-run
 mxr send DRAFT_ID --dry-run            # preview send

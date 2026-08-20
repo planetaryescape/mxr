@@ -131,8 +131,8 @@ An illustrative `explain` for that command, on a config with semantic search swi
 `--format jsonl` writes the same result records to stdout, one per line, and writes the `paging` and `explain` envelope to stderr as a single line. Capture stderr if you need to page.
 
 ```bash
-mxr search 'from:sarah' --format jsonl 2>/dev/null | jq -r '.subject'
-mxr search 'from:sarah' --format jsonl 2>paging.json >/dev/null && jq '.paging.next_offset' paging.json
+mxr search 'from:sarah@example.com' --format jsonl 2>/dev/null | jq -r '.subject'
+mxr search 'from:sarah@example.com' --format jsonl 2>paging.json >/dev/null && jq '.paging.next_offset' paging.json
 ```
 
 ```json
@@ -176,7 +176,7 @@ A hybrid or semantic aggregation runs the query twice. The first run decides how
 `mxr cat`, `mxr thread`, `mxr headers`, and `mxr export --format json` return fuller daemon payloads because they are read surfaces, not compact search rows. Prefer `mxr search --format ids` when you only need IDs.
 
 ```bash
-mxr search 'from:sarah after:2026-04-23' --format ids \
+mxr search 'from:sarah@example.com after:2026-04-23' --format ids \
   | mxr archive --dry-run
 ```
 
@@ -453,7 +453,7 @@ mxr search 'newer_than:7d' --format json \
            | "\(.count)\t\(.sender)"'
 
 # Subjects from a sender (jsonl stdout is bare records, so no .results here)
-mxr search 'from:legal@' --format jsonl 2>/dev/null \
+mxr search 'from:legal@example.com' --format jsonl 2>/dev/null \
   | jq -r '.subject'
 
 # Check whether more pages remain

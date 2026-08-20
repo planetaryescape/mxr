@@ -23,14 +23,14 @@ Two equivalent forms exist for read commands that take an ID:
 
 ```bash
 # Option A: shell pipeline (works with any partner tool)
-mxr search 'from:alice newer_than:7d' --format ids \
+mxr search 'from:alice@example.com newer_than:7d' --format ids \
   | xargs -I{} mxr cat {} --view reader
 
 # Option B: --search flag (daemon-native, snapshot-consistent,
 # no client-side fanout, plus --first / --limit modifiers)
-mxr cat --search 'from:alice newer_than:7d'
-mxr cat --search 'from:alice' --first         # latest match only
-mxr cat --search 'from:alice' --limit 10      # top 10 by date desc
+mxr cat --search 'from:alice@example.com newer_than:7d'
+mxr cat --search 'from:alice@example.com' --first         # latest match only
+mxr cat --search 'from:alice@example.com' --limit 10      # top 10 by date desc
 ```
 
 `--search` lives on the read commands that resolve a target by ID
@@ -54,7 +54,7 @@ For real recipes — `fzf` interactive pickers, `jq` digests, parallel
 ```bash
 mxr accounts --format table
 mxr search "is:unread" --account work --format ids
-mxr archive --search "from:noreply older_than:30d" --account work --dry-run
+mxr archive --search "from:noreply@example.com older_than:30d" --account work --dry-run
 ```
 
 What you get: the available account selectors, IDs from one account, and
@@ -74,8 +74,8 @@ Examples:
 
 ```bash
 mxr search "is:unread" --account work --format ids
-mxr cat --search "from:alice" --account personal --first
-mxr archive --search "from:noreply older_than:30d" --account work --dry-run
+mxr cat --search "from:alice@example.com" --account personal --first
+mxr archive --search "from:noreply@example.com older_than:30d" --account work --dry-run
 mxr reply MESSAGE_ID --account work --body "Thanks." --dry-run
 ```
 
@@ -102,14 +102,14 @@ The query parser accepts Gmail-style operators. The same grammar drives `mxr sea
 | bare text | `invoice receipt` | full-text across subject, sender name/email, snippet, body text, and attachment filenames |
 | quoted phrase | `"quarterly review"` | phrase search across text fields |
 | `+` | `+unicorn` | parsed as Gmail's exact/no-stemming hint; current Tantivy execution treats it like normal text until a non-stemmed mirror field exists |
-| `from:` / `to:` / `cc:` / `bcc:` | `from:alice@example.com` | email-address fields |
+| `from:` / `to:` / `cc:` / `bcc:` | `from:alice@example.com` | whole address, case-insensitive — no partial or domain match |
 | `subject:` | `subject:"quarterly review"` | quoted phrase, exact within tokens |
 | `body:` | `body:reimbursement` | full-text body |
 | `label:` | `label:inbox` | matches by `provider_id` (case-insensitive) |
 | `in:` | `in:sent`, `in:anywhere`, `in:archive`, `in:snoozed` | folder/system-label shortcut |
 | `category:` | `category:promotions` | provider category mapped to labels where available |
 | `list:` | `list:<newsletter.example.com>` | List-Id header |
-| `deliveredto:` | `deliveredto:alias@example.com` | Delivered-To header |
+| `deliveredto:` | `deliveredto:alias@example.com` | Delivered-To header, whole address |
 | `rfc822msgid:` | `rfc822msgid:abc@example.com` | RFC 822 Message-ID header |
 | `is:` | `is:unread`, `is:starred`, `is:answered`, `is:important`, `is:muted`, `is:$forwarded` | flags, labels, and registered custom filters. IMAP keywords use `is:$keyword`. |
 | `has:` | `has:attachment`, `has:calendar`, `has:link`, `has:link-heavy`, `has:link-none`, `has:drive`, `has:document`, `has:spreadsheet`, `has:presentation`, `has:youtube`, `has:inline` | attachment/body metadata where indexed. `has:calendar` (aliases `has:invite`, `has:invites`) matches email calendar invites. `has:link` matches any external link (excludes trackers/unsubscribe URLs). `has:link-heavy` matches newsletter-shaped mail. Gmail rich-content filters search indexed body/html/attachment hints. |
@@ -120,8 +120,8 @@ The query parser accepts Gmail-style operators. The same grammar drives `mxr sea
 | `older:` / `newer:` | `older:30d`, `newer:7d` | aliases for `older_than:` / `newer_than:` |
 | `size:` / `larger:` / `smaller:` | `larger:10m` | message size filters |
 | `filename:` | `filename:invoice.pdf` | attachment names |
-| `OR`, `{...}` | `from:amy OR from:david`, `{from:amy from:david}` | match any term |
-| `AND`, `NOT`, `-`, `(...)` | `from:vendor AND (label:bills OR label:travel)`, `dinner -movie` | `AND` is implicit between adjacent terms |
+| `OR`, `{...}` | `from:amy@example.com OR from:david@example.com`, `{from:amy@example.com from:david@example.com}` | match any term |
+| `AND`, `NOT`, `-`, `(...)` | `from:vendor@example.com AND (label:bills OR label:travel)`, `dinner -movie` | `AND` is implicit between adjacent terms |
 | field groups | `subject:(dinner movie)` | applies the field to each grouped term |
 | `AROUND` | `holiday AROUND 10 vacation` | word proximity where supported by the lexical index |
 

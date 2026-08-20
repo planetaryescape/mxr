@@ -129,8 +129,8 @@ and labels update before the daemon reply returns. Transient daemon or
 SQLite pool failures are retried briefly before the UI reconciles.
 
 ```bash
-mxr archive --search 'from:noreply older:30d' --dry-run
-mxr archive --search 'from:noreply older:30d' --yes
+mxr archive --search 'from:noreply@example.com older:30d' --dry-run
+mxr archive --search 'from:noreply@example.com older:30d' --yes
 ```
 
 What you get: a dry-run count first, then an explicit mutation that can

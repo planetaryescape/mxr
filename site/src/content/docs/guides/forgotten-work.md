@@ -79,7 +79,7 @@ mxr search 'is:owed-reply' --format ids
 ```
 
 :::note[Two equivalent forms]
-`mxr owed --format json` returns the structured row (with `overdue_score`, `waiting_days`, `cadence_days_p50`). `mxr search 'is:owed-reply'` returns the underlying message envelopes through the search stack. Use `owed` when you want the ranking metadata; use `search` when you want to compose with other operators (`is:owed-reply from:acme.com`).
+`mxr owed --format json` returns the structured row (with `overdue_score`, `waiting_days`, `cadence_days_p50`). `mxr search 'is:owed-reply'` returns the underlying message envelopes through the search stack. Use `owed` when you want the ranking metadata; use `search` when you want to compose with other operators (`is:owed-reply from:dana@acme.com`).
 :::
 
 ### Exclude noise

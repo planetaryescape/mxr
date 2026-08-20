@@ -45,7 +45,7 @@ The skill is intentionally short — it documents the CLI surface in a form an a
 ```bash
 # Read / search
 mxr search "is:unread"                       # Lexical BM25
-mxr search "from:alice" --mode hybrid        # Lexical + dense when semantic is ready
+mxr search "from:alice@example.com" --mode hybrid        # Lexical + dense when semantic is ready
 mxr search "is:unread" --account work        # Limit to one enabled account
 mxr cat <id>                                 # Reader mode
 mxr thread <id>                              # Whole thread
@@ -60,12 +60,12 @@ mxr undo <mutation_id>                       # ~60s window on destructive ops
 
 # Mutate (positional, stdin pipe, or --search batch — all with --dry-run / --yes)
 mxr archive <id>
-mxr read-archive --search "from:noreply older:7d" --dry-run
-mxr read-archive --search "from:noreply older:7d" --yes
+mxr read-archive --search "from:noreply@example.com older:7d" --dry-run
+mxr read-archive --search "from:noreply@example.com older:7d" --yes
 mxr star --search "subject:urgent" --dry-run
 mxr star --search "subject:urgent" --yes
-mxr label "todo" --search "from:boss" --dry-run
-mxr label "todo" --search "from:boss" --yes
+mxr label "todo" --search "from:boss@example.com" --dry-run
+mxr label "todo" --search "from:boss@example.com" --yes
 
 # Snooze / remind / reply-later
 mxr snooze <id> --until tomorrow
@@ -112,8 +112,8 @@ mxr mcp serve                                # Serve first-party MCP over stdio
 ```bash
 mxr screener                                                # Decide on unknown senders
 mxr search "is:unread label:inbox" --account work --format json --limit 20
-mxr read-archive --account work --search "from:noreply older:7d" --dry-run
-mxr read-archive --account work --search "from:noreply older:7d" --yes
+mxr read-archive --account work --search "from:noreply@example.com older:7d" --dry-run
+mxr read-archive --account work --search "from:noreply@example.com older:7d" --yes
 mxr replies add <id>                                        # Interesting → reply-later
 ```
 

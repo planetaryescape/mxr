@@ -107,7 +107,7 @@ that address as the visible From.
 ```bash
 mxr accounts --format table
 mxr search "is:unread" --account work --format json
-mxr archive --account work --search "from:noreply older_than:30d" --dry-run
+mxr archive --account work --search "from:noreply@example.com older_than:30d" --dry-run
 ```
 
 What you get: the account selectors available locally, account-limited
@@ -127,8 +127,8 @@ Use the same selector on reads, lists, replies, and drafts:
 
 ```bash
 mxr search "is:unread" --account work --format json
-mxr count "from:github.com" --account you@example.com
-mxr archive --account work --search "from:noreply older_than:30d" --dry-run
+mxr count "from:notifications@github.com" --account you@example.com
+mxr archive --account work --search "from:noreply@example.com older_than:30d" --dry-run
 mxr reply MESSAGE_ID --account work --body "Thanks, will do." --dry-run
 mxr drafts --account personal --format json
 ```

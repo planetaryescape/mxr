@@ -27,19 +27,51 @@ Shipped-binary smoke (brew, isolated HOME): v0.6.22 2k demo 12 s; v0.6.23 defaul
 ## Review gates used
 Worker (Opus) → orchestrator adversarial review (read every diff, ran tests, real binary) → independent fresh-context Opus reviewer per phase (Codex personal quota was exhausted 2026-08-19; re-run Codex on the merged commits is a follow-up) → CodeRabbit/cubic on the PR → CI → admin squash merge → release-please → release.yml → brew smoke.
 
-## Follow-ups (real, not done here)
-- Semantic `search()` asks HNSW for `limit` candidates and filters source kinds AFTER → small-limit fielded hybrid queries can return nothing; also the cause of the known flaky `execute_search_uses_dense_source_kinds_for_fielded_queries` (~1 %/run, pre-existing). Over-fetch before filtering.
-- hnsw_rs memory ≈ 5.9 KB/vector (16 per-layer Vecs + per-neighbour Arcs + vector copy) ⇒ ~1.1 GB at the 50k demo; mmap-backed points (`PointData::S`) is the lever that scales.
-- Semantic `use_profile` switching back to a profile with an in-memory index serves the older index until the deferred build lands (needs a per-profile pass epoch). After "semantic vectors ready" the idle-sync `backfill_active_limited(200)` briefly flips the profile to `indexing`.
-- `upsert_envelope_tx` resolves by natural key and keeps the OLD row id while dependents write the new `envelope.id` (pre-0.4.52 rows on re-sync fail the page loudly now; fix = upsert returns the id it wrote).
-- `ResponseData::Status` should carry an explicit `degraded: bool` (clients infer it from `accounts.is_empty()`).
-- `SyncProgressData.total` is always `None` (no provider reports a batch total).
-- Curated-50 demo dataset still uses random `ThreadId`s per regeneration.
-- Pre-existing flakes: `mxr-web::compose_session_send_forwards_draft_account_id` (HTTP + fake IPC startup race), `activity::tests::rapid_fire_ephemeral_writes_coalesce_into_one_row_with_count` (under load).
-- Web: `npm audit` fails the non-required `Web Unit Tests` job (12 advisories, `npm audit fix` available).
-- README example `mxr search "from:alice is:unread"` returned 0 results on the seeded 50k demo — verify the dataset/query still match.
-- Search worker death is logged but not surfaced in `mxr doctor`/feature health.
-- Run Codex (gpt-5.6-sol) review over the merged commits when quota resets.
+## Follow-ups (as recorded 2026-08-19; closures added after the follow-up wave below)
+- ~~Semantic `search()` asks HNSW for `limit` candidates and filters source kinds AFTER → small-limit fielded hybrid queries can return nothing; also the cause of the known flaky `execute_search_uses_dense_source_kinds_for_fielded_queries` (~1 %/run, pre-existing). Over-fetch before filtering.~~ **DONE #200** (over-fetch factor derived from an exhaustive match over `SemanticChunkSourceKind`; the flake was root-caused to hnsw_rs recall on tiny graphs and fixed at the fixture level).
+- ~~hnsw_rs memory ≈ 5.9 KB/vector (16 per-layer Vecs + per-neighbour Arcs + vector copy) ⇒ ~1.1 GB at the 50k demo; mmap-backed points (`PointData::S`) is the lever that scales.~~ **EVALUATED AND REJECTED** in the wave: `PointData::S` is reload-only, so it cannot cut the rebuild peak — the number that actually hurts — and it costs a self-referential borrow plus a large on-disk file. Still open in the reduced form below.
+- ~~Semantic `use_profile` switching back to a profile with an in-memory index serves the older index until the deferred build lands (needs a per-profile pass epoch). After "semantic vectors ready" the idle-sync `backfill_active_limited(200)` briefly flips the profile to `indexing`.~~ **DONE #200** (per-profile pass epoch; profile-targeted settle; a backfill with nothing missing no longer starts a pass, so it no longer flips the profile or clears `last_error`).
+- ~~`upsert_envelope_tx` resolves by natural key and keeps the OLD row id while dependents write the new `envelope.id` (pre-0.4.52 rows on re-sync fail the page loudly now; fix = upsert returns the id it wrote).~~ **DONE #202**, recorded as **D059**.
+- ~~`ResponseData::Status` should carry an explicit `degraded: bool` (clients infer it from `accounts.is_empty()`).~~ **DONE #203/#206** — wired through the CLI table (`unknown`, not zeros), the TUI and the web chrome.
+- ~~`SyncProgressData.total` is always `None` (no provider reports a batch total).~~ **DONE #202** — `SyncBatch::remaining_estimate` (resume-correct count-down; exact for the fake provider, `None` for Gmail and IMAP, which cannot count the remainder cheaply) fills the denominator, so `mxr sync --wait` prints `3,000/16,500`.
+- ~~Curated-50 demo dataset still uses random `ThreadId`s per regeneration.~~ **DONE #202** — derived `ThreadId`s, so a persisted curated profile re-syncs into the same threads.
+- ~~Pre-existing flakes: `mxr-web::compose_session_send_forwards_draft_account_id` (HTTP + fake IPC startup race), `activity::tests::rapid_fire_ephemeral_writes_coalesce_into_one_row_with_count` (under load).~~ **DONE #201** — the first was not a race but a real product bug (see the wave table); the second now settles on a worker barrier instead of a sleep.
+- ~~Web: `npm audit` fails the non-required `Web Unit Tests` job (12 advisories, `npm audit fix` available).~~ **DONE #201** — lockfile-only, no major crossed; `dompurify` 3.4.2 → 3.4.13 is the one that matters, since the web app sanitises untrusted email HTML with it.
+- ~~README example `mxr search "from:alice is:unread"` returned 0 results on the seeded 50k demo — verify the dataset/query still match.~~ **DONE #201** — not a dataset problem: `from:` is a whole-address `TermQuery` on an untokenised field, so `from:alice` can never match. README, quick start, the search guide and the skill now use full addresses.
+- ~~Search worker death is logged but not surfaced in `mxr doctor`/feature health.~~ **DONE #203/#206** — `FeatureHealthReport.search`, one reading per report, and `doctor --check` exits non-zero on it.
+- Run Codex (gpt-5.6-sol) review over the merged commits when quota resets. **STILL OPEN.**
+
+## Follow-up wave (2026-08-19/20)
+
+Four parallel workers plus a hotfix, all merged; released together as **v0.6.25** (`chore(main): release 0.6.25`, #204).
+
+| PR | What | Highlights |
+|---|---|---|
+| #200 | Semantic search and status honest about index passes | Over-fetch ANN candidates before the source-kind filter (factor derived from an exhaustive match, so a new variant breaks the build). Per-profile pass epoch: a search after a finished reindex, activation or backfill waits for the deferred ANN rebuild instead of answering from the pre-pass index, and an index whose rebuild has burnt its five attempts errors — the hybrid path degrades to lexical plus a "semantic retrieval failed" note — rather than silently serving stale results. Settling is per profile. A backfill with nothing missing starts no pass, so the idle loop stops flipping `ready → indexing → ready` and stops clearing a recorded `last_error`. The ~1 %/run fielded-search flake root-caused to hnsw_rs recall (an 8-point graph fails to return every point 7–8 % of the time even at `ef` 200) and fixed in the fixture. |
+| #201 | Compose flush bug, two flake fixes, web audit debt, doc fixes | **A real product bug, not a flake:** `write_private_async` handed the write to tokio's blocking pool and dropped the `File` without waiting, so `create_draft_file_async` could return a path whose file was still truncated — compose reads the draft straight back, so the web bridge answered a compose start with "Missing YAML frontmatter delimiters (---)" under load. That was the `mxr-web` compose-session flake (3 failures in 1,500 loaded runs before, 0 after). Activity recorder tests settle on a worker barrier instead of a 50 ms sleep (44 failures in 400 loaded runs → 0). `npm audit` cleared, lockfile-only. Docs: `from:` is whole-address. |
+| #202 | Store id integrity, plus a progress denominator | `upsert_envelope_tx` returns the id it actually wrote; `apply_sync_upserts` takes the page by `&mut` and repoints envelope, body and attachments before the dependent writes, and the engine reads `upserted_message_ids` back off the page — so index entries, reply pairs, `NewMessages` and semantic ingest all name the same id as the rows (**D059**). Vacated threads now reported in `threads_changed`. Riding along: `SyncBatch::remaining_estimate` → `AccountSyncStatus.progress.total`, and derived curated-demo `ThreadId`s. |
+| #203 + #206 | Daemon identity, and status that does not lie | The `ps` fallback adopted any process whose command line was `<exe file name> daemon --instance <instance>` and then signalled it — every checkout builds a binary called `mxr`, and `mxr demo` pins one instance name across profiles, so two checkouts restarted each other's daemons. Identity is now proven before a signal (see **D060**). `Status.degraded`, `FeatureHealthReport.search`, and `doctor --check` exiting on a report that is healthy only when nothing in it is an Error. |
+| #205 | Hotfix | `tokio::time::timeout` polls its future before enforcing the deadline, so the degraded-status test's zero budget against a real in-memory snapshot was a race — it held for 15 local runs, then failed twice in a row on CI and blocked every PR. `get_status_within_budget` now takes the snapshot future, so the test decides whether it resolves at all. |
+
+CI at the end of the wave: `demo_cli` runs in the workspace nextest jobs
+(bounded by `.config/nextest.toml` at five minutes, since its waits are
+progress-based and carry no short deadline), `demo-e2e.yml` stays as the
+manual Linux run at the shipping count, `npm audit` is clear, and the two
+long-standing flaky tests are fixed at the root (compose 3/1,500 → 0/1,500,
+activity 44/400 → 0/400, both under load).
+
+### Follow-ups still open after this wave
+- Partial `from:`/`to:` matching product-wide would need a tokenised mirror field alongside the exact one and an index-version bump. Until then the whole-address rule is the documented contract.
+- `mxr.skill` packaging is still manual (wants a build script plus a CI diff check).
+- `install_profile` still writes `Ready` / clears `last_error` on the ingest and search paths, so a status can be overwritten there.
+- hnsw memory beyond streaming: mmap points are rejected (above); `max_nb_connection` 16 → 8 is the remaining lever and needs a recall measurement on real embeddings first.
+- Demo unread count is constant at 71 regardless of `--messages`, and `label:newsletters older_than:30d` is empty below roughly 50k.
+- Vacated-thread ids are lost if a later chunk fails mid-page. Exceptional path; clients repair on `SyncCompleted`.
+- `ps`-text environment parsing still truncates a value that itself contains ` IDENT=`, and a hand-started daemon with spaces in its exe path and no pid file is unadoptable. Both fail toward not killing anything.
+- CI: `npm audit` runs before the web tests in one job, so one gate can mask the other. `.config/nextest.toml` needed `git add -f` (globally gitignored on this machine).
+- Orphan file `crates/sync/src/test_support.rs` — not declared in `lib.rs` since 6ccd3a81.
+- Re-running the demo surface seeder prints `UNIQUE constraint failed: drafts.id` noise: the idempotency check string-matches "exist".
+- Load-sensitive tests to watch: `async_mutation_job_reports_progress_and_undo_ids_for_large_batch` (20 s budget) and `mxr-transport uds::stop_accepting_refuses_new_connections_but_defers_unlink` (pre-existing tracked flake).
 
 ## Learnings worth keeping (full ledger in the session; the durable ones)
 - Two demo daemons from same-named binaries kill each other (pid fallback by exe name + instance) → unique binary names; never run a bare `mxr <cmd>` against a demo socket without the demo env; isolate with HOME (macOS) / XDG (Linux) + a short `MXR_SOCKET_PATH`; tests must write the config to BOTH roots.

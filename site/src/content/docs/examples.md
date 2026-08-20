@@ -15,7 +15,7 @@ Try it on seeded data before connecting anything real.
 mxr demo                 # explore a seeded two-account inbox, safely
 mxr accounts add gmail   # connect Gmail (OAuth) when you're ready
 mxr accounts add imap    # or any IMAP server
-mxr sync --wait          # pull mail, then build the local index
+mxr sync --wait          # trigger a sync, wait for the account to go idle
 mxr                      # open the TUI
 ```
 
@@ -26,15 +26,18 @@ Full guide → [Quick Start](/getting-started/quick-start/) · [First Sync](/get
 Search is the primary way you navigate — instant, local, exact.
 
 ```bash
-mxr search "from:alice is:unread"
+mxr search "from:alice@example.com is:unread"
 mxr search "subject:\"quarterly review\" after:2026-01-01"
 mxr search "label:work has:attachment"
 mxr search "has:calendar newer_than:30d"
-mxr search "{from:amy from:david} subject:(dinner movie)"   # grouped terms
+mxr search "{from:amy@example.com from:david@example.com} subject:(dinner movie)"   # grouped terms
 mxr search "holiday AROUND 10 vacation"                      # proximity
 mxr search "house of cards" --mode semantic                 # meaning, not keywords
-mxr search "from:github.com is:unread" --account work --format json
+mxr search "from:notifications@github.com is:unread" --account work --format json
 ```
+
+`from:`, `to:`, `cc:`, `bcc:` and `deliveredto:` match the whole address,
+case-insensitively. `from:alice` and `from:example.com` match nothing.
 
 Full guide → [Search](/guides/search/) · [Semantic Search](/guides/semantic-search/)
 
@@ -78,8 +81,8 @@ Rank newsletters by how little you read them, then leave — preview, then confi
 mxr subscriptions --rank --format json                       # who you never open
 mxr unsubscribe newsletter@example.com --dry-run
 mxr unsubscribe newsletter@example.com --yes
-mxr archive --search "from:noreply older_than:30d" --dry-run
-mxr archive --search "from:noreply older_than:30d" --yes
+mxr archive --search "from:noreply@example.com older_than:30d" --dry-run
+mxr archive --search "from:noreply@example.com older_than:30d" --yes
 ```
 
 Full guide → [Unsubscribe](/guides/unsubscribe/)
@@ -145,7 +148,7 @@ Optional LLM features that read your mail and hand back structure.
 
 ```bash
 mxr ask "what did Alice and I decide about pricing in Q2?"
-mxr summarize --search "from:team newer_than:7d" --limit 5
+mxr summarize --search "from:team@example.com newer_than:7d" --limit 5
 mxr expert --query "DKIM setup" --format json             # answer from your archive
 mxr briefing recipient alice@example.com --format json    # prep before a meeting
 mxr draft-assist THREAD_ID "Build a 1:1 agenda, grouped by open question."
@@ -159,13 +162,13 @@ Most reads emit JSON, and the core mail mutations accept IDs from stdin. It's a 
 
 ```bash
 # archive everything from a sender — reviewed first
-mxr search "from:no-reply older_than:30d" --format ids | xargs -I{} mxr archive {} --dry-run
+mxr search "from:no-reply@example.com older_than:30d" --format ids | xargs -I{} mxr archive {} --dry-run
 
 # export a thread as markdown for your notes (or an agent)
 mxr export THREAD_ID --format markdown > thread.md
 
-# every unread from a domain, as JSONL
-mxr search "is:unread from:acme" --format jsonl
+# every unread from one sender, as JSONL
+mxr search "is:unread from:billing@acme.com" --format jsonl
 ```
 
 Full guide → [Recipes](/guides/recipes/) · [Automation Contract](/guides/automation-contract/)
@@ -176,7 +179,7 @@ The CLI, MCP server, and HTTP bridge all call the same daemon. Most reads return
 
 ```bash
 mxr mcp serve                                              # typed tools over stdio
-mxr search "from:sarah after:2026-04-23" --format json | jq '.results[0]'
+mxr search "from:sarah@example.com after:2026-04-23" --format json | jq '.results[0]'
 mxr archive --search "from:newsletter@example.com" --dry-run
 mxr history --category mutation --limit 3 --format json   # audit trail
 ```

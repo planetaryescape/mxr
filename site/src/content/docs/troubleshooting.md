@@ -34,11 +34,15 @@ Generate the app password at <https://myaccount.google.com/apppasswords> (requir
 
 ## Sync hangs or never completes
 
+`mxr sync` acks as soon as the sync has started, so "hanging" is really "the account never goes idle". Watch it with a wait long enough to outlast a backfill:
+
 ```bash
-mxr sync --wait --wait-timeout-secs 120
+mxr sync --wait --wait-timeout-secs 900
 ```
 
-If it times out, check the daemon logs:
+`--wait-timeout-secs` bounds the wait, not the sync: on expiry the command exits non-zero and the sync keeps running. A moving progress line (`personal: 3,000/50,000 — Stored 3000 messages`) means it is working; a stuck count means it is not.
+
+If it times out with no movement, check the daemon logs:
 
 ```bash
 mxr logs --level error --since 10m --format json | jq .
@@ -51,15 +55,19 @@ Common causes:
 - **Stale IMAP/SMTP password.** Run `mxr accounts repair <name>`. It re-prompts for password-backed IMAP/SMTP credentials and writes them to `secrets.toml`. The command can run directly from config when the daemon is unavailable, so a broken legacy keychain credential does not block its own repair.
 - **Stale OAuth credential.** Run `mxr accounts reauth <name>` for Gmail or Outlook. OAuth tokens do not use the IMAP/SMTP repair path.
 
-### "sync still running" after 10 minutes
+### A sync that runs for hours
 
-A sync that takes longer than 10 minutes (a large initial backfill, a slow IMAP server) is never cancelled mid-flight — cancellation could abandon the connection mid-command. Instead:
+A long sync (a large initial backfill, a slow IMAP server) is never cancelled mid-flight — cancellation could abandon the connection mid-command. It just keeps going:
 
-- `mxr sync` returns an error telling you the sync is still running in the background.
-- `mxr sync status` keeps showing `sync_in_progress: true` with a `last_error` of `sync still running after …; continuing in background`.
-- When the sync eventually finishes, the status row is finalized normally (success or the real error) and the next sync can start.
+- `mxr sync --status` keeps showing `In progress: true`, and `--format json` carries a `progress` object with the running count.
+- A second `mxr sync` while one is running joins the running sync instead of queueing another pass behind it, and acks immediately.
+- When the sync finishes, the status row is finalized normally (success or the real error) and the next sync can start.
 
-No action needed — check `mxr sync status` again later. A second `mxr sync` while one is running simply waits for the first to finish.
+No action needed — check again later:
+
+```bash
+mxr sync --status --format json | jq '.[] | {account_name, sync_in_progress, progress, last_error}'
+```
 
 ### `sync interrupted by daemon restart`
 
@@ -90,7 +98,14 @@ cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked
 
 ## Search returns nothing for a query that should match
 
-Tantivy index can drift if a sync was interrupted before commit. Rebuild it from SQLite:
+First rule out the address operators. `from:`, `to:`, `cc:`, `bcc:` and `deliveredto:` match the whole address, case-insensitively — there is no partial or domain matching, and a partial still parses and returns zero:
+
+```bash
+mxr count "from:alice"              # 0 — not an address
+mxr count "from:alice@example.com"  # what you meant
+```
+
+Otherwise the Tantivy index can drift if a sync was interrupted before commit. Rebuild it from SQLite:
 
 ```bash
 mxr doctor --reindex
@@ -99,7 +114,7 @@ mxr doctor --reindex
 Then verify:
 
 ```bash
-mxr count --search "your query"
+mxr count "your query"
 ```
 
 ## Daemon won't start
@@ -123,7 +138,7 @@ mxr reset --hard --dry-run        # preview
 mxr reset --hard                  # destructive; preserves config + credentials
 ```
 
-`mxr reset --hard` wipes local cache and the search index but keeps your account config and credentials. Re-run `mxr sync --wait` after.
+`mxr reset --hard` wipes local cache and the search index but keeps your account config and credentials. Re-run `mxr sync --wait --wait-timeout-secs 900` after — that resync is a full backfill.
 
 ## Daemon unreachable after an upgrade
 

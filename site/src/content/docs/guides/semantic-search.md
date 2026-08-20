@@ -114,7 +114,7 @@ Typical flow:
 2. later enable or `mxr semantic profile use ...`
 3. mxr reuses stored chunks, backfills only missing ones, then builds embeddings
 
-Use `mxr semantic reindex` only when chunk extraction behavior changed or you want a full correctness rebuild.
+Use `mxr semantic reindex` only when chunk extraction behavior changed or you want a full correctness rebuild; it skips whatever is already embedded, so it is cheap to re-run.
 
 ## Status, profiles, and reindex
 
@@ -137,14 +137,26 @@ Switch profiles:
 mxr semantic profile use multilingual-e5-small
 ```
 
-Full rebuild:
+Rebuild:
 
 ```bash
-mxr semantic reindex
+mxr semantic reindex           # resumable; skips messages already embedded for this profile
+mxr semantic reindex --force   # re-embed everything, current vectors included
 mxr doctor --reindex-semantic
 ```
 
-Use reindex when chunk extraction behavior changed or when you want a full correctness rebuild.
+An ordinary `mxr semantic reindex` is idempotent and stepped: it walks the corpus, skips messages whose chunks and embeddings already match the active profile, and persists its position as it goes, so re-running one that was interrupted picks up where it stopped rather than starting over. Only one index pass runs at a time — a second request joins the pass in flight.
+
+Reach for `--force` only to recover a corrupt or half-migrated index, or after a change to chunk extraction that makes the stored vectors wrong rather than missing. On a large mailbox it re-embeds every message, which is the slowest thing mxr does.
+
+Watch it from another shell:
+
+```bash
+mxr semantic status --format json \
+  | jq -r '.profiles[] | "\(.profile) \(.status) \(.progress_completed)/\(.progress_total)"'
+```
+
+What you get: one line per installed profile with its status and how far its index pass has got.
 
 ## Query examples
 

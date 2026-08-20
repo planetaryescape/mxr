@@ -13,13 +13,16 @@ mxr
 
 ## Trigger sync
 
-Your first sync happens in the background. Large mailboxes take longer. You can start using mxr while it finishes, as long as you leave the daemon running.
+`mxr sync` hands the work to the daemon and returns as soon as the sync has started, so you can start using mxr while the backfill runs — just leave the daemon running.
 
 ```bash
-mxr sync --wait     # blocks until first sync finishes
-mxr sync --status   # check progress at any time
-mxr status --watch  # live daemon status
+mxr sync                                  # trigger and return
+mxr sync --wait --wait-timeout-secs 900   # trigger, then wait for the account to go idle
+mxr sync --status                         # check progress at any time
+mxr status --watch                        # live daemon status
 ```
+
+`--wait` prints a progress line on stderr as the count moves (`personal: 3,000/50,000 — Stored 3000 messages`) and exits non-zero if the sync it started failed. Its `--wait-timeout-secs` (default 60) bounds only the wait — a first backfill usually needs more than a minute, and the sync keeps running either way.
 
 <details>
 <summary>For developers: run the daemon in the foreground</summary>

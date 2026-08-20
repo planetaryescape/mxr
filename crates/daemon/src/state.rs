@@ -458,6 +458,12 @@ pub struct AppState {
     /// Both are per-run state that dies with the process, so neither belongs
     /// in the store.
     sync_runs: ParkingMutex<HashMap<AccountId, SyncRun>>,
+    /// The id the next background-sync claim will take. A claim's cleanup
+    /// must not clear a flag a *later* claim wrote, and the run entry a claim
+    /// is stamped in is dropped the moment the account goes idle — so the
+    /// counter that tells the two apart has to outlive the entry. Starts at
+    /// 1, leaving 0 to mean "no claim".
+    next_background_claim: std::sync::atomic::AtomicU64,
 }
 
 /// In-memory state of one account's sync run — a run being the whole backfill,
@@ -486,6 +492,11 @@ struct SyncRun {
     background_syncs_queued: u32,
     /// Background passes between `begin` and `finalize`.
     background_syncs_running: u32,
+    /// The last background-sync claim taken for this account. An earlier
+    /// claim's cleanup compares against it before clearing the account's
+    /// in-progress flag; `0` is "no claim has ever been taken", which is also
+    /// what an entry recreated by unrelated progress carries.
+    claim_generation: u64,
     /// A pass deferred the whole-table analytics repair because the backfill
     /// was still going. The debt is settled by the first pass that finds the
     /// backfill over — including one that synced nothing, which is how a
@@ -514,6 +525,9 @@ impl SyncRun {
 pub(crate) struct BackgroundSyncClaim {
     state: Arc<AppState>,
     account_id: AccountId,
+    /// Which claim this is, so its cleanup can tell "the flag I wrote" from
+    /// "the flag the claim that replaced me wrote".
+    generation: u64,
     started: bool,
     handed_off: bool,
 }
@@ -552,7 +566,14 @@ impl Drop for BackgroundSyncClaim {
                 } else {
                     run.background_syncs_queued = run.background_syncs_queued.saturating_sub(1);
                 }
-                if run.is_idle() {
+                // A handed-off claim keeps its entry even when nothing else
+                // is left in it. The pass it handed over is still running —
+                // detached, with the reaper holding it — and the entry is
+                // where its generation lives; dropping it would let an older
+                // claim's cleanup find no later claim and clear the flag of a
+                // sync that is very much in progress. The reaper's
+                // `finish_sync_run` takes the entry out when the pass ends.
+                if run.is_idle() && !self.handed_off {
                     runs.remove(&self.account_id);
                 }
             }
@@ -572,17 +593,10 @@ impl Drop for BackgroundSyncClaim {
         };
         let state = Arc::clone(&self.state);
         let account_id = self.account_id.clone();
+        let generation = self.generation;
         handle.spawn(async move {
-            tracing::warn!(account = %account_id, "background sync ended without finalizing; clearing its in-progress flag");
-            let _ = state
-                .store
-                .upsert_sync_runtime_status(
-                    &account_id,
-                    &mxr_store::SyncRuntimeStatusUpdate {
-                        sync_in_progress: Some(false),
-                        ..Default::default()
-                    },
-                )
+            state
+                .clear_abandoned_background_sync(&account_id, generation)
                 .await;
         });
     }
@@ -704,6 +718,7 @@ impl AppState {
             admin_blocking,
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
+            next_background_claim: std::sync::atomic::AtomicU64::new(1),
         })
     }
 
@@ -1285,20 +1300,112 @@ impl AppState {
         state: &Arc<Self>,
         account_id: &AccountId,
     ) -> Option<BackgroundSyncClaim> {
-        {
+        let generation = {
             let mut runs = state.sync_runs.lock();
             let run = runs.entry(account_id.clone()).or_default();
             if run.background_syncs_queued > 0 || run.background_syncs_running > 0 {
                 return None;
             }
             run.background_syncs_queued = 1;
-        }
+            // Stamped under the same lock as the claim, so a cleanup reading
+            // the entry sees either this claim or the state before it, never
+            // a claim without its generation.
+            run.claim_generation = state
+                .next_background_claim
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            run.claim_generation
+        };
         Some(BackgroundSyncClaim {
             state: Arc::clone(state),
             account_id: account_id.clone(),
+            generation,
             started: false,
             handed_off: false,
         })
+    }
+
+    /// Whether a background-sync claim *later* than `generation` now owns
+    /// `account_id`.
+    ///
+    /// Deliberately an ordering test rather than an equality one: the run
+    /// entry is dropped when the account goes idle and recreated by the next
+    /// thing that reports progress, and such an entry carries generation `0`.
+    /// Only a claim that came after `generation` owns the account's
+    /// in-progress flag; anything else leaves the earlier claim responsible
+    /// for the flag it wrote.
+    fn background_claim_superseded(&self, account_id: &AccountId, generation: u64) -> bool {
+        self.sync_runs
+            .lock()
+            .get(account_id)
+            .is_some_and(|run| run.claim_generation > generation)
+    }
+
+    /// Clear the `sync_in_progress` a background-sync claim left behind when
+    /// nothing finalized its pass — unless a later claim has taken the
+    /// account over.
+    ///
+    /// The window this guards is short but real: the claim releases the
+    /// account synchronously and only then spawns this, so a client can be
+    /// acked and write its own `sync_in_progress = true` in between. Clearing
+    /// it then leaves that client polling a row that says idle for a sync
+    /// that is about to run.
+    pub(crate) async fn clear_abandoned_background_sync(
+        &self,
+        account_id: &AccountId,
+        generation: u64,
+    ) {
+        if self.background_claim_superseded(account_id, generation) {
+            return;
+        }
+        tracing::warn!(account = %account_id, "background sync ended without finalizing; clearing its in-progress flag");
+        self.write_sync_in_progress(account_id, false).await;
+        self.restore_busy_if_superseded(account_id, generation)
+            .await;
+    }
+
+    /// Mark the account busy again if a claim later than `generation` took it
+    /// over while the clearing write was in flight *and is still holding it*.
+    ///
+    /// That claim wrote its own `true` before our `false` landed, so without
+    /// this the row ends up idle for a sync that is about to run. The later
+    /// writer has to win with "busy" — the same rule, and the same repair, as
+    /// the sync finalizer's `reassert_busy_if_background_sync_queued`.
+    ///
+    /// Liveness is what this asks and the skip-the-clear check does not, and
+    /// the asymmetry is the point. Merely *existing* is enough for a later
+    /// claim to own the row, so an earlier cleanup must not clear it. Writing
+    /// `true` is the stronger act: a later claim that has already finished
+    /// left its own verdict in that row, and re-asserting busy over it would
+    /// strand an idle account as syncing until the next daemon start — the
+    /// direction the ordering test exists to rule out.
+    async fn restore_busy_if_superseded(&self, account_id: &AccountId, generation: u64) {
+        let superseded_by_a_live_claim = {
+            let runs = self.sync_runs.lock();
+            runs.get(account_id).is_some_and(|run| {
+                run.claim_generation > generation
+                    && (run.background_syncs_queued > 0 || run.background_syncs_running > 0)
+            })
+        };
+        if superseded_by_a_live_claim {
+            self.write_sync_in_progress(account_id, true).await;
+        }
+    }
+
+    /// Set `account_id`'s in-progress flag. A store error is dropped rather
+    /// than returned: this runs in a task spawned from a `Drop` with nobody
+    /// left to hand it to, and a row that keeps the wrong value is reconciled
+    /// at the next daemon start (`reconcile_interrupted_syncs`).
+    async fn write_sync_in_progress(&self, account_id: &AccountId, in_progress: bool) {
+        let _ = self
+            .store
+            .upsert_sync_runtime_status(
+                account_id,
+                &mxr_store::SyncRuntimeStatusUpdate {
+                    sync_in_progress: Some(in_progress),
+                    ..Default::default()
+                },
+            )
+            .await;
     }
 
     /// Whether a background sync has been acked for `account_id` but has not
@@ -1723,6 +1830,7 @@ impl AppState {
             admin_blocking,
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
+            next_background_claim: std::sync::atomic::AtomicU64::new(1),
         })
     }
 
@@ -1792,6 +1900,7 @@ impl AppState {
             admin_blocking,
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
+            next_background_claim: std::sync::atomic::AtomicU64::new(1),
         })
     }
 
@@ -1887,6 +1996,7 @@ impl AppState {
                 admin_blocking,
                 auth_sessions: ParkingMutex::new(HashMap::new()),
                 sync_runs: ParkingMutex::new(HashMap::new()),
+                next_background_claim: std::sync::atomic::AtomicU64::new(1),
             },
             fake,
         ))
@@ -2542,5 +2652,222 @@ use_tls = true
         assert!(runtime
             .feature_block_reason(mxr_llm::LlmFeature::Expert)
             .is_none());
+    }
+
+    async fn sync_in_progress(state: &AppState, account_id: &AccountId) -> bool {
+        state
+            .store
+            .get_sync_runtime_status(account_id)
+            .await
+            .expect("read sync runtime status")
+            .expect("sync status row")
+            .sync_in_progress
+    }
+
+    async fn mark_syncing(state: &AppState, account_id: &AccountId) {
+        state
+            .store
+            .upsert_sync_runtime_status(
+                account_id,
+                &mxr_store::SyncRuntimeStatusUpdate {
+                    sync_in_progress: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("mark the account syncing");
+    }
+
+    /// A claim whose task died leaves `sync_in_progress = true` behind and its
+    /// cleanup runs later — by which time the next client can already have
+    /// been acked and marked the account busy itself. The interleaving is
+    /// driven by hand rather than raced: the claim is handed off so its own
+    /// `Drop` stays out of the way, and the cleanup is called with the
+    /// generation that claim carried.
+    #[tokio::test]
+    async fn a_late_cleanup_does_not_clear_a_newer_claim_s_in_progress_flag() {
+        let state = Arc::new(AppState::in_memory().await.expect("state"));
+        let account_id = state.default_provider().account_id().clone();
+
+        let mut abandoned = AppState::claim_background_sync(&state, &account_id)
+            .expect("the account starts unclaimed");
+        let abandoned_generation = abandoned.generation;
+        abandoned.mark_handed_off();
+        drop(abandoned);
+
+        // The next client, doing what `start_background_sync` does: claim,
+        // mark the account busy, ack.
+        let _next = AppState::claim_background_sync(&state, &account_id)
+            .expect("the account is free once the first claim goes");
+        mark_syncing(&state, &account_id).await;
+
+        state
+            .clear_abandoned_background_sync(&account_id, abandoned_generation)
+            .await;
+
+        assert!(
+            sync_in_progress(&state, &account_id).await,
+            "a dead claim's cleanup must not clear the flag a newer claim wrote"
+        );
+    }
+
+    /// The other half: nothing but this cleanup can clear the flag an
+    /// abandoned claim left, and the run entry it was stamped in is dropped
+    /// the moment the account goes idle — a later milestone recreates it with
+    /// no claim in it at all.
+    #[tokio::test]
+    async fn an_abandoned_claim_still_clears_the_flag_it_left_behind() {
+        let state = Arc::new(AppState::in_memory().await.expect("state"));
+        let account_id = state.default_provider().account_id().clone();
+
+        let mut abandoned = AppState::claim_background_sync(&state, &account_id)
+            .expect("the account starts unclaimed");
+        let abandoned_generation = abandoned.generation;
+        abandoned.mark_handed_off();
+        drop(abandoned);
+        mark_syncing(&state, &account_id).await;
+        state.record_sync_progress(&account_id, 1, "stored a page".to_string());
+
+        state
+            .clear_abandoned_background_sync(&account_id, abandoned_generation)
+            .await;
+
+        assert!(
+            !sync_in_progress(&state, &account_id).await,
+            "with no later claim the account must not stay marked syncing"
+        );
+    }
+
+    /// The reason the comparison is `>` and not `>=`: an account with other
+    /// live state keeps its run entry when the claim goes, so the cleanup
+    /// finds an entry still stamped with *its own* generation. That is not a
+    /// later claim, and reading it as one would leave the account marked
+    /// syncing for good.
+    #[tokio::test]
+    async fn a_claim_whose_run_entry_outlived_it_still_clears_its_own_flag() {
+        let state = Arc::new(AppState::in_memory().await.expect("state"));
+        let account_id = state.default_provider().account_id().clone();
+
+        let mut abandoned = AppState::claim_background_sync(&state, &account_id)
+            .expect("the account starts unclaimed");
+        let abandoned_generation = abandoned.generation;
+        // Reported before the claim goes, so the entry is not idle and
+        // survives the drop carrying this claim's generation.
+        state.record_sync_progress(&account_id, 1, "stored a page".to_string());
+        abandoned.mark_handed_off();
+        drop(abandoned);
+        mark_syncing(&state, &account_id).await;
+
+        state
+            .clear_abandoned_background_sync(&account_id, abandoned_generation)
+            .await;
+
+        assert!(
+            !sync_in_progress(&state, &account_id).await,
+            "a claim must still be able to clear the flag it wrote itself"
+        );
+    }
+
+    /// The repair on the far side of the clearing write: a claim taken while
+    /// that write was in flight wrote its `true` first, so the row would be
+    /// left idle for a sync about to run. Set up by hand rather than raced —
+    /// this is the state as of the moment the write returns.
+    #[tokio::test]
+    async fn a_claim_taken_during_the_clearing_write_is_restored_to_busy() {
+        let state = Arc::new(AppState::in_memory().await.expect("state"));
+        let account_id = state.default_provider().account_id().clone();
+
+        let mut abandoned = AppState::claim_background_sync(&state, &account_id)
+            .expect("the account starts unclaimed");
+        let abandoned_generation = abandoned.generation;
+        abandoned.mark_handed_off();
+        drop(abandoned);
+
+        let _next = AppState::claim_background_sync(&state, &account_id)
+            .expect("the account is free once the first claim goes");
+        state.write_sync_in_progress(&account_id, false).await;
+
+        state
+            .restore_busy_if_superseded(&account_id, abandoned_generation)
+            .await;
+
+        assert!(
+            sync_in_progress(&state, &account_id).await,
+            "the claim that came later has to win with busy"
+        );
+    }
+
+    /// A background pass that detaches before reporting anything is handed to
+    /// the reaper and its claim goes — but the pass is still running, so the
+    /// account is still busy. The claim's entry is what carries the generation
+    /// that says so; letting it go with the claim would leave an older,
+    /// still-pending cleanup unable to see that anyone came after it, and it
+    /// would clear the in-progress flag of a sync that is mid-flight.
+    #[tokio::test]
+    async fn a_detached_pass_keeps_an_older_cleanup_off_its_in_progress_flag() {
+        let state = Arc::new(AppState::in_memory().await.expect("state"));
+        let account_id = state.default_provider().account_id().clone();
+
+        // The claim that panicked: its cleanup is spawned but has not run yet.
+        let mut abandoned = AppState::claim_background_sync(&state, &account_id)
+            .expect("the account starts unclaimed");
+        let abandoned_generation = abandoned.generation;
+        abandoned.mark_handed_off();
+        drop(abandoned);
+
+        // The pass that took the account next, detached before its first
+        // milestone, and handed itself to the reaper.
+        let mut detached = AppState::claim_background_sync(&state, &account_id)
+            .expect("the account is free once the first claim goes");
+        detached.mark_started();
+        detached.mark_handed_off();
+        drop(detached);
+        mark_syncing(&state, &account_id).await;
+
+        state
+            .clear_abandoned_background_sync(&account_id, abandoned_generation)
+            .await;
+
+        assert!(
+            sync_in_progress(&state, &account_id).await,
+            "a detached pass is still running; an older cleanup must not report it idle"
+        );
+    }
+
+    /// The restore is the one write that puts `true` back, so it asks more of
+    /// the later claim than the skip-the-clear check does: that the claim is
+    /// still holding the account. A claim that has already finished left its
+    /// own verdict in the row, and re-asserting busy over it would strand an
+    /// idle account as syncing until the next daemon start.
+    #[tokio::test]
+    async fn a_finished_later_claim_does_not_get_the_account_marked_busy_again() {
+        let state = Arc::new(AppState::in_memory().await.expect("state"));
+        let account_id = state.default_provider().account_id().clone();
+
+        let mut abandoned = AppState::claim_background_sync(&state, &account_id)
+            .expect("the account starts unclaimed");
+        let abandoned_generation = abandoned.generation;
+        abandoned.mark_handed_off();
+        drop(abandoned);
+
+        // A later claim that came *and went*: its generation is still on the
+        // entry (kept alive here by a reported milestone), but nothing of it
+        // is outstanding any more.
+        let mut later = AppState::claim_background_sync(&state, &account_id)
+            .expect("the account is free once the first claim goes");
+        later.mark_started();
+        later.mark_handed_off();
+        drop(later);
+        state.record_sync_progress(&account_id, 1, "stored a page".to_string());
+        state.write_sync_in_progress(&account_id, false).await;
+
+        state
+            .restore_busy_if_superseded(&account_id, abandoned_generation)
+            .await;
+
+        assert!(
+            !sync_in_progress(&state, &account_id).await,
+            "a later claim that already finished must not be re-asserted as busy"
+        );
     }
 }

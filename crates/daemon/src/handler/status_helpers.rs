@@ -155,8 +155,10 @@ pub(super) async fn collect_doctor_report(
         semantic_config.enabled,
         semantic_config.active_profile.as_str(),
     );
+    // The doctor report waits for its snapshot rather than budgeting it, so
+    // there is no degraded reading to account for here.
     let health_class =
-        crate::server::classify_health(&sync_statuses, repair_required, restart_required);
+        crate::server::classify_health(&sync_statuses, repair_required, restart_required, false);
     let recent_sync_events = state
         .store
         .list_events(10, None, Some("sync"))

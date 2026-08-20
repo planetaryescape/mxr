@@ -37,15 +37,23 @@ pub(crate) fn start_time(pid: u32) -> Option<String> {
 ///
 /// Only ever used to ask structural questions ("is argv[1] `daemon`?"), never
 /// to recover a value that might contain a space.
+///
+/// `-ww` because procps truncates to the terminal width — 80 columns when
+/// stdout is a pipe, which it always is here. A deep exe path (a worktree, a
+/// long `$HOME`) pushes the flags off the end, and a command line cut mid-flag
+/// reads as a daemon that is not ours.
 pub(crate) fn command_words(pid: u32) -> Option<Vec<String>> {
-    let raw = ps(&["-o", "command=", "-p", &pid.to_string()])?;
+    let raw = ps(&["-ww", "-o", "command=", "-p", &pid.to_string()])?;
     let words: Vec<String> = raw.split_whitespace().map(ToString::to_string).collect();
     (!words.is_empty()).then_some(words)
 }
 
 /// Every `<pid> <command line>` pair `ps` reports.
+///
+/// `-ww` for the same reason as [`command_words`]: a truncated command line
+/// loses the flags the scan matches on.
 pub(crate) fn all_command_lines() -> Option<Vec<(u32, String)>> {
-    let raw = ps(&["-Ao", "pid=,command="])?;
+    let raw = ps(&["-eww", "-o", "pid=,command="])?;
     Some(parse_pid_command_lines(&raw))
 }
 

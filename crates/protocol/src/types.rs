@@ -2324,6 +2324,14 @@ pub enum ResponseData {
         semantic_runtime: Option<SemanticRuntimeMetrics>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         feature_health: Option<FeatureHealthReport>,
+        /// The DB-backed part of this snapshot (`accounts`, `total_messages`,
+        /// `sync_statuses`) timed out and carries no reading: those three
+        /// fields are empty/zero because the daemon could not answer in time,
+        /// not because the store is empty or idle. Poll again rather than
+        /// concluding anything from them. The DB-free fields (versions,
+        /// `daemon_pid`, `feature_health`) are always a real reading.
+        #[serde(default)]
+        degraded: bool,
     },
     Pong,
     Ack,

@@ -1,4 +1,5 @@
 use super::*;
+use crate::async_result::StatusSnapshot;
 
 impl App {
     pub async fn load(&mut self, client: &mut Client) -> Result<(), MxrError> {
@@ -16,17 +17,19 @@ impl App {
                     accounts,
                     total_messages,
                     sync_statuses,
+                    degraded,
                     ..
                 },
         }) = client.raw_request(Request::GetStatus).await
         {
-            self.apply_status_snapshot(
+            self.apply_status_snapshot(StatusSnapshot {
                 uptime_secs,
                 daemon_pid,
                 accounts,
                 total_messages,
                 sync_statuses,
-            );
+                degraded,
+            });
         }
         // Queue body prefetch for first visible window
         self.queue_body_window();
@@ -89,19 +92,23 @@ impl App {
         }
     }
 
-    pub fn apply_status_snapshot(
-        &mut self,
-        uptime_secs: u64,
-        daemon_pid: Option<u32>,
-        accounts: Vec<String>,
-        total_messages: u32,
-        sync_statuses: Vec<mxr_protocol::AccountSyncStatus>,
-    ) {
-        self.diagnostics.page.uptime_secs = Some(uptime_secs);
-        self.diagnostics.page.daemon_pid = daemon_pid;
-        self.diagnostics.page.accounts = accounts;
-        self.diagnostics.page.total_messages = Some(total_messages);
-        self.diagnostics.page.sync_statuses = sync_statuses;
+    /// Take a `GetStatus` reading into the diagnostics page.
+    ///
+    /// A degraded snapshot is not a reading: the daemon answered without
+    /// having read its database, so the counts and sync statuses in it are
+    /// blank rather than zero. Keep whatever was last known and record that
+    /// the daemon is too busy to say, instead of overwriting a real reading
+    /// with emptiness.
+    pub(crate) fn apply_status_snapshot(&mut self, snapshot: StatusSnapshot) {
+        self.diagnostics.page.uptime_secs = Some(snapshot.uptime_secs);
+        self.diagnostics.page.daemon_pid = snapshot.daemon_pid;
+        self.diagnostics.page.status_degraded = snapshot.degraded;
+        if snapshot.degraded {
+            return;
+        }
+        self.diagnostics.page.accounts = snapshot.accounts;
+        self.diagnostics.page.total_messages = Some(snapshot.total_messages);
+        self.diagnostics.page.sync_statuses = snapshot.sync_statuses;
         self.last_sync_status = Some(Self::summarize_sync_status(
             &self.diagnostics.page.sync_statuses,
         ));

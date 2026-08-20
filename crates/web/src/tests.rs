@@ -123,6 +123,7 @@ async fn status_endpoint_proxies_ipc_status() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             }),
             _ => None,
@@ -435,6 +436,7 @@ async fn auth_accepts_authorization_bearer_header() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             })
         },
@@ -759,6 +761,7 @@ async fn v1_status_endpoint_returns_same_payload_as_legacy() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             }),
             _ => None,
@@ -1165,6 +1168,7 @@ async fn mailbox_endpoint_lists_envelopes() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             }),
             Request::ListLabels { account_id: None } => Some(Response::Ok {
@@ -1260,6 +1264,7 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             }),
             Request::ListLabels { account_id: None } => Some(Response::Ok {
@@ -1374,6 +1379,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             }),
             Request::ListLabels { account_id: None } => Some(Response::Ok {
@@ -3889,4 +3895,23 @@ async fn edit_session(
         .await
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::OK);
+}
+
+#[test]
+fn degraded_status_is_not_reported_as_a_quiet_mailbox() {
+    use crate::chrome::describe_sync_state;
+
+    // A degraded snapshot arrives with no sync statuses and no counts, which
+    // is indistinguishable from an idle, empty mailbox unless the flag is
+    // honoured.
+    let (label, message) = describe_sync_state(true, false, &[]);
+    assert_eq!(label, "Daemon busy");
+    assert!(
+        message.contains("unknown, not empty"),
+        "the shell must say the counts are unknown; got {message:?}"
+    );
+
+    let (label, message) = describe_sync_state(false, false, &[]);
+    assert_eq!(label, "Synced");
+    assert_eq!(message, "Local-first and ready");
 }

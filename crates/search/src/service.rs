@@ -262,6 +262,20 @@ impl SearchServiceHandle {
         resp_rx.await.map_err(|_| worker_stopped())?
     }
 
+    /// True once the worker task has stopped and search can no longer serve
+    /// anything: the index moved into a `spawn_blocking` job that panicked, or
+    /// the daemon asked it to shut down. Every later request fails with a
+    /// closed channel, so callers that only ever hit the happy path never learn
+    /// about it — health reporting reads this instead.
+    ///
+    /// There is no auto-restart: the index is owned by the dead task, and
+    /// re-opening it safely means re-taking the tantivy writer lock and
+    /// replaying whatever the panicking batch was doing. Restarting the daemon
+    /// is the remedy today.
+    pub fn worker_stopped(&self) -> bool {
+        self.tx.is_closed()
+    }
+
     pub async fn request_shutdown(&self) -> Result<(), MxrError> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx
@@ -313,4 +327,37 @@ fn closed_error(error: mpsc::error::SendError<SearchCommand>) -> MxrError {
 
 fn worker_stopped() -> MxrError {
     MxrError::Search("search service worker stopped".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )]
+
+    use super::*;
+    use crate::SearchIndex;
+
+    #[tokio::test]
+    async fn a_live_worker_is_not_reported_as_stopped() {
+        let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+
+        assert!(!handle.worker_stopped());
+        assert!(handle.num_docs().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_worker_that_died_with_its_index_is_reported_as_stopped() {
+        let (handle, worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+
+        // Stands in for the index moving into a `spawn_blocking` job that
+        // panicked: the task ends holding the index, and every later request
+        // finds a closed channel.
+        worker.abort();
+        let _ = worker.await;
+
+        assert!(handle.worker_stopped());
+        assert!(handle.num_docs().await.is_err());
+    }
 }

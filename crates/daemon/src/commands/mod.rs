@@ -70,6 +70,22 @@ use crate::ipc_client::IpcClient;
 use mxr_core::{AccountId, DraftId, MessageId};
 use mxr_protocol::{AccountSummaryData, Request, Response, ResponseData};
 
+/// Whether a `GetStatus` reply carries a usable DB reading.
+///
+/// `get_status` fast-fails its DB-backed snapshot after a couple of seconds so
+/// a saturated reader pool can't wedge status, and then answers with an empty
+/// account list, zero messages and no sync statuses. Polling loops must not
+/// read that as "nothing synced" or "nobody is syncing".
+///
+/// The `degraded` flag is the daemon's own answer. The empty-account check
+/// behind it only matters for a daemon older than the flag (a remote
+/// `MXR_DAEMON_ADDR` target — a local one is restarted to match the CLI
+/// binary): a daemon with no accounts configured still reports one named
+/// "unknown", so an empty list can only mean the snapshot degraded.
+pub(crate) fn degraded_status_reading(degraded: bool, accounts: &[String]) -> bool {
+    degraded || accounts.is_empty()
+}
+
 /// Extract a typed value from a daemon `Response`, converting `Response::Error`
 /// into an `anyhow` error and rejecting unexpected variants.
 pub(crate) fn expect_response<F, T>(resp: Response, extract: F) -> anyhow::Result<T>
@@ -186,4 +202,24 @@ fn account_matches(account: &AccountSummaryData, selector: &str) -> bool {
         || account.email == selector
         || account.name == selector
         || account.account_id.to_string() == selector
+}
+
+#[cfg(test)]
+mod tests {
+    use super::degraded_status_reading;
+
+    #[test]
+    fn a_flagged_snapshot_is_no_reading_even_when_accounts_came_back() {
+        assert!(degraded_status_reading(true, &["personal".to_string()]));
+    }
+
+    #[test]
+    fn an_empty_account_list_is_no_reading_from_a_daemon_without_the_flag() {
+        assert!(degraded_status_reading(false, &[]));
+    }
+
+    #[test]
+    fn a_complete_snapshot_is_a_reading() {
+        assert!(!degraded_status_reading(false, &["personal".to_string()]));
+    }
 }

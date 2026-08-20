@@ -150,13 +150,14 @@ pub fn run_status_only(
 
 /// Place a copy of the `mxr` binary at `dst` under a distinct file name.
 ///
-/// The daemon's pid-file fallback finds a running daemon by scanning `ps` for
-/// `<exe file name> daemon --instance <instance>`
-/// (`server::fallback_live_daemon_pid_without_pid_file`). `mxr demo` always
-/// uses the fixed `mxr-demo` instance, so a test driving the stock `mxr`
-/// binary can adopt — and then restart or shut down — a developer's real demo
-/// daemon, or another checkout's. Running under a unique file name keeps the
-/// scan from matching anything but this test's own daemon.
+/// The daemon's pid-file fallback finds a running daemon by scanning `ps`
+/// (`server::fallback_live_daemon_pid_without_pid_file`). It only adopts a
+/// process running the same executable *file* in the same profile, so a test
+/// can no longer reach another checkout's daemon on the command line alone.
+/// A unique file name is cheap insurance on top of that: `mxr demo` uses the
+/// fixed `mxr-demo` instance, and two tests in one checkout run the very same
+/// `target/debug/mxr`, so the binary is the one discriminator a test can still
+/// control.
 ///
 /// Hard-links when the temp dir shares a filesystem with the build output and
 /// copies otherwise; either way the name is what matters.

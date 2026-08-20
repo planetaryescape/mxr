@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.19"
+    "version": "0.6.24"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -2919,6 +2919,17 @@
             "format": "int32",
             "minimum": 0
           },
+          "progress": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SyncProgressData",
+                "description": "Live progress of the pass currently running, when one is. Held in\ndaemon memory rather than the status row: it changes far too often to\nbe worth a write per step, and it means nothing once the daemon that\nreported it is gone."
+              }
+            ]
+          },
           "sync_in_progress": {
             "type": "boolean"
           }
@@ -4170,13 +4181,19 @@
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/Envelope"
-                }
+                },
+                "description": "The newest arrivals, capped so one event always fits an IPC frame.\nA large initial backfill carries a sample, not the whole batch."
               },
               "event": {
                 "type": "string",
                 "enum": [
                   "NewMessages"
                 ]
+              },
+              "total": {
+                "type": "integer",
+                "description": "How many messages actually arrived. Equal to `envelopes.len()` for\nan ordinary sync; larger when the batch was capped. Additive with a\nserde default so an older client still decodes the event.",
+                "minimum": 0
               }
             }
           },
@@ -5880,6 +5897,10 @@
           },
           "relationship_profile": {
             "$ref": "#/components/schemas/FeatureHealth"
+          },
+          "search": {
+            "$ref": "#/components/schemas/FeatureHealth",
+            "description": "Lexical (tantivy) search. `Degraded` once the index worker has stopped:\nsearch stays dead for the rest of the daemon's life, and nothing else\nreports it. Defaulted so a daemon older than this field still\ndeserializes — such a daemon had no way to report the failure, which is\nindistinguishable from healthy on the wire."
           },
           "semantic": {
             "$ref": "#/components/schemas/FeatureHealth"
@@ -8980,6 +9001,10 @@
                 "enum": [
                   "ReindexSemantic"
                 ]
+              },
+              "force": {
+                "type": "boolean",
+                "description": "Re-embed every message even when its stored vectors already look\ncurrent. Defaults to false: an ordinary reindex skips messages\nwhose chunks and embeddings match the active profile."
               }
             }
           },
@@ -9438,6 +9463,10 @@
                     "$ref": "#/components/schemas/AccountId"
                   }
                 ]
+              },
+              "background": {
+                "type": "boolean",
+                "description": "Answer as soon as the sync has started instead of after it\nfinishes. Defaults to the historical blocking behaviour so an\nolder client's wire bytes keep meaning what they used to."
               },
               "cmd": {
                 "type": "string",
@@ -13960,6 +13989,10 @@
                   "null"
                 ]
               },
+              "degraded": {
+                "type": "boolean",
+                "description": "The DB-backed part of this snapshot (`accounts`, `total_messages`,\n`sync_statuses`) timed out and carries no reading: those three\nfields are empty/zero because the daemon could not answer in time,\nnot because the store is empty or idle. Poll again rather than\nconcluding anything from them. The DB-free fields (versions,\n`daemon_pid`, `feature_health`) are always a real reading."
+              },
               "feature_health": {
                 "oneOf": [
                   {
@@ -16046,6 +16079,32 @@
           },
           "reason": {
             "type": "string"
+          }
+        }
+      },
+      "SyncProgressData": {
+        "type": "object",
+        "description": "How far the sync pass running for an account has got.\n\n`current` counts messages committed so far in this backfill run, carrying\nacross provider pages. `total` is the denominator when one is known — no\nprovider in the tree reports a batch total, so it is absent today; it\nexists because this maps straight onto `DaemonEvent::OperationProgress`,\nwhose `total` has always been optional for exactly this reason.",
+        "required": [
+          "current",
+          "message"
+        ],
+        "properties": {
+          "current": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "message": {
+            "type": "string"
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
           }
         }
       },

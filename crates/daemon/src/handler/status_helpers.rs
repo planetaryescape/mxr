@@ -5,9 +5,13 @@ use mxr_protocol::{AccountSyncStatus, FeatureHealth, FeatureHealthReport};
 use mxr_store::SyncRuntimeStatus;
 use std::collections::HashMap;
 
+/// The DB-backed part of a status reply: account names, the store-wide message
+/// count, and one sync status per account.
+pub(super) type StatusSnapshotFields = (Vec<String>, u32, Vec<AccountSyncStatus>);
+
 pub(super) async fn collect_status_snapshot(
     state: &AppState,
-) -> Result<(Vec<String>, u32, Vec<AccountSyncStatus>), String> {
+) -> Result<StatusSnapshotFields, String> {
     let started_at = std::time::Instant::now();
     let accounts = state
         .store

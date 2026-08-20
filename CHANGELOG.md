@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.25](https://github.com/planetaryescape/mxr/compare/v0.6.24...v0.6.25) (2026-08-20)
+
+
+### Bug Fixes
+
+* flush async draft writes, deflake two test suites, clear npm audit debt, fix demo search examples ([#201](https://github.com/planetaryescape/mxr/issues/201)) ([7d0191a](https://github.com/planetaryescape/mxr/commit/7d0191a7bb532de40413d0602571b1add243e381))
+* identify a daemon before adopting or killing it, and report status honestly ([#203](https://github.com/planetaryescape/mxr/issues/203)) ([b7ecd5a](https://github.com/planetaryescape/mxr/commit/b7ecd5a19b275e6629aa8fac320053b833b46623))
+* keep dependent rows on the message id the store actually wrote ([#202](https://github.com/planetaryescape/mxr/issues/202)) ([a9d1a12](https://github.com/planetaryescape/mxr/commit/a9d1a12710f6cc4407e59624751017fa6393c9f4))
+* keep semantic search and status honest about index passes ([#200](https://github.com/planetaryescape/mxr/issues/200)) ([7c43fe8](https://github.com/planetaryescape/mxr/commit/7c43fe88e1364720a973cdd9b736316cc9ff3e60))
+* reject a contradicting daemon record, recheck identity before signalling ([#206](https://github.com/planetaryescape/mxr/issues/206)) ([b64258d](https://github.com/planetaryescape/mxr/commit/b64258dfc81522b5c5d2015a684fd424823a1b5a))
+
 ## [0.6.24](https://github.com/planetaryescape/mxr/compare/v0.6.23...v0.6.24) (2026-08-19)
 
 

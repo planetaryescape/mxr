@@ -2444,6 +2444,72 @@ mod tests {
         );
     }
 
+    /// A stored message the provider now puts in another thread leaves its
+    /// old thread behind. Both ends have to reach the client: the thread the
+    /// message joined, and the one it left — tombstoned when the move emptied
+    /// it — or a client keeps showing a thread that no longer has the mail.
+    #[tokio::test]
+    async fn a_message_moved_between_threads_reports_both_threads() {
+        const TOTAL: usize = 3;
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let engine = SyncEngine::new(store.clone(), in_memory_search());
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        let provider =
+            mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), TOTAL);
+
+        // Store the message under a thread of its own, the way an earlier
+        // sync (or an earlier threading pass) left it.
+        let synced = provider
+            .fetch_message("demo-msg-2")
+            .await
+            .unwrap()
+            .expect("demo dataset message");
+        let provider_thread = synced.envelope.thread_id.clone();
+        let old_thread = ThreadId::from_provider_id("fake", "thread-before-the-move");
+        assert_ne!(old_thread, provider_thread);
+        let mut stale = synced.envelope;
+        stale.thread_id = old_thread.clone();
+        store
+            .apply_sync_upserts(&mut [mxr_store::SyncUpsert {
+                envelope: stale,
+                direction: MessageDirection::Inbound,
+                body: synced.body,
+                label_ids: Vec::new(),
+            }])
+            .await
+            .unwrap();
+
+        let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
+
+        let changed: HashSet<ThreadId> = outcome
+            .threads_changed
+            .iter()
+            .map(|thread| thread.id.clone())
+            .collect();
+        assert!(
+            changed.contains(&provider_thread),
+            "the thread the message moved into must be reported"
+        );
+        assert!(
+            changed.contains(&old_thread),
+            "the thread it left must be reported too"
+        );
+        let tombstone = outcome
+            .threads_changed
+            .iter()
+            .find(|thread| thread.id == old_thread)
+            .expect("vacated thread");
+        assert!(
+            tombstone.message_ids.is_empty(),
+            "the move emptied it, so it comes back as a tombstone"
+        );
+    }
+
     /// The engine passes the provider's remaining count through so a client
     /// can show a denominator. Counting down from the cursor is what makes it
     /// right for a resumed backfill: the caller adds it to what it has

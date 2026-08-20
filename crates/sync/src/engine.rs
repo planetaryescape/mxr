@@ -429,10 +429,17 @@ impl SyncEngine {
                 });
             }
 
-            self.store
+            // A message the provider moved between threads leaves its old
+            // thread behind. The upsert overwrites `thread_id`, so the store
+            // is the only place that still knows which thread was vacated —
+            // it joins the touched set so the outcome reports it, tombstoned
+            // if the move emptied it.
+            let vacated_threads = self
+                .store
                 .apply_sync_upserts(&mut upserts)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
+            touched_threads.extend(vacated_threads);
             progress(SyncProgress::PageStored {
                 messages: synced_count,
             });

@@ -3058,7 +3058,7 @@ async fn ingest_sent_message(
             }
         }
     };
-    let message_id = mxr_core::MessageId::from_scoped_provider_id(
+    let derived_id = mxr_core::MessageId::from_scoped_provider_id(
         &draft.account_id,
         provider_namespace,
         &provider_id_value,
@@ -3075,7 +3075,7 @@ async fn ingest_sent_message(
         .collect();
 
     let mut envelope = Envelope {
-        id: message_id.clone(),
+        id: derived_id,
         account_id: draft.account_id.clone(),
         provider_id: provider_id_value,
         thread_id: reply_parent_thread_id(state, draft)
@@ -3111,15 +3111,15 @@ async fn ingest_sent_message(
     // under a different derivation comes back under that row's id. The body,
     // the labels and the search entry below — and the id this hands back to
     // the caller — all follow what was written, not what we computed.
-    let message_id = state
+    let stored_id = state
         .store
         .upsert_envelope_with_direction(&envelope, MessageDirection::Outbound)
         .await
         .map_err(|e| e.to_string())?;
-    envelope.id = message_id.clone();
+    envelope.id = stored_id.clone();
 
     let body = MessageBody {
-        message_id: message_id.clone(),
+        message_id: stored_id.clone(),
         text_plain: Some(sent_text),
         text_html: sent_html,
         attachments: Vec::new(),
@@ -3151,7 +3151,7 @@ async fn ingest_sent_message(
     if !sent_label_ids.is_empty() {
         let _ = state
             .store
-            .set_message_labels(&message_id, &sent_label_ids, mxr_core::EventSource::User)
+            .set_message_labels(&stored_id, &sent_label_ids, mxr_core::EventSource::User)
             .await;
     }
 
@@ -3189,7 +3189,7 @@ async fn ingest_sent_message(
         });
     }
 
-    Ok(message_id)
+    Ok(stored_id)
 }
 
 /// The reply draft with its provider-native thread id filled in, or `None`

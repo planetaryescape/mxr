@@ -598,6 +598,17 @@ mod tests {
         );
     }
 
+    /// An idle pass has no denominator, so the line must not offer one. The
+    /// daemon withholds the total for exactly this reason — rendering it would
+    /// read "0/0", which looks like a stalled sync rather than an idle one.
+    #[test]
+    fn sync_progress_line_never_renders_a_zero_denominator() {
+        let idle = with_progress(status("personal", "t0", None), 0, None);
+        let line = sync_progress_line(&[idle]).expect("a reporting account produces a line");
+        assert_eq!(line, "personal: 0 — Stored 3000 messages");
+        assert!(!line.contains('/'), "no denominator when none is known");
+    }
+
     /// Accounts that are not reporting progress contribute nothing, and a
     /// silent set of accounts produces no line at all.
     #[test]

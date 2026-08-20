@@ -11,7 +11,7 @@
 use crate::body::insert_body_tx;
 use crate::keywords::replace_message_keywords_tx;
 use crate::message::{replace_message_labels_tx, upsert_envelope_tx};
-use mxr_core::id::{LabelId, MessageId};
+use mxr_core::id::{LabelId, MessageId, ThreadId};
 use mxr_core::types::{Envelope, MessageBody, MessageDirection};
 
 /// One synced message, with everything the store needs to persist it.
@@ -63,13 +63,24 @@ impl super::Store {
     /// `(account_id, provider_id)` keeps the stored id, and the entry is
     /// rewritten in place so the caller's own follow-up work — search index,
     /// reply pairs, semantic ingest — uses the same id the rows are under.
-    pub async fn apply_sync_upserts(&self, upserts: &mut [SyncUpsert]) -> Result<(), sqlx::Error> {
+    ///
+    /// Returns the threads this page emptied out of: a message that moved to
+    /// another thread leaves its old one behind, and only the row's prior
+    /// `thread_id` names it. Callers report those alongside the threads the
+    /// page landed in, so clients drop metadata they cached for a thread that
+    /// no longer holds the message.
+    pub async fn apply_sync_upserts(
+        &self,
+        upserts: &mut [SyncUpsert],
+    ) -> Result<Vec<ThreadId>, sqlx::Error> {
+        let mut vacated_threads = Vec::new();
         for chunk in upserts.chunks_mut(UPSERT_CHUNK) {
             let mut tx = self.writer().begin().await?;
             for upsert in chunk {
-                let stored_id =
+                let stored =
                     upsert_envelope_tx(&mut tx, &upsert.envelope, upsert.direction).await?;
-                upsert.retarget(stored_id);
+                vacated_threads.extend(stored.vacated_thread_id);
+                upsert.retarget(stored.id);
                 insert_body_tx(&mut tx, &upsert.body).await?;
                 replace_message_labels_tx(&mut tx, &upsert.envelope.id, &upsert.label_ids).await?;
                 replace_message_keywords_tx(
@@ -81,7 +92,7 @@ impl super::Store {
             }
             tx.commit().await?;
         }
-        Ok(())
+        Ok(vacated_threads)
     }
 }
 
@@ -401,6 +412,46 @@ mod tests {
             .unwrap()
             .is_empty());
         assert!(store.get_body(&incoming_id).await.unwrap().is_none());
+    }
+
+    /// A provider that re-threads a message overwrites `messages.thread_id`,
+    /// so after the write nothing else can name the thread it left. The page
+    /// reports it, and callers pass it on as a changed thread.
+    #[tokio::test]
+    async fn moving_a_message_between_threads_reports_the_thread_it_left() {
+        let account = test_account();
+        let store = Store::in_memory().await.unwrap();
+        store.insert_account(&account).await.unwrap();
+
+        let mut first = vec![upsert(&account, 0, Vec::new())];
+        let original_thread = first[0].envelope.thread_id.clone();
+        let vacated = store.apply_sync_upserts(&mut first).await.unwrap();
+        assert!(
+            vacated.is_empty(),
+            "a message that is new to the store leaves no thread behind"
+        );
+
+        let mut moved = vec![upsert(&account, 0, Vec::new())];
+        let new_thread = mxr_core::id::ThreadId::from_scoped_provider_id(
+            &account.id,
+            "fake",
+            "thread-after-merge",
+        );
+        moved[0].envelope.thread_id = new_thread.clone();
+        assert_ne!(original_thread, new_thread);
+
+        let vacated = store.apply_sync_upserts(&mut moved).await.unwrap();
+        assert_eq!(vacated, vec![original_thread]);
+        let envelope = store
+            .get_envelope(&moved[0].envelope.id)
+            .await
+            .unwrap()
+            .expect("envelope");
+        assert_eq!(envelope.thread_id, new_thread);
+
+        // Re-applying the same page changes nothing, so nothing is vacated.
+        let vacated = store.apply_sync_upserts(&mut moved).await.unwrap();
+        assert!(vacated.is_empty());
     }
 
     /// Re-running a page (the provider resends it after a failed chunk) must

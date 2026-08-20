@@ -1151,9 +1151,18 @@ impl AppState {
     /// Record how many messages the pass still has to deliver, counting the
     /// page it just fetched. Turned into the run's denominator by adding what
     /// the run has already committed.
+    ///
+    /// A steady-state poll reports nothing left and has committed nothing, and
+    /// "0 of 0" is not progress — it is an idle account, and every client would
+    /// render it as one more thing happening. A run that has already stored
+    /// something keeps its denominator when a final page reports nothing left:
+    /// that is a genuine "16,500 of 16,500".
     pub(crate) fn record_sync_remaining(&self, account_id: &AccountId, remaining: u32) {
         let mut runs = self.sync_runs.lock();
         let run = runs.entry(account_id.clone()).or_default();
+        if remaining == 0 && run.synced == 0 {
+            return;
+        }
         run.total = Some(run.synced.saturating_add(remaining));
     }
 
@@ -2138,6 +2147,39 @@ use_tls = true
             state.sync_progress(&account_id).expect("progress").total,
             None
         );
+    }
+
+    /// An idle poll finds nothing to sync and has stored nothing. Reporting
+    /// that as a denominator gives every client "0 of 0" to render.
+    #[tokio::test]
+    async fn an_idle_pass_with_nothing_left_reports_no_total() {
+        let state = AppState::in_memory().await.expect("state");
+        let account_id = AccountId::new();
+
+        state.record_sync_remaining(&account_id, 0);
+        state.record_sync_progress(&account_id, 0, "Fetched 0 messages".to_string());
+
+        let progress = state.sync_progress(&account_id).expect("progress");
+        assert_eq!(progress.current, 0);
+        assert_eq!(progress.total, None);
+    }
+
+    /// The other side of that guard: a backfill whose last page carries the
+    /// remainder still ends on a full, meaningful denominator.
+    #[tokio::test]
+    async fn a_backfill_ending_with_nothing_left_keeps_its_denominator() {
+        let state = AppState::in_memory().await.expect("state");
+        let account_id = AccountId::new();
+
+        state.record_sync_remaining(&account_id, 100);
+        state.record_sync_progress(&account_id, 100, "Stored 100 messages".to_string());
+        // The provider signals the end of the backfill with an empty page.
+        state.record_sync_remaining(&account_id, 0);
+        state.record_sync_progress(&account_id, 0, "Fetched 0 messages".to_string());
+
+        let progress = state.sync_progress(&account_id).expect("progress");
+        assert_eq!(progress.current, 100);
+        assert_eq!(progress.total, Some(100));
     }
 
     /// A provider that cannot count what is left leaves the denominator

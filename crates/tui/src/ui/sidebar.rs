@@ -10,8 +10,11 @@ use throbber_widgets_tui::{Throbber, ThrobberState, BRAILLE_SIX};
 /// refresh on sync daemon events.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountSyncIndicator {
-    /// A sync is currently running — renders an animated spinner.
-    Syncing,
+    /// A sync is currently running — renders an animated spinner, plus the
+    /// live message count when the daemon is reporting one. Pre-formatted
+    /// here so the renderer stays a layout concern: `"3000/16500"` when the
+    /// provider could say how much is left, `"3000"` when it could not.
+    Syncing { progress: Option<String> },
     /// Last sync succeeded; carries the relative age, e.g. "2m ago".
     Synced(String),
     /// The account is unhealthy or the last sync errored.
@@ -36,7 +39,18 @@ pub fn sync_indicator_for(
         return AccountSyncIndicator::Unknown;
     };
     if status.sync_in_progress {
-        return AccountSyncIndicator::Syncing;
+        return AccountSyncIndicator::Syncing {
+            // Plain digits, not thousands-separated: this shares one sidebar
+            // line with the account address and a default marker, and the
+            // separators cost width the column does not have.
+            progress: status
+                .progress
+                .as_ref()
+                .map(|progress| match progress.total {
+                    Some(total) => format!("{}/{total}", progress.current),
+                    None => progress.current.to_string(),
+                }),
+        };
     }
     if !status.healthy || status.last_error.is_some() {
         return AccountSyncIndicator::Offline;
@@ -327,7 +341,7 @@ fn render_account_item<'a>(
     // Right-aligned per-account sync state: spinner while syncing,
     // "synced <age>" when healthy, an offline marker on errors.
     let (sync_spans, sync_width): (Vec<Span<'a>>, usize) = match sync {
-        AccountSyncIndicator::Syncing => {
+        AccountSyncIndicator::Syncing { progress } => {
             let spinner = sync_throbber.map_or_else(
                 || Span::styled("…", Style::default().fg(theme.accent)),
                 |state| {
@@ -337,8 +351,14 @@ fn render_account_item<'a>(
                         .to_symbol_span(state)
                 },
             );
-            let width = spinner.width();
-            (vec![spinner], width)
+            let mut width = spinner.width();
+            let mut spans = vec![spinner];
+            if let Some(progress) = progress {
+                let text = format!(" {progress}");
+                width += text.chars().count();
+                spans.push(Span::styled(text, Style::default().fg(theme.text_muted)));
+            }
+            (spans, width)
         }
         AccountSyncIndicator::Synced(age) => {
             let text = format!("synced {age}");
@@ -572,6 +592,16 @@ mod tests {
         }
     }
 
+    fn syncing_with_progress(current: u32, total: Option<u32>) -> mxr_protocol::AccountSyncStatus {
+        let mut status = sync_status(true, true, None);
+        status.progress = Some(mxr_protocol::SyncProgressData {
+            current,
+            total,
+            message: "Stored messages".into(),
+        });
+        status
+    }
+
     #[test]
     fn sync_indicator_maps_daemon_status_to_sidebar_state() {
         assert_eq!(
@@ -581,7 +611,7 @@ mod tests {
         );
         assert_eq!(
             sync_indicator_for(Some(&sync_status(true, true, None)), None),
-            AccountSyncIndicator::Syncing
+            AccountSyncIndicator::Syncing { progress: None }
         );
         assert_eq!(
             sync_indicator_for(Some(&sync_status(false, false, None)), None),
@@ -600,6 +630,27 @@ mod tests {
             sync_indicator_for(Some(&sync_status(false, true, None)), None),
             AccountSyncIndicator::Unknown,
             "healthy but never-synced accounts show no stale age"
+        );
+    }
+
+    /// A backfill runs for minutes; a bare spinner says only that something
+    /// is happening. The daemon reports how far the pass has got, so the
+    /// sidebar shows it, with a denominator when the provider could count
+    /// what was left and without one when it could not.
+    #[test]
+    fn sync_indicator_carries_the_live_message_count_while_syncing() {
+        assert_eq!(
+            sync_indicator_for(Some(&syncing_with_progress(3000, Some(16500))), None),
+            AccountSyncIndicator::Syncing {
+                progress: Some("3000/16500".into())
+            }
+        );
+        assert_eq!(
+            sync_indicator_for(Some(&syncing_with_progress(3000, None)), None),
+            AccountSyncIndicator::Syncing {
+                progress: Some("3000".into())
+            },
+            "a provider that cannot count what is left still shows movement"
         );
     }
 

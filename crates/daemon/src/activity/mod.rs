@@ -316,6 +316,46 @@ pub fn current_unix_ms() -> i64 {
         .map_or(0, |d| d.as_millis() as i64)
 }
 
+/// Wait until the worker has published `expected` as its paused state.
+///
+/// The worker takes channel messages one at a time and finishes the store
+/// write for each one before receiving the next, and it publishes the paused
+/// flag from inside that same loop. A *change* of the flag therefore proves
+/// every entry queued ahead of the pause/resume has already landed, which is
+/// what makes this a barrier rather than a sleep.
+///
+/// Wait for the edge you are creating, not for a level you already hold: the
+/// flag starts `false`, so waiting for `false` before anything has paused
+/// returns instantly and proves nothing.
+///
+/// This depends on `Pause`/`Resume` staying ordered work inside the worker
+/// loop. If either ever moves off that path, the barrier silently weakens —
+/// a `#[cfg(test)]` `Ack` message would make it true by construction.
+#[cfg(test)]
+pub(crate) async fn wait_for_pause_state(rec: &Recorder, expected: bool) {
+    for _ in 0..200 {
+        if rec.pause_status().0 == expected {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert_eq!(
+        rec.pause_status().0,
+        expected,
+        "activity recorder never reached the expected paused state"
+    );
+}
+
+/// Barrier for a running (unpaused) recorder: flip pause on and off and wait
+/// for both edges. Writes no rows of its own.
+#[cfg(test)]
+pub(crate) async fn settle(rec: &Recorder) {
+    rec.pause(None);
+    wait_for_pause_state(rec, true).await;
+    rec.resume();
+    wait_for_pause_state(rec, false).await;
+}
+
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -346,27 +386,8 @@ mod tests {
         }
     }
 
-    // The worker is async; let it drain.
-    async fn drain() {
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-
-    async fn wait_until_paused(rec: &Recorder) {
-        for _ in 0..50 {
-            let (paused, _) = rec.pause_status();
-            if paused {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        assert!(
-            rec.pause_status().0,
-            "activity recorder did not enter paused state"
-        );
-    }
-
     async fn wait_for_actions(store: &Store, expected: &[&str]) -> Vec<String> {
-        for _ in 0..50 {
+        for _ in 0..200 {
             let page = store
                 .list_activity(&ActivityFilter::default(), 10, None)
                 .await
@@ -378,7 +399,7 @@ mod tests {
             {
                 return actions;
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            tokio::time::sleep(Duration::from_millis(25)).await;
         }
         let page = store
             .list_activity(&ActivityFilter::default(), 10, None)
@@ -398,7 +419,7 @@ mod tests {
     async fn record_lands_a_row_in_the_store() {
         let (rec, store) = fresh_recorder().await;
         rec.record(entry("mail.archive"));
-        drain().await;
+        settle(&rec).await;
 
         let page = store
             .list_activity(&ActivityFilter::default(), 10, None)
@@ -413,10 +434,13 @@ mod tests {
     async fn pause_then_record_drops_entries_until_resume() {
         let (rec, store) = fresh_recorder().await;
         rec.pause(None);
-        drain().await;
+        wait_for_pause_state(&rec, true).await;
         rec.record(entry("mail.archive"));
         rec.record(entry("mail.read"));
-        drain().await;
+        // The resume is queued behind both entries, so observing it proves the
+        // worker has already decided their fate.
+        rec.resume();
+        wait_for_pause_state(&rec, false).await;
 
         let before = store
             .list_activity(&ActivityFilter::default(), 10, None)
@@ -424,10 +448,8 @@ mod tests {
             .unwrap();
         assert!(before.rows.is_empty(), "paused recorder drops new entries");
 
-        rec.resume();
-        drain().await;
         rec.record(entry("mail.send"));
-        drain().await;
+        settle(&rec).await;
 
         let after = store
             .list_activity(&ActivityFilter::default(), 10, None)
@@ -441,10 +463,13 @@ mod tests {
     async fn force_record_lands_even_when_paused() {
         let (rec, store) = fresh_recorder().await;
         rec.pause(None);
-        drain().await;
+        wait_for_pause_state(&rec, true).await;
 
         rec.record_forced(entry("activity.paused"));
-        drain().await;
+        // Barrier only: the forced entry is handled before this resume, so the
+        // row below was written while the recorder was still paused.
+        rec.resume();
+        wait_for_pause_state(&rec, false).await;
 
         let page = store
             .list_activity(&ActivityFilter::default(), 10, None)
@@ -472,7 +497,7 @@ mod tests {
         rec.record(make(base));
         rec.record(make(base + 50));
         rec.record(make(base + 100));
-        drain().await;
+        settle(&rec).await;
 
         let page = store
             .list_activity(&ActivityFilter::default(), 10, None)
@@ -501,7 +526,7 @@ mod tests {
         rec.record(make(base));
         rec.record(make(base + 50));
         rec.record(make(base + 100));
-        drain().await;
+        settle(&rec).await;
 
         let page = store
             .list_activity(&ActivityFilter::default(), 10, None)
@@ -516,7 +541,7 @@ mod tests {
         // Pause "until 1 ms in the past" — the next record() triggers the auto-resume branch.
         let now = current_unix_ms();
         rec.pause(Some(now - 1));
-        wait_until_paused(&rec).await;
+        wait_for_pause_state(&rec, true).await;
 
         rec.record(entry("mail.send"));
 

@@ -78,6 +78,10 @@ BM25 lexical search by default (Tantivy). `--mode hybrid` adds dense recall via 
 | `label:` | `label:Important` | Any label, including user labels |
 | `category:` | `category:promotions` | Gmail-style: `promotions`, `social`, `updates`, `forums`, `personal`, `purchases`, `reservations` |
 
+`from:`, `to:`, `cc:`, `bcc:` and `deliveredto:` match the **whole address**,
+case-insensitively. There is no partial or domain matching: `from:alice` and
+`from:x.com` both return nothing — pass `from:alice@x.com`.
+
 ### State filters
 
 | Filter | Meaning |
@@ -141,9 +145,9 @@ Units: `b`, `kb`, `mb`/`m`, `gb`. Time units: `d`, `w`, `m` (months), `y`.
 
 ### Combining
 
-- Space = AND: `from:alice subject:meeting`
+- Space = AND: `from:alice@x.com subject:meeting`
 - `OR`: `subject:meeting OR subject:standup`
-- Mix freely: `from:alice subject:invoice is:unread after:2026-01-01 has:attachment`
+- Mix freely: `from:alice@x.com subject:invoice is:unread after:2026-01-01 has:attachment`
 
 ---
 
@@ -411,7 +415,7 @@ Summarise a thread. Multi-summary output separated by `--- THREAD_ID ---`.
 Generate a draft reply. Output goes to **stdout** — never auto-sends. Pipe into `$EDITOR` or use in `--body`.
 ```
 mxr draft-assist <thread_id> "decline politely"
-mxr draft-assist --search "from:acme" --first --instruct "schedule a call"
+mxr draft-assist --search "from:sales@acme.com" --first --instruct "schedule a call"
 
 --search <QUERY>
 --first

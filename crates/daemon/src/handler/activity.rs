@@ -531,8 +531,7 @@ mod tests {
             tier: store::Tier::Important,
             context: None,
         });
-        // Let the recorder worker drain.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        crate::activity::settle(&s.activity).await;
 
         let resp = list_activity(&s, &empty_filter(), 50, None).await.unwrap();
         match resp {
@@ -593,7 +592,11 @@ mod tests {
     async fn pause_emits_synthesized_marker_even_while_paused() {
         let s = state().await;
         pause_activity(&s, None).await.unwrap();
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        crate::activity::wait_for_pause_state(&s.activity, true).await;
+        // Barrier only: `pause_activity` queues the marker behind the pause, so
+        // it is the resume edge that proves the marker was written.
+        s.activity.resume();
+        crate::activity::wait_for_pause_state(&s.activity, false).await;
 
         let page = s
             .store

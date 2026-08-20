@@ -5,7 +5,11 @@ use throbber_widgets_tui::{Throbber, ThrobberState, BRAILLE_SIX};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusBarState {
     pub mailbox_name: String,
-    pub total_count: usize,
+    /// `None` when the daemon has not managed a real reading yet — a degraded
+    /// status snapshot carries no count, and the mailbox length behind it is
+    /// capped, so printing either would be a number the user could act on
+    /// wrongly.
+    pub total_count: Option<usize>,
     pub unread_count: usize,
     pub starred_count: usize,
     pub body_status: Option<String>,
@@ -50,7 +54,9 @@ pub fn draw(
         let mut status = format!(
             "={} [Msgs:{} New:{} Starred:{}]= {}",
             state.mailbox_name,
-            state.total_count,
+            state
+                .total_count
+                .map_or_else(|| "?".to_string(), |count| count.to_string()),
             state.unread_count,
             state.starred_count,
             sync_part
@@ -143,7 +149,7 @@ mod tests {
     fn state(pending: usize, total: usize) -> StatusBarState {
         StatusBarState {
             mailbox_name: "INBOX".into(),
-            total_count: 0,
+            total_count: Some(0),
             unread_count: 0,
             starred_count: 0,
             body_status: None,

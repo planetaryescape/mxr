@@ -1,6 +1,22 @@
 use super::*;
 
 impl App {
+    /// How many messages the store holds, or `None` when nobody has said yet.
+    ///
+    /// `all_envelopes` is a capped window (5000), so it is a floor rather than
+    /// a total — usable as a stand-in only until the daemon reports. When the
+    /// daemon has answered but the answer was degraded, it has not reported,
+    /// and the capped length would read as a real total.
+    fn all_mail_total_count(&self) -> Option<usize> {
+        if let Some(count) = self.diagnostics.page.total_messages {
+            return Some(count as usize);
+        }
+        if self.diagnostics.page.status_degraded {
+            return None;
+        }
+        Some(self.mailbox.all_envelopes.len())
+    }
+
     pub(super) fn active_body_status(&self) -> Option<String> {
         let BodyViewState::Ready {
             source, metadata, ..
@@ -38,7 +54,7 @@ impl App {
                 .count();
             return ui::status_bar::StatusBarState {
                 mailbox_name: "SUBSCRIPTIONS".into(),
-                total_count: self.mailbox.subscriptions_page.entries.len(),
+                total_count: Some(self.mailbox.subscriptions_page.entries.len()),
                 unread_count,
                 starred_count,
                 body_status: body_status.clone(),
@@ -67,7 +83,7 @@ impl App {
                 .count();
             return ui::status_bar::StatusBarState {
                 mailbox_name: "SEARCH".into(),
-                total_count: results.len(),
+                total_count: Some(results.len()),
                 unread_count,
                 starred_count,
                 body_status: body_status.clone(),
@@ -87,7 +103,7 @@ impl App {
         if let Some(label) = self.active_label_record() {
             return ui::status_bar::StatusBarState {
                 mailbox_name: label.name.clone(),
-                total_count: label.total_count as usize,
+                total_count: Some(label.total_count as usize),
                 unread_count: label.unread_count as usize,
                 starred_count,
                 body_status: body_status.clone(),
@@ -112,11 +128,7 @@ impl App {
             .count();
         ui::status_bar::StatusBarState {
             mailbox_name: "ALL MAIL".into(),
-            total_count: self
-                .diagnostics
-                .page
-                .total_messages
-                .map_or_else(|| self.mailbox.all_envelopes.len(), |count| count as usize),
+            total_count: self.all_mail_total_count(),
             unread_count,
             starred_count,
             body_status,

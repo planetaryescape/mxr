@@ -526,10 +526,10 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
         BrokenSocketRecovery::SocketAlive => {
             return ensure_current_daemon_matches_binary(&sock_path).await
         }
-        BrokenSocketRecovery::RestartDaemon(pid) => {
+        BrokenSocketRecovery::RestartDaemon(daemon) => {
             return recover_broken_running_daemon(
                 &sock_path,
-                pid,
+                &daemon,
                 "Restarting daemon to recover from a missing IPC socket...",
             )
             .await
@@ -548,17 +548,16 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
 /// Work out how to recover a socket that just failed its liveness probe.
 ///
 /// Asking the socket who owns it is the one authoritative identity check
-/// available — the daemon reports its own pid — so it runs before anything is
-/// signalled. It also closes the race where a daemon comes up between the
-/// probe and this decision.
+/// available — the daemon reports its own pid — so it runs first, and it also
+/// closes the race where a daemon comes up between the probe and this
+/// decision.
 async fn recover_from_broken_socket(sock_path: &Path) -> BrokenSocketRecovery {
-    let candidate = live_daemon_pid();
     let socket_owner_pid =
         fetch_daemon_status_snapshot_from_path(sock_path, STATUS_REQUEST_TIMEOUT)
             .await
             .ok()
             .and_then(|snapshot| snapshot.daemon_pid);
-    classify_broken_socket(candidate, socket_owner_pid)
+    classify_broken_socket(live_daemon_pid, socket_owner_pid)
 }
 
 pub async fn restart_daemon() -> anyhow::Result<()> {
@@ -845,53 +844,190 @@ fn process_is_alive(pid: u32) -> bool {
     }
 }
 
-/// What to do about a daemon that looked broken.
+/// How a pid earned the right to be signalled, so the same evidence can be
+/// re-checked when the signal is about to go out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DaemonEvidence {
+    /// Named by this profile's pid file, which only this profile's daemon
+    /// writes. The file establishes the profile, so re-checking it must not
+    /// demand a matching environment: a daemon started by hand from another
+    /// shell is still ours.
+    PidFile,
+    /// Found by scanning `ps`. Nothing on the file system vouched for it —
+    /// identity came from the executable and the process environment, so both
+    /// are what get re-checked.
+    ProcessScan,
+}
+
+/// A pid together with the evidence that it was this profile's daemon at the
+/// moment it was verified.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct VerifiedDaemon {
+    pid: u32,
+    evidence: DaemonEvidence,
+    /// Start time as observed during verification. Nothing else distinguishes
+    /// a process from a successor that inherited its number.
+    started_at: Option<String>,
+}
+
+impl VerifiedDaemon {
+    fn verify(pid: u32, evidence: DaemonEvidence) -> Self {
+        Self {
+            pid,
+            evidence,
+            started_at: crate::process_probe::start_time(pid),
+        }
+    }
+
+    /// Whether this pid is still the process that was verified.
+    ///
+    /// Time passes between deciding to restart a daemon and signalling it —
+    /// the status probe in between can take seconds, and asking a wedged
+    /// daemon for status is itself a reason for it to exit. If it exits and
+    /// the OS hands its number to something else, the signal lands on a
+    /// stranger. Re-running the evidence with the signal in hand closes that
+    /// window, for the cost of one `ps` call on a path that is already
+    /// restarting a daemon.
+    fn is_unchanged(&self) -> bool {
+        Self::still_the_same_process(
+            self.started_at.as_deref(),
+            self.evidence,
+            crate::process_probe::start_time(self.pid).as_deref(),
+            || {
+                crate::process_probe::command_words(self.pid)
+                    .map(|words| command_runs_a_daemon(&words))
+            },
+            || process_runs_our_profile(self.pid),
+        )
+    }
+
+    /// The re-check itself, over observations rather than a live pid.
+    fn still_the_same_process(
+        started_at: Option<&str>,
+        evidence: DaemonEvidence,
+        observed_start_time: Option<&str>,
+        runs_daemon_argv: impl FnOnce() -> Option<bool>,
+        runs_our_profile: impl FnOnce() -> bool,
+    ) -> bool {
+        match (started_at, observed_start_time) {
+            // The ordinary case: a recycled pid has a different start time.
+            (Some(before), Some(now)) if before != now => return false,
+            // The process is gone, or `ps` stopped answering about it. Either
+            // way there is nothing left here that we recognise.
+            (Some(_), None) => return false,
+            _ => {}
+        }
+        // Same second, or no start time either time: fall back on the rest of
+        // the evidence rather than read an indistinguishable timestamp as
+        // proof.
+        //
+        // Only a definite "that is not a daemon" rejects. A `ps` that will not
+        // answer says nothing, and reading silence as a rejection here would
+        // strand a live daemon exactly as it did at verification time: the pid
+        // file gets cleared, a successor spawns, and it dies on the
+        // search-index lock. Both phases treat an unreadable argv the same way.
+        if runs_daemon_argv() == Some(false) {
+            return false;
+        }
+        match evidence {
+            // The profile is what identified a scanned pid in the first place,
+            // so unlike the argv it has to hold up again — an environment we
+            // cannot read is not an identity we can act on.
+            DaemonEvidence::PidFile => true,
+            DaemonEvidence::ProcessScan => runs_our_profile(),
+        }
+    }
+}
+
+/// What to do about a daemon that looked broken.
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum BrokenSocketRecovery {
     /// The socket answered after all — whatever the earlier probe saw was
     /// transient. Leave every process alone.
     SocketAlive,
     /// This profile's daemon, alive behind a socket it can no longer serve.
     /// Restarting it is what rebuilds the socket.
-    RestartDaemon(u32),
+    RestartDaemon(VerifiedDaemon),
     /// Nothing provably ours is running. Start a fresh daemon rather than
     /// signalling a process we cannot identify.
     StartFresh,
 }
 
-/// Decide what a broken socket means, given the daemon we found (if any) and
-/// who — if anyone — answers on the socket right now.
+/// Decide what a broken socket means, given who — if anyone — answers on the
+/// socket right now, and a way to look for this profile's daemon.
 ///
 /// A live answer wins outright, whatever pid it names: a daemon serving our
 /// socket is not something to kill, and a mismatched pid means the candidate
 /// was never ours. Only when nobody answers may a candidate be restarted, and
 /// only candidates whose identity we can prove ever reach here.
+///
+/// Looking for the candidate is a closure rather than a value because looking
+/// is not free of consequence: it clears a stale pid file and stamps an
+/// adopted one. A daemon that turns out to be alive and well must have none of
+/// that done underneath it, and taking the closure is what makes that
+/// impossible rather than merely true today.
 fn classify_broken_socket(
-    candidate_pid: Option<u32>,
+    candidate: impl FnOnce() -> Option<VerifiedDaemon>,
     socket_owner_pid: Option<u32>,
 ) -> BrokenSocketRecovery {
     if socket_owner_pid.is_some() {
         return BrokenSocketRecovery::SocketAlive;
     }
-    match candidate_pid {
-        Some(pid) => BrokenSocketRecovery::RestartDaemon(pid),
+    match candidate() {
+        Some(daemon) => BrokenSocketRecovery::RestartDaemon(daemon),
         None => BrokenSocketRecovery::StartFresh,
     }
 }
 
 /// This profile's running daemon, if one can be identified. Only pids that
 /// survive identity verification come back: callers signal what they get.
-fn live_daemon_pid() -> Option<u32> {
+fn live_daemon_pid() -> Option<VerifiedDaemon> {
     if let Some(pid) = read_daemon_pid_file() {
         if process_is_alive(pid) && pid_file_still_names_our_daemon(pid) {
-            return Some(pid);
+            return Some(VerifiedDaemon::verify(pid, DaemonEvidence::PidFile));
         }
         clear_daemon_pid_file();
     }
 
     let pid = fallback_live_daemon_pid_without_pid_file()?;
+    let adopted = VerifiedDaemon::verify(pid, DaemonEvidence::ProcessScan);
     let _ = std::fs::write(daemon_pid_file_path(), pid.to_string());
-    Some(pid)
+    // Restore the record alongside the pid file. An older record left in place
+    // would name a pid the file no longer does, which the next run rightly
+    // reads as stale.
+    adopt_daemon_identity_file(&adopted);
+    Some(adopted)
+}
+
+/// Record an adopted daemon so the next run can check its pid exactly instead
+/// of falling back to the argv check. Everything but the start time follows
+/// from having just verified it against this profile.
+fn adopt_daemon_identity_file(adopted: &VerifiedDaemon) {
+    let Some(started_at) = adopted.started_at.clone() else {
+        let _ = std::fs::remove_file(daemon_identity_file_path());
+        return;
+    };
+    let identity = DaemonIdentity {
+        pid: adopted.pid,
+        started_at,
+        exe: std::env::current_exe()
+            .map(|exe| {
+                std::fs::canonicalize(&exe)
+                    .unwrap_or(exe)
+                    .display()
+                    .to_string()
+            })
+            .unwrap_or_default(),
+        instance: mxr_config::app_instance_name(),
+        config_dir: mxr_config::config_dir(),
+        data_dir: mxr_config::data_dir(),
+    };
+    match toml::to_string(&identity) {
+        Ok(rendered) => {
+            let _ = std::fs::write(daemon_identity_file_path(), rendered);
+        }
+        Err(error) => tracing::warn!(%error, "could not render the adopted daemon identity"),
+    }
 }
 
 /// Whether the pid file's number still refers to the daemon that wrote it.
@@ -912,17 +1048,56 @@ fn live_daemon_pid() -> Option<u32> {
 /// file strands it, and the CLI then spawns a successor that dies on the
 /// search-index lock.
 fn pid_file_still_names_our_daemon(pid: u32) -> bool {
-    if let Some(identity) = read_daemon_identity_file() {
-        if identity.pid == pid && identity.describes_our_profile() {
-            return match crate::process_probe::start_time(pid) {
-                Some(started_at) => started_at == identity.started_at,
-                None => true,
-            };
+    let record = read_daemon_identity_file();
+    let record = record
+        .as_ref()
+        .map(|identity| (identity, identity.describes_our_profile()));
+    pid_file_verdict(
+        pid,
+        record,
+        || crate::process_probe::start_time(pid),
+        || crate::process_probe::command_words(pid).map(|words| command_runs_a_daemon(&words)),
+    )
+}
+
+/// Decide whether a pid file's number still refers to the daemon that wrote it,
+/// given what can be observed about that pid.
+///
+/// The probes are closures so the cheap answer short-circuits the expensive
+/// one, and so the decision itself can be exercised without a process to point
+/// at.
+fn pid_file_verdict(
+    pid: u32,
+    record: Option<(&DaemonIdentity, bool)>,
+    observed_start_time: impl FnOnce() -> Option<String>,
+    runs_daemon_argv: impl FnOnce() -> Option<bool>,
+) -> bool {
+    match record {
+        // A record that names a different pid, or another profile, contradicts
+        // the pid file rather than saying nothing about it: the two are written
+        // and cleared together, so disagreement means one of them is stale.
+        // Falling back to the argv check here would let a neighbouring
+        // profile's daemon inherit this profile's pid file and be signalled on
+        // its behalf.
+        Some((identity, profile_matches)) if identity.pid != pid || !profile_matches => {
+            tracing::info!(
+                pid,
+                recorded_pid = identity.pid,
+                profile_matches,
+                "daemon identity record contradicts the pid file; treating it as stale"
+            );
+            false
         }
-        // A record that names a different pid, or another profile, says
-        // nothing about this one. Fall through to the argv check.
+        Some((identity, _)) => match observed_start_time() {
+            Some(started_at) => started_at == identity.started_at,
+            // No start time to compare is not evidence against the record.
+            None => true,
+        },
+        // No record at all: a daemon older than the record, or one whose write
+        // failed. All that is left is the weak check — and an argv nobody will
+        // report is not grounds for stranding a live daemon.
+        None => runs_daemon_argv().unwrap_or(true),
     }
-    crate::process_probe::command_words(pid).is_none_or(|words| command_runs_a_daemon(&words))
 }
 
 /// Whether a command line runs mxr's `daemon` subcommand.
@@ -1116,20 +1291,47 @@ fn send_signal(pid: u32, signal: Signal) -> anyhow::Result<()> {
 
 async fn recover_broken_running_daemon(
     sock_path: &Path,
-    daemon_pid: u32,
+    daemon: &VerifiedDaemon,
     message: &str,
 ) -> anyhow::Result<()> {
     eprint!("{message}");
+    let daemon_pid = daemon.pid;
 
-    send_signal(daemon_pid, Signal::SIGTERM)?;
-    if !wait_for_process_exit(daemon_pid, ORPHAN_DAEMON_EXIT_TIMEOUT).await {
-        send_signal(daemon_pid, Signal::SIGKILL)?;
-        if !wait_for_process_exit(daemon_pid, Duration::from_secs(1)).await {
-            eprintln!(" failed.");
-            anyhow::bail!(
-                "Broken daemon pid {daemon_pid} did not exit cleanly. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`."
-            );
+    // Last check before the signal: the daemon may have exited while we were
+    // deciding — quite possibly because of the status request we sent it — and
+    // its number may already belong to something else.
+    if daemon.is_unchanged() {
+        send_signal(daemon_pid, Signal::SIGTERM)?;
+        // The wait for a graceful exit is the widest recycle window of the
+        // lot: the whole point of it is that the process is expected to go
+        // away, and its number is free the moment it does. Re-check before
+        // escalating rather than sending SIGKILL to whatever holds it now.
+        if !wait_for_process_exit(daemon_pid, ORPHAN_DAEMON_EXIT_TIMEOUT).await {
+            if daemon.is_unchanged() {
+                send_signal(daemon_pid, Signal::SIGKILL)?;
+                if !wait_for_process_exit(daemon_pid, Duration::from_secs(1)).await {
+                    eprintln!(" failed.");
+                    anyhow::bail!(
+                        "Broken daemon pid {daemon_pid} did not exit cleanly. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`."
+                    );
+                }
+            } else {
+                // Something still holds the number, but it is no longer the
+                // daemon we signalled — so that daemon is gone, which is what
+                // the wait was for. Not killing a stranger is worth the small
+                // chance that the successor now races a daemon whose identity
+                // we simply could not read.
+                tracing::info!(
+                    pid = daemon_pid,
+                    "daemon pid changed identity while shutting down; not escalating to SIGKILL"
+                );
+            }
         }
+    } else {
+        tracing::info!(
+            pid = daemon_pid,
+            "daemon pid no longer identifies the process we verified; starting a fresh daemon instead of signalling it"
+        );
     }
 
     clear_daemon_pid_file();
@@ -1596,6 +1798,14 @@ mod tests {
     use tokio::net::UnixListener;
     use tokio_util::codec::Framed;
 
+    fn verified(pid: u32) -> super::VerifiedDaemon {
+        super::VerifiedDaemon {
+            pid,
+            evidence: super::DaemonEvidence::PidFile,
+            started_at: Some("Wed Aug 20 00:11:22 2026".to_string()),
+        }
+    }
+
     #[test]
     fn broken_socket_leaves_processes_alone_while_the_socket_answers() {
         use super::{classify_broken_socket, BrokenSocketRecovery};
@@ -1603,15 +1813,21 @@ mod tests {
         // A daemon answering on our socket is not something to restart,
         // whichever pid the earlier scan turned up.
         assert_eq!(
-            classify_broken_socket(Some(4242), Some(4242)),
+            classify_broken_socket(|| Some(verified(4242)), Some(4242)),
             BrokenSocketRecovery::SocketAlive
         );
         assert_eq!(
-            classify_broken_socket(Some(4242), Some(99)),
+            classify_broken_socket(
+                || panic!("a live socket must settle it without a lookup"),
+                Some(99)
+            ),
             BrokenSocketRecovery::SocketAlive
         );
         assert_eq!(
-            classify_broken_socket(None, Some(99)),
+            classify_broken_socket(
+                || panic!("a live socket must settle it without a lookup"),
+                Some(99)
+            ),
             BrokenSocketRecovery::SocketAlive
         );
     }
@@ -1621,12 +1837,12 @@ mod tests {
         use super::{classify_broken_socket, BrokenSocketRecovery};
 
         assert_eq!(
-            classify_broken_socket(None, None),
+            classify_broken_socket(|| None, None),
             BrokenSocketRecovery::StartFresh
         );
         assert_eq!(
-            classify_broken_socket(Some(4242), None),
-            BrokenSocketRecovery::RestartDaemon(4242)
+            classify_broken_socket(|| Some(verified(4242)), None),
+            BrokenSocketRecovery::RestartDaemon(verified(4242))
         );
     }
 
@@ -1762,6 +1978,196 @@ mod tests {
         assert!(
             !environment_selects_our_profile(&["HOME=/nowhere".to_string()]),
             "an environment that disagrees about HOME is another profile"
+        );
+    }
+
+    fn identity_for(pid: u32, started_at: &str) -> super::DaemonIdentity {
+        super::DaemonIdentity {
+            pid,
+            started_at: started_at.to_string(),
+            exe: "/opt/homebrew/bin/mxr".to_string(),
+            instance: "mxr".to_string(),
+            config_dir: "/Users/bk/.config/mxr".into(),
+            data_dir: "/Users/bk/.local/share/mxr".into(),
+        }
+    }
+
+    #[test]
+    fn an_identity_record_that_matches_confirms_the_pid_file() {
+        use super::pid_file_verdict;
+
+        let record = identity_for(4242, "Wed Aug 20 00:11:22 2026");
+
+        assert!(
+            pid_file_verdict(
+                4242,
+                Some((&record, true)),
+                || Some("Wed Aug 20 00:11:22 2026".to_string()),
+                || panic!("the argv fallback must not run when a record decides it"),
+            ),
+            "a record naming this pid, this profile and this start time is our daemon"
+        );
+    }
+
+    #[test]
+    fn an_identity_record_that_contradicts_the_pid_file_rejects_it() {
+        use super::pid_file_verdict;
+
+        // Both ways a record can contradict: a different pid, and a different
+        // profile. Neither may fall through to "is it running the `daemon`
+        // subcommand", which a neighbouring profile's daemon would pass.
+        let other_pid = identity_for(99, "Wed Aug 20 00:11:22 2026");
+        assert!(!pid_file_verdict(
+            4242,
+            Some((&other_pid, true)),
+            || panic!("a contradicted record must not be second-guessed by a start time"),
+            || Some(true),
+        ));
+
+        let other_profile = identity_for(4242, "Wed Aug 20 00:11:22 2026");
+        assert!(!pid_file_verdict(
+            4242,
+            Some((&other_profile, false)),
+            || panic!("a contradicted record must not be second-guessed by a start time"),
+            || Some(true),
+        ));
+
+        // And a matching record whose start time moved on: the number was
+        // recycled.
+        let recycled = identity_for(4242, "Wed Aug 20 00:11:22 2026");
+        assert!(!pid_file_verdict(
+            4242,
+            Some((&recycled, true)),
+            || Some("Wed Aug 20 09:00:00 2026".to_string()),
+            || Some(true),
+        ));
+    }
+
+    #[test]
+    fn without_a_record_the_argv_check_decides_and_silence_keeps_the_pid_file() {
+        use super::pid_file_verdict;
+
+        assert!(pid_file_verdict(4242, None, || None, || Some(true)));
+        assert!(!pid_file_verdict(4242, None, || None, || Some(false)));
+        assert!(
+            pid_file_verdict(4242, None, || None, || None),
+            "an argv nobody will report is not grounds for stranding a live daemon"
+        );
+    }
+
+    #[test]
+    fn a_pid_recycled_between_the_decision_and_the_signal_is_not_signalled() {
+        use super::{DaemonEvidence, VerifiedDaemon};
+
+        // The window this closes: the daemon exits while we are asking it for
+        // status, and its number is handed to something else before the
+        // SIGTERM goes out.
+        assert!(!VerifiedDaemon::still_the_same_process(
+            Some("Wed Aug 20 00:11:22 2026"),
+            DaemonEvidence::PidFile,
+            Some("Wed Aug 20 09:00:00 2026"),
+            || panic!("a changed start time settles it on its own"),
+            || panic!("a changed start time settles it on its own"),
+        ));
+
+        // Gone entirely, or `ps` stopped answering: nothing here to recognise.
+        assert!(!VerifiedDaemon::still_the_same_process(
+            Some("Wed Aug 20 00:11:22 2026"),
+            DaemonEvidence::PidFile,
+            None,
+            || panic!("a vanished process settles it on its own"),
+            || panic!("a vanished process settles it on its own"),
+        ));
+    }
+
+    #[test]
+    fn an_indistinguishable_start_time_falls_back_on_the_rest_of_the_evidence() {
+        use super::{DaemonEvidence, VerifiedDaemon};
+
+        // Same second — `lstart` has one-second resolution, so a fast recycle
+        // is indistinguishable by timestamp alone.
+        let same_second = |evidence, runs_daemon, profile| {
+            VerifiedDaemon::still_the_same_process(
+                Some("Wed Aug 20 00:11:22 2026"),
+                evidence,
+                Some("Wed Aug 20 00:11:22 2026"),
+                || runs_daemon,
+                || profile,
+            )
+        };
+
+        assert!(same_second(DaemonEvidence::PidFile, Some(true), false));
+        assert!(!same_second(DaemonEvidence::PidFile, Some(false), true));
+        // A scan-sourced pid was only ever identified by its profile, so that
+        // is what has to hold up again.
+        assert!(same_second(DaemonEvidence::ProcessScan, Some(true), true));
+        assert!(!same_second(DaemonEvidence::ProcessScan, Some(true), false));
+    }
+
+    #[test]
+    fn an_unreadable_argv_is_read_the_same_way_by_both_phases() {
+        use super::{pid_file_verdict, DaemonEvidence, VerifiedDaemon};
+
+        // A `ps` that will not answer is not evidence of anything. The two
+        // phases used to disagree about that: verification kept the daemon,
+        // the pre-signal re-check threw it away — so one transient `ps`
+        // failure stranded a live daemon behind a successor that then died on
+        // the search-index lock.
+        let record = identity_for(4242, "Wed Aug 20 00:11:22 2026");
+
+        // Verification, with no record to decide it.
+        assert!(
+            pid_file_verdict(4242, None, || None, || None),
+            "verification keeps a pid whose argv nobody will report"
+        );
+
+        // The pre-signal re-check, at the same silence.
+        assert!(
+            VerifiedDaemon::still_the_same_process(
+                Some(&record.started_at),
+                DaemonEvidence::PidFile,
+                Some(&record.started_at),
+                || None,
+                || panic!("a pid-file pid does not have to re-prove its profile"),
+            ),
+            "the re-check must read that silence the same way"
+        );
+
+        // The profile is different: it is what identified a scanned pid, so an
+        // environment we cannot read still rejects.
+        assert!(!VerifiedDaemon::still_the_same_process(
+            Some(&record.started_at),
+            DaemonEvidence::ProcessScan,
+            Some(&record.started_at),
+            || None,
+            || false,
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_process_that_exits_during_the_shutdown_wait_is_not_escalated_to() {
+        use super::{DaemonEvidence, VerifiedDaemon};
+
+        // Stands in for the escalation window: SIGTERM lands, the daemon
+        // exits during the wait, and its number is free before the SIGKILL
+        // would go out. The re-check has to notice, or the kill goes to
+        // whatever holds the number next.
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn child");
+        let daemon = VerifiedDaemon::verify(child.id(), DaemonEvidence::PidFile);
+        assert!(
+            daemon.started_at.is_some(),
+            "the fixture needs a start time to compare against"
+        );
+
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert!(
+            !daemon.is_unchanged(),
+            "a process that has exited must not be signalled again"
         );
     }
 

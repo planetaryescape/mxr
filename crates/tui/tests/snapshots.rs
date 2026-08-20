@@ -901,7 +901,7 @@ fn bars_snapshot() {
             Rect::new(0, 6, 80, 1),
             &StatusBarState {
                 mailbox_name: "INBOX".into(),
-                total_count: 6_421,
+                total_count: Some(6_421),
                 unread_count: 1_833,
                 starred_count: 96,
                 body_status: None,

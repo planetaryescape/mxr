@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::degraded_status_reading;
 use crate::commands::progress::{format_thousands, ProgressPrinter};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
@@ -346,10 +347,10 @@ fn sync_progress_line(statuses: &[AccountSyncStatus]) -> Option<String> {
 enum StatusPoll {
     Statuses(Vec<AccountSyncStatus>),
     /// `GetStatus` fast-fails its DB-backed snapshot when the reader pool is
-    /// saturated — which is exactly what a large sync does to it — and reports
-    /// zero accounts and no statuses rather than flagging itself on the wire.
-    /// Reading that as "no account is syncing" would end the wait on the
-    /// daemon's busiest moment, so treat it as no reading at all.
+    /// saturated — which is exactly what a large sync does to it — and says so
+    /// with `degraded`, reporting zero accounts and no statuses. Reading that
+    /// as "no account is syncing" would end the wait on the daemon's busiest
+    /// moment, so treat it as no reading at all.
     Degraded,
     Rejected(String),
     Disconnected(anyhow::Error),
@@ -371,14 +372,12 @@ async fn poll_sync_statuses(client: &mut IpcClient, account_id: Option<&AccountI
                         ResponseData::Status {
                             sync_statuses,
                             accounts,
+                            degraded,
                             ..
                         },
                 },
             ) => {
-                // A daemon with no accounts configured still names one
-                // ("unknown"), so an empty account list can only mean the
-                // snapshot degraded.
-                if accounts.is_empty() {
+                if degraded_status_reading(degraded, &accounts) {
                     StatusPoll::Degraded
                 } else {
                     StatusPoll::Statuses(sync_statuses)

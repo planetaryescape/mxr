@@ -105,11 +105,6 @@ const composeSession: ComposeSessionResponse = {
 
 describe("ComposeRoute keyboard flow", () => {
   beforeEach(() => {
-    try {
-      window.localStorage?.clear();
-    } catch {
-      // jsdom may disable localStorage for opaque test origins.
-    }
     rawApi.fetch.mockResolvedValue({ snippets: [] });
     api.fetchContactsAutocomplete.mockResolvedValue([]);
     api.fetchAccounts.mockResolvedValue({

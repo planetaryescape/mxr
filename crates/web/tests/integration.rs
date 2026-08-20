@@ -381,6 +381,7 @@ async fn one_route_per_bucket_dispatches() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             }),
             Request::Ping => Some(Response::Ok {
@@ -475,6 +476,7 @@ async fn legacy_path_redirect_round_trip_smoke() {
                     repair_required: false,
                     semantic_runtime: None,
                     feature_health: None,
+                    degraded: false,
                 },
             }),
             _ => None,

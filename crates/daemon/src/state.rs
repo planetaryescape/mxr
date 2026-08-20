@@ -1618,6 +1618,20 @@ impl AppState {
         Ok(())
     }
 
+    /// Stop the search index worker the way a panicking index job does: the
+    /// task ends and every later request finds a closed channel. Lets tests
+    /// reach the "search is dead for the rest of the process" state without a
+    /// panicking tantivy fixture.
+    #[cfg(test)]
+    pub async fn abort_search_worker(&self) {
+        if let Some(task) =
+            RuntimeTasks::take_named(&self.runtime_tasks.search_worker, "search_worker")
+        {
+            task.handle.abort();
+            let _ = task.handle.await;
+        }
+    }
+
     /// Create an in-memory AppState for tests.
     #[cfg(test)]
     pub async fn in_memory() -> anyhow::Result<Self> {

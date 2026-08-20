@@ -48,8 +48,8 @@ results, `cat`/`thread` views, summaries, exports).
 mxr search "is:unread label:inbox" --format json --limit 20
 mxr cat <message_id> --format json
 mxr thread <message_id> --format json
-mxr archive --search "from:noreply older:30d" --dry-run
-mxr archive --search "from:noreply older:30d" --yes
+mxr archive --search "from:noreply@example.com older:30d" --dry-run
+mxr archive --search "from:noreply@example.com older:30d" --yes
 mxr compose --to a@example.com --subject "Hi" --body "Hello" --dry-run
 mxr reply <message_id> --body "Thanks" --dry-run
 mxr drafts edit <draft_id>

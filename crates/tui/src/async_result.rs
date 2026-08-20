@@ -258,6 +258,10 @@ pub(crate) struct StatusSnapshot {
     pub(crate) accounts: Vec<String>,
     pub(crate) total_messages: u32,
     pub(crate) sync_statuses: Vec<AccountSyncStatus>,
+    /// The daemon could not read its database in time, so `accounts`,
+    /// `total_messages` and `sync_statuses` carry no reading at all. Showing
+    /// them as fact prints "0 messages" for a store that is merely busy.
+    pub(crate) degraded: bool,
 }
 
 pub(crate) struct UnsubscribeResultData {

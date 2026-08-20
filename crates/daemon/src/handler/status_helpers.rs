@@ -5,9 +5,13 @@ use mxr_protocol::{AccountSyncStatus, FeatureHealth, FeatureHealthReport};
 use mxr_store::SyncRuntimeStatus;
 use std::collections::HashMap;
 
+/// The DB-backed part of a status reply: account names, the store-wide message
+/// count, and one sync status per account.
+pub(super) type StatusSnapshotFields = (Vec<String>, u32, Vec<AccountSyncStatus>);
+
 pub(super) async fn collect_status_snapshot(
     state: &AppState,
-) -> Result<(Vec<String>, u32, Vec<AccountSyncStatus>), String> {
+) -> Result<StatusSnapshotFields, String> {
     let started_at = std::time::Instant::now();
     let accounts = state
         .store
@@ -175,12 +179,6 @@ pub(super) async fn collect_doctor_report(
             "mxr daemon --foreground".to_string(),
         ]
     };
-    let healthy = data_dir_exists
-        && database_exists
-        && index_exists
-        && socket_exists
-        && matches!(health_class, mxr_protocol::DaemonHealthClass::Healthy);
-
     // Structured findings: classify the existing signals into
     // categorised entries with shell-runnable remediation. Clients (TUI,
     // future agents) can reason about individual issues without parsing
@@ -195,8 +193,16 @@ pub(super) async fn collect_doctor_report(
         repair_required,
         restart_required,
         semantic_enabled,
+        search_worker_stopped: search_worker_failed(state),
         data_stats: &data_stats,
     });
+
+    let healthy = data_dir_exists
+        && database_exists
+        && index_exists
+        && socket_exists
+        && matches!(health_class, mxr_protocol::DaemonHealthClass::Healthy)
+        && no_error_findings(&findings);
 
     let report = mxr_protocol::DoctorReport {
         healthy,
@@ -283,6 +289,7 @@ pub(super) fn feature_health_report(state: &AppState) -> FeatureHealthReport {
     );
 
     FeatureHealthReport {
+        search: search_feature_health(state),
         semantic: if config.search.semantic.enabled {
             FeatureHealth::Healthy
         } else {
@@ -304,6 +311,27 @@ pub(super) fn feature_health_report(state: &AppState) -> FeatureHealthReport {
         } else {
             FeatureHealth::Disabled
         },
+    }
+}
+
+/// Whether the search index worker has stopped in a way anyone should hear
+/// about.
+///
+/// It also stops on the way out of a clean shutdown, and reporting that as a
+/// failure would have every shutting-down daemon claim search is broken in its
+/// last status reply.
+fn search_worker_failed(state: &AppState) -> bool {
+    state.search.worker_stopped() && !state.shutdown_requested()
+}
+
+fn search_feature_health(state: &AppState) -> FeatureHealth {
+    if search_worker_failed(state) {
+        FeatureHealth::Degraded {
+            reason: "search index worker stopped; restart the daemon (`mxr daemon --restart`)"
+                .to_string(),
+        }
+    } else {
+        FeatureHealth::Healthy
     }
 }
 
@@ -333,7 +361,21 @@ pub(crate) struct DoctorFindingInputs<'a> {
     pub(crate) repair_required: bool,
     pub(crate) restart_required: bool,
     pub(crate) semantic_enabled: bool,
+    pub(crate) search_worker_stopped: bool,
     pub(crate) data_stats: &'a mxr_protocol::DoctorDataStats,
+}
+
+/// A report is only healthy when nothing in it is an error.
+///
+/// `mxr doctor --check` exits non-zero on `healthy == false`, and that exit
+/// code is what agents and CI read — a finding severe enough to print as an
+/// error has to reach them, not just the pretty printer. Tying the two
+/// together means a new Error-severity finding can never again be invisible to
+/// a scripted caller.
+pub(crate) fn no_error_findings(findings: &[mxr_protocol::DoctorFinding]) -> bool {
+    findings
+        .iter()
+        .all(|finding| finding.severity != mxr_protocol::DoctorFindingSeverity::Error)
 }
 
 pub(crate) fn build_doctor_findings(
@@ -356,6 +398,14 @@ pub(crate) fn build_doctor_findings(
             severity: DoctorFindingSeverity::Error,
             message: "SQLite database missing".into(),
             remediation: vec!["mxr daemon --foreground".into(), "mxr doctor".into()],
+        });
+    }
+    if inputs.search_worker_stopped {
+        findings.push(DoctorFinding {
+            category: DoctorFindingCategory::SearchIndex,
+            severity: DoctorFindingSeverity::Error,
+            message: "Search index worker stopped — search is unavailable".into(),
+            remediation: vec!["mxr daemon --restart".into()],
         });
     }
     if !inputs.index_exists || inputs.repair_required {

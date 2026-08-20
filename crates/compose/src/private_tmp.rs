@@ -137,6 +137,12 @@ pub async fn write_private_async(path: &Path, content: &[u8]) -> std::io::Result
             .open(path)
             .await?;
         file.write_all(content).await?;
+        // `tokio::fs::File` hands the write to a background blocking task and
+        // does not wait for it on drop, so without this flush the caller can
+        // return a path whose file is still empty or truncated — and compose
+        // callers read the draft straight back after creating it. Flush also
+        // surfaces the write error that drop would otherwise swallow.
+        file.flush().await?;
         Ok(())
     }
     #[cfg(not(unix))]
@@ -230,5 +236,29 @@ mod tests {
         let mode = meta.permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "file mode should be 0600, got {mode:04o}");
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Compose creates a draft and reads it straight back, so the whole file
+    /// must be on disk by the time the writer returns. An unflushed
+    /// `tokio::fs::File` can leave the write queued on the blocking pool at any
+    /// size; the buffer here is only large enough that the assertion is not
+    /// itself a race.
+    #[tokio::test]
+    async fn write_private_async_file_is_complete_when_it_returns() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("draft.md");
+        let content = vec![b'x'; 64 * 1024];
+
+        write_private_async(&path, &content)
+            .await
+            .expect("write_private_async");
+
+        let written = std::fs::metadata(&path).expect("metadata").len();
+        assert_eq!(
+            written,
+            content.len() as u64,
+            "file should hold all {} bytes when the writer returns",
+            content.len()
+        );
     }
 }

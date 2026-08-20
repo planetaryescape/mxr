@@ -1245,6 +1245,64 @@ mod tests {
         }
     }
 
+    /// Proves the query really went through dense retrieval, which is the
+    /// point of the fielded-source-kind test: with the fixture indexed
+    /// lexically too, a lexical-only fallback would return the same message.
+    fn assert_dense_retrieval_ran(execution: &SearchExecution) {
+        let explain = execution
+            .explain
+            .as_ref()
+            .expect("the execution was asked for an explain");
+        assert_eq!(explain.executed_mode, SearchMode::Hybrid);
+        assert!(
+            explain.dense_window.is_some(),
+            "dense retrieval never ran: {explain:?}"
+        );
+        assert!(
+            explain.dense_candidates >= 1,
+            "no dense candidates were fused in: {explain:?}"
+        );
+        assert!(
+            explain.notes.is_empty(),
+            "hybrid ranking fell back: {:?}",
+            explain.notes
+        );
+    }
+
+    /// Indexes the fixture lexically as well as into the store.
+    ///
+    /// Hybrid ranking fuses the lexical and dense lists by rank, so with no
+    /// lexical hit the top result rides entirely on the ANN returning one
+    /// specific chunk. A tiny hnsw index drops points often enough for that to
+    /// flake: measured 7-8% of searches over an 8-point index fail to return
+    /// every point even when asked for 200 with ef 200.
+    async fn index_for_lexical_search(
+        state: &AppState,
+        envelope: &mxr_core::types::Envelope,
+        body: Option<&MessageBody>,
+    ) {
+        state
+            .search
+            .apply_batch(mxr_search::SearchUpdateBatch {
+                entries: vec![mxr_search::SearchIndexEntry {
+                    envelope: envelope.clone(),
+                    body: body.cloned(),
+                    reply_later: false,
+                }],
+                removed_message_ids: Vec::new(),
+            })
+            .await
+            .unwrap();
+        state.search.commit().await.unwrap();
+    }
+
+    /// Text long enough to pass the chunker's 120-word window more than once.
+    fn multi_chunk_text(lead: &str) -> String {
+        let filler = "The rollout runbook lists the staging checks, the owner on \
+                      call and the rollback plan for every service in the fleet. ";
+        format!("{lead} {}", filler.repeat(12))
+    }
+
     async fn enable_semantic_for_test(state: &AppState) {
         let mut config = state.config_snapshot();
         config.search.semantic.enabled = true;
@@ -1267,7 +1325,11 @@ mod tests {
         let account_id = state.default_account_id();
         let attachment_dir = tempdir().unwrap();
         let attachment_path = attachment_dir.path().join("deployment-notes.txt");
-        std::fs::write(&attachment_path, "Attachment deployment notes").unwrap();
+        std::fs::write(
+            &attachment_path,
+            multi_chunk_text("Attachment deployment notes."),
+        )
+        .unwrap();
 
         let subject_message = TestEnvelopeBuilder::new()
             .account_id(account_id.clone())
@@ -1289,48 +1351,57 @@ mod tests {
             .has_attachments(true)
             .build();
 
-        for envelope in [&subject_message, &body_message, &attachment_message] {
+        // Three fixture rules keep the ranking below deterministic:
+        //  - "deployment" sits in exactly one source kind per message, and only
+        //    one message has any chunk of the kind a given query searches - the
+        //    subject message has no body, the attachment message's body is
+        //    empty. A kind-respecting `body:`/`filename:` query therefore sees
+        //    one message on the dense side and the same one lexically.
+        //  - Only the subject message's header embeds exactly onto the query
+        //    vector; every other chunk carries a second keyword. A tiny hnsw
+        //    graph drops points a few times per thousand builds when several
+        //    chunks tie for nearest.
+        //  - The body text and the attachment text each chunk more than once,
+        //    so one dropped point cannot take their message out of dense
+        //    retrieval.
+        let bodies = [
+            (
+                &body_message,
+                text_body(
+                    &body_message.id,
+                    &multi_chunk_text("Deployment checklist notes live in the message body."),
+                    Vec::new(),
+                ),
+            ),
+            (
+                &attachment_message,
+                text_body(
+                    &attachment_message.id,
+                    "",
+                    vec![AttachmentMeta {
+                        id: mxr_core::AttachmentId::new(),
+                        message_id: attachment_message.id.clone(),
+                        filename: "deployment-notes.txt".into(),
+                        mime_type: "text/plain".into(),
+                        disposition: AttachmentDisposition::Attachment,
+                        content_id: None,
+                        content_location: None,
+                        size_bytes: std::fs::metadata(&attachment_path).unwrap().len(),
+                        local_path: Some(attachment_path.clone()),
+                        provider_id: "att-1".into(),
+                    }],
+                ),
+            ),
+        ];
+        state.store.upsert_envelope(&subject_message).await.unwrap();
+        for (envelope, body) in &bodies {
             state.store.upsert_envelope(envelope).await.unwrap();
+            state.store.insert_body(body).await.unwrap();
         }
-
-        state
-            .store
-            .insert_body(&text_body(
-                &subject_message.id,
-                "General notes only",
-                Vec::new(),
-            ))
-            .await
-            .unwrap();
-        state
-            .store
-            .insert_body(&text_body(
-                &body_message.id,
-                "Deployment checklist lives in the message body",
-                Vec::new(),
-            ))
-            .await
-            .unwrap();
-        state
-            .store
-            .insert_body(&text_body(
-                &attachment_message.id,
-                "General notes only",
-                vec![AttachmentMeta {
-                    id: mxr_core::AttachmentId::new(),
-                    message_id: attachment_message.id.clone(),
-                    filename: "deployment-notes.txt".into(),
-                    mime_type: "text/plain".into(),
-                    disposition: AttachmentDisposition::Attachment,
-                    content_id: None,
-                    content_location: None,
-                    size_bytes: std::fs::metadata(&attachment_path).unwrap().len(),
-                    local_path: Some(attachment_path.clone()),
-                    provider_id: "att-1".into(),
-                }],
-            ))
-            .await
-            .unwrap();
+        index_for_lexical_search(&state, &subject_message, None).await;
+        for (envelope, body) in &bodies {
+            index_for_lexical_search(&state, envelope, Some(body)).await;
+        }
 
         enable_semantic_for_test(&state).await;
 
@@ -1359,6 +1430,7 @@ mod tests {
                 .and_then(|explain| explain.semantic_query.as_deref()),
             Some("deployment")
         );
+        assert_dense_retrieval_ran(&subject_execution);
 
         let body_execution = execute_search(
             &state,
@@ -1368,7 +1440,7 @@ mod tests {
             None,
             SearchMode::Hybrid,
             SortOrder::Relevance,
-            false,
+            true,
         )
         .await
         .unwrap();
@@ -1377,6 +1449,15 @@ mod tests {
         assert_eq!(
             body_execution.results[0].message_id,
             body_message.id.as_str()
+        );
+        assert_dense_retrieval_ran(&body_execution);
+        assert_eq!(
+            body_execution
+                .explain
+                .as_ref()
+                .map(|explain| explain.dense_candidates),
+            Some(1),
+            "body: must retrieve only the message that has body chunks"
         );
 
         let filename_execution = execute_search(
@@ -1387,7 +1468,7 @@ mod tests {
             None,
             SearchMode::Hybrid,
             SortOrder::Relevance,
-            false,
+            true,
         )
         .await
         .unwrap();
@@ -1396,6 +1477,15 @@ mod tests {
         assert_eq!(
             filename_execution.results[0].message_id,
             attachment_message.id.as_str()
+        );
+        assert_dense_retrieval_ran(&filename_execution);
+        assert_eq!(
+            filename_execution
+                .explain
+                .as_ref()
+                .map(|explain| explain.dense_candidates),
+            Some(1),
+            "filename: must retrieve only the message that has attachment chunks"
         );
     }
 

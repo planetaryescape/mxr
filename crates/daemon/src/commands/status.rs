@@ -178,6 +178,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                     &sync_statuses,
                     repair_required,
                     restart_required,
+                    degraded,
                 );
                 println!(
                     "{}",
@@ -289,7 +290,7 @@ mod tests {
                 semantic_runtime: None,
                 feature_health: None,
                 restart_required: false,
-                health_class: DaemonHealthClass::Healthy,
+                health_class: DaemonHealthClass::Degraded,
                 degraded: true,
             },
             OutputFormat::Table,
@@ -299,6 +300,7 @@ mod tests {
         // The zero and the empty list are filler the daemon sent because it
         // ran out of time to read, not a reading. Printing them and then
         // adding a note that contradicts them is worse than saying nothing.
+        assert!(rendered.contains("Health: degraded"), "got {rendered}");
         assert!(rendered.contains("Accounts: unknown"), "got {rendered}");
         assert!(
             rendered.contains("Total messages: unknown"),

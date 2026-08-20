@@ -642,16 +642,24 @@ pub(crate) fn daemon_requires_restart(
         || daemon_build_id != Some(current_build_id.as_str())
 }
 
+/// One word for what the daemon is: the header line of `mxr status`, and what
+/// `mxr doctor --check` turns into an exit code.
+///
+/// `degraded` is a reading the daemon could not take, not a reading of zero —
+/// it empties `sync_statuses`, so without it the unhealthy-account check has
+/// nothing left to look at and the same status object carries
+/// `degraded: true` beside `health_class: "healthy"`.
 pub(crate) fn classify_health(
     sync_statuses: &[AccountSyncStatus],
     repair_required: bool,
     restart_required: bool,
+    degraded: bool,
 ) -> DaemonHealthClass {
     if restart_required {
         DaemonHealthClass::RestartRequired
     } else if repair_required {
         DaemonHealthClass::RepairRequired
-    } else if sync_statuses.iter().any(|status| !status.healthy) {
+    } else if degraded || sync_statuses.iter().any(|status| !status.healthy) {
         DaemonHealthClass::Degraded
     } else {
         DaemonHealthClass::Healthy
@@ -824,11 +832,33 @@ fn write_daemon_identity_file() {
         tracing::info!("could not record daemon identity; pid-file adoption falls back to argv");
         return;
     };
-    match toml::to_string(&identity) {
+    write_identity_record(&identity);
+}
+
+/// Persist an identity record, saying so when it does not land.
+///
+/// A record that fails to write is not a small loss: the next run drops back
+/// to the argv check, which cannot tell this daemon from a recycled pid
+/// running some other mxr daemon. Failing silently leaves that degradation
+/// invisible in the one place — the log — where a kill-safety question gets
+/// answered after the fact.
+fn write_identity_record(identity: &DaemonIdentity) {
+    let path = daemon_identity_file_path();
+    match toml::to_string(identity) {
         Ok(rendered) => {
-            let _ = std::fs::write(daemon_identity_file_path(), rendered);
+            if let Err(error) = std::fs::write(&path, rendered) {
+                tracing::warn!(
+                    %error,
+                    path = %path.display(),
+                    "could not write the daemon identity record; pid-file adoption falls back to argv"
+                );
+            }
         }
-        Err(error) => tracing::warn!(%error, "could not render the daemon identity record"),
+        Err(error) => tracing::warn!(
+            %error,
+            path = %path.display(),
+            "could not render the daemon identity record"
+        ),
     }
 }
 
@@ -851,7 +881,10 @@ enum DaemonEvidence {
     /// Named by this profile's pid file, which only this profile's daemon
     /// writes. The file establishes the profile, so re-checking it must not
     /// demand a matching environment: a daemon started by hand from another
-    /// shell is still ours.
+    /// shell is still ours. Nor a matching `--instance`, which verification
+    /// weighs but this cannot: the re-check runs where the start times agree
+    /// or are both missing, and a wrong answer here goes straight to clearing
+    /// the lifecycle files with no scan left to rescue it.
     PidFile,
     /// Found by scanning `ps`. Nothing on the file system vouched for it —
     /// identity came from the executable and the process environment, so both
@@ -1022,12 +1055,7 @@ fn adopt_daemon_identity_file(adopted: &VerifiedDaemon) {
         config_dir: mxr_config::config_dir(),
         data_dir: mxr_config::data_dir(),
     };
-    match toml::to_string(&identity) {
-        Ok(rendered) => {
-            let _ = std::fs::write(daemon_identity_file_path(), rendered);
-        }
-        Err(error) => tracing::warn!(%error, "could not render the adopted daemon identity"),
-    }
+    write_identity_record(&identity);
 }
 
 /// Whether the pid file's number still refers to the daemon that wrote it.
@@ -1056,7 +1084,12 @@ fn pid_file_still_names_our_daemon(pid: u32) -> bool {
         pid,
         record,
         || crate::process_probe::start_time(pid),
-        || crate::process_probe::command_words(pid).map(|words| command_runs_a_daemon(&words)),
+        || {
+            crate::process_probe::command_words(pid).map(|words| {
+                command_runs_a_daemon(&words)
+                    && !command_names_another_instance(&words, &mxr_config::app_instance_name())
+            })
+        },
     )
 }
 
@@ -1108,6 +1141,47 @@ fn pid_file_verdict(
 /// daemon a person started by hand.
 fn command_runs_a_daemon(words: &[String]) -> bool {
     words.get(1).is_some_and(|word| word == "daemon")
+}
+
+/// Whether a `daemon` command line spells out an instance name that is not
+/// ours.
+///
+/// Evidence, not proof: `--instance` is a marker autostart passes so a process
+/// can be recognised in `ps` (`cli/mod.rs`), and the daemon discards it — the
+/// profile comes from the inherited environment. So a name that disagrees does
+/// not *prove* a different profile; it is the one thing on a command line that
+/// points that way, and on the pid-file path with no identity record there is
+/// nothing else to weigh at all.
+///
+/// Used only where a wrong answer has somewhere to fall back to: it rules a
+/// pid out of *verification*, after which the `ps` scan can still adopt the
+/// daemon by canonical executable and full environment. The pre-signal
+/// re-check does not consult it — see `DaemonEvidence::PidFile`.
+///
+/// Both spellings clap accepts are read, because a name that goes unnoticed
+/// here misses toward signalling a neighbour. The scan path
+/// (`daemon_command_exe`) reads only the spaced form on purpose: its default
+/// is the opposite one — distrust unless proven — so a spelling it misses
+/// declines to adopt, which is the safe answer there.
+///
+/// An instance name containing whitespace is not compared at all: `ps` output
+/// is split on whitespace, so the name cannot be reassembled, and half of it
+/// would compare unequal to all of it. (Truncation would do the same, which is
+/// why both `ps` probes pass `-ww`.)
+fn command_names_another_instance(words: &[String], instance: &str) -> bool {
+    if instance.split_whitespace().count() != 1 {
+        return false;
+    }
+    words.iter().enumerate().any(|(index, word)| {
+        let named = match word.strip_prefix("--instance=") {
+            Some(named) => Some(named),
+            // A trailing `--instance` names nobody, and silence is not
+            // evidence.
+            None if word == "--instance" => words.get(index + 1).map(String::as_str),
+            None => None,
+        };
+        named.is_some_and(|named| named != instance)
+    })
 }
 
 /// Find this profile's daemon when the pid file is gone, by scanning `ps`.
@@ -1334,9 +1408,100 @@ async fn recover_broken_running_daemon(
         );
     }
 
-    clear_daemon_pid_file();
-    let _ = std::fs::remove_file(sock_path);
-    spawn_daemon_process(sock_path, "").await
+    match recovery_cleanup(
+        daemon_pid,
+        inspect_socket_state(sock_path).await,
+        read_daemon_pid_file(),
+    ) {
+        RecoveryCleanup::AlreadyRecovered => {
+            eprintln!(" already recovered.");
+            // Somebody else's replacement, so it is not necessarily this
+            // binary's — the same check every other live-socket path makes.
+            ensure_current_daemon_matches_binary(sock_path).await
+        }
+        RecoveryCleanup::ClearAndSpawn => {
+            clear_daemon_pid_file();
+            let _ = std::fs::remove_file(sock_path);
+            spawn_daemon_process(sock_path, "").await
+        }
+        RecoveryCleanup::SpawnWithoutClearing => {
+            tracing::info!(
+                pid = daemon_pid,
+                "the pid file names a replacement daemon; leaving its lifecycle files alone"
+            );
+            // The successor spawned here is the one that loses the
+            // search-index lock to that replacement, and it exits fast enough
+            // that `spawn_daemon_process` can give up before the replacement's
+            // socket starts answering again. Losing that race is the
+            // replacement proving it is alive, so re-probe before passing the
+            // verdict on: telling someone to go debug a daemon that is running
+            // sends them after nothing.
+            match spawn_daemon_process(sock_path, "").await {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    if matches!(
+                        inspect_socket_state(sock_path).await,
+                        SocketState::Reachable
+                    ) {
+                        eprintln!("Another client's daemon is serving the socket; continuing.");
+                        ensure_current_daemon_matches_binary(sock_path).await
+                    } else {
+                        Err(error)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// What a recovery may do with the lifecycle files once the daemon it
+/// signalled is gone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RecoveryCleanup {
+    /// A daemon answers on the socket again. Nothing here is ours to clear,
+    /// and nothing is left to start.
+    AlreadyRecovered,
+    /// The files still describe the daemon we signalled. Clear them and start
+    /// a successor.
+    ClearAndSpawn,
+    /// Somebody else's replacement wrote the pid file. Start a successor —
+    /// only one of the two can take the search-index lock, so the loser exits
+    /// on its own — but leave files that are no longer ours.
+    SpawnWithoutClearing,
+}
+
+/// Decide what a recovery does after its daemon is gone.
+///
+/// Two clients can observe the same broken socket and both come here for the
+/// same pid. The first finishes: it clears the files and its replacement binds
+/// the socket and writes a new pid file. The second is still inside the
+/// graceful-exit wait, which is seconds wide — and used to clear those files
+/// unconditionally, unlinking a live replacement's socket and leaving a daemon
+/// that is alive, holds the index lock, and no client can reach.
+///
+/// The socket settles it when it answers. The pid file is the second reading
+/// because a live daemon's socket probe can fail while it is busy, and a
+/// replacement writes its pid only after it has bound: a number that is not
+/// the one we signalled was written by a daemon that is already up.
+///
+/// A replacement that binds between this reading and the unlink is still
+/// unprotected, but that window is two statements rather than the
+/// graceful-exit wait, and the successor's own `bind` clears a stale socket
+/// while holding the search-index lock — which is the authoritative guard.
+fn recovery_cleanup(
+    signalled_pid: u32,
+    socket_state: SocketState,
+    pid_file_now: Option<u32>,
+) -> RecoveryCleanup {
+    if matches!(socket_state, SocketState::Reachable) {
+        return RecoveryCleanup::AlreadyRecovered;
+    }
+    match pid_file_now {
+        Some(pid) if pid != signalled_pid => RecoveryCleanup::SpawnWithoutClearing,
+        // Absent is the ordinary case: a daemon that exits gracefully clears
+        // its own pid file.
+        _ => RecoveryCleanup::ClearAndSpawn,
+    }
 }
 
 fn is_index_lock_error(message: &str) -> bool {
@@ -1981,6 +2146,10 @@ mod tests {
         );
     }
 
+    fn words(line: &str) -> Vec<String> {
+        line.split_whitespace().map(ToString::to_string).collect()
+    }
+
     fn identity_for(pid: u32, started_at: &str) -> super::DaemonIdentity {
         super::DaemonIdentity {
             pid,
@@ -2144,6 +2313,40 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn a_late_recovery_does_not_clear_a_replacement_daemon_s_files() {
+        use super::{recovery_cleanup, RecoveryCleanup, SocketState};
+
+        // The interleaving: two clients see the same broken socket and both
+        // decide to restart pid 4242. The first gets there, and its
+        // replacement (pid 5150) binds the socket and writes the pid file.
+        // The second arrives out of the graceful-exit wait and must not
+        // unlink what the replacement just wrote — a daemon alive behind a
+        // deleted socket is unreachable to every client, and the successor
+        // this client would then spawn dies on the search-index lock.
+        assert_eq!(
+            recovery_cleanup(4242, SocketState::Reachable, Some(5150)),
+            RecoveryCleanup::AlreadyRecovered
+        );
+        // The same replacement, caught while its socket probe is failing (a
+        // busy daemon answers late): the pid file still says it exists.
+        assert_eq!(
+            recovery_cleanup(4242, SocketState::Stale, Some(5150)),
+            RecoveryCleanup::SpawnWithoutClearing
+        );
+
+        // And the ordinary case this must keep doing: the daemon we signalled
+        // exited and cleared its own pid file, or died leaving it behind.
+        assert_eq!(
+            recovery_cleanup(4242, SocketState::Stale, None),
+            RecoveryCleanup::ClearAndSpawn
+        );
+        assert_eq!(
+            recovery_cleanup(4242, SocketState::Missing, Some(4242)),
+            RecoveryCleanup::ClearAndSpawn
+        );
+    }
+
     #[tokio::test]
     async fn a_process_that_exits_during_the_shutdown_wait_is_not_escalated_to() {
         use super::{DaemonEvidence, VerifiedDaemon};
@@ -2207,12 +2410,6 @@ mod tests {
     fn a_hand_started_daemon_is_still_this_profile_s_daemon() {
         use super::command_runs_a_daemon;
 
-        let words = |line: &str| {
-            line.split_whitespace()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-        };
-
         // The wedge this reproduces: requiring the argv autostart happens to
         // use rejected every explicitly started daemon, so the CLI deleted a
         // live daemon's pid file and then spawned a successor that died on
@@ -2233,6 +2430,95 @@ mod tests {
         assert!(!command_runs_a_daemon(&words("/usr/bin/vim notes.txt")));
         assert!(!command_runs_a_daemon(&words("/opt/bin/mxr status")));
         assert!(!command_runs_a_daemon(&words("/opt/bin/mxr")));
+    }
+
+    #[test]
+    fn a_pid_file_with_no_record_weighs_the_instance_name_against_the_pid() {
+        use super::{command_names_another_instance, command_runs_a_daemon, pid_file_verdict};
+
+        // With no identity record, "is argv[1] `daemon`" says yes to every mxr
+        // daemon on the machine — including one that inherited this pid while
+        // serving another profile. The instance name is the only thing on the
+        // command line that points the other way, and autostart always passes
+        // it.
+        let another_profile = words("/opt/bin/mxr daemon --instance mxr-dev");
+        assert!(command_names_another_instance(&another_profile, "mxr"));
+        assert!(
+            !pid_file_verdict(
+                4242,
+                None,
+                || None,
+                || Some(
+                    command_runs_a_daemon(&another_profile)
+                        && !command_names_another_instance(&another_profile, "mxr")
+                )
+            ),
+            "a pid now running another profile's daemon must not be signalled on this one's behalf"
+        );
+
+        // Clap takes the name either way round, and a spelling this does not
+        // read misses toward signalling a neighbour.
+        assert!(command_names_another_instance(
+            &words("/opt/bin/mxr daemon --instance=mxr-dev"),
+            "mxr"
+        ));
+        assert!(command_names_another_instance(
+            &words("/opt/bin/mxr daemon --instance=mxr-demo --foreground"),
+            "mxr"
+        ));
+        assert!(!command_names_another_instance(
+            &words("/opt/bin/mxr daemon --instance=mxr"),
+            "mxr"
+        ));
+
+        // Every way of naming nobody: no flag, a value-less flag, and a name
+        // `ps` output cannot be reassembled into. None of them is evidence
+        // that the daemon belongs to somebody else.
+        let hand_started = words("/opt/bin/mxr daemon --foreground");
+        assert!(!command_names_another_instance(&hand_started, "mxr"));
+        assert!(!command_names_another_instance(
+            &words("/opt/bin/mxr daemon --instance"),
+            "mxr"
+        ));
+        assert!(
+            !command_names_another_instance(
+                &words("/opt/bin/mxr daemon --instance my profile"),
+                "my profile"
+            ),
+            "a name with a space survives no round trip through `ps`; half of it is not a mismatch"
+        );
+        assert!(pid_file_verdict(
+            4242,
+            None,
+            || None,
+            || Some(command_runs_a_daemon(&hand_started))
+        ));
+    }
+
+    #[test]
+    fn the_pre_signal_recheck_does_not_weigh_the_instance_name() {
+        use super::{command_names_another_instance, DaemonEvidence, VerifiedDaemon};
+
+        // Verification can afford the instance heuristic: rejecting there
+        // drops through to the `ps` scan, which can still adopt the daemon by
+        // canonical executable and full environment. The re-check cannot — it
+        // runs where the start times agree or are both missing, and its "no"
+        // goes straight to clearing the pid file and unlinking the socket of a
+        // daemon that was never signalled. `--instance` is a marker the daemon
+        // discards, so it is not worth that.
+        let foreign_name = words("/opt/bin/mxr daemon --instance mxr-dev");
+        assert!(command_names_another_instance(&foreign_name, "mxr"));
+
+        assert!(
+            VerifiedDaemon::still_the_same_process(
+                Some("Wed Aug 20 00:11:22 2026"),
+                DaemonEvidence::PidFile,
+                Some("Wed Aug 20 00:11:22 2026"),
+                || Some(super::command_runs_a_daemon(&foreign_name)),
+                || panic!("a pid-file pid does not have to re-prove its profile"),
+            ),
+            "the re-check keeps a daemon the pid file already vouched for"
+        );
     }
 
     #[tokio::test]
@@ -2301,19 +2587,40 @@ mod tests {
         }];
 
         assert_eq!(
-            classify_health(&sync, false, true),
+            classify_health(&sync, false, true, false),
             DaemonHealthClass::RestartRequired
         );
         assert_eq!(
-            classify_health(&sync, true, false),
+            classify_health(&sync, true, false, false),
             DaemonHealthClass::RepairRequired
         );
 
         let mut degraded = sync.to_vec();
         degraded[0].healthy = false;
         assert_eq!(
-            classify_health(&degraded, false, false),
+            classify_health(&degraded, false, false, false),
             DaemonHealthClass::Degraded
+        );
+    }
+
+    #[test]
+    fn a_degraded_snapshot_never_reads_as_healthy() {
+        // A degraded snapshot empties `sync_statuses`, so the unhealthy-account
+        // check has nothing left to look at: the same status object would
+        // otherwise carry `degraded: true` and `health_class: "healthy"`.
+        assert_eq!(
+            classify_health(&[], false, false, true),
+            DaemonHealthClass::Degraded
+        );
+        assert_eq!(
+            classify_health(&[], false, false, false),
+            DaemonHealthClass::Healthy
+        );
+        // The version fields are read without touching the database, so a
+        // snapshot that timed out still knows the daemon is the wrong build.
+        assert_eq!(
+            classify_health(&[], false, true, true),
+            DaemonHealthClass::RestartRequired
         );
     }
 

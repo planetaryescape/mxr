@@ -567,6 +567,63 @@ mod tests {
         }
     }
 
+    fn with_progress(
+        mut status: AccountSyncStatus,
+        current: u32,
+        total: Option<u32>,
+    ) -> AccountSyncStatus {
+        status.progress = Some(mxr_protocol::SyncProgressData {
+            current,
+            total,
+            message: "Stored 3000 messages".to_string(),
+        });
+        status
+    }
+
+    /// The denominator is only there when the provider could count what is
+    /// left, so the line has to read sensibly either way.
+    #[test]
+    fn sync_progress_line_shows_a_denominator_only_when_one_is_known() {
+        let known = with_progress(status("personal", "t0", None), 3_000, Some(50_000));
+        assert_eq!(
+            sync_progress_line(&[known]).as_deref(),
+            Some("personal: 3,000/50,000 — Stored 3000 messages")
+        );
+
+        let unknown = with_progress(status("personal", "t0", None), 3_000, None);
+        assert_eq!(
+            sync_progress_line(&[unknown]).as_deref(),
+            Some("personal: 3,000 — Stored 3000 messages")
+        );
+    }
+
+    /// An idle pass has no denominator, so the line must not offer one. The
+    /// daemon withholds the total for exactly this reason — rendering it would
+    /// read "0/0", which looks like a stalled sync rather than an idle one.
+    #[test]
+    fn sync_progress_line_never_renders_a_zero_denominator() {
+        let idle = with_progress(status("personal", "t0", None), 0, None);
+        let line = sync_progress_line(&[idle]).expect("a reporting account produces a line");
+        assert_eq!(line, "personal: 0 — Stored 3000 messages");
+        assert!(!line.contains('/'), "no denominator when none is known");
+    }
+
+    /// Accounts that are not reporting progress contribute nothing, and a
+    /// silent set of accounts produces no line at all.
+    #[test]
+    fn sync_progress_line_skips_accounts_without_progress() {
+        assert_eq!(sync_progress_line(&[status("personal", "t0", None)]), None);
+
+        let statuses = vec![
+            status("personal", "t0", None),
+            with_progress(status("work", "t0", None), 12, None),
+        ];
+        assert_eq!(
+            sync_progress_line(&statuses).as_deref(),
+            Some("work: 12 — Stored 3000 messages")
+        );
+    }
+
     /// A failed sync goes idle on its way out, so quiescence alone would have
     /// `--wait` report success on a sync that failed.
     #[test]

@@ -466,6 +466,11 @@ pub struct AppState {
 struct SyncRun {
     /// Messages committed so far across this run's pages.
     synced: u32,
+    /// Messages this run expects to commit in total, when the provider can
+    /// say. Recomputed from each page's remaining count so a run that
+    /// resumes part-way through a backfill still reports a denominator that
+    /// matches its own `synced`.
+    total: Option<u32>,
     message: String,
     /// Bumped on every reported milestone. The detached-sync reaper compares
     /// it across grace windows to tell a slow sync from a wedged one.
@@ -1143,6 +1148,24 @@ impl AppState {
         run.revision = run.revision.wrapping_add(1);
     }
 
+    /// Record how many messages the pass still has to deliver, counting the
+    /// page it just fetched. Turned into the run's denominator by adding what
+    /// the run has already committed.
+    ///
+    /// A steady-state poll reports nothing left and has committed nothing, and
+    /// "0 of 0" is not progress — it is an idle account, and every client would
+    /// render it as one more thing happening. A run that has already stored
+    /// something keeps its denominator when a final page reports nothing left:
+    /// that is a genuine "16,500 of 16,500".
+    pub(crate) fn record_sync_remaining(&self, account_id: &AccountId, remaining: u32) {
+        let mut runs = self.sync_runs.lock();
+        let run = runs.entry(account_id.clone()).or_default();
+        if remaining == 0 && run.synced == 0 {
+            return;
+        }
+        run.total = Some(run.synced.saturating_add(remaining));
+    }
+
     /// Void the message count reported for the current pass. The sync engine
     /// restarts a pass from an empty cursor when it has to rebuild label
     /// associations; without this the page it already reported is counted
@@ -1151,6 +1174,7 @@ impl AppState {
         let mut runs = self.sync_runs.lock();
         if let Some(run) = runs.get_mut(account_id) {
             run.synced = 0;
+            run.total = None;
         }
     }
 
@@ -1161,7 +1185,7 @@ impl AppState {
         let run = runs.get(account_id)?;
         (run.revision > 0).then(|| SyncProgressData {
             current: run.synced,
-            total: None,
+            total: run.total,
             message: run.message.clone(),
         })
     }
@@ -1187,6 +1211,7 @@ impl AppState {
             return;
         };
         run.synced = 0;
+        run.total = None;
         run.message.clear();
         run.revision = 0;
         if run.is_idle() {
@@ -2105,6 +2130,103 @@ use_tls = true
 "#
         ))
         .expect("parse config")
+    }
+
+    /// The provider counts down what is left; the run's denominator is that
+    /// plus what it has already stored. A run that resumes part-way through a
+    /// backfill therefore reports a total that matches its own `current`
+    /// instead of the whole mailbox.
+    #[tokio::test]
+    async fn sync_progress_totals_add_the_remaining_count_to_what_is_stored() {
+        let state = AppState::in_memory().await.expect("state");
+        let account_id = AccountId::new();
+
+        state.record_sync_remaining(&account_id, 250);
+        state.record_sync_progress(&account_id, 0, "Fetched 100 messages".to_string());
+        state.record_sync_progress(&account_id, 100, "Stored 100 messages".to_string());
+        let after_first_page = state.sync_progress(&account_id).expect("progress");
+        assert_eq!(after_first_page.current, 100);
+        assert_eq!(after_first_page.total, Some(250));
+
+        state.record_sync_remaining(&account_id, 150);
+        state.record_sync_progress(&account_id, 150, "Stored 150 messages".to_string());
+        let after_second_page = state.sync_progress(&account_id).expect("progress");
+        assert_eq!(after_second_page.current, 250);
+        assert_eq!(after_second_page.total, Some(250));
+
+        // A restart re-pages the account from scratch, so the denominator is
+        // as stale as the count it belongs to.
+        state.reset_sync_progress(&account_id);
+        assert_eq!(
+            state.sync_progress(&account_id).expect("progress").total,
+            None
+        );
+    }
+
+    /// An idle poll finds nothing to sync and has stored nothing. Reporting
+    /// that as a denominator gives every client "0 of 0" to render.
+    #[tokio::test]
+    async fn an_idle_pass_with_nothing_left_reports_no_total() {
+        let state = AppState::in_memory().await.expect("state");
+        let account_id = AccountId::new();
+
+        state.record_sync_remaining(&account_id, 0);
+        state.record_sync_progress(&account_id, 0, "Fetched 0 messages".to_string());
+
+        let progress = state.sync_progress(&account_id).expect("progress");
+        assert_eq!(progress.current, 0);
+        assert_eq!(progress.total, None);
+    }
+
+    /// The other side of that guard: a backfill whose last page carries the
+    /// remainder still ends on a full, meaningful denominator.
+    #[tokio::test]
+    async fn a_backfill_ending_with_nothing_left_keeps_its_denominator() {
+        let state = AppState::in_memory().await.expect("state");
+        let account_id = AccountId::new();
+
+        state.record_sync_remaining(&account_id, 100);
+        state.record_sync_progress(&account_id, 100, "Stored 100 messages".to_string());
+        // The provider signals the end of the backfill with an empty page.
+        state.record_sync_remaining(&account_id, 0);
+        state.record_sync_progress(&account_id, 0, "Fetched 0 messages".to_string());
+
+        let progress = state.sync_progress(&account_id).expect("progress");
+        assert_eq!(progress.current, 100);
+        assert_eq!(progress.total, Some(100));
+    }
+
+    /// A provider that cannot count what is left leaves the denominator
+    /// absent rather than reporting a number nobody computed.
+    #[tokio::test]
+    async fn sync_progress_has_no_total_when_no_page_reported_one() {
+        let state = AppState::in_memory().await.expect("state");
+        let account_id = AccountId::new();
+
+        state.record_sync_progress(&account_id, 40, "Stored 40 messages".to_string());
+
+        let progress = state.sync_progress(&account_id).expect("progress");
+        assert_eq!(progress.current, 40);
+        assert_eq!(progress.total, None);
+    }
+
+    /// The run's totals die with the run; the next backfill recomputes them.
+    #[tokio::test]
+    async fn finishing_a_run_clears_its_total() {
+        let state = AppState::in_memory().await.expect("state");
+        let account_id = AccountId::new();
+
+        state.record_sync_remaining(&account_id, 10);
+        state.record_sync_progress(&account_id, 10, "Stored 10 messages".to_string());
+        state.finish_sync_run(&account_id, true);
+        assert_eq!(
+            state.sync_progress(&account_id).expect("progress").total,
+            Some(10),
+            "a page with more to come is not the end of the run"
+        );
+
+        state.finish_sync_run(&account_id, false);
+        assert!(state.sync_progress(&account_id).is_none());
     }
 
     #[tokio::test]

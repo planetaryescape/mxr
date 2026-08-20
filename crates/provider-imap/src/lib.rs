@@ -471,6 +471,7 @@ impl ImapProvider {
             next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
             has_more: false,
             threads_changed: vec![],
+            remaining_estimate: None,
         })
     }
 
@@ -674,6 +675,11 @@ impl ImapProvider {
             next_cursor,
             has_more,
             threads_changed: vec![],
+            // The backfill walks a UID range, and UIDs are sparse — the
+            // remaining count would need a SEARCH over `page_end+1:end_uid`
+            // per page. `EXISTS` is cheap but counts the whole mailbox, not
+            // what is left, so it would be the wrong denominator.
+            remaining_estimate: None,
         })
     }
 
@@ -755,6 +761,7 @@ impl ImapProvider {
             next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
             has_more: false,
             threads_changed: vec![],
+            remaining_estimate: None,
         })
     }
 
@@ -844,6 +851,7 @@ impl ImapProvider {
             next_cursor: Self::build_imap_cursor(vec![mailbox], &capabilities),
             has_more: false,
             threads_changed: vec![],
+            remaining_estimate: None,
         })
     }
 

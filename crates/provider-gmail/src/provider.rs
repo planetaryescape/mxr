@@ -394,6 +394,7 @@ impl GmailProvider {
             next_cursor,
             has_more,
             threads_changed: vec![],
+            remaining_estimate: None,
         })
     }
 
@@ -423,6 +424,7 @@ impl GmailProvider {
                 next_cursor: GmailCursor::delta(history_id).encode(),
                 has_more: false,
                 threads_changed: vec![],
+                remaining_estimate: None,
             });
         }
 
@@ -451,6 +453,10 @@ impl GmailProvider {
             next_cursor,
             has_more,
             threads_changed: vec![],
+            // No count worth showing: `messages.list` only offers
+            // `resultSizeEstimate`, which Gmail itself documents as
+            // approximate and which swings by thousands between pages.
+            remaining_estimate: None,
         })
     }
 
@@ -559,6 +565,7 @@ impl GmailProvider {
             next_cursor: GmailCursor::delta(latest_history_id).encode(),
             has_more: false,
             threads_changed: vec![],
+            remaining_estimate: None,
         })
     }
 

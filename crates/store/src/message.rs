@@ -14,7 +14,7 @@ impl super::Store {
     /// insert. Sync paths that know the account's owned addresses should call
     /// `upsert_envelope_with_direction` instead so direction lands correctly
     /// the first time.
-    pub async fn upsert_envelope(&self, envelope: &Envelope) -> Result<(), sqlx::Error> {
+    pub async fn upsert_envelope(&self, envelope: &Envelope) -> Result<MessageId, sqlx::Error> {
         self.upsert_envelope_with_direction(envelope, MessageDirection::Unknown)
             .await
     }
@@ -26,15 +26,21 @@ impl super::Store {
     /// non-Unknown classification — preserving Slice 8's invariant that a
     /// concrete inbound/outbound classification, once recorded, is sticky.
     /// (Re-syncs that pass `Unknown` shouldn't downgrade a known direction.)
+    ///
+    /// Returns the id the row actually lives under, which is not always
+    /// `envelope.id`: an existing row resolved by the natural key
+    /// `(account_id, provider_id)` keeps its own id. Callers that go on to
+    /// write dependent rows (body, labels, keywords, search index) must key
+    /// them off the returned id.
     pub async fn upsert_envelope_with_direction(
         &self,
         envelope: &Envelope,
         direction: MessageDirection,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<MessageId, sqlx::Error> {
         let mut tx = self.writer().begin().await?;
-        upsert_envelope_tx(&mut tx, envelope, direction).await?;
+        let stored = upsert_envelope_tx(&mut tx, envelope, direction).await?;
         tx.commit().await?;
-        Ok(())
+        Ok(stored.id)
     }
 }
 
@@ -63,13 +69,31 @@ pub(crate) async fn replace_message_labels_tx(
     Ok(())
 }
 
+/// What an upsert did to the row, for callers that have to keep other tables
+/// and their own caches in step with it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StoredEnvelope {
+    /// The id the row lives under, which is not always `envelope.id`.
+    pub(crate) id: MessageId,
+    /// The thread the row was in before this upsert, when the upsert moved it
+    /// out. `None` when the message is new or stayed where it was.
+    pub(crate) vacated_thread_id: Option<ThreadId>,
+}
+
 /// Envelope upsert against an open connection so a page of synced
 /// messages can share one transaction.
+///
+/// Reports the `MessageId` the row is stored under. That is `envelope.id`
+/// for an insert, but an existing row resolved by the natural key keeps its
+/// own id: `messages.id` is referenced by bodies, attachments, labels,
+/// keywords, reply pairs and the search index, so rewriting it would mean
+/// re-keying every dependent row inside the sync transaction. The stored id
+/// wins, and callers rewrite what they are about to write to match it.
 pub(crate) async fn upsert_envelope_tx(
     conn: &mut sqlx::SqliteConnection,
     envelope: &Envelope,
     direction: MessageDirection,
-) -> Result<(), sqlx::Error> {
+) -> Result<StoredEnvelope, sqlx::Error> {
     let id = envelope.id.as_str();
     let account_id = envelope.account_id.as_str();
     let thread_id = envelope.thread_id.as_str();
@@ -92,12 +116,17 @@ pub(crate) async fn upsert_envelope_tx(
     // is `UNIQUE`, so a plain `INSERT ... ON CONFLICT(id)` would hit
     // SQLITE_CONSTRAINT (2067). Resolve by id when present, otherwise resolve
     // by the natural key and update in place.
-    let existing_id: Option<String> =
-        sqlx::query_scalar("SELECT id FROM messages WHERE account_id = ? AND provider_id = ?")
-            .bind(&account_id)
-            .bind(&envelope.provider_id)
-            .fetch_optional(&mut *conn)
-            .await?;
+    // `thread_id` comes back with it because the UPDATE below overwrites it: a
+    // message the provider moved to another thread leaves its old thread
+    // behind, and only the row's prior value can tell the caller which thread
+    // to report as changed.
+    let existing: Option<(String, String)> = sqlx::query_as(
+        "SELECT id, thread_id FROM messages WHERE account_id = ? AND provider_id = ?",
+    )
+    .bind(&account_id)
+    .bind(&envelope.provider_id)
+    .fetch_optional(&mut *conn)
+    .await?;
 
     let link_count = envelope.link_count as i64;
     let body_word_count_persist: Option<i64> = if envelope.body_word_count == 0 {
@@ -108,7 +137,7 @@ pub(crate) async fn upsert_envelope_tx(
         Some(envelope.body_word_count as i64)
     };
 
-    if let Some(existing_id) = existing_id {
+    if let Some((existing_id, existing_thread_id)) = existing {
         sqlx::query(
             "UPDATE messages SET
                 thread_id = ?,
@@ -155,10 +184,20 @@ pub(crate) async fn upsert_envelope_tx(
         .bind(body_word_count_persist)
         .bind(direction_str)
         .bind(direction_str)
-        .bind(existing_id)
+        .bind(&existing_id)
         .execute(&mut *conn)
         .await?;
-        return Ok(());
+        let previous_thread_id: ThreadId = decode_stored_id(
+            &existing_thread_id,
+            "thread_id",
+            &account_id,
+            &envelope.provider_id,
+        )?;
+        return Ok(StoredEnvelope {
+            id: decode_stored_id(&existing_id, "id", &account_id, &envelope.provider_id)?,
+            vacated_thread_id: (previous_thread_id != envelope.thread_id)
+                .then_some(previous_thread_id),
+        });
     }
 
     sqlx::query(
@@ -194,7 +233,34 @@ pub(crate) async fn upsert_envelope_tx(
     .execute(&mut *conn)
     .await?;
 
-    Ok(())
+    Ok(StoredEnvelope {
+        id: envelope.id.clone(),
+        vacated_thread_id: None,
+    })
+}
+
+/// Parse an id read back off a `messages` row, naming the row that broke the
+/// invariant. `decode_id` alone reports "invalid uuid" and nothing else, which
+/// on the sync hot path says neither which column nor which message is
+/// unreadable.
+fn decode_stored_id<T>(
+    value: &str,
+    column: &str,
+    account_id: &str,
+    provider_id: &str,
+) -> Result<T, sqlx::Error>
+where
+    T: std::str::FromStr,
+    T::Err: std::error::Error + Send + Sync + 'static,
+{
+    decode_id(value).map_err(|error| {
+        sqlx::Error::Decode(
+            format!(
+                "messages.{column} must be a UUID; row under ({account_id}, {provider_id}) has {value:?}: {error}"
+            )
+            .into(),
+        )
+    })
 }
 
 impl super::Store {

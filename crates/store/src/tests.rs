@@ -548,7 +548,12 @@ async fn envelope_upsert_preserves_existing_provider_identity_when_generated_id_
     regenerated.id = MessageId::from_scoped_provider_id(&account.id, "gmail", "msg-001");
     regenerated.provider_id = "msg-001".to_string();
     regenerated.subject = "Updated subject".to_string();
-    store.upsert_envelope(&regenerated).await.unwrap();
+    // The upsert reports the id it wrote, and the stored one wins. Callers
+    // that go on to write a body or labels have to follow it.
+    assert_eq!(
+        store.upsert_envelope(&regenerated).await.unwrap(),
+        legacy_id
+    );
 
     let list = store
         .list_envelopes_by_account(&account.id, 100, 0)

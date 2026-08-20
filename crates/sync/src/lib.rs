@@ -118,6 +118,34 @@ mod tests {
         }
     }
 
+    /// Collects the engine's progress milestones so a test can assert on
+    /// them after the pass returns.
+    #[derive(Default)]
+    struct CollectedProgress {
+        milestones: std::sync::Mutex<Vec<SyncProgress>>,
+    }
+
+    impl CollectedProgress {
+        fn sink(&self) -> impl Fn(SyncProgress) + Send + Sync + '_ {
+            move |milestone| self.milestones.lock().unwrap().push(milestone)
+        }
+
+        /// One entry per `PageFetched`, in the order the pages arrived.
+        fn remaining_estimates(&self) -> Vec<Option<u32>> {
+            self.milestones
+                .lock()
+                .unwrap()
+                .iter()
+                .filter_map(|milestone| match milestone {
+                    SyncProgress::PageFetched {
+                        remaining_estimate, ..
+                    } => Some(*remaining_estimate),
+                    _ => None,
+                })
+                .collect()
+        }
+    }
+
     fn test_account(account_id: AccountId) -> mxr_core::Account {
         mxr_core::Account {
             id: account_id,
@@ -207,6 +235,7 @@ mod tests {
                 next_cursor: SyncCursor::from_bytes(b"native-synced".to_vec()),
                 has_more: false,
                 threads_changed: vec![],
+                remaining_estimate: None,
             })
         }
         async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
@@ -260,6 +289,7 @@ mod tests {
                 next_cursor: SyncCursor::from_bytes(b"more-pages".to_vec()),
                 has_more: true,
                 threads_changed: vec![],
+                remaining_estimate: None,
             })
         }
         async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
@@ -308,6 +338,7 @@ mod tests {
                 next_cursor: SyncCursor::empty(),
                 has_more: false,
                 threads_changed: vec![],
+                remaining_estimate: None,
             })
         }
 
@@ -366,6 +397,7 @@ mod tests {
                     next_cursor: SyncCursor::from_bytes(b"recovered-cursor".to_vec()),
                     has_more: false,
                     threads_changed: vec![],
+                    remaining_estimate: None,
                 })
             } else {
                 Err(MxrError::SyncCursorExpired {
@@ -437,6 +469,7 @@ mod tests {
                     next_cursor: SyncCursor::from_bytes(b"delta-initial".to_vec()),
                     has_more: false,
                     threads_changed: vec![],
+                    remaining_estimate: None,
                 })
             } else {
                 Ok(SyncBatch {
@@ -446,6 +479,7 @@ mod tests {
                     next_cursor: SyncCursor::from_bytes(b"delta-follow-up".to_vec()),
                     has_more: false,
                     threads_changed: vec![],
+                    remaining_estimate: None,
                 })
             }
         }
@@ -2306,5 +2340,237 @@ mod tests {
                 label.name, label.unread_count, unread_count
             );
         }
+    }
+
+    /// A message that already exists under a different `MessageId` — the
+    /// pre-0.4.52 unscoped derivation — must not split in two. The natural
+    /// key `(account_id, provider_id)` is unique, so the stored id wins and
+    /// the whole page has to follow it: rows, the ids the engine hands back,
+    /// and the lexical index, which is keyed by message id and would
+    /// otherwise end up with two documents for one message.
+    #[tokio::test]
+    async fn a_page_containing_a_legacy_row_lands_under_the_stored_id() {
+        const TOTAL: usize = 3;
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search.clone());
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        let provider =
+            mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), TOTAL);
+
+        // Seed one message the way an older release stored it: same provider
+        // id, id derived without the account scope.
+        let legacy_message = provider
+            .fetch_message("demo-msg-2")
+            .await
+            .unwrap()
+            .expect("demo dataset message");
+        let derived_id = legacy_message.envelope.id.clone();
+        let legacy_id = MessageId::from_provider_id("fake", "demo-msg-2");
+        assert_ne!(legacy_id, derived_id, "the two derivations must differ");
+        let mut legacy_envelope = legacy_message.envelope;
+        let current_subject = legacy_envelope.subject.clone();
+        legacy_envelope.id = legacy_id.clone();
+        legacy_envelope.subject = "Oldreleasesubjecttoken".to_string();
+        let mut legacy_body = legacy_message.body;
+        legacy_body.message_id = legacy_id.clone();
+        for attachment in &mut legacy_body.attachments {
+            attachment.message_id = legacy_id.clone();
+        }
+        store
+            .apply_sync_upserts(&mut [mxr_store::SyncUpsert {
+                envelope: legacy_envelope.clone(),
+                direction: MessageDirection::Inbound,
+                body: legacy_body.clone(),
+                label_ids: Vec::new(),
+            }])
+            .await
+            .unwrap();
+        search
+            .apply_batch(mxr_search::SearchUpdateBatch {
+                entries: vec![mxr_search::SearchIndexEntry {
+                    envelope: legacy_envelope,
+                    body: Some(legacy_body),
+                    reply_later: false,
+                }],
+                removed_message_ids: Vec::new(),
+            })
+            .await
+            .unwrap();
+
+        let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
+
+        assert_eq!(outcome.synced_count as usize, TOTAL);
+        assert_eq!(
+            store.count_messages_by_account(&account_id).await.unwrap() as usize,
+            TOTAL,
+            "the legacy row must be updated, not duplicated"
+        );
+        assert!(
+            outcome.upserted_message_ids.contains(&legacy_id),
+            "the engine must report the id the row is stored under"
+        );
+        assert!(
+            !outcome.upserted_message_ids.contains(&derived_id),
+            "the id the provider computed no longer names any row"
+        );
+
+        assert!(store.get_envelope(&derived_id).await.unwrap().is_none());
+        let stored = store
+            .get_envelope(&legacy_id)
+            .await
+            .unwrap()
+            .expect("legacy row");
+        assert_eq!(stored.subject, current_subject);
+        assert!(store.get_body(&legacy_id).await.unwrap().is_some());
+        assert!(store.get_body(&derived_id).await.unwrap().is_none());
+
+        // One document per message: the index delete is by message id, so an
+        // entry written under the provider's id would leave the legacy
+        // document sitting beside the new one.
+        assert_eq!(search.num_docs().await.unwrap() as usize, TOTAL);
+        let stale = search
+            .search("oldreleasesubjecttoken", 10, 0, SortOrder::DateDesc)
+            .await
+            .unwrap();
+        assert!(
+            stale.results.is_empty(),
+            "the stale document must be replaced, not left alongside the new one"
+        );
+    }
+
+    /// A stored message the provider now puts in another thread leaves its
+    /// old thread behind. Both ends have to reach the client: the thread the
+    /// message joined, and the one it left — tombstoned when the move emptied
+    /// it — or a client keeps showing a thread that no longer has the mail.
+    #[tokio::test]
+    async fn a_message_moved_between_threads_reports_both_threads() {
+        const TOTAL: usize = 3;
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let engine = SyncEngine::new(store.clone(), in_memory_search());
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        let provider =
+            mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), TOTAL);
+
+        // Store the message under a thread of its own, the way an earlier
+        // sync (or an earlier threading pass) left it.
+        let synced = provider
+            .fetch_message("demo-msg-2")
+            .await
+            .unwrap()
+            .expect("demo dataset message");
+        let provider_thread = synced.envelope.thread_id.clone();
+        let old_thread = ThreadId::from_provider_id("fake", "thread-before-the-move");
+        assert_ne!(old_thread, provider_thread);
+        let mut stale = synced.envelope;
+        stale.thread_id = old_thread.clone();
+        store
+            .apply_sync_upserts(&mut [mxr_store::SyncUpsert {
+                envelope: stale,
+                direction: MessageDirection::Inbound,
+                body: synced.body,
+                label_ids: Vec::new(),
+            }])
+            .await
+            .unwrap();
+
+        let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
+
+        let changed: HashSet<ThreadId> = outcome
+            .threads_changed
+            .iter()
+            .map(|thread| thread.id.clone())
+            .collect();
+        assert!(
+            changed.contains(&provider_thread),
+            "the thread the message moved into must be reported"
+        );
+        assert!(
+            changed.contains(&old_thread),
+            "the thread it left must be reported too"
+        );
+        let tombstone = outcome
+            .threads_changed
+            .iter()
+            .find(|thread| thread.id == old_thread)
+            .expect("vacated thread");
+        assert!(
+            tombstone.message_ids.is_empty(),
+            "the move emptied it, so it comes back as a tombstone"
+        );
+    }
+
+    /// The engine passes the provider's remaining count through so a client
+    /// can show a denominator. Counting down from the cursor is what makes it
+    /// right for a resumed backfill: the caller adds it to what it has
+    /// already stored.
+    #[tokio::test]
+    async fn page_fetched_reports_what_the_provider_has_left() {
+        const TOTAL: usize = 250;
+        const PAGE: usize = 100;
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let engine = SyncEngine::new(store.clone(), in_memory_search());
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        let provider =
+            mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), TOTAL)
+                .with_page_size(PAGE);
+
+        let milestones = CollectedProgress::default();
+        let sink = milestones.sink();
+        loop {
+            let outcome = engine
+                .sync_account_reporting(&provider, &sink)
+                .await
+                .unwrap();
+            if !outcome.has_more {
+                break;
+            }
+        }
+
+        assert_eq!(
+            milestones.remaining_estimates(),
+            vec![Some(250), Some(150), Some(50)]
+        );
+    }
+
+    /// A provider that cannot count what is left reports nothing rather than
+    /// a made-up number, and clients render progress without a denominator.
+    #[tokio::test]
+    async fn page_fetched_reports_no_remaining_count_when_the_provider_has_none() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let engine = SyncEngine::new(store.clone(), in_memory_search());
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        let provider = NativeThreadingProvider {
+            account_id: account_id.clone(),
+            messages: Vec::new(),
+        };
+
+        let milestones = CollectedProgress::default();
+        engine
+            .sync_account_reporting(&provider, &milestones.sink())
+            .await
+            .unwrap();
+
+        assert_eq!(milestones.remaining_estimates(), vec![None]);
     }
 }

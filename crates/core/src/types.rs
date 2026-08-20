@@ -1097,6 +1097,18 @@ pub struct MessageBody {
 }
 
 impl MessageBody {
+    /// Point the body and every attachment on it at `message_id`.
+    ///
+    /// `attachments.message_id` is a foreign key onto the same row the body
+    /// belongs to, so the two can never disagree. Needed when the store
+    /// resolves a message to an id other than the one the provider computed.
+    pub fn set_message_id(&mut self, message_id: MessageId) {
+        for attachment in &mut self.attachments {
+            attachment.message_id = message_id.clone();
+        }
+        self.message_id = message_id;
+    }
+
     pub fn ensure_best_effort_readable(&mut self) -> bool {
         if self.text_plain.is_some() || self.text_html.is_some() {
             return false;
@@ -2122,6 +2134,18 @@ pub struct SyncBatch {
     /// — clients SHOULD drop any cached metadata for that id.
     #[serde(default)]
     pub threads_changed: Vec<Thread>,
+    /// How many messages this sync still has to deliver, counting the
+    /// ones in this batch — the denominator a client needs for
+    /// "3,000 of 50,000". Counted from the cursor this batch was fetched
+    /// with, not from the start of the mailbox, so it stays right when a
+    /// backfill resumes part-way through.
+    ///
+    /// `None` when the provider cannot say without paying for it: Gmail's
+    /// `resultSizeEstimate` is not accurate enough to show a user, and IMAP
+    /// would need a SEARCH over the remaining UID range. Only set it from a
+    /// number the provider actually knows.
+    #[serde(default)]
+    pub remaining_estimate: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

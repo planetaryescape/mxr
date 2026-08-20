@@ -2820,10 +2820,10 @@ pub struct AccountSyncStatus {
 /// How far the sync pass running for an account has got.
 ///
 /// `current` counts messages committed so far in this backfill run, carrying
-/// across provider pages. `total` is the denominator when one is known — no
-/// provider in the tree reports a batch total, so it is absent today; it
-/// exists because this maps straight onto `DaemonEvent::OperationProgress`,
-/// whose `total` has always been optional for exactly this reason.
+/// across provider pages. `total` is the denominator when the provider can
+/// say how much is left — the fake provider knows its dataset exactly, Gmail
+/// and IMAP cannot count what remains without paying for it, so it stays
+/// absent for them.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SyncProgressData {

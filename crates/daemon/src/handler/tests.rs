@@ -279,6 +279,7 @@ impl mxr_core::MailSyncProvider for FolderCopyProvider {
             next_cursor: mxr_core::SyncCursor::empty(),
             has_more: false,
             threads_changed: vec![],
+            remaining_estimate: None,
         })
     }
 

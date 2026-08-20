@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.26](https://github.com/planetaryescape/mxr/compare/v0.6.25...v0.6.26) (2026-08-20)
+
+
+### Bug Fixes
+
+* feed every demo wait iteration into the stall clock ([#211](https://github.com/planetaryescape/mxr/issues/211)) ([0aa5aa1](https://github.com/planetaryescape/mxr/commit/0aa5aa1fa4e3524f15f065ea9c68d2d8bc99e1e3))
+* keep a semantic index that never rebuilt from reading as fresh ([#210](https://github.com/planetaryescape/mxr/issues/210)) ([b0a1063](https://github.com/planetaryescape/mxr/commit/b0a1063aa1e4064c21659a35aebe68418a628b9b))
+
+
+### Documentation
+
+* close the post-[#179](https://github.com/planetaryescape/mxr/issues/179) drift (plan record, whole-address examples, background sync docs) ([#207](https://github.com/planetaryescape/mxr/issues/207)) ([c844e88](https://github.com/planetaryescape/mxr/commit/c844e8876c8ad442cb8d463afbaf91e1c031fb8c))
+* record the Codex retro findings and triage verdicts ([#209](https://github.com/planetaryescape/mxr/issues/209)) ([ad72d3d](https://github.com/planetaryescape/mxr/commit/ad72d3d72f701564cecb47996bb1f7b102004785))
+* scope the ten-minute stall claim to the waits that have one ([#208](https://github.com/planetaryescape/mxr/issues/208)) ([141ebbb](https://github.com/planetaryescape/mxr/commit/141ebbbb0924bb1e129b42b27f39c370d8ee0dac))
+
 ## [0.6.25](https://github.com/planetaryescape/mxr/compare/v0.6.24...v0.6.25) (2026-08-20)
 
 

@@ -3405,6 +3405,12 @@ pub enum DaemonEvent {
         /// How many messages actually arrived. Equal to `envelopes.len()` for
         /// an ordinary sync; larger when the batch was capped. Additive with a
         /// serde default so an older client still decodes the event.
+        ///
+        /// The default cuts the other way too: an event from a pre-0.6.25
+        /// daemon carries no `total` and so decodes as `0`, which is smaller
+        /// than the `envelopes` it shipped with. Readers must treat
+        /// `envelopes.len()` as the floor (`total.max(envelopes.len())`)
+        /// rather than reporting the zero.
         #[serde(default)]
         total: usize,
     },

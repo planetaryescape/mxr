@@ -57,8 +57,17 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
             }
             DaemonEvent::NewMessages { envelopes, total } => {
                 // `total` is what arrived; `envelopes` is the capped sample the
-                // frame could carry.
-                format!("message new_messages={total} shown={}", envelopes.len())
+                // frame could carry. A pre-0.6.25 daemon never sends `total`,
+                // so it arrives as the serde default of 0 and printing it
+                // verbatim claims `new_messages=0 shown=3`. The daemon
+                // guarantees `total >= envelopes.len()` whenever it does set
+                // it, so falling back to the sample size is honest against both
+                // an old daemon and a capped batch.
+                format!(
+                    "message new_messages={} shown={}",
+                    (*total).max(envelopes.len()),
+                    envelopes.len()
+                )
             }
             DaemonEvent::MessageUnsnoozed { message_id } => {
                 format!("snooze message_unsnoozed={message_id}")
@@ -137,6 +146,7 @@ pub async fn run(event_type: Option<String>, format: Option<OutputFormat>) -> an
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_fixtures::test_envelope;
     use mxr_core::{id::AccountId, MessageId};
 
     #[test]
@@ -167,6 +177,47 @@ mod tests {
             error: "boom".into(),
         };
         assert!(event_matches_type(&event, Some("error")));
+    }
+
+    /// A pre-0.6.25 daemon emits `NewMessages` without a `total` field. The
+    /// serde default fills in 0, which is a smaller number than the sample the
+    /// event actually carried — rendering it verbatim told the user
+    /// `new_messages=0 shown=3`. Build the legacy wire shape by dropping the
+    /// field from a current event so the test breaks if the default ever stops
+    /// being 0.
+    #[test]
+    fn legacy_new_messages_event_reports_the_sample_size() {
+        let event = DaemonEvent::NewMessages {
+            envelopes: vec![test_envelope(), test_envelope(), test_envelope()],
+            total: 3,
+        };
+        let mut wire = serde_json::to_value(&event).unwrap();
+        assert!(
+            wire.as_object_mut().unwrap().remove("total").is_some(),
+            "the current event must carry `total` for this test to mean anything"
+        );
+
+        let legacy: DaemonEvent = serde_json::from_value(wire).unwrap();
+        assert!(
+            matches!(legacy, DaemonEvent::NewMessages { total: 0, .. }),
+            "an absent `total` must decode as the serde default"
+        );
+
+        let rendered = render_event(&legacy, OutputFormat::Table).unwrap();
+        assert_eq!(rendered, "message new_messages=3 shown=3");
+    }
+
+    /// The capped case the field was added for: `total` above the sample stays
+    /// exactly as the daemon reported it.
+    #[test]
+    fn capped_new_messages_event_reports_the_daemon_total() {
+        let event = DaemonEvent::NewMessages {
+            envelopes: vec![test_envelope()],
+            total: 500,
+        };
+
+        let rendered = render_event(&event, OutputFormat::Table).unwrap();
+        assert_eq!(rendered, "message new_messages=500 shown=1");
     }
 
     #[test]

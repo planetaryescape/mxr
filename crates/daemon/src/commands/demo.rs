@@ -208,7 +208,7 @@ pub async fn run(messages: usize, no_tui: bool) -> anyhow::Result<()> {
     seed_demo_rules().await?;
     println!("Seeding demo mailbox...");
     sync_demo_accounts(messages).await?;
-    let synced_count = wait_for_seeded_count(messages).await?;
+    let synced_count = wait_for_seeded_count(messages, PROGRESS_STALL_TIMEOUT).await?;
     if synced_count > 0 {
         println!(
             "Demo mailbox contains {} messages.",
@@ -611,7 +611,14 @@ async fn sync_demo_account(account_id: &AccountId, expected_messages: usize) -> 
         println!("  sync is running in the daemon; following its progress");
     }
 
-    wait_for_demo_sync(&mut client, account_id, &before, expected_messages).await
+    wait_for_demo_sync(
+        &mut client,
+        account_id,
+        &before,
+        expected_messages,
+        PROGRESS_STALL_TIMEOUT,
+    )
+    .await
 }
 
 /// Wait for `account_id` to report a finished sync, bounded by observable
@@ -621,11 +628,26 @@ async fn wait_for_demo_sync(
     account_id: &AccountId,
     before: &AccountSyncStatus,
     expected_messages: usize,
+    stall_timeout: Duration,
 ) -> anyhow::Result<()> {
     let progress = ProgressPrinter::new(false);
-    let mut stall = StallWatch::new(PROGRESS_STALL_TIMEOUT);
+    let mut stall = StallWatch::new(stall_timeout);
     let mut messages = 0usize;
     let mut messages_checked_at: Option<Instant> = None;
+    // The last *usable* reading, carried across iterations, is the whole
+    // fingerprint — and the single `observe` below runs on every path,
+    // including the one that fails in the transport and reconnects.
+    //
+    // A failed poll deliberately contributes nothing of its own: how a poll
+    // failed is not progress, so it feeds the previous reading back in
+    // unchanged. That pins every non-advancing shape to one fingerprint —
+    // every poll failing, success and failure alternating, or two different
+    // failure modes alternating — so the clock runs out instead of being reset
+    // by the noise.
+    let mut reading = String::new();
+    // Diagnostics only, never part of the fingerprint: names the most recent
+    // unusable poll in the give-up message below.
+    let mut last_failure = String::new();
     loop {
         // A daemon-level error means the query itself is wrong (unknown
         // account, store failure) and retrying it forever would spin; only a
@@ -638,83 +660,115 @@ async fn wait_for_demo_sync(
         {
             Ok(Response::Ok {
                 data: ResponseData::SyncStatus { sync },
-            }) => sync,
+            }) => Some(sync),
             Ok(Response::Error { message, .. }) => anyhow::bail!(message),
             Ok(other) => anyhow::bail!("Unexpected sync status response: {other:?}"),
             Err(error) => {
+                last_failure = format!("transport: {error}");
                 *client = reconnect_demo_client(&error).await?;
-                continue;
+                None
             }
         };
-        // Rows land in the store page by page, so the stored message count is
-        // the signal that actually advances during a large seed —
-        // `last_synced_count` only reports the page that just landed.
-        if messages_checked_at.is_none_or(|at| at.elapsed() >= MESSAGE_COUNT_POLL_INTERVAL) {
-            messages_checked_at = Some(Instant::now());
-            // Any unusable reading just leaves the count as it was; the sync
-            // status below is still what decides a failure.
-            if let CountPoll::Count(count) = fetch_message_count(client).await {
-                messages = count;
-                progress.note(&seeded_progress_line(count, expected_messages));
+        if let Some(status) = status {
+            // Rows land in the store page by page, so the stored message count
+            // is the signal that actually advances during a large seed —
+            // `last_synced_count` only reports the page that just landed.
+            if messages_checked_at.is_none_or(|at| at.elapsed() >= MESSAGE_COUNT_POLL_INTERVAL) {
+                messages_checked_at = Some(Instant::now());
+                // Any unusable reading just leaves the count as it was; the
+                // sync status below is still what decides a failure. The
+                // failure still lands in the give-up hint: when this poll is
+                // the thing that is wedged, the stall message should say so.
+                match fetch_message_count(client).await {
+                    CountPoll::Count(count) => {
+                        messages = count;
+                        progress.note(&seeded_progress_line(count, expected_messages));
+                    }
+                    CountPoll::Degraded => {
+                        last_failure = "degraded status snapshot".to_string();
+                    }
+                    CountPoll::Rejected(message) => {
+                        last_failure = format!("message count poll: {message}");
+                    }
+                    // The shared client broke; the status poll above owns
+                    // reconnecting, so this only records what happened.
+                    CountPoll::Disconnected(error) => {
+                        last_failure = format!("message count poll: {error}");
+                    }
+                }
             }
-        }
 
-        // Failure first. A background pass that fails still clears
-        // `sync_in_progress`, and `last_synced_count` keeps reporting the last
-        // page that *did* land — so checking completion first would call a
-        // seed that died after its second page a success. Only an error from
-        // an attempt newer than the snapshot counts; the account may have been
-        // carrying an old one before we asked for anything.
-        let attempted_since = status.last_attempt_at != before.last_attempt_at;
-        if let Some(error) = status.last_error.as_deref() {
-            if attempted_since || status.last_error != before.last_error {
-                anyhow::bail!("demo sync failed: {error}");
+            // Failure first. A background pass that fails still clears
+            // `sync_in_progress`, and `last_synced_count` keeps reporting the
+            // last page that *did* land — so checking completion first would
+            // call a seed that died after its second page a success. Only an
+            // error from an attempt newer than the snapshot counts; the account
+            // may have been carrying an old one before we asked for anything.
+            let attempted_since = status.last_attempt_at != before.last_attempt_at;
+            if let Some(error) = status.last_error.as_deref() {
+                if attempted_since || status.last_error != before.last_error {
+                    anyhow::bail!("demo sync failed: {error}");
+                }
             }
+
+            // `last_success_at` is stored with one-second granularity, and the
+            // daemon auto-syncs every account the moment it starts. A seed that
+            // finishes inside that same second leaves this request's own sync
+            // indistinguishable from the startup one — and with the provider
+            // already drained it reports zero messages, so neither of the first
+            // two signals fires and the wait would sit here until the next sync
+            // tick (a full `sync_interval`, 60s in the demo profile). The store
+            // having everything that was asked for is the other, unambiguous
+            // way to know the seed is done.
+            //
+            // `last_synced_count` only counts when the account has been
+            // attempted since the snapshot: it is left over from whatever page
+            // landed last, so on a re-run of `mxr demo` it is non-zero from the
+            // start.
+            let completed_new_sync = status.last_success_at != before.last_success_at
+                || (attempted_since && status.last_synced_count > 0)
+                || (expected_messages > 0 && messages >= expected_messages);
+            if completed_new_sync && !status.sync_in_progress {
+                return Ok(());
+            }
+
+            // The account's own progress advances within a page and costs
+            // nothing to read, so it joins the stall fingerprint: a seed that
+            // is still moving inside a page no longer looks stalled just
+            // because the store-wide count has not caught up.
+            let account_progress = status
+                .progress
+                .as_ref()
+                .map(|progress| format!("{}/{}", progress.current, progress.message));
+            reading = format!(
+                "{}/{}/{}/{}/{messages}/{}",
+                status.sync_in_progress,
+                status.last_synced_count,
+                status.last_success_at.as_deref().unwrap_or("-"),
+                status.current_cursor_summary.as_deref().unwrap_or("-"),
+                account_progress.as_deref().unwrap_or("-"),
+            );
         }
 
-        // `last_success_at` is stored with one-second granularity, and the
-        // daemon auto-syncs every account the moment it starts. A seed that
-        // finishes inside that same second leaves this request's own sync
-        // indistinguishable from the startup one — and with the provider
-        // already drained it reports zero messages, so neither of the first
-        // two signals fires and the wait would sit here until the next sync
-        // tick (a full `sync_interval`, 60s in the demo profile). The store
-        // having everything that was asked for is the other, unambiguous way
-        // to know the seed is done.
-        //
-        // `last_synced_count` only counts when the account has been attempted
-        // since the snapshot: it is left over from whatever page landed last,
-        // so on a re-run of `mxr demo` it is non-zero from the start.
-        let completed_new_sync = status.last_success_at != before.last_success_at
-            || (attempted_since && status.last_synced_count > 0)
-            || (expected_messages > 0 && messages >= expected_messages);
-        if completed_new_sync && !status.sync_in_progress {
-            return Ok(());
-        }
-
-        // The account's own progress advances within a page and costs nothing
-        // to read, so it joins the stall fingerprint: a seed that is still
-        // moving inside a page no longer looks stalled just because the
-        // store-wide count has not caught up.
-        let account_progress = status
-            .progress
-            .as_ref()
-            .map(|progress| format!("{}/{}", progress.current, progress.message));
-        let fingerprint = format!(
-            "{}/{}/{}/{}/{messages}/{}",
-            status.sync_in_progress,
-            status.last_synced_count,
-            status.last_success_at.as_deref().unwrap_or("-"),
-            status.current_cursor_summary.as_deref().unwrap_or("-"),
-            account_progress.as_deref().unwrap_or("-"),
-        );
-        if !stall.observe(fingerprint) {
+        if !stall.observe(reading.clone()) {
             anyhow::bail!(
-                "demo sync made no progress for {}s; check `mxr sync --status` and `mxr logs`",
-                PROGRESS_STALL_TIMEOUT.as_secs()
+                "demo sync made no progress for {}s{}; check `mxr sync --status` and `mxr logs`",
+                stall_timeout.as_secs(),
+                last_failure_hint(&last_failure)
             );
         }
         tokio::time::sleep(PROGRESS_POLL_INTERVAL).await;
+    }
+}
+
+/// Names the most recent unusable poll in a give-up message. Empty when every
+/// poll came back usable — the wait then stalled on a daemon that answers
+/// fine but never moves, and there is nothing extra to say.
+fn last_failure_hint(last_failure: &str) -> String {
+    if last_failure.is_empty() {
+        String::new()
+    } else {
+        format!(" (last failed poll: {last_failure})")
     }
 }
 
@@ -738,35 +792,44 @@ fn seeded_progress_line(count: usize, expected: usize) -> String {
 /// the demo asked. Rather than compare the count once and fail the demo on a
 /// mailbox that is merely mid-flight, keep watching while it climbs and only
 /// give up when it stops moving short of the target.
-async fn wait_for_seeded_count(expected: usize) -> anyhow::Result<usize> {
+async fn wait_for_seeded_count(expected: usize, stall_timeout: Duration) -> anyhow::Result<usize> {
     let mut client = IpcClient::connect().await?;
     let progress = ProgressPrinter::new(false);
-    let mut stall = StallWatch::new(PROGRESS_STALL_TIMEOUT);
+    let mut stall = StallWatch::new(stall_timeout);
+    // Same rule as `wait_for_demo_sync`: every branch below feeds the one
+    // `observe` at the bottom, and only the last usable count is the
+    // fingerprint. A daemon answering "degraded" forever, a transport failing
+    // forever, or the two taking turns all leave the count where it was, so
+    // none of them can pass for progress.
+    let mut count = 0usize;
+    let mut last_failure = String::new();
     loop {
         match fetch_message_count(&mut client).await {
-            CountPoll::Count(count) => {
-                if expected == 0 || count >= expected {
-                    return Ok(count);
+            CountPoll::Count(reading) => {
+                if expected == 0 || reading >= expected {
+                    return Ok(reading);
                 }
+                count = reading;
                 progress.note(&seeded_progress_line(count, expected));
-                if !stall.observe(count.to_string()) {
-                    anyhow::bail!(
-                        "Demo sync stalled at {count} of {expected} messages. Run `mxr demo --reset` to try again."
-                    );
-                }
             }
             // A degraded snapshot means the daemon is busy, which is exactly
             // what a large seed does to it. Keep the connection and wait —
             // reconnecting on every busy-daemon poll would churn a connection a
-            // second. The stall clock still runs, so a permanently degraded
-            // daemon is not waited on forever.
-            CountPoll::Degraded => {}
+            // second.
+            CountPoll::Degraded => last_failure = "degraded status snapshot".to_string(),
             CountPoll::Rejected(message) => {
                 anyhow::bail!("demo message count query failed: {message}");
             }
             CountPoll::Disconnected(error) => {
+                last_failure = format!("transport: {error}");
                 client = reconnect_demo_client(&error).await?;
             }
+        }
+        if !stall.observe(count.to_string()) {
+            anyhow::bail!(
+                "Demo sync stalled at {count} of {expected} messages{}. Run `mxr demo --reset` to try again.",
+                last_failure_hint(&last_failure)
+            );
         }
         tokio::time::sleep(MESSAGE_COUNT_POLL_INTERVAL).await;
     }
@@ -1472,12 +1535,22 @@ fn write_demo_message_count(paths: &DemoPaths, messages: usize) -> anyhow::Resul
 mod tests {
     use super::{
         demo_account_ids, demo_paths, is_active, prepare_environment, read_active_marker,
-        read_demo_message_count, remove_active_marker, write_active_marker,
-        write_demo_message_count, DemoPaths, StallWatch, DEMO_COUNT_MARKER, DEMO_INSTANCE,
-        DEMO_PERSONAL_EMAIL, DEMO_SEED_VERSION, DEMO_WORK_EMAIL,
+        read_demo_message_count, remove_active_marker, wait_for_demo_sync, wait_for_seeded_count,
+        write_active_marker, write_demo_message_count, DemoPaths, StallWatch, DEMO_COUNT_MARKER,
+        DEMO_INSTANCE, DEMO_PERSONAL_EMAIL, DEMO_SEED_VERSION, DEMO_WORK_EMAIL,
     };
+    use crate::ipc_client::IpcClient;
+    use futures::{SinkExt, StreamExt};
     use mxr_core::id::AccountId;
+    use mxr_protocol::{
+        AccountSyncStatus, ClientKind, IpcCodec, IpcMessage, IpcPayload, Request, Response,
+        ResponseData,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
     use std::time::Duration;
+    use tokio::net::UnixListener;
+    use tokio_util::codec::Framed;
 
     /// The seed wait gives up on a frozen daemon, but only on a frozen one:
     /// any change in what the caller can see puts the clock back to zero. That
@@ -1496,6 +1569,219 @@ mod tests {
         // Frozen: the same reading twice, long enough to exhaust the window.
         std::thread::sleep(Duration::from_millis(50));
         assert!(!stall.observe("3000".to_string()));
+    }
+
+    /// Ceiling on a wait that is supposed to give up in well under a second.
+    /// These waits regress by hanging, so bound them here: the test fails in
+    /// seconds instead of running until the CI job's own timeout. Safe to wrap
+    /// around the wait future because it is actively polled throughout.
+    const TEST_HANG_GUARD: Duration = Duration::from_secs(5);
+
+    /// Point `MXR_SOCKET_PATH` at a fake daemon on a temp socket and run
+    /// `body` against it.
+    ///
+    /// `responder` decides each request's fate; returning `None` drops the
+    /// connection, which is how these tests produce a transport failure that a
+    /// reconnect still recovers from — the exact shape that used to loop
+    /// forever.
+    ///
+    /// `temp_env` is synchronous, so the whole runtime lives inside the
+    /// closure: the vars have to stay set for every reconnect the wait makes.
+    fn with_fake_daemon<R, F, Fut>(responder: R, body: F)
+    where
+        R: Fn(Request) -> Option<Response> + Send + Sync + 'static,
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = ()>,
+    {
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let socket = temp.path().join("mxr.sock");
+        temp_env::with_vars(
+            [
+                ("MXR_SOCKET_PATH", Some(socket.as_os_str())),
+                ("MXR_DAEMON_ADDR", None),
+            ],
+            || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("build test runtime");
+                runtime.block_on(async {
+                    let listener = UnixListener::bind(&socket).expect("bind fake daemon socket");
+                    let responder = Arc::new(responder);
+                    let server = tokio::spawn(async move {
+                        while let Ok((stream, _)) = listener.accept().await {
+                            let responder = Arc::clone(&responder);
+                            tokio::spawn(async move {
+                                let mut framed = Framed::new(stream, IpcCodec::new());
+                                while let Some(Ok(message)) = framed.next().await {
+                                    let IpcPayload::Request(request) = message.payload else {
+                                        continue;
+                                    };
+                                    let Some(response) = responder(request) else {
+                                        return;
+                                    };
+                                    let _ = framed
+                                        .send(IpcMessage {
+                                            id: message.id,
+                                            source: ClientKind::default(),
+                                            payload: IpcPayload::Response(response),
+                                        })
+                                        .await;
+                                }
+                            });
+                        }
+                    });
+
+                    body().await;
+                    server.abort();
+                });
+            },
+        );
+    }
+
+    fn idle_sync_status(account_id: &AccountId) -> AccountSyncStatus {
+        AccountSyncStatus {
+            account_id: account_id.clone(),
+            account_name: "Demo".to_string(),
+            last_attempt_at: None,
+            last_success_at: None,
+            last_error: None,
+            failure_class: None,
+            consecutive_failures: 0,
+            backoff_until: None,
+            sync_in_progress: false,
+            current_cursor_summary: None,
+            last_synced_count: 0,
+            healthy: true,
+            progress: None,
+        }
+    }
+
+    /// A `GetStatus` snapshot whose DB-backed half timed out, which
+    /// `fetch_message_count` reads as [`super::CountPoll::Degraded`].
+    fn degraded_status() -> ResponseData {
+        ResponseData::Status {
+            uptime_secs: 1,
+            accounts: Vec::new(),
+            total_messages: 0,
+            daemon_pid: None,
+            sync_statuses: Vec::new(),
+            protocol_version: 0,
+            daemon_version: None,
+            daemon_build_id: None,
+            repair_required: false,
+            semantic_runtime: None,
+            feature_health: None,
+            degraded: true,
+        }
+    }
+
+    /// The sync wait used to `continue` straight past the stall accounting on a
+    /// transport failure. Against a daemon that accepts every connection but
+    /// answers no request, the reconnect kept succeeding and the wait never
+    /// aged — `mxr demo` sat there forever instead of giving up at the stall
+    /// timeout. A failed poll is still an observation and must feed the clock.
+    #[test]
+    fn seed_wait_gives_up_when_every_status_poll_fails() {
+        with_fake_daemon(
+            |_| None,
+            || async {
+                let mut client = IpcClient::connect().await.expect("connect to fake daemon");
+                let account_id = AccountId::from_provider_id("fake", DEMO_PERSONAL_EMAIL);
+                let before = idle_sync_status(&account_id);
+
+                let error = tokio::time::timeout(
+                    TEST_HANG_GUARD,
+                    wait_for_demo_sync(
+                        &mut client,
+                        &account_id,
+                        &before,
+                        50,
+                        Duration::from_millis(200),
+                    ),
+                )
+                .await
+                .expect("the wait must give up on its own rather than hang")
+                .expect_err("a status poll that never succeeds must not be waited on forever");
+
+                assert!(
+                    error.to_string().contains("made no progress"),
+                    "expected the stall message, got: {error}"
+                );
+            },
+        );
+    }
+
+    /// The same hole in the message-count wait, reached by a different branch:
+    /// a daemon that only ever answers with a degraded snapshot never got as
+    /// far as `observe`, so the claim that the stall clock kept running was
+    /// simply untrue.
+    #[test]
+    fn seeded_count_wait_gives_up_on_a_permanently_degraded_daemon() {
+        with_fake_daemon(
+            |request| {
+                matches!(request, Request::GetStatus).then(|| Response::Ok {
+                    data: degraded_status(),
+                })
+            },
+            || async {
+                let error = tokio::time::timeout(
+                    TEST_HANG_GUARD,
+                    wait_for_seeded_count(10, Duration::from_millis(200)),
+                )
+                .await
+                .expect("the wait must give up on its own rather than hang")
+                .expect_err("a permanently degraded daemon must not be waited on forever");
+
+                assert!(
+                    error
+                        .to_string()
+                        .contains("Demo sync stalled at 0 of 10 messages"),
+                    "expected the stall message, got: {error}"
+                );
+            },
+        );
+    }
+
+    /// The reason a failed poll contributes nothing of its own to the
+    /// fingerprint. A saturated daemon produces both unusable-poll shapes from
+    /// the same cause: its DB half fast-fails (`Degraded`) while the request
+    /// itself can time out on the same load. If *how* a poll failed were part
+    /// of the fingerprint, those two taking turns would look like change and
+    /// reset the clock forever with the count pinned at zero.
+    #[test]
+    fn seeded_count_wait_gives_up_when_the_failure_mode_alternates() {
+        let polls = Arc::new(AtomicUsize::new(0));
+        with_fake_daemon(
+            move |request| {
+                let nth = polls.fetch_add(1, Ordering::Relaxed);
+                // Alternate the two unusable outcomes: a degraded snapshot, then
+                // a dropped connection (a transport failure the wait reconnects
+                // from). The count never moves either way.
+                if !matches!(request, Request::GetStatus) || nth % 2 == 1 {
+                    return None;
+                }
+                Some(Response::Ok {
+                    data: degraded_status(),
+                })
+            },
+            || async {
+                let error = tokio::time::timeout(
+                    TEST_HANG_GUARD,
+                    wait_for_seeded_count(10, Duration::from_millis(200)),
+                )
+                .await
+                .expect("the wait must give up on its own rather than hang")
+                .expect_err("alternating failure modes are not progress");
+
+                assert!(
+                    error
+                        .to_string()
+                        .contains("Demo sync stalled at 0 of 10 messages"),
+                    "expected the stall message, got: {error}"
+                );
+            },
+        );
     }
 
     #[test]

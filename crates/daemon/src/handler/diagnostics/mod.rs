@@ -6,7 +6,7 @@ use search_execute::execute_search;
 
 use super::status_helpers::{
     build_account_sync_status, collect_doctor_report, collect_status_snapshot,
-    feature_health_report, StatusSnapshotFields,
+    feature_health_report, search_worker_failed, StatusSnapshotFields,
 };
 use super::{
     handle_export_search, handle_export_thread, helpers::protocol_event_entry, HandlerResult,
@@ -1233,7 +1233,7 @@ pub(crate) async fn get_status_within_budget(
         daemon_build_id: Some(crate::server::current_build_id()),
         repair_required,
         semantic_runtime,
-        feature_health: Some(feature_health_report(state)),
+        feature_health: Some(feature_health_report(state, search_worker_failed(state))),
         // Only the DB snapshot budget sets this: it is the one that empties
         // `accounts`/`total_messages`/`sync_statuses`. A dropped semantic
         // runtime leaves every other field a real reading, and flagging it

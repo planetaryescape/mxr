@@ -232,7 +232,7 @@ fn status_bar_uses_label_counts_instead_of_loaded_window() {
     let state = app.status_bar_state();
 
     assert_eq!(state.mailbox_name, "INBOX");
-    assert_eq!(state.total_count, 10);
+    assert_eq!(state.total_count, Some(10));
     assert_eq!(state.unread_count, 3);
     assert_eq!(state.starred_count, 2);
     assert_eq!(state.sync_status.as_deref(), Some("synced just now"));
@@ -1359,5 +1359,55 @@ fn tiny_terminal_renders_too_small_placeholder() {
     assert!(
         !output.contains("Terminal too small"),
         "80x20 exactly must render the full layout"
+    );
+}
+
+#[test]
+fn a_degraded_first_status_snapshot_leaves_the_total_unknown() {
+    use crate::async_result::StatusSnapshot;
+
+    let mut app = App::new();
+    // A capped window of envelopes is already loaded — 5000 is the ceiling, so
+    // its length is a floor, not a total.
+    app.mailbox.all_envelopes = make_test_envelopes(10);
+
+    app.apply_status_snapshot(StatusSnapshot {
+        uptime_secs: 5,
+        daemon_pid: Some(42),
+        accounts: Vec::new(),
+        total_messages: 0,
+        sync_statuses: Vec::new(),
+        degraded: true,
+    });
+
+    assert!(
+        app.status_bar_state().total_count.is_none(),
+        "a degraded first snapshot must leave the total unknown, not fall back to the loaded window"
+    );
+
+    // Once a real reading lands it is used, and a later degraded snapshot does
+    // not undo it.
+    app.apply_status_snapshot(StatusSnapshot {
+        uptime_secs: 6,
+        daemon_pid: Some(42),
+        accounts: vec!["personal".into()],
+        total_messages: 4_242,
+        sync_statuses: Vec::new(),
+        degraded: false,
+    });
+    assert_eq!(app.status_bar_state().total_count, Some(4_242));
+
+    app.apply_status_snapshot(StatusSnapshot {
+        uptime_secs: 7,
+        daemon_pid: Some(42),
+        accounts: Vec::new(),
+        total_messages: 0,
+        sync_statuses: Vec::new(),
+        degraded: true,
+    });
+    assert_eq!(
+        app.status_bar_state().total_count,
+        Some(4_242),
+        "a degraded snapshot must not overwrite a reading that was real"
     );
 }

@@ -72,8 +72,25 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
                     view.daemon_pid
                         .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                 ),
-                format!("Accounts: {}", view.accounts.join(", ")),
-                format!("Total messages: {}", view.total_messages),
+                // A degraded snapshot has no reading behind these, so print
+                // what is true — that the daemon did not say — rather than the
+                // zero and empty string it sent as filler.
+                format!(
+                    "Accounts: {}",
+                    if view.degraded {
+                        "unknown".to_string()
+                    } else {
+                        view.accounts.join(", ")
+                    }
+                ),
+                format!(
+                    "Total messages: {}",
+                    if view.degraded {
+                        "unknown".to_string()
+                    } else {
+                        view.total_messages.to_string()
+                    }
+                ),
                 format!(
                     "Daemon version: {}",
                     view.daemon_version.unwrap_or("legacy/unknown")
@@ -84,7 +101,9 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
                 ),
                 "Sync:".to_string(),
             ];
-            if view.sync_statuses.is_empty() {
+            if view.degraded {
+                lines.push("  unknown".to_string());
+            } else if view.sync_statuses.is_empty() {
                 if view.protocol_version < IPC_PROTOCOL_VERSION {
                     lines.push("  unavailable from legacy daemon".to_string());
                 } else {
@@ -104,7 +123,7 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
             }
             if view.degraded {
                 lines.push(
-                    "Note: the daemon could not read the database within its status budget, so accounts, total messages and sync above are unknown — not empty. Rerun once the current sync or reindex settles."
+                    "Note: the daemon could not read the database within its status budget. Rerun once the current sync or reindex settles."
                         .to_string(),
                 );
             }
@@ -252,6 +271,44 @@ mod tests {
         assert!(rendered.contains("\"daemon_pid\": 999"));
         assert!(rendered.contains("\"total_messages\": 10"));
         assert!(rendered.contains("\"semantic_runtime\""));
+    }
+
+    #[test]
+    fn a_degraded_status_table_prints_unknown_rather_than_zero() {
+        let rendered = render_status(
+            StatusRender {
+                uptime_secs: 1,
+                accounts: &[],
+                total_messages: 0,
+                daemon_pid: Some(999),
+                sync_statuses: &[],
+                daemon_version: Some("0.4.6"),
+                daemon_build_id: Some("0.4.6:/tmp/mxr:1:1"),
+                protocol_version: IPC_PROTOCOL_VERSION,
+                repair_required: false,
+                semantic_runtime: None,
+                feature_health: None,
+                restart_required: false,
+                health_class: DaemonHealthClass::Healthy,
+                degraded: true,
+            },
+            OutputFormat::Table,
+        )
+        .unwrap();
+
+        // The zero and the empty list are filler the daemon sent because it
+        // ran out of time to read, not a reading. Printing them and then
+        // adding a note that contradicts them is worse than saying nothing.
+        assert!(rendered.contains("Accounts: unknown"), "got {rendered}");
+        assert!(
+            rendered.contains("Total messages: unknown"),
+            "got {rendered}"
+        );
+        assert!(!rendered.contains("no accounts"), "got {rendered}");
+        assert!(
+            rendered.contains("could not read the database"),
+            "got {rendered}"
+        );
     }
 
     #[test]

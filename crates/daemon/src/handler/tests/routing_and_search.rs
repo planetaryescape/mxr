@@ -1197,6 +1197,41 @@ async fn status_and_doctor_report_a_stopped_search_worker() {
 }
 
 #[tokio::test]
+async fn a_doctor_report_cannot_disagree_with_itself_about_search() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    state.abort_search_worker().await;
+
+    let msg = IpcMessage {
+        id: 14,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::GetDoctorReport),
+    };
+    match handle_request(&state, &msg).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::DoctorReport { report },
+        }) => {
+            // The finding and the feature-health block are built from one
+            // reading of the worker, so a report can never raise "search index
+            // worker stopped" beside "search: healthy".
+            let raises_finding = report
+                .findings
+                .iter()
+                .any(|finding| finding.message.contains("Search index worker stopped"));
+            let health_degraded = report
+                .feature_health
+                .as_ref()
+                .is_some_and(|health| matches!(health.search, FeatureHealth::Degraded { .. }));
+            assert_eq!(
+                raises_finding, health_degraded,
+                "the finding and the feature-health block must agree; got finding={raises_finding} degraded={health_degraded}"
+            );
+            assert!(raises_finding, "the worker was stopped before the report");
+        }
+        other => panic!("Expected DoctorReport, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn dispatch_shutdown_acknowledges_without_exiting() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 

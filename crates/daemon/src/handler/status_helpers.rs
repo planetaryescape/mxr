@@ -179,6 +179,9 @@ pub(super) async fn collect_doctor_report(
             "mxr daemon --foreground".to_string(),
         ]
     };
+    // One reading of the search worker for the whole report (see
+    // `feature_health_report`).
+    let search_worker_failed = search_worker_failed(state);
     // Structured findings: classify the existing signals into
     // categorised entries with shell-runnable remediation. Clients (TUI,
     // future agents) can reason about individual issues without parsing
@@ -193,7 +196,7 @@ pub(super) async fn collect_doctor_report(
         repair_required,
         restart_required,
         semantic_enabled,
-        search_worker_stopped: search_worker_failed(state),
+        search_worker_stopped: search_worker_failed,
         data_stats: &data_stats,
     });
 
@@ -214,7 +217,7 @@ pub(super) async fn collect_doctor_report(
         semantic_active_profile,
         semantic_index_freshness,
         semantic_last_indexed_at,
-        feature_health: Some(feature_health_report(state)),
+        feature_health: Some(feature_health_report(state, search_worker_failed)),
         data_stats,
         data_dir_exists,
         database_exists,
@@ -252,7 +255,14 @@ pub(super) async fn collect_doctor_report(
     Ok(report)
 }
 
-pub(super) fn feature_health_report(state: &AppState) -> FeatureHealthReport {
+/// `search_worker_failed` is passed in rather than read here so that a report
+/// which also raises a search finding cannot disagree with itself: the worker
+/// can die between two reads, and a report saying "search healthy" beside
+/// "search index worker stopped" is worse than either answer alone.
+pub(super) fn feature_health_report(
+    state: &AppState,
+    search_worker_failed: bool,
+) -> FeatureHealthReport {
     let config = state.config_snapshot();
     let llm_health = if config.llm.enabled {
         FeatureHealth::Healthy
@@ -289,7 +299,7 @@ pub(super) fn feature_health_report(state: &AppState) -> FeatureHealthReport {
     );
 
     FeatureHealthReport {
-        search: search_feature_health(state),
+        search: search_feature_health(search_worker_failed),
         semantic: if config.search.semantic.enabled {
             FeatureHealth::Healthy
         } else {
@@ -320,12 +330,12 @@ pub(super) fn feature_health_report(state: &AppState) -> FeatureHealthReport {
 /// It also stops on the way out of a clean shutdown, and reporting that as a
 /// failure would have every shutting-down daemon claim search is broken in its
 /// last status reply.
-fn search_worker_failed(state: &AppState) -> bool {
+pub(super) fn search_worker_failed(state: &AppState) -> bool {
     state.search.worker_stopped() && !state.shutdown_requested()
 }
 
-fn search_feature_health(state: &AppState) -> FeatureHealth {
-    if search_worker_failed(state) {
+fn search_feature_health(worker_failed: bool) -> FeatureHealth {
+    if worker_failed {
         FeatureHealth::Degraded {
             reason: "search index worker stopped; restart the daemon (`mxr daemon --restart`)"
                 .to_string(),

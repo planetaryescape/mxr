@@ -89,17 +89,29 @@ Ran after the quota reset, per the review-gate plan. 12 findings (3 high / 6 med
 
 | # | Sev | Finding | Verdict |
 |---|---|---|---|
-| 1 | High | `StallWatch` is only consulted on the `observe` path; the reconnect/degraded/transport-error branches `continue` past it, so a perpetually failing status poll waits forever instead of dying at 600 s (`demo.rs:644`, `:711`) | CONFIRMED (mechanism read); narrow trigger |
-| 2 | High | Identity-sidecar writes ignore errors (`server.rs:822` `let _ = fs::write`); with no record, the pid-file path falls back to the weak argv check and skips the profile recheck before signalling — a recycled pid pointing at *another profile's* mxr daemon can be killed | PARTIALLY CONFIRMED (silent write + weak fallback are real; kill needs pid recycling into another mxr daemon) |
-| 3 | High | No lifecycle lock around recovery: a second CLI that observed the same broken socket can unlink the pid file/socket the first CLI's replacement daemon just wrote (`server.rs:1337`) | PLAUSIBLE, not independently verified |
+| 1 | High | ~~`StallWatch` is only consulted on the `observe` path; the reconnect/degraded/transport-error branches `continue` past it, so a perpetually failing status poll waits forever instead of dying at 600 s (`demo.rs:644`, `:711`) ~~ | **FIXED PR 211** (every iteration feeds one `observe` with the last usable reading; alternating failure modes red-proofed) |
+| 2 | High | ~~Identity-sidecar writes ignore errors (`server.rs:822` `let _ = fs::write`); with no record, the pid-file path falls back to the weak argv check and skips the profile recheck before signalling — a recycled pid pointing at *another profile's* mxr daemon can be killed ~~ | **FIXED PR 212** (writes logged; no-record fallback rejects a foreign `--instance`, both spellings, verification-scoped; `ps` probes gain `-ww`; D060 addendum) |
+| 3 | High | ~~No lifecycle lock around recovery: a second CLI that observed the same broken socket can unlink the pid file/socket the first CLI's replacement daemon just wrote (`server.rs:1337`) ~~ | **VERIFIED REAL, FIXED PR 212** (`recovery_cleanup` re-reads socket + pid file; lock-losing successor hands off to the live replacement) |
 | 4 | Med | `install_profile()` on the search path persists `Ready`/clears `last_error` mid-pass; startup reclaim only sees rows still marked `Indexing` | KNOWN (already in the open list) + new reclaim detail |
-| 5 | Med | `BackgroundSyncClaim::Drop` spawns an unconditional async `sync_in_progress=false` with no run-generation check; a delayed cleanup can clear a *newer* sync's flag (`state.rs:575`) | CONFIRMED as a race window (needs panic + instant retrigger) |
+| 5 | Med | ~~`BackgroundSyncClaim::Drop` spawns an unconditional async `sync_in_progress=false` with no run-generation check; a delayed cleanup can clear a *newer* sync's flag (`state.rs:575`) ~~ | **FIXED PR 212** (per-claim generation, ordering test, liveness-gated restore, handed-off entries retained for the reaper) |
 | 6 | Med | Vacated-thread tombstones lost when a later 500-row chunk fails mid-page | KNOWN (already in the open list) |
-| 7 | Med | Deferred-ANN dirty marker removed before a fallible read and not restored on error; after 5 failed builds it is dropped without epoch advance → stale index served as `Ready` | PLAUSIBLE, not independently verified |
+| 7 | Med | ~~Deferred-ANN dirty marker removed before a fallible read and not restored on error; after 5 failed builds it is dropped without epoch advance → stale index served as `Ready` ~~ | **VERIFIED PARTIALLY REAL, FIXED PR 210** (dequeue-after-spawn; start failures book backoff+cap; burnt profiles degrade per the PR 200 contract; only a completed pass hands the budget back) |
 | 8 | Med | ANN over-fetch (`max(64, limit×4)`) still does not *guarantee* a requested source kind appears in the window | TRUE BY DESIGN — heuristic, documented; a guarantee needs kind-partitioned retrieval |
 | 9 | Med | Degraded Status is wire-additive but behaviorally incompatible: pre-0.6.25 clients read a degraded (empty) snapshot as authoritative idle | TRUE — inherent to the additive approach; mitigations are all worse (erroring breaks more) |
-| 10 | Low | `classify_health` ignores `degraded`: JSON can emit `degraded:true` + `health_class:"healthy"` (`status.rs:177`) | CONFIRMED |
-| 11 | Low | `NewMessages.total` defaults to 0 for events from older daemons and the renderer prints it verbatim: `new_messages=0 shown=3` (`events.rs:58`) | CONFIRMED |
+| 10 | Low | ~~`classify_health` ignores `degraded`: JSON can emit `degraded:true` + `health_class:"healthy"` (`status.rs:177`) ~~ | **FIXED PR 212** |
+| 11 | Low | ~~`NewMessages.total` defaults to 0 for events from older daemons and the renderer prints it verbatim: `new_messages=0 shown=3` (`events.rs:58`) ~~ | **FIXED PR 211** (renderer floors at `envelopes.len()`; emit site guarantees `total >= envelopes.len()`) |
 | 12 | Low | Both process probes split the command line on whitespace, so an exe path with spaces breaks discovery | KNOWN (open list; fails toward not killing) |
 
-Fix wave pending a scope decision; candidates in order: 1, 2 (log the write failure + require the profile recheck when no record exists), 5 (generation stamp), 10, 11, 7, 3. Full report: session scratch `codex-retro.md`.
+~~Fix wave pending a scope decision; candidates in order: 1, 2 (log the write failure + require the profile recheck when no record exists), 5 (generation stamp), 10, 11, 7, 3. Full report: session scratch `codex-retro.md`.~~ Fix wave executed 2026-08-20, see below.
+
+### Retro fix wave (2026-08-20, PRs 210–212 → v0.6.26)
+
+Findings 1, 2, 3, 5, 7, 10, 11 fixed above; 4/6/8/9/12 remain known/by-design as recorded. Each fix carries red-proofed regression tests and went through an independent adversarial review round (which added: the start-failure spin fix and backoff preservation on PR 210; dropping the failure marker from the stall fingerprint on PR 211; `-ww`, recheck scoping and the D060 addendum on PR 212), plus cubic findings verified-then-fixed or refuted with evidence on each PR.
+
+New follow-ups from the reviews (open):
+- A claim-less sync-loop pass's `sync_in_progress` can still be cleared by a stale cleanup (the generation covers claims only).
+- Burnt semantic index is invisible in `mxr semantic status`: `install_profile` rewrites `Ready`/clears `last_error` on the search path, runtime metrics carry no build health, and `archive_ask` swallows the degrade error entirely.
+- `crates/semantic/src/service.rs` (the worker loop) has zero tests.
+- `classify_health`'s three adjacent bools invite silent swaps; `status_helpers.rs` hardcodes `degraded=false` and goes silently wrong if the doctor path ever gains a snapshot budget.
+- Whitespace-containing instance names return no-mismatch by design (unreconstructable from `ps` output); residual microsecond TOCTOU in `ClearAndSpawn` documented in code.
+

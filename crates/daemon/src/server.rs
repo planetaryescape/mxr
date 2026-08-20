@@ -895,7 +895,7 @@ impl VerifiedDaemon {
             crate::process_probe::start_time(self.pid).as_deref(),
             || {
                 crate::process_probe::command_words(self.pid)
-                    .is_some_and(|words| command_runs_a_daemon(&words))
+                    .map(|words| command_runs_a_daemon(&words))
             },
             || process_runs_our_profile(self.pid),
         )
@@ -906,7 +906,7 @@ impl VerifiedDaemon {
         started_at: Option<&str>,
         evidence: DaemonEvidence,
         observed_start_time: Option<&str>,
-        runs_daemon_argv: impl FnOnce() -> bool,
+        runs_daemon_argv: impl FnOnce() -> Option<bool>,
         runs_our_profile: impl FnOnce() -> bool,
     ) -> bool {
         match (started_at, observed_start_time) {
@@ -920,10 +920,19 @@ impl VerifiedDaemon {
         // Same second, or no start time either time: fall back on the rest of
         // the evidence rather than read an indistinguishable timestamp as
         // proof.
-        if !runs_daemon_argv() {
+        //
+        // Only a definite "that is not a daemon" rejects. A `ps` that will not
+        // answer says nothing, and reading silence as a rejection here would
+        // strand a live daemon exactly as it did at verification time: the pid
+        // file gets cleared, a successor spawns, and it dies on the
+        // search-index lock. Both phases treat an unreadable argv the same way.
+        if runs_daemon_argv() == Some(false) {
             return false;
         }
         match evidence {
+            // The profile is what identified a scanned pid in the first place,
+            // so unlike the argv it has to hold up again — an environment we
+            // cannot read is not an identity we can act on.
             DaemonEvidence::PidFile => true,
             DaemonEvidence::ProcessScan => runs_our_profile(),
         }
@@ -1293,12 +1302,28 @@ async fn recover_broken_running_daemon(
     // its number may already belong to something else.
     if daemon.is_unchanged() {
         send_signal(daemon_pid, Signal::SIGTERM)?;
+        // The wait for a graceful exit is the widest recycle window of the
+        // lot: the whole point of it is that the process is expected to go
+        // away, and its number is free the moment it does. Re-check before
+        // escalating rather than sending SIGKILL to whatever holds it now.
         if !wait_for_process_exit(daemon_pid, ORPHAN_DAEMON_EXIT_TIMEOUT).await {
-            send_signal(daemon_pid, Signal::SIGKILL)?;
-            if !wait_for_process_exit(daemon_pid, Duration::from_secs(1)).await {
-                eprintln!(" failed.");
-                anyhow::bail!(
-                    "Broken daemon pid {daemon_pid} did not exit cleanly. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`."
+            if daemon.is_unchanged() {
+                send_signal(daemon_pid, Signal::SIGKILL)?;
+                if !wait_for_process_exit(daemon_pid, Duration::from_secs(1)).await {
+                    eprintln!(" failed.");
+                    anyhow::bail!(
+                        "Broken daemon pid {daemon_pid} did not exit cleanly. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`."
+                    );
+                }
+            } else {
+                // Something still holds the number, but it is no longer the
+                // daemon we signalled — so that daemon is gone, which is what
+                // the wait was for. Not killing a stranger is worth the small
+                // chance that the successor now races a daemon whose identity
+                // we simply could not read.
+                tracing::info!(
+                    pid = daemon_pid,
+                    "daemon pid changed identity while shutting down; not escalating to SIGKILL"
                 );
             }
         }
@@ -2071,12 +2096,79 @@ mod tests {
             )
         };
 
-        assert!(same_second(DaemonEvidence::PidFile, true, false));
-        assert!(!same_second(DaemonEvidence::PidFile, false, true));
+        assert!(same_second(DaemonEvidence::PidFile, Some(true), false));
+        assert!(!same_second(DaemonEvidence::PidFile, Some(false), true));
         // A scan-sourced pid was only ever identified by its profile, so that
         // is what has to hold up again.
-        assert!(same_second(DaemonEvidence::ProcessScan, true, true));
-        assert!(!same_second(DaemonEvidence::ProcessScan, true, false));
+        assert!(same_second(DaemonEvidence::ProcessScan, Some(true), true));
+        assert!(!same_second(DaemonEvidence::ProcessScan, Some(true), false));
+    }
+
+    #[test]
+    fn an_unreadable_argv_is_read_the_same_way_by_both_phases() {
+        use super::{pid_file_verdict, DaemonEvidence, VerifiedDaemon};
+
+        // A `ps` that will not answer is not evidence of anything. The two
+        // phases used to disagree about that: verification kept the daemon,
+        // the pre-signal re-check threw it away — so one transient `ps`
+        // failure stranded a live daemon behind a successor that then died on
+        // the search-index lock.
+        let record = identity_for(4242, "Wed Aug 20 00:11:22 2026");
+
+        // Verification, with no record to decide it.
+        assert!(
+            pid_file_verdict(4242, None, || None, || None),
+            "verification keeps a pid whose argv nobody will report"
+        );
+
+        // The pre-signal re-check, at the same silence.
+        assert!(
+            VerifiedDaemon::still_the_same_process(
+                Some(&record.started_at),
+                DaemonEvidence::PidFile,
+                Some(&record.started_at),
+                || None,
+                || panic!("a pid-file pid does not have to re-prove its profile"),
+            ),
+            "the re-check must read that silence the same way"
+        );
+
+        // The profile is different: it is what identified a scanned pid, so an
+        // environment we cannot read still rejects.
+        assert!(!VerifiedDaemon::still_the_same_process(
+            Some(&record.started_at),
+            DaemonEvidence::ProcessScan,
+            Some(&record.started_at),
+            || None,
+            || false,
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_process_that_exits_during_the_shutdown_wait_is_not_escalated_to() {
+        use super::{DaemonEvidence, VerifiedDaemon};
+
+        // Stands in for the escalation window: SIGTERM lands, the daemon
+        // exits during the wait, and its number is free before the SIGKILL
+        // would go out. The re-check has to notice, or the kill goes to
+        // whatever holds the number next.
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn child");
+        let daemon = VerifiedDaemon::verify(child.id(), DaemonEvidence::PidFile);
+        assert!(
+            daemon.started_at.is_some(),
+            "the fixture needs a start time to compare against"
+        );
+
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert!(
+            !daemon.is_unchanged(),
+            "a process that has exited must not be signalled again"
+        );
     }
 
     #[test]

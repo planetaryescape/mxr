@@ -95,6 +95,18 @@ pub(crate) fn environment(pid: u32) -> Option<Vec<String>> {
 /// A value that itself contains ` IDENT=` is cut short there. That direction
 /// is safe: a truncated value compares unequal, so the caller declines to
 /// adopt rather than adopting something it has not really identified.
+///
+/// Only the non-procfs `environment` above calls this, so on Linux it is dead
+/// code — except under `cfg(test)`, where the tests below still exercise it.
+/// Hence the expectation is conditioned on both: `expect` fails CI when it is
+/// *unfulfilled*, so claiming "dead on Linux" in the test build would trade one
+/// red job for another. The function stays compiled everywhere on purpose —
+/// Linux CI is what runs `-D warnings`, and this parser is the part of the file
+/// that macOS would otherwise be alone in keeping honest.
+#[cfg_attr(
+    all(target_os = "linux", not(test)),
+    expect(dead_code, reason = "used by the non-procfs environment probe")
+)]
 fn split_environment_entries(text: &str) -> Vec<String> {
     let mut entries: Vec<String> = Vec::new();
     for word in text.split_whitespace() {
@@ -108,6 +120,10 @@ fn split_environment_entries(text: &str) -> Vec<String> {
     entries
 }
 
+#[cfg_attr(
+    all(target_os = "linux", not(test)),
+    expect(dead_code, reason = "used by the non-procfs environment probe")
+)]
 fn starts_environment_entry(word: &str) -> bool {
     let Some((name, _)) = word.split_once('=') else {
         return false;

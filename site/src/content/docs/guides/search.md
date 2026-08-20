@@ -44,7 +44,7 @@ a non-stemmed mirror field.
 
 The same gap applies to address operators, and it bites harder because the
 query still parses and simply returns nothing: `from:`, `to:`, `cc:`, `bcc:`
-and `delivered-to:` are indexed as whole addresses, so `from:alice` and
+and `deliveredto:` are indexed as whole addresses, so `from:alice` and
 `from:github.com` match nothing where Gmail would match on the local part or
 the domain. Pass the whole address (`from:alice@example.com`).
 

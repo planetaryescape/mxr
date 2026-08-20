@@ -77,8 +77,11 @@ const INDEX_ROW_PAGE: u32 = 4_096;
 const SNIPPET_CHARS: u32 = 240;
 
 /// Consecutive ANN build failures tolerated per profile before the engine
-/// stops retrying. A deterministic failure would otherwise re-run a full
-/// `semantic_embeddings` scan on every idle pass forever.
+/// stops retrying and searches on that profile degrade. A deterministic
+/// failure would otherwise re-run a full `semantic_embeddings` scan on every
+/// idle pass forever. Only a completed index pass hands the budget back;
+/// ingest deliberately does not, or the count would never reach the cap on a
+/// mailbox that keeps receiving mail.
 #[cfg(feature = "local")]
 const MAX_INDEX_BUILD_ATTEMPTS: u32 = 5;
 
@@ -467,6 +470,10 @@ impl SemanticEngine {
         }
         self.dirty_indexes
             .iter()
+            // A profile that has burnt its attempts stays queued as the record
+            // that its index is stale, but its `retry_after` is already in the
+            // past and no retry is coming - waking the loop for it would spin.
+            .filter(|profile| self.index_build_retries_left(**profile))
             .filter_map(|profile| self.index_build_failures.get(profile))
             .map(|failure| failure.retry_after)
             .min()
@@ -746,6 +753,11 @@ impl SemanticEngine {
         self.store.upsert_semantic_profile(&job.record).await?;
         *self.completed_index_passes.entry(profile).or_default() += 1;
         self.dirty_indexes.insert(profile);
+        // A finished pass is the documented way out of a rebuild that burnt
+        // its attempts, so it hands the budget back. Ingest must not: under
+        // continuous mail a deterministic failure would then restart a
+        // full-corpus build on every batch and never reach the cap.
+        self.index_build_failures.remove(&profile);
         if matches!(job.kind, IndexJobKind::Backfill) {
             self.store
                 .insert_event(
@@ -782,11 +794,15 @@ impl SemanticEngine {
         }
         let now = Instant::now();
         let Some(profile) = self.dirty_indexes.iter().copied().find(|profile| {
-            !respect_backoff
-                || self
-                    .index_build_failures
-                    .get(profile)
-                    .is_none_or(|failure| failure.retry_after <= now)
+            // The attempt cap holds even for the callers that skip the
+            // backoff, so a deterministically failing build cannot be
+            // restarted forever.
+            self.index_build_retries_left(*profile)
+                && (!respect_backoff
+                    || self
+                        .index_build_failures
+                        .get(profile)
+                        .is_none_or(|failure| failure.retry_after <= now))
         }) else {
             return Ok(false);
         };
@@ -795,9 +811,21 @@ impl SemanticEngine {
     }
 
     /// Spawns the ANN build for one profile, whether or not it was queued.
+    ///
+    /// A failure here happens before the build exists, so nothing downstream
+    /// books it. Recording it in place gives a build that fails to start the
+    /// same backoff and attempt cap as one that fails while running - without
+    /// which the worker loop would wake on an already-due retry, fail to
+    /// start again, and spin.
     async fn start_index_build(&mut self, profile: SemanticProfile) -> Result<()> {
-        self.dirty_indexes.remove(&profile);
+        let started = self.spawn_index_build(profile).await;
+        if started.is_err() {
+            record_index_build_failure(&mut self.index_build_failures, profile);
+        }
+        started
+    }
 
+    async fn spawn_index_build(&mut self, profile: SemanticProfile) -> Result<()> {
         let record = self
             .store
             .get_semantic_profile(profile)
@@ -818,6 +846,11 @@ impl SemanticEngine {
         let pass_epoch = self.pass_epoch(profile);
         let handle = tokio::task::spawn_blocking(move || build_semantic_index(rx, pass_epoch));
         self.index_build = Some(IndexBuild { profile, handle });
+        // Dequeued only once the build is actually running. Clearing it on the
+        // way in loses the profile for good if anything above here fails: an
+        // ingest-driven rebuild has no pass epoch to make a later search
+        // notice the index never got refreshed.
+        self.dirty_indexes.remove(&profile);
         Ok(())
     }
 
@@ -844,15 +877,17 @@ impl SemanticEngine {
                     attempts,
                     "semantic index build failed: {error:#}"
                 );
+                // Stays dirty either way: below the cap that queues the
+                // retry, and at the cap it is the only record that this index
+                // is stale - which is what makes a search degrade instead of
+                // quietly answering without the vectors it never picked up.
+                self.dirty_indexes.insert(profile);
                 if attempts >= MAX_INDEX_BUILD_ATTEMPTS {
                     tracing::error!(
                         profile = profile.as_str(),
                         "giving up on the semantic index build after {attempts} attempts; \
-                         it will be retried once new messages are ingested"
+                         searches on this profile degrade until it is reindexed"
                     );
-                } else {
-                    // Leave it dirty so a later pass retries after the backoff.
-                    self.dirty_indexes.insert(profile);
                 }
             }
         }
@@ -898,6 +933,11 @@ impl SemanticEngine {
     /// answering from an index older than the pass would silently drop
     /// everything that pass indexed, and callers can degrade explicitly (the
     /// daemon falls back to lexical ranking and says so in the explain notes).
+    ///
+    /// The same applies to an index left behind by ingest. Serving one that is
+    /// merely waiting for its rebuild is deliberate, but once the rebuild has
+    /// given up the gap is permanent and grows with every ingest, so the
+    /// search degrades rather than answering from it.
     async fn settle_index_for(&mut self, profile: SemanticProfile) -> Result<()> {
         while self.index_predates_last_pass(profile) {
             if self.index_build.is_none() {
@@ -914,6 +954,14 @@ impl SemanticEngine {
                 self.start_index_build(profile).await?;
             }
             self.index_build_ready().await;
+        }
+        if self.dirty_indexes.contains(&profile) && !self.index_build_retries_left(profile) {
+            return Err(anyhow!(
+                "semantic index for profile {} is missing mail that is already embedded and \
+                 its rebuild failed {MAX_INDEX_BUILD_ATTEMPTS} times; searching it would \
+                 silently miss that mail",
+                profile.as_str()
+            ));
         }
         Ok(())
     }
@@ -3569,6 +3617,230 @@ mod tests {
         assert!(!engine
             .indexes
             .contains_key(&SemanticProfile::MultilingualE5Small));
+    }
+
+    /// Drives one queued ANN build to failure. It is started through the real
+    /// path so the profile is dequeued the way a live build dequeues it;
+    /// nothing in the fixture store can make the build itself fail, so its
+    /// join handle is swapped for one returning the error it would have.
+    async fn fail_one_index_build(engine: &mut SemanticEngine) {
+        assert!(engine.start_next_index_build(false).await.unwrap());
+        engine.index_build = Some(IndexBuild {
+            profile: engine.index_build.as_ref().unwrap().profile,
+            handle: tokio::task::spawn_blocking(|| -> Result<SemanticIndex> {
+                Err(anyhow!("index build failed"))
+            }),
+        });
+        engine.index_build_ready().await;
+    }
+
+    /// The dirty marker is the whole record that an ingest-driven index owes a
+    /// rebuild - unlike a finished pass, there is no epoch behind it. Dropping
+    /// it before the build is actually running would strand the profile until
+    /// some later ingest happened to queue it again.
+    #[tokio::test]
+    async fn a_build_that_fails_to_start_leaves_the_profile_queued() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let data_dir = tempdir().unwrap();
+        let mut engine = SemanticEngine::new(store, data_dir.path(), SemanticConfig::default());
+
+        // The profile was never installed, so the row read inside
+        // `start_index_build` fails - the same shape as a transient store
+        // error between dequeue and spawn.
+        engine
+            .dirty_indexes
+            .insert(SemanticProfile::MultilingualE5Small);
+
+        // A wake-up the worker loop has already booked and that is already
+        // due: the shape that spins if a failure to start books nothing.
+        engine.index_build_failures.insert(
+            SemanticProfile::MultilingualE5Small,
+            IndexBuildFailure {
+                attempts: 1,
+                retry_after: Instant::now(),
+            },
+        );
+
+        let error = engine.poll_index_builds().await.unwrap_err();
+        assert!(
+            error.to_string().contains("not installed"),
+            "unexpected error: {error:#}"
+        );
+        assert!(
+            engine
+                .dirty_indexes
+                .contains(&SemanticProfile::MultilingualE5Small),
+            "a build that never started must leave the rebuild queued"
+        );
+        assert!(engine.index_build.is_none());
+
+        let retry_at = engine
+            .next_index_build_retry()
+            .expect("a queued rebuild owes the worker loop a wake-up");
+        assert!(
+            retry_at > Instant::now(),
+            "a build that failed to start must push its retry out, or the worker loop wakes \
+             on it and immediately fails to start it again"
+        );
+
+        // And it stays queued across the retries, up to the same cap a build
+        // that fails while running answers to.
+        for _ in 0..MAX_INDEX_BUILD_ATTEMPTS {
+            if !engine.index_build_retries_left(SemanticProfile::MultilingualE5Small) {
+                break;
+            }
+            engine
+                .index_build_failures
+                .get_mut(&SemanticProfile::MultilingualE5Small)
+                .expect("the failed start is on record")
+                .retry_after = Instant::now();
+            engine.poll_index_builds().await.unwrap_err();
+        }
+        assert!(
+            !engine.index_build_retries_left(SemanticProfile::MultilingualE5Small),
+            "a build that keeps failing to start must fall under the attempt cap"
+        );
+        assert!(
+            engine.next_index_build_retry().is_none(),
+            "a rebuild with no attempts left must not keep waking the worker loop"
+        );
+    }
+
+    /// Giving up after [`MAX_INDEX_BUILD_ATTEMPTS`] is deliberate, but it must
+    /// not read as freshness. The vectors that ingest stored are then missing
+    /// from the index for good, so the search degrades instead of answering
+    /// without them - the same way it does for a burnt-out rebuild behind a
+    /// finished pass. A reindex is the way back: a finished pass hands the
+    /// attempts back, ingest alone does not.
+    #[tokio::test]
+    async fn a_burnt_out_ingest_rebuild_degrades_searches_until_a_reindex() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let first = test_envelope(&account.id);
+        store.upsert_envelope(&first).await.unwrap();
+        store
+            .insert_body(&test_body_with_text(
+                &first.id,
+                "Deployment checklist",
+                Vec::new(),
+            ))
+            .await
+            .unwrap();
+
+        let second = Envelope {
+            provider_id: "fake-2".into(),
+            subject: "Roadmap notes".into(),
+            snippet: "Launch plan".into(),
+            ..test_envelope(&account.id)
+        };
+        store.upsert_envelope(&second).await.unwrap();
+        store
+            .insert_body(&test_body_with_text(
+                &second.id,
+                "Roadmap notes launch",
+                Vec::new(),
+            ))
+            .await
+            .unwrap();
+
+        let data_dir = tempdir().unwrap();
+        let mut engine =
+            SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
+        engine.set_test_embedder(Arc::new(test_embedder));
+        let kinds = [
+            SemanticChunkSourceKind::Header,
+            SemanticChunkSourceKind::Body,
+        ];
+
+        engine
+            .ingest_messages(std::slice::from_ref(&first.id))
+            .await
+            .unwrap();
+        // Settles the first build, so what follows is an index that exists and
+        // is merely behind on ingest.
+        engine
+            .search("deployment checklist", 5, &kinds)
+            .await
+            .unwrap();
+
+        engine
+            .ingest_messages(std::slice::from_ref(&second.id))
+            .await
+            .unwrap();
+        for _ in 0..MAX_INDEX_BUILD_ATTEMPTS {
+            fail_one_index_build(&mut engine).await;
+        }
+
+        assert!(
+            engine
+                .dirty_indexes
+                .contains(&SemanticProfile::BgeSmallEnV15),
+            "a rebuild that burnt its attempts must stay queued as the record that the \
+             index is stale"
+        );
+        assert!(
+            engine.next_index_build_retry().is_none(),
+            "a rebuild with no attempts left must not keep waking the worker loop"
+        );
+        assert!(
+            !engine.start_next_index_build(false).await.unwrap(),
+            "the attempt cap must hold even for callers that skip the backoff"
+        );
+
+        let error = engine
+            .search("roadmap notes launch", 5, &kinds)
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("missing mail that is already embedded"),
+            "unexpected error: {error:#}"
+        );
+
+        // More mail arriving is not a way out: it would restart a
+        // deterministically failing full-corpus build on every batch, and the
+        // attempt count would never reach the cap.
+        let third = Envelope {
+            provider_id: "fake-3".into(),
+            subject: "Launch notes".into(),
+            snippet: "Launch".into(),
+            ..test_envelope(&account.id)
+        };
+        store.upsert_envelope(&third).await.unwrap();
+        store
+            .insert_body(&test_body_with_text(
+                &third.id,
+                "Launch notes deployment",
+                Vec::new(),
+            ))
+            .await
+            .unwrap();
+        engine
+            .ingest_messages(std::slice::from_ref(&third.id))
+            .await
+            .unwrap();
+        assert!(
+            !engine.index_build_retries_left(SemanticProfile::BgeSmallEnV15),
+            "ingest must not hand the burnt attempts back"
+        );
+        assert!(engine
+            .search("roadmap notes launch", 5, &kinds)
+            .await
+            .is_err());
+
+        engine.reindex_active().await.unwrap();
+        let hits = engine
+            .search("roadmap notes launch", 5, &kinds)
+            .await
+            .unwrap();
+        assert!(
+            hits.iter().any(|hit| hit.message_id == second.id),
+            "the pass that hands the attempts back must also pick up what the burnt-out \
+             rebuild never indexed"
+        );
     }
 
     /// The idle sync loop asks for a backfill every quiet half hour. On a

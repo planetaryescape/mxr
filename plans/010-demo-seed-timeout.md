@@ -82,3 +82,24 @@ activity 44/400 → 0/400, both under load).
 - `.config/` is globally gitignored on BK's machine (`git add -f` for nextest config).
 - Prove every new regression test fails on the old code; at a ~1 % flake rate you need ~400 runs per commit to attribute it.
 - Measure the thing, not the measurer (a histogram probe inflated the RSS it measured); two RSS points give the marginal cost, one gives nothing; a drop probe separates live structure from allocator drift.
+
+## Codex retro review (gpt-5.6-sol, 2026-08-20, range 532c1ed1..141ebbbb)
+
+Ran after the quota reset, per the review-gate plan. 12 findings (3 high / 6 medium / 3 low); no data-loss path. Orchestrator verification verdicts inline. Areas Codex checked and found clean: background-sync claim/join locking, fake-provider paging + `remaining_estimate`, stored-id retargeting, the NewMessages cap, chunked lexical commits, the compose flush, protocol additivity, preview/dry-run parity, provider boundaries.
+
+| # | Sev | Finding | Verdict |
+|---|---|---|---|
+| 1 | High | `StallWatch` is only consulted on the `observe` path; the reconnect/degraded/transport-error branches `continue` past it, so a perpetually failing status poll waits forever instead of dying at 600 s (`demo.rs:644`, `:711`) | CONFIRMED (mechanism read); narrow trigger |
+| 2 | High | Identity-sidecar writes ignore errors (`server.rs:822` `let _ = fs::write`); with no record, the pid-file path falls back to the weak argv check and skips the profile recheck before signalling — a recycled pid pointing at *another profile's* mxr daemon can be killed | PARTIALLY CONFIRMED (silent write + weak fallback are real; kill needs pid recycling into another mxr daemon) |
+| 3 | High | No lifecycle lock around recovery: a second CLI that observed the same broken socket can unlink the pid file/socket the first CLI's replacement daemon just wrote (`server.rs:1337`) | PLAUSIBLE, not independently verified |
+| 4 | Med | `install_profile()` on the search path persists `Ready`/clears `last_error` mid-pass; startup reclaim only sees rows still marked `Indexing` | KNOWN (already in the open list) + new reclaim detail |
+| 5 | Med | `BackgroundSyncClaim::Drop` spawns an unconditional async `sync_in_progress=false` with no run-generation check; a delayed cleanup can clear a *newer* sync's flag (`state.rs:575`) | CONFIRMED as a race window (needs panic + instant retrigger) |
+| 6 | Med | Vacated-thread tombstones lost when a later 500-row chunk fails mid-page | KNOWN (already in the open list) |
+| 7 | Med | Deferred-ANN dirty marker removed before a fallible read and not restored on error; after 5 failed builds it is dropped without epoch advance → stale index served as `Ready` | PLAUSIBLE, not independently verified |
+| 8 | Med | ANN over-fetch (`max(64, limit×4)`) still does not *guarantee* a requested source kind appears in the window | TRUE BY DESIGN — heuristic, documented; a guarantee needs kind-partitioned retrieval |
+| 9 | Med | Degraded Status is wire-additive but behaviorally incompatible: pre-0.6.25 clients read a degraded (empty) snapshot as authoritative idle | TRUE — inherent to the additive approach; mitigations are all worse (erroring breaks more) |
+| 10 | Low | `classify_health` ignores `degraded`: JSON can emit `degraded:true` + `health_class:"healthy"` (`status.rs:177`) | CONFIRMED |
+| 11 | Low | `NewMessages.total` defaults to 0 for events from older daemons and the renderer prints it verbatim: `new_messages=0 shown=3` (`events.rs:58`) | CONFIRMED |
+| 12 | Low | Both process probes split the command line on whitespace, so an exe path with spaces breaks discovery | KNOWN (open list; fails toward not killing) |
+
+Fix wave pending a scope decision; candidates in order: 1, 2 (log the write failure + require the profile recheck when no record exists), 5 (generation stamp), 10, 11, 7, 3. Full report: session scratch `codex-retro.md`.

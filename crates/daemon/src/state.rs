@@ -1599,7 +1599,9 @@ impl AppState {
     /// panicking tantivy fixture.
     #[cfg(test)]
     pub async fn abort_search_worker(&self) {
-        if let Some(task) = RuntimeTasks::take_named(&self.runtime_tasks.search_worker, "search") {
+        if let Some(task) =
+            RuntimeTasks::take_named(&self.runtime_tasks.search_worker, "search_worker")
+        {
             task.handle.abort();
             let _ = task.handle.await;
         }

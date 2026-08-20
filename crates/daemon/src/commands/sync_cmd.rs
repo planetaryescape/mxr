@@ -347,10 +347,10 @@ fn sync_progress_line(statuses: &[AccountSyncStatus]) -> Option<String> {
 enum StatusPoll {
     Statuses(Vec<AccountSyncStatus>),
     /// `GetStatus` fast-fails its DB-backed snapshot when the reader pool is
-    /// saturated — which is exactly what a large sync does to it — and then
-    /// reports zero accounts and no statuses. Reading that as "no account is
-    /// syncing" would end the wait on the daemon's busiest moment, so treat it
-    /// as no reading at all.
+    /// saturated — which is exactly what a large sync does to it — and says so
+    /// with `degraded`, reporting zero accounts and no statuses. Reading that
+    /// as "no account is syncing" would end the wait on the daemon's busiest
+    /// moment, so treat it as no reading at all.
     Degraded,
     Rejected(String),
     Disconnected(anyhow::Error),

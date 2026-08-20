@@ -499,6 +499,10 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                 .iter()
                 .flat_map(format_finding_lines),
         )
+        .chain(state.status_degraded.then(|| {
+            "Note: daemon could not read the database in time — counts and sync above are unknown, not empty."
+                .to_string()
+        }))
         .chain(std::iter::once(
             "Hints: Tab/Shift-Tab pane  Enter fullscreen  d details  L logs".to_string(),
         ))
@@ -971,6 +975,31 @@ mod tests {
         assert!(
             lines.iter().any(|line| line == "Findings: none"),
             "Status pane must show 'Findings: none' on a clean doctor; got {lines:?}",
+        );
+    }
+
+    #[test]
+    fn status_pane_says_when_the_daemon_could_not_read_the_database() {
+        let clean = DiagnosticsPageState {
+            doctor: Some(empty_doctor_with_findings(vec![])),
+            ..Default::default()
+        };
+        assert!(
+            !pane_lines(&clean, DiagnosticsPaneKind::Status)
+                .iter()
+                .any(|line| line.starts_with("Note: daemon could not read")),
+            "a real reading must not carry the degraded note"
+        );
+
+        let degraded = DiagnosticsPageState {
+            status_degraded: true,
+            ..clean
+        };
+        assert!(
+            pane_lines(&degraded, DiagnosticsPaneKind::Status)
+                .iter()
+                .any(|line| line.contains("unknown, not empty")),
+            "a degraded snapshot must say the counts are unknown rather than zero"
         );
     }
 

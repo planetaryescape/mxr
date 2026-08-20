@@ -630,6 +630,7 @@ fn accounts_page_onboarding_snapshot() {
 fn diagnostics_page_snapshot() {
     let state = DiagnosticsPageState {
         uptime_secs: Some(3600),
+        status_degraded: false,
         daemon_pid: Some(4242),
         accounts: vec!["me@example.com".into()],
         total_messages: Some(42),

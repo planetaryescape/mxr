@@ -83,19 +83,67 @@ pub(crate) struct MailboxSelection {
     pub(crate) envelopes: Vec<Envelope>,
 }
 
+/// The two lines of chrome the shell shows about sync: a short label and a
+/// sentence.
+///
+/// A degraded status snapshot carries no sync statuses and no message count at
+/// all — the daemon answered without reading its database. Every label derived
+/// from those fields would then read as "nothing is happening, zero messages",
+/// so say the daemon is busy rather than inventing an all-clear.
+pub(crate) fn describe_sync_state(
+    degraded: bool,
+    repair_required: bool,
+    sync_statuses: &[mxr_protocol::AccountSyncStatus],
+) -> (&'static str, &'static str) {
+    if degraded {
+        return (
+            "Daemon busy",
+            "Daemon could not read the database in time — counts are unknown, not empty",
+        );
+    }
+    let label = if sync_statuses.iter().any(|status| status.sync_in_progress) {
+        "Syncing"
+    } else if sync_statuses
+        .iter()
+        .any(|status| !status.healthy || status.last_error.is_some())
+    {
+        "Needs attention"
+    } else {
+        "Synced"
+    };
+    let message = if repair_required {
+        "Repair required before mailbox opens"
+    } else if sync_statuses
+        .iter()
+        .any(|status| status.last_error.is_some())
+    {
+        "Last sync needs attention"
+    } else {
+        "Local-first and ready"
+    };
+    (label, message)
+}
+
 pub(crate) async fn build_bridge_chrome(
     socket_path: &Path,
     active_lens: &MailboxLensRequest,
 ) -> Result<BridgeChrome, BridgeError> {
-    let (accounts, total_messages, sync_statuses, repair_required) =
+    let (accounts, total_messages, sync_statuses, repair_required, degraded) =
         match ipc_request(socket_path, Request::GetStatus).await? {
             ResponseData::Status {
                 accounts,
                 total_messages,
                 sync_statuses,
                 repair_required,
+                degraded,
                 ..
-            } => (accounts, total_messages, sync_statuses, repair_required),
+            } => (
+                accounts,
+                total_messages,
+                sync_statuses,
+                repair_required,
+                degraded,
+            ),
             _ => return Err(BridgeError::UnexpectedResponse),
         };
 
@@ -122,27 +170,8 @@ pub(crate) async fn build_bridge_chrome(
         _ => return Err(BridgeError::UnexpectedResponse),
     };
 
-    let sync_label = if sync_statuses.iter().any(|status| status.sync_in_progress) {
-        "Syncing"
-    } else if sync_statuses
-        .iter()
-        .any(|status| !status.healthy || status.last_error.is_some())
-    {
-        "Needs attention"
-    } else {
-        "Synced"
-    };
-
-    let status_message = if repair_required {
-        "Repair required before mailbox opens".to_string()
-    } else if sync_statuses
-        .iter()
-        .any(|status| status.last_error.is_some())
-    {
-        "Last sync needs attention".to_string()
-    } else {
-        "Local-first and ready".to_string()
-    };
+    let (sync_label, status_message) =
+        describe_sync_state(degraded, repair_required, &sync_statuses);
 
     Ok(BridgeChrome {
         shell: json!({

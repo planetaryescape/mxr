@@ -44,6 +44,10 @@ pub struct DiagnosticsPageState {
     pub accounts: Vec<String>,
     pub total_messages: Option<u32>,
     pub sync_statuses: Vec<mxr_protocol::AccountSyncStatus>,
+    /// The last `GetStatus` came back without a database reading — the daemon
+    /// was too busy to answer inside its own budget. The counts above are then
+    /// whatever was last actually read, not what the daemon just said.
+    pub status_degraded: bool,
     pub doctor: Option<mxr_protocol::DoctorReport>,
     pub events: Vec<mxr_protocol::EventLogEntry>,
     pub logs: Vec<String>,

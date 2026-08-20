@@ -3894,3 +3894,22 @@ async fn edit_session(
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::OK);
 }
+
+#[test]
+fn degraded_status_is_not_reported_as_a_quiet_mailbox() {
+    use crate::chrome::describe_sync_state;
+
+    // A degraded snapshot arrives with no sync statuses and no counts, which
+    // is indistinguishable from an idle, empty mailbox unless the flag is
+    // honoured.
+    let (label, message) = describe_sync_state(true, false, &[]);
+    assert_eq!(label, "Daemon busy");
+    assert!(
+        message.contains("unknown, not empty"),
+        "the shell must say the counts are unknown; got {message:?}"
+    );
+
+    let (label, message) = describe_sync_state(false, false, &[]);
+    assert_eq!(label, "Synced");
+    assert_eq!(message, "Local-first and ready");
+}

@@ -1168,6 +1168,13 @@ async fn status_and_doctor_report_a_stopped_search_worker() {
                 finding.remediation,
                 vec!["mxr daemon --restart".to_string()]
             );
+            // `mxr doctor --check` exits non-zero on exactly this flag, and
+            // that exit code is what agents and CI read. A pretty-printed
+            // error nobody can act on is not surfacing the failure.
+            assert!(
+                !report.healthy,
+                "an error-severity finding must make the report unhealthy"
+            );
         }
         other => panic!("Expected DoctorReport, got {other:?}"),
     }

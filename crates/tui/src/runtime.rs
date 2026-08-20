@@ -328,6 +328,7 @@ async fn execute_replaceable_request(
                             accounts,
                             total_messages,
                             sync_statuses,
+                            degraded,
                             ..
                         },
                 }) => Ok(StatusSnapshot {
@@ -336,6 +337,7 @@ async fn execute_replaceable_request(
                     accounts,
                     total_messages,
                     sync_statuses,
+                    degraded,
                 }),
                 Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),

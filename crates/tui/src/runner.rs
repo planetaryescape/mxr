@@ -15,7 +15,7 @@ use crate::account_workflow::{
     run_account_save_workflow,
 };
 use crate::accounts_helpers::load_accounts_page_accounts;
-use crate::async_result::{AsyncResult, UnsubscribeResultData};
+use crate::async_result::{AsyncResult, StatusSnapshot, UnsubscribeResultData};
 use crate::compose_flow::{
     fetch_reply_context_dedicated, handle_compose_action, handle_compose_editor_status,
     handle_draft_edit_status, prepare_draft_edit,
@@ -2373,16 +2373,18 @@ pub async fn run() -> anyhow::Result<()> {
                                             accounts,
                                             total_messages,
                                             sync_statuses,
+                                            degraded,
                                             ..
                                         },
                                 } => {
-                                    app.apply_status_snapshot(
+                                    app.apply_status_snapshot(StatusSnapshot {
                                         uptime_secs,
                                         daemon_pid,
                                         accounts,
                                         total_messages,
                                         sync_statuses,
-                                    );
+                                        degraded,
+                                    });
                                 }
                                 Response::Ok {
                                     data: ResponseData::DoctorReport { report },
@@ -2428,13 +2430,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 tracing::trace!(request_id, current_id = app.diagnostics.status_request_id, "tui stale status dropped");
                                 continue;
                             }
-                            app.apply_status_snapshot(
-                                snapshot.uptime_secs,
-                                snapshot.daemon_pid,
-                                snapshot.accounts,
-                                snapshot.total_messages,
-                                snapshot.sync_statuses,
-                            );
+                            app.apply_status_snapshot(snapshot);
                         }
                         AsyncResult::Status {
                             request_id,

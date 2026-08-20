@@ -1,8 +1,8 @@
 use crate::cli::OutputFormat;
 use crate::commands::progress::{format_thousands, request_with_progress, ProgressPrinter};
 use crate::handler::{
-    build_doctor_findings, dir_size_sync, doctor_data_stats, file_size_sync, recent_log_lines_sync,
-    DoctorFindingInputs,
+    build_doctor_findings, dir_size_sync, doctor_data_stats, file_size_sync, no_error_findings,
+    recent_log_lines_sync, DoctorFindingInputs,
 };
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -441,13 +441,6 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         restart_required,
         repair_required,
     );
-    let healthy = data_dir_exists
-        && database_exists
-        && index_exists
-        && socket_reachable
-        && !index_lock_held
-        && matches!(health_class, DaemonHealthClass::Healthy);
-
     let findings = build_doctor_findings(DoctorFindingInputs {
         sync_statuses: &sync_statuses,
         recent_errors: &recent_error_logs,
@@ -465,6 +458,13 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         }),
         data_stats: &data_stats,
     });
+    let healthy = data_dir_exists
+        && database_exists
+        && index_exists
+        && socket_reachable
+        && !index_lock_held
+        && matches!(health_class, DaemonHealthClass::Healthy)
+        && no_error_findings(&findings);
 
     Ok(DoctorReport {
         healthy,

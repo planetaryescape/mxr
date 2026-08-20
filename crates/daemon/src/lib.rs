@@ -17,6 +17,7 @@ pub mod handler;
 pub mod ipc_client;
 pub(crate) mod loops;
 pub mod output;
+pub(crate) mod process_probe;
 pub(crate) mod provider_credentials;
 pub mod reindex;
 pub(crate) mod serve;

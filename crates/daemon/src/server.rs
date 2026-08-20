@@ -748,11 +748,13 @@ fn write_daemon_pid_file() -> anyhow::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(pid_path, std::process::id().to_string())?;
+    write_daemon_identity_file();
     Ok(())
 }
 
 fn clear_daemon_pid_file() {
     let _ = std::fs::remove_file(daemon_pid_file_path());
+    let _ = std::fs::remove_file(daemon_identity_file_path());
 }
 
 fn read_daemon_pid_file() -> Option<u32> {
@@ -761,6 +763,78 @@ fn read_daemon_pid_file() -> Option<u32> {
         .trim()
         .parse()
         .ok()
+}
+
+fn daemon_identity_file_path() -> PathBuf {
+    AppState::data_dir().join("daemon.identity")
+}
+
+/// What the daemon of this profile is, recorded next to its pid.
+///
+/// The pid file says *which number*; on its own that is not identity, because
+/// the OS recycles pids and this profile's daemon may have exited without
+/// clearing the file. `started_at` is what makes the record exact: it belongs
+/// to one process for that process's whole life and to no successor that
+/// inherits the number. The rest is provenance — it catches a data directory
+/// copied or shared between profiles.
+///
+/// It lives beside the pid file rather than inside it so a binary older than
+/// this record still reads `daemon.pid` as the plain number it has always
+/// been. A missing record is normal (daemons before this change wrote none)
+/// and drops the caller back to a weaker check.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct DaemonIdentity {
+    pid: u32,
+    started_at: String,
+    /// Which binary is serving this profile. Nothing reads it — it is here for
+    /// the person reading a bug report, who otherwise cannot tell which of
+    /// several mxr builds on the machine owns the daemon.
+    exe: String,
+    instance: String,
+    config_dir: PathBuf,
+    data_dir: PathBuf,
+}
+
+impl DaemonIdentity {
+    fn of_this_process() -> Option<Self> {
+        let exe = std::env::current_exe().ok()?;
+        Some(Self {
+            pid: std::process::id(),
+            started_at: crate::process_probe::start_time(std::process::id())?,
+            exe: std::fs::canonicalize(&exe)
+                .unwrap_or(exe)
+                .display()
+                .to_string(),
+            instance: mxr_config::app_instance_name(),
+            config_dir: mxr_config::config_dir(),
+            data_dir: mxr_config::data_dir(),
+        })
+    }
+
+    /// Whether this record was written by a daemon of the profile the current
+    /// process resolves.
+    fn describes_our_profile(&self) -> bool {
+        self.instance == mxr_config::app_instance_name()
+            && self.config_dir == mxr_config::config_dir()
+            && self.data_dir == mxr_config::data_dir()
+    }
+}
+
+fn write_daemon_identity_file() {
+    let Some(identity) = DaemonIdentity::of_this_process() else {
+        tracing::info!("could not record daemon identity; pid-file adoption falls back to argv");
+        return;
+    };
+    match toml::to_string(&identity) {
+        Ok(rendered) => {
+            let _ = std::fs::write(daemon_identity_file_path(), rendered);
+        }
+        Err(error) => tracing::warn!(%error, "could not render the daemon identity record"),
+    }
+}
+
+fn read_daemon_identity_file() -> Option<DaemonIdentity> {
+    toml::from_str(&std::fs::read_to_string(daemon_identity_file_path()).ok()?).ok()
 }
 
 fn process_is_alive(pid: u32) -> bool {
@@ -809,11 +883,7 @@ fn classify_broken_socket(
 /// survive identity verification come back: callers signal what they get.
 fn live_daemon_pid() -> Option<u32> {
     if let Some(pid) = read_daemon_pid_file() {
-        // The pid file is written only by this profile's daemon, so the file
-        // establishes the profile. What it cannot rule out is the daemon
-        // having exited without clearing it and the OS having handed its pid
-        // to something else, so confirm the process is still an mxr daemon.
-        if process_is_alive(pid) && process_is_daemon_for_instance(pid) {
+        if process_is_alive(pid) && pid_file_still_names_our_daemon(pid) {
             return Some(pid);
         }
         clear_daemon_pid_file();
@@ -824,122 +894,133 @@ fn live_daemon_pid() -> Option<u32> {
     Some(pid)
 }
 
-/// Whether `pid` is still running a daemon for our instance.
+/// Whether the pid file's number still refers to the daemon that wrote it.
 ///
-/// Deliberately indifferent to *which* mxr binary: restarting a daemon left
-/// over from another build is the whole point of the recovery path. The pid
-/// file already established the profile; this only rules out the pid having
-/// been recycled by an unrelated process.
-fn process_is_daemon_for_instance(pid: u32) -> bool {
-    let Ok(output) = std::process::Command::new("ps")
-        .args(["-o", "command=", "-p", &pid.to_string()])
-        .output()
-    else {
-        return false;
-    };
-    output.status.success()
-        && daemon_command_exe(
-            &String::from_utf8_lossy(&output.stdout),
-            &mxr_config::app_instance_name(),
-        )
-        .is_some()
+/// The file lives in this profile's data directory and only this profile's
+/// daemon writes it, so the profile is already established — the one thing
+/// left to rule out is the daemon having exited without clearing the file and
+/// the OS having handed its number to something else.
+///
+/// The identity record answers that exactly, by start time. Without one (a
+/// daemon older than the record, or a `ps` that would not report a start time)
+/// the fallback is the weaker "is this still a process running the `daemon`
+/// subcommand" — deliberately indifferent to flags and to which mxr binary it
+/// is, because `mxr daemon --foreground`, `--no-bridge` and `--bridge-port`
+/// are all daemons worth recovering, as is one left over from another build.
+///
+/// Anything unreadable counts as "still ours": deleting a live daemon's pid
+/// file strands it, and the CLI then spawns a successor that dies on the
+/// search-index lock.
+fn pid_file_still_names_our_daemon(pid: u32) -> bool {
+    if let Some(identity) = read_daemon_identity_file() {
+        if identity.pid == pid && identity.describes_our_profile() {
+            return match crate::process_probe::start_time(pid) {
+                Some(started_at) => started_at == identity.started_at,
+                None => true,
+            };
+        }
+        // A record that names a different pid, or another profile, says
+        // nothing about this one. Fall through to the argv check.
+    }
+    crate::process_probe::command_words(pid).is_none_or(|words| command_runs_a_daemon(&words))
 }
 
-/// The executable named by a `ps` command line, if that command line is
-/// `<exe> daemon --instance <instance>` and nothing else.
-fn daemon_command_exe<'a>(command: &'a str, instance: &str) -> Option<&'a str> {
-    let mut parts = command.split_whitespace();
-    let exe = parts.next()?;
-    let matches = parts.next() == Some("daemon")
-        && parts.next() == Some("--instance")
-        && parts.next() == Some(instance)
-        && parts.next().is_none();
-    matches.then_some(exe)
+/// Whether a command line runs mxr's `daemon` subcommand.
+///
+/// Flags are deliberately not constrained: `--foreground`, `--no-bridge` and
+/// `--bridge-port` are all daemons worth recovering, and requiring the shape
+/// autostart happens to use (`<exe> daemon --instance <name>`) rejected every
+/// daemon a person started by hand.
+fn command_runs_a_daemon(words: &[String]) -> bool {
+    words.get(1).is_some_and(|word| word == "daemon")
 }
 
 /// Find this profile's daemon when the pid file is gone, by scanning `ps`.
 ///
-/// `ps` tells us the command line and nothing about which mxr profile a
-/// process serves, so a bare command-line match is not identity: every mxr
-/// checkout on the machine runs a binary called `mxr`, and `mxr demo` pins the
-/// same instance name in every profile. Adopting on that match alone meant two
-/// checkouts (or two demo profiles) restarting and killing each other's
-/// daemons. Every match is therefore verified — same executable file, same
-/// profile — before it is returned, and an unverifiable match is treated as no
-/// daemon at all.
+/// `ps` reports command lines and nothing about which mxr profile a process
+/// serves, so a command-line match is not identity: every mxr checkout builds
+/// a binary called `mxr`, and `mxr demo` pins one instance name across every
+/// profile. Adopting on that match alone had two checkouts (or two demo
+/// profiles) restarting and killing each other's daemons. Every candidate is
+/// therefore filtered down to the ones running our exact executable *in our
+/// profile* before uniqueness is considered, and an unverifiable match counts
+/// as no daemon at all.
 fn fallback_live_daemon_pid_without_pid_file() -> Option<u32> {
     let current_exe = std::fs::canonicalize(std::env::current_exe().ok()?).ok()?;
     let current_instance = mxr_config::app_instance_name();
-    let output = std::process::Command::new("ps")
-        .args(["-Ao", "pid=,command="])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
 
-    let matches = scan_daemon_processes(
-        &String::from_utf8_lossy(&output.stdout),
+    let candidates = scan_daemon_processes(
+        &crate::process_probe::all_command_lines()?,
         std::process::id(),
         &current_exe,
         &current_instance,
     );
 
-    // More than one match means we cannot tell which process serves this
-    // profile, and restarting the wrong one is exactly the failure being
-    // fixed here.
-    let &[pid] = matches.as_slice() else {
-        return None;
-    };
-    if !process_is_alive(pid) {
-        return None;
+    // Profile first, then uniqueness: two daemons of the same build in
+    // different profiles would otherwise make each other unadoptable.
+    let ours: Vec<u32> = candidates
+        .into_iter()
+        .filter(|pid| process_runs_our_profile(*pid))
+        .collect();
+
+    match ours.as_slice() {
+        [pid] => Some(*pid),
+        [] => None,
+        more => {
+            // Two live daemons for one profile is already broken; restarting
+            // an arbitrary one of them would just pick a side.
+            tracing::warn!(
+                pids = ?more,
+                "found several `{current_instance}` daemons for this profile; not adopting any"
+            );
+            None
+        }
     }
-    if !process_runs_our_profile(pid) {
-        tracing::info!(
-            pid,
-            "ignoring a `{current_instance}` daemon that runs this binary from another profile"
-        );
-        return None;
-    }
-    Some(pid)
 }
 
-/// Pick the pids in `ps` output that run *our* executable as
-/// `<exe> daemon --instance <instance>`.
+/// The pids running *our* executable as `<exe> daemon [...]`.
 ///
-/// The executable is matched by full path, not file name: two checkouts both
-/// build a binary called `mxr`, and only the path tells them apart. A process
-/// started through a `PATH` lookup can carry a bare `argv[0]`, which cannot be
-/// resolved back to a file from here — such a process is skipped rather than
-/// guessed at, and its daemon is found through the pid file instead.
+/// The executable is matched by file, not by file name: two checkouts both
+/// build a binary called `mxr`, and only the path tells them apart. Flags are
+/// not constrained beyond `--instance`, so a daemon someone started by hand
+/// with `--foreground` is still recoverable; the profile check that follows is
+/// what establishes identity.
 fn scan_daemon_processes(
-    ps_output: &str,
+    command_lines: &[(u32, String)],
     our_pid: u32,
     our_exe: &Path,
     instance: &str,
 ) -> Vec<u32> {
-    let mut matches = Vec::new();
-    for line in ps_output.lines() {
-        let trimmed = line.trim();
-        let Some((pid, command)) = trimmed.split_once(char::is_whitespace) else {
-            continue;
-        };
-        let Ok(pid) = pid.parse::<u32>() else {
-            continue;
-        };
-        if pid == our_pid {
-            continue;
-        }
-        let Some(exe) = daemon_command_exe(command, instance) else {
-            continue;
-        };
-        // `canonicalize` also rejects a binary that has since been replaced or
-        // deleted, which is the common case in a rebuild loop.
-        if std::fs::canonicalize(exe).is_ok_and(|path| path == our_exe) {
-            matches.push(pid);
+    command_lines
+        .iter()
+        .filter(|(pid, command)| {
+            *pid != our_pid
+                && daemon_command_exe(command, instance)
+                    .is_some_and(|exe| crate::process_probe::exe_is(exe, our_exe))
+        })
+        .map(|(pid, _)| *pid)
+        .collect()
+}
+
+/// The executable named by a command line, if that command line runs the
+/// `daemon` subcommand and does not name a *different* instance.
+///
+/// A daemon started without `--instance` takes its instance from the
+/// environment, which the profile check compares in full — so the flag being
+/// absent is not a reason to skip the process.
+fn daemon_command_exe<'a>(command: &'a str, instance: &str) -> Option<&'a str> {
+    let mut words = command.split_whitespace();
+    let exe = words.next()?;
+    if words.next() != Some("daemon") {
+        return None;
+    }
+    let mut words = words.peekable();
+    while let Some(word) = words.next() {
+        if word == "--instance" && words.peek() != Some(&instance) {
+            return None;
         }
     }
-    matches
+    Some(exe)
 }
 
 /// Environment variables that select which mxr profile a process resolves:
@@ -959,62 +1040,20 @@ const PROFILE_ENV_KEYS: &[&str] = &[
 
 /// Whether `pid` resolves the same mxr profile as this process.
 ///
-/// Unproven counts as "no": the environment of another process is best-effort
-/// (the platform may refuse it, and macOS truncates a long one), and every
-/// caller uses this to decide whether a process may be signalled.
+/// Unproven counts as "no". This is the only thing standing between a `ps`
+/// match and a `SIGTERM`, so a probe that cannot answer must not be read as
+/// agreement.
 fn process_runs_our_profile(pid: u32) -> bool {
-    read_process_environment(pid)
+    crate::process_probe::environment(pid)
         .is_some_and(|environment| environment_selects_our_profile(&environment))
 }
 
 /// Whether a `KEY=VALUE` environment resolves the same profile as ours.
 fn environment_selects_our_profile(environment: &[String]) -> bool {
-    PROFILE_ENV_KEYS
-        .iter()
-        .all(|key| environment_value(environment, key) == std::env::var(key).ok().as_deref())
-}
-
-fn environment_value<'a>(environment: &'a [String], key: &str) -> Option<&'a str> {
-    environment.iter().find_map(|entry| {
-        entry
-            .split_once('=')
-            .filter(|(name, _)| *name == key)
-            .map(|(_, value)| value)
+    PROFILE_ENV_KEYS.iter().all(|key| {
+        crate::process_probe::environment_value(environment, key)
+            == std::env::var(key).ok().as_deref()
     })
-}
-
-/// Read another process's environment as `KEY=VALUE` entries. Only works for
-/// processes owned by this user, which is all we ever ask about.
-#[cfg(target_os = "linux")]
-fn read_process_environment(pid: u32) -> Option<Vec<String>> {
-    let raw = std::fs::read(format!("/proc/{pid}/environ")).ok()?;
-    Some(
-        raw.split(|byte| *byte == 0)
-            .filter(|entry| !entry.is_empty())
-            .map(|entry| String::from_utf8_lossy(entry).into_owned())
-            .collect(),
-    )
-}
-
-/// macOS has no procfs; `ps -E` appends the environment to the command line.
-/// Values containing spaces come back split, so an entry can be truncated —
-/// which makes a comparison fail rather than wrongly succeed.
-#[cfg(not(target_os = "linux"))]
-fn read_process_environment(pid: u32) -> Option<Vec<String>> {
-    let output = std::process::Command::new("ps")
-        .args(["-Eww", "-o", "command=", "-p", &pid.to_string()])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    Some(
-        String::from_utf8_lossy(&output.stdout)
-            .split_whitespace()
-            .filter(|token| token.contains('='))
-            .map(ToString::to_string)
-            .collect(),
-    )
 }
 
 async fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
@@ -1591,33 +1630,71 @@ mod tests {
         );
     }
 
+    /// A real second file with the same name as this test binary, so the
+    /// scan's executable check has something to actually discriminate: a path
+    /// that does not exist fails `canonicalize` and would pass the test
+    /// without the check ever running.
+    fn decoy_binary(dir: &tempfile::TempDir) -> std::path::PathBuf {
+        let ours = std::env::current_exe().expect("current exe");
+        let decoy = dir.path().join(ours.file_name().expect("exe file name"));
+        if std::fs::hard_link(&ours, &decoy).is_err() {
+            std::fs::copy(&ours, &decoy).expect("copy test binary");
+        }
+        std::fs::canonicalize(&decoy).expect("canonical decoy")
+    }
+
     #[test]
     fn daemon_scan_matches_only_our_own_executable() {
         use super::scan_daemon_processes;
 
-        let ours = std::env::current_exe().expect("current exe");
-        let ours_canonical = std::fs::canonicalize(&ours).expect("canonical exe");
-        let exe = ours.display();
-        // The line that used to be adopted: another checkout's build of the
-        // same binary name, same instance, different profile.
-        let neighbour = std::path::Path::new("/some/other/checkout/target/debug")
-            .join(ours.file_name().expect("exe file name"));
-        let neighbour = neighbour.display();
-        let ps_output = format!(
-            "\
-  100 {neighbour} daemon --instance mxr-dev
-  200 {exe} daemon --instance mxr-dev
-  300 {exe} daemon --instance mxr-demo
-  400 mxr daemon --instance mxr-dev
-  500 {exe} daemon
-  600 {exe} tui
-"
-        );
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let ours = std::fs::canonicalize(std::env::current_exe().expect("current exe"))
+            .expect("canonical exe");
+        // Another checkout's build of the same binary name: a real file, so
+        // the path comparison is what rejects it.
+        let neighbour = decoy_binary(&temp);
+        let ours_display = ours.display();
+        let neighbour_display = neighbour.display();
+
+        let command_lines = vec![
+            (
+                100,
+                format!("{neighbour_display} daemon --instance mxr-dev"),
+            ),
+            (200, format!("{ours_display} daemon --instance mxr-dev")),
+            (300, format!("{ours_display} daemon --instance mxr-demo")),
+            (400, "mxr daemon --instance mxr-dev".to_string()),
+            (500, format!("{ours_display} tui")),
+        ];
 
         assert_eq!(
-            scan_daemon_processes(&ps_output, 999, &ours_canonical, "mxr-dev"),
+            scan_daemon_processes(&command_lines, 999, &ours, "mxr-dev"),
             vec![200],
             "only this binary, run as a daemon for this instance, may be adopted"
+        );
+    }
+
+    #[test]
+    fn daemon_scan_accepts_a_daemon_started_by_hand() {
+        use super::scan_daemon_processes;
+
+        let ours = std::fs::canonicalize(std::env::current_exe().expect("current exe"))
+            .expect("canonical exe");
+        let exe = ours.display();
+        // `mxr daemon --foreground` and friends take their instance from the
+        // environment. Skipping them would leave a hand-started daemon that
+        // lost its pid file unadoptable — and the successor dies on the
+        // search-index lock.
+        let command_lines = vec![
+            (100, format!("{exe} daemon --foreground")),
+            (200, format!("{exe} daemon --no-bridge --bridge-port 7777")),
+            (300, format!("{exe} daemon --instance mxr-demo")),
+        ];
+
+        assert_eq!(
+            scan_daemon_processes(&command_lines, 999, &ours, "mxr-dev"),
+            vec![100, 200],
+            "flags other than a foreign --instance must not disqualify a daemon"
         );
     }
 
@@ -1625,18 +1702,18 @@ mod tests {
     fn daemon_scan_skips_our_own_process() {
         use super::scan_daemon_processes;
 
-        let ours = std::env::current_exe().expect("current exe");
-        let ours_canonical = std::fs::canonicalize(&ours).expect("canonical exe");
-        let ps_output = format!("  777 {} daemon --instance mxr-dev\n", ours.display());
+        let ours = std::fs::canonicalize(std::env::current_exe().expect("current exe"))
+            .expect("canonical exe");
+        let command_lines = vec![(777, format!("{} daemon --instance mxr-dev", ours.display()))];
 
         assert!(
-            scan_daemon_processes(&ps_output, 777, &ours_canonical, "mxr-dev").is_empty(),
+            scan_daemon_processes(&command_lines, 777, &ours, "mxr-dev").is_empty(),
             "the scanning process must never adopt itself"
         );
     }
 
     #[test]
-    fn daemon_command_exe_accepts_only_the_exact_daemon_command_line() {
+    fn daemon_command_exe_accepts_any_daemon_flags_but_not_a_foreign_instance() {
         use super::daemon_command_exe;
 
         assert_eq!(
@@ -1644,11 +1721,11 @@ mod tests {
             Some("/opt/bin/mxr")
         );
         assert_eq!(
-            daemon_command_exe("/opt/bin/mxr daemon --instance mxr-demo", "mxr"),
-            None
+            daemon_command_exe("/opt/bin/mxr daemon --foreground", "mxr"),
+            Some("/opt/bin/mxr")
         );
         assert_eq!(
-            daemon_command_exe("/opt/bin/mxr daemon --instance mxr --foreground", "mxr"),
+            daemon_command_exe("/opt/bin/mxr daemon --instance mxr-demo", "mxr"),
             None
         );
         assert_eq!(daemon_command_exe("/usr/bin/vim notes.txt", "mxr"), None);
@@ -1686,6 +1763,70 @@ mod tests {
             !environment_selects_our_profile(&["HOME=/nowhere".to_string()]),
             "an environment that disagrees about HOME is another profile"
         );
+    }
+
+    #[test]
+    fn a_daemon_identity_record_round_trips() {
+        use super::DaemonIdentity;
+
+        // Paths with spaces are the norm on macOS, where every profile lives
+        // under "Application Support".
+        let identity = DaemonIdentity {
+            pid: 4242,
+            started_at: "Wed Aug 20 00:11:22 2026".to_string(),
+            exe: "/opt/homebrew/bin/mxr".to_string(),
+            instance: "mxr-demo".to_string(),
+            config_dir: "/Users/bk/Library/Application Support/mxr-demo".into(),
+            data_dir: "/Users/bk/Library/Application Support/mxr-demo".into(),
+        };
+
+        let rendered = toml::to_string(&identity).expect("render identity");
+        assert_eq!(
+            toml::from_str::<DaemonIdentity>(&rendered).ok(),
+            Some(identity)
+        );
+    }
+
+    #[test]
+    fn a_pid_file_without_an_identity_record_is_not_rejected() {
+        use super::DaemonIdentity;
+
+        // Daemons older than the record wrote a bare pid file and no record at
+        // all; the caller must fall back rather than treat that as a mismatch.
+        assert!(toml::from_str::<DaemonIdentity>("4242").is_err());
+        assert!(toml::from_str::<DaemonIdentity>("").is_err());
+    }
+
+    #[test]
+    fn a_hand_started_daemon_is_still_this_profile_s_daemon() {
+        use super::command_runs_a_daemon;
+
+        let words = |line: &str| {
+            line.split_whitespace()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        };
+
+        // The wedge this reproduces: requiring the argv autostart happens to
+        // use rejected every explicitly started daemon, so the CLI deleted a
+        // live daemon's pid file and then spawned a successor that died on
+        // the search-index lock.
+        assert!(command_runs_a_daemon(&words("/opt/bin/mxr daemon")));
+        assert!(command_runs_a_daemon(&words(
+            "/opt/bin/mxr daemon --foreground"
+        )));
+        assert!(command_runs_a_daemon(&words(
+            "/opt/bin/mxr daemon --no-bridge --bridge-port 7777"
+        )));
+        assert!(command_runs_a_daemon(&words(
+            "/opt/bin/mxr daemon --instance mxr-demo"
+        )));
+
+        // The pid file established the profile; all this has to catch is the
+        // number having been handed to something else entirely.
+        assert!(!command_runs_a_daemon(&words("/usr/bin/vim notes.txt")));
+        assert!(!command_runs_a_daemon(&words("/opt/bin/mxr status")));
+        assert!(!command_runs_a_daemon(&words("/opt/bin/mxr")));
     }
 
     #[tokio::test]

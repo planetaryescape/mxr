@@ -5,6 +5,7 @@
 
 ### Bug Fixes
 
+* close the daemon-core races the retro review found ([#212](https://github.com/planetaryescape/mxr/issues/212)) ([8903d6f](https://github.com/planetaryescape/mxr/commit/8903d6fe18386b1c6c4220eae062082bcd3b53d9))
 * feed every demo wait iteration into the stall clock ([#211](https://github.com/planetaryescape/mxr/issues/211)) ([0aa5aa1](https://github.com/planetaryescape/mxr/commit/0aa5aa1fa4e3524f15f065ea9c68d2d8bc99e1e3))
 * keep a semantic index that never rebuilt from reading as fresh ([#210](https://github.com/planetaryescape/mxr/issues/210)) ([b0a1063](https://github.com/planetaryescape/mxr/commit/b0a1063aa1e4064c21659a35aebe68418a628b9b))
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.29](https://github.com/planetaryescape/mxr/compare/v0.6.28...v0.6.29) (2026-08-25)
+
+
+### Bug Fixes
+
+* satisfy Rust 1.98 Clippy in semantic blob decoding and TUI mutation tests ([b05b46d](https://github.com/planetaryescape/mxr/commit/b05b46d4c102400a437c6d7d8db6d8e4731d4f40))
+
 ## [0.6.28](https://github.com/planetaryescape/mxr/compare/v0.6.27...v0.6.28) (2026-08-24)
 
 

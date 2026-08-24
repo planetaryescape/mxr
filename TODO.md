@@ -1,6 +1,6 @@
 # mxr TODO
 
-Status: triaged on 2026-06-19 from `main`.
+Status: refreshed on 2026-08-24 against `v0.6.26` / `main`.
 
 This is a backlog index, not a sprint plan. Root TODO items stay here only when
 they are cross-cutting or not yet scoped. Once work is validated, move it into a
@@ -15,13 +15,27 @@ Status labels:
 - `Stale / archived` means the old item appears shipped or contradicted by
   current code/docs; evidence is linked inline.
 
+## Deferred Follow-ups Index
+
+Tracked plan: `docs/implementation/backlog-refresh-2026-08/plan.md`.
+Corrected assumptions: `docs/implementation/backlog-refresh-2026-08/build-log.md`.
+
+- T1.1: batch-op reversibility matrix and confirmation review.
+- T1.2: decide whether existing history/activity surfaces satisfy the action-history item.
+- T1.3: fix the UDS `stop_accepting` test flake.
+- T2.1: add or waive network-safe IMAP/SMTP live smoke; current script still emits `unavailable_no_live_smoke`.
+- T2.2: reconcile what `scripts/v1_launch_proof.sh` proves; it covers fake-provider behavior, not installation or real auth.
+- T2.3: clean-install verification for Homebrew, `install.sh`, tagged Cargo, and Gatekeeper notes.
+- T2.4: diagnostics/remediation copy audit against shipped CLI/web commands.
+- T3.1: VIPs remain browser-local; `docs/web-app.md` overstates the missing `useVips()` abstraction.
+- T3.2: Gmail native reply threading appears already preserved by provider lookup/cache; reconcile stale docs before proposing schema work.
+- T3.3/T3.4: in-process web bridge and `--format-version` exit codes remain evidence-gated.
+
 ## Validated
 
 ### Product and Docs Truth
 
-- [ ] Audit public docs for stale safety copy. `site/src/content/docs/guides/security-and-privacy.md` still lists first-party MCP server, read-only/draft-only agent modes, account-scoped permissions, send approval, and config-based risky-command blocking under "Not shipped yet", while MCP/config/agent docs and code show those exist. Evidence: `crates/mcp/src/lib.rs`, `site/src/content/docs/reference/mcp.md`, `site/src/content/docs/reference/config.md`, `site/src/content/docs/guides/for-agents.md`.
-- [ ] Make public pages explicit about what is shipped vs roadmap anywhere they imply a fully permissioned agent sandbox. Evidence: `site/src/content/docs/guides/for-agents.md` has current limits; `site/src/content/docs/guides/security-and-privacy.md` is stale.
-- [ ] Decide whether the landing page provider line "tested with Fastmail, Migadu, Proton Bridge" should be backed by live evidence docs or softened. Evidence: `site/src/content/docs/index.mdx` claims tested providers, while `scripts/live_provider_smoke_evidence.sh` still emits `unavailable_no_live_smoke` for IMAP/SMTP when creds exist but no network-safe live smoke is committed.
+- [ ] Make public pages explicit about what is shipped vs roadmap anywhere they imply a fully permissioned agent sandbox. Evidence: `site/src/content/docs/guides/for-agents.md` has current limits; `site/src/content/docs/guides/security-and-privacy.md` should stay aligned with those limits.
 
 ### Core Operability
 
@@ -40,7 +54,6 @@ Status labels:
 
 - [ ] Keep install paths polished: Homebrew, cargo-from-tag, release binaries, and Gatekeeper docs. Evidence: README install section and `docs/blueprint/17-release-pipeline.md`.
 - [ ] Test clean macOS and Linux installs before launch; publish pass/fail notes.
-- [ ] Record release assets: canonical terminal demo, short inbox-triage/meeting-prep/CI-cleanup demos, and screenshots/GIFs for CLI + TUI + daemon + HTML fallback.
 - [ ] Prepare launch assets: announcement/HN/Reddit copy, screenshots, and concise feature bullets.
 - [ ] Write a conformance-suite post or section as a proof asset, based on existing conformance docs.
 
@@ -55,6 +68,9 @@ Status labels:
 
 ## Stale or Archived
 
+- [x] Security & Privacy no longer has the stale "Not shipped yet" safety-copy section. Evidence: `site/src/content/docs/guides/security-and-privacy.md` documents MCP/agent permission profiles as shipped; `site/src/content/docs/reference/mcp.md`, `site/src/content/docs/reference/config.md`, `site/src/content/docs/guides/for-agents.md`, and `crates/mcp/src/lib.rs` describe the shipped surfaces.
+- [x] The exact landing page "tested with Fastmail, Migadu, Proton Bridge" claim is gone. Evidence: `site/src/content/docs/index.mdx` now says Gmail/Outlook/any IMAP/SMTP; provider examples live in `site/src/content/docs/getting-started/imap-smtp-setup.md`. IMAP/SMTP live proof remains open in T2.1 because `scripts/live_provider_smoke_evidence.sh` still emits `unavailable_no_live_smoke`.
+- [x] Release demo assets exist. Evidence: `site/public/mxr-demo.webm`, `site/public/mxr-tui.webm`, `site/public/mxr-agent.webm`, `site/public/mxr-demo-poster.jpg`, `site/public/mxr-tui-poster.jpg`, `site/public/mxr-agent-poster.jpg`, and `site/public/og.png`.
 - [x] First-party MCP server, CLI+MCP agent contract, and MCP tools shipped. Evidence: `crates/mcp/src/lib.rs`, `crates/mcp/Cargo.toml`, `site/src/content/docs/reference/mcp.md`, `docs/implementation/v1-agent-mcp-gmail-launch/build-log.md`.
 - [x] Agent read-only/draft-only profiles, account allowlists, send gates, destructive gates, activity origins, and dry-run requirements are documented/shipped. Evidence: `site/src/content/docs/reference/config.md`, `site/src/content/docs/guides/for-agents.md`, `crates/config/src/types.rs`.
 - [x] Provider and interface capability matrices exist. Evidence: `site/src/content/docs/guides/why-mxr.md`.
@@ -63,10 +79,10 @@ Status labels:
 - [x] Conformance suite is mentioned on site/docs. Evidence: `site/src/content/docs/index.mdx`, `site/src/content/docs/reference/conformance.md`.
 - [x] Concrete agent workflows and examples exist in docs. Evidence: `site/src/content/docs/index.mdx`, `site/src/content/docs/guides/for-agents.md`.
 - [x] IMAP+SMTP setup is documented as first-party. Evidence: README supported surfaces, `site/src/content/docs/getting-started/imap-smtp-setup.md`.
-- [x] Security & Privacy docs page exists, but needs stale-section audit. Evidence: `site/src/content/docs/guides/security-and-privacy.md`.
+- [x] Security & Privacy docs page exists. Evidence: `site/src/content/docs/guides/security-and-privacy.md`.
 - [x] Architecture root/docs/posts exist. Evidence: `ARCHITECTURE.md`, `site/src/content/docs/guides/architecture.md`, `docs/articles/why-local-first-daemon-backed-email.md`.
 - [x] Fast-start/demo path exists. Evidence: README `mxr demo`, `site/src/content/docs/getting-started/quick-start.md`, `docs/demo.tape`.
-- [x] Tested-provider list exists on landing/setup docs, but evidence backing needs audit. Evidence: `site/src/content/docs/index.mdx`, `site/src/content/docs/getting-started/imap-smtp-setup.md`.
+- [x] Tested-provider list exists on setup docs, but evidence backing needs audit through the T2.1 live-smoke follow-up. Evidence: `site/src/content/docs/getting-started/imap-smtp-setup.md`, `scripts/live_provider_smoke_evidence.sh`.
 
 ## Hygiene
 

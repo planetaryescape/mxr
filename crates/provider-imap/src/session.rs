@@ -1217,7 +1217,7 @@ pub mod mock {
     }
 
     pub(crate) struct MockSessionState {
-        pub(crate) fetch_queues_by_mailbox: HashMap<String, VecDeque<Vec<FetchedMessage>>>,
+        pub(crate) fetch_queues_by_mailbox: HashMap<String, VecDeque<Result<Vec<FetchedMessage>>>>,
         /// Per-mailbox UID set returned by `UID SEARCH ALL`. None means an empty
         /// set; tests opt in by inserting via `MockImapSessionFactory`.
         pub(crate) uid_search_results: HashMap<String, Vec<u32>>,
@@ -1344,11 +1344,11 @@ pub mod mock {
                 .clone()
                 .unwrap_or_else(|| "INBOX".to_string());
             let mut state = self.state.lock().unwrap();
-            Ok(state
+            state
                 .fetch_queues_by_mailbox
                 .get_mut(&mailbox)
                 .and_then(VecDeque::pop_front)
-                .unwrap_or_default())
+                .unwrap_or_else(|| Ok(Vec::new()))
         }
 
         async fn uid_search(&mut self, query: &str) -> Result<Vec<u32>> {
@@ -1491,6 +1491,7 @@ pub mod mock {
             folders: Vec<FolderInfo>,
         ) -> Self {
             let fetch_queues_by_mailbox = build_fetch_queues(&fetch_responses, &folders);
+            let uid_search_results = uid_search_results(&fetch_queues_by_mailbox);
             Self {
                 mailbox_info,
                 capabilities: ImapCapabilities::default(),
@@ -1501,7 +1502,7 @@ pub mod mock {
                 log: Arc::new(Mutex::new(CommandLog::default())),
                 state: Arc::new(Mutex::new(MockSessionState {
                     fetch_queues_by_mailbox,
-                    uid_search_results: HashMap::new(),
+                    uid_search_results,
                     append_uid: None,
                 })),
                 idle_trigger: None,
@@ -1561,11 +1562,32 @@ pub mod mock {
             mailbox: &str,
             responses: Vec<Vec<FetchedMessage>>,
         ) -> Self {
-            self.state
-                .lock()
-                .unwrap()
+            let uids = responses
+                .iter()
+                .flatten()
+                .map(|message| message.uid)
+                .collect();
+            let mut state = self.state.lock().unwrap();
+            state
                 .fetch_queues_by_mailbox
-                .insert(mailbox.to_string(), VecDeque::from(responses));
+                .insert(mailbox.to_string(), responses.into_iter().map(Ok).collect());
+            state.uid_search_results.insert(mailbox.to_string(), uids);
+            drop(state);
+            self
+        }
+
+        pub fn with_mailbox_fetch_results(
+            self,
+            mailbox: &str,
+            uids: Vec<u32>,
+            responses: Vec<Result<Vec<FetchedMessage>>>,
+        ) -> Self {
+            let mut state = self.state.lock().unwrap();
+            state
+                .fetch_queues_by_mailbox
+                .insert(mailbox.to_string(), responses.into());
+            state.uid_search_results.insert(mailbox.to_string(), uids);
+            drop(state);
             self
         }
 
@@ -1618,7 +1640,7 @@ pub mod mock {
     pub(crate) fn build_fetch_queues(
         fetch_responses: &[Vec<FetchedMessage>],
         folders: &[FolderInfo],
-    ) -> HashMap<String, VecDeque<Vec<FetchedMessage>>> {
+    ) -> HashMap<String, VecDeque<Result<Vec<FetchedMessage>>>> {
         let sync_mailboxes = folders
             .iter()
             .filter(|folder| folder.special_use.as_deref() != Some("\\All"))
@@ -1635,7 +1657,7 @@ pub mod mock {
         if mailbox_names.len() == 1 {
             queues.insert(
                 mailbox_names[0].clone(),
-                fetch_responses.iter().cloned().collect(),
+                fetch_responses.iter().cloned().map(Ok).collect(),
             );
             return queues;
         }
@@ -1645,17 +1667,36 @@ pub mod mock {
                 .into_iter()
                 .zip(fetch_responses.iter().cloned())
             {
-                queues.insert(mailbox, VecDeque::from(vec![response]));
+                queues.insert(mailbox, VecDeque::from(vec![Ok(response)]));
             }
             return queues;
         }
 
         let mut fallback = VecDeque::new();
         for response in fetch_responses.iter().cloned() {
-            fallback.push_back(response);
+            fallback.push_back(Ok(response));
         }
         queues.insert("INBOX".to_string(), fallback);
         queues
+    }
+
+    fn uid_search_results(
+        queues: &HashMap<String, VecDeque<Result<Vec<FetchedMessage>>>>,
+    ) -> HashMap<String, Vec<u32>> {
+        queues
+            .iter()
+            .map(|(mailbox, responses)| {
+                let mut uids = responses
+                    .iter()
+                    .filter_map(|response| response.as_ref().ok())
+                    .flatten()
+                    .map(|message| message.uid)
+                    .collect::<Vec<_>>();
+                uids.sort_unstable();
+                uids.dedup();
+                (mailbox.clone(), uids)
+            })
+            .collect()
     }
 }
 
@@ -1692,6 +1733,21 @@ mod tests {
         assert!(command_timeout_error("SELECT", COMMAND_TIMEOUT).is_timeout());
         assert!(!ImapProviderError::Connection("refused".into()).is_timeout());
         assert!(!ImapProviderError::protocol_detail("NO go away").is_timeout());
+    }
+
+    #[tokio::test]
+    async fn short_fetch_literal_is_classified_as_a_malformed_response() {
+        let response = b"* 1 FETCH (BODY[] {4}\r\nabcdef FLAGS (\\Seen) UID 1)\r\nA0001 OK FETCH completed\r\n";
+        let transport = futures::io::Cursor::new(response.to_vec());
+        let mut client = async_imap::Client::new(transport);
+        let error = client
+            .read_response()
+            .await
+            .expect("the response should produce one parser result")
+            .expect_err("the literal is two bytes longer than announced");
+        let error = ImapProviderError::fetch_detail(error.to_string());
+
+        assert!(error.is_malformed_fetch_response());
     }
 
     /// APPEND's deadline scales with upload size so large-but-progressing

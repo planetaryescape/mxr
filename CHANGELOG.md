@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.27](https://github.com/planetaryescape/mxr/compare/v0.6.26...v0.6.27) (2026-08-24)
+
+
+### Bug Fixes
+
+* isolate malformed IMAP FETCH responses so one bad Domino message no longer aborts initial sync ([#216](https://github.com/planetaryescape/mxr/issues/216)) ([e2b66e4](https://github.com/planetaryescape/mxr/commit/e2b66e48a2f1a35703b54ea026028a7ecedd932b))
+
+
+### Documentation
+
+* clarify that IMAP IDLE, Reply-To, and Gmail reply threading are shipped while `--format-version` remains deferred ([efa3a12](https://github.com/planetaryescape/mxr/commit/efa3a129f2e17d15bf89e5ad546d2860663ff95a), [dc5b543](https://github.com/planetaryescape/mxr/commit/dc5b543229e59fa8b2c8a19f1dd99840d18c10c7))
+
 ## [0.6.26](https://github.com/planetaryescape/mxr/compare/v0.6.25...v0.6.26) (2026-08-20)
 
 

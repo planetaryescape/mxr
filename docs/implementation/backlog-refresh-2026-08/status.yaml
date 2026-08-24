@@ -9,8 +9,8 @@ tasks:
     attempts: 1
     assigned_model: gpt-5.5
     worktree: /tmp/mxr-review-216.gj6259
-    last_result: implementation committed as efb68d17; adversarial review running
-    review_result: pending
+    last_result: implementation efb68d17 passed both review rounds and validation
+    review_result: review_green; merge and release pending
   task-001:
     status: ready
     attempts: 0

@@ -28,3 +28,19 @@
 ### Worker knowledge protocol
 
 Every worker reports false assumptions, failed approaches, and transferable learnings. The host sends applicable findings to concurrent and downstream workers before they continue.
+
+## 2026-08-24 — Issue 216 adversarial review, round 1
+
+- Initial review raised cursor advance as possible silent loss and noted Gmail All Mail bypasses the recovery helper.
+- Adversarial follow-up rejected cursor flooring: Domino's isolated UIDs remain unframeable, so flooring would retry and refetch from the first bad UID forever. Advancing is intentional quarantine-by-skip for this failure class.
+- Gmail All Mail remains a documented residual gap, not a blocker: the reported Domino server has no `X-GM-EXT-1`, and widening the patch lacks reproduction evidence.
+- Final GPT-5.5 recommendation: approve for the scoped Domino initial-sync failure.
+- Transferable rule: distinguish “response framed, local mapping failed” (floor cursor and retry) from “server response cannot be framed even in isolation” (skip to contain blast radius unless a persisted retry/quarantine policy exists).
+
+## 2026-08-24 — Issue 216 GPT-5.6-sol review
+
+- Reviewed all three changed files plus fetch callers, cursor persistence, QRESYNC/CONDSTORE paths, mock changes, and the real async-imap parser regression.
+- No material findings for the scoped Domino path.
+- Residual gap: Gmail All Mail initial/backfill still has a separate direct fetch path. It is intentionally unchanged because the reported server has no Gmail extension and no reproduction supports widening this patch.
+- Validation: 115 unit + 8 integration + 3 smoke tests passed; provider clippy passed with `-D warnings`; `cargo build -p mxr` passed with the existing `process_probe.rs` unfulfilled-lint warning; diff check passed.
+- Review state: green. Merge, versioned release, and install-channel verification remain.

@@ -128,10 +128,6 @@ fn split_environment_entries(text: &str) -> Vec<String> {
     entries
 }
 
-#[cfg_attr(
-    all(target_os = "linux", not(test)),
-    expect(dead_code, reason = "used by the non-procfs environment probe")
-)]
 fn starts_environment_entry(word: &str) -> bool {
     let Some((name, _)) = word.split_once('=') else {
         return false;

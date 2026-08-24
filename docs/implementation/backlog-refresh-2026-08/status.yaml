@@ -10,17 +10,21 @@ tasks:
     assigned_model: gpt-5.5
     worktree: /tmp/mxr-review-216.gj6259
     last_result: implementation efb68d17 passed both review rounds and validation
-    review_result: review_green; merge and release pending
+    review_result: review_green; integrated at e2b66e48; release pending
   task-001:
-    status: ready
-    attempts: 0
+    status: in_progress
+    attempts: 1
     assigned_model: gpt-5.5
-    review_result: pending
+    worktree: /home/bk/code/planetaryescape/.pe-tasker-worktrees/mxr/backlog-refresh-2026-08/task-001
+    last_result: integrated at 233a26b5 after both review rounds passed
+    review_result: review_green; merge distribution pending
   task-002:
-    status: ready
-    attempts: 0
+    status: in_progress
+    attempts: 2
     assigned_model: gpt-5.5
-    review_result: pending
+    worktree: /home/bk/code/planetaryescape/.pe-tasker-worktrees/mxr/backlog-refresh-2026-08/task-002
+    last_result: integrated at efa3a129 and dc5b5432 after one review iteration
+    review_result: review_green; merge distribution pending
   task-003: {status: pending, attempts: 0}
   task-004: {status: pending, attempts: 0}
   task-005: {status: pending, attempts: 0}

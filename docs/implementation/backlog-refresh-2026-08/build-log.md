@@ -44,3 +44,15 @@ Every worker reports false assumptions, failed approaches, and transferable lear
 - Residual gap: Gmail All Mail initial/backfill still has a separate direct fetch path. It is intentionally unchanged because the reported server has no Gmail extension and no reproduction supports widening this patch.
 - Validation: 115 unit + 8 integration + 3 smoke tests passed; provider clippy passed with `-D warnings`; `cargo build -p mxr` passed with the existing `process_probe.rs` unfulfilled-lint warning; diff check passed.
 - Review state: green. Merge, versioned release, and install-channel verification remain.
+
+## 2026-08-24 — Phase 0 implementation and adversarial review
+
+- Task 001 refreshed `TODO.md` at worker commit `076283bd`; integrated as `233a26b5`.
+- Both review rounds found no material issue. Shipped items have code/file evidence; live IMAP/SMTP proof remains open.
+- Task 002 reconciled shipped addendum items at worker commit `b573437b`.
+- The first adversarial pass found that the format-version bullet was only implicitly deferred under a mixed-status heading.
+- The worker made the status explicit at `82c46bb4`; integrated as `efa3a129` plus `dc5b5432`.
+- The GPT-5.6-sol pass checked IDLE, Reply-To, and Gmail reply-thread claims against provider, parser, daemon-loop, and draft-cache code. No further findings.
+- `/typescript-reviewer` was correctly skipped: both task diffs are Markdown-only. Each worker ran `/simplify` and `git diff --check`.
+- Transferable rule: a mixed shipped/deferred list needs status on every bullet; heading context is not enough.
+- Phase 0 remains in progress until the commits reach `main`; repository docs have no separate Vercel artifact.

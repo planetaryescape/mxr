@@ -1,0 +1,154 @@
+feature: backlog-refresh-2026-08
+
+phases:
+  preflight:
+    title: Ship the existing Domino sync fix
+    tasks: [task-000]
+  phase-000:
+    title: Restore backlog truth
+    tasks: [task-001, task-002]
+  phase-001:
+    title: Trust and correctness
+    tasks: [task-003, task-004, task-005]
+  phase-002:
+    title: Launch proof and operability
+    tasks: [task-006, task-007, task-009, task-008]
+  phase-003:
+    title: Demand-gated platform work
+    tasks: [task-010, task-011, task-012]
+  phase-004:
+    title: Outreach gate
+    tasks: [task-013]
+
+tasks:
+  task-000:
+    title: Review, merge, release, and install-verify issue 216
+    phase: preflight
+    depends_on: []
+    status: in_progress
+    executor_type: frontier_model
+    lane: frontier
+    risk: high
+  task-001:
+    title: Refresh TODO.md against current code truth
+    phase: phase-000
+    depends_on: []
+    status: ready
+    executor_type: frontier_model
+    lane: frontier
+    risk: low
+  task-002:
+    title: Reconcile stale addendum follow-ups
+    phase: phase-000
+    depends_on: []
+    status: ready
+    executor_type: frontier_model
+    lane: frontier
+    risk: low
+  task-003:
+    title: Document batch-operation reversibility and confirmation matrix
+    phase: phase-001
+    depends_on: [task-001, task-002]
+    status: pending
+    executor_type: frontier_model
+    lane: frontier
+    risk: low
+  task-004:
+    title: Decide whether existing history/activity surfaces satisfy action history
+    phase: phase-001
+    depends_on: [task-001, task-002]
+    status: pending
+    executor_type: frontier_model
+    lane: frontier
+    risk: low
+  task-005:
+    title: Remove the UDS stop_accepting test race
+    phase: phase-001
+    depends_on: [task-001, task-002]
+    status: pending
+    executor_type: frontier_model
+    lane: frontier
+    risk: low
+  task-006:
+    title: Decide and implement-or-waive live IMAP/SMTP smoke
+    phase: phase-002
+    depends_on: [task-000, task-003, task-004, task-005]
+    status: pending
+    executor_type: frontier_model
+    lane: frontier
+    risk: medium
+  task-007:
+    title: Reconcile deterministic end-to-end proof claims and coverage
+    phase: phase-002
+    depends_on: [task-006]
+    status: pending
+    executor_type: frontier_model
+    lane: frontier
+    risk: medium
+  task-009:
+    title: Audit diagnostics and remediation copy
+    phase: phase-002
+    depends_on: [task-003, task-004, task-005]
+    status: pending
+    executor_type: frontier_model
+    lane: frontier
+    risk: low
+  task-008:
+    title: Verify clean Linux and macOS installs after the Phase 2 release
+    phase: phase-002
+    depends_on: [task-007, task-009]
+    status: pending
+    executor_type: human_and_shell
+    lane: shell
+    risk: medium
+  task-010:
+    title: Decide whether daemon-stored VIPs solve a current user problem
+    phase: phase-003
+    depends_on: [task-008]
+    status: blocked
+    executor_type: human
+    lane: human
+    risk: medium
+  task-011:
+    title: Profile before considering an in-process web bridge
+    phase: phase-003
+    depends_on: [task-008]
+    status: blocked
+    executor_type: human
+    lane: human
+    risk: medium
+  task-012:
+    title: Wait for a consumer before adding format-version exit codes
+    phase: phase-003
+    depends_on: [task-008]
+    status: blocked
+    executor_type: human
+    lane: human
+    risk: medium
+  task-013:
+    title: Decide whether active outreach needs new launch assets
+    phase: phase-004
+    depends_on: [task-008]
+    status: blocked
+    executor_type: human
+    lane: human
+    risk: low
+
+parallelism:
+  - [task-000, task-001, task-002]
+  - [task-003, task-004, task-005]
+  - [task-006, task-009]
+
+serialization:
+  - tasks: [task-006, task-007]
+    reason: shared live-smoke scripts, workflows, and launch-proof docs
+  - tasks: [task-010, task-011]
+    reason: both would touch web bridge contracts if approved
+
+lanes:
+  frontier:
+    concurrency: 3
+  shell:
+    concurrency: 2
+  human:
+    concurrency: 1

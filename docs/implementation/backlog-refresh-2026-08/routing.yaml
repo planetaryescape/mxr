@@ -1,0 +1,35 @@
+feature: backlog-refresh-2026-08
+
+defaults:
+  implementation_model:
+    provider: openai-codex
+    model: gpt-5.5
+    reason: requested Opus 5 is unavailable in this runtime; use the subscription frontier worker
+  final_review_model:
+    provider: openai-codex
+    model: gpt-5.6-sol
+  max_attempts_before_escalation: 3
+
+skills:
+  every_diff:
+    - mxr-development
+    - simplify
+  typescript_contract_or_tooling_only:
+    - typescript-reviewer
+  review:
+    - code-review
+
+worker_report_required:
+  - commit_and_changed_files
+  - validation_results
+  - assumptions_that_proved_false
+  - failed_approaches
+  - transferable_learnings
+  - downstream_risks
+
+integration_policy:
+  - no_worker_self_merge
+  - adversarial_review_green
+  - fresh_context_gpt_5_6_sol_review_green
+  - deterministic_validation_green
+  - production_deployment_verified_before_phase_complete

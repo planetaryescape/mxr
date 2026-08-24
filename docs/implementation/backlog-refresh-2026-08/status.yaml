@@ -1,0 +1,34 @@
+feature: backlog-refresh-2026-08
+current_phase: preflight
+tracker_state: active
+last_reconciled: 2026-08-24
+base_commit: f4bed17b62e1dae74363476cb7342e80046e6940
+tasks:
+  task-000:
+    status: in_progress
+    attempts: 1
+    assigned_model: gpt-5.5
+    worktree: /tmp/mxr-review-216.gj6259
+    last_result: implementation committed as efb68d17; adversarial review running
+    review_result: pending
+  task-001:
+    status: ready
+    attempts: 0
+    assigned_model: gpt-5.5
+    review_result: pending
+  task-002:
+    status: ready
+    attempts: 0
+    assigned_model: gpt-5.5
+    review_result: pending
+  task-003: {status: pending, attempts: 0}
+  task-004: {status: pending, attempts: 0}
+  task-005: {status: pending, attempts: 0}
+  task-006: {status: pending, attempts: 0}
+  task-007: {status: pending, attempts: 0}
+  task-008: {status: pending, attempts: 0}
+  task-009: {status: pending, attempts: 0}
+  task-010: {status: blocked, attempts: 0, review_result: demand_not_validated}
+  task-011: {status: blocked, attempts: 0, review_result: measurement_missing}
+  task-012: {status: blocked, attempts: 0, review_result: consumer_missing}
+  task-013: {status: blocked, attempts: 0, review_result: outreach_not_requested}

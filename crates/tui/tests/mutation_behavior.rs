@@ -210,7 +210,7 @@ fn star_reverts_when_reconciliation_fails() {
     // does when sending the mutation to the daemon). Capture the
     // mutation's ID — in production the daemon echoes this ID back when
     // it cannot reconcile the change with the provider.
-    let drained: Vec<_> = app.pending_mutation_queue.drain(..).collect();
+    let drained = std::mem::take(&mut app.pending_mutation_queue);
     assert_eq!(drained.len(), 1, "exactly one mutation was queued");
     let mutation_id: MutationId = drained[0].id;
 

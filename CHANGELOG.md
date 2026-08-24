@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.28](https://github.com/planetaryescape/mxr/compare/v0.6.27...v0.6.28) (2026-08-24)
+
+
+### Bug Fixes
+
+* remove a stale Linux dead-code expectation so full `-D warnings` Clippy runs stay green ([936f86a](https://github.com/planetaryescape/mxr/commit/936f86a4c7714c6455ae27cdee02197da4f5e756))
+
 ## [0.6.27](https://github.com/planetaryescape/mxr/compare/v0.6.26...v0.6.27) (2026-08-24)
 
 

@@ -745,7 +745,7 @@ use_tls = true
 
 ### v1 shipped/deferred status
 
-- Notmuch-style `--format-version=N` exit codes 20/21 for JSON contract versioning.
+- Notmuch-style `--format-version=N` exit codes 20/21 for JSON contract versioning remain deferred.
 - IMAP `IDLE` wiring is shipped. `MailSyncProvider::idle_watch` is the provider hook (`crates/core/src/provider.rs:89`), `crates/provider-imap` opens a dedicated RFC 2177 watcher when the server advertises IDLE (`crates/provider-imap/src/lib.rs:1144`, `crates/provider-imap/src/session.rs:469`), and the daemon IDLE loop wakes the account sync loop early (`crates/daemon/src/loops.rs:826`, `crates/daemon/src/loops.rs:990`). Servers without IDLE still poll.
 - `Reply-To:` preference is shipped. `mxr-mail-parse` stores `Reply-To:` in `MessageMetadata.reply_to` (`crates/core/src/types.rs:934`, `crates/mail-parse/src/lib.rs:483`), and `prepare_reply` uses the first Reply-To address before falling back to `From:` (`crates/daemon/src/handler/mutations.rs:2383`).
 - Gmail provider-native reply threading is shipped through provider lookup plus draft cache. When a reply draft lacks `ReplyHeaders.thread_id`, the Gmail provider resolves it from the parent `In-Reply-To` with an `rfc822msgid:` lookup (`crates/core/src/provider.rs:157`, `crates/provider-gmail/src/provider.rs:862`), sends/drafts with Gmail's `threadId` (`crates/provider-gmail/src/client.rs:616`), and the daemon caches the accepted thread id on the local draft (`crates/daemon/src/handler/mutations.rs:3195`, `crates/daemon/src/handler/mutations.rs:3222`). Do not add an `Envelope.provider_thread_id` migration unless real off-thread replies, lookup cost, or quota pressure proves this path insufficient.

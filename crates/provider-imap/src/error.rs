@@ -14,6 +14,10 @@ pub enum ImapProviderError {
     Parse(String),
     #[error("Fetch error: {0}")]
     Fetch(String),
+    #[error(
+        "Fetch error: IMAP server returned a response mxr could not parse. This looks like a server compatibility issue, not necessarily a bad username or password."
+    )]
+    MalformedFetchResponse,
     /// A command exceeded its deadline. Distinguished from `Connection`
     /// because a timeout leaves the connection in an unknown protocol
     /// state: callers that tolerate other errors by issuing further
@@ -33,13 +37,24 @@ impl ImapProviderError {
     }
 
     pub(crate) fn fetch_detail(detail: impl Into<String>) -> Self {
-        Self::Fetch(sanitize_imap_detail(&detail.into()))
+        let detail = detail.into();
+        if is_imap_parse_detail(&detail) {
+            Self::MalformedFetchResponse
+        } else {
+            Self::Fetch(sanitize_imap_detail(&detail))
+        }
     }
 
     /// True when the underlying connection may be mid-response and must
     /// not be reused for further commands.
     pub fn is_timeout(&self) -> bool {
         matches!(self, Self::Timeout(_))
+    }
+
+    /// True when a FETCH response could not be framed by the IMAP parser.
+    /// The connection is desynchronised and must be discarded before retrying.
+    pub fn is_malformed_fetch_response(&self) -> bool {
+        matches!(self, Self::MalformedFetchResponse)
     }
 }
 
@@ -57,6 +72,11 @@ fn sanitize_imap_detail(detail: &str) -> String {
     detail.to_string()
 }
 
+fn is_imap_parse_detail(detail: &str) -> bool {
+    let lower = detail.to_ascii_lowercase();
+    lower.contains("during parsing of") || lower.contains("input: [")
+}
+
 impl From<ImapProviderError> for mxr_core::error::MxrError {
     fn from(e: ImapProviderError) -> Self {
         Self::Provider(e.to_string())
@@ -65,7 +85,7 @@ impl From<ImapProviderError> for mxr_core::error::MxrError {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_imap_detail;
+    use super::{sanitize_imap_detail, ImapProviderError};
 
     #[test]
     fn namespace_parse_errors_are_sanitized_for_users() {
@@ -82,5 +102,15 @@ mod tests {
         let sanitized = sanitize_imap_detail(detail);
         assert!(sanitized.contains("could not parse"));
         assert!(!sanitized.contains("[1, 2, 3]"));
+    }
+
+    #[test]
+    fn fetch_parse_errors_are_distinguishable_for_connection_recovery() {
+        let error = ImapProviderError::fetch_detail(
+            "io: Error(Error { input: [1, 2, 3], code: Tag }) during parsing of fetch",
+        );
+
+        assert!(error.is_malformed_fetch_response());
+        assert!(!error.to_string().contains("[1, 2, 3]"));
     }
 }

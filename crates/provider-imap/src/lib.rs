@@ -29,6 +29,7 @@ use tracing::{debug, warn};
 use crate::types::{FolderInfo, ImapCapabilities};
 
 const IMAP_FOLDER_SYNC_CONCURRENCY_LIMIT: usize = 4;
+const IMAP_FETCH_UID_BATCH_SIZE: usize = 100;
 const GMAIL_ALL_MAIL_SYNC_PAGE_UID_SPAN: u32 = 500;
 
 struct InitialFolderSyncResult {
@@ -269,45 +270,115 @@ impl ImapProvider {
         format!("(FLAGS INTERNALDATE BODY.PEEK[] RFC822.SIZE) (CHANGEDSINCE {modseq})")
     }
 
-    async fn collect_synced_messages(
-        session: &mut dyn session::ImapSession,
-        request: CollectSyncedMessages<'_>,
-    ) -> mxr_core::provider::Result<()> {
-        let CollectSyncedMessages {
-            mailbox,
-            uid_set,
-            query,
-            min_uid,
-            seen_uids,
-            account_id,
-            synced,
-            min_failed_uid,
-        } = request;
-
-        let fetched = session
-            .uid_fetch(uid_set, query)
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-
-        for msg in &fetched {
-            if msg.uid < min_uid || !seen_uids.insert(msg.uid) {
+    fn append_fetched_messages(
+        fetched: &[types::FetchedMessage],
+        request: &mut CollectSyncedMessages<'_>,
+    ) {
+        for msg in fetched {
+            if msg.uid < request.min_uid || !request.seen_uids.insert(msg.uid) {
                 continue;
             }
-            match parse::imap_fetch_to_synced_message(msg, mailbox, account_id) {
-                Ok(sm) => synced.push(sm),
+            match parse::imap_fetch_to_synced_message(msg, request.mailbox, request.account_id) {
+                Ok(sm) => request.synced.push(sm),
                 Err(e) => {
                     warn!(
-                        mailbox = %mailbox,
+                        mailbox = %request.mailbox,
                         uid = msg.uid,
                         error = %e,
                         "Failed to parse IMAP message"
                     );
-                    *min_failed_uid = Some(min_failed_uid.map_or(msg.uid, |u| u.min(msg.uid)));
+                    *request.min_failed_uid = Some(
+                        request
+                            .min_failed_uid
+                            .map_or(msg.uid, |uid| uid.min(msg.uid)),
+                    );
                 }
             }
         }
+    }
 
-        Ok(())
+    async fn selected_session(
+        &self,
+        mailbox: &str,
+        capabilities: &ImapCapabilities,
+    ) -> mxr_core::provider::Result<Box<dyn session::ImapSession>> {
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        Self::enable_session(&mut *session, capabilities).await?;
+        session
+            .select(mailbox)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        Ok(session)
+    }
+
+    async fn collect_synced_messages(
+        &self,
+        mut session: Box<dyn session::ImapSession>,
+        capabilities: &ImapCapabilities,
+        mut request: CollectSyncedMessages<'_>,
+    ) -> mxr_core::provider::Result<Box<dyn session::ImapSession>> {
+        match session.uid_fetch(request.uid_set, request.query).await {
+            Ok(fetched) => {
+                Self::append_fetched_messages(&fetched, &mut request);
+                return Ok(session);
+            }
+            Err(error) if error.is_malformed_fetch_response() => {
+                warn!(
+                    mailbox = %request.mailbox,
+                    uid_set = %request.uid_set,
+                    "IMAP FETCH response was malformed; reconnecting to isolate the bad message"
+                );
+            }
+            Err(error) => return Err(mxr_core::error::MxrError::from(error)),
+        }
+
+        // A framing error leaves unread body bytes in the parser buffer. Drop
+        // the socket before doing anything else so they cannot be interpreted
+        // as responses to the recovery commands.
+        drop(session);
+        let mut session = self.selected_session(request.mailbox, capabilities).await?;
+        let mut uids = session
+            .uid_search(&format!("UID {}", request.uid_set))
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        uids.sort_unstable();
+        uids.dedup();
+
+        if uids.is_empty() {
+            warn!(
+                mailbox = %request.mailbox,
+                uid_set = %request.uid_set,
+                "No messages remained after reconnecting from malformed IMAP FETCH"
+            );
+            return Ok(session);
+        }
+
+        let mut skipped_uids = Vec::new();
+        for uid in uids {
+            match session.uid_fetch(&uid.to_string(), request.query).await {
+                Ok(fetched) => Self::append_fetched_messages(&fetched, &mut request),
+                Err(error) if error.is_malformed_fetch_response() => {
+                    skipped_uids.push(uid);
+                    drop(session);
+                    session = self.selected_session(request.mailbox, capabilities).await?;
+                }
+                Err(error) => return Err(mxr_core::error::MxrError::from(error)),
+            }
+        }
+
+        if !skipped_uids.is_empty() {
+            warn!(
+                mailbox = %request.mailbox,
+                ?skipped_uids,
+                "Skipped messages whose IMAP literal lengths were malformed"
+            );
+        }
+
+        Ok(session)
     }
 
     async fn delete_selected_message(
@@ -502,25 +573,36 @@ impl ImapProvider {
         let mut synced = Vec::new();
         let mut min_failed_uid = None;
         if mailbox_info.exists > 0 {
-            let fetched = session
-                .uid_fetch("1:*", Self::imap_fetch_query())
+            let mut uids = session
+                .uid_search("ALL")
                 .await
                 .map_err(mxr_core::error::MxrError::from)?;
+            uids.sort_unstable();
+            uids.dedup();
+            let mut seen_uids = HashSet::new();
 
-            for msg in &fetched {
-                match parse::imap_fetch_to_synced_message(msg, &folder.name, &self.account_id) {
-                    Ok(sm) => synced.push(sm),
-                    Err(e) => {
-                        warn!(
-                            mailbox = %folder.name,
-                            uid = msg.uid,
-                            error = %e,
-                            "Failed to parse IMAP message"
-                        );
-                        min_failed_uid =
-                            Some(min_failed_uid.map_or(msg.uid, |u: u32| u.min(msg.uid)));
-                    }
-                }
+            for uids in uids.chunks(IMAP_FETCH_UID_BATCH_SIZE) {
+                let uid_set = uids
+                    .iter()
+                    .map(u32::to_string)
+                    .collect::<Vec<_>>()
+                    .join(",");
+                session = self
+                    .collect_synced_messages(
+                        session,
+                        &capabilities,
+                        CollectSyncedMessages {
+                            mailbox: &folder.name,
+                            uid_set: &uid_set,
+                            query: Self::imap_fetch_query(),
+                            min_uid: 1,
+                            seen_uids: &mut seen_uids,
+                            account_id: &self.account_id,
+                            synced: &mut synced,
+                            min_failed_uid: &mut min_failed_uid,
+                        },
+                    )
+                    .await?;
             }
         }
         Self::floor_uid_next_to_failed(&mut mailbox, min_failed_uid);
@@ -826,20 +908,22 @@ impl ImapProvider {
                 1
             };
             let mut seen_uids = HashSet::new();
-            Self::collect_synced_messages(
-                &mut *session,
-                CollectSyncedMessages {
-                    mailbox: &all_mail.name,
-                    uid_set: &uid_set,
-                    query: Self::gmail_fetch_query(),
-                    min_uid,
-                    seen_uids: &mut seen_uids,
-                    account_id: &self.account_id,
-                    synced: &mut synced,
-                    min_failed_uid: &mut min_failed_uid,
-                },
-            )
-            .await?;
+            session = self
+                .collect_synced_messages(
+                    session,
+                    &capabilities,
+                    CollectSyncedMessages {
+                        mailbox: &all_mail.name,
+                        uid_set: &uid_set,
+                        query: Self::gmail_fetch_query(),
+                        min_uid,
+                        seen_uids: &mut seen_uids,
+                        account_id: &self.account_id,
+                        synced: &mut synced,
+                        min_failed_uid: &mut min_failed_uid,
+                    },
+                )
+                .await?;
         }
         Self::floor_uid_next_to_failed(&mut mailbox, min_failed_uid);
 
@@ -907,20 +991,22 @@ impl ImapProvider {
                                     .map(u32::to_string)
                                     .collect::<Vec<_>>()
                                     .join(",");
-                                Self::collect_synced_messages(
-                                    &mut *session,
-                                    CollectSyncedMessages {
-                                        mailbox: &folder.name,
-                                        uid_set: &uid_set,
-                                        query: Self::imap_fetch_query(),
-                                        min_uid: 1,
-                                        seen_uids: &mut seen_uids,
-                                        account_id: &self.account_id,
-                                        synced: &mut synced,
-                                        min_failed_uid: &mut min_failed_uid,
-                                    },
-                                )
-                                .await?;
+                                session = self
+                                    .collect_synced_messages(
+                                        session,
+                                        &capabilities,
+                                        CollectSyncedMessages {
+                                            mailbox: &folder.name,
+                                            uid_set: &uid_set,
+                                            query: Self::imap_fetch_query(),
+                                            min_uid: 1,
+                                            seen_uids: &mut seen_uids,
+                                            account_id: &self.account_id,
+                                            synced: &mut synced,
+                                            min_failed_uid: &mut min_failed_uid,
+                                        },
+                                    )
+                                    .await?;
                             }
                             response.mailbox
                         }
@@ -980,20 +1066,22 @@ impl ImapProvider {
                     let changed_since_query = Self::fetch_query_for_changed_since(
                         old_mailbox.highest_modseq.expect("checked is_some"),
                     );
-                    Self::collect_synced_messages(
-                        &mut *session,
-                        CollectSyncedMessages {
-                            mailbox: &folder.name,
-                            uid_set: "1:*",
-                            query: &changed_since_query,
-                            min_uid: 1,
-                            seen_uids: &mut seen_uids,
-                            account_id: &self.account_id,
-                            synced: &mut synced,
-                            min_failed_uid: &mut min_failed_uid,
-                        },
-                    )
-                    .await?;
+                    session = self
+                        .collect_synced_messages(
+                            session,
+                            &capabilities,
+                            CollectSyncedMessages {
+                                mailbox: &folder.name,
+                                uid_set: "1:*",
+                                query: &changed_since_query,
+                                min_uid: 1,
+                                seen_uids: &mut seen_uids,
+                                account_id: &self.account_id,
+                                synced: &mut synced,
+                                min_failed_uid: &mut min_failed_uid,
+                            },
+                        )
+                        .await?;
                 }
             }
         }
@@ -1072,20 +1160,22 @@ impl ImapProvider {
                 _ => 1,
             };
 
-            Self::collect_synced_messages(
-                &mut *session,
-                CollectSyncedMessages {
-                    mailbox: &folder.name,
-                    uid_set: &query,
-                    query: Self::imap_fetch_query(),
-                    min_uid,
-                    seen_uids: &mut seen_uids,
-                    account_id: &self.account_id,
-                    synced: &mut synced,
-                    min_failed_uid: &mut min_failed_uid,
-                },
-            )
-            .await?;
+            session = self
+                .collect_synced_messages(
+                    session,
+                    &capabilities,
+                    CollectSyncedMessages {
+                        mailbox: &folder.name,
+                        uid_set: &query,
+                        query: Self::imap_fetch_query(),
+                        min_uid,
+                        seen_uids: &mut seen_uids,
+                        account_id: &self.account_id,
+                        synced: &mut synced,
+                        min_failed_uid: &mut min_failed_uid,
+                    },
+                )
+                .await?;
         }
         Self::floor_uid_next_to_failed(&mut mailbox, min_failed_uid);
 
@@ -1899,7 +1989,14 @@ mod tests {
         }
 
         async fn uid_search(&mut self, _query: &str) -> crate::session::Result<Vec<u32>> {
-            Ok(Vec::new())
+            Ok(self
+                .selected_mailbox
+                .as_ref()
+                .and_then(|mailbox| self.messages_by_mailbox.get(mailbox))
+                .into_iter()
+                .flatten()
+                .map(|message| message.uid)
+                .collect())
         }
 
         async fn uid_store(&mut self, _uid_set: &str, _flags: &str) -> crate::session::Result<()> {
@@ -2136,6 +2233,81 @@ mod tests {
         let inbox = decoded_imap_inbox(&batch.next_cursor);
         assert_eq!(inbox.uid_validity, 1);
         assert_eq!(inbox.uid_next, 4);
+    }
+
+    #[tokio::test]
+    async fn initial_sync_isolates_malformed_fetch_literals() {
+        let good_before = make_fetched_message(1, "Before malformed", "alice@example.com");
+        let good_after = make_fetched_message(3, "After malformed", "carol@example.com");
+        let factory = MockImapSessionFactory::new(mailbox_info(1, 4, 3), vec![], vec![])
+            .with_mailbox_fetch_results(
+                "INBOX",
+                vec![1, 2, 3],
+                vec![
+                    Err(error::ImapProviderError::MalformedFetchResponse),
+                    Ok(vec![good_before]),
+                    Err(error::ImapProviderError::MalformedFetchResponse),
+                    Ok(vec![good_after]),
+                ],
+            );
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+
+        assert_eq!(
+            batch
+                .upserted
+                .iter()
+                .map(|message| message.envelope.provider_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["INBOX:1", "INBOX:3"]
+        );
+        assert_eq!(decoded_imap_inbox(&batch.next_cursor).uid_next, 4);
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands
+            .iter()
+            .any(|command| command.contains("UID FETCH 1,2,3")));
+        assert!(commands
+            .iter()
+            .any(|command| command.contains("UID FETCH 2 ")));
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|command| command.as_str() == "SELECT INBOX")
+                .count(),
+            3,
+            "the failed batch and malformed UID must each be followed by a fresh session"
+        );
+    }
+
+    #[tokio::test]
+    async fn initial_sync_bounds_full_body_fetch_batches() {
+        let messages = (1..=101)
+            .map(|uid| make_fetched_message(uid, &format!("Message {uid}"), "alice@example.com"))
+            .collect::<Vec<_>>();
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 102, 101),
+            vec![messages[..100].to_vec(), messages[100..].to_vec()],
+            vec![],
+        );
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+
+        assert_eq!(batch.upserted.len(), 101);
+        let commands = log.lock().unwrap().commands.clone();
+        let fetch_commands = commands
+            .iter()
+            .filter(|command| command.starts_with("UID FETCH "))
+            .collect::<Vec<_>>();
+        assert_eq!(fetch_commands.len(), 2);
+        assert!(fetch_commands[0].contains("UID FETCH 1,2,3,"));
+        assert!(fetch_commands[1].contains("UID FETCH 101 "));
     }
 
     #[tokio::test]

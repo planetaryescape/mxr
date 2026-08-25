@@ -1,30 +1,30 @@
 feature: backlog-refresh-2026-08
-current_phase: preflight
+current_phase: issue-216-followups
 tracker_state: active
-last_reconciled: 2026-08-24
+last_reconciled: 2026-08-25
 base_commit: f4bed17b62e1dae74363476cb7342e80046e6940
 tasks:
   task-000:
-    status: in_progress
+    status: accepted
     attempts: 1
     assigned_model: gpt-5.5
-    worktree: /tmp/mxr-review-216.gj6259
-    last_result: implementation efb68d17 passed both review rounds and validation
-    review_result: review_green; integrated at e2b66e48; release pending
+    worktree: removed after clean integration
+    last_result: Domino fetch recovery shipped and install-verified in v0.6.29
+    review_result: accepted; integrated at e2b66e48; CI and release green
   task-001:
-    status: in_progress
+    status: accepted
     attempts: 1
     assigned_model: gpt-5.5
     worktree: /home/bk/code/planetaryescape/.pe-tasker-worktrees/mxr/backlog-refresh-2026-08/task-001
-    last_result: integrated at 233a26b5 after both review rounds passed
-    review_result: review_green; merge distribution pending
+    last_result: integrated at 233a26b5 and deployed in v0.6.29
+    review_result: accepted; both review rounds and deployment passed
   task-002:
-    status: in_progress
+    status: accepted
     attempts: 2
     assigned_model: gpt-5.5
     worktree: /home/bk/code/planetaryescape/.pe-tasker-worktrees/mxr/backlog-refresh-2026-08/task-002
-    last_result: integrated at efa3a129 and dc5b5432 after one review iteration
-    review_result: review_green; merge distribution pending
+    last_result: integrated at efa3a129 and dc5b5432; deployed in v0.6.29
+    review_result: accepted; one review iteration and deployment passed
   task-003: {status: pending, attempts: 0}
   task-004: {status: pending, attempts: 0}
   task-005: {status: pending, attempts: 0}
@@ -36,3 +36,7 @@ tasks:
   task-011: {status: blocked, attempts: 0, review_result: measurement_missing}
   task-012: {status: blocked, attempts: 0, review_result: consumer_missing}
   task-013: {status: blocked, attempts: 0, review_result: outreach_not_requested}
+  task-014: {status: pending, attempts: 0, review_result: security_first}
+  task-015: {status: pending, attempts: 0, review_result: issue_216_verified}
+  task-016: {status: pending, attempts: 0, review_result: stale_copy_verified}
+  task-017: {status: blocked, attempts: 0, review_result: blocked_by_task_014}

@@ -56,3 +56,27 @@ Every worker reports false assumptions, failed approaches, and transferable lear
 - `/typescript-reviewer` was correctly skipped: both task diffs are Markdown-only. Each worker ran `/simplify` and `git diff --check`.
 - Transferable rule: a mixed shipped/deferred list needs status on every bullet; heading context is not enough.
 - Phase 0 remains in progress until the commits reach `main`; repository docs have no separate Vercel artifact.
+
+## 2026-08-25 — Preflight and Phase 0 deployment
+
+- `v0.6.27` shipped the issue 216 Domino recovery plus Phase 0 docs. Release assets passed, but main CI exposed a stale `dead_code` expectation in `process_probe.rs`.
+- Hotfix `936f86a4` removed only that stale expectation. Both review rounds and local validation passed. `v0.6.28` then shipped successfully.
+- The `v0.6.28` CI Clippy job still failed while the same command passed locally. Updating local stable from Rust 1.95 to the CI runner's Rust 1.98 reproduced the actual remaining lints. This disproved the cache-corruption theory.
+- Hotfix `b05b46d4` replaced fixed-size `chunks_exact(4)` decoding with `as_chunks::<4>()` and a test-only full-vector drain with `std::mem::take`. GPT-5.5 and GPT-5.6-sol reviews found no behavior change.
+- Main CI for `b05b46d4` passed all jobs, including Clippy on Rust 1.98. Release commit `66281449` shipped as `v0.6.29`.
+- `v0.6.29` CI passed in 7m21s. Release passed in 24m19s: Linux, macOS, CLI smoke, GitHub Release, and Homebrew all green.
+- Install verification passed for Homebrew, `install.sh`, and `cargo install --git ... --tag v0.6.29 --locked`. Each returned `mxr 0.6.29`; temporary installs were removed; PATH resolves only `/home/linuxbrew/.linuxbrew/bin/mxr`.
+- Published archive checksums: Linux `672be24f34996cfb90d97e3f77571323e595b47b42743a20eed1b7b68fa022d8`; macOS `5bf013dd072194094a9d068af6221f6ed6d867bb1cd636b35447e2e2cd21a709`.
+- The first v0.6.29 install verification hit `/tmp` quota. The clean detached issue-review worktree used 5.2 GB; removing it freed enough space. Tagged Cargo was rerun with its build target on `/home` and passed.
+- Homebrew's first install auto-cleanup removed the unneeded `unbound` formula while leaving its config files. The later upgrade used `HOMEBREW_NO_INSTALL_CLEANUP=1`; `unbound` can be restored with `brew install unbound` if needed.
+- Non-blocking release warnings remain explicit: live Gmail credentials were absent, so that smoke was skipped; Apple signing secrets were absent, so the macOS archive is unsigned.
+- Tasks 000-002 are accepted. Their implementation, reviews, CI, release, and install-channel checks are all green.
+
+## 2026-08-25 — Issue 216 secondary-concern audit
+
+- The primary Domino literal-recovery acceptance is shipped. Four independent concerns from the issue body were re-audited before closing the issue.
+- IMAP folder sync already has a hard cap of four, but no per-account configuration. This remains real and becomes task 015.
+- `mxr-async-imap` 0.10.6 logs raw outgoing requests and incoming response buffers at trace level. LOGIN passwords, AUTHENTICATE responses, and message bodies can therefore reach logs. This security task is task 014 and must ship before logging controls expand.
+- `accounts repair` is already disk-first with optional keychain mirror/fallback; the claimed runtime behavior is stale. Its help and OpenAPI copy still promise a protected keychain, so copy correction becomes task 016.
+- `logging.level` is settable but daemon tracing initialization ignores it. Wiring it becomes task 017 and depends on deployed trace containment from task 014.
+- Transferable rule: never broaden dependency trace controls before auditing whether trace events contain protocol bytes or secrets.

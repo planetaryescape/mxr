@@ -1,7 +1,7 @@
 ---
 id: task-002
 title: Reconcile stale addendum follow-ups
-status: ready
+status: accepted
 phase: phase-000
 depends_on: []
 risk: { level: low, blast_radius: low }

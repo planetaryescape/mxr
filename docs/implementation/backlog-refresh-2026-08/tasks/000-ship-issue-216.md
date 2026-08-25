@@ -1,7 +1,7 @@
 ---
 id: task-000
 title: Review, merge, release, and install-verify issue 216
-status: in_progress
+status: accepted
 phase: preflight
 depends_on: []
 risk: { level: high, blast_radius: medium }

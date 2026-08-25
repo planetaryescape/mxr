@@ -1,7 +1,7 @@
 ---
 id: task-001
 title: Refresh TODO.md against current code truth
-status: ready
+status: accepted
 phase: phase-000
 depends_on: []
 risk: { level: low, blast_radius: low }

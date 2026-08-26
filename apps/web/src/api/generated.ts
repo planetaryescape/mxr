@@ -1700,7 +1700,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Repair account credentials in keychain */
+        /** Repair account credentials in local stores */
         post: operations["platform_accounts_repair"];
         delete?: never;
         options?: never;
@@ -2576,6 +2576,7 @@ export interface components {
         } | {
             auth_required?: boolean;
             host: string;
+            max_connections?: number;
             password?: string | null;
             password_ref: string;
             /** Format: int32 */
@@ -2971,6 +2972,12 @@ export interface components {
              * @description How many messages actually arrived. Equal to `envelopes.len()` for
              *     an ordinary sync; larger when the batch was capped. Additive with a
              *     serde default so an older client still decodes the event.
+             *
+             *     The default cuts the other way too: an event from a pre-0.6.25
+             *     daemon carries no `total` and so decodes as `0`, which is smaller
+             *     than the `envelopes` it shipped with. Readers must treat
+             *     `envelopes.len()` as the floor (`total.max(envelopes.len())`)
+             *     rather than reporting the zero.
              */
             total?: number;
         } | {

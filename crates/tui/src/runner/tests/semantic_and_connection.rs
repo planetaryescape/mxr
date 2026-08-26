@@ -1058,6 +1058,7 @@ fn repair_account_action_queues_pending_repair_for_config_account() {
             password: None,
             auth_required: true,
             use_tls: true,
+            max_connections: 4,
         }),
         send: Some(mxr_protocol::AccountSendConfigData::Smtp {
             host: "smtp.example.com".into(),

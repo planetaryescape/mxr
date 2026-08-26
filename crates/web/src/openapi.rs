@@ -296,7 +296,7 @@ endpoint!(post mail_signature_default_clear "/api/v1/mail/signatures/default/cle
 endpoint!(post mail_signature_resolve "/api/v1/mail/signatures/resolve", "Resolve signature for compose");
 endpoint!(delete mail_signatures_delete "/api/v1/mail/signatures/{name}", "Delete signature");
 endpoint!(post platform_accounts_authorize "/api/v1/platform/accounts/authorize", "Authorize or re-authorize account config");
-endpoint!(post platform_accounts_repair "/api/v1/platform/accounts/repair", "Repair account credentials in keychain");
+endpoint!(post platform_accounts_repair "/api/v1/platform/accounts/repair", "Repair account credentials in local stores");
 endpoint!(get platform_voice_get "/api/v1/platform/voice", "User voice profile for drafting");
 endpoint!(post platform_voice_rebuild "/api/v1/platform/voice/rebuild", "Rebuild user voice profile from sent mail");
 

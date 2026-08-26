@@ -12,7 +12,7 @@ Logs go to two places:
 
 2. **event_log SQLite table**: Structured, queryable events (sync completions, errors, rule executions, snooze events). Retained for 90 days by default.
 
-Both are on disk, both survive daemon restarts. The text log captures everything (including debug/trace if configured). The event_log captures significant events at info level and above in a structured, queryable format.
+Both are on disk, both survive daemon restarts. The text log captures configured debug/trace events except raw `async_imap` TRACE traffic, which can contain passwords and full message bodies. The event_log captures significant events at info level and above in a structured, queryable format.
 
 ---
 

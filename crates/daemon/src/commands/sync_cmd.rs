@@ -441,6 +441,7 @@ mod tests {
                     password_ref: "secret://imap".into(),
                     auth_required: true,
                     use_tls: true,
+                    max_connections: 4,
                 }),
                 send: Some(SendProviderConfig::Smtp {
                     host: "smtp.example.com".into(),
@@ -470,6 +471,7 @@ mod tests {
                     password_ref: "secret://imap-2".into(),
                     auth_required: true,
                     use_tls: true,
+                    max_connections: 4,
                 }),
                 send: None,
             },

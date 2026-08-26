@@ -17,6 +17,7 @@ pub(crate) fn imap_config_with_credentials(
     password_ref: String,
     auth_required: bool,
     use_tls: bool,
+    max_connections: usize,
 ) -> anyhow::Result<mxr_provider_imap::config::ImapConfig> {
     let config = mxr_provider_imap::config::ImapConfig::new(
         host,
@@ -25,7 +26,8 @@ pub(crate) fn imap_config_with_credentials(
         password_ref,
         auth_required,
         use_tls,
-    );
+    )
+    .with_max_connections(max_connections);
     if !auth_required {
         return Ok(config);
     }
@@ -420,6 +422,7 @@ mod tests {
             "keyring:absent".into(),
             true,
             true,
+            4,
         )
         .expect("construction never touches the secret");
         // The lazy reader is installed; resolving it is where absence surfaces.

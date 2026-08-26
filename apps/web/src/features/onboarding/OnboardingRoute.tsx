@@ -36,6 +36,7 @@ export function OnboardingRoute() {
     email: "",
     imapHost: "",
     imapPort: 993,
+    imapMaxConnections: 4,
     smtpHost: "",
     smtpPort: 587,
     username: "",
@@ -273,6 +274,11 @@ export function OnboardingRoute() {
                 value={imap.imapPort}
                 onChange={(imapPort) => setImap({ ...imap, imapPort })}
               />
+              <NumberField
+                label="IMAP max connections"
+                value={imap.imapMaxConnections}
+                onChange={(imapMaxConnections) => setImap({ ...imap, imapMaxConnections })}
+              />
               <Text
                 label="SMTP host"
                 value={imap.smtpHost}
@@ -297,7 +303,13 @@ export function OnboardingRoute() {
             </div>
             <Button
               className="mt-4"
-              disabled={saveImap.isPending || !imap.email || !imap.imapHost || !imap.smtpHost}
+              disabled={
+                saveImap.isPending ||
+                !imap.email ||
+                !imap.imapHost ||
+                !imap.smtpHost ||
+                imap.imapMaxConnections < 1
+              }
               onClick={() => saveImap.mutate()}
             >
               Test and save

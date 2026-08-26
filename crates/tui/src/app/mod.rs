@@ -1010,11 +1010,13 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
                 username,
                 password_ref,
                 auth_required,
+                max_connections,
                 ..
             } => {
                 form.mode = AccountFormMode::ImapSmtp;
                 form.imap_host = host;
                 form.imap_port = port.to_string();
+                form.imap_max_connections = max_connections.to_string();
                 form.imap_username = username;
                 form.imap_password_ref = password_ref;
                 form.imap_auth_required = auth_required;
@@ -1108,16 +1110,17 @@ fn account_form_field_value(form: &AccountFormState) -> Option<&str> {
         (AccountFormMode::Gmail, 7) => None,
         (AccountFormMode::ImapSmtp, 4) => Some(form.imap_host.as_str()),
         (AccountFormMode::ImapSmtp, 5) => Some(form.imap_port.as_str()),
-        (AccountFormMode::ImapSmtp, 6) => Some(form.imap_username.as_str()),
-        (AccountFormMode::ImapSmtp, 7) => None,
-        (AccountFormMode::ImapSmtp, 8) => Some(form.imap_password_ref.as_str()),
-        (AccountFormMode::ImapSmtp, 9) => Some(form.imap_password.as_str()),
-        (AccountFormMode::ImapSmtp, 10) => Some(form.smtp_host.as_str()),
-        (AccountFormMode::ImapSmtp, 11) => Some(form.smtp_port.as_str()),
-        (AccountFormMode::ImapSmtp, 12) => Some(form.smtp_username.as_str()),
-        (AccountFormMode::ImapSmtp, 13) => None,
-        (AccountFormMode::ImapSmtp, 14) => Some(form.smtp_password_ref.as_str()),
-        (AccountFormMode::ImapSmtp, 15) => Some(form.smtp_password.as_str()),
+        (AccountFormMode::ImapSmtp, 6) => Some(form.imap_max_connections.as_str()),
+        (AccountFormMode::ImapSmtp, 7) => Some(form.imap_username.as_str()),
+        (AccountFormMode::ImapSmtp, 8) => None,
+        (AccountFormMode::ImapSmtp, 9) => Some(form.imap_password_ref.as_str()),
+        (AccountFormMode::ImapSmtp, 10) => Some(form.imap_password.as_str()),
+        (AccountFormMode::ImapSmtp, 11) => Some(form.smtp_host.as_str()),
+        (AccountFormMode::ImapSmtp, 12) => Some(form.smtp_port.as_str()),
+        (AccountFormMode::ImapSmtp, 13) => Some(form.smtp_username.as_str()),
+        (AccountFormMode::ImapSmtp, 14) => None,
+        (AccountFormMode::ImapSmtp, 15) => Some(form.smtp_password_ref.as_str()),
+        (AccountFormMode::ImapSmtp, 16) => Some(form.smtp_password.as_str()),
         (AccountFormMode::SmtpOnly, 4) => Some(form.smtp_host.as_str()),
         (AccountFormMode::SmtpOnly, 5) => Some(form.smtp_port.as_str()),
         (AccountFormMode::SmtpOnly, 6) => Some(form.smtp_username.as_str()),
@@ -1156,14 +1159,15 @@ where
         }
         (AccountFormMode::ImapSmtp, 4) => &mut form.imap_host,
         (AccountFormMode::ImapSmtp, 5) => &mut form.imap_port,
-        (AccountFormMode::ImapSmtp, 6) => &mut form.imap_username,
-        (AccountFormMode::ImapSmtp, 8) => &mut form.imap_password_ref,
-        (AccountFormMode::ImapSmtp, 9) => &mut form.imap_password,
-        (AccountFormMode::ImapSmtp, 10) => &mut form.smtp_host,
-        (AccountFormMode::ImapSmtp, 11) => &mut form.smtp_port,
-        (AccountFormMode::ImapSmtp, 12) => &mut form.smtp_username,
-        (AccountFormMode::ImapSmtp, 14) => &mut form.smtp_password_ref,
-        (AccountFormMode::ImapSmtp, 15) => &mut form.smtp_password,
+        (AccountFormMode::ImapSmtp, 6) => &mut form.imap_max_connections,
+        (AccountFormMode::ImapSmtp, 7) => &mut form.imap_username,
+        (AccountFormMode::ImapSmtp, 9) => &mut form.imap_password_ref,
+        (AccountFormMode::ImapSmtp, 10) => &mut form.imap_password,
+        (AccountFormMode::ImapSmtp, 11) => &mut form.smtp_host,
+        (AccountFormMode::ImapSmtp, 12) => &mut form.smtp_port,
+        (AccountFormMode::ImapSmtp, 13) => &mut form.smtp_username,
+        (AccountFormMode::ImapSmtp, 15) => &mut form.smtp_password_ref,
+        (AccountFormMode::ImapSmtp, 16) => &mut form.smtp_password,
         (AccountFormMode::SmtpOnly, 4) => &mut form.smtp_host,
         (AccountFormMode::SmtpOnly, 5) => &mut form.smtp_port,
         (AccountFormMode::SmtpOnly, 6) => &mut form.smtp_username,

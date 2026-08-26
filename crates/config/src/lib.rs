@@ -530,6 +530,7 @@ port = 993
 username = "me@fastmail.com"
 password_ref = "keyring:fastmail-imap"
 use_tls = true
+max_connections = 2
 
 [accounts.fastmail.send]
 type = "smtp"
@@ -545,6 +546,13 @@ use_tls = true
         assert!(matches!(
             fastmail.sync,
             Some(SyncProviderConfig::Imap { .. })
+        ));
+        assert!(matches!(
+            fastmail.sync,
+            Some(SyncProviderConfig::Imap {
+                max_connections: 2,
+                ..
+            })
         ));
         assert!(matches!(
             fastmail.send,

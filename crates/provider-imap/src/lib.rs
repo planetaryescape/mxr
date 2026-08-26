@@ -28,7 +28,6 @@ use tracing::{debug, warn};
 
 use crate::types::{FolderInfo, ImapCapabilities};
 
-const IMAP_FOLDER_SYNC_CONCURRENCY_LIMIT: usize = 4;
 const IMAP_FETCH_UID_BATCH_SIZE: usize = 100;
 const GMAIL_ALL_MAIL_SYNC_PAGE_UID_SPAN: u32 = 500;
 
@@ -62,15 +61,18 @@ struct CollectSyncedMessages<'a> {
 pub struct ImapProvider {
     account_id: AccountId,
     trash_folder: String,
+    max_connections: usize,
     session_factory: Box<dyn ImapSessionFactory>,
 }
 
 impl ImapProvider {
     pub fn new(account_id: AccountId, config: ImapConfig) -> Self {
+        let max_connections = config.max_connections;
         let session_factory = Box::new(RealImapSessionFactory::new(config.clone()));
         Self {
             account_id,
             trash_folder: "Trash".to_string(),
+            max_connections,
             session_factory,
         }
     }
@@ -78,12 +80,13 @@ impl ImapProvider {
     /// Constructor that accepts a custom session factory (e.g. XOAuth2ImapSessionFactory).
     pub fn with_session_factory(
         account_id: AccountId,
-        _config: ImapConfig,
+        config: ImapConfig,
         session_factory: Box<dyn ImapSessionFactory>,
     ) -> Self {
         Self {
             account_id,
             trash_folder: "Trash".to_string(),
+            max_connections: config.max_connections,
             session_factory,
         }
     }
@@ -510,9 +513,7 @@ impl ImapProvider {
         let sync_folders = Self::syncable_folders(&folders);
         let _ = session.logout().await;
 
-        let folder_concurrency = sync_folders
-            .len()
-            .clamp(1, IMAP_FOLDER_SYNC_CONCURRENCY_LIMIT);
+        let folder_concurrency = sync_folders.len().clamp(1, self.max_connections.max(1));
         let mut folder_results = stream::iter(sync_folders.into_iter().enumerate())
             .map(|(folder_index, folder)| {
                 let capabilities = capabilities.clone();
@@ -808,9 +809,7 @@ impl ImapProvider {
             .map(|mailbox| (mailbox.mailbox.as_str(), mailbox))
             .collect();
 
-        let folder_concurrency = sync_folders
-            .len()
-            .clamp(1, IMAP_FOLDER_SYNC_CONCURRENCY_LIMIT);
+        let folder_concurrency = sync_folders.len().clamp(1, self.max_connections.max(1));
         let mut folder_results = stream::iter(sync_folders.into_iter().enumerate())
             .map(|(folder_index, folder)| {
                 let capabilities = capabilities.clone();
@@ -2486,6 +2485,42 @@ mod tests {
             overlap.max_active_fetches.load(Ordering::SeqCst) >= 2,
             "multi-folder sync should overlap folder fetches instead of serializing them"
         );
+    }
+
+    #[tokio::test]
+    async fn initial_sync_respects_per_account_connection_limit() {
+        let overlap = Arc::new(FetchOverlapState::default());
+        let factory = ConcurrentInitialSyncFactory {
+            folders: vec![
+                folder_info("INBOX", Some("\\Inbox")),
+                folder_info("Archive", Some("\\Archive")),
+            ],
+            mailbox_info_by_name: HashMap::from([
+                ("INBOX".to_string(), mailbox_info(1, 2, 1)),
+                ("Archive".to_string(), mailbox_info(1, 2, 1)),
+            ]),
+            messages_by_mailbox: HashMap::from([
+                (
+                    "INBOX".to_string(),
+                    vec![make_fetched_message(1, "Inbox", "alice@example.com")],
+                ),
+                (
+                    "Archive".to_string(),
+                    vec![make_fetched_message(1, "Archive", "bob@example.com")],
+                ),
+            ]),
+            overlap: overlap.clone(),
+        };
+        let provider = ImapProvider::with_session_factory(
+            AccountId::new(),
+            test_config().with_max_connections(1),
+            Box::new(factory),
+        );
+
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+
+        assert_eq!(batch.upserted.len(), 2);
+        assert_eq!(overlap.max_active_fetches.load(Ordering::SeqCst), 1);
     }
 
     // -- sync_messages: delta -------------------------------------------------

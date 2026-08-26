@@ -49,6 +49,9 @@ pub enum AccountsAction {
         /// IMAP password (or set `MXR_IMAP_PASSWORD`).
         #[arg(long)]
         imap_password: Option<String>,
+        /// Maximum concurrent IMAP connections for this account.
+        #[arg(long, default_value_t = 4)]
+        imap_max_connections: usize,
         // SMTP-specific.
         #[arg(long)]
         smtp_host: Option<String>,
@@ -68,7 +71,7 @@ pub enum AccountsAction {
     Test { name: String },
     /// Re-authorize an OAuth account and keep cached mail
     Reauth { name: String },
-    /// Re-save account passwords into the protected keychain store
+    /// Re-save account passwords into mxr's local credential stores
     Repair { name: String },
     /// Disable an account without deleting local cached mail
     Disable { name: String },

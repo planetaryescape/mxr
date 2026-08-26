@@ -819,6 +819,7 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
                 password_ref,
                 auth_required,
                 use_tls,
+                max_connections,
                 ..
             } => {
                 match crate::provider_credentials::imap_config_with_credentials(
@@ -828,6 +829,7 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
                     password_ref,
                     auth_required,
                     use_tls,
+                    max_connections,
                 ) {
                     Ok(config) => {
                         let provider = mxr_provider_imap::ImapProvider::new(
@@ -1223,6 +1225,7 @@ fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfi
             password_ref,
             auth_required,
             use_tls,
+            max_connections,
         } => AccountSyncConfigData::Imap {
             host,
             port,
@@ -1231,6 +1234,7 @@ fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfi
             password: None,
             auth_required,
             use_tls,
+            max_connections,
         },
         mxr_config::SyncProviderConfig::OutlookPersonal {
             client_id,
@@ -1409,6 +1413,7 @@ fn sync_data_to_config(
             password_ref,
             auth_required,
             use_tls,
+            max_connections,
             ..
         } => Ok(mxr_config::SyncProviderConfig::Imap {
             host,
@@ -1417,6 +1422,7 @@ fn sync_data_to_config(
             password_ref,
             auth_required,
             use_tls,
+            max_connections,
         }),
         AccountSyncConfigData::OutlookPersonal {
             client_id,
@@ -1726,6 +1732,7 @@ mod tests {
             password_ref: "mxr/test".to_string(),
             auth_required: true,
             use_tls: true,
+            max_connections: 4,
         });
 
         assert!(capabilities.push);

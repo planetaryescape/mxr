@@ -13,6 +13,8 @@ use std::sync::Arc;
 
 type PasswordReader = Arc<dyn Fn(&str, &str) -> Result<String, ImapProviderError> + Send + Sync>;
 
+pub const DEFAULT_MAX_CONNECTIONS: usize = 4;
+
 #[derive(Clone, Deserialize)]
 pub struct ImapConfig {
     pub host: String,
@@ -24,6 +26,8 @@ pub struct ImapConfig {
     pub auth_required: bool,
     #[serde(default = "default_true")]
     pub use_tls: bool,
+    #[serde(default = "default_max_connections")]
+    pub max_connections: usize,
     #[serde(skip, default = "default_password_cache")]
     password_cache: Arc<OnceCell<String>>,
     #[serde(skip, default = "default_password_reader")]
@@ -32,6 +36,10 @@ pub struct ImapConfig {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_max_connections() -> usize {
+    DEFAULT_MAX_CONNECTIONS
 }
 
 fn default_password_cache() -> Arc<OnceCell<String>> {
@@ -62,6 +70,7 @@ impl ImapConfig {
             password_ref,
             auth_required,
             use_tls,
+            max_connections: DEFAULT_MAX_CONNECTIONS,
             password_cache: default_password_cache(),
             password_reader: default_password_reader(),
         }
@@ -69,6 +78,11 @@ impl ImapConfig {
 
     pub fn with_password(mut self, password: String) -> Self {
         self.password_reader = Arc::new(move |_, _| Ok(password.clone()));
+        self
+    }
+
+    pub fn with_max_connections(mut self, max_connections: usize) -> Self {
+        self.max_connections = max_connections.max(1);
         self
     }
 
@@ -94,6 +108,7 @@ impl std::fmt::Debug for ImapConfig {
             .field("password_ref", &self.password_ref)
             .field("auth_required", &self.auth_required)
             .field("use_tls", &self.use_tls)
+            .field("max_connections", &self.max_connections)
             .finish_non_exhaustive()
     }
 }
@@ -118,6 +133,22 @@ mod tests {
         assert_eq!(config.port, 993);
         assert!(config.auth_required);
         assert!(config.use_tls);
+        assert_eq!(config.max_connections, DEFAULT_MAX_CONNECTIONS);
+    }
+
+    #[test]
+    fn max_connections_is_clamped_to_one() {
+        let config = ImapConfig::new(
+            "imap.fastmail.com".into(),
+            993,
+            "user@fastmail.com".into(),
+            "mxr/fastmail-imap".into(),
+            true,
+            true,
+        )
+        .with_max_connections(0);
+
+        assert_eq!(config.max_connections, 1);
     }
 
     #[test]

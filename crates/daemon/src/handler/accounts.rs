@@ -338,6 +338,7 @@ mod tests {
                                     password: Some("s3cret-app-pw".into()),
                                     auth_required: true,
                                     use_tls: true,
+                                    max_connections: 4,
                                 }),
                                 send: None,
                                 is_default: false,

@@ -3317,6 +3317,8 @@ pub enum AccountSyncConfigData {
         #[serde(default = "default_auth_required")]
         auth_required: bool,
         use_tls: bool,
+        #[serde(default = "default_imap_max_connections")]
+        max_connections: usize,
     },
     OutlookPersonal {
         client_id: Option<String>,
@@ -3383,6 +3385,10 @@ pub enum AccountSendConfigData {
 
 fn default_auth_required() -> bool {
     true
+}
+
+fn default_imap_max_connections() -> usize {
+    4
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

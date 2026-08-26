@@ -189,6 +189,7 @@ export function imapAccountConfig(input: {
   email: string;
   imapHost: string;
   imapPort: number;
+  imapMaxConnections: number;
   smtpHost: string;
   smtpPort: number;
   username: string;
@@ -210,6 +211,7 @@ export function imapAccountConfig(input: {
       password: input.password,
       auth_required: true,
       use_tls: true,
+      max_connections: input.imapMaxConnections,
     },
     send: {
       type: "smtp",

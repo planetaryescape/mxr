@@ -1422,10 +1422,12 @@ pub fn init_tracing(foreground: bool) -> anyhow::Result<()> {
     use tracing_subscriber::prelude::*;
     use tracing_subscriber::{fmt, EnvFilter};
 
+    let configured_level = mxr_config::load_config()
+        .map(|config| config.logging.level)
+        .unwrap_or_else(|_| "info".to_string());
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        "mxr=info"
-            .parse()
-            .expect("static mxr tracing filter should parse")
+        EnvFilter::try_new(format!("mxr={configured_level}"))
+            .unwrap_or_else(|_| EnvFilter::new("mxr=info"))
     });
 
     let log_dir = state::AppState::data_dir().join("logs");
@@ -1448,15 +1450,50 @@ pub fn init_tracing(foreground: bool) -> anyhow::Result<()> {
 
         tracing_subscriber::registry()
             .with(env_filter)
+            .with(tracing_subscriber::filter::filter_fn(
+                safe_dependency_metadata,
+            ))
             .with(file_layer)
             .with(stdout_layer)
             .init();
     } else {
         tracing_subscriber::registry()
             .with(env_filter)
+            .with(tracing_subscriber::filter::filter_fn(
+                safe_dependency_metadata,
+            ))
             .with(file_layer)
             .init();
     }
 
     Ok(())
+}
+
+fn safe_dependency_metadata(metadata: &tracing::Metadata<'_>) -> bool {
+    safe_dependency_log(metadata.target(), metadata.level())
+}
+
+fn safe_dependency_log(target: &str, level: &tracing::Level) -> bool {
+    // async-imap logs complete commands and response buffers at TRACE. That
+    // includes LOGIN passwords and message bodies, so those events must never
+    // reach either daemon log sink.
+    !(target.starts_with("async_imap") && level == &tracing::Level::TRACE)
+}
+
+#[cfg(test)]
+mod tracing_tests {
+    use super::safe_dependency_log;
+
+    #[test]
+    fn blocks_async_imap_wire_traces_without_hiding_other_logs() {
+        assert!(!safe_dependency_log(
+            "async_imap::imap_stream",
+            &tracing::Level::TRACE
+        ));
+        assert!(safe_dependency_log(
+            "async_imap::imap_stream",
+            &tracing::Level::DEBUG
+        ));
+        assert!(safe_dependency_log("mxr::sync", &tracing::Level::TRACE));
+    }
 }

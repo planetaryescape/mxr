@@ -42,7 +42,7 @@ impl App {
                     6
                 }
             }
-            AccountFormMode::ImapSmtp => 16,
+            AccountFormMode::ImapSmtp => 17,
             AccountFormMode::SmtpOnly => 10,
             AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork => 6,
         }
@@ -111,6 +111,7 @@ impl App {
             AccountFormMode::ImapSmtp => Some(mxr_protocol::AccountSyncConfigData::Imap {
                 host: form.imap_host.trim().to_string(),
                 port: form.imap_port.parse().unwrap_or(993),
+                max_connections: form.imap_max_connections.parse().unwrap_or(4),
                 username: imap_username,
                 password_ref: imap_password_ref,
                 password: if form.imap_password.is_empty() {
@@ -251,6 +252,18 @@ impl App {
                     sync_issues.push("IMAP port must be a valid number.".to_string());
                     remember_first_invalid(5);
                 }
+                if form.imap_max_connections.trim().is_empty() {
+                    sync_issues.push("IMAP max connections is required.".to_string());
+                    remember_first_invalid(6);
+                } else if !form
+                    .imap_max_connections
+                    .trim()
+                    .parse::<usize>()
+                    .is_ok_and(|value| value > 0)
+                {
+                    sync_issues.push("IMAP max connections must be at least 1.".to_string());
+                    remember_first_invalid(6);
+                }
                 if form.imap_auth_required {
                     if form.email.trim().is_empty() && form.imap_username.trim().is_empty() {
                         sync_issues.push(
@@ -263,7 +276,7 @@ impl App {
                             "IMAP auth is enabled, so IMAP password or IMAP pass ref is required."
                                 .to_string(),
                         );
-                        remember_first_invalid(9);
+                        remember_first_invalid(10);
                     }
                 }
                 if !sync_issues.is_empty() {
@@ -276,14 +289,14 @@ impl App {
                 let mut send_issues = Vec::new();
                 if form.smtp_host.trim().is_empty() {
                     send_issues.push("SMTP host is required.".to_string());
-                    remember_first_invalid(10);
+                    remember_first_invalid(11);
                 }
                 if form.smtp_port.trim().is_empty() {
                     send_issues.push("SMTP port is required.".to_string());
-                    remember_first_invalid(11);
+                    remember_first_invalid(12);
                 } else if form.smtp_port.trim().parse::<u16>().is_err() {
                     send_issues.push("SMTP port must be a valid number.".to_string());
-                    remember_first_invalid(11);
+                    remember_first_invalid(12);
                 }
                 if form.smtp_auth_required {
                     if form.email.trim().is_empty() && form.smtp_username.trim().is_empty() {
@@ -297,7 +310,7 @@ impl App {
                             "SMTP auth is enabled, so SMTP password or SMTP pass ref is required."
                                 .to_string(),
                         );
-                        remember_first_invalid(15);
+                        remember_first_invalid(16);
                     }
                 }
                 if !send_issues.is_empty() {
@@ -526,8 +539,8 @@ impl App {
             self.accounts.page.form.active_field,
         ) {
             (AccountFormMode::Gmail, 4) => Some(AccountFormToggleField::GmailCredentialSource),
-            (AccountFormMode::ImapSmtp, 7) => Some(AccountFormToggleField::ImapAuthRequired),
-            (AccountFormMode::ImapSmtp, 13) => Some(AccountFormToggleField::SmtpAuthRequired),
+            (AccountFormMode::ImapSmtp, 8) => Some(AccountFormToggleField::ImapAuthRequired),
+            (AccountFormMode::ImapSmtp, 14) => Some(AccountFormToggleField::SmtpAuthRequired),
             (AccountFormMode::SmtpOnly, 7) => Some(AccountFormToggleField::SmtpAuthRequired),
             _ => None,
         }

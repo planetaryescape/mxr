@@ -405,6 +405,11 @@ fn build_fields(form: &crate::app::AccountFormState) -> Vec<(&'static str, Strin
             fields.extend([
                 ("IMAP host", form.imap_host.clone(), true),
                 ("IMAP port", form.imap_port.clone(), true),
+                (
+                    "IMAP max connections",
+                    form.imap_max_connections.clone(),
+                    true,
+                ),
                 ("IMAP user", form.imap_username.clone(), true),
                 (
                     "IMAP auth",

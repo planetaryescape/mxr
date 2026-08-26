@@ -82,6 +82,29 @@ reminder = "bell"
 error = "alert"
 ```
 
+## IMAP connection limit
+
+Each IMAP account accepts `max_connections` in its sync block. The default is
+`4`. Lower it for servers with a small per-user session limit:
+
+```toml
+[accounts.legacy.sync]
+type = "imap"
+host = "mail.example.com"
+port = 993
+username = "user@example.com"
+password_ref = "mxr/legacy-imap"
+use_tls = true
+max_connections = 1
+```
+
+This caps the folder sessions opened in parallel during initial and delta sync.
+
+Raw `async_imap` TRACE events are always suppressed. The dependency includes
+LOGIN commands and complete server response buffers in those events, which can
+contain passwords and full message bodies. mxr's own TRACE events remain
+available through `[logging].level`, with `RUST_LOG` taking precedence.
+
 ## `[search]`
 
 - `default_sort`

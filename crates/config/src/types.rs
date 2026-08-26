@@ -567,6 +567,8 @@ pub enum SyncProviderConfig {
         #[serde(default = "default_auth_required")]
         auth_required: bool,
         use_tls: bool,
+        #[serde(default = "default_imap_max_connections")]
+        max_connections: usize,
     },
     OutlookPersonal {
         /// Azure app client ID. None = use bundled OUTLOOK_CLIENT_ID.
@@ -619,6 +621,10 @@ pub enum SendProviderConfig {
 
 fn default_auth_required() -> bool {
     true
+}
+
+fn default_imap_max_connections() -> usize {
+    4
 }
 
 fn default_enabled() -> bool {

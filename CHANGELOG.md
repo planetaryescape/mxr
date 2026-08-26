@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.30](https://github.com/planetaryescape/mxr/compare/v0.6.29...v0.6.30) (2026-08-26)
+
+
+### Bug Fixes
+
+* finish HCL Domino IMAP safeguards with a per-account connection cap, safe trace filtering, and working logging configuration ([#216](https://github.com/planetaryescape/mxr/issues/216)) ([90d86d1](https://github.com/planetaryescape/mxr/commit/90d86d10b9f9c8ecb07ee2526ca34071dd9ec91c))
+
 ## [0.6.29](https://github.com/planetaryescape/mxr/compare/v0.6.28...v0.6.29) (2026-08-25)
 
 

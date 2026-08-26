@@ -1423,8 +1423,7 @@ pub fn init_tracing(foreground: bool) -> anyhow::Result<()> {
     use tracing_subscriber::{fmt, EnvFilter};
 
     let configured_level = mxr_config::load_config()
-        .map(|config| config.logging.level)
-        .unwrap_or_else(|_| "info".to_string());
+        .map_or_else(|_| "info".to_string(), |config| config.logging.level);
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::try_new(format!("mxr={configured_level}"))
             .unwrap_or_else(|_| EnvFilter::new("mxr=info"))

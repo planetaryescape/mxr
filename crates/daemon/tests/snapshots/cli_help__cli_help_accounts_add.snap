@@ -53,6 +53,11 @@ Options:
       --imap-password <IMAP_PASSWORD>
           IMAP password (or set `MXR_IMAP_PASSWORD`)
 
+      --imap-max-connections <IMAP_MAX_CONNECTIONS>
+          Maximum concurrent IMAP connections for this account
+
+          [default: 4]
+
       --smtp-host <SMTP_HOST>
 
 

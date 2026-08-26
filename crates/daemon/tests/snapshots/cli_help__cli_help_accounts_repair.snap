@@ -2,7 +2,7 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Re-save account passwords into the protected keychain store
+Re-save account passwords into mxr's local credential stores
 
 Usage: mxr accounts repair [OPTIONS] <NAME>
 

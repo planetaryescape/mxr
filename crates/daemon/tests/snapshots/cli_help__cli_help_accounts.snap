@@ -11,7 +11,7 @@ Commands:
   show       Show account details
   test       Test account connectivity
   reauth     Re-authorize an OAuth account and keep cached mail
-  repair     Re-save account passwords into the protected keychain store
+  repair     Re-save account passwords into mxr's local credential stores
   disable    Disable an account without deleting local cached mail
   remove     Remove an account from config; cached mail is kept unless purged
   addresses  Manage owned addresses (aliases) for an account. Direction inference uses these to classify inbound vs outbound mail

@@ -219,7 +219,7 @@ mxr-web = { path = "crates/web", version = "0.6.0" }
 glob-match = "0.2"
 shell-words = "1.1"
 which = "8"
-rmcp = "2.0.0"
+rmcp = "3.1.4"
 schemars = "1.1.0"
 
 # Package/delivery detection: carrier tracking-number identification + checksum
@@ -263,7 +263,7 @@ thiserror = "2"
 anyhow = "1"
 
 # Security
-constant_time_eq = "0.4"
+constant_time_eq = "0.5"
 
 # Logging
 tracing = "0.1"
@@ -300,7 +300,7 @@ tower = { version = "0.5", features = ["util"] }
 keyring = { version = "3", features = ["apple-native", "sync-secret-service", "crypto-rust"] }
 security-framework = { version = "3", features = ["OSX_10_15"] }
 security-framework-sys = "2"
-base64 = "0.22"
+base64 = "0.23"
 mail-parser = "0.11"
 # Charset decoding for provider body parts that arrive in their original
 # (non-UTF-8) encoding. Same crate mail-parser already pulls in transitively.
@@ -310,7 +310,7 @@ url = "2"
 scraper = "0.27"
 data-url = "0.3"
 mime_guess = "2"
-mail-builder = "0.4.4"
+mail-builder = "0.5.0"
 open = "5"
 
 # TUI extras

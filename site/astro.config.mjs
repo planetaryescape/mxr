@@ -51,6 +51,7 @@ export default defineConfig({
             { label: 'Installation', slug: 'getting-started/install' },
             { label: 'Quick Start', slug: 'getting-started/quick-start' },
             { label: 'Examples', slug: 'examples' },
+            { label: 'Video Gallery', slug: 'videos' },
             { label: 'Gmail Setup', slug: 'getting-started/gmail-setup' },
             { label: 'IMAP / SMTP Setup', slug: 'getting-started/imap-smtp-setup' },
             { label: 'First Sync', slug: 'getting-started/first-sync' },

@@ -37,55 +37,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          rust=false
-          web=false
-          docs=false
-          expensive=false
-
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            rust=true
-            web=true
-            docs=true
-            expensive=true
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            base="${PR_BASE_SHA}"
+            head="HEAD"
           else
-            if [[ "${EVENT_NAME}" == "pull_request" ]]; then
-              base="${PR_BASE_SHA}"
-              head="HEAD"
-            else
-              base="${BEFORE}"
-              head="${SHA}"
-            fi
-
-            if [[ -z "${base}" || "${base}" =~ ^0+$ ]]; then
-              rust=true
-              docs=true
-            else
-              while IFS= read -r path; do
-                [[ -z "${path}" ]] && continue
-                case "${path}" in
-                  Cargo.toml|Cargo.lock|rust-toolchain*|build.rs|crates/*|src/*|.sqlx/*)
-                    rust=true
-                    ;;
-                  deny.toml|tests/*|benches/*|examples/*|scripts/test_quality_audit.sh|scripts/test_quality_audit_test.sh|scripts/check_architecture_boundaries.sh)
-                    rust=true
-                    ;;
-                  apps/web/*|apps/web/**|crates/web/*|crates/web/**|crates/protocol/*|crates/protocol/**)
-                    web=true
-                    ;;
-                  site/*)
-                    docs=true
-                    ;;
-                esac
-              done < <(git diff --name-only "${base}" "${head}")
-            fi
+            base="${BEFORE}"
+            head="${SHA}"
           fi
 
-          {
-            echo "rust=${rust}"
-            echo "web=${web}"
-            echo "docs=${docs}"
-            echo "expensive=${expensive}"
-          } >> "${GITHUB_OUTPUT}"
+          scripts/ci_change_scope.sh "${EVENT_NAME}" "${base}" "${head}" >> "${GITHUB_OUTPUT}"
 
   deny:
     name: cargo deny
@@ -193,6 +153,8 @@ jobs:
       - run: bash scripts/release_gmail_oauth_gate_test.sh
       - run: bash scripts/release_workflow_test.sh
       - run: bash scripts/provider_smoke_workflow_test.sh
+      - run: bash scripts/cargo_test_wrapper_test.sh
+      - run: bash scripts/ci_change_scope_test.sh
       - run: bash scripts/ci_workflow_test.sh
 
   fmt:
@@ -291,11 +253,21 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - run: npm ci
-      - run: npm audit --audit-level=moderate
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run test
+      - name: Install dependencies
+        id: install
+        run: npm ci
+      - name: Audit dependencies
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm audit --audit-level=moderate
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run typecheck
+      - name: Lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run lint
+      - name: Unit tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test
 
   web-e2e-smoke:
     name: Web E2E Smoke

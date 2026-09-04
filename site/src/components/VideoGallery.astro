@@ -1,0 +1,117 @@
+---
+const clips = [
+  {
+    id: '01-agent-checks-suspicious-mail',
+    title: 'Agent checks suspicious mail',
+    duration: '43s',
+    description: 'A complete agent run that searches the local mailbox, inspects messages, and answers without changing anything.',
+  },
+  {
+    id: '02-agent-searches-local-mail',
+    title: 'Agent searches local mail',
+    duration: '20s',
+    description: 'The agent searches the same local mailbox used by the CLI and TUI.',
+  },
+  {
+    id: '03-agent-builds-a-query',
+    title: 'Agent builds a query',
+    duration: '23s',
+    description: 'The agent composes an mxr query and a jq pipeline.',
+  },
+  {
+    id: '04-agent-answers-read-only',
+    title: 'Agent answers read-only',
+    duration: '20s',
+    description: 'The agent gives a useful answer from the inbox without changing the mailbox.',
+  },
+  {
+    id: '05-cli-searches-50000-messages',
+    title: 'CLI searches 50,000 messages',
+    duration: '16s',
+    description: 'Local search across a mailbox containing 50,000 synthetic messages.',
+  },
+  {
+    id: '06-cli-pipes-mail-through-jq',
+    title: 'CLI pipes mail through jq',
+    duration: '21s',
+    description: 'Structured mailbox output composed with jq.',
+  },
+  {
+    id: '07-cli-ranks-newsletters',
+    title: 'CLI ranks newsletters',
+    duration: '17s',
+    description: 'Local mailbox history used to rank subscriptions by opens.',
+  },
+  {
+    id: '08-tui-searches-local-mail',
+    title: 'TUI searches local mail',
+    duration: '13s',
+    description: 'The Vim-friendly TUI searches a local mailbox containing 50,000 synthetic messages.',
+  },
+  {
+    id: '09-tui-mail-tools',
+    title: 'TUI mail tools',
+    duration: '14s',
+    description: 'Accounts, rules, and analytics in the terminal interface.',
+  },
+  {
+    id: '10-one-mailbox-three-interfaces',
+    title: 'One mailbox, three interfaces',
+    duration: '35s',
+    description: 'The TUI, CLI, and an agent use one long-running mxr daemon.',
+  },
+  {
+    id: '11-mxr-is-written-in-rust',
+    title: 'mxr is written in Rust',
+    duration: '32s',
+    description: 'The Rust implementation uses Ratatui, SQLite, and Tantivy behind several clients.',
+  },
+  {
+    id: '12-agent-previews-a-change',
+    title: 'Agent previews a change',
+    duration: '12s',
+    description: 'A dry run resolves a search and lists the exact messages before a mailbox change.',
+  },
+  {
+    id: '13-two-accounts-one-mailbox',
+    title: 'Two accounts, one mailbox',
+    duration: '14s',
+    description: 'Two synthetic accounts share the same command interface.',
+  },
+  {
+    id: '14-local-sender-analytics',
+    title: 'Local sender analytics',
+    duration: '13s',
+    description: 'Volume, dates, and open threads for one synthetic sender.',
+  },
+  {
+    id: '15-searches-attachments',
+    title: 'Searches attachments',
+    duration: '12s',
+    description: 'Attachment-aware local search against synthetic messages.',
+  },
+];
+---
+
+<div class="video-gallery">
+  {clips.map((clip) => (
+    <article>
+      <video
+        controls
+        playsinline
+        preload="none"
+        poster={`/videos/${clip.id}.jpg`}
+        aria-label={`${clip.title} demo`}
+      >
+        <source src={`/videos/${clip.id}.mp4`} type="video/mp4" />
+        <p>Your browser cannot play this video. <a href={`/videos/${clip.id}.mp4`}>Open the recording</a>.</p>
+      </video>
+      <div class="video-gallery-heading">
+        <h2>{clip.title}</h2>
+        <span>{clip.duration}</span>
+      </div>
+      <p>{clip.description}</p>
+      <a href={`/videos/${clip.id}.mp4`}>Open video: {clip.title}</a>
+    </article>
+  ))}
+</div>

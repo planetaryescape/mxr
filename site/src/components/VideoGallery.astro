@@ -99,7 +99,7 @@ const clips = [
       <video
         controls
         playsinline
-        preload="metadata"
+        preload="none"
         poster={`/videos/${clip.id}.jpg`}
         aria-label={`${clip.title} demo`}
       >
@@ -111,7 +111,7 @@ const clips = [
         <span>{clip.duration}</span>
       </div>
       <p>{clip.description}</p>
-      <a href={`/videos/${clip.id}.mp4`}>Open video</a>
+      <a href={`/videos/${clip.id}.mp4`}>Open video: {clip.title}</a>
     </article>
   ))}
 </div>

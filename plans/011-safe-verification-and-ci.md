@@ -120,3 +120,14 @@ Stop and report if the fetched implementation already fixes this, a required sta
 ## Maintenance notes
 
 Branch: `codex/011-safe-verification-and-ci`. Use conventional commits without attribution footers. Load `.agents/skills/mxr-development/SKILL.md` before implementation. Reviewers should scrutinize the script-to-workflow wiring and false/skip outcomes, not just green fixture tests. This plan is the prerequisite for every remaining polish plan.
+
+## Execution amendments and evidence — 2026-09-04
+
+Implementation is under review; not yet merged. The orchestrator approved these bounded additions after running the planned gates:
+
+- `apps/web/package.json` and its lockfile: npm audit found 29 advisories rooted in Tiptap core, browserslist and fast-uri. Updated the compatible Tiptap family to 3.30.4, browserslist to 4.28.8 and fast-uri to 3.1.6. Tiptap React's optional menu ranges otherwise selected incompatible 3.30.5 peers, so both menus are constrained to 3.30.4. npm generated the lockfile; no force, legacy peer mode, audit threshold reduction or persistent npm policy change. Clean install, dependency-tree validation and audit passed with zero advisories.
+- `apps/web/e2e/compose-send.spec.ts`: browser verification found stale expectations for the Send accessible name, old compose launcher and confirmation dialog. The old dependency graph reproduced those failures. Tests now exercise the actual editor, send response, Sent folder, focused compose entry and keyboard discard. Both pass against the isolated fake-provider daemon.
+
+Local verification: shell syntax/Shellcheck and wrapper/classifier/release/workflow fixtures passed; 34 protocol tests, web typecheck, lint, 189 web unit tests, web build and `cargo build -p mxr` passed. The Apple linker emitted its existing unwind-table size warning. The first PR run also demonstrated that audit failure no longer skips typecheck, lint or tests. Its remaining Rust, SQLx, browser smoke and documentation checks passed. Final PR checks and independent review must still pass on the final candidate.
+
+Implementation commits from the worker: `2f549a6a`, `dfcff372`, `7df0cfa0`, `4c11a84b`, `7a81c363`. The orchestrator records integration and remote-main SHAs separately; cherry-picks have different commit identities.

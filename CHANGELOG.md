@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.31](https://github.com/planetaryescape/mxr/compare/v0.6.30...v0.6.31) (2026-09-04)
+
+
+### Documentation
+
+* add video gallery ([#222](https://github.com/planetaryescape/mxr/issues/222)) ([9160b1a](https://github.com/planetaryescape/mxr/commit/9160b1a12ef9dc5d3fb5513b45c68fe57183074f))
+
 ## [0.6.30](https://github.com/planetaryescape/mxr/compare/v0.6.29...v0.6.30) (2026-08-26)
 
 

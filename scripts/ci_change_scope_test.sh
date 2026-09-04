@@ -5,6 +5,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
+git_binary="$(command -v git)"
 
 commit_all() {
   git add -A
@@ -121,6 +122,37 @@ fi
 
 if bash scripts/ci_change_scope.sh push "" invalid-ref >/dev/null 2>&1; then
   echo "missing base must not hide an invalid head ref" >&2
+  exit 1
+fi
+
+mkdir -p "${tmp}/bin"
+cat > "${tmp}/bin/git" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "diff" ]]; then
+  exit 23
+fi
+exec "${REAL_GIT}" "$@"
+EOF
+chmod +x "${tmp}/bin/git"
+
+set +e
+diff_failure_output="$(PATH="${tmp}/bin:${PATH}" REAL_GIT="${git_binary}" \
+  bash scripts/ci_change_scope.sh push "${baseline}" HEAD 2> "${tmp}/diff-error")"
+diff_failure_status=$?
+set -e
+
+if [[ "${diff_failure_status}" -eq 0 ]]; then
+  echo "git diff failure must fail classification" >&2
+  exit 1
+fi
+
+if [[ -n "${diff_failure_output}" ]]; then
+  echo "git diff failure must not print a false-success scope" >&2
+  exit 1
+fi
+
+if ! grep -Fq "ci_change_scope: git diff failed" "${tmp}/diff-error"; then
+  echo "git diff failure must be visible" >&2
   exit 1
 fi
 

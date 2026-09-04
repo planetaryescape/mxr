@@ -87,9 +87,10 @@ REJECTED (with one-line rationale)
 Fifteen plans cover all eleven findings and four follow-on polish tracks from
 the 2026-09-04 code/market audit. Based on freshly fetched `origin/main` at
 `9160b1a12ef9dc5d3fb5513b45c68fe57183074f`. Source was inspected in an isolated
-worktree; the user's older working checkout was preserved. This batch is
-planning only. Application code has not changed and its implementation gates
-have not run.
+worktree; the user's older working checkout was preserved. Implementation was
+authorized on 2026-09-04 with isolated worker worktrees and orchestrator review
+before merging to main. The rows below track execution; a local candidate is
+not a completed or merged plan.
 
 The order is deliberate: make verification safe, protect mail and drafts, make
 search complete and truthful, make client actions consistent, then verify the
@@ -100,9 +101,9 @@ review. These are sizing categories, not delivery dates.
 
 | Plan | Outcome | Priority | Effort | Hard prerequisites | Status |
 |---|---|---|---|---|---|
-| [011](011-safe-verification-and-ci.md) | Safe cargo wrapper; overlapping CI paths run all affected checks; independent web failures remain visible | P1 | M | None | TODO |
-| [012](012-account-setup-and-gmail-auth.md) | Supported Gmail auth, usable remote setup, complete provider menu and truthful token guidance | P1 | L | 011 | TODO |
-| [013](013-draft-edit-recovery.md) | Failed CLI/TUI edits survive retry with explicit recovery | P1 | M | 011 | TODO |
+| [011](011-safe-verification-and-ci.md) | Safe cargo wrapper; overlapping CI paths run all affected checks; independent web failures remain visible | P1 | M | None | IN PROGRESS |
+| [012](012-account-setup-and-gmail-auth.md) | Supported Gmail auth, usable remote setup, complete provider menu and truthful token guidance | P1 | L | 011 | IN PROGRESS |
+| [013](013-draft-edit-recovery.md) | Failed CLI/TUI edits survive retry with explicit recovery | P1 | M | 011 | IN PROGRESS |
 | [014](014-send-outcome-recovery.md) | Unknown delivery survives errors/restart without automatic resend | P1 | L | 011 | TODO |
 | [015](015-authoritative-gmail-resync.md) | Expired Gmail history reconciles missing messages only after authoritative recovery | P1 | L | 011 | TODO |
 | [016](016-search-metadata-consistency.md) | Reply-later/search metadata stays correct through send and hydration | P1 | M | 011 | TODO |

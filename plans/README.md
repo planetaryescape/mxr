@@ -81,3 +81,153 @@ REJECTED (with one-line rationale)
 |------|-------|-----------|--------|
 | 009  | [Web app: bugs, CLI/TUI parity, UX overhaul](009-web-app-parity-and-ux.md) — 4-agent review + live session; phases 0–6, Phase 0 = 4 ship-stoppers (duplicate send, legacy 301s, optimistic no-op, first-session WS) | 2026-07-12 | TODO |
 | 010  | [`mxr demo` IPC timeout (#179): CLI waits, seed + semantic throughput, background sync](010-demo-seed-timeout.md) — 6 PRs (#189 #191 #193 #194 #196 #197), shipped v0.6.22–v0.6.24 | 2026-08-19 | SHIPPED (M3 release pending at time of writing) |
+
+## September 2026 polish batch
+
+Fifteen plans cover all eleven findings and four follow-on polish tracks from
+the 2026-09-04 code/market audit. Based on freshly fetched `origin/main` at
+`9160b1a12ef9dc5d3fb5513b45c68fe57183074f`. Source was inspected in an isolated
+worktree; the user's older working checkout was preserved. This batch is
+planning only. Application code has not changed and its implementation gates
+have not run.
+
+The order is deliberate: make verification safe, protect mail and drafts, make
+search complete and truthful, make client actions consistent, then verify the
+whole workflow at scale. Each plan contains current implementation evidence,
+scoped files, steps, expected checks, and stop conditions. M means several
+focused sessions; L means several days or more including failure testing and
+review. These are sizing categories, not delivery dates.
+
+| Plan | Outcome | Priority | Effort | Hard prerequisites | Status |
+|---|---|---|---|---|---|
+| [011](011-safe-verification-and-ci.md) | Safe cargo wrapper; overlapping CI paths run all affected checks; independent web failures remain visible | P1 | M | None | TODO |
+| [012](012-account-setup-and-gmail-auth.md) | Supported Gmail auth, usable remote setup, complete provider menu and truthful token guidance | P1 | L | 011 | TODO |
+| [013](013-draft-edit-recovery.md) | Failed CLI/TUI edits survive retry with explicit recovery | P1 | M | 011 | TODO |
+| [014](014-send-outcome-recovery.md) | Unknown delivery survives errors/restart without automatic resend | P1 | L | 011 | TODO |
+| [015](015-authoritative-gmail-resync.md) | Expired Gmail history reconciles missing messages only after authoritative recovery | P1 | L | 011 | TODO |
+| [016](016-search-metadata-consistency.md) | Reply-later/search metadata stays correct through send and hydration | P1 | M | 011 | TODO |
+| [017](017-complete-threading-and-index-publication.md) | All archive messages participate in threading; search publication can recover | P1 | L | 011, 016; integrate 015 first in this batch | TODO |
+| [018](018-saved-search-pagination.md) | Every saved-search result is reachable through existing clients | P2 | M–L | 011 | TODO |
+| [019](019-search-coverage-and-query-guidance.md) | Search explains coverage and exact address matching without changing selection | P2 | L | 015–018, transitively 011 | TODO |
+| [020](020-web-mutation-consistency.md) | Optimistic changes, rollback, Undo and search refresh converge with the daemon | P1 | L | 011, 018 | TODO |
+| [021](021-web-navigation-and-keyboard.md) | Reader navigation preserves origin/focus; nested controls own their keys | P1 | L | 011, 020 | TODO |
+| [022](022-shared-mutation-previews.md) | CLI/MCP/TUI/web previews and confirmations describe the actual operation | P1 | L | 011, 020, 021 | TODO |
+| [023](023-interrupted-mutation-jobs.md) | Restarted batch jobs report interruption and retained progress honestly | P2 | M | 011 | TODO |
+| [024](024-effective-agent-permissions.md) | Status and denials explain the policy actually enforced | P2 | M | 011 | TODO |
+| [025](025-polish-journeys-and-performance.md) | Existing journeys pass with representative mail, failure recovery and measured 50k scale | P2 | L | 011 for baseline; 012–024 for completion | TODO |
+
+### Execution and integration order
+
+1. Complete **011** before any other plan uses `scripts/cargo-test`. The current
+   wrapper can kill unrelated cargo processes. Start **025's baseline** after
+   that repair; record failures rather than normalizing them into snapshots.
+2. Prepare three bounded workstreams: **013 → 014 → 023** for drafts/delivery/jobs,
+   **015 → 016 → 017** for sync/search consistency, and **018 → 020 → 021 → 022**
+   for client behavior. Schedule **012** and **024** as capacity becomes available.
+   These arrows include integration order beyond the hard prerequisites.
+3. Complete **019** after 015–018 establish the states it describes. Finish
+   **025** after all repairs, including observed reader and responsiveness defects.
+
+Parallel agents may write tests and work in isolated branches. They must not edit
+the same checkout concurrently. One coordinator owns shared contracts and landing:
+
+- `handler/mutations.rs`, `server.rs`, and `loops.rs`: integrate delivery changes
+  before metadata/job/preview changes that touch the same paths; recheck each
+  preceding invariant. Worker completion is not an integration result.
+- `sync/engine.rs` and store recovery: land 015, then 016, then 017. The successful
+  metadata fixes in 016 and persistent repair/concurrency guarantees in 017 must
+  both pass before claiming SQLite/search agreement under failure.
+- `protocol/types.rs`, bridge OpenAPI/types, and generated TypeScript: agree on
+  additive contracts, integrate one change at a time, regenerate from the combined
+  source, and rerun consuming-client checks. Never hand-merge generated output.
+- Store migrations and `.sqlx`: allocate the next free migration number when
+  integrating; regenerate metadata against the combined schema in an owned DB.
+- Web query/action code: 018 owns paging, 020 owns projection/invalidation, 021
+  owns origin/focus, and 022 owns preview/apply. Later work reuses those owners.
+- Prefer integrating 024 after 022 so effective-permission explanations include
+  the new preview request variants. If 024 lands first, rerun its policy matrix
+  when 022 adds those variants; no permission behavior may change implicitly.
+- CLI journey tests and docs: combine predecessor cases without weakening them.
+  Keep JSON arrays, JSONL records, account scope and explicit message-ID meaning.
+
+Use `codex/NNN-...` branches from freshly fetched main and preserve user work.
+If dispatched work is based on a feature branch, record that exact ref/SHA.
+Plans authorize no push, release, workflow dispatch, or real-account mutation by
+themselves. Each later execution task supplies its own publication authorization.
+
+### Audit coverage
+
+| Audit item | Owning plans |
+|---|---|
+| 01 Gmail setup | 012 |
+| 02 Latest draft edit lost on retry | 013 |
+| 03 Unknown delivery treated as unsent | 014 |
+| 04 Deletions missed after history expiry | 015 |
+| 05 SQLite/search metadata disagreement | 016, 017 |
+| 06 Archive threading cap and saved-search truncation | 017, 018 |
+| 07 Web optimistic changes and lost navigation context | 020, 021 |
+| 08 Preview and bulk-action inconsistency | 022 |
+| 09 Interrupted batch jobs | 023 |
+| 10 CI path selection | 011 |
+| 11 Cargo helper kills unrelated processes | 011 |
+| Search coverage and exact query guidance | 019 |
+| Effective agent access | 024 |
+| Reading, keyboard workflow, recovery and responsiveness | 025, consuming the preceding fixes |
+
+Legacy **009 remains open**. This batch takes ownership of its overlapping
+optimistic-cache/search-invalidation work, saved-search paging, relevant
+navigation/accessibility work and preview consistency. Mark those portions
+addressed only when their new plans pass. Do not execute all of 009's old feature
+parity or redesign proposals as part of this polish batch, or mark 009 complete.
+Plans 001–008 and 010 retain their recorded shipped history.
+
+### What the Obsidian research changed
+
+The vault supplied reusable engineering lessons, not proof that old incidents
+remain in today's code. Notes were read without modification; private examples
+were not copied into plans or fixtures.
+
+| Note or lesson | Concrete requirement |
+|---|---|
+| Same-Code-Path Preview | Resolve the verb, IDs, account, destination and eligibility together; preview and execution use the same preparation. Recheck time-sensitive eligibility. |
+| The Last Page Can Be Empty; Zero Change Can Be Success | Finish sync/recovery/paging on explicit completion, including empty pages and zero changed rows. |
+| First Run Is the Launch Surface; Credential Prompts Are Side Effects | Keep setup repairable, Gmail BYOC honest, and credential prompts in explicit user actions. Preserve lazy account access. |
+| Serial Gates Hide the Failures Behind Them | An audit failure cannot mask the outcomes of independent web checks. Use Node 24 as CI does. |
+| Hot Reads Should Not Repair Cold State | Coverage uses existing bounded state; a search must not trigger scans, provider calls or index repair. |
+| Demo Data Is a Product Fixture; Keyboard Parity Is a Product Contract | Reuse real daemon/FakeProvider journeys with representative mail; test discovery, focus, action and recovery. |
+| Measure the Thing, Not the Measurer | Record build, machine, sample count and probe overhead; choose thresholds from repeated measurements. |
+| Parallel Agent Work Needs a Closing Ledger | Track implemented, reviewed, integrated and verified as separate facts, with evidence. |
+
+The market research still supports this scope: current terminal clients establish
+programmable mail as an existing category; mature clients make draft survival,
+search coverage and keyboard flow explicit. It does not justify new providers,
+an AI workflow, a replacement composer or a broad architecture rewrite.
+
+### Acceptance and closing ledger
+
+No plan is DONE because an agent finished writing code. Record these fields in
+its execution notes and keep the table above as the compact status:
+
+`owner | branch/worktree | implementation SHA | review result | integrated SHA |
+focused checks and outcomes | CI/evidence links | unresolved failure`
+
+Completion requires the following:
+
+- Each regression is exercised at the owning boundary and passes after the fix.
+  A filtered test run that executes zero tests is not evidence.
+- Changed crates build; relevant Rust, protocol, web type/lint/unit/browser and
+  migration checks pass. Recheck after shared-file integration, not every time
+  another unrelated branch changes.
+- Delivery ambiguity, partial resync, empty final pages, interrupted jobs, expired
+  Undo and concurrent optimistic changes have deterministic failure-path tests.
+- 025 records representative full journeys and 50,000-message evidence, with
+  observed in-scope failures resolved and no guessed performance targets.
+- Application data stays local. Tests use synthetic accounts and owned processes;
+  no private mail, token values or bodies enter logs/activity/reports.
+
+Unresolved product questions: **none needed to start**. Live verification of the
+Google/SSH walkthrough in 012 later needs an explicitly authorized test account
+and SSH target. Tested implementation and source-backed policy corrections can
+proceed; the live walkthrough must retain an unverified label until exercised.
+025's scale evidence requires an authorized execution environment. These are
+future evidence requirements, not requests for access during planning.

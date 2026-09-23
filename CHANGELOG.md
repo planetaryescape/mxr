@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.31](https://github.com/planetaryescape/mxr/compare/v0.6.30...v0.6.31) (2026-09-23)
+
+
+### Bug Fixes
+
+* stop background LLM work burning CPU on empty completions ([#229](https://github.com/planetaryescape/mxr/issues/229)) ([44568a7](https://github.com/planetaryescape/mxr/commit/44568a7909478d37d4fc2c1f28e59bb76b7e253e))
+
+
+### Documentation
+
+* add video gallery ([#222](https://github.com/planetaryescape/mxr/issues/222)) ([9160b1a](https://github.com/planetaryescape/mxr/commit/9160b1a12ef9dc5d3fb5513b45c68fe57183074f))
+* define companion process boundary ([#228](https://github.com/planetaryescape/mxr/issues/228)) ([3319014](https://github.com/planetaryescape/mxr/commit/33190149e7ce6c06ea41356b8158e6fc7f5622d9))
+
 ## [0.6.30](https://github.com/planetaryescape/mxr/compare/v0.6.29...v0.6.30) (2026-08-26)
 
 

@@ -52,24 +52,18 @@ Semantic versioning (semver). Given `MAJOR.MINOR.PATCH`:
 
 ### Release trigger
 
-Releases are triggered by pushing a git tag:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+Releases are triggered by a `v{version}` tag, and the tag comes from release-please: pushes to `main` run `release-please.yml`, which opens or updates a release PR for `feat:`/`fix:` commits; merging that PR bumps the workspace version, updates `CHANGELOG.md`, and pushes the tag. Do not create tags by hand; a hand-made tag skips the version and changelog bump and can collide with the next release PR.
 
 The tag always creates or updates a GitHub Release. When the scoped diff affects CLI artifacts, the same workflow also builds binaries and updates Homebrew.
 
 For docs-only or version-only tags, `scripts/release_change_scope.sh` sets `cli_changed=false` and `has_artifacts=false`. Those tags still get a GitHub Release and changelog, but they do not build tarballs or update the Homebrew tap.
 
-### Pre-release checklist (manual, before tagging)
+### Pre-release checklist
 
-1. Update version in root `Cargo.toml` (workspace version)
-2. Update `CHANGELOG.md` (or let git-cliff generate it)
-3. Verify CI is green on main
-4. Commit version bump + changelog
-5. Tag and push
+1. The change PR is green on CI and merged. Locally run only the scoped gates (`scripts/pre-pr-rust-gate`, `scripts/cargo-test -p <crate>`); CI is the workspace-wide gate and the developer machine must not repeat it.
+2. The release-please PR is merged, which bumps the version, writes the changelog, and pushes the tag.
+3. The tag's `release.yml` run is green. Its build-binaries job compiles `-p mxr --release --locked` from a clean checkout, so it also proves the `cargo install --git` channel; nobody needs to rebuild the workspace locally to check it.
+4. Post-release verification on a developer machine is download-only: `brew upgrade mxr && mxr version`, and `install.sh` into a temp dir. Neither compiles.
 
 ---
 

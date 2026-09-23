@@ -67,6 +67,22 @@ The protocol should be read in four buckets:
 
 The daemon serves reusable truth and workflows, not screen payloads.
 
+### Core and companion boundary
+
+mxr core owns mail truth and authority. Companion processes provide interpretation and orchestration.
+
+| Core mail and platform responsibilities | Companion candidates |
+|---|---|
+| Accounts, credentials, providers, sync, messages, threads, labels, and attachments | LLM drafting and summarization |
+| Draft persistence, composition formats, MIME assembly, and sending | Mail merge and campaign orchestration |
+| Lexical search, saved searches, deterministic rules, dry-runs, undo, and mutation safety | Analytics, relationship insights, and semantic enrichment |
+
+HTML and plain-text body handling remain core because they are standard email composition formats. Template expansion across recipient data is orchestration and belongs in a companion.
+
+A companion is an ordinary process that talks to mxr through structured CLI output or the existing JSON IPC contract. It does not run inside the daemon, receive provider credentials, or bypass mutation validation. Read-only companions receive only the data their operation requires. A companion that creates drafts or requests other mutations goes through the same preview, persistence, and approval path as the CLI, TUI, web app, or another first-party client.
+
+This is not a plugin ABI, registry, installer, or lifecycle manager. Existing built-in capabilities are not extracted merely to make the diagram cleaner. New companion candidates should first prove the boundary through the existing Unix and IPC seams; an in-repo migration needs a separate product and engineering case.
+
 Socket location: `$XDG_RUNTIME_DIR/mxr/mxr.sock` (Linux) or `~/Library/Application Support/mxr/mxr.sock` (macOS).
 
 ### Transport seam

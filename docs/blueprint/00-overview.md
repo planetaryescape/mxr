@@ -103,6 +103,10 @@ Don't build a plugin framework. Pipe data to shell commands. Let users write aut
 
 Structured JSON/JSONL output is part of this principle. mxr should be easy to compose with `jq`, `xargs`, shell scripts, and agent runtimes.
 
+This does not mean every capability belongs in the daemon. mxr core owns mail truth and authority: accounts, sync, messages, threads, drafts, composition formats, provider access, and mutations. Companion tools own interpretation and orchestration: LLM assistance, analytics, semantic enrichment, mail merge, and other specialized workflows.
+
+Companions are ordinary, separately installed processes. They consume structured CLI output or daemon IPC and ask mxr to perform authorized operations. mxr does not load their code, maintain a plugin registry, manage their lifecycle, or give them provider credentials. A companion may propose a draft or a batch of operations; mxr validates, persists, previews, and executes them through the same safety contracts used by first-party clients.
+
 ### 9. Adapters are swappable
 
 No provider-specific logic outside adapter crates. Ever. The adapter interface is the contract. If gws (Google Workspace CLI) disappears, if Gmail changes their API, if someone wants Outlook — only the adapter crate changes. Core code is untouched.

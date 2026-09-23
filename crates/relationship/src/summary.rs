@@ -22,15 +22,23 @@ struct SummaryResponse {
     known_topics: Vec<String>,
 }
 
+/// `force` is for explicit user rebuilds: it skips the backoff that
+/// otherwise stops re-sending an input that recently failed.
 pub async fn generate_relationship_summary(
     store: &Store,
     llm: &Arc<LlmRuntime>,
     account_id: &AccountId,
     email: &str,
+    force: bool,
 ) -> Result<bool> {
     let Some(style) = store.get_contact_style(account_id, email).await? else {
         return Ok(false);
     };
+    let feature_llm = llm.for_feature(LlmFeature::RelationshipSummary);
+    let attempt_key = format!("{}:{}", account_id.as_str(), email.to_ascii_lowercase());
+    if !force && !feature_llm.background_attempt_due(&attempt_key, &style.source_hash) {
+        return Ok(false);
+    }
     let samples = store.recent_contact_messages(account_id, email, 40).await?;
     if let Some(existing) = store
         .get_contact_relationship_summary(account_id, email)
@@ -93,8 +101,7 @@ pub async fn generate_relationship_summary(
         wrap_untrusted_mail(&excerpts)
     );
 
-    let response = match llm
-        .for_feature(LlmFeature::RelationshipSummary)
+    let response = match feature_llm
         .complete_background(CompletionRequest {
             messages: vec![ChatMessage::user(prompt)],
             max_tokens: Some(300),
@@ -103,9 +110,15 @@ pub async fn generate_relationship_summary(
         .await
     {
         Ok(response) => response,
-        Err(LlmError::Disabled) => return Ok(false),
-        Err(error) => return Err(error.into()),
+        // Open breaker already warned once; skip instead of a WARN per contact.
+        Err(LlmError::Disabled | LlmError::CircuitOpen { .. }) => return Ok(false),
+        Err(error @ LlmError::PrivacyBlocked(_)) => return Err(error.into()),
+        Err(error) => {
+            feature_llm.record_background_attempt(&attempt_key, &style.source_hash, false);
+            return Err(error.into());
+        }
     };
+    feature_llm.record_background_attempt(&attempt_key, &style.source_hash, true);
     let parsed = parse_summary_response(&response.content)?;
     if parsed.text.trim().is_empty() {
         return Ok(false);
@@ -212,7 +225,7 @@ mod tests {
         let llm = std::sync::Arc::new(LlmRuntime::new(std::sync::Arc::new(NoopProvider)));
 
         let generated =
-            generate_relationship_summary(&store, &llm, &account.id, "alice@example.com")
+            generate_relationship_summary(&store, &llm, &account.id, "alice@example.com", false)
                 .await
                 .expect("generate");
 
@@ -290,7 +303,7 @@ mod tests {
             cap.clone() as std::sync::Arc<dyn LlmProvider>
         ));
         let generated =
-            generate_relationship_summary(&store, &llm, &account.id, "alice@example.com")
+            generate_relationship_summary(&store, &llm, &account.id, "alice@example.com", false)
                 .await
                 .expect("generate");
         assert!(generated, "summary should have been generated");

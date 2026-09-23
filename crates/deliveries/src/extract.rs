@@ -82,11 +82,22 @@ pub struct LlmInput<'a> {
 /// from the model. On rejection, returns `Reject`. If the LLM is
 /// disabled/blocked/erroring, returns `base` unchanged so the caller can fall
 /// back to heuristic-only handling.
+///
+/// `message_key` names the message for the background gate: a message that
+/// already failed is not re-sent while it backs off, and one that succeeded
+/// is not re-sent at all. `force` (explicit user backfill) skips the gate.
 pub async fn enrich(
     runtime: &FeatureLlmRuntime,
+    message_key: &str,
+    force: bool,
     input: &LlmInput<'_>,
     base: DeliverySignal,
 ) -> DeliverySignal {
+    // A message's content doesn't change, so the key alone identifies it.
+    const FINGERPRINT: &str = "";
+    if !force && !runtime.background_attempt_due(message_key, FINGERPRINT) {
+        return base;
+    }
     // From/subject/body are all attacker-controllable; wrap the whole
     // block in untrusted-content delimiters. Strict-JSON parsing plus the
     // checksum re-validation of any tracking number are the boundary.
@@ -111,9 +122,12 @@ pub async fn enrich(
 
     let resp = match runtime.complete_background(req).await {
         Ok(r) => r,
-        Err(LlmError::Disabled | LlmError::PrivacyBlocked(_)) => return base,
+        Err(LlmError::Disabled | LlmError::PrivacyBlocked(_) | LlmError::CircuitOpen { .. }) => {
+            return base
+        }
         Err(error) => {
-            tracing::warn!(%error, "delivery LLM enrich failed; using heuristic");
+            runtime.record_background_attempt(message_key, FINGERPRINT, false);
+            tracing::warn!(message = message_key, %error, "delivery LLM enrich failed; using heuristic");
             return base;
         }
     };
@@ -121,10 +135,18 @@ pub async fn enrich(
     let parsed: LlmDelivery = match serde_json::from_str(extract_json(&resp.content)) {
         Ok(p) => p,
         Err(error) => {
-            tracing::warn!(%error, "delivery LLM returned non-JSON; using heuristic");
+            runtime.record_background_attempt(message_key, FINGERPRINT, false);
+            tracing::warn!(
+                message = message_key,
+                %error,
+                chars = resp.content.len(),
+                finish_reason = ?resp.finish_reason,
+                "delivery LLM returned non-JSON; using heuristic"
+            );
             return base;
         }
     };
+    runtime.record_background_attempt(message_key, FINGERPRINT, true);
 
     if !parsed.is_shipment_related {
         return DeliverySignal {
@@ -286,7 +308,7 @@ mod tests {
             body_text: "PACKAGE-BODY-MARKER shipped today",
         };
 
-        let _ = enrich(&feature, &input, base_signal()).await;
+        let _ = enrich(&feature, "msg-1", false, &input, base_signal()).await;
 
         let msgs = cap.msgs.lock().expect("msgs lock");
         assert!(
@@ -388,5 +410,64 @@ mod tests {
         );
         // Falls back to merchant|order dedup.
         assert_eq!(merged.dedup_key.as_deref(), Some("acme|a-9"));
+    }
+
+    #[tokio::test]
+    async fn failed_message_is_not_resent_until_forced() {
+        use mxr_llm::{CompletionResponse, LlmCapabilities, LlmFeature, LlmProvider, LlmRuntime};
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        #[derive(Default)]
+        struct NotJson {
+            calls: AtomicU32,
+        }
+        #[async_trait::async_trait]
+        impl LlmProvider for NotJson {
+            async fn complete(
+                &self,
+                _req: CompletionRequest,
+            ) -> std::result::Result<CompletionResponse, LlmError> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                Ok(CompletionResponse {
+                    content: "Sorry, I can't tell.".into(),
+                    model: "stub".into(),
+                    finish_reason: Some("stop".into()),
+                })
+            }
+            fn capabilities(&self) -> LlmCapabilities {
+                LlmCapabilities {
+                    context_window: 8192,
+                    supports_streaming: false,
+                }
+            }
+            fn model_name(&self) -> &str {
+                "stub"
+            }
+        }
+
+        let provider = Arc::new(NotJson::default());
+        let runtime = Arc::new(LlmRuntime::new(provider.clone() as Arc<dyn LlmProvider>));
+        let feature = runtime.for_feature(LlmFeature::DeliveryExtraction);
+        let input = LlmInput {
+            from_name: "Shop",
+            from_domain: "shop.example",
+            subject: "Your order",
+            body_text: "shipped today",
+        };
+
+        for _ in 0..3 {
+            let signal = enrich(&feature, "msg-1", false, &input, base_signal()).await;
+            assert_eq!(
+                signal.decision,
+                Decision::ShortlistLlm,
+                "falls back to heuristic"
+            );
+        }
+        assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
+
+        let _ = enrich(&feature, "msg-2", false, &input, base_signal()).await;
+        let _ = enrich(&feature, "msg-1", true, &input, base_signal()).await;
+        assert_eq!(provider.calls.load(Ordering::SeqCst), 3);
     }
 }

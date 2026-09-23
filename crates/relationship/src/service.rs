@@ -66,14 +66,20 @@ impl RelationshipServiceHandle {
                         &llm,
                         &account_id,
                         &email,
+                        false,
                     )
                     .await
                     {
                         tracing::warn!(%account_id, %email, %error, "relationship summary refresh failed");
                     }
-                    if let Err(error) =
-                        crate::commitments::extract_commitments(&store, &llm, &account_id, &email)
-                            .await
+                    if let Err(error) = crate::commitments::extract_commitments(
+                        &store,
+                        &llm,
+                        &account_id,
+                        &email,
+                        false,
+                    )
+                    .await
                     {
                         tracing::warn!(%account_id, %email, %error, "commitment extraction failed");
                     }
@@ -111,6 +117,7 @@ impl RelationshipServiceHandle {
                                 &llm,
                                 &account_id,
                                 &email,
+                                true,
                             )
                             .await
                             {
@@ -121,6 +128,7 @@ impl RelationshipServiceHandle {
                                 &llm,
                                 &account_id,
                                 &email,
+                                true,
                             )
                             .await
                             {

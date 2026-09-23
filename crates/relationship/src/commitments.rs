@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId};
 use mxr_llm::{
@@ -34,11 +34,15 @@ struct ExtractedCommitment {
     by_when: Option<String>,
 }
 
+/// `force` is for explicit user rebuilds: it skips the background gate that
+/// otherwise stops re-sending the same messages after a success, or while a
+/// failure is backing off.
 pub async fn extract_commitments(
     store: &Store,
     llm: &Arc<LlmRuntime>,
     account_id: &AccountId,
     email: &str,
+    force: bool,
 ) -> Result<usize> {
     store
         .expire_stale_contact_commitments(
@@ -48,7 +52,19 @@ pub async fn extract_commitments(
         )
         .await?;
     let samples = store.recent_contact_messages(account_id, email, 40).await?;
-    if samples.is_empty() {
+    let selected = samples
+        .iter()
+        .filter(|sample| !sample.is_list_sender)
+        .take(MAX_EXCERPTS)
+        .collect::<Vec<_>>();
+    // Nothing but list mail: an empty prompt can only waste a model call.
+    if selected.is_empty() {
+        return Ok(0);
+    }
+    let feature_llm = llm.for_feature(LlmFeature::Commitments);
+    let attempt_key = format!("{}:{}", account_id.as_str(), email.to_ascii_lowercase());
+    let fingerprint = samples_fingerprint(&selected);
+    if !force && !feature_llm.background_attempt_due(&attempt_key, &fingerprint) {
         return Ok(0);
     }
     let reader_config = ReaderConfig::default();
@@ -63,11 +79,7 @@ pub async fn extract_commitments(
         + "\n\n\n\n\n\n".len();
     let excerpt_budget = MAX_PROMPT_CHARS.saturating_sub(overhead);
     let mut excerpts = String::new();
-    for sample in samples
-        .iter()
-        .filter(|sample| !sample.is_list_sender)
-        .take(MAX_EXCERPTS)
-    {
+    for sample in &selected {
         let body = clean(Some(&sample.body), None, &reader_config).content;
         excerpts.push_str(&format!(
             "Message {} from {} at {} in thread {}:\n{}\n\n",
@@ -93,8 +105,7 @@ pub async fn extract_commitments(
         wrap_untrusted_mail(&excerpts)
     );
 
-    let response = match llm
-        .for_feature(LlmFeature::Commitments)
+    let response = match feature_llm
         .complete_background(CompletionRequest {
             messages: vec![ChatMessage::user(prompt)],
             max_tokens: Some(500),
@@ -103,10 +114,25 @@ pub async fn extract_commitments(
         .await
     {
         Ok(response) => response,
-        Err(LlmError::Disabled) => return Ok(0),
-        Err(error) => return Err(error.into()),
+        // Open breaker already warned once; skip instead of a WARN per contact.
+        Err(LlmError::Disabled | LlmError::CircuitOpen { .. }) => return Ok(0),
+        Err(error @ LlmError::PrivacyBlocked(_)) => return Err(error.into()),
+        Err(error) => {
+            feature_llm.record_background_attempt(&attempt_key, &fingerprint, false);
+            return Err(error.into());
+        }
     };
-    let parsed = parse_commitments_response(&response.content)?;
+    let parsed = parse_commitments_response(&response.content)
+        // Lengths and finish_reason only: the reply can quote mail.
+        .with_context(|| {
+            format!(
+                "unparseable commitments reply ({} chars, finish_reason={:?})",
+                response.content.len(),
+                response.finish_reason
+            )
+        });
+    feature_llm.record_background_attempt(&attempt_key, &fingerprint, parsed.is_ok());
+    let parsed = parsed?;
     let mut inserted = 0;
     for commitment in parsed.commitments {
         if commitment.what.trim().is_empty() || commitment.who_owes.trim().is_empty() {
@@ -162,20 +188,40 @@ pub async fn extract_commitments(
 }
 
 fn parse_commitments_response(content: &str) -> Result<CommitmentResponse> {
-    let trimmed = strip_json_fence(content.trim());
-    if trimmed.starts_with('[') {
-        let commitments = serde_json::from_str(trimmed)?;
+    let json = json_span(content);
+    if json.starts_with('[') {
+        let commitments = serde_json::from_str(json)?;
         return Ok(CommitmentResponse { commitments });
     }
-    Ok(serde_json::from_str(trimmed)?)
+    Ok(serde_json::from_str(json)?)
 }
 
-fn strip_json_fence(content: &str) -> &str {
-    content
-        .strip_prefix("```json")
-        .or_else(|| content.strip_prefix("```"))
-        .and_then(|content| content.strip_suffix("```"))
-        .map_or(content, str::trim)
+/// The JSON object or array inside a reply. Local models wrap it in prose
+/// or a code fence, sometimes without the closing fence.
+fn json_span(content: &str) -> &str {
+    let trimmed = content.trim();
+    let Some(start) = trimmed.find(['{', '[']) else {
+        return trimmed;
+    };
+    let close = if trimmed[start..].starts_with('{') {
+        '}'
+    } else {
+        ']'
+    };
+    match trimmed.rfind(close) {
+        Some(end) if end > start => &trimmed[start..=end],
+        _ => trimmed,
+    }
+}
+
+/// Changes when the set of messages the prompt is built from changes.
+fn samples_fingerprint(samples: &[&mxr_store::RelationshipMessageSample]) -> String {
+    let mut hasher = Sha256::new();
+    for sample in samples {
+        hasher.update(sample.message_id.as_str());
+        hasher.update([0]);
+    }
+    base16ct::lower::encode_string(&hasher.finalize())
 }
 
 fn normalize_what(value: &str) -> String {
@@ -274,10 +320,12 @@ mod tests {
             ]),
         })));
 
-        let inserted = extract_commitments(&store, &llm, &account.id, "alice@example.com")
+        let inserted = extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
             .await
             .expect("first extract");
-        let deduped = extract_commitments(&store, &llm, &account.id, "alice@example.com")
+        // Forced, as an explicit rebuild: same samples, so the background
+        // gate would otherwise skip it.
+        let deduped = extract_commitments(&store, &llm, &account.id, "alice@example.com", true)
             .await
             .expect("second extract");
 
@@ -329,7 +377,7 @@ mod tests {
 
         let cap = Arc::new(Capture::default());
         let llm = Arc::new(LlmRuntime::new(cap.clone() as Arc<dyn LlmProvider>));
-        extract_commitments(&store, &llm, &account.id, "alice@example.com")
+        extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
             .await
             .expect("extract");
 
@@ -354,6 +402,77 @@ mod tests {
             begin < body && body < end,
             "mail excerpts must sit between the untrusted-content markers"
         );
+    }
+
+    fn sequence_llm(responses: &[&str]) -> Arc<LlmRuntime> {
+        Arc::new(LlmRuntime::new(Arc::new(SequenceLlm {
+            responses: Mutex::new(responses.iter().map(ToString::to_string).collect()),
+        })))
+    }
+
+    // SequenceLlm panics when called past its responses, so each test below
+    // proves a skipped extraction never reached the model.
+
+    #[tokio::test]
+    async fn background_extraction_skips_unchanged_samples_after_success() {
+        let store = Store::in_memory().await.expect("store");
+        let account = test_account();
+        store.insert_account(&account).await.expect("account");
+        let thread_id = ThreadId::new();
+        insert_message(&store, &account, &thread_id, "first", 0).await;
+        let llm = sequence_llm(&[r#"{"commitments":[]}"#, r#"{"commitments":[]}"#]);
+
+        extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
+            .await
+            .expect("first extract");
+        extract_commitments(&store, &llm, &account.id, "Alice@Example.com", false)
+            .await
+            .expect("unchanged samples: skipped");
+
+        insert_message(&store, &account, &thread_id, "second", 1).await;
+        extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
+            .await
+            .expect("new mail: extracted again");
+    }
+
+    #[tokio::test]
+    async fn background_extraction_backs_off_after_unusable_reply() {
+        let store = Store::in_memory().await.expect("store");
+        let account = test_account();
+        store.insert_account(&account).await.expect("account");
+        insert_message(&store, &account, &ThreadId::new(), "first", 0).await;
+        let llm = sequence_llm(&["I could not find any commitments.", r#"{"commitments":[]}"#]);
+
+        let error = extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
+            .await
+            .expect_err("unusable reply");
+        assert!(
+            format!("{error:#}").contains("finish_reason=Some(\"stop\")"),
+            "{error:#}"
+        );
+        assert_eq!(
+            extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
+                .await
+                .expect("backing off: skipped"),
+            0
+        );
+        // An explicit rebuild still goes through.
+        extract_commitments(&store, &llm, &account.id, "alice@example.com", true)
+            .await
+            .expect("forced");
+    }
+
+    #[test]
+    fn parse_accepts_prose_and_unclosed_fences_around_json() {
+        for reply in [
+            "Here are the commitments:\n{\"commitments\":[]}",
+            "```json\n{\"commitments\":[]}",
+            "```json\n{\"commitments\":[]}\n```",
+            "[]",
+        ] {
+            let parsed = parse_commitments_response(reply).expect("json inside reply");
+            assert!(parsed.commitments.is_empty());
+        }
     }
 
     fn test_account() -> Account {

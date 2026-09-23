@@ -94,7 +94,7 @@ pub(crate) async fn scan_messages(
     }
     let llm_enabled = cfg.llm.enabled;
     for message_id in message_ids {
-        match scan_one(state, message_id, llm_enabled, false).await {
+        match scan_one(state, message_id, llm_enabled, false, false).await {
             Ok(outcome) => summary_add(&mut summary, outcome),
             Err(error) => {
                 tracing::warn!(message = %message_id, %error, "delivery scan failed");
@@ -126,7 +126,8 @@ async fn scan_recent(
         ..Default::default()
     };
     for message_id in &ids {
-        match scan_one(state, message_id, llm_enabled, dry_run).await {
+        // Explicit user backfill: retry messages the background scan gave up on.
+        match scan_one(state, message_id, llm_enabled, dry_run, true).await {
             Ok(outcome) => summary_add(&mut summary, outcome),
             Err(error) => {
                 tracing::warn!(message = %message_id, %error, "delivery backfill scan failed");
@@ -149,6 +150,7 @@ async fn scan_one(
     message_id: &MessageId,
     llm_enabled: bool,
     dry_run: bool,
+    force_llm: bool,
 ) -> Result<ScanOutcome, String> {
     let mut outcome = ScanOutcome::default();
     let Some(envelope) = state
@@ -207,6 +209,8 @@ async fn scan_one(
             let runtime = state.llm.for_feature(LlmFeature::DeliveryExtraction);
             signal = extract::enrich(
                 &runtime,
+                &message_id.as_str(),
+                force_llm,
                 &extract::LlmInput {
                     from_name,
                     from_domain: &from_domain,

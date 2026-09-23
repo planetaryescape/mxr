@@ -1,0 +1,26 @@
+{
+  "id": "chatcmpl-90",
+  "object": "chat.completion",
+  "created": 1790200742,
+  "model": "gemma4:latest",
+  "system_fingerprint": "fp_ollama",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "reasoning": "Thinking Process:\n\n1.  **Analyze the Request:** The goal is to extract *only* explicit open asks, promises, decisions, or follow-ups from the provided email content. I must ignore implied work. The output must be a strict JSON structure: `{\"commitments\":[{\"who_owes\":\"name/email\",\"what\":\"concrete obligation\",\"by_when\":\"RFC3339 or null\",\"evidence_msg_id\":\"message id from input\",\"direction\":\"yours|theirs\"}]}`.\n\n[... trimmed: remaining reasoning quoted private mail ...]"
+      },
+      "finish_reason": "length"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 5735,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "completion_tokens": 500,
+    "total_tokens": 6235
+  }
+}

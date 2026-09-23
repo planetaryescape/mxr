@@ -603,3 +603,31 @@ Superseded by D049. Bodies and body text are now indexed at sync time.
 It is weighed as evidence, not proof — `--instance` is a marker the daemon parses and discards, and the profile still comes from the inherited environment — so it is confined to *verification*, where a wrong "no" drops through to the `ps` scan and the daemon can still be adopted by canonical executable and environment. The pre-signal re-check deliberately does **not** consult it: that check runs only where the start times agree or are both missing, and its "no" goes straight to clearing the lifecycle files of a daemon it never signalled, with no scan behind it. A name that is absent, value-less, or contains whitespace (unreconstructable from `ps` output) is not a mismatch. Both `ps` command-line probes gained `-ww` in the same change, because a truncated command line reads as a name that disagrees.
 
 **The honesty half of the same change**: a client cannot tell "no accounts" from "the daemon ran out of time reading its database" unless the daemon says so, so `ResponseData::Status` carries `degraded: bool` and every renderer prints `unknown` instead of a zero. `FeatureHealthReport` gained `search`, taken once per report so a finding and the health block cannot disagree. And `mxr doctor --check` exits on `healthy`, which agents and CI read — so `healthy` now means no Error-severity finding, tying the exit code to the thing the report already prints as an error.
+
+---
+
+## D061: Companion processes, not a plugin framework
+
+**Chosen**: Keep canonical mail state and mutation authority in mxr. Put specialized interpretation and orchestration in ordinary out-of-process companions that consume CLI JSON/JSONL or daemon IPC. mxr does not load companion code, maintain a plugin registry, manage companion installation or lifecycle, or expose provider credentials.
+
+**Boundary**:
+- Core owns accounts, provider access, sync, messages, threads, labels, attachments, drafts, composition formats, MIME assembly, sending, dry-runs, undo, and mutation validation.
+- Companion candidates include LLM assistance, analytics, semantic enrichment, mail merge, and other specialized workflows.
+- HTML and plain-text body support are core email capabilities. Expanding a template over recipient data is companion orchestration.
+- A companion may analyse data or propose drafts and mutations. mxr remains responsible for validating, persisting, previewing, and executing them.
+
+**Considered**:
+- Keep every first-party capability inside the daemon.
+- Build a managed plugin system with discovery, installation, lifecycle hooks, and an in-process ABI.
+- Leave companion tools to scrape human-readable output or access the local database directly.
+
+**Why companions over a plugin framework**:
+- Preserves the Unix model: structured data crosses a documented process boundary and tools may be written in any language.
+- Keeps optional dependencies, external services, failures, and release cadence outside the core mail runtime.
+- Prevents extensions from bypassing provider abstraction, mutation safety, or the canonical store.
+- Uses seams mxr already needs for its own clients instead of creating a second extension architecture.
+- Allows strategically important first-party tools without making them required for reliable core mail.
+
+**Migration rule**: This decision is not a mandate to extract existing built-in capabilities. Start with new, clearly bounded companions and improve the structured interfaces they require. Move an existing capability only when there is a concrete product or engineering benefit, not for architectural symmetry.
+
+**Trade-offs accepted**: Companion installation and version compatibility are less seamless than an in-process framework. Cross-process calls add modest overhead, and rich UI integration may require additional protocol work. These costs are preferable to a privileged plugin runtime and a second package ecosystem.

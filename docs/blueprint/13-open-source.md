@@ -23,7 +23,7 @@ The crate dependency rules (documented in 01-architecture.md) enforce this. Prov
 
 ### 3. Stable extension seams
 
-Contributors should be able to add:
+In-repo contributors should be able to add:
 - A provider adapter (implement traits from mxr-core)
 - A CLI command (add to clap subcommand enum)
 - An export format (add variant to ExportFormat enum)
@@ -31,6 +31,10 @@ Contributors should be able to add:
 - A search field (add field to Tantivy schema)
 
 without surgery on existing code. The architecture supports this via enums, traits, and clear interfaces.
+
+Out-of-process companions use a different seam: stable CLI JSON/JSONL or daemon IPC. They are normal executables in any language, not dynamically loaded plugins. This keeps specialized capabilities such as LLM assistance, analytics, semantic enrichment, and mail merge independently installable without creating a plugin ABI, registry, package manager, or privileged path around mxr's safety checks.
+
+The boundary is simple: core owns canonical mail state and mutation authority; companions interpret data and orchestrate requests. Provider credentials remain inside mxr, and every requested mutation still passes through mxr's preview and execution contracts.
 
 ### 4. Open defaults
 

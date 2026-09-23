@@ -30,10 +30,15 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
+use tokio::time::Instant;
 
+mod background;
 mod demo;
+
+use background::{AttemptLedger, BackgroundBreaker};
 
 pub use demo::DemoLlmProvider;
 
@@ -198,6 +203,8 @@ pub enum LlmError {
     PrivacyBlocked(String),
     #[error("LLM returned an empty completion")]
     Empty,
+    #[error("background LLM calls paused for {retry_after_secs}s after repeated failures")]
+    CircuitOpen { retry_after_secs: u64 },
     #[error("LLM error: {0}")]
     Other(String),
 }
@@ -221,6 +228,8 @@ pub struct LlmRuntime {
     feature_providers: RwLock<HashMap<LlmFeature, Arc<dyn LlmProvider>>>,
     blocked_features: RwLock<HashMap<LlmFeature, String>>,
     background_timeout: RwLock<Duration>,
+    background_breaker: Mutex<BackgroundBreaker>,
+    background_attempts: Mutex<AttemptLedger>,
 }
 
 pub struct FeatureLlmRuntime {
@@ -235,6 +244,8 @@ impl LlmRuntime {
             feature_providers: RwLock::new(HashMap::new()),
             blocked_features: RwLock::new(HashMap::new()),
             background_timeout: RwLock::new(DEFAULT_BACKGROUND_TIMEOUT),
+            background_breaker: Mutex::new(BackgroundBreaker::default()),
+            background_attempts: Mutex::new(AttemptLedger::default()),
         }
     }
 
@@ -254,11 +265,15 @@ impl LlmRuntime {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// Also resets the background breaker and attempt ledger: a new
+    /// provider (config reload) deserves a fresh attempt at everything.
     pub fn replace(&self, provider: Arc<dyn LlmProvider>) {
         *self
             .provider
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = provider;
+        *self.breaker() = BackgroundBreaker::default();
+        *self.attempts() = AttemptLedger::default();
     }
 
     pub fn replace_feature_providers(
@@ -315,6 +330,18 @@ impl LlmRuntime {
             .unwrap_or_else(|| self.current())
     }
 
+    fn breaker(&self) -> std::sync::MutexGuard<'_, BackgroundBreaker> {
+        self.background_breaker
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn attempts(&self) -> std::sync::MutexGuard<'_, AttemptLedger> {
+        self.background_attempts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     fn blocked_reason(&self, feature: LlmFeature) -> Option<String> {
         self.blocked_features
             .read()
@@ -340,15 +367,53 @@ impl FeatureLlmRuntime {
     /// extraction) MUST use this so a slow/dead endpoint can't pin the
     /// worker — and its reserved background-DB slot — for the full
     /// foreground request budget.
+    ///
+    /// Also gated by a breaker shared across features (they share the
+    /// endpoint): after repeated failures it returns
+    /// [`LlmError::CircuitOpen`] without calling the provider.
     pub async fn complete_background(
         &self,
         req: CompletionRequest,
     ) -> Result<CompletionResponse, LlmError> {
+        let open_for = self.runtime.breaker().remaining(Instant::now());
+        if let Some(remaining) = open_for {
+            return Err(LlmError::CircuitOpen {
+                retry_after_secs: remaining.as_secs().max(1),
+            });
+        }
         let budget = self.runtime.background_timeout();
-        match tokio::time::timeout(budget, self.complete(req)).await {
+        let result = match tokio::time::timeout(budget, self.complete(req)).await {
             Ok(result) => result,
             Err(_elapsed) => Err(LlmError::Timeout(budget)),
+        };
+        match &result {
+            Ok(_) => self.runtime.breaker().record_success(),
+            // Not endpoint failures: no request was made.
+            Err(
+                LlmError::Disabled | LlmError::PrivacyBlocked(_) | LlmError::CircuitOpen { .. },
+            ) => {}
+            Err(error) => self.runtime.breaker().record_failure(Instant::now(), error),
         }
+        result
+    }
+
+    /// Whether a background worker should send this input (`key` names it,
+    /// e.g. a contact or message; `fingerprint` changes when its content
+    /// does). False when the same input already succeeded, or failed and is
+    /// still backing off. Explicit user actions skip this check.
+    pub fn background_attempt_due(&self, key: &str, fingerprint: &str) -> bool {
+        self.runtime
+            .attempts()
+            .is_due(self.feature, key, fingerprint, Instant::now())
+    }
+
+    /// Record how a background attempt at this input went. Callers count a
+    /// reply they couldn't use (e.g. non-JSON) as a failure too, and skip
+    /// recording when no request was made (disabled, blocked, breaker open).
+    pub fn record_background_attempt(&self, key: &str, fingerprint: &str, succeeded: bool) {
+        self.runtime
+            .attempts()
+            .record(self.feature, key, fingerprint, succeeded, Instant::now());
     }
 
     pub fn capabilities(&self) -> LlmCapabilities {
@@ -402,6 +467,11 @@ pub struct OpenAiCompatibleProvider {
     context_window: u32,
     request_timeout: Duration,
     client: reqwest::Client,
+    /// Set once this endpoint has shown it serves a thinking model that
+    /// spends the whole `max_tokens` budget on hidden reasoning, and that
+    /// it honours `reasoning_effort: "none"`. Not sent by default because
+    /// hosted non-reasoning models (e.g. OpenAI gpt-4o-mini) reject it.
+    disable_reasoning: AtomicBool,
 }
 
 impl OpenAiCompatibleProvider {
@@ -417,6 +487,7 @@ impl OpenAiCompatibleProvider {
             context_window: config.context_window,
             request_timeout: config.request_timeout,
             client,
+            disable_reasoning: AtomicBool::new(false),
         }
     }
 
@@ -452,15 +523,19 @@ pub struct OpenAiCompatibleConfig {
     pub request_timeout: Duration,
 }
 
-#[async_trait]
-impl LlmProvider for OpenAiCompatibleProvider {
-    async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+impl OpenAiCompatibleProvider {
+    async fn send(
+        &self,
+        req: &CompletionRequest,
+        disable_reasoning: bool,
+    ) -> Result<ChatCompletion, LlmError> {
         let url = format!("{}/chat/completions", self.base_url);
         let body = ChatCompletionsRequestBody {
             model: &self.model,
             messages: &req.messages,
             max_tokens: req.max_tokens,
             temperature: req.temperature,
+            reasoning_effort: disable_reasoning.then_some("none"),
             stream: false,
         };
 
@@ -510,15 +585,53 @@ impl LlmProvider for OpenAiCompatibleProvider {
             .map_err(|e| LlmError::Other(format!("response parse error: {e}")))?;
 
         let choice = raw.choices.into_iter().next().ok_or(LlmError::Empty)?;
-        let content = choice.message.content;
-        if content.trim().is_empty() {
+        let reasoned = [choice.message.reasoning, choice.message.reasoning_content]
+            .iter()
+            .flatten()
+            .any(|text| !text.trim().is_empty());
+        Ok(ChatCompletion {
+            response: CompletionResponse {
+                content: choice.message.content.unwrap_or_default(),
+                model: raw.model,
+                finish_reason: choice.finish_reason,
+            },
+            reasoned,
+        })
+    }
+}
+
+/// One parsed chat-completions choice, before the empty-content check.
+struct ChatCompletion {
+    response: CompletionResponse,
+    /// The model wrote hidden reasoning (`reasoning` / `reasoning_content`).
+    reasoned: bool,
+}
+
+#[async_trait]
+impl LlmProvider for OpenAiCompatibleProvider {
+    async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        let reasoning_disabled = self.disable_reasoning.load(Ordering::Relaxed);
+        let first = self.send(&req, reasoning_disabled).await?;
+        if !first.response.content.trim().is_empty() {
+            return Ok(first.response);
+        }
+        if reasoning_disabled || !first.reasoned {
             return Err(LlmError::Empty);
         }
-        Ok(CompletionResponse {
-            content,
-            model: raw.model,
-            finish_reason: choice.finish_reason,
-        })
+        // Thinking models (gemma4, qwen3, deepseek-r1 via Ollama) can spend the
+        // whole max_tokens budget on reasoning and return empty `content` with
+        // finish_reason "length". Ask once more with reasoning off, and keep it
+        // off only if this endpoint honours the switch.
+        let retry = self.send(&req, true).await?;
+        if retry.response.content.trim().is_empty() {
+            return Err(LlmError::Empty);
+        }
+        self.disable_reasoning.store(true, Ordering::Relaxed);
+        tracing::info!(
+            model = %self.model,
+            "LLM spent its token budget on reasoning; sending reasoning_effort=none from now on"
+        );
+        Ok(retry.response)
     }
 
     fn capabilities(&self) -> LlmCapabilities {
@@ -541,6 +654,8 @@ struct ChatCompletionsRequestBody<'a> {
     max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<&'static str>,
     stream: bool,
 }
 
@@ -560,7 +675,15 @@ struct ChatChoice {
 struct ChatChoiceMessage {
     #[allow(dead_code)]
     role: String,
-    content: String,
+    /// OpenAI sends `null` when there is no text (refusals, tool calls).
+    #[serde(default)]
+    content: Option<String>,
+    /// Ollama's field for thinking-model output.
+    #[serde(default)]
+    reasoning: Option<String>,
+    /// LM Studio / vLLM / DeepSeek name for the same thing.
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }
 
 /// Strip a known API key from a string before logging or surfacing.
@@ -576,6 +699,9 @@ fn redact_key(s: String, key: Option<&str>) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::background::{
+        BREAKER_MIN_COOLDOWN, BREAKER_THRESHOLD, LEDGER_FIRST_RETRY, LEDGER_MAX_ATTEMPTS,
+    };
     use super::*;
     use std::collections::HashMap;
 
@@ -768,6 +894,316 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.model, "base");
+    }
+
+    /// Captured from Ollama 0.34.3 serving gemma4:latest for a real
+    /// commitments prompt on 2026-09-23 (reasoning text trimmed: the rest
+    /// quoted private mail).
+    const GEMMA4_REASONING_ONLY: &str =
+        include_str!("../tests/fixtures/ollama_gemma4_reasoning_only.json");
+
+    fn ok_completion(content: &str) -> serde_json::Value {
+        serde_json::json!({
+            "model": "gemma4:latest",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop"
+            }]
+        })
+    }
+
+    fn provider_for(server: &wiremock::MockServer) -> OpenAiCompatibleProvider {
+        OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
+            base_url: server.uri(),
+            api_key: None,
+            model: "gemma4:latest".into(),
+            context_window: 8192,
+            request_timeout: Duration::from_secs(5),
+        })
+    }
+
+    fn hello() -> CompletionRequest {
+        CompletionRequest {
+            messages: vec![ChatMessage::user("hello")],
+            max_tokens: Some(500),
+            temperature: None,
+        }
+    }
+
+    async fn sent_reasoning_efforts(server: &wiremock::MockServer) -> Vec<Option<String>> {
+        server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .map(|request| {
+                let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+                body.get("reasoning_effort")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn reasoning_only_response_retries_with_reasoning_off_and_remembers() {
+        use wiremock::matchers::{body_partial_json, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .and(body_partial_json(
+                serde_json::json!({"reasoning_effort": "none"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(ok_completion("{\"a\":1}")))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(GEMMA4_REASONING_ONLY, "application/json"),
+            )
+            .mount(&server)
+            .await;
+        let provider = provider_for(&server);
+
+        let first = provider.complete(hello()).await.unwrap();
+        assert_eq!(first.content, "{\"a\":1}");
+        let second = provider.complete(hello()).await.unwrap();
+        assert_eq!(second.content, "{\"a\":1}");
+
+        // One wasted call to learn, then reasoning stays off.
+        assert_eq!(
+            sent_reasoning_efforts(&server).await,
+            vec![None, Some("none".to_string()), Some("none".to_string())]
+        );
+    }
+
+    #[tokio::test]
+    async fn reasoning_switch_is_not_remembered_when_endpoint_ignores_it() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(GEMMA4_REASONING_ONLY, "application/json"),
+            )
+            .mount(&server)
+            .await;
+        let provider = provider_for(&server);
+
+        let error = provider.complete(hello()).await.unwrap_err();
+        assert!(matches!(error, LlmError::Empty), "got {error:?}");
+        assert!(!provider.disable_reasoning.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn empty_content_without_reasoning_is_empty_and_not_retried() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "model": "m",
+                "choices": [{"message": {"role": "assistant", "content": null}, "finish_reason": "stop"}]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let error = provider_for(&server).complete(hello()).await.unwrap_err();
+        assert!(matches!(error, LlmError::Empty), "got {error:?}");
+    }
+
+    struct CountingProvider {
+        calls: std::sync::atomic::AtomicU32,
+        fail: AtomicBool,
+    }
+
+    #[async_trait]
+    impl LlmProvider for CountingProvider {
+        async fn complete(&self, _req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(LlmError::Empty);
+            }
+            Ok(CompletionResponse {
+                content: "ok".into(),
+                model: "counting".into(),
+                finish_reason: None,
+            })
+        }
+
+        fn capabilities(&self) -> LlmCapabilities {
+            LlmCapabilities {
+                context_window: 8192,
+                supports_streaming: false,
+            }
+        }
+
+        fn model_name(&self) -> &str {
+            "counting"
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn background_breaker_stops_calls_after_repeated_failures() {
+        let provider = Arc::new(CountingProvider {
+            calls: 0.into(),
+            fail: AtomicBool::new(true),
+        });
+        let runtime = Arc::new(LlmRuntime::new(provider.clone()));
+        let commitments = runtime.for_feature(LlmFeature::Commitments);
+        let deliveries = runtime.for_feature(LlmFeature::DeliveryExtraction);
+
+        for _ in 0..BREAKER_THRESHOLD {
+            let error = commitments.complete_background(hello()).await.unwrap_err();
+            assert!(matches!(error, LlmError::Empty), "got {error:?}");
+        }
+        // Open: shared across features, and the provider is not called.
+        let error = deliveries.complete_background(hello()).await.unwrap_err();
+        assert!(
+            matches!(error, LlmError::CircuitOpen { retry_after_secs } if retry_after_secs == 300),
+            "got {error:?}"
+        );
+        assert_eq!(provider.calls.load(Ordering::SeqCst), BREAKER_THRESHOLD);
+
+        // Half-open probe fails: re-opens at double the cooldown.
+        tokio::time::advance(BREAKER_MIN_COOLDOWN).await;
+        assert!(matches!(
+            commitments.complete_background(hello()).await,
+            Err(LlmError::Empty)
+        ));
+        assert!(matches!(
+            commitments.complete_background(hello()).await,
+            Err(LlmError::CircuitOpen { retry_after_secs }) if retry_after_secs == 600
+        ));
+        assert_eq!(provider.calls.load(Ordering::SeqCst), BREAKER_THRESHOLD + 1);
+
+        // Probe succeeds: closed, and the failure count starts over.
+        tokio::time::advance(BREAKER_MIN_COOLDOWN * 2).await;
+        provider.fail.store(false, Ordering::SeqCst);
+        commitments.complete_background(hello()).await.unwrap();
+        provider.fail.store(true, Ordering::SeqCst);
+        for _ in 0..BREAKER_THRESHOLD - 1 {
+            assert!(matches!(
+                commitments.complete_background(hello()).await,
+                Err(LlmError::Empty)
+            ));
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn replacing_the_provider_closes_the_background_breaker() {
+        let failing = Arc::new(CountingProvider {
+            calls: 0.into(),
+            fail: AtomicBool::new(true),
+        });
+        let runtime = Arc::new(LlmRuntime::new(failing));
+        let feature = runtime.for_feature(LlmFeature::Commitments);
+        for _ in 0..BREAKER_THRESHOLD {
+            let _ = feature.complete_background(hello()).await;
+        }
+        assert!(matches!(
+            feature.complete_background(hello()).await,
+            Err(LlmError::CircuitOpen { .. })
+        ));
+
+        runtime.replace(Arc::new(StaticProvider { model: "fixed" }));
+        let response = feature.complete_background(hello()).await.unwrap();
+        assert_eq!(response.model, "fixed");
+    }
+
+    #[tokio::test]
+    async fn foreground_calls_bypass_the_background_breaker() {
+        let provider = Arc::new(CountingProvider {
+            calls: 0.into(),
+            fail: AtomicBool::new(true),
+        });
+        let runtime = Arc::new(LlmRuntime::new(provider.clone()));
+        let feature = runtime.for_feature(LlmFeature::Summarize);
+        for _ in 0..BREAKER_THRESHOLD {
+            let _ = feature.complete_background(hello()).await;
+        }
+        // A user-initiated call still reaches the endpoint and sees the real error.
+        assert!(matches!(
+            feature.complete(hello()).await,
+            Err(LlmError::Empty)
+        ));
+        assert_eq!(provider.calls.load(Ordering::SeqCst), BREAKER_THRESHOLD + 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn attempt_ledger_skips_succeeded_input_until_it_changes() {
+        let runtime = Arc::new(LlmRuntime::new(Arc::new(NoopProvider)));
+        let commitments = runtime.for_feature(LlmFeature::Commitments);
+        assert!(commitments.background_attempt_due("alice", "v1"));
+
+        commitments.record_background_attempt("alice", "v1", true);
+        assert!(!commitments.background_attempt_due("alice", "v1"));
+        assert!(
+            commitments.background_attempt_due("alice", "v2"),
+            "new mail"
+        );
+        assert!(commitments.background_attempt_due("bob", "v1"), "other key");
+        assert!(
+            runtime
+                .for_feature(LlmFeature::RelationshipSummary)
+                .background_attempt_due("alice", "v1"),
+            "features are tracked separately"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn attempt_ledger_backs_off_failed_input_then_gives_up() {
+        let runtime = Arc::new(LlmRuntime::new(Arc::new(NoopProvider)));
+        let deliveries = runtime.for_feature(LlmFeature::DeliveryExtraction);
+
+        let mut delay = LEDGER_FIRST_RETRY;
+        for attempt in 1..LEDGER_MAX_ATTEMPTS {
+            deliveries.record_background_attempt("msg-1", "", false);
+            assert!(
+                !deliveries.background_attempt_due("msg-1", ""),
+                "attempt {attempt}"
+            );
+            tokio::time::advance(delay - Duration::from_secs(1)).await;
+            assert!(
+                !deliveries.background_attempt_due("msg-1", ""),
+                "attempt {attempt}"
+            );
+            tokio::time::advance(Duration::from_secs(1)).await;
+            assert!(
+                deliveries.background_attempt_due("msg-1", ""),
+                "attempt {attempt}"
+            );
+            delay = (delay * 4).min(Duration::from_secs(24 * 60 * 60));
+        }
+
+        deliveries.record_background_attempt("msg-1", "", false);
+        tokio::time::advance(Duration::from_secs(7 * 24 * 60 * 60)).await;
+        assert!(!deliveries.background_attempt_due("msg-1", ""), "given up");
+        assert!(
+            deliveries.background_attempt_due("msg-1", "edited"),
+            "input changed"
+        );
+    }
+
+    #[tokio::test]
+    async fn replacing_the_provider_clears_the_attempt_ledger() {
+        let runtime = Arc::new(LlmRuntime::new(Arc::new(NoopProvider)));
+        let commitments = runtime.for_feature(LlmFeature::Commitments);
+        commitments.record_background_attempt("alice", "v1", false);
+        assert!(!commitments.background_attempt_due("alice", "v1"));
+
+        runtime.replace(Arc::new(StaticProvider { model: "new" }));
+        assert!(commitments.background_attempt_due("alice", "v1"));
     }
 
     #[test]

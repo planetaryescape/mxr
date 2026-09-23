@@ -52,7 +52,9 @@ Semantic versioning (semver). Given `MAJOR.MINOR.PATCH`:
 
 ### Release trigger
 
-Releases are triggered by a `v{version}` tag, and the tag comes from release-please: pushes to `main` run `release-please.yml`, which opens or updates a release PR for `feat:`/`fix:` commits; merging that PR bumps the workspace version, updates `CHANGELOG.md`, and pushes the tag. Do not create tags by hand; a hand-made tag skips the version and changelog bump and can collide with the next release PR.
+Releases are triggered by a `v{version}` tag, and the tag comes from release-please: pushes to `main` run `release-please.yml`, which opens or updates a release PR for `feat:`/`fix:` commits; merging that PR bumps the workspace version, updates `CHANGELOG.md`, and pushes the tag. Do not create tags by hand; a hand-made tag skips the version and changelog bump and can collide with the next release PR. If `.release-please-manifest.json` disagrees with the latest `v*` tag, fix the manifest on `main` before anything else.
+
+`release-please.yml` only runs the release-please job when `scripts/release_change_scope.sh` finds artifact-affecting changes since the last tag, or when the pushed commit is a merged release PR. A run of `feat:` commits that only touch docs therefore produces no release PR. The job uses `RELEASE_PLEASE_TOKEN`, a PAT, so the tag push fires `release.yml`; tags created with the default `GITHUB_TOKEN` do not trigger other workflows. If that PAT expires, the `release-please.yml` run on `main` fails and the release PR stops updating; the change PR itself stays green, so this is easy to miss. If a tag ever exists without a `release.yml` run, dispatch `release.yml` on the existing tag instead of re-tagging.
 
 The tag always creates or updates a GitHub Release. When the scoped diff affects CLI artifacts, the same workflow also builds binaries and updates Homebrew.
 
@@ -379,15 +381,7 @@ commit_parsers = [
 ]
 ```
 
-Generate changelog before tagging:
-
-```bash
-git cliff --output CHANGELOG.md
-git add CHANGELOG.md
-git commit -m "chore: update changelog for v0.1.0"
-git tag v0.1.0
-git push origin main v0.1.0
-```
+In the current flow, release-please writes `CHANGELOG.md` in the release PR, and `release.yml` runs `git cliff --tag <tag>` only to render the GitHub Release body. Nobody generates the changelog or tags by hand.
 
 ### Option 2: GitHub's auto-generated release notes
 
@@ -579,7 +573,7 @@ npm run build
 
 | Secret | Purpose |
 |---|---|
-| `RELEASE_PLEASE_TOKEN` | PAT with `contents:write` + `workflows` so release-please tag pushes trigger `release.yml`. |
+| `RELEASE_PLEASE_TOKEN` | PAT with `contents:write` + `workflows` so release-please tag pushes trigger `release.yml`. When it expires, `release-please.yml` fails on `main` and release PRs stop updating; rotate it. Never populate it from `gh auth token`. |
 | `HOMEBREW_TAP_TOKEN` | GitHub PAT with push access to the homebrew-tap repo |
 | `OUTLOOK_CLIENT_ID` | Optional bundled Outlook OAuth app client id compiled into release artifacts. |
 | `APPLE_CERT_P12_BASE64` | Optional Developer ID Application cert exported as `.p12`, then `base64 -i cert.p12 \| pbcopy`. When absent, macOS release artifacts ship unsigned. |
@@ -610,20 +604,20 @@ the tag (for example `v0.5.47`) matches `workspace.package.version` in
 ## Complete release flow (end to end)
 
 ```
-1. Developer finishes work, merges to main
+1. Developer merges a PR with conventional commits (at least one feat:/fix:) to main
 2. CI runs on main: secret scan, release gate scripts, and changed Rust/web/docs lanes
-3. Developer updates version in Cargo.toml
-4. Developer runs: git cliff --output CHANGELOG.md
-5. Developer commits: git commit -m "chore: release v0.1.0"
-6. Developer tags: git tag v0.1.0
-7. Developer pushes: git push origin main v0.1.0
-8. Tag triggers release pipeline:
+3. release-please.yml opens or updates the release PR (version bump in
+   Cargo.toml, Cargo.lock, manifest, CHANGELOG.md)
+4. Developer merges the release PR (gh pr merge --squash --admin)
+5. release-please pushes vX.Y.Z using RELEASE_PLEASE_TOKEN (no manual tag,
+   version bump or changelog step)
+6. Tag push triggers release.yml:
    a. Verify tag version matches Cargo.toml version
    b. If CLI artifacts changed, build Linux x86_64 and macOS Apple Silicon binaries
    c. Generate SHA256 checksums
    d. Create GitHub Release with binaries, checksums, and changelog
    e. If CLI artifacts changed, update Homebrew formula
-9. Done. Users can now:
+7. Done. Users can now:
    - cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
    - brew install planetaryescape/mxr/mxr
    - Download binary from GitHub Releases

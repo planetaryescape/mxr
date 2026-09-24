@@ -1,0 +1,8 @@
+I wrote mxr in Rust.
+
+Ratatui handles the TUI, SQLite stores the mailbox and Tantivy handles search. Every client talks to the same daemon.
+
+Try it: https://mxr.sh/
+If you like it, star it or contribute: https://github.com/planetaryescape/mxr
+
+Video: clips/11-mxr-is-written-in-rust.mp4

@@ -1,0 +1,15 @@
+I built mxr, an open-source mail app that keeps my inbox on my computer and lets me ask my agent about it.
+
+It syncs Gmail, Outlook, Microsoft 365 and IMAP accounts into one local mailbox. Search runs against a local Tantivy index, so I can ask about years of mail without waiting for the provider on every query. Most of the time, the only thing I wait for is the model.
+
+The agent uses the same CLI I use from the shell. It can search and read mail, work with structured JSON, and preview changes before applying them. I use the TUI when I want to sit down and handle mail myself.
+
+There is a 50,000-message demo inbox if you want to try it without connecting an account:
+
+https://mxr.sh/
+
+If you try mxr and like it, give the repo a star. If there is a provider or terminal workflow you want it to support, contributions are welcome:
+
+https://github.com/planetaryescape/mxr
+
+Video: clips/01-agent-checks-suspicious-mail.mp4

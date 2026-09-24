@@ -1,0 +1,3 @@
+mxr gives my agent the same mailbox I use in the TUI and CLI. Search runs on the local index, so it can inspect years of mail without waiting on Gmail for every query.
+
+https://mxr.sh/

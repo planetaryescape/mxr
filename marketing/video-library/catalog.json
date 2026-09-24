@@ -1,0 +1,107 @@
+[
+  {
+    "id": "01-agent-checks-suspicious-mail",
+    "audience": ["AI agents", "developers"],
+    "purpose": "Full 30 to 45 second agent demonstration",
+    "source": "Real agent session over the synthetic demo inbox",
+    "copy": "post-copy/01-agent-checks-suspicious-mail.txt"
+  },
+  {
+    "id": "02-agent-searches-local-mail",
+    "audience": ["AI agents"],
+    "purpose": "Show that the agent searches the local mailbox",
+    "source": "Excerpt from the real agent session",
+    "copy": "post-copy/02-agent-searches-local-mail.txt"
+  },
+  {
+    "id": "03-agent-builds-a-query",
+    "audience": ["AI agents", "CLI users"],
+    "purpose": "Show the agent composing mxr and jq commands",
+    "source": "Excerpt from the real agent session",
+    "copy": "post-copy/03-agent-builds-a-query.txt"
+  },
+  {
+    "id": "04-agent-answers-read-only",
+    "audience": ["AI agents", "security-minded developers"],
+    "purpose": "Show a useful read-only result",
+    "source": "Excerpt from the real agent session",
+    "copy": "post-copy/04-agent-answers-read-only.txt"
+  },
+  {
+    "id": "05-cli-searches-50000-messages",
+    "audience": ["terminal users", "local-first developers"],
+    "purpose": "Show fast local search across a large mailbox",
+    "source": "Recorded mxr CLI against 50,000 synthetic messages",
+    "copy": "post-copy/05-cli-searches-50000-messages.txt"
+  },
+  {
+    "id": "06-cli-pipes-mail-through-jq",
+    "audience": ["CLI users", "Unix users", "agent developers"],
+    "purpose": "Show structured output and shell composition",
+    "source": "Recorded mxr CLI against the synthetic demo inbox",
+    "copy": "post-copy/06-cli-pipes-mail-through-jq.txt"
+  },
+  {
+    "id": "07-cli-ranks-newsletters",
+    "audience": ["email power users", "local-first developers"],
+    "purpose": "Show analytics made possible by the local mailbox",
+    "source": "Recorded mxr CLI against the synthetic demo inbox",
+    "copy": "post-copy/07-cli-ranks-newsletters.txt"
+  },
+  {
+    "id": "08-tui-searches-local-mail",
+    "audience": ["Vim users", "terminal users"],
+    "purpose": "Show the TUI and its local search",
+    "source": "Recorded mxr TUI against 50,000 synthetic messages",
+    "copy": "post-copy/08-tui-searches-local-mail.txt"
+  },
+  {
+    "id": "09-tui-mail-tools",
+    "audience": ["TUI users", "email power users"],
+    "purpose": "Show that the TUI includes accounts, rules and analytics",
+    "source": "Recorded mxr TUI against the synthetic demo inbox",
+    "copy": "post-copy/09-tui-mail-tools.txt"
+  },
+  {
+    "id": "10-one-mailbox-three-interfaces",
+    "audience": ["developers", "AI agents", "terminal users"],
+    "purpose": "Explain the daemon and client model through the interfaces",
+    "source": "Composite of the TUI, CLI and real agent recordings",
+    "copy": "post-copy/10-one-mailbox-three-interfaces.txt"
+  },
+  {
+    "id": "11-mxr-is-written-in-rust",
+    "audience": ["Rust developers", "Ratatui users"],
+    "purpose": "Introduce the Rust implementation and architecture",
+    "source": "Composite of the TUI, CLI and real agent recordings",
+    "copy": "post-copy/11-mxr-is-written-in-rust.txt"
+  },
+  {
+    "id": "12-agent-previews-a-change",
+    "audience": ["AI agents", "security-minded developers"],
+    "purpose": "Show the dry-run preview before a mailbox mutation",
+    "source": "Recorded mxr CLI against an exact synthetic sender",
+    "copy": "post-copy/12-agent-previews-a-change.txt"
+  },
+  {
+    "id": "13-two-accounts-one-mailbox",
+    "audience": ["email power users", "local-first developers"],
+    "purpose": "Show multiple accounts behind the same command surface",
+    "source": "Recorded mxr CLI against two synthetic accounts",
+    "copy": "post-copy/13-two-accounts-one-mailbox.txt"
+  },
+  {
+    "id": "14-local-sender-analytics",
+    "audience": ["email power users", "data-minded developers"],
+    "purpose": "Show relationship analytics from local mailbox history",
+    "source": "Recorded mxr CLI against an exact synthetic sender",
+    "copy": "post-copy/14-local-sender-analytics.txt"
+  },
+  {
+    "id": "15-searches-attachments",
+    "audience": ["email power users", "terminal users"],
+    "purpose": "Show attachment-aware local search",
+    "source": "Recorded mxr CLI against an exact synthetic sender",
+    "copy": "post-copy/15-searches-attachments.txt"
+  }
+]

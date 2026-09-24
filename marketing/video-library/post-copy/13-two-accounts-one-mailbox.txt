@@ -1,0 +1,5 @@
+mxr can keep Gmail, Outlook and IMAP accounts in one local mailbox. The TUI, CLI and my agent all use the same account model.
+
+This recording uses two synthetic accounts.
+
+https://mxr.sh/

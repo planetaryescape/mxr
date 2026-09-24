@@ -1,0 +1,8 @@
+I built mxr, an open-source mail app that keeps my inbox on my computer and lets me ask my agent about it.
+
+It searches years of mail locally across Gmail, Outlook and IMAP.
+
+Try it: https://mxr.sh/
+If you like it, star it or contribute: https://github.com/planetaryescape/mxr
+
+Video: clips/01-agent-checks-suspicious-mail.mp4

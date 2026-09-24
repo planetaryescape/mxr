@@ -1,0 +1,5 @@
+I built mxr so I could ask my agent questions about my actual inbox. It searches the local copy of my mail, so the only part I wait for is the model.
+
+This run uses the synthetic demo inbox and does not change anything.
+
+https://mxr.sh/

@@ -1,0 +1,3 @@
+mxr keeps a local search index for the whole mailbox. This demo searches 50,000 synthetic messages from the shell. Search is fast enough that I barely notice it.
+
+https://mxr.sh/

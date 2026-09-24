@@ -1,0 +1,3 @@
+mxr keeps attachment names, types and sizes with the local mailbox. I can search for messages with attachments from the TUI, the shell or my agent, then download the file when I need it.
+
+https://mxr.sh/

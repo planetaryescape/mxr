@@ -1,0 +1,3 @@
+I asked my agent to inspect the inbox and tell me what looked suspicious. It searched and read the relevant messages, then stopped at an answer. Nothing in the mailbox changed.
+
+https://mxr.sh/

@@ -1,0 +1,1 @@
+[mxr](https://github.com/planetaryescape/mxr) is a local-first email client written in Rust. A long-running daemon syncs Gmail, Outlook/Microsoft 365 and IMAP accounts into SQLite, Tantivy provides full-text search, and Ratatui powers the TUI. The same mailbox is also available through a CLI, web client, MCP server and agent skill.

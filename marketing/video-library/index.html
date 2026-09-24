@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mxr short video library</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #071721;
+      --surface: #0b2230;
+      --surface-2: #0e2a3a;
+      --line: #1d4559;
+      --text: #e9f6fc;
+      --muted: #9db8c6;
+      --accent: #55d6ff;
+      --yellow: #ffd166;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    main { width: min(1480px, calc(100% - 32px)); margin: 0 auto; padding: 42px 0 64px; }
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 24px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--line);
+    }
+    h1, h2, p { margin: 0; }
+    h1 { max-width: 760px; font: 700 clamp(30px, 6vw, 74px)/.98 ui-sans-serif, system-ui, sans-serif; letter-spacing: -.05em; }
+    h1 span { color: var(--accent); font-style: italic; }
+    header p { max-width: 620px; color: var(--muted); margin-top: 14px; }
+    .count { color: var(--yellow); font-weight: 700; white-space: nowrap; }
+    nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0; }
+    button {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 8px 11px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      cursor: pointer;
+    }
+    button:hover, button[aria-pressed="true"] { border-color: var(--accent); color: var(--text); background: var(--surface-2); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); gap: 18px; }
+    article {
+      display: grid;
+      gap: 14px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+    }
+    article[hidden] { display: none; }
+    video { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; background: #02080d; }
+    .topline { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+    h2 { font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; }
+    .duration { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .purpose { color: var(--muted); min-height: 3em; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { padding: 3px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; }
+    details { border-top: 1px solid var(--line); padding-top: 11px; }
+    summary { cursor: pointer; color: var(--accent); }
+    .copy { white-space: pre-wrap; color: var(--text); margin: 10px 0; font-family: ui-sans-serif, system-ui, sans-serif; }
+    .actions { display: flex; gap: 8px; }
+    a { color: var(--accent); text-underline-offset: 3px; }
+    footer { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); }
+    @media (max-width: 720px) {
+      header { grid-template-columns: 1fr; align-items: start; }
+      main { width: min(100% - 20px, 1480px); padding-top: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Short demos for <span>different mxr stories.</span></h1>
+        <p>All recordings use synthetic mail. Pick the audience, preview the clip, then copy the matching draft.</p>
+      </div>
+      <div class="count"><span id="visible-count">15</span> clips</div>
+    </header>
+
+    <nav aria-label="Filter clips" id="filters">
+      <button type="button" aria-pressed="true" data-filter="all">all</button>
+      <button type="button" aria-pressed="false" data-filter="agent">agent</button>
+      <button type="button" aria-pressed="false" data-filter="terminal">terminal</button>
+      <button type="button" aria-pressed="false" data-filter="rust">rust</button>
+      <button type="button" aria-pressed="false" data-filter="email">email</button>
+      <button type="button" aria-pressed="false" data-filter="safety">safety</button>
+    </nav>
+
+    <section class="grid" id="library" aria-live="polite"></section>
+
+    <footer>
+      Source files, VHS tapes, posters, captions and the render script live beside this page.
+    </footer>
+  </main>
+  <script>
+    const clips = [
+      ["01-agent-checks-suspicious-mail", "43s", ["agent", "safety"], "A complete agent run: search the local mailbox, inspect messages, answer without changing anything.", `I built mxr so I could ask my agent questions about my actual inbox. It searches the local copy of my mail, so the only part I wait for is the model.\n\nThis run uses the synthetic demo inbox and does not change anything.\n\nhttps://mxr.sh/`],
+      ["02-agent-searches-local-mail", "20s", ["agent"], "The agent searches the same local mailbox used by the CLI and TUI.", `mxr gives my agent the same mailbox I use in the TUI and CLI. Search runs on the local index, so it can inspect years of mail without waiting on Gmail for every query.\n\nhttps://mxr.sh/`],
+      ["03-agent-builds-a-query", "23s", ["agent", "terminal"], "The agent composes an mxr query and a jq pipeline.", `The agent uses mxr like any other shell tool. The CLI returns JSON, so it can write the mxr query or jq pipeline it needs for the question I asked.\n\nhttps://mxr.sh/`],
+      ["04-agent-answers-read-only", "20s", ["agent", "safety"], "A useful answer from the inbox, with no mailbox changes.", `I asked my agent to inspect the inbox and tell me what looked suspicious. It searched and read the relevant messages, then stopped at an answer. Nothing in the mailbox changed.\n\nhttps://mxr.sh/`],
+      ["05-cli-searches-50000-messages", "16s", ["terminal", "email"], "Local search across a mailbox containing 50,000 synthetic messages.", `mxr keeps a local search index for the whole mailbox. This demo searches 50,000 synthetic messages from the shell. Search is fast enough that I barely notice it.\n\nhttps://mxr.sh/`],
+      ["06-cli-pipes-mail-through-jq", "21s", ["terminal", "agent"], "Structured mailbox output composed with jq.", `Most mxr read commands can return JSON. That makes the mailbox useful from scripts and gives my agent something predictable to work with.\n\nhttps://mxr.sh/`],
+      ["07-cli-ranks-newsletters", "17s", ["terminal", "email"], "Local mailbox history used to rank subscriptions by opens.", `Because the mailbox is local, mxr can look across the full history. Here I rank subscriptions by how often I open them. The ones I should probably cancel become fairly obvious.\n\nhttps://mxr.sh/`],
+      ["08-tui-searches-local-mail", "13s", ["terminal", "email"], "The Vim-friendly TUI searching the local mailbox.", `I started building mxr because I wanted to write email in Vim. The TUI has Vim keys, full mailbox search and composing through $EDITOR.\n\nhttps://mxr.sh/`],
+      ["09-tui-mail-tools", "14s", ["terminal", "email"], "Accounts, rules and analytics in the TUI.", `The TUI is where I spend most of my time, so I wanted account setup, rules and analytics there too. The daemon keeps syncing when I close it.\n\nhttps://mxr.sh/`],
+      ["10-one-mailbox-three-interfaces", "35s", ["agent", "terminal", "email"], "TUI, CLI and agent using one long-running mxr daemon.", `Some days I use the TUI. Sometimes I need one command. My agent uses the same mailbox too.\n\nThey all talk to the same daemon, so closing one of them does not stop sync or indexing.\n\nhttps://mxr.sh/`],
+      ["11-mxr-is-written-in-rust", "32s", ["rust", "terminal"], "The Rust implementation: Ratatui, SQLite, Tantivy and multiple clients.", `I wrote mxr in Rust. The daemon handles sync, search and mailbox state. The TUI uses Ratatui, the archive lives in SQLite, and Tantivy handles full text search.\n\nThe CLI, TUI, web app and MCP server are clients of the same daemon.\n\nhttps://mxr.sh/`],
+      ["12-agent-previews-a-change", "12s", ["agent", "safety"], "A dry run resolves a search and lists the exact messages before a change.", `I want my agent to help with email, but I still want to see what it is about to change.\n\nHere mxr resolves the search and shows the exact messages first. The command stops there because it is a dry run.\n\nhttps://mxr.sh/`],
+      ["13-two-accounts-one-mailbox", "14s", ["email", "agent"], "Two synthetic accounts behind the same command surface.", `mxr can keep Gmail, Outlook and IMAP accounts in one local mailbox. The TUI, CLI and my agent all use the same account model.\n\nThis recording uses two synthetic accounts.\n\nhttps://mxr.sh/`],
+      ["14-local-sender-analytics", "13s", ["email"], "Volume, dates and open threads for one synthetic sender.", `Once the mailbox is in local SQLite, I can look at the history with a sender instead of opening messages one by one.\n\nmxr can show volume, reply patterns and the threads that are still open.\n\nhttps://mxr.sh/`],
+      ["15-searches-attachments", "12s", ["email", "terminal"], "Attachment-aware search against synthetic messages.", `mxr keeps attachment names, types and sizes with the local mailbox. I can search for messages with attachments from the TUI, the shell or my agent, then download the file when I need it.\n\nhttps://mxr.sh/`]
+    ];
+
+    const library = document.querySelector("#library");
+    const count = document.querySelector("#visible-count");
+
+    for (const [id, duration, tags, purpose, copy] of clips) {
+      const card = document.createElement("article");
+      card.dataset.tags = tags.join(" ");
+      const label = id.replace(/^\d+-/, "").replaceAll("-", " ");
+      card.innerHTML = `
+        <video controls preload="metadata" poster="posters/${id}.jpg">
+          <source src="clips/${id}.mp4" type="video/mp4">
+        </video>
+        <div class="topline"><h2>${label}</h2><span class="duration">${duration}</span></div>
+        <p class="purpose">${purpose}</p>
+        <div class="chips">${tags.map(tag => `<span class="chip">${tag}</span>`).join("")}</div>
+        <details>
+          <summary>post draft</summary>
+          <p class="copy"></p>
+          <div class="actions"><button type="button" class="copy-button">copy draft</button><a href="clips/${id}.mp4" download>download clip</a></div>
+        </details>`;
+      card.querySelector(".copy").textContent = copy;
+      card.querySelector(".copy-button").addEventListener("click", async event => {
+        await navigator.clipboard.writeText(copy);
+        event.currentTarget.textContent = "copied";
+        window.setTimeout(() => event.currentTarget.textContent = "copy draft", 1200);
+      });
+      library.append(card);
+    }
+
+    document.querySelector("#filters").addEventListener("click", event => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      const filter = button.dataset.filter;
+      document.querySelectorAll("#filters button").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+      let visible = 0;
+      for (const card of library.children) {
+        const show = filter === "all" || card.dataset.tags.split(" ").includes(filter);
+        card.hidden = !show;
+        if (show) visible++;
+      }
+      count.textContent = visible;
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+Some days I use the TUI. Sometimes I need one command. My agent uses the same mailbox too.
+
+They all talk to the same daemon, so closing one of them does not stop sync or indexing.
+
+https://mxr.sh/

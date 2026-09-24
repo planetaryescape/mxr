@@ -1,0 +1,5 @@
+Once the mailbox is in local SQLite, I can look at the history with a sender instead of opening messages one by one.
+
+mxr can show volume, reply patterns and the threads that are still open.
+
+https://mxr.sh/

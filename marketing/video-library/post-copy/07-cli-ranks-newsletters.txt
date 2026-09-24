@@ -1,0 +1,3 @@
+Because the mailbox is local, mxr can look across the full history. Here I rank subscriptions by how often I open them. The ones I should probably cancel become fairly obvious.
+
+https://mxr.sh/

@@ -1,0 +1,8 @@
+mxr started because I wanted to write email in Vim.
+
+It has a Vim-friendly TUI, a pipeable CLI and fast local search. The daemon keeps syncing when I close the interface.
+
+Try it: https://mxr.sh/
+If you like it, star it or contribute: https://github.com/planetaryescape/mxr
+
+Video: clips/08-tui-searches-local-mail.mp4

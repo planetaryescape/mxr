@@ -1,0 +1,3 @@
+The agent uses mxr like any other shell tool. The CLI returns JSON, so it can write the mxr query or jq pipeline it needs for the question I asked.
+
+https://mxr.sh/

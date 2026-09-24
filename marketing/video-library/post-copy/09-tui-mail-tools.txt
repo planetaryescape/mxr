@@ -1,0 +1,3 @@
+The TUI is where I spend most of my time, so I wanted account setup, rules and analytics there too. The daemon keeps syncing when I close it.
+
+https://mxr.sh/

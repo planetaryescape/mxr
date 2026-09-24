@@ -1,0 +1,3 @@
+I started building mxr because I wanted to write email in Vim. The TUI has Vim keys, full mailbox search and composing through $EDITOR.
+
+https://mxr.sh/

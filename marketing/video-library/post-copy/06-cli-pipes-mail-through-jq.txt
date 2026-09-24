@@ -1,0 +1,3 @@
+Most mxr read commands can return JSON. That makes the mailbox useful from scripts and gives my agent something predictable to work with.
+
+https://mxr.sh/

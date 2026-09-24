@@ -68,22 +68,31 @@ See `docs/blueprint/01-architecture.md` for longer rationale.
 - `INSERT OR REPLACE` can trigger `ON DELETE CASCADE`; prefer `INSERT ... ON CONFLICT UPDATE` for parent rows with dependents.
 - `mxr reset --hard` / `mxr burn` wipe runtime state only by default; preserve config and credentials unless explicitly requested.
 
+## Local gates vs CI
+
+CI is the workspace gate. Every PR runs Check, Clippy, Rustdoc, Test (nextest, whole workspace), SQLx Offline, cargo deny and the build as required checks on 4-vCPU runners. Do not run `--workspace` clippy, `cargo doc --workspace`, `cargo nextest run --workspace` or `cargo build --workspace --release` on the developer machine: it repeats CI on the laptop, pegs every core for minutes, and proves nothing CI will not prove. Locally run only what is scoped to the change:
+
+- `scripts/pre-pr-rust-gate` (fmt, clippy for touched crates only, boundary script, cargo deny). `--list` shows the crates it will check; `--full` is for reproducing a CI failure you cannot narrow to one crate.
+- `scripts/cargo-test -p <crate> --tests` for the crates you touched.
+
+Then push and read the PR checks. If one is red, reproduce that one failure with `-p <crate>`, fix, push again.
+
 ## Release shorthand
 
-If the user says `ship it`, run the full release flow:
+If the user says `ship it`, run the release flow below. It is built so the laptop never rebuilds what CI already built.
 
-1. Commit release-ready changes.
-2. If the version/tag exists, bump first; never overwrite tags or GitHub releases.
-3. Push `main`.
-4. Create and push `v{version}`.
-5. Wait for the tag-driven release workflow.
-6. Verify all three install channels, in throwaway locations so they never collide with the real install:
-   - Homebrew: `brew update && brew upgrade mxr` (the real install on this machine); `mxr version` must report the new release.
-   - install.sh: `MXR_INSTALL_DIR="$(mktemp -d)" ./install.sh v{version}`, run `<tmp>/mxr version`, then `rm -rf` the temp dir.
-   - cargo: `cargo install --git https://github.com/planetaryescape/mxr --tag v{version} --locked --root "$(mktemp -d)" mxr`, run `<tmp>/bin/mxr version`, then `rm -rf` the temp root.
-7. Converge this machine on Homebrew only. After verification, the sole `mxr` on PATH must be Homebrew's: remove any `~/.cargo/bin/mxr` (`cargo uninstall mxr`) and any `~/.local/bin/mxr` left by past install.sh runs, then confirm with `which -a mxr`. Multiple mxr binaries on PATH carry different build ids, and every invocation restarts the daemon to "match the current binary" — ping-ponging the daemon between versions.
+1. Commit release-ready changes on a branch. Run the scoped local gates above, nothing wider.
+2. Push, open the PR, and wait on it: `gh pr checks <N> --watch`.
+3. Merge with `gh pr merge <N> --squash --admin` (self-approval is blocked, `--admin` bypasses only the review).
+4. release-please opens or updates the release PR on `main` for `feat:`/`fix:` commits (pre-1.0 both bump the patch). Merge it the same way. That merge creates the `v{version}` tag and starts the tag-driven release workflow. Never create or move a tag by hand; never overwrite a tag or GitHub release.
+5. Wait for the release workflow on the tag, not for a `main` run: `gh run list --workflow=release.yml --json databaseId,headBranch,status,conclusion` and pick the row whose `headBranch` is `v{version}`, then `gh run watch <id>`. It builds the macOS and Linux binaries (`cargo build --release --locked -p mxr` from a clean checkout), creates the GitHub release, and pushes the Homebrew formula.
+6. Verify on this machine with downloads only; no step here compiles anything:
+   - Homebrew (the real install): `brew update && brew upgrade mxr`; `mxr version` must report the new release.
+   - install.sh: `D="$(mktemp -d)"; MXR_INSTALL_DIR="$D/bin" ./install.sh v{version}; "$D/bin/mxr" version; rm -rf "$D"`. It downloads the release tarball and checks the sha256.
+   - cargo channel: covered by step 5. The release workflow's build-binaries job compiled `-p mxr --release --locked` on this exact tag from a clean checkout, which is the same compile `cargo install --git` would do. Do not run `cargo install --git ...` locally: it is a cold release build of the whole workspace and takes every core for 10+ minutes to re-prove a passed CI job.
+7. Converge this machine on Homebrew only. The sole `mxr` on PATH must be Homebrew's: remove any `~/.cargo/bin/mxr` (`cargo uninstall mxr`) and any `~/.local/bin/mxr` left by past install.sh runs, then confirm with `which -a mxr`. Multiple mxr binaries on PATH carry different build ids, and every invocation restarts the daemon to "match the current binary", ping-ponging the daemon between versions.
 
-Source of truth: `docs/blueprint/17-release-pipeline.md` and checked-in GitHub workflows.
+Source of truth: `docs/blueprint/17-release-pipeline.md` and the checked-in GitHub workflows.
 
 ## Useful docs
 

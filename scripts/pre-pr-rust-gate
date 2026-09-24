@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
-# Mirror the required Rust hygiene checks from GitHub CI before opening or
-# updating a PR. The repository tracks the floating stable toolchain, so update
-# stable locally before treating this gate as authoritative.
+# Local Rust hygiene gate before opening or updating a PR.
+#
+# Scoped by default: clippy runs only for the crates touched since the base
+# ref. CI already runs the workspace-wide gates (Check, Clippy, Rustdoc,
+# Test, SQLx Offline, cargo deny) as required checks on every PR, so
+# repeating them here costs laptop time and proves nothing extra. Pass
+# --full to run the workspace-wide set locally, e.g. to reproduce a CI
+# failure you cannot narrow to one crate.
+#
+# The repository tracks the floating stable toolchain, so update stable
+# locally before treating this gate as authoritative.
 
 set -euo pipefail
 
@@ -9,6 +17,78 @@ WORKSPACE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$WORKSPACE_ROOT"
 
 export CARGO_TERM_COLOR="${CARGO_TERM_COLOR:-always}"
+
+usage() {
+    cat <<'EOF'
+Usage: scripts/pre-pr-rust-gate [--full] [--base <ref>] [--list]
+
+  (default)     fmt, clippy for touched crates, boundary script, cargo deny
+  --full        clippy for the whole workspace (what CI's Clippy job runs)
+  --base <ref>  ref to diff against for "touched" (default: origin/main,
+                or $MXR_GATE_BASE)
+  --list        print the packages the scoped gate would check, then exit
+  --map         read paths on stdin, print the packages they map to (for tests)
+EOF
+}
+
+FULL=0
+LIST=0
+MAP=0
+BASE="${MXR_GATE_BASE:-origin/main}"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --full) FULL=1 ;;
+        --list) LIST=1 ;;
+        --map) MAP=1 ;;
+        --base) BASE="$2"; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+    esac
+    shift
+done
+
+# Map changed paths to workspace package names. Root-crate sources map to
+# `mxr`; so do workspace manifest/lock changes, because the shipped binary is
+# what a dependency bump must still build. examples/ are separate workspaces
+# with their own CI jobs, and everything else (docs, apps/web, scripts) has
+# no Rust package.
+packages_for_paths() {
+    awk -F/ '
+        $1 == "crates" && NF > 2 { print "crates/" $2; next }
+        $1 == "src" || $1 == "tests" || $1 == "benches" || $1 == "build.rs" { print "."; next }
+        NF == 1 && ($1 == "Cargo.toml" || $1 == "Cargo.lock") { print "."; next }
+    ' | sort -u | while IFS= read -r dir; do
+        [[ -f "$dir/Cargo.toml" ]] || continue
+        awk -F'"' '/^\[package\]/ { p = 1 } p && /^name *=/ { print $2; exit }' "$dir/Cargo.toml"
+    done | sort -u
+}
+
+changed_paths() {
+    local merge_base
+    merge_base="$(git merge-base "$BASE" HEAD 2>/dev/null || true)"
+    if [[ -n "$merge_base" ]]; then
+        git diff --name-only "$merge_base" HEAD
+    else
+        echo "warning: cannot resolve $BASE; scoping to uncommitted changes only" >&2
+    fi
+    git diff --name-only HEAD
+    git ls-files --others --exclude-standard
+}
+
+if [[ $MAP -eq 1 ]]; then
+    packages_for_paths
+    exit 0
+fi
+
+PACKAGES=()
+while IFS= read -r pkg; do
+    [[ -n "$pkg" ]] && PACKAGES+=("$pkg")
+done < <(changed_paths | packages_for_paths)
+
+if [[ $LIST -eq 1 ]]; then
+    printf '%s\n' "${PACKAGES[@]}"
+    exit 0
+fi
 
 echo "mxr pre-PR Rust gate"
 echo
@@ -22,15 +102,36 @@ echo
 echo "Repo toolchain is floating stable. Run 'rustup update stable' before final verification."
 echo
 
+# Lower scheduling priority so the desktop stays responsive while cargo
+# saturates every core; throughput is unchanged when nothing else wants CPU.
 run() {
     echo "+ $*"
-    "$@"
+    nice -n 10 "$@"
     echo
 }
 
 run cargo fmt --all -- --check
-run cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+if [[ $FULL -eq 1 ]]; then
+    run cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+elif [[ ${#PACKAGES[@]} -eq 0 ]]; then
+    echo "+ (no Rust packages touched since $BASE; skipping clippy)"
+    echo
+else
+    args=()
+    for pkg in "${PACKAGES[@]}"; do args+=(-p "$pkg"); done
+    run cargo clippy "${args[@]}" --all-targets --all-features --locked -- -D warnings
+fi
+
 run scripts/check_architecture_boundaries.sh
 run cargo deny check
 
 echo "pre-PR Rust gate passed"
+if [[ $FULL -eq 0 ]]; then
+    cat <<'EOF'
+
+Left to CI on the PR (required checks, do not repeat locally):
+  Check, Clippy (workspace), Rustdoc, Test (nextest --workspace), SQLx Offline.
+If one of them fails, reproduce it with -p <crate> or re-run with --full.
+EOF
+fi

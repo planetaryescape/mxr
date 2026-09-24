@@ -1,0 +1,902 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mxr - launch thread cards</title>
+<meta name="description" content="Ten social cards introducing mxr: local-first email infrastructure that keeps the mailbox synced and indexed on your machine, and gives humans and agents the same mail operations through one daemon.">
+<style>
+/* ============================================================ FONTS */
+@font-face{font-family:"Bricolage";src:url("assets/fonts/bricolage-grotesque-vf.woff2") format("woff2");font-weight:200 800;font-style:normal;font-display:block}
+@font-face{font-family:"JBMono";src:url("assets/fonts/jetbrains-mono-vf.woff2") format("woff2");font-weight:100 800;font-style:normal;font-display:block}
+@font-face{font-family:"ArchivoFB";src:url("assets/fonts/archivo-vf.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:block}
+
+/* ============================================================ TOKENS */
+/* Inherited from the approved mxr deck: cool slate neutrals, azure = signal,
+   emerald = local and already on the machine, rose = stop.
+   --logo is the real mxr orange and is used only on the product mark. */
+:root, html[data-theme="dark"]{
+  --bg:oklch(0.185 0.013 255);
+  --surface:oklch(0.233 0.014 255);
+  --raised:oklch(0.284 0.016 256);
+  --line:oklch(0.400 0.018 256);
+  --line-soft:oklch(0.320 0.015 256);
+  --ink:oklch(0.960 0.006 250);
+  --ink-2:oklch(0.845 0.010 250);
+  --ink-3:oklch(0.730 0.014 252);
+  --brand:oklch(0.685 0.155 250);
+  --brand-ink:oklch(0.780 0.135 250);
+  --teal:oklch(0.800 0.135 168);
+  --teal-ink:oklch(0.848 0.120 168);
+  --coral:oklch(0.700 0.195 14);
+  --coral-ink:oklch(0.768 0.180 14);
+  --on-brand:oklch(0.160 0.020 250);
+  --logo:oklch(0.705 0.170 47);
+  --shadow:0 20px 46px -30px oklch(0 0 0 / 0.8);
+  --glow:0 0 0 1px oklch(0.685 0.155 250 / .30);
+  --shot-bg:oklch(0.145 0.012 256);
+  color-scheme:dark;
+}
+html[data-theme="light"]{
+  --bg:oklch(0.975 0.004 250);
+  --surface:oklch(0.999 0.001 250);
+  --raised:oklch(0.945 0.007 252);
+  --line:oklch(0.862 0.010 252);
+  --line-soft:oklch(0.910 0.007 252);
+  --ink:oklch(0.245 0.013 260);
+  --ink-2:oklch(0.400 0.015 260);
+  --ink-3:oklch(0.448 0.016 260);
+  --brand:oklch(0.515 0.175 253);
+  --brand-ink:oklch(0.435 0.150 253);
+  --teal:oklch(0.520 0.130 168);
+  --teal-ink:oklch(0.430 0.110 166);
+  --coral:oklch(0.530 0.205 18);
+  --coral-ink:oklch(0.450 0.190 18);
+  --on-brand:oklch(0.995 0.005 250);
+  --logo:oklch(0.600 0.180 45);
+  --shadow:0 18px 40px -32px oklch(0.45 0.03 262 / 0.42);
+  --glow:0 0 0 1px oklch(0.515 0.175 253 / .26);
+  --shot-bg:oklch(0.905 0.008 252);
+  color-scheme:light;
+}
+
+/* ============================================================ RESET */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg)}
+body{font-family:"Bricolage","ArchivoFB",system-ui,sans-serif;color:var(--ink);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;font-feature-settings:"ss01","cv01"}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+a{color:inherit}
+svg{display:block}
+::selection{background:var(--brand);color:var(--on-brand)}
+:focus-visible{outline:3px solid var(--brand);outline-offset:3px;border-radius:5px}
+.vis-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ============================================================ STAGE */
+.deck{position:fixed;inset:0;overflow:hidden;
+  background:radial-gradient(120% 90% at 50% -8%, color-mix(in oklab, var(--brand) 7%, transparent), transparent 62%), var(--bg)}
+.stage{position:absolute;left:50%;top:50%;width:1600px;height:900px;
+  transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center}
+.slide{position:absolute;inset:0;overflow:hidden;background:var(--bg);
+  padding:58px 76px 76px;display:flex;flex-direction:column;
+  opacity:0;visibility:hidden;pointer-events:none}
+.slide[data-active="true"]{opacity:1;visibility:visible;pointer-events:auto}
+.skip{position:absolute;left:14px;top:14px;z-index:60;background:var(--surface);color:var(--ink);
+  padding:11px 16px;border-radius:9px;transform:translateY(-180%);transition:transform .2s}
+.skip:focus{transform:none}
+
+/* ============================================================ CARD HEADER RAIL
+   The thread position is the signal path: an azure segment runs from the mxr
+   mark to the aperture at card n of 10. It is part of the card, not chrome. */
+.cardhead{display:flex;align-items:center;gap:26px;flex:none;margin-bottom:38px}
+.cardhead .mark{width:40px;height:40px;border-radius:9px;flex:none}
+.cardhead .wm{font-family:"JBMono",monospace;font-weight:700;font-size:25px;letter-spacing:-.03em;color:var(--ink-2)}
+.railtrack{position:relative;flex:1;height:2px;background:var(--line-soft);border-radius:2px}
+.railtrack .on{position:absolute;left:0;top:0;height:100%;width:var(--p,10%);background:var(--brand);border-radius:2px}
+.railtrack .ap{position:absolute;top:50%;left:var(--p,10%);width:11px;height:11px;background:var(--brand);
+  border-radius:2px;transform:translate(-50%,-50%) rotate(45deg)}
+.idx{font-family:"JBMono",monospace;font-size:23px;color:var(--ink-3);letter-spacing:.01em;flex:none}
+.idx b{color:var(--ink);font-weight:600}
+
+/* ============================================================ TYPE */
+.t1{font-weight:800;letter-spacing:-0.028em;line-height:1.0;font-size:84px;text-wrap:balance}
+.t1 .em{color:var(--brand-ink)}
+.t2{font-weight:800;letter-spacing:-0.024em;line-height:1.06;font-size:62px;max-width:1240px;text-wrap:balance}
+.prose{font-size:34px;line-height:1.44;color:var(--ink-2);max-width:1180px;text-wrap:pretty}
+.prose .hi{font-style:normal;font-weight:600;color:var(--ink)}
+.prose code,.mono{font-family:"JBMono",monospace}
+.prose code{font-size:0.9em;color:var(--brand-ink);letter-spacing:-.01em}
+.note{font-size:24px;line-height:1.5;color:var(--ink-3)}
+.note code{font-family:"JBMono",monospace;color:var(--brand-ink)}
+.lbl-s{font-family:"JBMono",monospace;font-size:20px;color:var(--ink-3);letter-spacing:.02em;display:block}
+.cardbody{flex:1;min-height:0;display:flex;flex-direction:column;gap:34px}
+.stack{display:flex;flex-direction:column;gap:22px;flex:none}
+/* the evidence sits in the space the words leave, centred rather than
+   pushed against the bottom edge, so every card keeps its safe area */
+.evidence{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:20px}
+
+/* ============================================================ NODES + DIAGRAMS */
+.node{display:inline-flex;align-items:center;gap:14px;padding:14px 20px;border-radius:13px;
+  background:var(--surface);border:1px solid var(--line);white-space:nowrap}
+.node .ap{width:22px;height:22px;flex:none}
+.node .lbl{font-family:"JBMono",monospace;font-size:23px;color:var(--ink);font-weight:500}
+.node .sub{font-family:"JBMono",monospace;font-size:18px;color:var(--ink-3)}
+.node--col{flex-direction:column;align-items:flex-start;gap:6px;padding:16px 22px}
+.node--sig{border-color:color-mix(in oklab,var(--brand) 55%,var(--line));box-shadow:var(--glow)}
+.node--local{border-color:color-mix(in oklab,var(--teal) 48%,var(--line))}
+.node--stop{border-color:color-mix(in oklab,var(--coral) 55%,var(--line))}
+.node--raised{background:var(--raised)}
+.ap-ink{color:var(--ink-2)}.ap-brand{color:var(--brand)}.ap-teal{color:var(--teal)}.ap-coral{color:var(--coral)}
+
+.diagram{position:relative;width:100%;flex:none;align-self:center}
+.diagram__svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;z-index:0}
+.diagram__svg text{fill:currentColor}
+.diagram__svg path,.diagram__svg line{vector-effect:non-scaling-stroke}
+.lay{position:absolute;transform:translate(-50%,-50%);z-index:1}
+
+.legend{display:flex;gap:30px;flex-wrap:wrap;justify-content:center}
+.legend span{display:inline-flex;align-items:center;gap:11px;font-family:"JBMono",monospace;font-size:20px;color:var(--ink-3)}
+.legend .sw{width:26px;height:0;border-top:3px solid var(--teal);border-radius:3px}
+.legend .sw.b{border-color:var(--brand);border-top-style:dashed}
+
+.tag{font-family:"JBMono",monospace;font-size:20px;padding:8px 15px;border-radius:999px;
+  border:1px solid var(--line);color:var(--ink-2);background:var(--surface);white-space:nowrap}
+.tag--teal{border-color:color-mix(in oklab,var(--teal) 48%,var(--line));color:var(--teal-ink)}
+
+/* the stop: rose bars plus a written label, so it never rests on colour alone */
+.gate{position:relative;display:flex;flex-direction:column;align-items:center}
+.gate .bars{display:flex;gap:7px}
+.gate .bars i{width:6px;height:62px;border-radius:3px;background:var(--coral)}
+.gate .lab{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:14px;
+  font-family:"JBMono",monospace;font-size:20px;color:var(--coral-ink);text-align:center;line-height:1.3;white-space:nowrap}
+
+/* ============================================================ INSTRUMENT PANEL */
+.panel{border:1px solid var(--line);border-radius:16px;background:var(--surface);overflow:hidden;box-shadow:var(--shadow)}
+.panel__bar{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line-soft);
+  background:var(--raised);font-family:"JBMono",monospace;font-size:20px;color:var(--ink-3)}
+.panel__bar .dots{display:flex;gap:8px}
+.panel__bar .dots i{width:11px;height:11px;border-radius:50%;background:var(--line);display:block}
+.panel__bar .name{color:var(--ink-2)}
+.panel__bar .status{margin-left:auto;color:var(--teal-ink)}
+.panel__body{padding:24px 26px;font-family:"JBMono",monospace;font-size:27px;line-height:1.7;color:var(--ink-2);
+  white-space:pre-wrap;word-break:break-word}
+.panel__body .cmd{color:var(--ink)}
+.panel__body .flag{color:var(--brand-ink)}
+.panel__body .str{color:var(--teal-ink)}
+.panel__body .mut{color:var(--ink-3)}
+.panel__body .pr{color:var(--brand)}
+
+/* framed screenshot: a real crop of the product, not a wallpaper */
+.shot{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow)}
+.shot__win{position:relative;width:var(--w);height:var(--h);overflow:hidden;background:var(--shot-bg)}
+.shot__win img{position:absolute;display:block;max-width:none;
+  width:calc(1280px * var(--sc,1));left:calc(var(--x,0px) * -1 * var(--sc,1));top:calc(var(--y,0px) * -1 * var(--sc,1))}
+.shot__win--fade img{-webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 72px),transparent 100%);
+  mask-image:linear-gradient(180deg,#000 calc(100% - 72px),transparent 100%)}
+.shot__cap{font-family:"JBMono",monospace;font-size:20px;color:var(--ink-3);padding:13px 20px;border-top:1px solid var(--line-soft);background:var(--raised)}
+
+/* ============================================================ CHROME (screen only) */
+.chrome{position:absolute;left:0;right:0;bottom:0;z-index:40;pointer-events:none}
+.progress{height:3px;width:100%;background:var(--line-soft)}
+.progress__fill{height:100%;width:0;background:var(--brand);transition:width .45s cubic-bezier(.2,.7,.2,1)}
+.chrome .bar{display:flex;align-items:center;gap:14px;padding:13px 22px}
+.chrome .bar .spacer{flex:1}
+.ctl{pointer-events:auto;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  width:42px;height:42px;border-radius:11px;border:1px solid var(--line);color:var(--ink-2);
+  background:color-mix(in oklab,var(--surface) 88%,transparent)}
+.ctl:hover{color:var(--ink);border-color:var(--brand);background:var(--surface)}
+.ctl svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.counter{pointer-events:auto;font-family:"JBMono",monospace;font-size:15px;color:var(--ink-3);display:flex;align-items:center;gap:8px;padding:0 6px}
+.counter b{color:var(--ink);font-weight:600}
+.counter .now{color:var(--brand-ink);font-weight:600}
+.help{position:absolute;inset:0;z-index:70;display:none;place-items:center;background:color-mix(in oklab,var(--bg) 74%,transparent)}
+.help[data-open="true"]{display:grid}
+.help__card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:32px 36px;box-shadow:var(--shadow);max-width:520px}
+.help__card h2{font-size:22px;margin-bottom:18px}
+.help__card dl{display:grid;grid-template-columns:auto 1fr;gap:12px 20px;font-size:16px;align-items:center}
+.help__card dt{font-family:"JBMono",monospace;color:var(--brand-ink)}
+.help__card dd{color:var(--ink-2)}
+
+/* ============================================================ MOTION */
+@keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes riseLay{from{opacity:0;transform:translate(-50%,calc(-50% + 14px))}to{opacity:1;transform:translate(-50%,-50%)}}
+.slide[data-active="true"] .anim{opacity:0;animation:rise .6s cubic-bezier(.2,.75,.2,1) forwards;animation-delay:calc(var(--i,0)*80ms + 50ms)}
+.slide[data-active="true"] .anim.f{animation-name:fade}
+.slide[data-active="true"] .lay.anim,.slide[data-active="true"] .lay.anim.f{animation-name:riseLay}
+@media (prefers-reduced-motion: reduce){
+  .slide[data-active="true"] .anim{animation:none!important;opacity:1!important}
+  .progress__fill{transition:none}
+}
+
+/* ============================================================ PRINT
+   One card per 16:9 page. No navigation, progress, help, or focus chrome. */
+@page{size:1600px 900px;margin:0}
+html.print,html.print body{overflow:visible;height:auto}
+html.print .deck{position:static;overflow:visible;background:var(--bg)}
+html.print .chrome,html.print .help,html.print .skip{display:none!important}
+html.print .stage{position:static;transform:none;width:1600px;height:auto}
+html.print .slide{position:relative;inset:auto;opacity:1!important;visibility:visible!important;
+  pointer-events:auto;page-break-after:always;break-after:page;width:1600px;height:900px}
+html.print .slide .anim{animation:none!important;opacity:1!important;transform:none!important}
+html.print .slide .lay,html.print .slide .lay.anim{transform:translate(-50%,-50%)!important}
+html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+
+/* ============================================================ CARD 01 */
+#c1{display:grid;grid-template-columns:1fr 552px;gap:56px;align-items:center}
+#c1 .mark-lg{width:78px;height:78px;border-radius:17px}
+#c1 .titlerail{height:2px;width:200px;background:linear-gradient(90deg,var(--brand),transparent)}
+#c1 .prose{font-size:36px;max-width:830px}
+#c1 .foot{font-family:"JBMono",monospace;font-size:24px;color:var(--ink-3)}
+
+/* ============================================================ CARD 05 */
+/* one broad command, then the narrower ones, ruled rather than boxed */
+.asks{display:flex;flex-direction:column;gap:8px}
+.askgrid{display:grid;grid-template-columns:1fr 1fr;column-gap:60px;row-gap:18px}
+.askcell{border-top:1px solid var(--line-soft);padding:12px 0 4px;display:flex;flex-direction:column;gap:4px}
+.askcell .q{font-size:26px;line-height:1.24;color:var(--ink)}
+.askcell .c{font-family:"JBMono",monospace;font-size:23px;color:var(--brand-ink);line-height:1.3}
+.askcell .c::before{content:"\2192";color:var(--ink-3);margin-right:11px}
+.sections{display:flex;gap:14px;flex-wrap:wrap}
+/* this card carries one more block than its neighbours. It buys the room back
+   from the padding inside its own panel, so the headline and prose keep the
+   same vertical rhythm as every other card. */
+#c5{gap:24px}
+#c5 .evidence{gap:16px}
+#c5 .panel__bar{padding:11px 20px}
+#c5 .panel__body{padding:16px 26px 8px}
+#c5 .sections{padding:0 26px 14px}
+
+/* ============================================================ CARD 04 */
+.path{display:flex;align-items:center;gap:15px;flex-wrap:wrap;font-family:"JBMono",monospace;font-size:25px;color:var(--ink-3)}
+.path .n{padding:11px 17px;border-radius:11px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.path .n.loc{border-color:color-mix(in oklab,var(--teal) 45%,var(--line))}
+.path .n.sig{border-color:color-mix(in oklab,var(--brand) 45%,var(--line))}
+.track{display:flex;flex-direction:column;gap:14px}
+.track .lbls{display:flex;justify-content:space-between;font-family:"JBMono",monospace;font-size:21px;color:var(--ink-3)}
+.track .bar{height:112px;border-radius:16px;border:1px solid var(--line);display:flex;overflow:hidden;background:var(--surface)}
+.track .seg{display:flex;align-items:center;gap:15px;padding:0 26px;font-family:"JBMono",monospace;font-size:24px;color:var(--ink)}
+.track .seg .k{width:13px;height:13px;transform:rotate(45deg);border-radius:2px;flex:none}
+.track .seg.loc{flex:none;width:400px;background:color-mix(in oklab,var(--teal) 22%,var(--surface));border-right:1px solid var(--line)}
+.track .seg.loc .k{background:var(--teal)}
+.track .seg.inf{flex:1;background:color-mix(in oklab,var(--brand) 18%,var(--surface))}
+.track .seg.inf .k{background:var(--brand)}
+.track .seg .var{margin-left:auto;color:var(--ink-3);font-size:20px}
+
+/* ============================================================ CARD 07 */
+#c7 .split{display:grid;grid-template-columns:640px 1fr;gap:52px;align-items:center}
+.ask{font-family:"JBMono",monospace;font-size:27px;line-height:1.62;color:var(--ink);display:grid;
+  grid-template-columns:auto 1fr;gap:16px}
+.ask .car{color:var(--brand);font-weight:600}
+.weights{display:flex;flex-direction:column;gap:12px}
+.wrow{display:flex;align-items:center;gap:16px;border:1px solid var(--line);border-radius:13px;padding:15px 20px;background:var(--surface)}
+.wrow .ap{width:22px;height:22px;flex:none;color:var(--brand)}
+.wrow .v{font-size:28px;color:var(--ink);font-weight:600}
+.wrow--bg{background:none;border-color:var(--line-soft);padding:12px 20px}
+.wrow--bg .v{font-size:24px;color:var(--ink-2);font-weight:400}
+.wrow--top{border-color:color-mix(in oklab,var(--brand) 55%,var(--line));background:var(--raised);box-shadow:var(--glow)}
+
+/* ============================================================ CARD 08
+   One compact safeguard sits under the drafting and sending paths. Rose means
+   here what it means on the gate above it: this is where something stops. */
+.untrusted{display:flex;align-items:center;gap:24px;padding:16px 22px;border-radius:15px;
+  border:1px solid color-mix(in oklab,var(--coral) 45%,var(--line));
+  background:color-mix(in oklab,var(--coral) 8%,var(--surface))}
+.untrusted .node{flex:none}
+.untrusted .note{color:var(--ink-2)}
+.untrusted .note em{font-style:normal;font-weight:600;color:var(--coral-ink)}
+
+/* ============================================================ CARD 10 */
+#c10 .split{display:grid;grid-template-columns:1fr 584px;gap:48px;align-items:center}
+.linkrow{display:flex;flex-direction:column;gap:16px;align-items:flex-start}
+.linkbtn{display:inline-flex;align-items:center;gap:14px;border:1px solid var(--line);background:var(--surface);
+  border-radius:13px;padding:15px 22px;font-family:"JBMono",monospace;font-size:26px;color:var(--ink);
+  text-decoration:none;box-shadow:var(--shadow)}
+.linkbtn:hover{border-color:var(--brand)}
+.linkbtn svg{width:24px;height:24px;stroke:var(--brand);fill:none;stroke-width:2;flex:none}
+</style>
+</head>
+<body>
+<a class="skip" href="#slide-1">Skip to the current card</a>
+
+<svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
+  <symbol id="ap" viewBox="0 0 32 32">
+    <rect x="1.5" y="1.5" width="29" height="29" rx="7" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M16 6 L26 16 L16 26 L6 16 Z" fill="currentColor"/>
+    <circle cx="16" cy="16" r="3.1" fill="var(--bg)"/>
+  </symbol>
+  <symbol id="logomark" viewBox="0 0 32 32">
+    <rect width="32" height="32" rx="7" fill="var(--ink)"/>
+    <path d="M16 4.5 L27.5 16 L16 27.5 L4.5 16 Z" fill="var(--logo)"/>
+    <circle cx="16" cy="16" r="3.3" fill="var(--bg)"/>
+  </symbol>
+</defs></svg>
+
+<main class="deck" id="deck">
+  <div class="stage" id="stage">
+
+  <!-- ============================================== CARD 1 -->
+  <section class="slide" id="slide-1" data-slide data-active="true" aria-hidden="false" aria-label="Card 1 of 10: Talk to your coding agent about your email">
+    <div class="cardhead">
+      <svg class="mark" viewBox="0 0 32 32" role="img" aria-label="mxr"><use href="#logomark"/></svg>
+      <span class="wm" aria-hidden="true">mxr</span>
+      <span class="railtrack" style="--p:10%" aria-hidden="true"><span class="on"></span><span class="ap"></span></span>
+      <span class="idx"><b>01</b> / 10</span>
+    </div>
+    <div class="cardbody" id="c1">
+      <div class="stack" style="gap:20px">
+        <svg class="mark-lg anim" style="--i:0" viewBox="0 0 32 32" role="img" aria-label="The mxr product mark"><use href="#logomark"/></svg>
+        <h1 class="t1 anim" style="--i:1">Talk to your coding agent about your <span class="em">email</span></h1>
+        <div class="titlerail anim f" style="--i:2"></div>
+        <p class="prose anim" style="--i:3">I built mxr. It brings all your accounts into one local mailbox, so your agent can search years of mail locally, tell you what needs attention, and help you handle it.</p>
+        <p class="foot anim f" style="--i:4">mxr &nbsp;·&nbsp; "Mixer" &nbsp;·&nbsp; mxr.sh</p>
+      </div>
+      <figure class="shot anim f" style="--i:5">
+        <div class="panel__bar"><span class="dots"><i></i><i></i><i></i></span><span class="name">mxr &nbsp;·&nbsp; all mail</span><span class="status">synced</span></div>
+        <div class="shot__win shot__win--fade" style="--w:552px;--h:560px;--x:280px;--y:108px;--sc:1">
+          <img src="assets/media/mxr-tui-poster.jpg" alt="The mxr terminal mailbox listing threads from a synthetic demo account, with senders, subjects, and ages.">
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ============================================== CARD 2 -->
+  <section class="slide" id="slide-2" data-slide data-active="false" aria-hidden="true" inert aria-label="Card 2 of 10: Which emails should I be careful with?">
+    <div class="cardhead">
+      <svg class="mark" viewBox="0 0 32 32" role="img" aria-label="mxr"><use href="#logomark"/></svg>
+      <span class="wm" aria-hidden="true">mxr</span>
+      <span class="railtrack" style="--p:20%" aria-hidden="true"><span class="on"></span><span class="ap"></span></span>
+      <span class="idx"><b>02</b> / 10</span>
+    </div>
+    <div class="cardbody" id="c2">
+      <div class="stack" style="gap:20px">
+        <h2 class="t2 anim" style="--i:0">Which emails should I be careful with?</h2>
+        <p class="prose anim" style="--i:1">The agent uses mxr to search my local mailbox, open the relevant threads, and report what deserves attention.</p>
+      </div>
+      <div class="evidence">
+        <figure class="shot anim f" style="--i:2">
+          <div class="panel__bar"><span class="dots"><i></i><i></i><i></i></span><span class="name">coding agent &nbsp;·&nbsp; shell</span><span class="status">synthetic demo mailbox</span></div>
+          <div class="shot__win" style="--w:1448px;--h:340px;--x:24px;--y:256px;--sc:1.175">
+            <img src="assets/media/mxr-agent-poster.jpg" alt="A terminal where an agent ran an mxr search over the inbox and piped it through jq, returning a ranked list of demo senders with message counts.">
+          </div>
+          <figcaption class="shot__cap">mxr search across the local mailbox, grouped by sender</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================== CARD 3 -->
+  <section class="slide" id="slide-3" data-slide data-active="false" aria-hidden="true" inert aria-label="Card 3 of 10: All my accounts, one local mailbox">
+    <div class="cardhead">
+      <svg class="mark" viewBox="0 0 32 32" role="img" aria-label="mxr"><use href="#logomark"/></svg>
+      <span class="wm" aria-hidden="true">mxr</span>
+      <span class="railtrack" style="--p:30%" aria-hidden="true"><span class="on"></span><span class="ap"></span></span>
+      <span class="idx"><b>03</b> / 10</span>
+    </div>
+    <div class="cardbody" id="c3">
+      <div class="stack" style="gap:20px">
+        <h2 class="t2 anim" style="--i:0">All my accounts, one local mailbox</h2>
+        <p class="prose anim" style="--i:1">Gmail, Outlook, Microsoft 365, and any IMAP account sync into SQLite on my machine. Tantivy indexes it for fast local search. I send through Gmail, Outlook, or any SMTP server.</p>
+      </div>
+      <p class="vis-hidden">Gmail, Outlook or Microsoft 365, and any IMAP account all feed provider adapters. The adapters write into SQLite, which is the one mail model on my machine, and SQLite builds the Tantivy local search index. Outbound mail leaves the adapters through Gmail, Outlook, or any SMTP server.</p>
+      <div class="evidence">
+      <div class="diagram" data-diagram="c3" style="height:352px">
+        <svg class="diagram__svg" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div class="lay anim" data-node="gmail" style="left:15%;top:13%;--i:2"><span class="node node--raised"><svg class="ap ap-teal"><use href="#ap"/></svg><span class="lbl">Gmail</span></span></div>
+        <div class="lay anim" data-node="outlook" style="left:15%;top:41%;--i:3"><span class="node node--raised"><svg class="ap ap-teal"><use href="#ap"/></svg><span class="lbl">Outlook / Microsoft 365</span></span></div>
+        <div class="lay anim" data-node="imap" style="left:15%;top:69%;--i:3"><span class="node node--raised"><svg class="ap ap-teal"><use href="#ap"/></svg><span class="lbl">any IMAP</span></span></div>
+        <div class="lay anim" data-node="adapters" style="left:46%;top:41%;--i:4"><span class="node"><span class="lbl">provider adapters</span></span></div>
+        <div class="lay anim" data-node="send" style="left:46%;top:88%;--i:6"><span class="node"><svg class="ap ap-brand"><use href="#ap"/></svg><span class="lbl">Gmail &middot; Outlook &middot; any SMTP</span></span></div>
+        <div class="lay anim" data-node="sqlite" style="left:80%;top:18%;--i:5"><span class="node node--local node--raised node--col"><span style="display:flex;align-items:center;gap:14px"><svg class="ap ap-teal"><use href="#ap"/></svg><span class="lbl">SQLite</span></span><span class="sub">one mail model</span></span></div>
+        <div class="lay anim" data-node="tantivy" style="left:80%;top:58%;--i:6"><span class="node node--local node--col"><span style="display:flex;align-items:center;gap:14px"><svg class="ap ap-teal"><use href="#ap"/></svg><span class="lbl">Tantivy</span></span><span class="sub">local search index</span></span></div>
+      </div>
+      <div class="legend anim f" style="--i:7">
+        <span><span class="sw"></span>inbound sync</span>
+        <span><span class="sw b"></span>outbound send</span>
+      </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================== CARD 4 -->
+  <section class="slide" id="slide-4" data-slide data-active="false" aria-hidden="true" inert aria-label="Card 4 of 10: Search stays on the machine">
+    <div class="cardhead">
+      <svg class="mark" viewBox="0 0 32 32" role="img" aria-label="mxr"><use href="#logomark"/></svg>
+      <span class="wm" aria-hidden="true">mxr</span>
+      <span class="railtrack" style="--p:40%" aria-hidden="true"><span class="on"></span><span class="ap"></span></span>
+      <span class="idx"><b>04</b> / 10</span>
+    </div>
+    <div class="cardbody" id="c4">
+      <div class="stack" style="gap:20px">
+        <h2 class="t2 anim" style="--i:0">Search stays on the machine</h2>
+        <p class="prose anim" style="--i:1">Because the mailbox is already synced and indexed, a question starts with a fast local lookup. I don't notice the search. <em class="hi">The only thing I wait for is the model.</em></p>
+      </div>
+      <div class="evidence"><div class="track">
+        <div class="path anim f" style="--i:2">
+          <span class="n loc">agent</span><span>&rarr;</span>
+          <span class="n loc">mxr</span><span>&rarr;</span>
+          <span class="n loc">Tantivy / SQLite</span><span>&rarr;</span>
+          <span class="n loc">results</span><span>&rarr;</span>
+          <span class="n sig">model</span><span>&rarr;</span>
+          <span class="n sig">answer or draft</span>
+        </div>
+        <div class="lbls anim f" style="--i:3;margin-top:26px"><span>local retrieval</span><span>model inference</span></div>
+        <div class="bar anim f" style="--i:4">
+          <div class="seg loc"><span class="k"></span>on the machine</div>
+          <div class="seg inf"><span class="k"></span>the part I wait for<span class="var">variable</span></div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ============================================== CARD 5 -->
+  <section class="slide" id="slide-5" data-slide data-active="false" aria-hidden="true" inert aria-label="Card 5 of 10: I can analyse the whole mailbox at once">
+    <div class="cardhead">
+      <svg class="mark" viewBox="0 0 32 32" role="img" aria-label="mxr"><use href="#logomark"/></svg>
+      <span class="wm" aria-hidden="true">mxr</span>
+      <span class="railtrack" style="--p:50%" aria-hidden="true"><span class="on"></span><span class="ap"></span></span>
+      <span class="idx"><b>05</b> / 10</span>
+    </div>
+    <div class="cardbody" id="c5">
+      <div class="stack" style="gap:20px">
+        <h2 class="t2 anim" style="--i:0">I can analyse the whole mailbox at once</h2>
+        <p class="prose anim" style="--i:1">Every synced message body, sender, thread, timestamp, and attachment metadata is already in SQLite. mxr can answer questions across years of email without fetching messages one by one.</p>
+      </div>
+      <div class="evidence">
+        <div class="panel anim f" style="--i:2">
+          <div class="panel__bar"><span class="dots"><i></i><i></i><i></i></span><span class="name">mxr &nbsp;·&nbsp; year in review</span><span class="status">local SQLite queries</span></div>
+          <div class="panel__body"><span class="pr">$</span> <span class="cmd">mxr wrapped</span> <span class="flag">--ytd</span></div>
+          <div class="sections">
+            <span class="tag tag--teal">volume</span>
+            <span class="tag tag--teal">top contacts</span>
+            <span class="tag tag--teal">reply time</span>
+            <span class="tag tag--teal">storage</span>
+            <span class="tag tag--teal">newsletters</span>
+          </div>
+        </div>
+        <div class="asks">
+          <span class="lbl-s anim f" style="--i:3">or ask something narrower</span>
+          <div class="askgrid">
+            <div class="askcell anim" style="--i:4"><span class="q">Who am I slow to reply to?</span><span class="c">mxr response-time</span></div>
+            <div class="askcell anim" style="--i:4"><span class="q">Which relationships have gone quiet?</span><span class="c">mxr contacts decay</span></div>
+            <div class="askcell anim" style="--i:5"><span class="q">Which newsletters do I rarely open?</span><span class="c">mxr subscriptions --rank</span></div>
+            <div class="askcell anim" style="--i:5"><span class="q">What is taking up space?</span><span class="c">mxr storage --by message</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================== CARD 6 -->
+  <section class="slide" id="slide-6" data-slide data-active="false" aria-hidden="true" inert aria-label="Card 6 of 10: The agent uses the same CLI I do">
+    <div class="cardhead">
+      <svg class="mark" viewBox="0 0 32 32" role="img" aria-label="mxr"><use href="#logomark"/></svg>
+      <span class="wm" aria-hidden="true">mxr</span>
+      <span class="railtrack" style="--p:60%" aria-hidden="true"><span class="on"></span><span class="ap"></span></span>
+      <span class="idx"><b>06</b> / 10</span>
+    </div>
+    <div class="cardbody" id="c6">
+      <div class="stack" style="gap:20px">
+        <h2 class="t2 anim" style="--i:0">The agent uses the same CLI I do</h2>
+        <p class="prose anim" style="--i:1">A shell-capable agent discovers commands with <code>--help</code>, asks for JSON, and passes IDs from one command to the next. mxr also ships an MCP server for clients that prefer typed tools.</p>
+      </div>
+      <div class="evidence"><div class="panel anim f" style="--i:2">
+        <div class="panel__bar"><span class="dots"><i></i><i></i><i></i></span><span class="name">agent &nbsp;·&nbsp; shell</span></div>
+        <div class="panel__body"><span class="pr">$</span> <span class="cmd">mxr search</span> <span class="str">"from:maya"</span> <span class="flag">--format ids</span>
+<span class="mut">  01JFQ7K3M2X8N5R0VYZA9CTBPF</span>
+<span class="pr">$</span> <span class="cmd">mxr thread</span> 01JFQ7K3M2X8N5R0VYZA9CTBPF <span class="flag">--format json</span>
+<span class="pr">$</span> <span class="cmd">mxr profile</span> <span class="str">maya@example.com</span> <span class="flag">--format json</span></div>
+      </div></div>
+    </div>
+  </section>
+
+
+  <!-- ============================================== CARD 7 -->
+  <section class="slide" id="slide-7" data-slide data-active="false" aria-hidden="true" inert aria-label="Card 7 of 10: Drafting for one person">
+    <div class="cardhead">
+      <svg class="mark" viewBox="0 0 32 32" role="img" aria-label="mxr"><use href="#logomark"/></svg>
+      <span class="wm" aria-hidden="true">mxr</span>
+      <span class="railtrack" style="--p:70%" aria-hidden="true"><span class="on"></span><span class="ap"></span></span>
+      <span class="idx"><b>07</b> / 10</span>
+    </div>
+    <div class="cardbody" id="c7">
+      <div class="stack" style="gap:20px">
+        <h2 class="t2 anim" style="--i:0">Drafting for one person</h2>
+        <p class="prose anim" style="--i:1">mxr retrieves the thread and adds local context from our previous emails, so the draft sounds like me writing to Maya.</p>
+      </div>
+      <div class="evidence"><div class="split">
+        <div class="anim" style="--i:2">
+          <span class="lbl-s" style="margin-bottom:16px">what I ask</span>
+          <p class="ask"><span class="car">&gt;</span><span>Find the latest thread with Maya, look at how I usually write to her, and draft a reply. Don't send it.</span></p>
+        </div>
+        <div class="weights">
+          <span class="lbl-s anim f" style="--i:3;color:var(--brand-ink)">weighs most</span>
+          <div class="wrow wrow--top anim" style="--i:3"><svg class="ap"><use href="#ap"/></svg><span class="v">the current thread</span></div>
+          <div class="wrow wrow--top anim" style="--i:4"><svg class="ap"><use href="#ap"/></svg><span class="v">my instruction</span></div>
+          <span class="lbl-s anim f" style="--i:5;margin-top:12px">background context</span>
+          <div class="wrow wrow--bg anim" style="--i:5"><span class="v">recent messages I sent to her</span></div>
+          <div class="wrow wrow--bg anim" style="--i:6"><span class="v">contact style profile</span></div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ============================================== CARD 8 -->
+  <section class="slide" id="slide-8" data-slide data-active="false" aria-hidden="true" inert aria-label="Card 8 of 10: A draft is still a draft">
+    <div class="cardhead">
+      <svg class="mark" viewBox="0 0 32 32" role="img" aria-label="mxr"><use href="#logomark"/></svg>
+      <span class="wm" aria-hidden="true">mxr</span>
+      <span class="railtrack" style="--p:80%" aria-hidden="true"><span class="on"></span><span class="ap"></span></span>
+      <span class="idx"><b>08</b> / 10</span>
+    </div>
+    <div class="cardbody" id="c8">
+      <div class="stack" style="gap:20px">
+        <h2 class="t2 anim" style="--i:0">A draft is still a draft</h2>
+        <p class="prose anim" style="--i:1">Drafting stops at text. <em class="hi">Sending is a separate operation</em> that needs my command, a daemon policy check, and confirmation.</p>
+      </div>
+      <p class="vis-hidden">Drafting runs from mxr draft-assist to returned draft text and stops there. Sending is a second path: my explicit send command, then the daemon policy check, then confirmation, and only then the provider.</p>
+      <div class="evidence">
+        <div class="diagram" data-diagram="c8" style="height:320px">
+          <svg class="diagram__svg" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <div class="lay anim" data-node="assist" style="left:16%;top:27%;--i:2"><span class="node node--sig node--col"><span style="display:flex;align-items:center;gap:14px"><svg class="ap ap-brand"><use href="#ap"/></svg><span class="lbl">mxr draft-assist</span></span><span class="sub">drafting</span></span></div>
+          <div class="lay anim" data-node="text" style="left:44%;top:27%;--i:3"><span class="node node--col"><span class="lbl">draft text</span><span class="sub">returned to me</span></span></div>
+          <div class="lay anim f" data-node="gate" style="left:69%;top:27%;--i:4"><span class="gate" role="img" aria-label="Drafting stops here. Nothing is sent."><span class="bars"><i></i><i></i><i></i></span><span class="lab">drafting stops here</span></span></div>
+          <div class="lay anim" data-node="me" style="left:16%;top:76%;--i:5"><span class="node node--sig node--col"><span style="display:flex;align-items:center;gap:14px"><svg class="ap ap-brand"><use href="#ap"/></svg><span class="lbl">my send command</span></span><span class="sub">sending</span></span></div>
+          <div class="lay anim" data-node="policy" style="left:44%;top:76%;--i:6"><span class="node node--local"><span class="lbl">daemon policy check</span></span></div>
+          <div class="lay anim" data-node="confirm" style="left:68%;top:76%;--i:7"><span class="node node--local"><span class="lbl">confirmation</span></span></div>
+          <div class="lay anim" data-node="provider" style="left:88%;top:76%;--i:8"><span class="node"><span class="lbl">provider</span></span></div>
+        </div>
+        <div class="untrusted anim f" style="--i:9">
+          <span class="node node--stop"><svg class="ap ap-coral"><use href="#ap"/></svg><span class="lbl">email content</span></span>
+          <p class="note"><em>Data, never an instruction.</em> It cannot authorise a send or redirect the task.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================== CARD 9 -->
+  <section class="slide" id="slide-9" data-slide data-active="false" aria-hidden="true" inert aria-label="Card 9 of 10: Close the TUI. Sync keeps going.">
+    <div class="cardhead">
+      <svg class="mark" viewBox="0 0 32 32" role="img" aria-label="mxr"><use href="#logomark"/></svg>
+      <span class="wm" aria-hidden="true">mxr</span>
+      <span class="railtrack" style="--p:90%" aria-hidden="true"><span class="on"></span><span class="ap"></span></span>
+      <span class="idx"><b>09</b> / 10</span>
+    </div>
+    <div class="cardbody" id="c9">
+      <div class="stack" style="gap:20px">
+        <h2 class="t2 anim" style="--i:0">Close the TUI. Sync keeps going.</h2>
+        <p class="prose anim" style="--i:1">The agent comes and goes too. Every client talks to one mxr daemon and sees the same mailbox, search index, rules, and permission checks.</p>
+      </div>
+      <p class="vis-hidden">The TUI, CLI, web app, scripts, agent skill, and MCP server all connect to one point and continue into the mxr daemon, which holds sync, SQLite, Tantivy, provider adapters, and permission checks.</p>
+      <div class="evidence"><div class="diagram" data-diagram="c9" style="height:344px">
+        <svg class="diagram__svg" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div class="lay anim" data-node="tui" style="left:10.2%;top:13%;--i:2"><span class="node"><span class="lbl">TUI</span></span></div>
+        <div class="lay anim" data-node="cli" style="left:23.3%;top:13%;--i:2"><span class="node"><span class="lbl">CLI</span></span></div>
+        <div class="lay anim" data-node="web" style="left:36.5%;top:13%;--i:3"><span class="node"><span class="lbl">web</span></span></div>
+        <div class="lay anim" data-node="scripts" style="left:51.4%;top:13%;--i:3"><span class="node"><span class="lbl">scripts</span></span></div>
+        <div class="lay anim" data-node="agent" style="left:71.4%;top:13%;--i:4"><span class="node node--sig"><svg class="ap ap-brand"><use href="#ap"/></svg><span class="lbl">agent skill</span></span></div>
+        <div class="lay anim" data-node="mcp" style="left:89.6%;top:13%;--i:4"><span class="node"><span class="lbl">MCP</span></span></div>
+        <div class="lay anim" data-node="daemon" style="left:50%;top:72%;--i:5">
+          <span class="node node--raised node--col" style="gap:18px;padding:22px 28px">
+            <span style="display:flex;align-items:center;gap:14px"><svg class="ap ap-brand" style="width:26px;height:26px"><use href="#ap"/></svg><span class="lbl" style="font-size:27px">mxr daemon</span></span>
+            <span style="display:flex;gap:12px;flex-wrap:nowrap">
+              <span class="tag tag--teal">sync</span>
+              <span class="tag tag--teal">SQLite</span>
+              <span class="tag tag--teal">Tantivy</span>
+              <span class="tag tag--teal">provider adapters</span>
+              <span class="tag tag--teal">permission checks</span>
+            </span>
+          </span>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ============================================== CARD 10 -->
+  <section class="slide" id="slide-10" data-slide data-active="false" aria-hidden="true" inert aria-label="Card 10 of 10: Try mxr with a synthetic mailbox">
+    <div class="cardhead">
+      <svg class="mark" viewBox="0 0 32 32" role="img" aria-label="mxr"><use href="#logomark"/></svg>
+      <span class="wm" aria-hidden="true">mxr</span>
+      <span class="railtrack" style="--p:100%" aria-hidden="true"><span class="on"></span><span class="ap"></span></span>
+      <span class="idx"><b>10</b> / 10</span>
+    </div>
+    <div class="cardbody" id="c10">
+      <div class="stack" style="gap:20px">
+        <h2 class="t2 anim" style="--i:0">Try mxr with a synthetic mailbox</h2>
+        <p class="prose anim" style="--i:1">The demo creates an isolated two-account mailbox with 50,000 messages. It does not touch your real mxr data.</p>
+      </div>
+      <div class="evidence"><div class="split">
+        <div class="stack" style="gap:28px">
+          <div class="panel anim f" style="--i:2">
+            <div class="panel__bar"><span class="dots"><i></i><i></i><i></i></span><span class="name">install and run</span></div>
+            <div class="panel__body" style="font-size:29px"><span class="pr">$</span> <span class="cmd">brew install</span> planetaryescape/mxr/mxr
+<span class="pr">$</span> <span class="cmd">mxr demo</span></div>
+          </div>
+          <div class="linkrow">
+            <a class="linkbtn anim" style="--i:3" href="https://mxr.sh/" target="_blank" rel="noopener noreferrer" data-no-advance data-deck-control aria-label="mxr.sh, the mxr documentation site (opens in a new tab)">
+              <svg viewBox="0 0 24 24"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+              mxr.sh
+            </a>
+            <a class="linkbtn anim" style="--i:4" href="https://github.com/planetaryescape/mxr" target="_blank" rel="noopener noreferrer" data-no-advance data-deck-control aria-label="The mxr source code on GitHub (opens in a new tab)">
+              <svg viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.9a3.4 3.4 0 0 0-.9-2.6c3-.3 6.2-1.5 6.2-6.7A5.2 5.2 0 0 0 19 4.8 4.9 4.9 0 0 0 18.9 1S17.7.6 15 2.5a13.4 13.4 0 0 0-7 0C5.3.6 4.1 1 4.1 1A4.9 4.9 0 0 0 4 4.8 5.2 5.2 0 0 0 2.7 8.4c0 5.2 3.2 6.4 6.2 6.7a3.4 3.4 0 0 0-.9 2.6V22"/></svg>
+              github.com/planetaryescape/mxr
+            </a>
+          </div>
+        </div>
+        <figure class="shot anim f" style="--i:5">
+          <div class="panel__bar"><span class="dots"><i></i><i></i><i></i></span><span class="name">mxr demo</span><span class="status">isolated</span></div>
+          <div class="shot__win shot__win--fade" style="--w:584px;--h:400px;--x:16px;--y:110px;--sc:1">
+            <img src="assets/media/mxr-tui-poster.jpg" alt="The mxr demo mailbox sidebar showing two synthetic accounts, folder counts, and labels, next to the start of the thread list.">
+          </div>
+        </figure>
+      </div></div>
+    </div>
+  </section>
+
+  </div><!-- /stage -->
+
+  <div class="chrome">
+    <div class="progress"><div class="progress__fill" id="progressFill"></div></div>
+    <div class="bar">
+      <div class="counter"><span class="now" id="cNow">01</span><span>/</span><b id="cTotal">10</b></div>
+      <div class="spacer"></div>
+      <button class="ctl" id="prevBtn" data-deck-control aria-label="Previous card"><svg viewBox="0 0 24 24"><path d="M15 5 L8 12 L15 19"/></svg></button>
+      <button class="ctl" id="nextBtn" data-deck-control aria-label="Next card"><svg viewBox="0 0 24 24"><path d="M9 5 L16 12 L9 19"/></svg></button>
+      <button class="ctl" id="themeBtn" data-deck-control aria-label="Switch to light theme">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></svg>
+      </button>
+      <button class="ctl" id="fsBtn" data-deck-control aria-label="Toggle fullscreen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      <button class="ctl" id="helpBtn" data-deck-control aria-label="Keyboard shortcuts"><svg viewBox="0 0 24 24"><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.9.4-1.5 1-1.5 2.2"/><circle cx="12" cy="17.5" r="0.6" fill="currentColor" stroke="none"/></svg></button>
+    </div>
+  </div>
+
+  <div class="help" id="help" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+    <div class="help__card">
+      <h2>Keyboard</h2>
+      <dl>
+        <dt>&rarr; &darr; Space</dt><dd>Next card</dd>
+        <dt>&larr; &uarr;</dt><dd>Previous card</dd>
+        <dt>Home / End</dt><dd>First / last card</dd>
+        <dt>f</dt><dd>Fullscreen</dd>
+        <dt>t</dt><dd>Switch theme</dd>
+        <dt>?</dt><dd>Toggle this help</dd>
+      </dl>
+    </div>
+  </div>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  var stage = document.getElementById('stage');
+  var slides = Array.prototype.slice.call(document.querySelectorAll('[data-slide]'));
+  var count = slides.length;
+  var index = 0;
+  var STORE_THEME = 'mxr-cards-theme';
+  var params = new URLSearchParams(location.search);
+
+  /* ---------- theme ---------- */
+  function applyTheme(t){
+    document.documentElement.setAttribute('data-theme', t);
+    var btn = document.getElementById('themeBtn');
+    if(btn) btn.setAttribute('aria-label', t === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+  }
+  function setTheme(t){
+    if(t!=='light' && t!=='dark') return;
+    applyTheme(t);
+    try{ localStorage.setItem(STORE_THEME, t); }catch(e){}
+  }
+  var initialTheme = params.get('theme');
+  if(initialTheme!=='light' && initialTheme!=='dark'){
+    var stored = null;
+    try{ stored = localStorage.getItem(STORE_THEME); }catch(e){}
+    initialTheme = stored || 'dark';
+  }
+  applyTheme(initialTheme);
+
+  /* ---------- stage scaling ---------- */
+  function fit(){
+    stage.style.setProperty('--scale', Math.min(window.innerWidth/1600, window.innerHeight/900));
+  }
+
+  /* ---------- measured connectors ----------
+     Endpoints are read from each node's offset geometry, which is its final
+     centre in the diagram's own coordinate space. That space is written to the
+     SVG viewBox 1:1, so a line always meets the box edge it points at, at both
+     target sizes, in both themes, and in print. */
+  function cbox(D, name){
+    var el = D.querySelector('[data-node="'+name+'"]'); if(!el) return null;
+    var w = el.offsetWidth, h = el.offsetHeight;
+    if(!w || !h) return null;
+    return { x1:el.offsetLeft-w/2, x2:el.offsetLeft+w/2, y1:el.offsetTop-h/2, y2:el.offsetTop+h/2, cx:el.offsetLeft, cy:el.offsetTop };
+  }
+  function edgePt(b,s){ return s==='right'?{x:b.x2,y:b.cy}:s==='left'?{x:b.x1,y:b.cy}:s==='top'?{x:b.cx,y:b.y1}:{x:b.cx,y:b.y2}; }
+  function rnd(n){ return Math.round(n*10)/10; }
+  function curvePath(A,sA,B,sB){
+    var horiz = (sA==='left'||sA==='right');
+    var k = horiz ? Math.max(30, Math.abs(B.x-A.x)*0.45) : Math.max(30, Math.abs(B.y-A.y)*0.5);
+    function ct(P,s){ return s==='right'?{x:P.x+k,y:P.y}:s==='left'?{x:P.x-k,y:P.y}:s==='top'?{x:P.x,y:P.y-k}:{x:P.x,y:P.y+k}; }
+    var c1=ct(A,sA), c2=ct(B,sB);
+    return 'M'+rnd(A.x)+' '+rnd(A.y)+' C '+rnd(c1.x)+' '+rnd(c1.y)+', '+rnd(c2.x)+' '+rnd(c2.y)+', '+rnd(B.x)+' '+rnd(B.y);
+  }
+  var mk = '';
+  function pathEl(d,color,arrow,dash){
+    return '<path d="'+d+'" fill="none" stroke="var(--'+color+')" stroke-width="2.5"'
+      +(dash?' stroke-dasharray="8 6"':'')+(arrow?' marker-end="url(#'+mk+'-'+color+')"':'')+'/>';
+  }
+  function seg(D,from,sA,to,sB,color,arrow,dash){
+    var a=cbox(D,from), b=cbox(D,to); if(!a||!b) return '';
+    return pathEl(curvePath(edgePt(a,sA),sA,edgePt(b,sB),sB),color,arrow,dash);
+  }
+  function markerDefs(){
+    var cs={brand:'var(--brand)',teal:'var(--teal)','ink-3':'var(--ink-3)',coral:'var(--coral)'};
+    var s='<defs>';
+    for(var k in cs){ s+='<marker id="'+mk+'-'+k+'" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="11" refX="11.5" refY="5.5" orient="auto"><path d="M0 0 L12 5.5 L0 11 Z" fill="'+cs[k]+'"/></marker>'; }
+    return s+'</defs>';
+  }
+  var SPECS = {
+    c3: function(D){
+      return seg(D,'gmail','right','adapters','left','teal',false,false)
+           + seg(D,'outlook','right','adapters','left','teal',false,false)
+           + seg(D,'imap','right','adapters','left','teal',false,false)
+           + seg(D,'adapters','right','sqlite','left','teal',true,false)
+           + seg(D,'sqlite','bottom','tantivy','top','teal',true,false)
+           + seg(D,'adapters','bottom','send','top','brand',true,true);
+    },
+    c8: function(D){
+      return seg(D,'assist','right','text','left','ink-3',true,false)
+           + seg(D,'text','right','gate','left','coral',false,false)
+           + seg(D,'me','right','policy','left','brand',true,false)
+           + seg(D,'policy','right','confirm','left','brand',true,false)
+           + seg(D,'confirm','right','provider','left','brand',true,false);
+    },
+    c9: function(D){
+      var d=cbox(D,'daemon'); if(!d) return '';
+      var J={x:d.cx,y:d.y1-46}, out='';
+      ['tui','cli','web','scripts','agent','mcp'].forEach(function(n){
+        var b=cbox(D,n); if(!b) return;
+        out+=pathEl(curvePath({x:b.cx,y:b.y2},'bottom',J,'top'),'ink-3',false,false);
+      });
+      out+='<circle cx="'+rnd(J.x)+'" cy="'+rnd(J.y)+'" r="4.5" fill="var(--brand)"/>';
+      out+=pathEl('M'+rnd(J.x)+' '+rnd(J.y)+' L '+rnd(d.cx)+' '+rnd(d.y1),'brand',true,false);
+      return out;
+    }
+  };
+  function layoutConnectors(){
+    var list = document.querySelectorAll('.diagram[data-diagram]');
+    for(var i=0;i<list.length;i++){
+      var D=list[i], svg=D.querySelector('.diagram__svg'); if(!svg) continue;
+      var key=D.getAttribute('data-diagram');
+      var fn=SPECS[key]; if(!fn) continue;
+      mk='arw-'+key;
+      var W=D.clientWidth, H=D.clientHeight; if(!W||!H) continue;
+      svg.setAttribute('viewBox','0 0 '+W+' '+H);
+      svg.setAttribute('preserveAspectRatio','none');
+      svg.innerHTML = markerDefs() + '<g>' + fn(D) + '</g>';
+    }
+  }
+  var _rz;
+  window.addEventListener('resize', function(){
+    fit(); if(_rz) cancelAnimationFrame(_rz); _rz = requestAnimationFrame(layoutConnectors);
+  });
+  fit();
+
+  /* ---------- navigation ---------- */
+  function render(){
+    slides.forEach(function(sl, i){
+      var on = i === index;
+      sl.setAttribute('data-active', on ? 'true' : 'false');
+      sl.setAttribute('aria-hidden', on ? 'false' : 'true');
+      if(on){ sl.removeAttribute('inert'); } else { sl.setAttribute('inert',''); }
+    });
+    var pf = document.getElementById('progressFill');
+    if(pf) pf.style.width = (count>1 ? (index/(count-1))*100 : 100) + '%';
+    var now = document.getElementById('cNow');
+    if(now) now.textContent = (index+1<10?'0':'')+(index+1);
+    try{ history.replaceState(null, '', '#slide-' + (index+1)); }
+    catch(e){ location.hash = 'slide-' + (index+1); }
+    layoutConnectors();
+  }
+  function goTo(i){
+    i = Math.max(0, Math.min(count-1, i|0));
+    if(i === index){ render(); return; }
+    index = i; render();
+  }
+  function next(){ if(index < count-1) goTo(index+1); }
+  function previous(){ if(index > 0) goTo(index-1); }
+  function indexFromHash(){
+    var m = /slide-(\d+)/.exec(location.hash||'');
+    if(m){ var n = parseInt(m[1],10)-1; if(n>=0 && n<count) return n; }
+    return 0;
+  }
+
+  /* ---------- controls ---------- */
+  document.getElementById('prevBtn').addEventListener('click', previous);
+  document.getElementById('nextBtn').addEventListener('click', next);
+  document.getElementById('themeBtn').addEventListener('click', function(){
+    setTheme(document.documentElement.getAttribute('data-theme')==='dark' ? 'light' : 'dark');
+  });
+  function toggleFs(){
+    try{
+      if(!document.fullscreenElement){ (document.documentElement.requestFullscreen||function(){}).call(document.documentElement); }
+      else if(document.exitFullscreen){ document.exitFullscreen(); }
+    }catch(e){}
+  }
+  document.getElementById('fsBtn').addEventListener('click', toggleFs);
+  var helpEl = document.getElementById('help');
+  function toggleHelp(force){
+    helpEl.setAttribute('data-open', (force!==undefined ? force : helpEl.getAttribute('data-open')!=='true') ? 'true' : 'false');
+  }
+  document.getElementById('helpBtn').addEventListener('click', function(){ toggleHelp(); });
+  helpEl.addEventListener('click', function(e){ if(e.target===helpEl) toggleHelp(false); });
+
+  document.addEventListener('keydown', function(e){
+    var tag = (e.target && e.target.tagName) || '';
+    if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
+    var k = e.key;
+    if(k==='ArrowRight'||k==='ArrowDown'||k==='PageDown'){ e.preventDefault(); next(); }
+    else if(k==='ArrowLeft'||k==='ArrowUp'||k==='PageUp'){ e.preventDefault(); previous(); }
+    else if(k==='Home'){ e.preventDefault(); goTo(0); }
+    else if(k==='End'){ e.preventDefault(); goTo(count-1); }
+    else if(k===' '||k==='Spacebar'){
+      if(e.target && e.target.closest && e.target.closest('[data-deck-control]')) return;
+      e.preventDefault(); next();
+    }
+    else if(k==='f'||k==='F'){ e.preventDefault(); toggleFs(); }
+    else if(k==='t'||k==='T'){ setTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'); }
+    else if(k==='?'){ e.preventDefault(); toggleHelp(); }
+    else if(k==='Escape'){ toggleHelp(false); }
+  });
+
+  document.addEventListener('click', function(e){
+    if(e.button && e.button!==0) return;
+    if(helpEl.getAttribute('data-open')==='true') return;
+    var t = e.target;
+    if(t.closest && t.closest('[data-deck-control],[data-no-advance],a,button,video,audio,input,label,select,textarea')) return;
+    if(t.closest && t.closest('.chrome')) return;
+    var sel = window.getSelection && window.getSelection().toString();
+    if(sel && sel.length) return;
+    next();
+  });
+
+  window.addEventListener('hashchange', function(){
+    var i = indexFromHash();
+    if(i !== index) goTo(i);
+  });
+
+  /* ---------- print ---------- */
+  var forcedPrint = params.get('print')==='1';
+  if(forcedPrint) document.documentElement.classList.add('print');
+  window.addEventListener('beforeprint', function(){ document.documentElement.classList.add('print'); layoutConnectors(); });
+  window.addEventListener('afterprint', function(){ if(!forcedPrint) document.documentElement.classList.remove('print'); layoutConnectors(); });
+
+  /* ---------- init ---------- */
+  index = indexFromHash();
+  render();
+
+  var ready = (async function(){
+    try{
+      if(document.fonts && document.fonts.ready){
+        await Promise.race([document.fonts.ready, new Promise(function(r){ setTimeout(r, 4000); })]);
+      }
+    }catch(e){}
+    layoutConnectors();
+    await new Promise(function(r){ requestAnimationFrame(function(){ layoutConnectors(); r(); }); });
+    return true;
+  })();
+
+  window.__deck = {
+    version: 1,
+    ready: ready,
+    getSlideCount: function(){ return count; },
+    getCurrentIndex: function(){ return index; },
+    goTo: function(i){ goTo(i); },
+    next: next,
+    previous: previous,
+    getTheme: function(){ return document.documentElement.getAttribute('data-theme'); },
+    setTheme: function(t){ setTheme(t); }
+  };
+})();
+</script>
+</body>
+</html>

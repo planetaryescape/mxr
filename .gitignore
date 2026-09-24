@@ -31,3 +31,7 @@ $HOME/.cache/npm-mcp/
 target-security-check/
 site/.playwright-cli/
 apps/desktop/.openapi-spec.json
+
+# Marketing: regenerable QA captures and zipped asset bundles (>5 MB)
+marketing/*/qa/
+marketing/**/*.zip

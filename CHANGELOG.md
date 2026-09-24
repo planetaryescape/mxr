@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.32](https://github.com/planetaryescape/mxr/compare/v0.6.31...v0.6.32) (2026-09-24)
+
+
+### Documentation
+
+* make AGENTS.md the single agent instruction file ([0e8380f](https://github.com/planetaryescape/mxr/commit/0e8380ffbabb3e3fd3fde92236ab21c542912710))
+* make ship it run the full release-please chain ([#231](https://github.com/planetaryescape/mxr/issues/231)) ([9a8b595](https://github.com/planetaryescape/mxr/commit/9a8b595d03c0bcddc4391af5246f1d54483ffe84))
+* **marketing:** add agent meetup deck, notes and PDFs ([102f909](https://github.com/planetaryescape/mxr/commit/102f909d9e89a22b58d017d9536e1f69c34d87ea))
+* **marketing:** add launch thread copy, cards and demo video ([159d47b](https://github.com/planetaryescape/mxr/commit/159d47b8af08e133c46a5db5de960d6a871b1ffa))
+* **marketing:** add video library clips, posters and post copy ([dfb23d1](https://github.com/planetaryescape/mxr/commit/dfb23d10138b1cfc24f8ea7450d3426e5e4da37a))
+* **plans:** add improvement plans 001-025 ([56dc79e](https://github.com/planetaryescape/mxr/commit/56dc79e8b4acd24b6266dc5359e6647c313f30cd))
+* repoint stale CLAUDE.md citations in web crate comments ([aea133c](https://github.com/planetaryescape/mxr/commit/aea133cd61f3c5803213d18f9447bb5089ba33c9))
+
 ## [0.6.31](https://github.com/planetaryescape/mxr/compare/v0.6.30...v0.6.31) (2026-09-23)
 
 

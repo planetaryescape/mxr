@@ -15,7 +15,7 @@ Contributor- and agent-facing docs. User-facing docs live in [`site/src/content/
 
 ## Conventions
 
-- Root agent context: [`AGENTS.md`](../AGENTS.md). `CLAUDE.md` symlinks there; scoped context lives in `.agents/skills/`.
+- Root agent context: [`AGENTS.md`](../AGENTS.md). Scoped context lives in `.agents/skills/`.
 - Project README: [`README.md`](../README.md).
 - Documentation principles (how to write good mxr docs): [`guides/writing-docs.md`](./guides/writing-docs.md) — read before editing anything under `site/src/content/docs/`.
 - Generated CLI reference under `site/src/content/docs/reference/cli/` is built by `site/scripts/generate-cli-reference.mjs` — do not hand-edit.

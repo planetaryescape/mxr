@@ -46,7 +46,7 @@ Each task below carries the fields needed to lift it into a PE Tasker task file
 ### T1.1 Batch-op reversibility matrix + confirmation review
 - Goal: answer TODO "which batch ops are reversible beyond the 60s undo window; document non-undoable cases" and "review confirmations for unsubscribe / archive-all / trash-all / send across CLI/TUI/Web".
 - Work: build one table (op × surface × dry-run × confirm × undoable) from code, not memory: CLI mutation commands, `crates/tui/src/ui/bulk_confirm_modal.rs`, `send_confirm_modal.rs`, web mutation actions under `apps/web/src/lib/actions/`. Land the table in `site/src/content/docs/guides/automation-contract.md`; file any gaps found (a surface missing a confirm or dry-run) as follow-up tasks rather than fixing inline.
-- Invariant to check: preview selection path == real mutation path (CLAUDE.md rule).
+- Invariant to check: preview selection path == real mutation path (AGENTS.md rule).
 - Risk: low (docs) unless gaps found; blast radius of any fix: medium.
 - Validation: table cross-checked against `mxr <cmd> --help` output and TUI/web code; `scripts/cargo-test -p mxr --test cli_help`.
 

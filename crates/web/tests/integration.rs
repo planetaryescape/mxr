@@ -243,9 +243,9 @@ async fn health_is_unauthenticated_and_returns_protocol_version() {
 
 /// Feed every `DaemonEvent` variant through the WebSocket and assert each
 /// surfaces with its `event` discriminator (the protocol uses
-/// `#[serde(tag = "event")]`). Per CLAUDE.md "test with the real system,
-/// not just unit tests": this catches regressions where a new event
-/// variant was added but the WS relay loop dropped it.
+/// `#[serde(tag = "event")]`). Running every variant through the real
+/// relay catches regressions where a new event variant was added but the
+/// WS relay loop dropped it.
 #[tokio::test]
 async fn websocket_relays_every_daemon_event_variant() {
     let temp = TempDir::new().unwrap();
@@ -358,8 +358,9 @@ async fn websocket_relays_every_daemon_event_variant() {
 
 /// One assertion per IPC bucket — admin / mail / platform / events —
 /// that the daemon-hosted bridge can dispatch and return the
-/// expected ResponseData. Per CLAUDE.md `wire both clients or wire
-/// neither`: drift in a bucket should fail this immediately.
+/// expected ResponseData. Per the client-parity rule in
+/// `.agents/skills/mxr-development/SKILL.md`: drift in a bucket should
+/// fail this immediately.
 #[tokio::test]
 async fn one_route_per_bucket_dispatches() {
     let temp = TempDir::new().unwrap();

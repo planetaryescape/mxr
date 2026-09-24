@@ -1,7 +1,7 @@
 //! Slice 6 — routes for the `Request` variants that didn't have an HTTP
-//! surface in v0.4.x. Per CLAUDE.md "wire both clients or wire neither":
-//! every protocol variant gets a route so HTTP clients have full parity
-//! with the TUI/CLI.
+//! surface in v0.4.x. Per the client-parity rule in
+//! `.agents/skills/mxr-development/SKILL.md`: every protocol variant gets a
+//! route so HTTP clients have full parity with the TUI/CLI.
 //!
 //! Handlers proxy the IPC `Request` to the daemon and return the matching
 //! `ResponseData` variant as JSON. They're deliberately thin: shaping

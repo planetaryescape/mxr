@@ -17,6 +17,7 @@ const router = vi.hoisted(() => ({
 }));
 
 const api = vi.hoisted(() => ({
+  cancelScheduledSend: vi.fn<(draftId: string) => Promise<unknown>>(),
   checkComposeSafety:
     vi.fn<(draftPath: string, accountId: string) => Promise<{ report: DraftSafetyReport }>>(),
   createScheduledSend: vi.fn<(draftId: string, at: Date) => Promise<unknown>>(),
@@ -193,6 +194,8 @@ describe("ComposeHost send safety", () => {
     });
 
     await waitFor(() => expect(api.sendComposeSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Message sent"));
+    expect(toasts.error).not.toHaveBeenCalled();
     expect(api.checkComposeSafety).toHaveBeenCalledTimes(1);
     expect(toasts).toHaveBeenCalledTimes(1);
   });
@@ -513,5 +516,43 @@ describe("ComposeHost send confirmation", () => {
       frontmatter: { cc: string };
     };
     expect(saved.frontmatter.cc).toBe("carol@example.com");
+  });
+});
+
+describe("ComposeHost send later", () => {
+  test("a scheduled send can be cancelled from its confirmation toast", async () => {
+    api.saveLocalDraft.mockResolvedValue({ ok: true });
+    api.createScheduledSend.mockResolvedValue({ ok: true });
+    api.cancelScheduledSend.mockResolvedValue({ ok: true });
+    renderHost();
+    openNewMessage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send later" }));
+    fireEvent.click(await screen.findByRole("button", { name: /In 2 hours/ }));
+
+    await waitFor(() =>
+      expect(toasts.success).toHaveBeenCalledWith("Send scheduled", expect.anything()),
+    );
+    const scheduledId = api.createScheduledSend.mock.calls[0]?.[0];
+    const stored = api.saveLocalDraft.mock.calls[0]?.[0] as { id: string; from?: unknown };
+    expect(stored.id).toBe(scheduledId);
+    expect(stored.from).toEqual({ name: null, email: "me@example.com" });
+    // The composer closes like a send.
+    await waitFor(() => expect(screen.queryByLabelText("Subject")).not.toBeInTheDocument());
+
+    const options = toasts.success.mock.calls.find(
+      ([title]) => title === "Send scheduled",
+    )?.[1] as {
+      action: { label: string; onClick: () => void };
+    };
+    expect(options.action.label).toBe("Cancel");
+    act(() => options.action.onClick());
+
+    await waitFor(() => expect(api.cancelScheduledSend).toHaveBeenCalledWith(scheduledId));
+    await waitFor(() =>
+      expect(toasts.success).toHaveBeenCalledWith("Scheduled send cancelled", {
+        description: "The message is kept in Drafts.",
+      }),
+    );
   });
 });

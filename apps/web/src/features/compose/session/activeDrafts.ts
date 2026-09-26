@@ -61,6 +61,12 @@ export function forgetActiveDraft(key: string) {
     delete parsed[key];
     window.localStorage.setItem(activeDraftStorageKey, JSON.stringify(parsed));
   } catch {
-    window.localStorage.removeItem(activeDraftStorageKey);
+    // Corrupt entry: drop it. Storage itself may be unavailable (private
+    // mode, disabled site data), which must never break a send or schedule.
+    try {
+      window.localStorage.removeItem(activeDraftStorageKey);
+    } catch {
+      // Nothing to clean up without storage.
+    }
   }
 }

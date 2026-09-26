@@ -214,6 +214,8 @@ export interface DraftAddress {
 export interface LocalDraftPayload {
   id: string;
   account_id: string;
+  /** Send-as override; omitted to send from the account's primary address. */
+  from?: DraftAddress;
   intent: ComposeKind;
   to: DraftAddress[];
   cc: DraftAddress[];
@@ -236,6 +238,13 @@ export function createScheduledSend(draftId: string, sendAt: Date): Promise<unkn
   return apiFetch<unknown>("/api/v1/mail/scheduled-sends", {
     method: "POST",
     body: { draft_id: draftId, send_at: sendAt.toISOString() },
+  });
+}
+
+/** Cancel a scheduled send. The stored draft itself is kept. */
+export function cancelScheduledSend(draftId: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/mail/scheduled-sends/${encodeURIComponent(draftId)}`, {
+    method: "DELETE",
   });
 }
 

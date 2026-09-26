@@ -14,6 +14,7 @@ import { archiveMessages } from "@/features/mailbox/api";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useUndo } from "@/state/undoStore";
 import {
+  cancelScheduledSend,
   checkComposeSafety,
   createScheduledSend,
   saveLocalDraft,
@@ -115,9 +116,13 @@ export function useComposeSend({
       // fresh id for a genuinely new compose session (save-local is an
       // upsert-by-id, so reusing the id updates rather than duplicates it).
       const draftId = intent.draftId ?? crypto.randomUUID();
+      const from = current.frontmatter.from.trim();
       await saveLocalDraft({
         id: draftId,
         account_id: current.accountId,
+        // Keep a chosen send-as alias; without it the daemon sends from the
+        // account's primary address.
+        ...(from ? { from: { name: null, email: from } } : {}),
         intent: draftIntentFromKind(current.kind),
         to: parseDraftAddresses(current.frontmatter.to),
         cc: parseDraftAddresses(current.frontmatter.cc),
@@ -129,6 +134,7 @@ export function useComposeSend({
         updated_at: now,
       });
       await createScheduledSend(draftId, at);
+      return draftId;
     },
   });
 
@@ -230,8 +236,9 @@ export function useComposeSend({
       });
       return;
     }
+    let scheduledDraftId: string;
     try {
-      await scheduleSession.mutateAsync(at);
+      scheduledDraftId = await scheduleSession.mutateAsync(at);
     } catch (error) {
       toast.error("Schedule failed", { description: errorMessage(error) });
       return;
@@ -241,6 +248,24 @@ export function useComposeSend({
     forgetActiveDraft(intent.key);
     toast.success("Send scheduled", {
       description: label ? `Sends ${label}` : undefined,
+      duration: 10_000,
+      action: {
+        label: "Cancel",
+        onClick: () => {
+          cancelScheduledSend(scheduledDraftId)
+            .then(() => {
+              toast.success("Scheduled send cancelled", {
+                description: "The message is kept in Drafts.",
+              });
+              void queryClient.invalidateQueries({ queryKey: ["drafts"] });
+            })
+            .catch((error: unknown) =>
+              toast.error("Couldn't cancel the scheduled send", {
+                description: errorMessage(error),
+              }),
+            );
+        },
+      },
     });
     void queryClient.invalidateQueries({ queryKey: ["drafts"] });
     if (options.onSent) {

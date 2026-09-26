@@ -349,3 +349,36 @@ describe("ComposeHost validation", () => {
     expect(summary).not.toHaveTextContent("Subject is empty");
   });
 });
+
+describe("ComposeHost shortcut failures", () => {
+  test("Cmd+S reports a failed save instead of throwing", async () => {
+    api.updateComposeSession.mockRejectedValue(new Error("disk full"));
+    renderHost();
+    openNewMessage();
+
+    const subject = await screen.findByLabelText("Subject");
+    fireEvent.change(subject, { target: { value: "Edited" } });
+    fireEvent.keyDown(subject, { key: "s", metaKey: true });
+
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith("Save failed", { description: "disk full" }),
+    );
+    expect(toasts.success).not.toHaveBeenCalledWith("Draft saved locally");
+  });
+
+  test("Cmd+Shift+R reports a failed refresh instead of throwing", async () => {
+    api.refreshComposeSession.mockRejectedValue(new Error("compose file missing"));
+    renderHost();
+    openNewMessage();
+
+    const subject = await screen.findByLabelText("Subject");
+    fireEvent.keyDown(subject, { key: "R", metaKey: true, shiftKey: true });
+
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith("Refresh failed", {
+        description: "compose file missing",
+      }),
+    );
+    expect(subject).toHaveValue("Quarterly plan");
+  });
+});

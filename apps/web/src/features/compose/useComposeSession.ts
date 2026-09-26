@@ -43,6 +43,7 @@ import {
   countRecipients,
   draftFingerprint,
   draftFromSession,
+  errorMessage,
   expandSnippet,
   localComposeIssues,
   isMalformedAddressIssue,
@@ -430,21 +431,36 @@ export function useComposeSession(
     setDirty(true);
   }
 
+  // The three handlers below are fired from shortcuts, menus and editor ex
+  // commands that never await them, so they report failures themselves and
+  // never reject.
   async function handleSaveClick() {
-    await saveCurrentDraft();
+    try {
+      await saveCurrentDraft();
+    } catch (error) {
+      toast.error("Save failed", { description: errorMessage(error) });
+      return;
+    }
     toast.success("Draft saved locally");
   }
 
   async function handleServerSaveClick() {
-    await saveCurrentDraft();
-    const current = draftRef.current;
-    if (!current || !isCurrentDraftSaved(current)) {
-      toast.error("Draft changed while saving", { description: "Save again before server draft." });
+    try {
+      await saveCurrentDraft();
+      const current = draftRef.current;
+      if (!current || !isCurrentDraftSaved(current)) {
+        toast.error("Draft changed while saving", {
+          description: "Save again before server draft.",
+        });
+        return;
+      }
+      const accountId = current.accountId;
+      const draftPath = current.draftPath;
+      await serverSave.mutateAsync({ draftPath, accountId });
+    } catch (error) {
+      toast.error("Server draft save failed", { description: errorMessage(error) });
       return;
     }
-    const accountId = current.accountId;
-    const draftPath = current.draftPath;
-    await serverSave.mutateAsync({ draftPath, accountId });
     toast.success("Draft copied to provider", {
       description: "The local mxr draft was preserved.",
     });
@@ -453,12 +469,17 @@ export function useComposeSession(
   async function handleRefreshClick() {
     const current = draftRef.current;
     if (!current) return;
-    const response = await refreshComposeSession(current.draftPath);
-    const next = draftFromSession(response.session, current.accountId);
-    setDraft(next);
-    setDirty(false);
-    setSaveError(null);
-    setLastSavedAt(new Date());
+    try {
+      const response = await refreshComposeSession(current.draftPath);
+      const next = draftFromSession(response.session, current.accountId);
+      setDraft(next);
+      setDirty(false);
+      setSaveError(null);
+      setLastSavedAt(new Date());
+    } catch (error) {
+      toast.error("Refresh failed", { description: errorMessage(error) });
+      return;
+    }
     toast.success("Draft refreshed");
   }
 
@@ -549,7 +570,7 @@ export function useComposeSession(
       await saveCurrentDraft();
     } catch (error) {
       toast.error("Draft not saved, composer kept open", {
-        description: error instanceof Error ? error.message : String(error),
+        description: errorMessage(error),
       });
       return;
     }

@@ -1,108 +1,39 @@
-import { useRouterState } from "@tanstack/react-router";
-import { RefreshCw } from "lucide-react";
-import { useMemo } from "react";
+/*
+ * `/compose/new?...` and `/compose/$draftId` are deep links, not a second
+ * composer. They open the one compose surface (ComposeHost, mounted in
+ * AppShell) with the matching intent, then step off the compose URL: back
+ * to where the user came from inside the app, or to the inbox for a link
+ * opened from outside.
+ */
 
-import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/ui/button";
-import type { ComposeKind } from "./api";
-import { ComposeEditorPanel } from "./ComposeEditorPanel";
-import { htmlDraftRefusal, HtmlDraftNotice } from "./HtmlDraftNotice";
-import { useComposeSession, type ComposeIntent } from "./useComposeSession";
+import { useCanGoBack, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
+import { useEffect, useRef } from "react";
 
-type ComposeSearch = Record<string, unknown>;
+import { intentFromComposeLocation, useComposeUi } from "./composeUiStore";
 
 export function ComposeRoute() {
   const location = useRouterState({ select: (state) => state.location });
-  const intent = useMemo(
-    () => composeIntent(location.pathname, location.search as ComposeSearch),
-    [location.pathname, location.search],
-  );
+  const navigate = useNavigate();
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
+  const openCompose = useComposeUi((state) => state.openCompose);
+  // Opening is a one-shot side effect of arriving on the URL; the ref also
+  // absorbs StrictMode's dev double-invoke.
+  const handledRef = useRef(false);
 
-  const controller = useComposeSession(intent);
-
-  if (controller.sessionLoading) {
-    return <ComposeLoading title={intent.title} />;
-  }
-
-  // An HTML-bodied draft is a permanent refusal, not a transient failure:
-  // retrying can only fail again. Show the document instead.
-  const htmlDraft = htmlDraftRefusal(controller.sessionError);
-  if (htmlDraft) {
-    return <HtmlDraftNotice refusal={htmlDraft} />;
-  }
-
-  if (controller.sessionError) {
-    return (
-      <EmptyState
-        icon={RefreshCw}
-        title="Compose unavailable"
-        description={controller.sessionError.message}
-        action={<Button onClick={controller.retrySession}>Retry</Button>}
-      />
+  useEffect(() => {
+    if (handledRef.current) return;
+    handledRef.current = true;
+    openCompose(
+      intentFromComposeLocation(location.pathname, location.search as Record<string, unknown>),
+      "overlay",
     );
-  }
+    if (canGoBack) {
+      router.history.back();
+    } else {
+      void navigate({ to: "/m/$mailbox", params: { mailbox: "inbox" }, replace: true });
+    }
+  }, [canGoBack, location.pathname, location.search, navigate, openCompose, router]);
 
-  if (!controller.draft) return null;
-
-  return <ComposeEditorPanel controller={controller} />;
-}
-
-function ComposeLoading({ title }: { title: string }) {
-  return (
-    <div className="flex min-w-0 flex-1 flex-col bg-background">
-      <div className="h-14 shrink-0 border-b border-border" />
-      <div className="shrink-0 border-b border-border px-5 py-3">
-        <div className="mx-auto w-full max-w-[860px] space-y-2">
-          <div className="h-8 animate-pulse rounded-md bg-muted" />
-          <div className="h-8 w-2/3 animate-pulse rounded-md bg-muted/70" />
-        </div>
-      </div>
-      <div className="min-h-0 flex-1 p-5">
-        <div className="mx-auto h-full w-full max-w-[860px] animate-pulse rounded-md bg-muted/40" />
-      </div>
-      <div className="shrink-0 border-t border-border px-5 py-3 font-mono text-2xs text-muted-foreground">
-        Opening {title.toLowerCase()}…
-      </div>
-    </div>
-  );
-}
-
-function composeIntent(pathname: string, search: ComposeSearch): ComposeIntent {
-  const draftMatch = pathname.match(/^\/compose\/([^/]+)$/);
-  const draftId = draftMatch?.[1] ? decodeURIComponent(draftMatch[1]) : undefined;
-  if (draftId && draftId !== "new") {
-    return { key: `draft:${draftId}`, title: "Saved draft", kind: "new", draftId };
-  }
-  const reply = typeof search.reply === "string" ? search.reply : undefined;
-  const prefillTo = typeof search.to === "string" ? search.to : undefined;
-  const prefillSubject = typeof search.subject === "string" ? search.subject : undefined;
-  const mode =
-    search.mode === "forward" || search.mode === "all" || search.mode === "single"
-      ? search.mode
-      : undefined;
-  const kind: ComposeKind = reply
-    ? mode === "forward"
-      ? "forward"
-      : mode === "all"
-        ? "reply_all"
-        : "reply"
-    : "new";
-  const title =
-    kind === "forward"
-      ? "Forward message"
-      : kind === "reply_all"
-        ? "Reply all"
-        : kind === "reply"
-          ? "Reply"
-          : "New message";
-  const prefillKey = [prefillTo?.trim() ?? "", prefillSubject?.trim() ?? ""].join("|");
-  const composeKey = reply ?? (prefillKey || "new");
-  return {
-    key: `compose:${kind}:${composeKey}`,
-    title,
-    kind,
-    messageId: reply,
-    prefillTo,
-    prefillSubject,
-  };
+  return null;
 }

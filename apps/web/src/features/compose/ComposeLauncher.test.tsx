@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { ComposeLauncher } from "./ComposeLauncher";
+import { useComposeUi } from "./composeUiStore";
 import { useModals } from "@/state/modalStore";
 
 const router = vi.hoisted(() => ({
@@ -52,6 +53,26 @@ describe("ComposeLauncher", () => {
   afterEach(() => {
     vi.clearAllMocks();
     useModals.setState({ composeLauncherOpen: false });
+    useComposeUi.setState({ intent: null });
+  });
+
+  test("hands To and Subject to the compose surface without leaving the page", async () => {
+    renderWithQueryClient(<ComposeLauncher />);
+
+    const to = await screen.findByRole("textbox", { name: "Recipients" });
+    fireEvent.change(to, { target: { value: "qa@example.com" } });
+    fireEvent.keyDown(to, { key: "Enter" });
+    const subject = await screen.findByRole("textbox", { name: "Subject" });
+    fireEvent.change(subject, { target: { value: "Launch notes" } });
+    fireEvent.keyDown(subject, { key: "Enter" });
+
+    expect(useComposeUi.getState().intent).toMatchObject({
+      kind: "new",
+      prefillTo: "qa@example.com",
+      prefillSubject: "Launch notes",
+    });
+    expect(useModals.getState().composeLauncherOpen).toBe(false);
+    expect(router.navigate).not.toHaveBeenCalled();
   });
 
   test("suggests recipients and accepts the ghost completion with tab", async () => {

@@ -9,7 +9,9 @@ import type {
   ComposeIssue,
   ComposeKind,
   ComposeSession,
+  ComposeSessionKind,
   DraftAddress,
+  InviteReplyAction,
 } from "../api";
 
 export interface ComposeDraftState {
@@ -27,8 +29,10 @@ export interface ComposeDraftState {
 export interface ComposeIntent {
   key: string;
   title: string;
-  kind: ComposeKind;
+  kind: ComposeSessionKind;
   messageId?: string;
+  /** Required when `kind` is `invite_reply`. */
+  inviteAction?: InviteReplyAction;
   draftId?: string;
   prefillTo?: string;
   prefillSubject?: string;

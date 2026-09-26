@@ -25,7 +25,7 @@ export async function loadInitialComposeSession(intent: ComposeIntent) {
       forgetActiveDraft(intent.key);
     }
   }
-  return startComposeSession(intent.kind, intent.messageId);
+  return startComposeSession(intent.kind, intent.messageId, intent.inviteAction);
 }
 
 function readActiveDraft(key: string): ActiveDraftEntry | undefined {

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { FileText, Mail, Paperclip, Plus, RefreshCw, Trash2 } from "lucide-react";
+import type { MouseEvent } from "react";
 import { toast } from "sonner";
 
 import { deleteDraft, fetchDrafts, type DraftSummary } from "./api";
@@ -17,6 +18,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { draftIntent, newMessageIntent, useComposeUi } from "@/features/compose/composeUiStore";
 
 export function DraftsRoute() {
   const queryClient = useQueryClient();
@@ -57,11 +59,12 @@ export function DraftsRoute() {
             Drafts saved in mxr. Open one to edit or copy it to a supported mail provider.
           </p>
         </div>
-        <Button asChild size="sm">
-          <Link to="/compose/new">
-            <Plus className="size-3.5" />
-            New draft
-          </Link>
+        <Button
+          size="sm"
+          onClick={() => useComposeUi.getState().openCompose(newMessageIntent(), "overlay")}
+        >
+          <Plus className="size-3.5" />
+          New draft
         </Button>
       </header>
 
@@ -102,6 +105,7 @@ function DraftRow({
       <Link
         to="/compose/$draftId"
         params={{ draftId: draft.id }}
+        onClick={(event: MouseEvent<HTMLAnchorElement>) => openDraftInPlace(event, draft.id)}
         className="flex min-w-0 flex-1 items-center gap-3 px-6 py-4"
       >
         <FileText className="size-4 shrink-0 text-muted-foreground" />
@@ -154,4 +158,14 @@ function DraftRow({
       </AlertDialog>
     </div>
   );
+}
+
+/** A plain click opens the draft in the compose surface over this list;
+ * modified clicks keep the link's deep-link behaviour (new tab, etc.). */
+function openDraftInPlace(event: MouseEvent<HTMLAnchorElement>, draftId: string) {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return;
+  }
+  event.preventDefault();
+  useComposeUi.getState().openCompose(draftIntent(draftId), "overlay");
 }

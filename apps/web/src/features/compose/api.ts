@@ -62,13 +62,25 @@ export interface ComposeAttachmentUploadResponse {
 
 export type ComposeKind = "new" | "reply" | "reply_all" | "forward";
 
+/** Calendar invite response carried by an `invite_reply` compose session. */
+export type InviteReplyAction = "accept" | "tentative" | "decline";
+
+/** Kinds the bridge can open a compose session for. `invite_reply` is a
+ * reply with an attached iCal REPLY; it is not a stored-draft intent. */
+export type ComposeSessionKind = ComposeKind | "invite_reply";
+
 export function startComposeSession(
-  kind: ComposeKind,
+  kind: ComposeSessionKind,
   messageId?: string,
+  inviteAction?: InviteReplyAction,
 ): Promise<ComposeSessionResponse> {
   return apiFetch<ComposeSessionResponse>("/api/v1/mail/compose/session", {
     method: "POST",
-    body: { kind, message_id: messageId },
+    body: {
+      kind,
+      message_id: messageId,
+      ...(kind === "invite_reply" && inviteAction ? { action: inviteAction } : {}),
+    },
   });
 }
 

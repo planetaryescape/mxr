@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+import { useComposeUi } from "@/features/compose/composeUiStore";
 import { DraftsRoute } from "./DraftsRoute";
 
 const api = vi.hoisted(() => ({
@@ -67,9 +68,13 @@ describe("DraftsRoute", () => {
     renderWithClient(<DraftsRoute />);
 
     const draft = await screen.findByRole("link", { name: /Quarterly plan/i });
+    // Still a real link for new-tab use; a plain click opens the composer here.
     expect(draft).toHaveAttribute("href", "/compose/draft-1");
     expect(screen.getByText("Buwang <buwang@example.com>")).toBeVisible();
     expect(screen.getByText("edited 2m ago")).toBeVisible();
+
+    fireEvent.click(draft);
+    expect(useComposeUi.getState().intent).toMatchObject({ draftId: "draft-1" });
   });
 
   test("explains that the list reads mxr's local draft store", async () => {

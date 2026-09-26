@@ -988,7 +988,7 @@ async fn upload_compose_attachment(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let bytes = general_purpose::STANDARD
         .decode(request.content_base64)
-        .map_err(|error| BridgeError::Ipc(format!("invalid attachment content: {error}")))?;
+        .map_err(|error| BridgeError::BadRequest(format!("invalid attachment content: {error}")))?;
     let filename = safe_attachment_filename(&request.filename);
     let path = compose_attachment_path(Path::new(&request.draft_path), &filename)?;
     if let Some(parent) = path.parent() {
@@ -1762,7 +1762,7 @@ async fn ipc_request_with_id(
 fn map_bridge_error(error: ClientError) -> BridgeError {
     match error {
         ClientError::Connect { source, .. } => BridgeError::Connect(source.to_string()),
-        ClientError::Daemon { message, .. } => BridgeError::Ipc(message),
+        ClientError::Daemon { message, kind, .. } => BridgeError::Daemon { message, kind },
         ClientError::Closed => BridgeError::Ipc("connection closed".into()),
         ClientError::Io(source) => BridgeError::Ipc(source.to_string()),
         // A non-response frame kept mapping to UnexpectedResponse before, so
@@ -1780,7 +1780,7 @@ fn map_bridge_error(error: ClientError) -> BridgeError {
         } => BridgeError::Ipc(format!(
             "unexpected response id {frame_id} while awaiting {expected_id}"
         )),
-        ClientError::Timeout(duration) => BridgeError::Ipc(format!(
+        ClientError::Timeout(duration) => BridgeError::Timeout(format!(
             "IPC request timed out after {} seconds",
             duration.as_secs()
         )),
@@ -1832,25 +1832,25 @@ async fn bridge_events(mut socket: WebSocket, socket_path: PathBuf) {
 fn parse_thread_id(value: &str) -> Result<ThreadId, BridgeError> {
     Uuid::parse_str(value)
         .map(ThreadId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid thread id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid thread id: {value}")))
 }
 
 fn parse_message_id(value: &str) -> Result<MessageId, BridgeError> {
     Uuid::parse_str(value)
         .map(MessageId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid message id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid message id: {value}")))
 }
 
 fn parse_draft_id(value: &str) -> Result<DraftId, BridgeError> {
     Uuid::parse_str(value)
         .map(DraftId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid draft id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid draft id: {value}")))
 }
 
 fn parse_attachment_id(value: &str) -> Result<mxr_core::AttachmentId, BridgeError> {
     Uuid::parse_str(value)
         .map(mxr_core::AttachmentId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid attachment id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid attachment id: {value}")))
 }
 
 fn parse_message_ids(values: &[String]) -> Result<Vec<MessageId>, BridgeError> {
@@ -1863,13 +1863,13 @@ fn parse_message_ids(values: &[String]) -> Result<Vec<MessageId>, BridgeError> {
 fn parse_account_id(value: &str) -> Result<AccountId, BridgeError> {
     Uuid::parse_str(value)
         .map(AccountId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid account id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid account id: {value}")))
 }
 
 fn parse_label_id(value: &str) -> Result<LabelId, BridgeError> {
     Uuid::parse_str(value)
         .map(LabelId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid label id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid label id: {value}")))
 }
 
 async fn create_compose_session(
@@ -1901,7 +1901,7 @@ async fn create_compose_session(
             let message_id = request
                 .message_id
                 .as_deref()
-                .ok_or_else(|| BridgeError::Ipc("compose reply missing message_id".into()))?;
+                .ok_or_else(|| BridgeError::BadRequest("compose reply missing message_id".into()))?;
             let envelope = envelope_for_message(socket_path, message_id).await?;
             let response = ipc_request(
                 socket_path,
@@ -1936,7 +1936,7 @@ async fn create_compose_session(
             let message_id = request
                 .message_id
                 .as_deref()
-                .ok_or_else(|| BridgeError::Ipc("compose forward missing message_id".into()))?;
+                .ok_or_else(|| BridgeError::BadRequest("compose forward missing message_id".into()))?;
             let envelope = envelope_for_message(socket_path, message_id).await?;
             let response = ipc_request(
                 socket_path,
@@ -1962,17 +1962,17 @@ async fn create_compose_session(
         }
         ComposeSessionKindRequest::InviteReply => {
             let message_id = request.message_id.as_deref().ok_or_else(|| {
-                BridgeError::Ipc("compose invite_reply missing message_id".into())
+                BridgeError::BadRequest("compose invite_reply missing message_id".into())
             })?;
             let action_str = request
                 .action
                 .as_deref()
-                .ok_or_else(|| BridgeError::Ipc("compose invite_reply missing action".into()))?;
+                .ok_or_else(|| BridgeError::BadRequest("compose invite_reply missing action".into()))?;
             let action = match action_str.to_ascii_lowercase().as_str() {
                 "accept" => mxr_protocol::CalendarInviteActionData::Accept,
                 "tentative" | "maybe" => mxr_protocol::CalendarInviteActionData::Tentative,
                 "decline" => mxr_protocol::CalendarInviteActionData::Decline,
-                other => return Err(BridgeError::Ipc(format!("invalid invite action: {other}"))),
+                other => return Err(BridgeError::BadRequest(format!("invalid invite action: {other}"))),
             };
             let envelope = envelope_for_message(socket_path, message_id).await?;
             let response = ipc_request(
@@ -2624,7 +2624,7 @@ fn resolve_snooze_until(
     config: &mxr_config::SnoozeConfig,
 ) -> Result<DateTime<Utc>, BridgeError> {
     mxr_config::snooze::parse_snooze_until(until, config)
-        .ok_or_else(|| BridgeError::Ipc(format!("invalid snooze time: {until}")))
+        .ok_or_else(|| BridgeError::BadRequest(format!("invalid snooze time: {until}")))
 }
 
 // --- Feature parity routes ---
@@ -3029,7 +3029,7 @@ async fn scan_deliveries(
 fn parse_delivery_id(value: &str) -> Result<mxr_core::DeliveryId, BridgeError> {
     Uuid::parse_str(value)
         .map(mxr_core::DeliveryId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid delivery id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid delivery id: {value}")))
 }
 
 async fn trigger_sync(

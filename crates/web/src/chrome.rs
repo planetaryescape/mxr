@@ -414,7 +414,7 @@ pub(crate) async fn load_mailbox_selection(
             let label_id = lens
                 .label_id
                 .as_deref()
-                .ok_or_else(|| BridgeError::Ipc("label lens missing label_id".into()))
+                .ok_or_else(|| BridgeError::BadRequest("label lens missing label_id".into()))
                 .and_then(parse_label_id)?;
             let envelopes =
                 list_envelopes(socket_path, Some(label_id.clone()), limit, offset).await?;
@@ -440,7 +440,7 @@ pub(crate) async fn load_mailbox_selection(
             let name = lens
                 .saved_search
                 .as_deref()
-                .ok_or_else(|| BridgeError::Ipc("saved search lens missing saved_search".into()))?;
+                .ok_or_else(|| BridgeError::BadRequest("saved search lens missing saved_search".into()))?;
             let envelopes = run_saved_search(socket_path, name, limit).await?;
             Ok(MailboxSelection {
                 lens_label: chrome

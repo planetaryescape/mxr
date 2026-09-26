@@ -3988,3 +3988,125 @@ fn degraded_status_is_not_reported_as_a_quiet_mailbox() {
     assert_eq!(label, "Synced");
     assert_eq!(message, "Local-first and ready");
 }
+
+/// Daemon-reported errors carry an `IpcErrorKind`; the bridge maps it to an
+/// HTTP status instead of blaming the gateway for every failure. The body
+/// keeps `{"error": ...}` and adds the daemon's machine-readable `code`.
+#[tokio::test]
+async fn daemon_error_kinds_map_to_http_statuses() {
+    use mxr_protocol::IpcErrorKind;
+
+    let cases = [
+        (
+            IpcErrorKind::InvalidRequest,
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (IpcErrorKind::Policy, reqwest::StatusCode::UNPROCESSABLE_ENTITY),
+        (
+            IpcErrorKind::Unsupported,
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (IpcErrorKind::NotFound, reqwest::StatusCode::NOT_FOUND),
+        (IpcErrorKind::RateLimited, reqwest::StatusCode::TOO_MANY_REQUESTS),
+        (IpcErrorKind::Auth, reqwest::StatusCode::BAD_GATEWAY),
+        (IpcErrorKind::Provider, reqwest::StatusCode::BAD_GATEWAY),
+        (IpcErrorKind::Store, reqwest::StatusCode::INTERNAL_SERVER_ERROR),
+        (
+            IpcErrorKind::Internal,
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+    ];
+
+    for (kind, expected) in cases {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            move |_| Some(Response::error_kinded("daemon said no", kind)),
+            None,
+        )
+        .await;
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let response = reqwest::Client::new()
+            .get(format!("http://{addr}/api/v1/admin/status"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected, "kind {kind:?}");
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(json["error"], "daemon said no", "kind {kind:?}");
+        assert_eq!(json["code"], kind.as_code(), "kind {kind:?}");
+    }
+}
+
+/// Malformed request input is the caller's fault (400) and never reaches the
+/// daemon; an unreachable daemon socket is 503, not a generic 502.
+#[tokio::test]
+async fn bad_input_is_400_and_missing_daemon_is_503() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let requests = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = requests.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |_| {
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            None
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let response = reqwest::Client::new()
+        .get(format!("http://{addr}/api/v1/mail/threads/not-a-uuid"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["error"], "invalid thread id: not-a-uuid");
+    assert_eq!(json["code"], "bad_request");
+    assert_eq!(
+        requests.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "a malformed id must not reach the daemon"
+    );
+
+    let missing = TempDir::new().unwrap();
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(missing.path().join("absent.sock"), TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let response = reqwest::Client::new()
+        .get(format!("http://{addr}/api/v1/admin/status"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert!(json["error"]
+        .as_str()
+        .unwrap()
+        .starts_with("failed to connect to mxr daemon"));
+    assert_eq!(json["code"], "connect");
+}

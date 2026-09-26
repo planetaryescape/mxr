@@ -2,7 +2,8 @@
  * Send-later dialog: natural-language time input (parseSendLater) with a
  * live preview of the parsed time, plus a few presets. Confirm hands the
  * resolved Date back to the compose controller, which materialises the
- * session into a stored draft and schedules it.
+ * session into a stored draft and schedules it. The same dialog, with its
+ * copy swapped, picks a custom time for "send and remind me".
  */
 
 import { Clock, Loader2 } from "lucide-react";
@@ -32,6 +33,12 @@ interface SendLaterDialogProps {
   onOpenChange: (open: boolean) => void;
   scheduling: boolean;
   onConfirm: (at: Date, label: string) => void;
+  title?: string;
+  description?: string;
+  confirmLabel?: string;
+  /** Lead-in for the parsed-time preview, e.g. "Sends" or "Remind". */
+  previewVerb?: string;
+  presets?: readonly { label: string; input: string }[];
 }
 
 export function SendLaterDialog({
@@ -39,6 +46,11 @@ export function SendLaterDialog({
   onOpenChange,
   scheduling,
   onConfirm,
+  title = "Send later",
+  description = "Schedule this message instead of sending it now. The draft is stored locally and dispatched by the daemon.",
+  confirmLabel = "Schedule send",
+  previewVerb = "Sends",
+  presets = PRESETS,
 }: SendLaterDialogProps) {
   const [input, setInput] = useState("");
 
@@ -59,15 +71,12 @@ export function SendLaterDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Send later</DialogTitle>
-          <DialogDescription>
-            Schedule this message instead of sending it now. The draft is stored locally and
-            dispatched by the daemon.
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-2">
-          {PRESETS.map((preset) => {
+          {presets.map((preset) => {
             const presetParse = parseSendLater(preset.input);
             return (
               <Button
@@ -108,10 +117,12 @@ export function SendLaterDialog({
           />
           <div className="text-2xs" role="status">
             {parsed ? (
-              <span className="text-success">Sends {parsed.label}</span>
+              <span className="text-success">
+                {previewVerb} {parsed.label}
+              </span>
             ) : input.trim() ? (
               <span className="text-muted-foreground">
-                Can&apos;t read that time yet — try &quot;in 2h&quot; or &quot;tomorrow 9am&quot;.
+                Can&apos;t read that time yet. Try &quot;in 2h&quot; or &quot;tomorrow 9am&quot;.
               </span>
             ) : (
               <span className="text-muted-foreground">
@@ -131,7 +142,7 @@ export function SendLaterDialog({
             ) : (
               <Clock className="size-3" />
             )}
-            Schedule send
+            {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -17,6 +17,8 @@ const router = vi.hoisted(() => ({
 }));
 
 const api = vi.hoisted(() => ({
+  setAutoReminder: vi.fn<(sentMessageId: string, remindAt: Date) => Promise<unknown>>(),
+  cancelAutoReminder: vi.fn<(sentMessageId: string) => Promise<unknown>>(),
   cancelScheduledSend: vi.fn<(draftId: string) => Promise<unknown>>(),
   checkComposeSafety:
     vi.fn<(draftPath: string, accountId: string) => Promise<{ report: DraftSafetyReport }>>(),
@@ -554,5 +556,69 @@ describe("ComposeHost send later", () => {
         description: "The message is kept in Drafts.",
       }),
     );
+  });
+});
+
+describe("ComposeHost send and remind", () => {
+  beforeEach(() => {
+    useUiPrefs.setState({ undoSendSeconds: 0 });
+    api.setAutoReminder.mockResolvedValue({ ok: true });
+    api.cancelAutoReminder.mockResolvedValue({ ok: true });
+  });
+
+  async function chooseRemindIn(label: string) {
+    const trigger = await screen.findByRole("button", { name: "More send options" });
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    const submenu = await screen.findByRole("menuitem", {
+      name: /Send and remind me if no reply in/,
+    });
+    fireEvent.keyDown(submenu, { key: "ArrowRight" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: label }));
+  }
+
+  test("sends, then sets a cancellable reminder for the sent message", async () => {
+    api.sendComposeSession.mockResolvedValue({
+      ok: true,
+      draft_id: "draft-1",
+      local_message_id: "msg-9",
+    });
+    renderHost();
+    openNewMessage();
+
+    const before = Date.now();
+    await chooseRemindIn("3 days");
+
+    await waitFor(() => expect(api.setAutoReminder).toHaveBeenCalledTimes(1));
+    expect(api.sendComposeSession).toHaveBeenCalledTimes(1);
+    const [sentId, remindAt] = api.setAutoReminder.mock.calls[0] ?? [];
+    expect(sentId).toBe("msg-9");
+    const days = ((remindAt as Date).getTime() - before) / 86_400_000;
+    expect(days).toBeGreaterThan(2.99);
+    expect(days).toBeLessThan(3.01);
+
+    await waitFor(() =>
+      expect(toasts.success).toHaveBeenCalledWith("Reminder set", expect.anything()),
+    );
+    const options = toasts.success.mock.calls.find(([title]) => title === "Reminder set")?.[1] as {
+      action: { label: string; onClick: () => void };
+    };
+    act(() => options.action.onClick());
+    await waitFor(() => expect(api.cancelAutoReminder).toHaveBeenCalledWith("msg-9"));
+  });
+
+  test("says so when the bridge can't identify the sent message", async () => {
+    api.sendComposeSession.mockResolvedValue({ ok: true, draft_id: "draft-1" });
+    renderHost();
+    openNewMessage();
+
+    await chooseRemindIn("1 day");
+
+    await waitFor(() =>
+      expect(toasts.warning).toHaveBeenCalledWith("Sent, but no reminder was set", {
+        description: "The mxr bridge did not return the sent message id.",
+      }),
+    );
+    expect(api.sendComposeSession).toHaveBeenCalledTimes(1);
+    expect(api.setAutoReminder).not.toHaveBeenCalled();
   });
 });

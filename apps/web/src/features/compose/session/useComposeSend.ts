@@ -14,11 +14,13 @@ import { archiveMessages } from "@/features/mailbox/api";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useUndo } from "@/state/undoStore";
 import {
+  cancelAutoReminder,
   cancelScheduledSend,
   checkComposeSafety,
   createScheduledSend,
   saveLocalDraft,
   sendComposeSession,
+  setAutoReminder,
   type ComposeSession,
   type DraftSafetyReport,
 } from "../api";
@@ -82,6 +84,10 @@ export function useComposeSend({
   // the safety-dialog detour keeps the archive intent and a cancelled undo
   // window drops it.
   const archiveAfterSendRef = useRef(false);
+  // Same lifecycle for "send and remind me": set per run, consumed at
+  // dispatch, dropped by a cancelled undo window.
+  const remindAfterSendRef = useRef<{ at: Date; label: string } | null>(null);
+  const [remindDialogOpen, setRemindDialogOpen] = useState(false);
   // One send per session at a time. Held from the first Send press through
   // save, safety check, the confirm dialog and the undo window until the
   // send settles or is cancelled. A ref, not state: two presses in the same
@@ -160,7 +166,17 @@ export function useComposeSend({
     setSendLocked(false);
   }
 
-  function startSendPipeline(archiveAfterSend: boolean) {
+  /** Send, then ask the daemon to remind the user if nobody replies by
+   * `at` (TUI parity: `n` in the send-confirm modal). */
+  function requestSendAndRemind(at: Date, label: string) {
+    setRemindDialogOpen(false);
+    startSendPipeline(false, { at, label });
+  }
+
+  function startSendPipeline(
+    archiveAfterSend: boolean,
+    remind: { at: Date; label: string } | null = null,
+  ) {
     const current = draftRef.current;
     if (!current) return;
     // Refuse before validation so a second press never re-runs anything.
@@ -172,6 +188,7 @@ export function useComposeSend({
     }
     if (!acquireSendLock()) return;
     archiveAfterSendRef.current = archiveAfterSend;
+    remindAfterSendRef.current = remind;
     void runSendPipeline();
   }
 
@@ -323,14 +340,17 @@ export function useComposeSend({
     const archiveSourceId =
       archiveAfterSendRef.current && intent.messageId ? intent.messageId : undefined;
     archiveAfterSendRef.current = false;
+    const remind = remindAfterSendRef.current;
+    remindAfterSendRef.current = null;
 
     const fire = () => {
       sendSession
         .mutateAsync({ draftPath, accountId, overrideToken })
-        .then(async () => {
+        .then(async (response) => {
           markSessionFinished();
           forgetActiveDraft(intent.key);
           toast.success("Message sent");
+          if (remind) await setReminderAfterSend(response.local_message_id, remind);
           if (archiveSourceId) {
             try {
               await archiveMessages([archiveSourceId]);
@@ -391,6 +411,9 @@ export function useComposeSend({
   }
 
   return {
+    remindDialogOpen,
+    setRemindDialogOpen,
+    requestSendAndRemind,
     sendConfirmOpen,
     setSendConfirmOpen: setSendConfirmOpenFromUi,
     /** True from the first Send press until that send settles or is
@@ -424,4 +447,36 @@ function sendSummary(draft: ComposeDraftState): string {
   const more = recipients.length > 1 ? ` and ${recipients.length - 1} more` : "";
   const from = draft.frontmatter.from.trim();
   return `To ${recipients[0] ?? "no one"}${more}${from ? `, from ${from}` : ""}. Press z to cancel.`;
+}
+
+async function setReminderAfterSend(
+  sentMessageId: string | undefined,
+  remind: { at: Date; label: string },
+) {
+  if (!sentMessageId) {
+    toast.warning("Sent, but no reminder was set", {
+      description: "The mxr bridge did not return the sent message id.",
+    });
+    return;
+  }
+  try {
+    await setAutoReminder(sentMessageId, remind.at);
+  } catch (error) {
+    toast.error("Sent, but the reminder failed", { description: errorMessage(error) });
+    return;
+  }
+  toast.success("Reminder set", {
+    description: `If no reply by ${remind.label}`,
+    duration: 10_000,
+    action: {
+      label: "Cancel",
+      onClick: () => {
+        cancelAutoReminder(sentMessageId)
+          .then(() => toast.success("Reminder cancelled"))
+          .catch((error: unknown) =>
+            toast.error("Couldn't cancel the reminder", { description: errorMessage(error) }),
+          );
+      },
+    },
+  });
 }

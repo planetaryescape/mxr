@@ -150,6 +150,13 @@ export interface ComposeController {
   addCc: (email: string) => void;
   sendLaterOpen: boolean;
   setSendLaterOpen: Dispatch<SetStateAction<boolean>>;
+  /** Custom-time dialog for "Send and remind me if no reply in...". */
+  remindDialogOpen: boolean;
+  setRemindDialogOpen: Dispatch<SetStateAction<boolean>>;
+  /** Send, then set a no-reply reminder for `at`. */
+  requestSendAndRemind: (at: Date, label: string) => void;
+  /** Send, then archive the source conversation (replies only). */
+  requestSendAndArchive: () => void;
   /** Open the send-later dialog (same local validation gate as send). */
   requestSendLater: () => void;
   /** Persist the session as a stored draft and schedule it for `at`. */
@@ -665,6 +672,10 @@ export function useComposeSession(
         )
       : [],
     addCc,
+    remindDialogOpen: send.remindDialogOpen,
+    setRemindDialogOpen: send.setRemindDialogOpen,
+    requestSendAndRemind: send.requestSendAndRemind,
+    requestSendAndArchive: send.requestSendAndArchive,
     sendLaterOpen: send.sendLaterOpen,
     setSendLaterOpen: send.setSendLaterOpen,
     requestSendLater: send.requestSendLater,

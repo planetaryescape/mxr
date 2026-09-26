@@ -39,6 +39,12 @@ const TiptapComposeEditor = lazy(() =>
   })),
 );
 
+const REMIND_DIALOG_PRESETS = [
+  { label: "Tomorrow 9am", input: "tomorrow 9am" },
+  { label: "In 3 days", input: "in 3 days" },
+  { label: "Next monday 9am", input: "next monday 9am" },
+] as const;
+
 export function ComposeEditorPanel({ controller }: { controller: ComposeController }) {
   const editorPreference = useUiPrefs((state) => state.composeEditor);
   const setComposeEditor = useUiPrefs((state) => state.setComposeEditor);
@@ -278,6 +284,9 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
       <ComposeActionBar
         onSend={controller.requestSend}
         onSendLater={controller.requestSendLater}
+        onSendAndArchive={controller.intent.messageId ? controller.requestSendAndArchive : undefined}
+        onSendAndRemind={controller.requestSendAndRemind}
+        onSendAndRemindCustom={() => controller.setRemindDialogOpen(true)}
         onAttach={controller.handleAttachShortcut}
         uploading={controller.uploading}
         busy={controller.busy}
@@ -333,6 +342,17 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         onOpenChange={controller.setSendLaterOpen}
         scheduling={controller.scheduling}
         onConfirm={(at, label) => void controller.scheduleSend(at, label)}
+      />
+      <SendLaterDialog
+        open={controller.remindDialogOpen}
+        onOpenChange={controller.setRemindDialogOpen}
+        scheduling={controller.busy}
+        onConfirm={controller.requestSendAndRemind}
+        title="Send and remind me"
+        description="Send now. If nobody replies by this time, mxr reminds you."
+        confirmLabel="Send and set reminder"
+        previewVerb="Remind if no reply by"
+        presets={REMIND_DIALOG_PRESETS}
       />
       <DiscardConfirmDialog
         open={controller.discardConfirmOpen}

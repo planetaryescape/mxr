@@ -134,12 +134,20 @@ export async function fetchContactsAutocomplete(
   return data.contacts ?? [];
 }
 
+export interface ComposeSendResponse {
+  ok: boolean;
+  draft_id?: string;
+  /** Local id of the message just sent (the daemon's SendReceipt). Needed
+   * to set a no-reply reminder; absent when the bridge doesn't return it. */
+  local_message_id?: string;
+}
+
 export function sendComposeSession(
   draftPath: string,
   accountId: string,
   overrideSafetyToken?: string,
-): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>("/api/v1/mail/compose/session/send", {
+): Promise<ComposeSendResponse> {
+  return apiFetch<ComposeSendResponse>("/api/v1/mail/compose/session/send", {
     method: "POST",
     body: {
       draft_path: draftPath,
@@ -238,6 +246,20 @@ export function createScheduledSend(draftId: string, sendAt: Date): Promise<unkn
   return apiFetch<unknown>("/api/v1/mail/scheduled-sends", {
     method: "POST",
     body: { draft_id: draftId, send_at: sendAt.toISOString() },
+  });
+}
+
+/** "Remind me if no reply by `remindAt`" for a message already sent. */
+export function setAutoReminder(sentMessageId: string, remindAt: Date): Promise<unknown> {
+  return apiFetch<unknown>("/api/v1/mail/reminders", {
+    method: "POST",
+    body: { sent_message_id: sentMessageId, remind_at: remindAt.toISOString() },
+  });
+}
+
+export function cancelAutoReminder(sentMessageId: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/mail/reminders/${encodeURIComponent(sentMessageId)}`, {
+    method: "DELETE",
   });
 }
 

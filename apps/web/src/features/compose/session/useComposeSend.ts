@@ -7,13 +7,7 @@
 
 import { useMutation, type QueryClient } from "@tanstack/react-query";
 import type { useNavigate } from "@tanstack/react-router";
-import {
-  useRef,
-  useState,
-  type Dispatch,
-  type MutableRefObject,
-  type SetStateAction,
-} from "react";
+import { useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { toast } from "sonner";
 
 import { archiveMessages } from "@/features/mailbox/api";
@@ -29,10 +23,12 @@ import {
 } from "../api";
 import { forgetActiveDraft } from "./activeDrafts";
 import {
+  draftFingerprint,
   draftIntentFromKind,
   errorMessage,
   localComposeIssues,
   parseDraftAddresses,
+  splitAddresses,
   type ComposeDraftState,
   type ComposeIntent,
 } from "./composeDraft";
@@ -94,6 +90,10 @@ export function useComposeSend({
   // Every undo-window cancel still open for this session. The lock means
   // there should only ever be one, but cancel clears them all regardless.
   const pendingCancelsRef = useRef(new Set<() => void>());
+  // Fingerprint of the draft the current safety report was computed for;
+  // an edit made from the confirm dialog (adding a suggested Cc) means the
+  // report is stale and has to be re-run before anything is sent.
+  const checkedFingerprintRef = useRef<string | null>(null);
 
   const sendSession = useMutation({
     mutationFn: ({
@@ -185,6 +185,7 @@ export function useComposeSend({
     }
     setCheckingSafety(true);
     setSafetyCheckError(null);
+    checkedFingerprintRef.current = draftFingerprint(current);
     try {
       const { report } = await checkComposeSafety(current.draftPath, current.accountId);
       if (report.allowed && report.issues.length === 0) {
@@ -261,16 +262,24 @@ export function useComposeSend({
     }
   };
 
-  /** Confirm from the safety dialog. Picks up the override token from the
-   * report's blocking issue when one exists. */
-  async function confirmSend() {
+  /** Confirm from the safety dialog. A blocked report only sends when the
+   * user explicitly overrode it, using the report's override token. */
+  async function confirmSend(override: boolean) {
+    const blocked = Boolean(safetyReport && !safetyReport.allowed);
     const overrideToken =
-      safetyReport && !safetyReport.allowed
-        ? (safetyReport.issues.find((issue) => issue.override_token)?.override_token ?? undefined)
+      blocked && override
+        ? (safetyReport?.issues.find((issue) => issue.override_token)?.override_token ?? undefined)
         : undefined;
+    if (blocked && !overrideToken) return;
     setSendConfirmOpen(false);
     setSafetyReport(null);
     setSafetyCheckError(null);
+    const current = draftRef.current;
+    if (current && draftFingerprint(current) !== checkedFingerprintRef.current) {
+      // Still holding the send lock: re-save and re-check the edited draft.
+      void runSendPipeline();
+      return;
+    }
     dispatchSend(overrideToken);
   }
 
@@ -343,7 +352,7 @@ export function useComposeSend({
     };
     const toastId = toast(`Sending in ${windowSeconds}s`, {
       duration: windowSeconds * 1000,
-      description: "z to cancel",
+      description: sendSummary(current),
       action: { label: "Undo", onClick: cancel },
     });
     const timer = window.setTimeout(() => {
@@ -380,4 +389,14 @@ export function useComposeSend({
 
 function hasBlockingIssues(draft: ComposeDraftState): boolean {
   return localComposeIssues(draft).some((issue) => issue.severity === "error");
+}
+
+/** "To ada@x.com and 2 more, from me@y.com. Press z to cancel." */
+function sendSummary(draft: ComposeDraftState): string {
+  const recipients = splitAddresses(
+    `${draft.frontmatter.to},${draft.frontmatter.cc},${draft.frontmatter.bcc}`,
+  );
+  const more = recipients.length > 1 ? ` and ${recipients.length - 1} more` : "";
+  const from = draft.frontmatter.from.trim();
+  return `To ${recipients[0] ?? "no one"}${more}${from ? `, from ${from}` : ""}. Press z to cancel.`;
 }

@@ -129,7 +129,9 @@ export interface ComposeController {
   handleAttachShortcut: () => void;
   handleComposeKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
   requestSend: () => void;
-  confirmSend: () => Promise<void>;
+  /** Send from the confirm dialog; `override` only after an explicit
+   * override of a blocked safety report. */
+  confirmSend: (override: boolean) => Promise<void>;
   snippetPickerOpen: boolean;
   setSnippetPickerOpen: Dispatch<SetStateAction<boolean>>;
   /** Snippets available for the picker and `;name ` inline expansion. */
@@ -144,8 +146,8 @@ export interface ComposeController {
   /** "Maybe include" suggestions for the chip row; empty when none or the
    * lookup failed (the row hides silently). */
   collaboratorSuggestions: SuggestedCollaborator[];
-  /** Append an address to the To field (collaborator chip click). */
-  addRecipient: (email: string) => void;
+  /** Append an address to Cc (suggested-collaborator click), revealing Cc. */
+  addCc: (email: string) => void;
   sendLaterOpen: boolean;
   setSendLaterOpen: Dispatch<SetStateAction<boolean>>;
   /** Open the send-later dialog (same local validation gate as send). */
@@ -507,12 +509,15 @@ export function useComposeSession(
     });
   }
 
-  function addRecipient(email: string) {
+  function addCc(email: string) {
     const current = draftRef.current;
     if (!current) return;
-    const existing = splitAddresses(current.frontmatter.to);
-    if (existing.some((chip) => chip.toLowerCase().includes(email.toLowerCase()))) return;
-    updateFrontmatter("to", [...existing, email].join(", "));
+    const everyone = splitAddresses(
+      `${current.frontmatter.to},${current.frontmatter.cc},${current.frontmatter.bcc}`,
+    );
+    if (everyone.some((chip) => chip.toLowerCase().includes(email.toLowerCase()))) return;
+    updateFrontmatter("cc", [...splitAddresses(current.frontmatter.cc), email].join(", "));
+    setShowCc(true);
   }
 
   function insertSnippet(body: string) {
@@ -659,7 +664,7 @@ export function useComposeSession(
               .includes(item.email.toLowerCase()),
         )
       : [],
-    addRecipient,
+    addCc,
     sendLaterOpen: send.sendLaterOpen,
     setSendLaterOpen: send.setSendLaterOpen,
     requestSendLater: send.requestSendLater,

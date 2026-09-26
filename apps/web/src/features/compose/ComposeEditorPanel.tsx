@@ -1,12 +1,4 @@
-import {
-  AlertTriangle,
-  FilePlus2,
-  Loader2,
-  Paperclip,
-  Send,
-  Trash2,
-  X,
-} from "lucide-react";
+import { FilePlus2, Loader2, Paperclip, Trash2, X } from "lucide-react";
 import { lazy, Suspense, useRef, useState, type DragEvent } from "react";
 
 import {
@@ -19,24 +11,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useUiPrefs } from "@/state/uiPrefsStore";
-import type { DraftSafetyReport, RuntimeAccount } from "./api";
 import { ComposeActionBar } from "./ComposeActionBar";
 import { ComposeIssueSummary } from "./ComposeIssueSummary";
 import { ComposeTopBar } from "./ComposeTopBar";
 import { DraftAssist } from "./DraftAssist";
-import { DraftQualityBadges } from "./DraftQualityBadges";
 import { RecipientField } from "./RecipientField";
+import { SendConfirmDialog } from "./SendConfirmDialog";
 import { SendLaterDialog } from "./SendLaterDialog";
 import { SignaturePicker } from "./SignaturePicker";
 import { SnippetPicker } from "./SnippetPicker";
-import type { DraftSuggestionResponse } from "./types";
 import type { ComposeController, ComposeUploadProgress } from "./useComposeSession";
 
 const CodeMirrorComposeEditor = lazy(() =>
@@ -110,14 +99,15 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         <div className="mx-auto w-full max-w-[860px] px-4 py-1.5">
           {controller.collaboratorSuggestions.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5 px-1 pb-1 text-2xs text-muted-foreground">
-              <span>Maybe include:</span>
+              <span>Maybe cc:</span>
               {controller.collaboratorSuggestions.map((suggestion) => (
                 <button
                   key={suggestion.email}
                   type="button"
                   className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-2xs text-foreground transition-colors hover:border-primary/50 hover:bg-muted"
                   title={suggestion.reason}
-                  onClick={() => controller.addRecipient(suggestion.email)}
+                  aria-label={`Add ${suggestion.email} to Cc`}
+                  onClick={() => controller.addCc(suggestion.email)}
                 >
                   {suggestion.display_name || suggestion.email}
                 </button>
@@ -314,14 +304,17 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
       <SendConfirmDialog
         open={controller.sendConfirmOpen}
         onOpenChange={controller.setSendConfirmOpen}
-        recipientCount={controller.recipientCount}
-        account={controller.selectedAccount}
-        subject={draft.frontmatter.subject}
+        frontmatter={draft.frontmatter}
+        fromAddress={
+          draft.frontmatter.from || controller.selectedAccount?.email || "the selected account"
+        }
         suggestion={controller.draftSuggestion}
         sending={controller.sending}
         safetyReport={controller.safetyReport}
         safetyCheckError={controller.safetyCheckError}
-        onConfirm={controller.confirmSend}
+        collaborators={controller.collaboratorSuggestions}
+        onAddCc={controller.addCc}
+        onConfirm={(override) => void controller.confirmSend(override)}
       />
       <SnippetPicker
         open={controller.snippetPickerOpen}
@@ -403,103 +396,6 @@ function AttachmentList({
         </Badge>
       ))}
     </div>
-  );
-}
-
-function SendConfirmDialog({
-  open,
-  onOpenChange,
-  recipientCount,
-  account,
-  subject,
-  suggestion,
-  sending,
-  safetyReport,
-  safetyCheckError,
-  onConfirm,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  recipientCount: number;
-  account?: RuntimeAccount;
-  subject: string;
-  suggestion: DraftSuggestionResponse | null;
-  sending: boolean;
-  safetyReport: DraftSafetyReport | null;
-  safetyCheckError: string | null;
-  onConfirm: () => void;
-}) {
-  const blocked = safetyReport ? !safetyReport.allowed : false;
-  return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !sending) {
-            event.preventDefault();
-            onConfirm();
-          }
-        }}
-      >
-        <AlertDialogHeader>
-          <AlertDialogTitle>{blocked ? "Send despite warnings?" : "Send message?"}</AlertDialogTitle>
-          <AlertDialogDescription>
-            Send to {recipientCount} {recipientCount === 1 ? "recipient" : "recipients"} via{" "}
-            {account?.email ?? "the selected account"}.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="rounded-lg border border-border bg-muted px-3 py-2 text-sm">
-          {subject.trim() || "(no subject)"}
-        </div>
-        {safetyCheckError ? (
-          <Alert variant="warning" className="flex items-center gap-2 px-3 py-2">
-            <AlertTriangle className="size-3 shrink-0 text-warning" />
-            <AlertDescription>Safety check unavailable: {safetyCheckError}</AlertDescription>
-          </Alert>
-        ) : null}
-        {safetyReport && safetyReport.issues.length > 0 ? (
-          <div className="space-y-2" role="alert">
-            {safetyReport.issues.map((issue) => (
-              <Alert
-                key={`${issue.code}-${issue.message}`}
-                variant={issue.severity === "blocker" ? "destructive" : "warning"}
-                className="flex items-start gap-2 px-3 py-2"
-              >
-                <AlertTriangle
-                  className={
-                    issue.severity === "blocker"
-                      ? "mt-0.5 size-3 shrink-0 text-destructive"
-                      : "mt-0.5 size-3 shrink-0 text-warning"
-                  }
-                />
-                <AlertDescription>
-                  {issue.message}
-                  {issue.detail ? (
-                    <span className="block text-2xs text-muted-foreground">{issue.detail}</span>
-                  ) : null}
-                </AlertDescription>
-              </Alert>
-            ))}
-          </div>
-        ) : null}
-        <DraftQualityBadges suggestion={suggestion} />
-        <AlertDialogFooter>
-          <AlertDialogCancel variant="outline" disabled={sending}>
-            Cancel
-          </AlertDialogCancel>
-          <AlertDialogAction
-            disabled={sending}
-            variant={blocked ? "destructive" : undefined}
-            onClick={(event) => {
-              event.preventDefault();
-              onConfirm();
-            }}
-          >
-            {sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
-            {blocked ? "Send anyway" : "Send"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   );
 }
 

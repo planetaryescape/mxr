@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -380,5 +380,138 @@ describe("ComposeHost shortcut failures", () => {
       }),
     );
     expect(subject).toHaveValue("Quarterly plan");
+  });
+});
+
+describe("ComposeHost send confirmation", () => {
+  const warnReport: DraftSafetyReport = {
+    allowed: true,
+    verdict: "warn",
+    issues: [
+      { code: "missing_attachment", severity: "warning", message: "Mentions an attachment" },
+    ],
+  };
+  const blockedReport: DraftSafetyReport = {
+    allowed: false,
+    verdict: "blocked",
+    issues: [
+      {
+        code: "wrong_recipient",
+        severity: "blocker",
+        message: "alice@example.com has never received this thread",
+        override_token: "tok-1",
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    useUiPrefs.setState({ undoSendSeconds: 0 });
+    api.updateComposeSession.mockImplementation(async (input) => {
+      const { frontmatter, body } = input as {
+        frontmatter: ComposeSessionResponse["session"]["frontmatter"];
+        body: string;
+      };
+      return session({ frontmatter, bodyMarkdown: body });
+    });
+  });
+
+  test("states recipients, sender and verdict before a warned send", async () => {
+    api.startComposeSession.mockResolvedValue(
+      session({
+        frontmatter: {
+          to: "alice@example.com",
+          cc: "bob@example.com",
+          bcc: "",
+          subject: "Quarterly plan",
+          from: "me@example.com",
+          attach: [],
+        },
+      }),
+    );
+    api.checkComposeSafety.mockResolvedValue({ report: warnReport });
+    renderHost();
+    openNewMessage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send⌘↵" }));
+    const dialog = await screen.findByRole("alertdialog");
+
+    expect(dialog).toHaveTextContent("Warning");
+    expect(dialog).toHaveTextContent("From me@example.com");
+    const recipients = screen.getByLabelText("Recipients");
+    expect(recipients).toHaveTextContent("Toalice@example.com");
+    expect(recipients).toHaveTextContent("Ccbob@example.com");
+    expect(dialog).toHaveTextContent("Mentions an attachment");
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(api.sendComposeSession).toHaveBeenCalledTimes(1));
+    expect(api.sendComposeSession.mock.calls[0]?.[2]).toBeUndefined();
+  });
+
+  test("a blocked draft only sends after an explicit override", async () => {
+    api.checkComposeSafety.mockResolvedValue({ report: blockedReport });
+    renderHost();
+    openNewMessage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send⌘↵" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Blocked");
+
+    const sendAnyway = screen.getByRole("button", { name: "Send anyway" });
+    expect(sendAnyway).toBeDisabled();
+    fireEvent.keyDown(dialog, { key: "Enter" });
+    expect(api.sendComposeSession).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /override the block/i }));
+    fireEvent.click(sendAnyway);
+
+    await waitFor(() => expect(api.sendComposeSession).toHaveBeenCalledTimes(1));
+    expect(api.sendComposeSession.mock.calls[0]?.[2]).toBe("tok-1");
+  });
+
+  test("Ctrl+O overrides a block and sends, like the TUI", async () => {
+    api.checkComposeSafety.mockResolvedValue({ report: blockedReport });
+    renderHost();
+    openNewMessage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send⌘↵" }));
+    fireEvent.keyDown(await screen.findByRole("alertdialog"), { key: "o", ctrlKey: true });
+
+    await waitFor(() => expect(api.sendComposeSession).toHaveBeenCalledTimes(1));
+    expect(api.sendComposeSession.mock.calls[0]?.[2]).toBe("tok-1");
+  });
+
+  test("adding a suggested Cc from the dialog re-checks the edited draft", async () => {
+    api.suggestComposeCollaborators.mockResolvedValue({
+      suggestions: [
+        {
+          email: "carol@example.com",
+          display_name: "Carol",
+          reason: "On the last 3 threads",
+          confidence: "high",
+        },
+      ],
+    });
+    api.checkComposeSafety
+      .mockResolvedValueOnce({ report: warnReport })
+      .mockResolvedValueOnce({ report: cleanReport });
+    renderHost();
+    openNewMessage();
+
+    // The header row offers the same suggestion once recipients settle.
+    expect(
+      await screen.findByRole("button", { name: "Add carol@example.com to Cc" }, { timeout: 3000 }),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Send⌘↵" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add carol@example.com to Cc" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(api.sendComposeSession).toHaveBeenCalledTimes(1));
+    expect(api.checkComposeSafety).toHaveBeenCalledTimes(2);
+    const saved = api.updateComposeSession.mock.calls.at(-1)?.[0] as {
+      frontmatter: { cc: string };
+    };
+    expect(saved.frontmatter.cc).toBe("carol@example.com");
   });
 });

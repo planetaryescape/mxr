@@ -117,6 +117,12 @@ export function draftFingerprint(draft: ComposeDraftState): string {
   });
 }
 
+const MALFORMED_ADDRESS_PREFIX = "Invalid email address: ";
+
+export function isMalformedAddressIssue(issue: ComposeIssue): boolean {
+  return issue.message.startsWith(MALFORMED_ADDRESS_PREFIX);
+}
+
 export function localComposeIssues(draft: ComposeDraftState): ComposeIssue[] {
   const issues: ComposeIssue[] = [];
   if (!draft.frontmatter.to.trim())
@@ -125,7 +131,7 @@ export function localComposeIssues(draft: ComposeDraftState): ComposeIssue[] {
     `${draft.frontmatter.to},${draft.frontmatter.cc},${draft.frontmatter.bcc}`,
   )) {
     if (!address.includes("@"))
-      issues.push({ severity: "error", message: `Invalid email address: ${address}` });
+      issues.push({ severity: "error", message: `${MALFORMED_ADDRESS_PREFIX}${address}` });
   }
   if (!draft.frontmatter.subject.trim())
     issues.push({ severity: "warning", message: "Subject is empty" });

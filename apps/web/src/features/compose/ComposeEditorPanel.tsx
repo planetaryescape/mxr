@@ -26,8 +26,9 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useUiPrefs } from "@/state/uiPrefsStore";
-import type { ComposeIssue, DraftSafetyReport, RuntimeAccount } from "./api";
+import type { DraftSafetyReport, RuntimeAccount } from "./api";
 import { ComposeActionBar } from "./ComposeActionBar";
+import { ComposeIssueSummary } from "./ComposeIssueSummary";
 import { ComposeTopBar } from "./ComposeTopBar";
 import { DraftAssist } from "./DraftAssist";
 import { DraftQualityBadges } from "./DraftQualityBadges";
@@ -128,6 +129,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
             value={draft.frontmatter.to}
             inputRef={controller.toInputRef}
             onChange={(value) => controller.updateFrontmatter("to", value)}
+            onBlur={controller.markRecipientsTouched}
             trailing={
               <>
                 {!controller.showCc ? (
@@ -160,6 +162,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
                 value={draft.frontmatter.cc}
                 inputRef={controller.ccInputRef}
                 onChange={(value) => controller.updateFrontmatter("cc", value)}
+                onBlur={controller.markRecipientsTouched}
               />
             </CollapsibleContent>
           </Collapsible>
@@ -170,6 +173,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
                 value={draft.frontmatter.bcc}
                 inputRef={controller.bccInputRef}
                 onChange={(value) => controller.updateFrontmatter("bcc", value)}
+                onBlur={controller.markRecipientsTouched}
               />
             </CollapsibleContent>
           </Collapsible>
@@ -276,7 +280,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
                 onRemove={controller.removeAttachment}
               />
             ) : null}
-            <IssueList issues={controller.visibleIssues} />
+            <ComposeIssueSummary issues={controller.visibleIssues} />
           </div>
         </div>
       ) : null}
@@ -397,30 +401,6 @@ function AttachmentList({
             <X className="size-3" />
           </button>
         </Badge>
-      ))}
-    </div>
-  );
-}
-
-function IssueList({ issues }: { issues: ComposeIssue[] }) {
-  if (issues.length === 0) return null;
-  return (
-    <div className="mt-3 space-y-2">
-      {issues.map((issue) => (
-        <Alert
-          key={`${issue.severity}-${issue.message}`}
-          variant={issue.severity === "error" ? "destructive" : "warning"}
-          className="flex items-center gap-2 px-3 py-2"
-        >
-          <AlertTriangle
-            className={
-              issue.severity === "error"
-                ? "size-3 shrink-0 text-destructive"
-                : "size-3 shrink-0 text-warning"
-            }
-          />
-          <AlertDescription>{issue.message}</AlertDescription>
-        </Alert>
       ))}
     </div>
   );

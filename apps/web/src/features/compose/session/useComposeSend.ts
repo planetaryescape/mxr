@@ -56,6 +56,11 @@ interface ComposeSendInput {
   saveCurrentDraft: () => Promise<ComposeSession | undefined>;
   isCurrentDraftSaved: (current: ComposeDraftState) => boolean;
   markSessionFinished: () => void;
+  /** Called on every Send / Send later press, before validation. */
+  markSendAttempted: () => void;
+  /** Called when local validation blocks the attempt; the issues are shown
+   * inline, so this only moves focus to help fix them. */
+  onValidationBlocked: () => void;
 }
 
 export function useComposeSend({
@@ -67,6 +72,8 @@ export function useComposeSend({
   saveCurrentDraft,
   isCurrentDraftSaved,
   markSessionFinished,
+  markSendAttempted,
+  onValidationBlocked,
 }: ComposeSendInput) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
   const [sendLaterOpen, setSendLaterOpen] = useState(false);
@@ -152,9 +159,9 @@ export function useComposeSend({
     if (!current) return;
     // Refuse before validation so a second press never re-runs anything.
     if (sendLockRef.current) return;
-    const errors = localComposeIssues(current).filter((issue) => issue.severity === "error");
-    if (errors.length > 0) {
-      toast.error("Fix compose errors before sending", { description: errors[0]?.message });
+    markSendAttempted();
+    if (hasBlockingIssues(current)) {
+      onValidationBlocked();
       return;
     }
     if (!acquireSendLock()) return;
@@ -201,9 +208,9 @@ export function useComposeSend({
     const current = draftRef.current;
     if (!current) return;
     if (sendLockRef.current) return;
-    const errors = localComposeIssues(current).filter((issue) => issue.severity === "error");
-    if (errors.length > 0) {
-      toast.error("Fix compose errors before scheduling", { description: errors[0]?.message });
+    markSendAttempted();
+    if (hasBlockingIssues(current)) {
+      onValidationBlocked();
       return;
     }
     setSendLaterOpen(true);
@@ -369,4 +376,8 @@ export function useComposeSend({
     confirmSend,
     sendPending: sendSession.isPending,
   };
+}
+
+function hasBlockingIssues(draft: ComposeDraftState): boolean {
+  return localComposeIssues(draft).some((issue) => issue.severity === "error");
 }

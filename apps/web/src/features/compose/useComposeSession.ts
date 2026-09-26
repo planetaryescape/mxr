@@ -45,6 +45,7 @@ import {
   draftFromSession,
   expandSnippet,
   localComposeIssues,
+  isMalformedAddressIssue,
   splitAddresses,
   type ComposeDraftState,
   type ComposeIntent,
@@ -83,7 +84,10 @@ export interface ComposeController {
   dirty: boolean;
   saveStatus: string;
   saveError: string | null;
+  /** Validation issues worth showing now: none before the first send
+   * attempt, except malformed addresses once a recipient field is left. */
   visibleIssues: ComposeIssue[];
+  markRecipientsTouched: () => void;
   recipientCount: number;
   runtimeAccounts: RuntimeAccount[];
   selectedAccount: RuntimeAccount | undefined;
@@ -222,6 +226,10 @@ export function useComposeSession(
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  // Validation stays quiet until it can help: after the first send attempt,
+  // or (for malformed addresses only) once a recipient field is left.
+  const [sendAttempted, setSendAttempted] = useState(false);
+  const [recipientsTouched, setRecipientsTouched] = useState(false);
   const hasAutofocusedRef = useRef(false);
   const [collaboratorSuggestions, setCollaboratorSuggestions] = useState<SuggestedCollaborator[]>(
     [],
@@ -261,6 +269,11 @@ export function useComposeSession(
     saveCurrentDraft,
     isCurrentDraftSaved,
     markSessionFinished: autosave.markSessionFinished,
+    markSendAttempted: () => setSendAttempted(true),
+    onValidationBlocked: () => {
+      const current = draftRef.current;
+      if (current && !current.frontmatter.to.trim()) toInputRef.current?.focus();
+    },
   });
   const attachments = useComposeAttachments({ draftRef, setDraft, setDirty });
   const assist = useDraftAssist({ intent, draftRef, setDraft, setDirty });
@@ -364,7 +377,15 @@ export function useComposeSession(
       : lastSavedAt
         ? `Saved ${formatRelativeAge(lastSavedAt)} ago`
         : "Not saved yet";
-  const visibleIssues = draft ? (dirty ? localComposeIssues(draft) : draft.issues) : [];
+  const visibleIssues = !draft
+    ? []
+    : sendAttempted
+      ? dirty
+        ? localComposeIssues(draft)
+        : draft.issues
+      : recipientsTouched
+        ? localComposeIssues(draft).filter(isMalformedAddressIssue)
+        : [];
   const recipientCount = draft ? countRecipients(draft.frontmatter) : 0;
   const canServerSave = Boolean(selectedAccount?.capabilities?.supports_server_drafts);
   // A send in flight (including its undo window) counts as busy so Send,
@@ -563,6 +584,7 @@ export function useComposeSession(
     saveStatus,
     saveError,
     visibleIssues,
+    markRecipientsTouched: () => setRecipientsTouched(true),
     recipientCount,
     runtimeAccounts,
     selectedAccount,

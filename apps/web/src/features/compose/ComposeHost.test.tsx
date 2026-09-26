@@ -295,3 +295,57 @@ describe("ComposeHost never loses typing on the way out", () => {
     await waitFor(() => expect(savedSubjects()).toEqual(["Half-written"]));
   });
 });
+
+describe("ComposeHost validation", () => {
+  const blank = () =>
+    session({
+      frontmatter: { to: "", cc: "", bcc: "", subject: "", from: "me@example.com", attach: [] },
+      bodyMarkdown: "",
+      issues: [
+        { severity: "error", message: "No recipients (to: field is empty)" },
+        { severity: "warning", message: "Subject is empty" },
+      ],
+    });
+
+  test("a fresh message shows no validation before the user tries to send", async () => {
+    api.startComposeSession.mockResolvedValue(blank());
+    renderHost();
+    openNewMessage();
+
+    await screen.findByLabelText("Subject");
+    expect(screen.queryByRole("status", { name: "Compose issues" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/No recipients/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Subject is empty/)).not.toBeInTheDocument();
+  });
+
+  test("a blocked send shows one line that separates blockers from warnings", async () => {
+    api.startComposeSession.mockResolvedValue(blank());
+    renderHost();
+    openNewMessage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send⌘↵" }));
+
+    const summary = await screen.findByRole("status", { name: "Compose issues" });
+    expect(summary).toHaveTextContent(
+      "Can't send yet:No recipients (to: field is empty)Check:Subject is empty",
+    );
+    expect(screen.getAllByRole("status", { name: "Compose issues" })).toHaveLength(1);
+    expect(api.checkComposeSafety).not.toHaveBeenCalled();
+    expect(api.sendComposeSession).not.toHaveBeenCalled();
+    expect(toasts.error).not.toHaveBeenCalled();
+  });
+
+  test("leaving a recipient field flags a malformed address, and nothing else", async () => {
+    api.startComposeSession.mockResolvedValue(blank());
+    renderHost();
+    openNewMessage();
+
+    const to = await screen.findByLabelText("To");
+    fireEvent.change(to, { target: { value: "bob" } });
+    fireEvent.blur(to);
+
+    const summary = await screen.findByRole("status", { name: "Compose issues" });
+    expect(summary).toHaveTextContent("Can't send yet:Invalid email address: bob");
+    expect(summary).not.toHaveTextContent("Subject is empty");
+  });
+});

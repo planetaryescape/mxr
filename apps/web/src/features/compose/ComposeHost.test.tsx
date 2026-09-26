@@ -640,3 +640,42 @@ describe("ComposeHost invite replies", () => {
     expect(screen.queryByRole("dialog", { name: "Send later" })).not.toBeInTheDocument();
   });
 });
+
+describe("ComposeHost after a delayed send", () => {
+  test("a send landing later does not close the composer the user moved on to", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderHost();
+    openNewMessage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send⌘↵" }));
+    await waitFor(() => expect(useUndo.getState().pendingSendCancel).not.toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: /close composer/i }));
+    act(() => {
+      useComposeUi
+        .getState()
+        .openCompose({ key: "compose:reply:m-2", title: "Reply", kind: "reply", messageId: "m-2" });
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    await waitFor(() => expect(api.sendComposeSession).toHaveBeenCalledTimes(1));
+    expect(useComposeUi.getState().intent?.key).toBe("compose:reply:m-2");
+  });
+
+  test("a failed discard is reported and keeps the draft open", async () => {
+    api.discardComposeSession.mockRejectedValue(new Error("permission denied"));
+    renderHost();
+    openNewMessage();
+
+    const subject = await screen.findByLabelText("Subject");
+    fireEvent.keyDown(subject, { key: "Backspace", metaKey: true });
+
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith("Discard failed", {
+        description: "permission denied",
+      }),
+    );
+    expect(screen.getByLabelText("Subject")).toBeInTheDocument();
+  });
+});

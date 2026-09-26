@@ -35,10 +35,16 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [slot, setSlot] = useState<HTMLElement | null>(null);
 
+  // A send finishes after its undo window, possibly once the user has moved
+  // on to another composer; only close the surface if it still shows this
+  // session.
+  const closeThisSession = () => {
+    if (useComposeUi.getState().intent?.key === intent.key) closeCompose();
+  };
   const controller = useComposeSession(intent, {
-    onSent: closeCompose,
-    onDiscarded: closeCompose,
-    onClose: closeCompose,
+    onSent: closeThisSession,
+    onDiscarded: closeThisSession,
+    onClose: closeThisSession,
   });
 
   // The inline slot lives at the bottom of the thread reader; re-resolve

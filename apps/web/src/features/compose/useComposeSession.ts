@@ -563,7 +563,12 @@ export function useComposeSession(
   async function discardDraft() {
     const current = draftRef.current;
     if (!current) return;
-    await discardSession.mutateAsync(current.draftPath);
+    try {
+      await discardSession.mutateAsync(current.draftPath);
+    } catch (error) {
+      toast.error("Discard failed", { description: errorMessage(error) });
+      return;
+    }
     autosave.markSessionFinished();
     forgetActiveDraft(intent.key);
     setDiscardConfirmOpen(false);

@@ -1849,22 +1849,54 @@ async fn bridge_events(mut socket: WebSocket, socket_path: PathBuf) {
             }
         };
 
-    while let Ok(message) = connection.next_event().await {
-        let IpcPayload::Event(event) = message.payload else {
-            continue;
-        };
-        let payload = match serde_json::to_string(&event) {
-            Ok(payload) => payload,
-            Err(_) => break,
-        };
-        if socket
-            .send(WebSocketMessage::Text(payload.into()))
-            .await
-            .is_err()
-        {
-            break;
+    // Read the browser side too: without it a closed tab keeps the daemon
+    // socket open until the next event happens to fail its send. Both
+    // `next_event` and `recv` are cancel-safe, so `select!` loses no frame.
+    loop {
+        tokio::select! {
+            event = connection.next_event() => {
+                let Ok(message) = event else {
+                    break;
+                };
+                let IpcPayload::Event(event) = message.payload else {
+                    continue;
+                };
+                let Ok(payload) = serde_json::to_string(&event) else {
+                    break;
+                };
+                if socket
+                    .send(WebSocketMessage::Text(payload.into()))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            frame = socket.recv() => match frame {
+                None | Some(Err(_)) | Some(Ok(WebSocketMessage::Close(_))) => break,
+                Some(Ok(WebSocketMessage::Text(text))) if is_app_ping(&text) => {
+                    let pong = json!({ "type": "pong" }).to_string();
+                    if socket
+                        .send(WebSocketMessage::Text(pong.into()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                // Protocol-level pings are answered by axum; other client
+                // frames carry nothing the bridge acts on.
+                Some(Ok(_)) => {}
+            },
         }
     }
+}
+
+/// Application-level keepalive: browsers cannot send WebSocket ping frames,
+/// so the SPA may send `{"type":"ping"}` and expect `{"type":"pong"}`.
+fn is_app_ping(text: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(text)
+        .is_ok_and(|value| value.get("type").and_then(serde_json::Value::as_str) == Some("ping"))
 }
 
 fn parse_thread_id(value: &str) -> Result<ThreadId, BridgeError> {

@@ -4847,3 +4847,55 @@ async fn unsubscribe_purge_dry_run_returns_would_affect_ids() {
         serde_json::json!([message_ids[0].to_string(), message_ids[1].to_string()])
     );
 }
+
+/// The events socket answers `{"type":"ping"}` and, once the browser goes
+/// away, drops its daemon connection straight away instead of waiting for
+/// the next daemon event to fail.
+#[tokio::test]
+async fn websocket_events_answer_ping_and_release_daemon_on_close() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let listener = UnixListener::bind(&socket_path).unwrap();
+    let (closed_tx, closed_rx) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut framed = Framed::new(stream, IpcCodec::new());
+        // Never emit an event: only the client side can end this session.
+        while let Some(Ok(_)) = framed.next().await {}
+        let _ = closed_tx.send(());
+    });
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let (mut stream, _) = tokio_tungstenite::connect_async(format!(
+        "ws://{addr}/api/v1/events?token={TEST_AUTH_TOKEN}"
+    ))
+    .await
+    .unwrap();
+
+    stream
+        .send(Message::Text(r#"{"type":"ping"}"#.into()))
+        .await
+        .unwrap();
+    let reply = tokio::time::timeout(Duration::from_secs(5), stream.next())
+        .await
+        .expect("pong within 5s")
+        .unwrap()
+        .unwrap();
+    match reply {
+        Message::Text(text) => assert_eq!(text.as_str(), r#"{"type":"pong"}"#),
+        other => panic!("expected pong text frame, got {other:?}"),
+    }
+
+    stream.close(None).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), closed_rx)
+        .await
+        .expect("bridge must release the daemon connection when the browser closes")
+        .unwrap();
+}
